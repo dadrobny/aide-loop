@@ -1,0 +1,10 @@
+# aide-loop framework repo
+__pycache__/
+*.pyc
+.venv/
+# per-machine loop config (never shared)
+core/loop/loop.local.toml
+adapters/**/loop.local.toml
+# installer artifacts
+.aide-merge
+.DS_Store
