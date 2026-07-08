@@ -55,9 +55,6 @@ README) describe this repo's own structure.
 
 ## Remaining
 
-- **J — push.** The framework work is committed to `main`; `origin`
-  (github.com/dadrobny/aide-loop) is empty, so the first push seeds `main`. This
-  whole extraction is the reviewable unit.
 - **G — porting stubs** (`adapters/{cursor,gemini}/README.md`, `adapters/copilot/`)
   are left as stubs. Copilot is the second *real* adapter but is **explicitly future
   work** (plan §4.2) — after SegQC becomes a consumer.
