@@ -17,6 +17,19 @@ can install it and pull updates, while SegQC-xnat becomes its **first consumer**
 rather than its owner. This document records the motivation, the exact
 core/adapter boundary, and a concrete, reversible plan to get there.
 
+**Origin — and why extract from Spec Kit.** AIDE began as an MIT-licensed
+[Spec Kit extension by mnriem](https://github.com/mnriem/spec-kit-extensions/tree/main/aide):
+the seven-step workflow and the living-document templates originate there. But that
+framing understates what AIDE actually is. Its workflow and its deterministic engine
+(`aide.py`, the document formats, the loop) have **no real dependency on Spec Kit** —
+nothing in the loop calls into Spec Kit's runtime or command surface; it is a
+self-contained vision→roadmap→…→execute cycle that happens to have been *packaged* as
+an extension. Shipping it as a Spec Kit extension therefore couples an essentially
+independent tool to a host it does not need, and hides its true generality: the engine
+is provider-agnostic (below), so it can drive *any* runtime, not just a Spec-Kit-hosted
+one. Extracting it into a standalone repo makes the tool's real shape — an independent,
+multi-provider engine — match how it is distributed.
+
 A working install is **three layers**, and it needs all three:
 
 | Layer | What it is | This repo | Depends on Claude? |
