@@ -101,7 +101,9 @@ in `core/conventions.md`; only the **enforcement mechanism** and the
   control files). `defaultMode` is `default`. The allow-list is what lets an
   unattended run proceed without stalling on a prompt; the ask-list is where a human
   stays in the loop. **`install.py` never clobbers an existing `settings.json`** — it
-  emits a `.aide-merge` diff for the human to reconcile.
+  emits a `.aide-merge` diff for the human to reconcile. The write-scope entries
+  default to `src/**` and `tests/**` (the engine's default `source_dir`/`tests_dir`);
+  a consumer whose code lives elsewhere aligns those two globs with its `aide.toml`.
 - **`hooks/command_hygiene_guard.py`** — a `PreToolUse` hook on `Bash` that *enforces*
   the `conventions.md` hygiene contract: a reshapeable command that would otherwise
   miss the allow-list and stall the run is bounced back to be re-issued in an
