@@ -1,8 +1,11 @@
 # Improvement strategy — friction observations → work items
 
-> Status: Draft for review · Created: 2026-07-18
-> Input: a collected list of friction points from real automated-development runs.
-> Output: six work items (WI-1…WI-6), each bundling related observations, with a
+> Status: WI-1…WI-7 implemented on `feat/improvement-strategy-wi` (one commit
+> per WI, awaiting review); the `.aide-merge` auto-reconcile (WI-7g) remains
+> planned. · Created: 2026-07-18 · Updated: 2026-07-19
+> Input: a collected list of friction points from real automated-development
+> runs, plus field feedback from a consumer repo (SegQC+xnat → WI-7).
+> Output: seven work items, each bundling related observations, with a
 > proposed direction, concrete steps, affected surfaces, and open questions.
 > Framework/process changes land via reviewed PRs (see README → Merge policy).
 
@@ -304,6 +307,67 @@ engine.
 messaging.
 
 ---
+
+## WI-7 — Field feedback from a consumer repo (SegQC+xnat)
+
+First real consumer-run feedback — exactly the artifact the WI-4 inbox is
+designed to carry (every entry below would have been an `insights.md` line).
+All recurred; none were one-offs.
+
+**Code defects (all fixed):**
+
+- **(a) `aide merge` claimed branch deletion it never verified.** 3/3 items
+  printed "deleted" while the local branch survived (`-d` refuses when
+  `pull --rebase` rewrote main so the tip is no longer an ancestor). Fixed:
+  delete result is checked, escalates to `-D` (safe — this process just merged
+  the branch), the remote delete is verified too, and failure prints an honest
+  message pointing at `aide gc` instead of a false success.
+- **(b) Status icons crashed `aide.py` on non-UTF-8 Windows consoles**
+  (cp1252 → `UnicodeEncodeError`, command dies instead of reporting). Fixed:
+  `stream.reconfigure(encoding="utf-8", errors="replace")` once at `main()`
+  entry — no more per-call `PYTHONIOENCODING` dance.
+- **(c) Hygiene-guard rule 4 checked the raw command** while rules 1–3/5 check
+  the quote-blanked one, so literal `$(...)` *prose* in a commit message was
+  blocked as real substitution. Fixed quote-aware: single-quoted spans are
+  prose (bash keeps them literal); unquoted **and double-quoted** `$(`/backtick
+  still flag, because bash substitutes inside double quotes.
+- **(d) `progress set` hard-failed on a missing `*(Item NNN)*` back-fill**,
+  making two builders hand-patch `progress.md`. The queue-planner back-fill
+  (create-queue req. 8) evidently isn't reliable, so the CLI now
+  **self-heals**: it inserts the deliverable bullet from the item spec's own
+  Stage/title header when unambiguous, and only hard-errors when no spec/stage
+  context exists.
+- **(e) No escape hatch for the documented framework-update workflow**, which
+  structurally needs `git -C` into a second repo. Fixed: `[framework]
+  local_path` in `aide.toml` declares that clone; the guard exempts `git -C
+  <that path>` only — everything else stays blocked.
+
+**Instruction gaps (fixed in agent definitions, not dispatch prompts):**
+
+- **(f) Validator stalls on background test runs** (~1.5 h Monitor stall,
+  likely a permission prompt): `validator.md` now mandates a synchronous
+  foreground pytest, never background/Monitor.
+- **(g) Round-1 validation failures dominated by stale-test assertions** when
+  a spec intentionally changes an existing default: `spec-author` now sweeps
+  `tests_dir` for tests pinning the old behaviour and lists them in the spec;
+  `test-writer` reconciles exactly those in the same pass (its one sanctioned
+  edit to pre-existing tests). Kills the guaranteed extra validation round.
+- The orchestrator's own hygiene lapses (`;`-chained calls) were masked by
+  the broken guard — (c) fixing the guard re-arms enforcement for the main
+  thread too; no further change needed.
+
+**Automation opportunities:**
+
+- **`aide status` (implemented)** — one call replacing the several git/gh
+  round-trips of roadmap-state discovery on re-invocation: branch +
+  divergence, derived queue states with open items, claim branches (stale
+  flagged), open PRs best-effort.
+- **`.aide-merge` auto-reconciliation (planned, not yet implemented)** — most
+  of a settings reconcile is mechanical (framework version wins except
+  project-pinned lines). Direction: an `aide.toml` list of pinned JSON paths
+  (e.g. the `Edit`/`Write` scoping globs) that `install.py` preserves,
+  auto-applying everything else and leaving a diff only for genuine conflicts.
+  Deserves its own small PR against `install.py` + adapter README.
 
 ## What this strategy deliberately does not do
 

@@ -105,6 +105,8 @@ python .aide/scripts/aide.py {check, progress, queue, claim, merge, env, sync, g
 - **env** — venv existence / import check (+ bootstrap).
 - **sync** — session preflight: fetch, clean-tree check, land on the right branch.
 - **gc** — delete claim branches whose work has landed (dry-run by default).
+- **status** — one-call roadmap-state report: branch + divergence, derived queue
+  states, claim branches, open PRs (best effort).
 
 This invocation is identical across providers and implementation-agnostic — a future
 compiled `aide` binary exposing the same subcommands is a drop-in substitution with

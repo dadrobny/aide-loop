@@ -16,6 +16,7 @@ Subcommands::
     python .aide/scripts/aide.py env                   # venv existence / import check + bootstrap
     python .aide/scripts/aide.py sync [--item NNN]     # preflight: fetch, clean-tree check, right branch
     python .aide/scripts/aide.py gc [--merged] [--yes] # delete claim branches whose work landed
+    python .aide/scripts/aide.py status                # one-call roadmap-state report
 
 The parsing/editing helpers are pure functions so they can be unit-tested without
 touching git or the real filesystem (see ``.aide/scripts/tests``).
@@ -310,6 +311,41 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str]) -> N
                 derived = current
             if RANK[derived] >= RANK[current]:
                 lines[i] = _sub_status_cell(line, derived)
+
+
+def _spec_stage_and_title(repo_root: Path, config, number: int) -> Tuple[Optional[str], Optional[str]]:
+    """(stage, title) from the item's spec header, best effort."""
+    idir = docs_dir(repo_root, config) / "items"
+    specs = sorted(idir.glob(f"{number:03d}-*.md")) if idir.is_dir() else []
+    if not specs:
+        return None, None
+    text = specs[0].read_text(encoding="utf-8")
+    tm = re.search(r"^#\s+Item\s+0*" + str(number) + r"\s*[—–-]\s*(.+?)\s*$", text, re.MULTILINE)
+    sm = re.search(r"\*\*Stage:\*\*\s*(\d+)", text)
+    return (sm.group(1) if sm else None), (tm.group(1) if tm else None)
+
+
+def insert_item_reference(text: str, number: int, stage: str, title: str) -> Optional[str]:
+    """Append a planned deliverable bullet for item ``number`` to the given
+    stage's Deliverables block (used when a queue back-fill was missed, so
+    ``progress set`` can self-heal instead of hard-erroring). Returns the
+    updated text, or None when the stage section / Deliverables block is
+    missing — that stays a loud error."""
+    lines = text.splitlines()
+    for start, end, snum in stage_sections(lines):
+        if snum != str(stage):
+            continue
+        insert_at = None
+        for i in range(start, end):
+            if _BULLET_RE.match(lines[i]):
+                insert_at = i + 1
+            elif insert_at is None and lines[i].strip().startswith("**Deliverables"):
+                insert_at = i + 1
+        if insert_at is None:
+            return None
+        lines.insert(insert_at, f"- 📋 {title}. *(Item {number:03d})*")
+        return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+    return None
 
 
 def set_item_status(text: str, num: int, status: str) -> str:
@@ -716,22 +752,31 @@ def cmd_progress(args: argparse.Namespace) -> int:
         print(f"error: {progress_path} not found", file=sys.stderr)
         return 1
     text = progress_path.read_text(encoding="utf-8")
-    # An item is only trackable if some deliverable bullet references it. Without
-    # this guard a missing "*(Item NNN)*" reference makes set_item_status a silent
-    # no-op that is indistinguishable from "already at that status" — so a whole
-    # stage's items can look reconciled while progress.md tracks nothing. Treat an
-    # untracked item as a loud, blocking error instead.
+    original = text
+    # An item is only trackable if some deliverable bullet references it (a
+    # missing "*(Item NNN)*" would make set_item_status a silent no-op). When
+    # the queue back-fill was missed, self-heal deterministically from the item
+    # spec's own Stage/title header; only when that context is missing too does
+    # this stay a loud, blocking error.
     if not _item_ref_re(args.number).search(text):
-        print(
-            f"item {args.number:03d}: ERROR — no deliverable in progress.md "
-            f"references 'Item {args.number:03d}'; status NOT recorded. Add the "
-            f"reference to the owning stage's deliverable bullet "
-            f"(e.g. '- 📋 <deliverable>. *(Item {args.number:03d})*'), then re-run.",
-            file=sys.stderr,
-        )
-        return 1
+        stage, title = _spec_stage_and_title(repo_root, config, args.number)
+        healed = insert_item_reference(text, args.number, stage, title) if stage and title else None
+        if healed is None:
+            print(
+                f"item {args.number:03d}: ERROR — no deliverable in progress.md "
+                f"references 'Item {args.number:03d}', and no item spec with a "
+                f"Stage header was found to insert one from; status NOT "
+                f"recorded. Add the reference to the owning stage's deliverable "
+                f"bullet (e.g. '- 📋 <deliverable>. *(Item {args.number:03d})*'), "
+                f"then re-run.",
+                file=sys.stderr,
+            )
+            return 1
+        text = healed
+        print(f"item {args.number:03d}: back-filled missing deliverable reference "
+              f"under Stage {stage} (from the item spec)")
     updated = set_item_status(text, args.number, status_map[args.status])
-    if updated == text:
+    if updated == original:
         print(f"item {args.number:03d}: no change (already >= {args.status})")
     else:
         progress_path.write_text(updated, encoding="utf-8")
@@ -1024,11 +1069,29 @@ def cmd_merge(args: argparse.Namespace) -> int:
             print(f"aide merge: merged {branch} but the post-merge test run FAILED — investigate", file=sys.stderr)
             return 1
 
-    # Clean up the merged claim branch (safe -d; refuses if not merged).
-    git(["branch", "-d", branch], repo_root, check=False)
+    # Clean up the merged claim branch — and VERIFY it, never assume. `-d` can
+    # refuse even though the work landed (e.g. `pull --rebase` rewrote main so
+    # the branch tip is no longer an ancestor); this process just merged the
+    # branch, so escalating to -D is safe.
+    del_res = git(["branch", "-d", branch], repo_root, check=False)
+    if del_res.returncode != 0:
+        del_res = git(["branch", "-D", branch], repo_root, check=False)
+    local_gone = branch not in _local_branches(repo_root)
+    remote_gone = True
     if mode != "local":
-        git(["push", "origin", "--delete", branch], repo_root, check=False)
-    print(f"aide merge: item {args.number:03d} merged to {main} and claim branch {branch} deleted")
+        push_res = git(["push", "origin", "--delete", branch], repo_root, check=False)
+        remote_gone = (push_res.returncode == 0
+                       or "remote ref does not exist" in (push_res.stderr or ""))
+    if local_gone and remote_gone:
+        print(f"aide merge: item {args.number:03d} merged to {main} and claim branch {branch} deleted")
+    else:
+        where = [] if local_gone else ["local"]
+        if not remote_gone:
+            where.append("remote")
+        print(f"aide merge: item {args.number:03d} merged to {main}, but the "
+              f"{'/'.join(where)} claim branch {branch} could NOT be deleted:\n"
+              f"{(del_res.stderr or '').strip()}\n"
+              f"Run 'python .aide/scripts/aide.py gc' to sweep it up.", file=sys.stderr)
     return 0
 
 
@@ -1118,6 +1181,80 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
     print(f"aide sync: OK — on '{branch}', tree clean"
           + ("" if mode == "local" else ", remotes fetched"))
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    """One-call roadmap-state report: branch + divergence, derived queue
+    states, claim branches, and (best effort) open PRs — replacing the several
+    manual git/gh round-trips a resuming orchestrator otherwise makes."""
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    mode = str(config["git"].get("mode", "auto-merge"))
+    main = str(config["git"].get("main_branch", "main"))
+
+    if not args.no_fetch and mode != "local" and _has_origin(repo_root):
+        git(["fetch", "--all", "--prune"], repo_root, check=False)
+
+    branch = git(["rev-parse", "--abbrev-ref", "HEAD"], repo_root, check=False).stdout.strip()
+    line = f"branch: {branch or '(unknown)'}"
+    if mode != "local" and _has_origin(repo_root):
+        counts = git(["rev-list", "--left-right", "--count", f"{main}...origin/{main}"],
+                     repo_root, check=False).stdout.split()
+        if len(counts) == 2:
+            ahead, behind = counts
+            line += f" · {main}: {ahead} ahead / {behind} behind origin/{main}"
+    print(f"aide status — {repo_root.name}")
+    print(f"  {line}")
+
+    dirty = git(["status", "--porcelain"], repo_root, check=False).stdout.strip()
+    print(f"  tree: {'dirty (' + str(len(dirty.splitlines())) + ' path(s))' if dirty else 'clean'}")
+
+    item_status = _progress_item_status(repo_root, config)
+    qdir = docs_dir(repo_root, config) / "queue"
+    live_seen = False
+    if qdir.is_dir() and _queue_paths(qdir):
+        for path in _queue_paths(qdir):
+            nums = queue_item_numbers(path.read_text(encoding="utf-8"))
+            open_nums = [n for n in nums
+                         if item_status.get(n, "planned") in ("planned", "in-progress")]
+            if open_nums:
+                tag = " (live)" if not live_seen else ""
+                live_seen = True
+                listed = ", ".join(f"{n:03d}" for n in open_nums)
+                print(f"  {path.name}: open{tag} — {len(open_nums)}/{len(nums)} items open ({listed})")
+            else:
+                print(f"  {path.name}: done")
+    else:
+        print("  queues: none")
+
+    branches = _list_claim_branches(repo_root, prefix)
+    if branches:
+        for br in branches:
+            num = _branch_item_number(br)
+            st = item_status.get(num, "planned") if num is not None else "?"
+            stale = " — STALE (item ✅; run 'aide gc')" if st == "complete" else ""
+            print(f"  claim: {br} (item {num:03d}: {st}){stale}" if num is not None
+                  else f"  claim: {br}")
+    else:
+        print("  claims: none")
+
+    # Open PRs, best effort — informative only, silently skipped without `gh`.
+    try:
+        res = subprocess.run(["gh", "pr", "list", "--state", "open"],
+                             cwd=str(repo_root), stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True, timeout=20)
+        if res.returncode == 0:
+            prs = res.stdout.strip()
+            if prs:
+                print("  open PRs:")
+                for l in prs.splitlines():
+                    print(f"    {l}")
+            else:
+                print("  open PRs: none")
+    except (OSError, subprocess.SubprocessError):
+        pass
     return 0
 
 
@@ -1246,8 +1383,21 @@ def register_git_subcommands(sub) -> None:
     p_gc.add_argument("--yes", action="store_true", help="actually delete (default: dry run)")
     p_gc.set_defaults(func=cmd_gc)
 
+    p_status = sub.add_parser("status", help="one-call roadmap-state report (branch, queues, claims, PRs)")
+    p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
+    p_status.set_defaults(func=cmd_status)
+
 
 def main(argv: Optional[List[str]] = None) -> int:
+    # Windows consoles often default to a non-UTF-8 codepage (cp1252), where
+    # printing a status icon raises UnicodeEncodeError and kills the command
+    # instead of reporting. Reconfigure once here so no caller ever needs the
+    # PYTHONIOENCODING env-var dance.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)

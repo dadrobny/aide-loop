@@ -83,6 +83,10 @@ clarify = "assume"
 # repo (via `gh`); empty disables the handover (entries stay pending in
 # docs/aide/insights.md).
 repo = ""
+# Path to a local clone of the framework repo, used by the documented
+# framework-update workflow. Declaring it exempts `git -C <this path>` from the
+# hygiene guard's no-directory-prefix rule (the one legitimate use).
+# local_path = "../aide-loop"
 
 # [validation]
 # Named environment profiles for stage-validation items — each value is a

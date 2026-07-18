@@ -66,10 +66,12 @@ violating shape is blocked and bounced back with the fix.
 ## Determine current state first (resumable)
 
 This loop spans sessions (it pauses for a human queue-PR merge), so always start
-by working out where things stand. Run the deterministic preflight
-`python .aide/scripts/aide.py sync` (fetch + clean-tree check — not a hand-rolled
-`git fetch`), then read
-`docs/aide/roadmap.md`, `docs/aide/progress.md`, and the queue files. The loop runs
+by working out where things stand — in **one call**, not a series of improvised
+git/gh probes: `python .aide/scripts/aide.py status` (fetches, then reports
+branch + divergence, derived queue states, claim branches, and open PRs). Then
+read `docs/aide/roadmap.md`, `docs/aide/progress.md`, and the queue files as
+needed. Run `python .aide/scripts/aide.py sync` before touching anything (clean-
+tree gate). The loop runs
 **in-place in the primary checkout** (see *Working in parallel* below if you need
 isolation).
 

@@ -462,6 +462,37 @@ def test_cli_progress_set_untracked_item_errors(tmp_path: Path, capsys):
     assert text == PROGRESS
 
 
+def test_cli_progress_set_backfills_reference_from_spec(tmp_path: Path, capsys):
+    """A missed queue back-fill self-heals: the reference is inserted from the
+    item spec's Stage header instead of hard-erroring (WI-7)."""
+    root = _docs(tmp_path)
+    (root / "docs" / "aide" / "items" / "004-extra-thing.md").write_text(
+        "# Item 004 — Extra thing\n\n"
+        "> **Created:** 2026-07-18 · status tracked in progress.md\n"
+        "> **Stage:** 1 — Rule Engine\n",
+        encoding="utf-8",
+    )
+    rc = aide.main(["--repo", str(root), "progress", "set", "4", "in-progress", "--no-commit"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "back-filled missing deliverable reference under Stage 1" in out
+    text = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    assert "- 🚧 Extra thing. *(Item 004)*" in text
+    # Existing deliverables untouched; stage still in progress.
+    assert "- 📋 Bounds. *(Item 003)*" in text
+    assert "## Stage 1 — Rule Engine — 🚧" in text
+
+
+def test_cli_status_reports_queues_and_claims(tmp_path: Path, capsys):
+    root = _docs(tmp_path)
+    rc = aide.main(["--repo", str(root), "status", "--no-fetch"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "queue-001.md: done" in out
+    assert "queue-002.md: open (live)" in out
+    assert "003" in out  # the open item is listed
+
+
 def test_cli_queue_tidy_edits_file(tmp_path: Path):
     root = _docs(tmp_path)
     rc = aide.main(["--repo", str(root), "queue", "tidy", "1", "--date", "2026-07-02"])
