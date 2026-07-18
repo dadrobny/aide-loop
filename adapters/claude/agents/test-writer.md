@@ -66,6 +66,21 @@ never assume a package name.
   network calls, no absolute paths.
 - Match the surrounding test style exactly. No extra imports, no dead code.
 
+## Out-of-scope insights (compound engineering)
+
+When you learn something true but OUT OF SCOPE for this task — a doc gap, a
+latent defect, a missing capability, a recurring manual step that
+deterministic code could replace, or an AIDE-framework issue — append ONE
+line to `docs/aide/insights.md` (create it from
+`.aide/templates/insights.md`, copied verbatim, if missing) and carry on.
+Never act on it here. Entry shape:
+
+    - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(item NNN, YYYY-MM-DD)*
+
+The feedback loop triages the inbox at the queue boundary. Capturing is cheap
+and always in scope; acting out of scope is forbidden. This append is the one
+write allowed outside your edit scope.
+
 ## Command hygiene
 
 Emit shell commands in the shape the allow-list auto-approves, or an unattended

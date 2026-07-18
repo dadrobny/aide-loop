@@ -77,6 +77,13 @@ branch_prefix = "aide/"
 queue_cap = 10
 clarify = "assume"
 
+[framework]
+# Where the AIDE framework itself lives (owner/repo). The feedback loop's
+# triage step hands `framework`-typed insights over as GitHub issues on this
+# repo (via `gh`); empty disables the handover (entries stay pending in
+# docs/aide/insights.md).
+repo = ""
+
 [aide]
 # Framework version at install time (from aide-loop core/VERSION). Informational —
 # the live installed engine version is the copied-in .aide/VERSION.

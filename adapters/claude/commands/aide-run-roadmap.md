@@ -90,9 +90,14 @@ writes + commits `queue-NNN.md` **and** tidies the superseded `queue-(NNN-1).md`
 on whatever branch it's on, then returns a one-line summary. **You** (orchestrator)
 prepare the branch and handle push/PR around it.
 
+- **Triage the insight inbox first** — if `docs/aide/insights.md` has unchecked
+  entries, run `/aide-feedback-loop` §0 (triage) before planning: `defect`/`gap`/
+  `automation` entries become candidate items the queue-planner must see, and the
+  queue PR is where the human reviews them.
 - `git switch -c aide/queue-NNN` off an up-to-date `main` (`git pull --rebase`).
 - **Spawn `queue-planner`**: "Generate queue NNN on branch `aide/queue-NNN`;
-  tidy the previous queue; commit both; do not push or PR." Wait for its summary.
+  tidy the previous queue; commit both; consider the triaged insight candidates;
+  do not push or PR." Wait for its summary.
 - `git push -u origin aide/queue-NNN`, then open a **PR**:
   `gh pr create` titled `docs(aide): work queue NNN`, body summarising the batch.
 - **STOP and tell the user**: review/edit/merge the queue PR, then re-invoke

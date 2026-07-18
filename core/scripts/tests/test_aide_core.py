@@ -402,6 +402,36 @@ def test_template_residue_scans_items_dir(tmp_path: Path):
 
 
 # --------------------------------------------------------------------------- #
+# insight inbox (WI-4)
+# --------------------------------------------------------------------------- #
+def test_insight_entries_well_formed(tmp_path: Path):
+    root = _docs(tmp_path)
+    (root / "docs" / "aide" / "insights.md").write_text(
+        "# Insight Inbox\n\n"
+        "- [ ] automation — venv rebuild is manual every time. *(item 003, 2026-07-18)*\n"
+        "- [x] knowledge — pytest needs -p no:cacheprovider on CI. *(2026-07-01)* → CLAUDE.md\n"
+        "- [ ] framework — aide merge misreports branch deletion. *(item 002, 2026-07-18)*\n",
+        encoding="utf-8",
+    )
+    cfg = aide.load_config(root)
+    _, warnings = aide.run_checks(root, cfg, branches=[])
+    assert not any("insights.md" in w for w in warnings)
+
+
+def test_insight_malformed_entry_warns(tmp_path: Path):
+    root = _docs(tmp_path)
+    (root / "docs" / "aide" / "insights.md").write_text(
+        "# Insight Inbox\n\n"
+        "- [ ] misc — unknown type. *(2026-07-18)*\n"
+        "- [ ] defect no separator or provenance\n",
+        encoding="utf-8",
+    )
+    cfg = aide.load_config(root)
+    _, warnings = aide.run_checks(root, cfg, branches=[])
+    assert sum("insights.md" in w for w in warnings) == 2
+
+
+# --------------------------------------------------------------------------- #
 # CLI end-to-end
 # --------------------------------------------------------------------------- #
 def test_cli_check_ok(tmp_path: Path, capsys):

@@ -55,6 +55,16 @@ or, resuming an existing claim, `python .aide/scripts/aide.py sync --item NNN`
    ```
 5. **Scope your updates** — only your item's rows. Do NOT mark other items
    complete, even if their criteria happen to be satisfied as a side effect.
+6. **Capture out-of-scope insights** — anything true but beyond this item (a
+   doc gap, a latent defect, a missing capability, a recurring manual step
+   deterministic code could replace, an AIDE-framework issue) gets ONE
+   appended line in `docs/aide/insights.md` (create from
+   `.aide/templates/insights.md` verbatim if missing), then carry on:
+
+       - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(item NNN, YYYY-MM-DD)*
+
+   The feedback loop triages the inbox at the queue boundary; never act on an
+   insight out of scope here.
 
 ### On completion
 

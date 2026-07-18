@@ -90,6 +90,31 @@ completion (per-item AC ticking is not deterministic).
   mandatory **Assumptions** block (see the item template). *(spec-author,
   validator)*
 
+### `insights.md` (optional, additive — the compound-engineering inbox)
+
+Where out-of-scope learning goes so it is never lost *and* never acted on out
+of scope. Any role, at any time, appends **one line** and returns to its task:
+
+```
+- [ ] <type> — <one line> *(item NNN, YYYY-MM-DD)*
+```
+
+with `<type>` one of **knowledge** (document it), **defect** (fix it), **gap**
+(plan it), **automation** (a recurring manual/agent action deterministic code
+could replace — script it), **framework** (belongs to AIDE itself). The item
+ref is optional for roles outside an item. The file is **append-only**;
+`aide check` shape-checks entries (warning, never error — capture must stay
+cheap). Template: `.aide/templates/insights.md` (copy verbatim).
+
+**Triage** happens at the queue boundary (the feedback loop): each unchecked
+entry is routed — `knowledge` → the owning document; `defect`/`gap` →
+candidate items for the queue being authored (so the queue PR reviews them);
+`automation` → a candidate item that adds a CLI verb/script *and* the
+skill/agent edit mandating it; `framework` → a GitHub issue on
+`[framework] repo` from `aide.toml` (via `gh`; if unset/offline the entry
+stays pending). A routed entry is ticked in place:
+`- [x] … → <where it landed>`.
+
 ### Environment-gated capabilities (optional, additive)
 
 A capability gated behind an optional package or external tool (a GPU

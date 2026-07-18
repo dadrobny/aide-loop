@@ -72,6 +72,7 @@ DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
     "git": {"mode": "auto-merge", "main_branch": "main", "branch_prefix": "aide/"},
     "loop": {"queue_cap": 10, "validation_rounds": 3, "clarify": "assume",
              "claim_scope": "live-queue"},
+    "framework": {"repo": ""},
 }
 
 
@@ -437,6 +438,36 @@ def template_residue_errors(ddir: Path) -> List[str]:
     return errors
 
 
+_INSIGHT_TYPES = ("knowledge", "defect", "gap", "automation", "framework")
+# "- [ ] <type> — <one line> *(item NNN, YYYY-MM-DD)*"; the item ref is optional
+# and ticked entries append " → <where it landed>" after the provenance.
+_INSIGHT_RE = re.compile(
+    r"^- \[[ xX]\] (?:" + "|".join(_INSIGHT_TYPES) + r") [—–-] .+\*\((?:[Ii]tem \d+, )?\d{4}-\d{2}-\d{2}\)\*"
+)
+
+
+def insight_warnings(ddir: Path) -> List[str]:
+    """Shape-check ``insights.md`` (the compound-engineering inbox), if present.
+
+    Non-blocking: capture must stay cheap, so a malformed entry is a warning,
+    never an error. Every ``- `` bullet in the file is expected to be an entry.
+    """
+    path = ddir / "insights.md"
+    if not path.is_file():
+        return []
+    out: List[str] = []
+    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.startswith("- "):
+            continue
+        if not _INSIGHT_RE.match(line):
+            out.append(
+                f"insights.md:{lineno}: entry does not match "
+                f"'- [ ] <{'|'.join(_INSIGHT_TYPES)}> — <one line> "
+                f"*(item NNN, YYYY-MM-DD)*'"
+            )
+    return out
+
+
 def _stray_icons_in_line(line: str) -> List[str]:
     """Status icons on this line that sit OUTSIDE any structural position."""
     icons = list(_ICON_RE.finditer(line))
@@ -496,6 +527,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
 
     errors.extend(template_residue_errors(ddir))
     warnings.extend(stray_icon_warnings(ddir))
+    warnings.extend(insight_warnings(ddir))
 
     if not progress_path.is_file():
         return [f"missing {progress_path}"], warnings
