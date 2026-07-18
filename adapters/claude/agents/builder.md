@@ -40,8 +40,10 @@ project-agnostic; never assume a specific path or package name.
    Acceptance Criteria, Assumptions, Decisions & Trade-offs. The spec is
    guaranteed to exist — a `spec-author` wrote it and the test-writer has already
    written tests against it before you were spawned.
-2. **Check out the claim branch** (`aide/NNN-short-name`):
-   `git switch aide/NNN-short-name`
+2. **Land on the claim branch** (`aide/NNN-short-name`) via the deterministic
+   preflight: `python .aide/scripts/aide.py sync --item NNN` (fetches, verifies
+   a clean tree, switches, and pulls the branch up to date — never improvise
+   the equivalent git sequence).
 3. **Implement the production code** under `source_dir` to satisfy every AC.
    Follow the existing style, the item's Decisions/Assumptions, and the project
    conventions. If an Assumption's pinned interface diverges from reality, **stop

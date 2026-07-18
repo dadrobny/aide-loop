@@ -14,6 +14,8 @@ Subcommands::
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
     python .aide/scripts/aide.py merge NNN             # merge a validated item per git.mode
     python .aide/scripts/aide.py env                   # venv existence / import check + bootstrap
+    python .aide/scripts/aide.py sync [--item NNN]     # preflight: fetch, clean-tree check, right branch
+    python .aide/scripts/aide.py gc [--merged] [--yes] # delete claim branches whose work landed
 
 The parsing/editing helpers are pure functions so they can be unit-tested without
 touching git or the real filesystem (see ``.aide/scripts/tests``).
@@ -907,6 +909,160 @@ def cmd_merge(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# sync / gc — the scripted git workflow (no exploratory git needed)
+# --------------------------------------------------------------------------- #
+def _local_branches(repo_root: Path) -> List[str]:
+    out = git(["branch", "--format=%(refname:short)"], repo_root, check=False).stdout
+    return [l.strip() for l in out.splitlines() if l.strip()]
+
+
+def _remote_branches(repo_root: Path) -> List[str]:
+    out = git(["branch", "-r", "--format=%(refname:short)"], repo_root, check=False).stdout
+    names = []
+    for l in out.splitlines():
+        name = l.strip()
+        if name.startswith("origin/") and "HEAD" not in name:
+            names.append(name.split("/", 1)[1])
+    return names
+
+
+def _branch_item_number(branch: str) -> Optional[int]:
+    m = re.search(r"/(\d+)-", branch) or re.search(r"(\d+)", branch.rsplit("/", 1)[-1])
+    return int(m.group(1)) if m else None
+
+
+def _has_origin(repo_root: Path) -> bool:
+    out = git(["remote"], repo_root, check=False).stdout
+    return "origin" in out.split()
+
+
+def cmd_sync(args: argparse.Namespace) -> int:
+    """Deterministic preflight: fetch, verify a clean start point, land on the
+    right branch. Replaces the exploratory ``git status``/``git branch``/
+    ``git fetch`` sequence agents otherwise improvise before starting work.
+    Exit 0 == safe to start; exit 1 prints the one reason work must not start.
+    """
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    mode = str(config["git"].get("mode", "auto-merge"))
+    main = str(config["git"].get("main_branch", "main"))
+
+    if mode != "local" and _has_origin(repo_root):
+        res = git(["fetch", "--all", "--prune"], repo_root, check=False)
+        if res.returncode != 0:
+            print(f"aide sync: fetch failed — {res.stderr.strip()}", file=sys.stderr)
+            return 1
+
+    dirty = git(["status", "--porcelain"], repo_root, check=False).stdout.strip()
+    if dirty:
+        print("aide sync: working tree not clean — commit or stash before starting:",
+              file=sys.stderr)
+        print(dirty, file=sys.stderr)
+        return 1
+
+    branch = git(["rev-parse", "--abbrev-ref", "HEAD"], repo_root, check=False).stdout.strip()
+
+    # Bring main up to date when we're on it (safe fast-forward only).
+    if branch == main and mode != "local" and _has_origin(repo_root):
+        counts = git(["rev-list", "--left-right", "--count", f"{main}...origin/{main}"],
+                     repo_root, check=False).stdout.split()
+        if len(counts) == 2:
+            ahead, behind = int(counts[0]), int(counts[1])
+            if behind and not ahead:
+                git(["merge", "--ff-only", f"origin/{main}"], repo_root, check=False)
+                print(f"aide sync: fast-forwarded {main} ({behind} commit(s))")
+            elif behind:
+                print(f"aide sync: {main} has diverged from origin/{main} "
+                      f"({ahead} ahead / {behind} behind) — reconcile first", file=sys.stderr)
+                return 1
+
+    if args.item is not None:
+        claim = _find_claim_branch(repo_root, prefix, args.item)
+        if not claim:
+            print(f"aide sync: no claim branch for item {args.item:03d} — run "
+                  f"'python .aide/scripts/aide.py claim' first", file=sys.stderr)
+            return 1
+        if branch != claim:
+            res = git(["switch", claim], repo_root, check=False)
+            if res.returncode != 0:
+                print(f"aide sync: could not switch to {claim}:\n{res.stderr}", file=sys.stderr)
+                return 1
+            branch = claim
+        if mode != "local" and _has_origin(repo_root) and claim in _remote_branches(repo_root):
+            git(["pull", "--rebase", "origin", claim], repo_root, check=False)
+
+    print(f"aide sync: OK — on '{branch}', tree clean"
+          + ("" if mode == "local" else ", remotes fetched"))
+    return 0
+
+
+def cmd_gc(args: argparse.Namespace) -> int:
+    """Delete claim branches whose work has landed (item ✅ in progress.md, or
+    ``--merged`` branches already merged into main). Dry-run by default; pass
+    ``--yes`` to delete. The one destructive verb in the CLI, so it is never
+    implicit."""
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    mode = str(config["git"].get("mode", "auto-merge"))
+    main = str(config["git"].get("main_branch", "main"))
+
+    if mode != "local" and _has_origin(repo_root):
+        git(["fetch", "--all", "--prune"], repo_root, check=False)
+
+    progress_path = docs_dir(repo_root, config) / "progress.md"
+    item_status: Dict[int, str] = {}
+    if progress_path.is_file():
+        _, _, item_status = _parse_item_status(
+            progress_path.read_text(encoding="utf-8").splitlines())
+
+    local = [b for b in _local_branches(repo_root) if b.startswith(prefix)]
+    remote = [b for b in _remote_branches(repo_root) if b.startswith(prefix)]
+
+    merged_local: List[str] = []
+    if args.merged:
+        out = git(["branch", "--merged", main, "--format=%(refname:short)"],
+                  repo_root, check=False).stdout
+        merged_local = [l.strip() for l in out.splitlines()
+                        if l.strip().startswith(prefix)]
+
+    targets: Dict[str, str] = {}  # branch -> reason
+    for br in sorted(set(local) | set(remote)):
+        num = _branch_item_number(br)
+        if num is not None and item_status.get(num) == "complete":
+            targets[br] = f"item {num:03d} is ✅"
+        elif br in merged_local:
+            targets[br] = f"merged into {main}"
+
+    if not targets:
+        print("aide gc: nothing to clean")
+        return 0
+
+    current = git(["rev-parse", "--abbrev-ref", "HEAD"], repo_root, check=False).stdout.strip()
+    for br, reason in targets.items():
+        where = ("local+remote" if br in local and br in remote
+                 else "local" if br in local else "remote")
+        if not args.yes:
+            print(f"would delete {br} ({where}; {reason})")
+            continue
+        if br == current:
+            print(f"skipping {br}: currently checked out", file=sys.stderr)
+            continue
+        if br in local:
+            # -D: a ✅/merged item's branch may have landed via squash/PR, so
+            # git's ancestry-based -d safety check can refuse a branch whose
+            # work is in fact on main.
+            git(["branch", "-D", br], repo_root, check=False)
+        if br in remote and mode != "local":
+            git(["push", "origin", "--delete", br], repo_root, check=False)
+        print(f"deleted {br} ({where}; {reason})")
+    if not args.yes:
+        print("aide gc: dry run — re-run with --yes to delete")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 def build_parser() -> argparse.ArgumentParser:
@@ -951,6 +1107,17 @@ def register_git_subcommands(sub) -> None:
     p_env = sub.add_parser("env", help="venv existence / import check + bootstrap")
     p_env.add_argument("--bootstrap", action="store_true", help="create + populate the venv if missing/stale")
     p_env.set_defaults(func=cmd_env)
+
+    p_sync = sub.add_parser("sync", help="preflight: fetch, verify clean tree, land on the right branch")
+    p_sync.add_argument("--item", type=int, default=None,
+                        help="verify/switch to this item's claim branch")
+    p_sync.set_defaults(func=cmd_sync)
+
+    p_gc = sub.add_parser("gc", help="delete claim branches whose work has landed (dry-run by default)")
+    p_gc.add_argument("--merged", action="store_true",
+                      help="also delete claim branches already merged into main")
+    p_gc.add_argument("--yes", action="store_true", help="actually delete (default: dry run)")
+    p_gc.set_defaults(func=cmd_gc)
 
 
 def main(argv: Optional[List[str]] = None) -> int:

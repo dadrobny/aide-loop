@@ -52,7 +52,9 @@ in the **Assumptions** block (the builder/validator hand back if reality diverge
 
 ## What you do
 
-1. **Check out the claim branch:** `git switch aide/NNN-short-name`.
+1. **Land on the claim branch:** `python .aide/scripts/aide.py sync --item NNN`
+   (the deterministic preflight — fetches, verifies a clean tree, switches, and
+   pulls the branch up to date).
 2. **Read** the item's one-line queue description, the relevant `roadmap.md`
    stage, the matching `progress.md` rows, and `vision.md`. Skim `source_dir` /
    `tests_dir` only enough to know the conventions the item must fit.

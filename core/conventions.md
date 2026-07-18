@@ -129,7 +129,9 @@ taken" signal is the **pushed `<branch_prefix>NNN-*` branch** (config
 
 One person (or one loop) owns an item at a time. Abandoning an item means
 deleting its remote branch so the item returns to the pool; `aide check` flags a
-claim branch whose item is already ✅ (stale claim).
+claim branch whose item is already ✅ (stale claim), and `aide gc` deletes such
+branches — local and remote — deterministically (dry-run by default, `--yes` to
+act; `--merged` also collects branches already merged into main).
 
 ---
 
@@ -145,6 +147,12 @@ demands on top of them, are *adapter* concerns — see the adapter's README.
 
 The rules (runtime-general):
 
+- **If an `aide` verb covers it, the raw git form is wrong.** Session preflight
+  (fetch, clean-tree check, landing on the right branch) is `aide sync
+  [--item NNN]`; claiming is `aide claim`; landing is `aide merge`; branch
+  clean-up is `aide gc`. Do not improvise the equivalent `git fetch`/`git
+  status`/`git switch` sequences — the verbs exist so every run does these
+  steps identically and no step is forgotten.
 - **One command per call.** Never chain with `&&` or `;` — separate calls localise
   failures and keep each invocation legible.
 - **No `cd` prefix and no directory-changing wrapper** (`git -C "<path>"`). The
