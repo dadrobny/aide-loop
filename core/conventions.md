@@ -36,6 +36,15 @@ slot spells the format out so no separate lookup is needed.
 Rank is used when one item is referenced on several lines: the most-advanced
 status wins.
 
+**Structural positions only.** The parsers read icons *only* at structural
+positions: a table row's **Status (last) cell**, a stage header's **trailing**
+`— <icon>`, and the **leading** icon of a deliverable bullet. An icon anywhere
+else — prose, mid-bullet, a title — is plain text and is never read as status,
+so authors need not avoid the icon vocabulary in free text. `aide check` still
+*warns* on such stray icons in the status-bearing documents (`progress.md`,
+queue files) so they stay unambiguous for human readers; other documents are
+not scanned.
+
 ### `progress.md` (the single source of truth for status)
 
 Mandatory, in order (consumer in brackets):

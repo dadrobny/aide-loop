@@ -184,6 +184,71 @@ def test_set_item_unknown_number_no_change():
 
 
 # --------------------------------------------------------------------------- #
+# structural icon positions (WI-1: prose is free, parsers are positionally strict)
+# --------------------------------------------------------------------------- #
+def test_structural_status_positions():
+    assert aide._structural_status("- ✅ Core. *(Item 002)*") == "complete"
+    assert aide._structural_status("| G1 Setup | Stage 0 | ✅ |") == "complete"
+    assert aide._structural_status("## Stage 1 — Rules — 🚧") == "in-progress"
+    # Icons in prose, mid-bullet, or a header title are plain text.
+    assert aide._structural_status("The ✅ marks above are historical.") is None
+    assert aide._structural_status("- Improve ✅ handling notes. *(Item 003)*") is None
+    assert aide._structural_status("## Stage 2 — Polish ✅ handling") is None
+
+
+def test_set_item_ignores_decoy_icon_in_prose():
+    decoy = PROGRESS.replace(
+        "**Acceptance.**\n- [ ] Rules fire.",
+        "Note: the ✅ prose mark must not complete Item 003.\n\n"
+        "**Acceptance.**\n- [ ] Rules fire.",
+    )
+    out = aide.set_item_status(decoy, 3, "in-progress")
+    assert "- 🚧 Bounds. *(Item 003)*" in out
+    assert "## Stage 1 — Rule Engine — 🚧" in out
+
+
+def test_set_item_preserves_icons_in_title_cells_and_headers():
+    decorated = (
+        PROGRESS
+        .replace("| 1 | Rule Engine | G2 | 🚧 |", "| 1 | Rule ✅ Engine | G2 | 🚧 |")
+        .replace("## Stage 1 — Rule Engine — 🚧", "## Stage 1 — Rule ✅ Engine — 🚧")
+    )
+    out = aide.set_item_status(decorated, 3, "complete")
+    # Only the Status cell / trailing header icon flip; the title icons survive.
+    assert "| 1 | Rule ✅ Engine | G2 | ✅ |" in out
+    assert "## Stage 1 — Rule ✅ Engine — ✅" in out
+
+
+def test_parse_item_status_prose_icon_not_status():
+    lines = (
+        "## Stage 3 — X — 🚧\n"
+        "**Deliverables.**\n"
+        "- 📋 Thing. *(Item 050)*\n"
+        "\n"
+        "A prose note with ✅ that also mentions Item 051.\n"
+    ).splitlines()
+    _, _, status = aide._parse_item_status(lines)
+    assert status[50] == "planned"
+    assert status[51] == "planned"  # decoy ✅ in prose must not mark it complete
+
+
+def test_check_warns_on_stray_prose_icon(tmp_path: Path):
+    decoy = PROGRESS + "\nA stray ✅ in prose.\n"
+    root = _docs(tmp_path, progress=decoy)
+    cfg = aide.load_config(root)
+    errors, warnings = aide.run_checks(root, cfg, branches=[])
+    assert errors == []
+    assert any("stray" not in w and "status icon ✅ outside" in w for w in warnings)
+
+
+def test_check_no_stray_warning_on_clean_docs(tmp_path: Path):
+    root = _docs(tmp_path)
+    cfg = aide.load_config(root)
+    _, warnings = aide.run_checks(root, cfg, branches=[])
+    assert not any("outside a structural status position" in w for w in warnings)
+
+
+# --------------------------------------------------------------------------- #
 # queue helpers
 # --------------------------------------------------------------------------- #
 def test_is_live_queue():

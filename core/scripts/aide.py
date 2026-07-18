@@ -50,6 +50,9 @@ _BULLET_RE = re.compile(r"^(?P<indent>\s*[-*]\s*)(?P<icon>" + _ICON_ALT + r")")
 _CHECKBOX_RE = re.compile(r"^(?P<pre>\s*[-*]\s*\[)(?P<mark>[ xX])(?P<post>\].*)$")
 _STAGE_HEADER_RE = re.compile(r"^##\s+Stage\s+(\d+)\b(.*)$")
 _ANY_HEADER_RE = re.compile(r"^#{1,2}\s+")
+# A stage header's status icon is the TRAILING icon only (the "— <icon>" tail);
+# an icon inside the title text is plain text.
+_TRAILING_ICON_RE = re.compile(r"(" + _ICON_ALT + r")\s*$")
 
 
 def _item_ref_re(num: int) -> re.Pattern:
@@ -147,8 +150,33 @@ def _icon_status(text: str) -> Optional[str]:
     return ICON_TO_STATUS[m.group(0)] if m else None
 
 
+def _header_status(line: str) -> Optional[str]:
+    """A stage header's status — its trailing icon only."""
+    m = _TRAILING_ICON_RE.search(line)
+    return ICON_TO_STATUS[m.group(1)] if m else None
+
+
 def _split_row(line: str) -> List[str]:
     return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def _structural_status(line: str) -> Optional[str]:
+    """Status conveyed by a line's STRUCTURAL icon position only.
+
+    Structural positions (the format contract, conventions.md §1): the leading
+    icon of a deliverable bullet, a table row's Status (last) cell, and a stage
+    header's trailing icon. An icon anywhere else on a line is plain text and
+    is never read as status — prose stays free of the icon vocabulary.
+    """
+    m = _BULLET_RE.match(line)
+    if m:
+        return ICON_TO_STATUS[m.group("icon")]
+    if line.strip().startswith("|"):
+        cells = _split_row(line)
+        return _icon_status(cells[-1]) if cells else None
+    if _STAGE_HEADER_RE.match(line):
+        return _header_status(line)
+    return None
 
 
 def stage_sections(lines: List[str]) -> List[Tuple[int, int, str]]:
@@ -201,6 +229,20 @@ def _replace_first_icon(line: str, status: str) -> str:
     return _ICON_RE.sub(STATUS_TO_ICON[status], line, count=1)
 
 
+def _sub_status_cell(line: str, status: str) -> str:
+    """Replace the icon in a table row's Status (last) cell only.
+
+    Icons in other cells (a title, an objective description) are plain text and
+    must survive the edit untouched.
+    """
+    head, sep, tail = line.rpartition("|")
+    if sep:
+        body, sep2, cell = head.rpartition("|")
+        if sep2:
+            return body + "|" + _ICON_RE.sub(STATUS_TO_ICON[status], cell, count=1) + "|" + tail
+    return _ICON_RE.sub(STATUS_TO_ICON[status], line, count=1)
+
+
 def _set_summary_row(lines: List[str], stage_num: str, status: str) -> None:
     for i, line in enumerate(lines):
         if not line.strip().startswith("|"):
@@ -211,19 +253,19 @@ def _set_summary_row(lines: List[str], stage_num: str, status: str) -> None:
             if current in ("deferred", "excluded"):
                 return
             if RANK[status] >= RANK[current]:
-                lines[i] = _ICON_RE.sub(STATUS_TO_ICON[status], line)
+                lines[i] = _sub_status_cell(line, status)
             return
 
 
 def _set_stage_header(lines: List[str], start: int, status: str) -> None:
     line = lines[start]
-    current = _icon_status(line)
+    current = _header_status(line)
     if current in ("deferred", "excluded"):
         return
     if current is None:
         lines[start] = line.rstrip() + f" — {STATUS_TO_ICON[status]}"
     elif RANK[status] >= RANK[current]:
-        lines[start] = _ICON_RE.sub(STATUS_TO_ICON[status], line)
+        lines[start] = _TRAILING_ICON_RE.sub(STATUS_TO_ICON[status], line)
 
 
 def _tick_acceptance(lines: List[str], start: int, end: int) -> None:
@@ -259,7 +301,7 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str]) -> N
             else:
                 derived = current
             if RANK[derived] >= RANK[current]:
-                lines[i] = _ICON_RE.sub(STATUS_TO_ICON[derived], line)
+                lines[i] = _sub_status_cell(line, derived)
 
 
 def set_item_status(text: str, num: int, status: str) -> str:
@@ -279,8 +321,9 @@ def set_item_status(text: str, num: int, status: str) -> str:
                 bullet_line = i
         if ref.search(line):
             target = bullet_line if bullet_line is not None and _BULLET_RE.match(lines[bullet_line]) else i
-            if _BULLET_RE.match(lines[target]):
-                current = _icon_status(lines[target])
+            tm = _BULLET_RE.match(lines[target])
+            if tm:
+                current = ICON_TO_STATUS[tm.group("icon")]
                 if current and RANK[status] > RANK[current]:
                     lines[target] = _replace_first_icon(lines[target], status)
 
@@ -367,6 +410,55 @@ def template_residue_errors(ddir: Path) -> List[str]:
     return errors
 
 
+def _stray_icons_in_line(line: str) -> List[str]:
+    """Status icons on this line that sit OUTSIDE any structural position."""
+    icons = list(_ICON_RE.finditer(line))
+    if not icons:
+        return []
+    if _QUEUE_STATUS_RE.match(line):
+        return []  # "> **Status:** …" lines legitimately carry an icon
+    if line.strip().startswith("|"):
+        return []  # table rows: parsers read specific cells only, never prose
+    allowed: Optional[Tuple[int, int]] = None
+    m = _BULLET_RE.match(line)
+    if m:
+        allowed = m.span("icon")
+    elif re.match(r"^#{1,6}\s", line):  # any heading level may carry a trailing icon
+        t = _TRAILING_ICON_RE.search(line)
+        if t:
+            allowed = t.span(1)
+    return [i.group(0) for i in icons if i.span() != allowed]
+
+
+def stray_icon_warnings(ddir: Path) -> List[str]:
+    """Warn on status icons outside structural positions in the status-bearing
+    documents (``progress.md`` and queue files).
+
+    The parsers only ever read icons at structural positions (conventions.md
+    §1), so a stray icon is never *misread* — this lint surfaces near-misses so
+    the status documents stay unambiguous to human readers too. Other documents
+    (vision, roadmap, item specs) are not scanned: nothing parses icons there,
+    so their prose is free.
+    """
+    out: List[str] = []
+    paths: List[Path] = []
+    progress = ddir / "progress.md"
+    if progress.is_file():
+        paths.append(progress)
+    qdir = ddir / "queue"
+    if qdir.is_dir():
+        paths.extend(sorted(qdir.glob("queue-*.md")))
+    for path in paths:
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            for icon in _stray_icons_in_line(line):
+                out.append(
+                    f"{path.relative_to(ddir)}:{lineno}: status icon {icon} outside a "
+                    f"structural status position (parsers treat it as plain text; move "
+                    f"or remove it if status was intended)"
+                )
+    return out
+
+
 def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                branches: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
     """Return ``(errors, warnings)``. Empty errors == pass."""
@@ -376,6 +468,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     progress_path = ddir / "progress.md"
 
     errors.extend(template_residue_errors(ddir))
+    warnings.extend(stray_icon_warnings(ddir))
 
     if not progress_path.is_file():
         return [f"missing {progress_path}"], warnings
@@ -407,7 +500,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     section_nums = set()
     for start, end, num in sections:
         section_nums.add(num)
-        header_status = _icon_status(lines[start])
+        header_status = _header_status(lines[start])
         derived = rollup_status(stage_deliverable_statuses(lines, start, end))
         summ = summary_status.get(num)
         if summ in ("deferred", "excluded"):
@@ -481,7 +574,7 @@ def _parse_item_status(lines: List[str]) -> Tuple[List[str], List[str], Dict[int
             current_stage = hm.group(1)
             bullet_status = None
             continue
-        line_icon = _icon_status(line)
+        line_icon = _structural_status(line)
         if re.match(r"^\s*[-*]\s", line):
             bullet_status = line_icon
         for m in ref_re.finditer(line):
