@@ -19,7 +19,7 @@ models.
 Everything mechanical (recon/claim, progress reconciliation, queue tidy, merge,
 env, the consistency check) is **not** re-implemented here — it is the engine CLI,
 invoked identically by every adapter as `python .aide/scripts/aide.py {check,
-progress, queue, claim, merge, env}` ([spec §4](../ADAPTER-SPEC.md)). The files
+progress, queue, claim, merge, env, sync, gc, status}` ([spec §4](../ADAPTER-SPEC.md)). The files
 below only translate the *human-shaped* work into Claude Code's primitives.
 
 ---

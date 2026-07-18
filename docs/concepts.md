@@ -94,7 +94,7 @@ the same `aide.py` steps in the same order.
 Every adapter routes all mechanical work through the **same** stdlib CLI:
 
 ```
-python .aide/scripts/aide.py {check, progress, queue, claim, merge, env, sync, gc}
+python .aide/scripts/aide.py {check, progress, queue, claim, merge, env, sync, gc, status}
 ```
 
 - **check** — consistency gate over `docs/aide/` (shapes, statuses, rollups).

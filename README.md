@@ -149,10 +149,11 @@ reserved for genuinely intractable one-offs. No agent signs off its own work; a 
 instance per item.
 
 **Deterministic work is scripted, not delegated** — recon/claim, progress
-reconciliation, queue tidy, merge+cleanup, venv check, and the consistency check are
-`aide.py` subcommands (`python .aide/scripts/aide.py {check, progress, queue, claim,
-merge, env}`). Agents keep only the reasoning: prioritisation, AC design, test design,
-implementation, quality judgment. This shared CLI is the contract's anchor — identical
+reconciliation, queue tidy, merge+cleanup, venv check, the consistency check,
+session preflight, branch clean-up, and the state report are `aide.py` subcommands
+(`python .aide/scripts/aide.py {check, progress, queue, claim, merge, env, sync,
+gc, status}`). Agents keep only the reasoning: prioritisation, AC design, test
+design, implementation, quality judgment. This shared CLI is the contract's anchor — identical
 across every adapter.
 
 ---
