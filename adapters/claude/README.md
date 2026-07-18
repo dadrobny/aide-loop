@@ -84,6 +84,13 @@ session, so the nesting is real, not a manual runbook.
 A fourth command, **`aide-review-permissions`**, is not an orchestrator — it belongs
 to the permission model below.
 
+The `/aide-*` entry-points can be launched from the IDE extension, the
+interactive CLI, or the loop supervisor's top-level `claude -p` — these surfaces
+differ in cwd behaviour, permission-ask handling, and session lifetime. The
+differences, the unattended permission posture, and the trusted-folder caveat
+are recorded in **[`execution-surfaces.md`](execution-surfaces.md)** — read it
+before the first unattended run.
+
 ## Permission model → **`settings.json`** + **`hooks/`** (Claude-specific)
 
 This is [spec §5](../ADAPTER-SPEC.md) — **optional**, provided only because Claude

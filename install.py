@@ -256,6 +256,9 @@ def run(args: argparse.Namespace) -> int:
     print(f"\nDone. Installed engine version recorded at {aide_dir / 'VERSION'}.")
     if not args.update:
         print("Next: `python .aide/scripts/aide.py check` in the target repo.")
+        print("Before any unattended run: launch the runtime once interactively in the")
+        print("repo (to answer any one-time trusted-folder prompt) — see the adapter's")
+        print("execution-surfaces.md for the launch-surface contract.")
     return 0
 
 
