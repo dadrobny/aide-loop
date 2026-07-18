@@ -116,7 +116,9 @@ queue history stays legible and it's obvious which batch is live:
   carried/dropped) so a stale 📋 list isn't left implying open work.
 - Commit that tidy-up alongside the new queue, on the `aide/queue-NNN` branch.
 
-This keeps exactly one **live** queue and a clean trail of closed ones.
+Queue state itself is **derived** (a queue is open while any of its items is
+📋/🚧 in `progress.md`), so the tidy stamp is decorative — it keeps the queue
+history legible to humans; nothing parses it.
 
 ## Working in parallel (optional worktree isolation)
 

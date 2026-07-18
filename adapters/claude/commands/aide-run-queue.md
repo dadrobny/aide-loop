@@ -1,6 +1,6 @@
 ---
 description: Iterate one AIDE queue to completion — `aide claim` claims each item, then /aide-run-item drives it (spec → tests → build → validate → merge) — looping until that queue is empty, then stops. Does NOT create the next queue. Pauses only for PRs and major structural changes.
-argument-hint: "[queue number, e.g. 001 — optional; defaults to the highest-numbered queue]"
+argument-hint: "[queue number, e.g. 001 — optional; defaults to the lowest-numbered queue with open items]"
 ---
 
 # Run one AIDE queue (iterator over /aide-run-item)
@@ -13,8 +13,8 @@ tests, or run tests yourself in the main thread. You **delegate each item to
 `/aide-run-item`** and only handle claiming (via the `aide claim` CLI) and
 approval gates between items.
 
-Arguments: **$ARGUMENTS** — a queue number (if empty, the highest-numbered
-`docs/aide/queue/queue-*.md`).
+Arguments: **$ARGUMENTS** — a queue number (if empty, the live queue: the
+lowest-numbered `docs/aide/queue/queue-*.md` with open items).
 
 **Orchestration model.** This dispatch-and-gate role is light — run it on
 **Sonnet** (the heavy work is in the Opus/Sonnet subagents). A slash command can't

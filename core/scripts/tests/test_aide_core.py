@@ -305,11 +305,58 @@ def test_check_flags_summary_complete_but_deliverable_not(tmp_path: Path):
     assert any("marked ✅ but has non-complete" in e for e in errors)
 
 
-def test_check_flags_two_live_queues(tmp_path: Path):
-    root = _docs(tmp_path, old=QUEUE_LIVE.replace("Queue 002", "Queue 001"))
+def test_check_two_declared_live_queues_is_not_an_error(tmp_path: Path):
+    """Queue state is derived (WI-2): declared Status lines are decorative and
+    can no longer produce the old 'more than one Live queue' error."""
+    both_live = QUEUE_OLD.replace(
+        "> **Status:** ✅ Completed — superseded by queue-002 (2026-06-01).",
+        "> **Status:** Live · **Created:** 2026-06-01",
+    )
+    root = _docs(tmp_path, old=both_live)
     cfg = aide.load_config(root)
     errors, _ = aide.run_checks(root, cfg, branches=[])
-    assert any("more than one Live queue" in e for e in errors)
+    assert errors == []
+
+
+def test_check_warns_declared_live_but_derived_done(tmp_path: Path):
+    # queue-001's only item (001) is ✅ in progress.md; declaring Live lies.
+    stale = QUEUE_OLD.replace(
+        "> **Status:** ✅ Completed — superseded by queue-002 (2026-06-01).",
+        "> **Status:** Live · **Created:** 2026-06-01",
+    )
+    root = _docs(tmp_path, old=stale)
+    cfg = aide.load_config(root)
+    errors, warnings = aide.run_checks(root, cfg, branches=[])
+    assert errors == []
+    assert any("declares 'Live' but every item is finished" in w for w in warnings)
+
+
+def test_check_warns_declared_completed_but_derived_open(tmp_path: Path):
+    # queue-002 still has 📋 item 003 but declares itself completed.
+    lying = QUEUE_LIVE.replace(
+        "> **Status:** Live · **Created:** 2026-07-01",
+        "> **Status:** ✅ Completed — superseded by queue-003 (2026-07-02).",
+    )
+    root = _docs(tmp_path, live=lying)
+    cfg = aide.load_config(root)
+    _, warnings = aide.run_checks(root, cfg, branches=[])
+    assert any("marked completed but still has open items" in w for w in warnings)
+
+
+def test_live_queue_text_is_lowest_open_regardless_of_declared_status(tmp_path: Path):
+    # Neither queue declares anything; derived state alone must find queue-002
+    # (item 003 is 📋) and skip queue-001 (item 001 is ✅).
+    root = _docs(
+        tmp_path,
+        live=QUEUE_LIVE.replace("> **Status:** Live · **Created:** 2026-07-01",
+                                "> **Created:** 2026-07-01"),
+        old=QUEUE_OLD.replace(
+            "> **Status:** ✅ Completed — superseded by queue-002 (2026-06-01).",
+            "> **Created:** 2026-06-01"),
+    )
+    cfg = aide.load_config(root)
+    text = aide._live_queue_text(root, cfg, None)
+    assert text is not None and "Work Queue 002" in text
 
 
 def test_check_flags_duplicate_item_across_queues(tmp_path: Path):

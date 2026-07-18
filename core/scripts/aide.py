@@ -70,7 +70,8 @@ DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
     "python": {"venv": ".venv", "bootstrap": "pip install -e .[dev]",
                "test_command": "python -m pytest", "import_check": ""},
     "git": {"mode": "auto-merge", "main_branch": "main", "branch_prefix": "aide/"},
-    "loop": {"queue_cap": 10, "validation_rounds": 3, "clarify": "assume"},
+    "loop": {"queue_cap": 10, "validation_rounds": 3, "clarify": "assume",
+             "claim_scope": "live-queue"},
 }
 
 
@@ -369,6 +370,30 @@ def queue_item_numbers(text: str) -> List[int]:
     return [int(m.group(1)) for m in _QUEUE_ITEM_RE.finditer(text)]
 
 
+def queue_is_open(text: str, item_status: Dict[int, str]) -> bool:
+    """Derived queue state: open iff any of its items is 📋/🚧 per progress.md.
+
+    Queue state is DERIVED, never declared — a ``> **Status:**`` line in a
+    queue file is decorative (kept for human readers), and the "live" queue is
+    simply the lowest-numbered open one. An item progress.md doesn't know yet
+    counts as planned, so a freshly wired queue is open.
+    """
+    return any(item_status.get(n, "planned") in ("planned", "in-progress")
+               for n in queue_item_numbers(text))
+
+
+def _progress_item_status(repo_root: Path, config) -> Dict[int, str]:
+    path = docs_dir(repo_root, config) / "progress.md"
+    if not path.is_file():
+        return {}
+    _, _, item_status = _parse_item_status(path.read_text(encoding="utf-8").splitlines())
+    return item_status
+
+
+def _queue_paths(qdir: Path) -> List[Path]:
+    return sorted(qdir.glob("queue-*.md"))
+
+
 def tidy_queue_text(text: str, superseded_by: int, date: str) -> str:
     """Rewrite a queue's Status line to 'Completed — superseded by queue-NNN'."""
     new_status = f"> **Status:** ✅ Completed — superseded by queue-{superseded_by:03d} ({date})."
@@ -518,23 +543,31 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
         if num not in section_nums:
             warnings.append(f"stage {num}: in summary table but has no '## Stage {num}' section")
 
-    # Queues: exactly one Live; no duplicate item numbers.
+    # Queues: state is DERIVED from progress.md (open = any 📋/🚧 item); a
+    # declared "> **Status:**" line is decorative — warn only when it lies.
     qdir = ddir / "queue"
-    live = []
     seen: Dict[int, str] = {}
     if qdir.is_dir():
-        for qpath in sorted(qdir.glob("queue-*.md")):
+        _, _, istat = _parse_item_status(lines)
+        for qpath in _queue_paths(qdir):
             qtext = qpath.read_text(encoding="utf-8")
-            if is_live_queue(qtext):
-                live.append(qpath.name)
+            derived_open = queue_is_open(qtext, istat)
+            declared = queue_status(qtext)
+            if declared:
+                declared_live = declared.lower().startswith("live")
+                if declared_live and not derived_open:
+                    warnings.append(
+                        f"{qpath.name}: declares 'Live' but every item is finished — "
+                        f"state is derived from progress.md; run 'aide queue tidy' "
+                        f"or drop the decorative Status line")
+                elif not declared_live and derived_open:
+                    warnings.append(
+                        f"{qpath.name}: marked completed but still has open items "
+                        f"in progress.md")
             for n in queue_item_numbers(qtext):
                 if n in seen and seen[n] != qpath.name:
                     errors.append(f"item {n:03d} appears in both {seen[n]} and {qpath.name}")
                 seen[n] = qpath.name
-        if len(live) == 0:
-            warnings.append("no queue marked '> **Status:** Live'")
-        elif len(live) > 1:
-            errors.append("more than one Live queue: " + ", ".join(live))
 
     # Item spec files: no duplicate numbers.
     idir = ddir / "items"
@@ -816,14 +849,34 @@ def _pick_item(repo_root: Path, config, queue_text: str,
     return None
 
 
+def _open_queue_texts(repo_root: Path, config) -> List[str]:
+    """Texts of the open queues, lowest-numbered first (derived state)."""
+    qdir = docs_dir(repo_root, config) / "queue"
+    if not qdir.is_dir():
+        return []
+    item_status = _progress_item_status(repo_root, config)
+    out: List[str] = []
+    for path in _queue_paths(qdir):
+        text = path.read_text(encoding="utf-8")
+        if queue_is_open(text, item_status):
+            out.append(text)
+    return out
+
+
 def _live_queue_text(repo_root: Path, config, queue_number: Optional[int]) -> Optional[str]:
+    """The queue to work: an explicit number, else the lowest-numbered OPEN
+    queue (state derived from progress.md). Falls back to the highest queue
+    declaring ``Status: Live`` only when progress.md is missing (legacy)."""
     qdir = docs_dir(repo_root, config) / "queue"
     if queue_number is not None:
         path = qdir / f"queue-{queue_number:03d}.md"
         return path.read_text(encoding="utf-8") if path.is_file() else None
     if not qdir.is_dir():
         return None
-    for path in sorted(qdir.glob("queue-*.md"), reverse=True):
+    if (docs_dir(repo_root, config) / "progress.md").is_file():
+        open_texts = _open_queue_texts(repo_root, config)
+        return open_texts[0] if open_texts else None
+    for path in sorted(_queue_paths(qdir), reverse=True):
         text = path.read_text(encoding="utf-8")
         if is_live_queue(text):
             return text
@@ -835,14 +888,25 @@ def cmd_claim(args: argparse.Namespace) -> int:
     config = load_config(repo_root)
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
+    scope = str(config["loop"].get("claim_scope", "live-queue"))
     if mode != "local":
         git(["fetch", "--all", "--prune"], repo_root, check=False)
-    queue_text = _live_queue_text(repo_root, config, args.queue)
-    if queue_text is None:
-        print("aide claim: no Live queue found", file=sys.stderr)
+
+    if args.queue is None and scope == "all-open":
+        # Cross-queue claiming (opt-in): scan every open queue in number order.
+        candidates = _open_queue_texts(repo_root, config)
+    else:
+        queue_text = _live_queue_text(repo_root, config, args.queue)
+        candidates = [queue_text] if queue_text is not None else []
+    if not candidates:
+        print("aide claim: no open queue found", file=sys.stderr)
         return 1
     branches = _list_claim_branches(repo_root, prefix)
-    pick = _pick_item(repo_root, config, queue_text, branches)
+    pick = None
+    for queue_text in candidates:
+        pick = _pick_item(repo_root, config, queue_text, branches)
+        if pick is not None:
+            break
     if pick is None:
         print("none left")
         return 0
@@ -1094,7 +1158,8 @@ def build_parser() -> argparse.ArgumentParser:
 def register_git_subcommands(sub) -> None:
     """Attach the claim / merge / env subparsers (git layer)."""
     p_claim = sub.add_parser("claim", help="pick + claim the next unclaimed 📋 item")
-    p_claim.add_argument("--queue", type=int, default=None, help="queue number (default: the Live queue)")
+    p_claim.add_argument("--queue", type=int, default=None,
+                         help="queue number (default: the lowest-numbered open queue)")
     p_claim.add_argument("--dry-run", action="store_true", help="print the pick, do not create/push a branch")
     p_claim.set_defaults(func=cmd_claim)
 

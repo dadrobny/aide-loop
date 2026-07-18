@@ -227,6 +227,47 @@ def test_merge_missing_branch_errors(tmp_path: Path):
 
 
 # --------------------------------------------------------------------------- #
+# claim scope (WI-2: derived queue state, opt-in cross-queue claiming)
+# --------------------------------------------------------------------------- #
+QUEUE_NEXT = """\
+# Demo — Work Queue 004
+
+> **Created:** 2026-07-02
+
+### Item 029: Extra rules
+Extra.
+"""
+
+
+def _add_next_queue_and_claim_all(root: Path) -> None:
+    (root / "docs" / "aide" / "queue" / "queue-004.md").write_text(QUEUE_NEXT, encoding="utf-8")
+    _run(["git", "add", "-A"], root)
+    _run(["git", "commit", "-m", "queue 004"], root)
+    # Claim branches exist for every open item of queue-003.
+    _run(["git", "branch", "aide/027-bounds-rules"], root)
+    _run(["git", "branch", "aide/028-coverage-rules"], root)
+
+
+def test_claim_default_scope_stops_at_live_queue(tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="local")
+    _add_next_queue_and_claim_all(root)
+    rc = aide.main(["--repo", str(root), "claim", "--dry-run"])
+    assert rc == 0
+    assert "none left" in capsys.readouterr().out
+
+
+def test_claim_all_open_scope_spans_queues(tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="local")
+    _add_next_queue_and_claim_all(root)
+    toml = (root / "aide.toml").read_text(encoding="utf-8")
+    (root / "aide.toml").write_text(
+        toml + '\n[loop]\nclaim_scope = "all-open"\n', encoding="utf-8")
+    rc = aide.main(["--repo", str(root), "claim", "--dry-run"])
+    assert rc == 0
+    assert "would claim item 029" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
 # sync (WI-3: deterministic preflight)
 # --------------------------------------------------------------------------- #
 def test_sync_ok_on_clean_tree(tmp_path: Path, capsys):

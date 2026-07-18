@@ -71,9 +71,12 @@ completion (per-item AC ticking is not deterministic).
 
 ### `queue-NNN.md`
 
-- One header line `> **Status:** Live` on the active queue; superseded queues
-  carry `> **Status:** ✅ Completed — superseded by queue-NNN (YYYY-MM-DD).`
-  **Exactly one** queue is `Live`. *(aide check, queue tidy)*
+- **Queue state is derived, not declared.** A queue is **open** iff any of its
+  items is 📋/🚧 in `progress.md`, else **done**; "the live queue" is the
+  lowest-numbered open one (`aide claim`'s default). A `> **Status:**` line is
+  optional decoration for human readers — `aide queue tidy` stamps a completion
+  note on superseded queues, and `aide check` warns only when a declared status
+  contradicts the derived state. *(aide check, claim, queue tidy)*
 - Work items as `### Item NNN: Short Title` + a description paragraph. Item
   numbers are **globally sequential across all queues** — never restart. *(aide
   check, scout/claim, spec-author)*
@@ -122,8 +125,11 @@ taken" signal is the **pushed `<branch_prefix>NNN-*` branch** (config
 `git.branch_prefix`, default `aide/`). `aide claim` owns this:
 
 1. `git fetch --all --prune`; list remote `aide/*` branches.
-2. Read the live queue + `progress.md`; pick the **first** item that is 📋, whose
-   dependencies are all ✅, and that has no existing `aide/NNN-*` branch.
+2. Read the live queue (lowest-numbered open queue) + `progress.md`; pick the
+   **first** item that is 📋, whose dependencies are all ✅, and that has no
+   existing `aide/NNN-*` branch. With `loop.claim_scope = "all-open"` in
+   `aide.toml`, claiming scans **every** open queue in number order instead —
+   opt-in, because the one-queue scope is also the human-checkpoint boundary.
 3. Create and push `aide/NNN-short-name` (push depends on `git.mode`; `local`
    mode does not push and so has no multi-machine claim signal).
 
