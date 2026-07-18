@@ -140,6 +140,21 @@ default. Two additive, non-blocking mechanisms close it:
 Both mechanisms are opt-in: a project with no environment-gated capability
 omits them entirely.
 
+Two additions make the verification *planned* rather than hoped-for:
+
+- **`[validation]` environment profiles** (`aide.toml`, optional) — named,
+  deterministic environment checks: `<name> = "<python expression>"`, true iff
+  the environment provides the capability (e.g.
+  `gpu = "__import__('torch').cuda.is_available()"`). Evaluated by
+  `aide env --profile <name>` (exit 0 iff satisfied) in the project venv.
+- **Stage-validation items** — a queue that closes a roadmap stage ends with a
+  `Validate stage N` item that replays the stage's use cases end-to-end and
+  updates the capability table (✅ Verified where the profile is satisfied,
+  else an explicit ❓ Unverified with the reason). Item specs may also carry an
+  optional **Validation** section (see the item template) that the validator
+  must execute — tests prove the code runs; validation observes that it does
+  something meaningful.
+
 ---
 
 ## 2. Claim protocol — how "in progress" is signalled

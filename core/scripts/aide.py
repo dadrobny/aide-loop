@@ -73,6 +73,10 @@ DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
     "loop": {"queue_cap": 10, "validation_rounds": 3, "clarify": "assume",
              "claim_scope": "live-queue"},
     "framework": {"repo": ""},
+    # [validation] — named environment profiles for stage-validation items:
+    # <name> = <python expression>, true iff the environment provides the
+    # capability (e.g. gpu = "__import__('torch').cuda.is_available()").
+    "validation": {},
 }
 
 
@@ -808,6 +812,30 @@ def env_status(repo_root: Path, config: Dict[str, Dict[str, object]]) -> str:
 def cmd_env(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
+
+    if getattr(args, "profile", None):
+        # Evaluate a named [validation] environment profile deterministically.
+        profiles = {k: str(v) for k, v in (config.get("validation") or {}).items()}
+        expr = profiles.get(args.profile)
+        if expr is None:
+            known = ", ".join(sorted(profiles)) or "(none defined)"
+            print(f"aide env: unknown profile '{args.profile}' — [validation] defines: {known}",
+                  file=sys.stderr)
+            return 2
+        vpy = venv_python(repo_root, config)
+        interpreter = str(vpy) if vpy.exists() else sys.executable
+        code = f"import sys\nsys.exit(0 if ({expr}) else 1)"
+        res = subprocess.run([interpreter, "-c", code], cwd=str(repo_root),
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if res.returncode == 0:
+            print(f"aide env: profile '{args.profile}' satisfied")
+            return 0
+        detail = (res.stderr or "").strip().splitlines()
+        suffix = f" ({detail[-1]})" if detail else ""
+        print(f"aide env: profile '{args.profile}' NOT satisfied{suffix} — "
+              f"validation gated on it must record '❓ Unverified', never a silent pass")
+        return 1
+
     status = env_status(repo_root, config)
     if status == "ok":
         print("aide env: OK (venv present, import succeeds)")
@@ -1203,6 +1231,8 @@ def register_git_subcommands(sub) -> None:
 
     p_env = sub.add_parser("env", help="venv existence / import check + bootstrap")
     p_env.add_argument("--bootstrap", action="store_true", help="create + populate the venv if missing/stale")
+    p_env.add_argument("--profile", default=None,
+                       help="evaluate a named [validation] environment profile (exit 0 iff satisfied)")
     p_env.set_defaults(func=cmd_env)
 
     p_sync = sub.add_parser("sync", help="preflight: fetch, verify clean tree, land on the right branch")

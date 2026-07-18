@@ -66,11 +66,21 @@ in the **Assumptions** block (the builder/validator hand back if reality diverge
    **Assumptions** block; Implementation Steps (the code path in `source_dir`);
    Testing Strategy (incl. adversarial/edge cases); Dependencies (item numbers,
    must be ✅/🚧); and a Decisions & Trade-offs section initialised to "To be
-   updated during implementation."
-4. **Commit** the spec on the branch (plain single-line message):
+   updated during implementation." Add the optional **Validation** section
+   whenever meaningful observation goes beyond the unit suite: the command to
+   run / output to inspect / use case to replay, and — if it needs a special
+   environment — the `[validation]` profile name plus the honest downgrade
+   when absent (see the item template).
+4. **Sweep for stale test assumptions.** If the spec (or an Assumption)
+   changes an existing default or behaviour, grep `tests_dir` for tests
+   pinning the OLD behaviour and list every hit in the Testing Strategy as
+   "existing tests to reconcile" — otherwise the first validation round fails
+   on stale assertions instead of on the new code, costing a guaranteed extra
+   round.
+5. **Commit** the spec on the branch (plain single-line message):
    `git add docs/aide/items/NNN-*.md` then
    `git commit -m "docs(NNN): work item spec for <short title>"`.
-5. **Return** a tight summary: item number, spec file path, the list of Acceptance
+6. **Return** a tight summary: item number, spec file path, the list of Acceptance
    Criteria, and any Assumptions recorded (so the orchestrator can pass them on).
 
 ## Hard limits

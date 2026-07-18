@@ -84,6 +84,13 @@ clarify = "assume"
 # docs/aide/insights.md).
 repo = ""
 
+# [validation]
+# Named environment profiles for stage-validation items — each value is a
+# Python expression, true iff this machine provides the capability. Checked
+# deterministically via `python .aide/scripts/aide.py env --profile <name>`.
+# gpu = "__import__('torch').cuda.is_available()"
+# dataset = "__import__('pathlib').Path('data/reference').is_dir()"
+
 [aide]
 # Framework version at install time (from aide-loop core/VERSION). Informational —
 # the live installed engine version is the copied-in .aide/VERSION.

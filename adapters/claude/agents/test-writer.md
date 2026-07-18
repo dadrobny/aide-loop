@@ -46,19 +46,28 @@ never assume a package name.
      missing fields, unreadable paths, truncated/garbage content); invariants
      (immutability, determinism, error type/message quality); off-by-one and
      tolerance edges where the spec mentions tolerances.
-4. **Commit the tests** on the current branch — two separate Bash calls:
+4. **Reconcile the stale tests the spec lists.** When the Testing Strategy
+   names "existing tests to reconcile" (the spec changes an existing
+   default/behaviour), update those assertions to the NEW specified behaviour
+   in this same pass — leaving them is a guaranteed round-1 validation
+   failure on stale assumptions rather than on the new code. This is the one
+   sanctioned edit to pre-existing test files; keep it limited to the listed
+   tests.
+5. **Commit the tests** on the current branch — two separate Bash calls:
    ```
    git add <tests_dir>
    git commit -m "tests: NNN <short-name>"
    ```
    Plain single-line message, no co-author trailer, no command substitution.
-5. **Return** a bullet list mapping each AC to the test(s) that cover it, plus a
-   summary of adversarial scenarios included.
+6. **Return** a bullet list mapping each AC to the test(s) that cover it, plus a
+   summary of adversarial scenarios included and any pre-existing tests
+   reconciled.
 
 ## Hard limits
 
 - Write only test files under `tests_dir`. Do **not** touch `source_dir` or any
-  other directory.
+  other directory. Pre-existing tests may be edited **only** when the spec's
+  Testing Strategy lists them as "existing tests to reconcile".
 - Do **not** run `pytest` or execute any code.
 - Do **not** modify shared `conftest.py` unless a fixture is genuinely necessary
   and cannot be handled with inline `tmp_path`.

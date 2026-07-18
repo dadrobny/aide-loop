@@ -129,6 +129,19 @@ def test_env_status_missing(tmp_path: Path):
     assert aide.env_status(tmp_path, cfg) == "missing"
 
 
+def test_env_profile_satisfied_and_not(tmp_path: Path, capsys):
+    (tmp_path / "aide.toml").write_text(
+        AIDE_TOML.format(mode="local")
+        + '\n[validation]\nyes = "1 + 1 == 2"\nno = "False"\n',
+        encoding="utf-8",
+    )
+    assert aide.main(["--repo", str(tmp_path), "env", "--profile", "yes"]) == 0
+    assert aide.main(["--repo", str(tmp_path), "env", "--profile", "no"]) == 1
+    assert aide.main(["--repo", str(tmp_path), "env", "--profile", "nope"]) == 2
+    err = capsys.readouterr().err
+    assert "unknown profile 'nope'" in err
+
+
 def test_pick_item_skips_done_and_claimed(tmp_path: Path):
     root = _init_repo(tmp_path / "r")
     cfg = aide.load_config(root)
