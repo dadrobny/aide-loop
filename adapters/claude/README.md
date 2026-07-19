@@ -19,7 +19,7 @@ models.
 Everything mechanical (recon/claim, progress reconciliation, queue tidy, merge,
 env, the consistency check) is **not** re-implemented here — it is the engine CLI,
 invoked identically by every adapter as `python .aide/scripts/aide.py {check,
-progress, queue, claim, merge, env}` ([spec §4](../ADAPTER-SPEC.md)). The files
+progress, queue, claim, merge, env, sync, gc, status}` ([spec §4](../ADAPTER-SPEC.md)). The files
 below only translate the *human-shaped* work into Claude Code's primitives.
 
 ---
@@ -83,6 +83,13 @@ session, so the nesting is real, not a manual runbook.
 
 A fourth command, **`aide-review-permissions`**, is not an orchestrator — it belongs
 to the permission model below.
+
+The `/aide-*` entry-points can be launched from the IDE extension, the
+interactive CLI, or the loop supervisor's top-level `claude -p` — these surfaces
+differ in cwd behaviour, permission-ask handling, and session lifetime. The
+differences, the unattended permission posture, and the trusted-folder caveat
+are recorded in **[`execution-surfaces.md`](execution-surfaces.md)** — read it
+before the first unattended run.
 
 ## Permission model → **`settings.json`** + **`hooks/`** (Claude-specific)
 

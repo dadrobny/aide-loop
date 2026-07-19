@@ -85,10 +85,10 @@ of how the orchestrator is expressed.
 
 Every adapter invokes the **same deterministic CLI** for all mechanical work —
 recon/claim, progress reconciliation, queue tidy, merge+cleanup, venv check, the
-consistency check:
+consistency check, session preflight, branch clean-up, the state report:
 
 ```
-python .aide/scripts/aide.py {check, progress, queue, claim, merge, env}
+python .aide/scripts/aide.py {check, progress, queue, claim, merge, env, sync, gc, status}
 ```
 
 This is the anchor that makes generality real rather than aspirational: it is

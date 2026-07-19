@@ -108,6 +108,12 @@ With the Claude adapter, set `usage_probe = "anthropic-oauth"` in `loop.local.to
 to gate on real usage; leave it `"none"` to relaunch on a plain time cadence. See
 [`concepts.md`](concepts.md) → "The loop supervisor".
 
+Before the first unattended run, read the adapter's
+[`execution-surfaces.md`](../adapters/claude/execution-surfaces.md): the
+supervisor launches a print-mode session in which a permission `ask` is
+**denied, not prompted** — the committed allow-list must cover the whole run,
+and the folder must have been trusted once interactively.
+
 ## 6. Pulling framework updates
 
 ```

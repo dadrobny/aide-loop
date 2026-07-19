@@ -94,7 +94,7 @@ the same `aide.py` steps in the same order.
 Every adapter routes all mechanical work through the **same** stdlib CLI:
 
 ```
-python .aide/scripts/aide.py {check, progress, queue, claim, merge, env}
+python .aide/scripts/aide.py {check, progress, queue, claim, merge, env, sync, gc, status}
 ```
 
 - **check** — consistency gate over `docs/aide/` (shapes, statuses, rollups).
@@ -103,6 +103,10 @@ python .aide/scripts/aide.py {check, progress, queue, claim, merge, env}
 - **claim** — pick + claim the next unclaimed item (the recon step; not an agent).
 - **merge** — merge a validated item per `git.mode`, re-run tests, clean up.
 - **env** — venv existence / import check (+ bootstrap).
+- **sync** — session preflight: fetch, clean-tree check, land on the right branch.
+- **gc** — delete claim branches whose work has landed (dry-run by default).
+- **status** — one-call roadmap-state report: branch + divergence, derived queue
+  states, claim branches, open PRs (best effort).
 
 This invocation is identical across providers and implementation-agnostic — a future
 compiled `aide` binary exposing the same subcommands is a drop-in substitution with

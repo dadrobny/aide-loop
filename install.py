@@ -77,6 +77,24 @@ branch_prefix = "aide/"
 queue_cap = 10
 clarify = "assume"
 
+[framework]
+# Where the AIDE framework itself lives (owner/repo). The feedback loop's
+# triage step hands `framework`-typed insights over as GitHub issues on this
+# repo (via `gh`); empty disables the handover (entries stay pending in
+# docs/aide/insights.md).
+repo = ""
+# Path to a local clone of the framework repo, used by the documented
+# framework-update workflow. Declaring it exempts `git -C <this path>` from the
+# hygiene guard's no-directory-prefix rule (the one legitimate use).
+# local_path = "../aide-loop"
+
+# [validation]
+# Named environment profiles for stage-validation items — each value is a
+# Python expression, true iff this machine provides the capability. Checked
+# deterministically via `python .aide/scripts/aide.py env --profile <name>`.
+# gpu = "__import__('torch').cuda.is_available()"
+# dataset = "__import__('pathlib').Path('data/reference').is_dir()"
+
 [aide]
 # Framework version at install time (from aide-loop core/VERSION). Informational —
 # the live installed engine version is the copied-in .aide/VERSION.
@@ -256,6 +274,9 @@ def run(args: argparse.Namespace) -> int:
     print(f"\nDone. Installed engine version recorded at {aide_dir / 'VERSION'}.")
     if not args.update:
         print("Next: `python .aide/scripts/aide.py check` in the target repo.")
+        print("Before any unattended run: launch the runtime once interactively in the")
+        print("repo (to answer any one-time trusted-folder prompt) — see the adapter's")
+        print("execution-surfaces.md for the launch-surface contract.")
     return 0
 
 
