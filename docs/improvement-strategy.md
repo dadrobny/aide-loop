@@ -372,13 +372,31 @@ All recurred; none were one-offs.
   additive-by-default `{ "add", "remove" }` operator so framework updates keep
   reaching the project; a plain list replaces (escape hatch). A malformed overlay
   aborts before any write; a stale `remove` warns. Backward compatible: with no
-  overlay, an existing `settings.json` is still never clobbered (legacy `.aide-merge`
-  diff, header now pointing at the overlay migration). The base+overlay mechanism
-  generalises to any framework-owned JSON a project needs to extend. Landed in
-  `install.py` (`merge_overlay` + rewired `install_settings`), adapter README, and
+  overlay, an existing `settings.json` is still never clobbered — the legacy
+  `.aide-merge` now carries a **ready-to-adopt overlay** derived from the existing
+  file (`derive_overlay`, the inverse of the merge), so the difference moves into
+  the overlay in one step instead of being hand-merged forever.
+
+  **Write-scope templating.** The `Edit`/`Write` globs (`src/**`, `tests/**`) are
+  templated from `aide.toml` `source_dir`/`tests_dir` (read via the engine's own
+  `load_config`), so a project whose code lives elsewhere needs no manual override;
+  `tests_dir` — a real engine concept previously missing from the scaffold — is now
+  surfaced in the `aide.toml` template + `--tests-dir`. Defaults leave the committed
+  file byte-identical.
+
+  **Scope — which files the overlay covers.** `settings.json` is the *only* JSON file
+  the framework installs, and the merge engine (`merge_overlay`/`derive_overlay`) is
+  file-agnostic JSON, so it extends to any *future* framework-owned JSON (e.g. an
+  `.mcp.json`) with **zero new templates** — just a second call site. The other
+  control files are deliberately **not** overlay targets: agents/skills/commands are
+  Markdown and hooks/scripts are Python — a structural deep-merge is meaningless for
+  prose/code. Those stay framework-owned wholesale; a project that must diverge does
+  so through its owned seams (`CLAUDE.md`, `docs/aide/`, `aide.toml`), and editing an
+  installed agent/skill is a fork smell, not a supported overlay.
+
+  Landed in `install.py` (`merge_overlay`, `derive_overlay`, scope templating,
+  rewired `install_settings`), adapter README, and
   `adapters/claude/tests/test_settings_overlay.py`.
-  Deferred follow-up: template the base's write-scope globs from `aide.toml`
-  `source_dir`/`tests_dir` so the most common override disappears automatically.
 
 ## What this strategy deliberately does not do
 

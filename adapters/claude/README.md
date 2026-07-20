@@ -127,10 +127,16 @@ in `core/conventions.md`; only the **enforcement mechanism** and the
   aborts the install *before* any write, so a broken `settings.json` is never
   emitted. A fresh install scaffolds an inert `settings.overlay.json.example`.
   **Backward compatible:** with no overlay, an existing `settings.json` is still
-  never clobbered — the framework's version is emitted as a `.aide-merge` diff to
-  reconcile by hand (whose header points at the overlay migration). The same
-  base+overlay mechanism generalises to any framework-owned JSON a project needs to
-  extend.
+  never clobbered — the framework's version is emitted as a `.aide-merge` diff that
+  now also carries a **ready-to-adopt overlay** derived from your existing file
+  (`derive_overlay`, the inverse of the merge). Save that block as
+  `settings.overlay.json` and the migration is done in one step — no hand-merging.
+  **Scope:** `settings.json` is the only JSON file the framework installs, so it is
+  the only overlay target today; the merge engine is file-agnostic JSON and extends
+  to any future framework-owned JSON with no new code. It does **not** apply to the
+  Markdown control files (`agents/`, `skills/`, `commands/`) or the Python hooks —
+  those are framework-owned wholesale, and a project diverges through its own seams
+  (`CLAUDE.md`, `docs/aide/`, `aide.toml`), not by editing installed framework files.
 - **`hooks/command_hygiene_guard.py`** — a `PreToolUse` hook on `Bash` that *enforces*
   the `conventions.md` hygiene contract: a reshapeable command that would otherwise
   miss the allow-list and stall the run is bounced back to be re-issued in an
