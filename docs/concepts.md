@@ -113,6 +113,17 @@ compiled `aide` binary exposing the same subcommands is a drop-in substitution w
 no change to any adapter. It is why generality is real rather than aspirational: the
 hard 80% is already shared.
 
+**Why Python for the engine.** `aide.py`, `loop.py`, and `install.py` are stdlib-only
+Python 3.11+ (3.9 works too — the CLI has a TOML fallback), so the engine runs on a
+stock interpreter with no dependency resolution — the reason it works *before* a
+project venv exists and behaves identically across OSes. A consuming project therefore
+needs a Python interpreter even when its own code is in another language; for the
+common case that costs nothing (the interpreter is near-universal). Full
+*language*-independence would mean reimplementing the subcommands as a compiled single
+binary (Go/Rust, or a frozen build) plus a per-OS release matrix — moderate effort,
+low near-term payoff, so it stays deferred until a real no-Python consumer appears.
+*Platform*-independence short of that is just the bounded CLI swap above.
+
 ## Git modes and the merge policy
 
 `git.mode` in `aide.toml` selects how a green item lands — **`auto-merge`** (direct

@@ -107,10 +107,36 @@ in `core/conventions.md`; only the **enforcement mechanism** and the
   create|merge`, edits to `.aide/**`, `CLAUDE.md`, `aide.toml`, the `.claude/`
   control files). `defaultMode` is `default`. The allow-list is what lets an
   unattended run proceed without stalling on a prompt; the ask-list is where a human
-  stays in the loop. **`install.py` never clobbers an existing `settings.json`** — it
-  emits a `.aide-merge` diff for the human to reconcile. The write-scope entries
-  default to `src/**` and `tests/**` (the engine's default `source_dir`/`tests_dir`);
-  a consumer whose code lives elsewhere aligns those two globs with its `aide.toml`.
+  stays in the loop. The write-scope entries (`Edit`/`Write` under `src/**` and
+  `tests/**`) are **templated from `aide.toml`** at install time — `install.py`
+  rewrites them to the project's `project.source_dir`/`project.tests_dir` (read via
+  the engine's own config loader, so both interpret `aide.toml` identically). A
+  consumer whose code lives in `lib/` and tests in `spec/` gets `Write(lib/**)` /
+  `Write(spec/**)` automatically, with no manual override; the defaults leave the
+  committed file byte-identical.
+- **`settings.overlay.json`** — project-owned customisation, reconciled
+  **deterministically** on every `install.py`/`--update`. While this file exists,
+  `settings.json` is REGENERATED as `merge(framework base, overlay)` — so edit the
+  overlay, never `settings.json` (edits there are overwritten). The merge algebra:
+  objects deep-merge (overlay wins); **list** values (the `allow`/`ask`/`deny`
+  lists, hook groups) take a `{ "add": [...], "remove": [...] }` operator —
+  *additive by default*, so a framework update that adds a new default still reaches
+  the project; a plain list replaces outright (escape hatch). Prefer adding to
+  `deny` over removing from `allow` when tightening (deny is explicit and
+  update-proof). A stale `remove` pin warns (never blocks); a malformed overlay
+  aborts the install *before* any write, so a broken `settings.json` is never
+  emitted. A fresh install scaffolds an inert `settings.overlay.json.example`.
+  **Backward compatible:** with no overlay, an existing `settings.json` is still
+  never clobbered — the framework's version is emitted as a `.aide-merge` diff that
+  now also carries a **ready-to-adopt overlay** derived from your existing file
+  (`derive_overlay`, the inverse of the merge). Save that block as
+  `settings.overlay.json` and the migration is done in one step — no hand-merging.
+  **Scope:** `settings.json` is the only JSON file the framework installs, so it is
+  the only overlay target today; the merge engine is file-agnostic JSON and extends
+  to any future framework-owned JSON with no new code. It does **not** apply to the
+  Markdown control files (`agents/`, `skills/`, `commands/`) or the Python hooks —
+  those are framework-owned wholesale, and a project diverges through its own seams
+  (`CLAUDE.md`, `docs/aide/`, `aide.toml`), not by editing installed framework files.
 - **`hooks/command_hygiene_guard.py`** — a `PreToolUse` hook on `Bash` that *enforces*
   the `conventions.md` hygiene contract: a reshapeable command that would otherwise
   miss the allow-list and stall the run is bounced back to be re-issued in an

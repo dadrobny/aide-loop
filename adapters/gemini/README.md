@@ -1,7 +1,7 @@
 # Gemini CLI adapter (porting stub)
 
-> **STUB — see `/docs/framework-standalone-plan.md` §4.3.**
+> **STUB.** Design contract: [`../ADAPTER-SPEC.md`](../ADAPTER-SPEC.md).
 
-Maps the adapter contract (`../ADAPTER-SPEC.md`) to Gemini CLI primitives: the
-seven entry-points and role prompts become `.gemini/commands/`. No permission
-allow-list (set `usage_probe = "none"`).
+Maps the adapter contract to Gemini CLI primitives: the seven entry-points and role
+prompts become `.gemini/commands/`. No permission allow-list (set
+`usage_probe = "none"`).

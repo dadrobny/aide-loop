@@ -109,6 +109,13 @@ themselves (one command per call, no `cd`, no chained `&&`, no `2>&1`) live in
 the "permission allow-list" framing are adapter-local. A runtime with no permission
 model simply omits this section and relies on the hygiene rules being followed.
 
+An adapter whose config is **JSON** survives framework updates deterministically via
+`install.py`'s overlay mechanism: the project keeps a `*.overlay.json` and the
+installed file is regenerated as a deep-merge of the framework base and that overlay
+(see the Claude adapter's `settings.overlay.json`). Non-JSON adapter files (Markdown,
+scripts) are framework-owned wholesale — projects extend them through their own
+config, not by editing the installed copies.
+
 ## 6. Optional: usage probe (unattended long runs)
 
 The engine's supervisor (`loop/loop.py`) gates unattended relaunches on real usage
