@@ -237,3 +237,74 @@ def test_conflicting_overlay_raises_and_never_writes_settings(tmp_path):
     with pytest.raises(install.OverlayError):
         install.install_settings(ADAPTER_DIR, claude, target, [])
     assert not (claude / install.ADAPTER_SETTINGS).exists()
+
+
+# --------------------------------------------------------------------------- #
+# write-scope templating from aide.toml source_dir / tests_dir
+# --------------------------------------------------------------------------- #
+def test_scope_template_is_identity_for_defaults():
+    base = json.loads(ADAPTER_SETTINGS.read_text("utf-8"))
+    # returns the SAME object -> the common install stays byte-identical
+    assert install._apply_scope_template(base, "src", "tests") is base
+
+
+def test_scope_template_rewrites_only_the_write_scope_globs():
+    base = json.loads(ADAPTER_SETTINGS.read_text("utf-8"))
+    out = install._apply_scope_template(base, "lib", "spec")
+    allow = out["permissions"]["allow"]
+    assert "Write(lib/**)" in allow and "Edit(lib/**)" in allow
+    assert "Write(spec/**)" in allow and "Edit(spec/**)" in allow
+    assert "Write(src/**)" not in allow and "Write(tests/**)" not in allow
+    # unrelated entries untouched; docs/aide scoping left alone
+    assert "Read" in allow
+    assert "Write(docs/aide/queue/**)" in allow
+
+
+def test_effective_base_is_verbatim_for_defaults():
+    _, text = install._effective_base(ADAPTER_SETTINGS, "src", "tests")
+    assert text == ADAPTER_SETTINGS.read_text("utf-8")
+
+
+def test_effective_base_scoped_is_valid_and_templated():
+    base, text = install._effective_base(ADAPTER_SETTINGS, "lib", "spec")
+    assert json.loads(text) == base  # serialised text round-trips
+    assert "Write(lib/**)" in base["permissions"]["allow"]
+
+
+def test_fresh_install_templates_globs_from_scope(tmp_path):
+    claude, target = _dirs(tmp_path)
+    install.install_settings(ADAPTER_DIR, claude, target, [],
+                             source_dir="lib", tests_dir="spec")
+    allow = json.loads((claude / install.ADAPTER_SETTINGS).read_text("utf-8"))[
+        "permissions"]["allow"]
+    assert "Write(lib/**)" in allow and "Write(spec/**)" in allow
+    assert "Write(src/**)" not in allow
+
+
+def test_overlay_and_scope_compose(tmp_path):
+    claude, target = _dirs(tmp_path)
+    (claude / install.SETTINGS_OVERLAY).write_text(
+        json.dumps({"permissions": {"allow": {"add": ["Bash(cargo test:*)"]}}}),
+        encoding="utf-8",
+    )
+    install.install_settings(ADAPTER_DIR, claude, target, [],
+                             source_dir="lib", tests_dir="spec")
+    allow = json.loads((claude / install.ADAPTER_SETTINGS).read_text("utf-8"))[
+        "permissions"]["allow"]
+    assert "Write(lib/**)" in allow           # scope templated on the base
+    assert "Bash(cargo test:*)" in allow      # overlay applied on top
+
+
+def test_project_scope_reads_aide_toml(tmp_path):
+    (tmp_path / "aide.toml").write_text(
+        '[project]\nsource_dir = "lib"\ntests_dir = "spec"\n', encoding="utf-8"
+    )
+    assert install._project_scope(tmp_path) == ("lib", "spec")
+
+
+def test_project_scope_defaults_without_aide_toml(tmp_path):
+    assert install._project_scope(tmp_path) == ("src", "tests")
+
+
+def test_scaffolded_aide_toml_declares_tests_dir():
+    assert 'tests_dir = "{tests_dir}"' in install.AIDE_TOML_TEMPLATE

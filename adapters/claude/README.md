@@ -107,9 +107,13 @@ in `core/conventions.md`; only the **enforcement mechanism** and the
   create|merge`, edits to `.aide/**`, `CLAUDE.md`, `aide.toml`, the `.claude/`
   control files). `defaultMode` is `default`. The allow-list is what lets an
   unattended run proceed without stalling on a prompt; the ask-list is where a human
-  stays in the loop. The write-scope entries default to `src/**` and `tests/**` (the
-  engine's default `source_dir`/`tests_dir`); a consumer whose code lives elsewhere
-  aligns those two globs with its `aide.toml` (via the overlay below).
+  stays in the loop. The write-scope entries (`Edit`/`Write` under `src/**` and
+  `tests/**`) are **templated from `aide.toml`** at install time — `install.py`
+  rewrites them to the project's `project.source_dir`/`project.tests_dir` (read via
+  the engine's own config loader, so both interpret `aide.toml` identically). A
+  consumer whose code lives in `lib/` and tests in `spec/` gets `Write(lib/**)` /
+  `Write(spec/**)` automatically, with no manual override; the defaults leave the
+  committed file byte-identical.
 - **`settings.overlay.json`** — project-owned customisation, reconciled
   **deterministically** on every `install.py`/`--update`. While this file exists,
   `settings.json` is REGENERATED as `merge(framework base, overlay)` — so edit the
