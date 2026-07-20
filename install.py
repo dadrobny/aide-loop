@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """install.py — cross-OS installer for the AIDE framework.
 
-Materialises the three-layer framework (see docs/framework-standalone-plan.md §3)
+Materialises the three-layer framework (see docs/concepts.md "The three layers")
 into a target repo:
 
     python install.py --adapter claude --into <target-repo>
