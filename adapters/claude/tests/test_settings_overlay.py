@@ -308,3 +308,73 @@ def test_project_scope_defaults_without_aide_toml(tmp_path):
 
 def test_scaffolded_aide_toml_declares_tests_dir():
     assert 'tests_dir = "{tests_dir}"' in install.AIDE_TOML_TEMPLATE
+
+
+# --------------------------------------------------------------------------- #
+# derive_overlay — inverse of the merge (legacy -> overlay migration)
+# --------------------------------------------------------------------------- #
+def _norm(value):
+    """Sort list values so round-trips compare by membership, not order."""
+    if isinstance(value, dict):
+        return {k: _norm(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return sorted((json.dumps(_norm(v), sort_keys=True) for v in value))
+    return value
+
+
+def test_derive_of_identical_is_empty():
+    base = {"permissions": {"allow": ["Read"]}}
+    overlay, warnings = install.derive_overlay(base, dict(base))
+    assert overlay == {}
+    assert warnings == []
+
+
+def test_derive_captures_add_remove_and_scalar():
+    base = {"permissions": {"defaultMode": "default", "allow": ["Read", "Grep"]}}
+    existing = {"permissions": {"defaultMode": "acceptEdits",
+                                "allow": ["Read", "Bash(cargo:*)"]}}  # -Grep +cargo
+    overlay, _ = install.derive_overlay(base, existing)
+    assert overlay["permissions"]["defaultMode"] == "acceptEdits"
+    assert overlay["permissions"]["allow"] == {"add": ["Bash(cargo:*)"],
+                                               "remove": ["Grep"]}
+
+
+def test_derive_round_trips_through_merge():
+    base = json.loads(ADAPTER_SETTINGS.read_text("utf-8"))
+    existing = json.loads(ADAPTER_SETTINGS.read_text("utf-8"))
+    existing["permissions"]["allow"].append("Bash(cargo test:*)")
+    existing["permissions"]["allow"].remove("Bash(python:*)")
+    existing["permissions"]["defaultMode"] = "acceptEdits"
+    existing["permissions"]["deny"] = ["Bash(rm -rf:*)"]
+
+    overlay, warnings = install.derive_overlay(base, existing)
+    reproduced, _ = install.merge_overlay(base, overlay)
+    assert _norm(reproduced) == _norm(existing)  # membership-exact round-trip
+    assert warnings == []
+
+
+def test_derive_warns_on_a_key_the_project_dropped():
+    base = {"permissions": {"allow": ["Read"]}, "hooks": {"PreToolUse": []}}
+    existing = {"permissions": {"allow": ["Read"]}}  # dropped the hooks key
+    _, warnings = install.derive_overlay(base, existing)
+    assert len(warnings) == 1 and "hooks" in warnings[0]
+
+
+def test_legacy_path_writes_adoptable_suggested_overlay(tmp_path):
+    claude, target = _dirs(tmp_path)
+    # an existing hand-edited settings.json diverging from the framework base
+    base = json.loads(ADAPTER_SETTINGS.read_text("utf-8"))
+    edited = json.loads(ADAPTER_SETTINGS.read_text("utf-8"))
+    edited["permissions"]["allow"].append("Bash(cargo test:*)")
+    (claude / install.ADAPTER_SETTINGS).write_text(json.dumps(edited, indent=2),
+                                                   encoding="utf-8")
+    install.install_settings(ADAPTER_DIR, claude, target, [])
+
+    merge_text = (target / ".aide-merge").read_text("utf-8")
+    assert install.SETTINGS_OVERLAY in merge_text
+    # the suggested block parses as JSON and, re-merged, reproduces the edited file
+    block = merge_text.split("====", 2)[-1]
+    start = block.index("{")
+    suggested = json.loads(block[start:])
+    reproduced, _ = install.merge_overlay(base, suggested)
+    assert "Bash(cargo test:*)" in reproduced["permissions"]["allow"]

@@ -261,6 +261,54 @@ def merge_overlay(base: dict, overlay: dict) -> Tuple[dict, List[str]]:
     return merged, warnings
 
 
+_UNCHANGED = object()
+_MISSING = object()
+
+
+def _derive(base, existing, path: str, warnings: List[str]):
+    """Overlay fragment that turns ``base`` into ``existing`` at this node, or
+    ``_UNCHANGED``. Lists become additive {add, remove} operators (membership, not
+    order — fine for permission sets); scalars/new keys become literal values."""
+    if base is not _MISSING and base == existing:
+        return _UNCHANGED
+    if isinstance(base, dict) and isinstance(existing, dict):
+        fragment: dict = {}
+        for key, value in existing.items():
+            here = f"{path}.{key}" if path else key
+            sub = _derive(base.get(key, _MISSING), value, here, warnings)
+            if sub is not _UNCHANGED:
+                fragment[key] = sub
+        for key in base:
+            if key not in existing:
+                where = f"{path}.{key}" if path else key
+                warnings.append(
+                    f"{where}: in the framework base but not your settings — an "
+                    f"overlay cannot express deleting a key, so it is left in place"
+                )
+        return fragment if fragment else _UNCHANGED
+    if isinstance(base, list) and isinstance(existing, list):
+        add = [x for x in existing if x not in base]
+        remove = [x for x in base if x not in existing]
+        operator: dict = {}
+        if add:
+            operator["add"] = add
+        if remove:
+            operator["remove"] = remove
+        return operator or _UNCHANGED
+    return copy.deepcopy(existing)  # scalar/type change, or a key absent from base
+
+
+def derive_overlay(base: dict, existing: dict) -> Tuple[dict, List[str]]:
+    """Inverse of ``merge_overlay``: the minimal overlay that reproduces ``existing``
+    on top of ``base``. ``merge_overlay(base, derive_overlay(base, existing)[0])``
+    reproduces ``existing`` (list membership, not order). Warns on keys the project
+    dropped from the base, which an additive overlay cannot express.
+    """
+    warnings: List[str] = []
+    fragment = _derive(base, existing, "", warnings)
+    return (fragment if isinstance(fragment, dict) else {}), warnings
+
+
 # --------------------------------------------------------------------------- #
 # copy helpers
 # --------------------------------------------------------------------------- #
@@ -423,8 +471,10 @@ def _generate_settings_from_overlay(base: dict, overlay_path: Path, dst: Path,
 
 def _emit_aide_merge(base: dict, base_text: str, existing_text: str, dst: Path,
                      target: Path, log: List[str]) -> None:
-    """Legacy non-clobber path: keep the existing settings.json and write a diff to
-    .aide-merge for a human to reconcile, pointing at the overlay migration."""
+    """Legacy non-clobber path: keep the existing settings.json, and write to
+    .aide-merge both a diff AND a ready-to-adopt overlay derived from the existing
+    file — so the human moves the difference INTO the overlay rather than hand-merging
+    the diff forever."""
     diff = "".join(
         difflib.unified_diff(
             existing_text.splitlines(keepends=True),
@@ -433,19 +483,44 @@ def _emit_aide_merge(base: dict, base_text: str, existing_text: str, dst: Path,
             tofile="b/.claude/settings.json (framework)",
         )
     )
-    merge_path = target / ".aide-merge"
     header = (
         "# AIDE install: .claude/settings.json already exists and was NOT "
         "overwritten.\n"
-        "# Below is a diff from your version to the framework's. Reconcile by hand,\n"
-        "# then delete this file. To make future updates automatic, move your\n"
-        f"# project-specific changes into .claude/{SETTINGS_OVERLAY} (see the\n"
-        f"# {SETTINGS_OVERLAY_EXAMPLE} scaffolded alongside settings.json) — while\n"
-        "# that overlay exists, settings.json is regenerated deterministically and\n"
-        "# no .aide-merge is produced.\n\n"
+        f"# Recommended: save the '{SETTINGS_OVERLAY}' block at the bottom of this\n"
+        f"# file as .claude/{SETTINGS_OVERLAY}. It reproduces your CURRENT settings on\n"
+        "# top of the framework base, so once adopted, settings.json is regenerated\n"
+        "# deterministically on every update (project changes reapply, framework\n"
+        "# changes flow through) and no .aide-merge is produced. Then delete this file.\n"
+        "# The diff below (your version -> framework's) is for reference.\n\n"
     )
-    merge_path.write_text(header + diff, encoding="utf-8")
-    log.append(f"  ! {dst} kept (existing) — diff written to {merge_path}")
+    body = header + diff
+    suggestion = _suggested_overlay_block(base, existing_text)
+    if suggestion:
+        body += suggestion
+    merge_path = target / ".aide-merge"
+    merge_path.write_text(body, encoding="utf-8")
+    tail = " + suggested overlay" if suggestion else ""
+    log.append(f"  ! {dst} kept (existing) — diff{tail} written to {merge_path}")
+
+
+def _suggested_overlay_block(base: dict, existing_text: str) -> str:
+    """A commented, ready-to-adopt overlay reproducing the existing settings over the
+    base. Empty string if the existing file cannot be parsed/derived (diff still helps)."""
+    try:
+        existing = json.loads(existing_text)
+        suggested, warnings = derive_overlay(base, existing)
+    except (json.JSONDecodeError, OverlayError):
+        return ""
+    lines = [
+        "",
+        "",
+        f"# ==== suggested .claude/{SETTINGS_OVERLAY} "
+        "(reproduces your settings over the framework base) ====",
+    ]
+    lines += [f"# note: {w}" for w in warnings]
+    lines.append(json.dumps(suggested, indent=2, ensure_ascii=False))
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _scaffold_overlay_example(claude_dir: Path, log: List[str]) -> None:
