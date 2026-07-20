@@ -667,6 +667,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    # Windows consoles often default to a non-UTF-8 codepage (cp1252), where printing
+    # the em-dashes/icons in the install log raises UnicodeEncodeError and kills the
+    # install instead of reporting. Reconfigure once here so no caller needs the
+    # PYTHONIOENCODING env-var dance (mirrors aide.py main()).
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
     try:
         return run(build_parser().parse_args(argv))
     except OverlayError as exc:

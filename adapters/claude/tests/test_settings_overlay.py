@@ -12,6 +12,8 @@ Stdlib + pytest only; ``install.py`` is imported as a module.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -378,3 +380,25 @@ def test_legacy_path_writes_adoptable_suggested_overlay(tmp_path):
     suggested = json.loads(block[start:])
     reproduced, _ = install.merge_overlay(base, suggested)
     assert "Bash(cargo test:*)" in reproduced["permissions"]["allow"]
+
+
+def test_install_survives_non_utf8_console(tmp_path):
+    """The install log contains em-dashes; on a cp1252 console (PYTHONIOENCODING)
+    that would raise UnicodeEncodeError and kill the install without main()'s
+    stdout reconfigure. Drive the legacy path (which logs an em-dash line) in a
+    subprocess forced to cp1252 and assert it still exits 0 (WI-7b lesson)."""
+    claude = tmp_path / ".claude"
+    claude.mkdir()
+    base = json.loads(ADAPTER_SETTINGS.read_text("utf-8"))
+    base["permissions"]["allow"].append("X")  # diverge -> legacy path fires
+    (claude / install.ADAPTER_SETTINGS).write_text(json.dumps(base, indent=2), "utf-8")
+
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+    result = subprocess.run(
+        [sys.executable, str(FRAMEWORK_ROOT / "install.py"),
+         "--adapter", "claude", "--into", str(tmp_path), "--update", "--yes"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env=env, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "kept (existing)" in result.stdout
