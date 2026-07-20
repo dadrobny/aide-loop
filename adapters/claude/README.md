@@ -107,10 +107,26 @@ in `core/conventions.md`; only the **enforcement mechanism** and the
   create|merge`, edits to `.aide/**`, `CLAUDE.md`, `aide.toml`, the `.claude/`
   control files). `defaultMode` is `default`. The allow-list is what lets an
   unattended run proceed without stalling on a prompt; the ask-list is where a human
-  stays in the loop. **`install.py` never clobbers an existing `settings.json`** — it
-  emits a `.aide-merge` diff for the human to reconcile. The write-scope entries
-  default to `src/**` and `tests/**` (the engine's default `source_dir`/`tests_dir`);
-  a consumer whose code lives elsewhere aligns those two globs with its `aide.toml`.
+  stays in the loop. The write-scope entries default to `src/**` and `tests/**` (the
+  engine's default `source_dir`/`tests_dir`); a consumer whose code lives elsewhere
+  aligns those two globs with its `aide.toml` (via the overlay below).
+- **`settings.overlay.json`** — project-owned customisation, reconciled
+  **deterministically** on every `install.py`/`--update`. While this file exists,
+  `settings.json` is REGENERATED as `merge(framework base, overlay)` — so edit the
+  overlay, never `settings.json` (edits there are overwritten). The merge algebra:
+  objects deep-merge (overlay wins); **list** values (the `allow`/`ask`/`deny`
+  lists, hook groups) take a `{ "add": [...], "remove": [...] }` operator —
+  *additive by default*, so a framework update that adds a new default still reaches
+  the project; a plain list replaces outright (escape hatch). Prefer adding to
+  `deny` over removing from `allow` when tightening (deny is explicit and
+  update-proof). A stale `remove` pin warns (never blocks); a malformed overlay
+  aborts the install *before* any write, so a broken `settings.json` is never
+  emitted. A fresh install scaffolds an inert `settings.overlay.json.example`.
+  **Backward compatible:** with no overlay, an existing `settings.json` is still
+  never clobbered — the framework's version is emitted as a `.aide-merge` diff to
+  reconcile by hand (whose header points at the overlay migration). The same
+  base+overlay mechanism generalises to any framework-owned JSON a project needs to
+  extend.
 - **`hooks/command_hygiene_guard.py`** — a `PreToolUse` hook on `Bash` that *enforces*
   the `conventions.md` hygiene contract: a reshapeable command that would otherwise
   miss the allow-list and stall the run is bounced back to be re-issued in an

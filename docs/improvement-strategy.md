@@ -1,8 +1,8 @@
 # Improvement strategy — friction observations → work items
 
 > Status: WI-1…WI-7 implemented on `feat/improvement-strategy-wi` (one commit
-> per WI, awaiting review); the `.aide-merge` auto-reconcile (WI-7g) remains
-> planned. · Created: 2026-07-18 · Updated: 2026-07-19
+> per WI, awaiting review); the settings auto-reconcile (WI-7g) is now
+> implemented as a project-owned overlay. · Created: 2026-07-18 · Updated: 2026-07-20
 > Input: a collected list of friction points from real automated-development
 > runs, plus field feedback from a consumer repo (SegQC+xnat → WI-7).
 > Output: seven work items, each bundling related observations, with a
@@ -362,12 +362,23 @@ All recurred; none were one-offs.
   round-trips of roadmap-state discovery on re-invocation: branch +
   divergence, derived queue states with open items, claim branches (stale
   flagged), open PRs best-effort.
-- **`.aide-merge` auto-reconciliation (planned, not yet implemented)** — most
-  of a settings reconcile is mechanical (framework version wins except
-  project-pinned lines). Direction: an `aide.toml` list of pinned JSON paths
-  (e.g. the `Edit`/`Write` scoping globs) that `install.py` preserves,
-  auto-applying everything else and leaving a diff only for genuine conflicts.
-  Deserves its own small PR against `install.py` + adapter README.
+- **Settings auto-reconciliation (implemented — WI-7g)** — a settings reconcile is
+  mostly mechanical (framework version wins except project-specific lines). Shipped
+  not as pinned JSON paths in the live `settings.json` (awkward for the common case,
+  *adding* a permission) but as a project-owned **overlay** — `install.py`
+  deterministically regenerates `.claude/settings.json = merge(framework base,
+  .claude/settings.overlay.json)` on every install/update. Merge algebra: objects
+  deep-merge (overlay wins); list values (`allow`/`ask`/`deny`, hook groups) take an
+  additive-by-default `{ "add", "remove" }` operator so framework updates keep
+  reaching the project; a plain list replaces (escape hatch). A malformed overlay
+  aborts before any write; a stale `remove` warns. Backward compatible: with no
+  overlay, an existing `settings.json` is still never clobbered (legacy `.aide-merge`
+  diff, header now pointing at the overlay migration). The base+overlay mechanism
+  generalises to any framework-owned JSON a project needs to extend. Landed in
+  `install.py` (`merge_overlay` + rewired `install_settings`), adapter README, and
+  `adapters/claude/tests/test_settings_overlay.py`.
+  Deferred follow-up: template the base's write-scope globs from `aide.toml`
+  `source_dir`/`tests_dir` so the most common override disappears automatically.
 
 ## What this strategy deliberately does not do
 
