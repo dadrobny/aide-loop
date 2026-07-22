@@ -156,6 +156,64 @@ SETTINGS_OVERLAY_EXAMPLE_BODY = """\
 """
 
 
+def parse_version(text: str) -> Tuple[int, ...]:
+    """``"1.2.0"`` -> ``(1, 2, 0)``, for ordering. Non-numeric parts sort as 0.
+
+    Tolerant on purpose: a consumer's ``.aide/VERSION`` is a file on someone
+    else's disk, and a malformed one should still yield a usable comparison
+    rather than crash the check.
+    """
+    out: List[int] = []
+    for part in (text or "").strip().lstrip("﻿").split("."):
+        # Leading digits only: "0-rc1" is 0, not 1. Concatenating every digit in
+        # the part would let a pre-release suffix inflate the number.
+        digits = ""
+        for ch in part.strip():
+            if not ch.isdigit():
+                break
+            digits += ch
+        out.append(int(digits) if digits else 0)
+    return tuple(out) or (0,)
+
+
+def compare_versions(installed: str, available: str) -> str:
+    """``"current"`` / ``"behind"`` / ``"ahead"`` for installed vs available."""
+    lhs, rhs = parse_version(installed), parse_version(available)
+    width = max(len(lhs), len(rhs))
+    lhs += (0,) * (width - len(lhs))
+    rhs += (0,) * (width - len(rhs))
+    if lhs == rhs:
+        return "current"
+    return "behind" if lhs < rhs else "ahead"
+
+
+def report_version(available: str, installed_path: Path, target: Path) -> int:
+    """``--check``: compare the target's installed VERSION against this framework.
+
+    Writes nothing. Exit 0 when current or ahead, 1 when behind (so a consumer can
+    gate on it), 2 when the target has no install to compare.
+    """
+    if not installed_path.is_file():
+        print(f"aide {target}: no install found ({installed_path} missing) — "
+              f"run install.py --into {target}", file=sys.stderr)
+        return 2
+
+    # utf-8-sig: this file lives on someone else's disk and may have picked up a
+    # BOM from an editor; a stray byte must not turn into part of the version.
+    installed = installed_path.read_text(encoding="utf-8-sig").strip()
+    state = compare_versions(installed, available)
+    if state == "current":
+        print(f"aide {target}: v{installed} — up to date")
+        return 0
+    if state == "ahead":
+        print(f"aide {target}: v{installed} is AHEAD of this framework (v{available}) — "
+              f"this checkout is older than the consumer's install")
+        return 0
+    print(f"aide {target}: v{installed} is BEHIND v{available} — "
+          f"run install.py --into {target} --update (see CHANGELOG.md)")
+    return 1
+
+
 class OverlayError(ValueError):
     """A settings overlay is malformed, or conflicts irreconcilably with the base.
 
@@ -609,6 +667,9 @@ def run(args: argparse.Namespace) -> int:
     claude_dir = target / ".claude"
     log: List[str] = []
 
+    if args.check:
+        return report_version(version, aide_dir / "VERSION", target)
+
     mode = "update" if args.update else "install"
     print(f"AIDE {mode}: {args.adapter} v{version} -> {target}")
 
@@ -657,6 +718,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--into", type=Path, required=True, help="target repo to install into")
     p.add_argument("--update", action="store_true",
                    help="re-copy engine + adapter; never touch aide.toml or docs/aide/")
+    p.add_argument("--check", action="store_true",
+                   help="report whether the target's installed .aide/VERSION is current, "
+                        "behind, or ahead of this framework; writes nothing, exits 1 if behind")
     p.add_argument("--yes", action="store_true", help="accept defaults; never prompt")
     p.add_argument("--name", default=None, help="project name for aide.toml (default: target dir name)")
     p.add_argument("--source-dir", dest="source_dir", default=None, help="[project] source_dir")

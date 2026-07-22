@@ -52,7 +52,7 @@ Stdlib-only, cross-OS. It:
 4. scaffolds `<target>/aide.toml` (prompts for `source_dir`, `test_command`,
    `git.mode`; `--yes` + flags for non-interactive/CI use)
 5. appends the framework `.gitignore` block if absent
-6. records the installed `VERSION` (`core/VERSION`, currently `1.0.0`) — copied in as
+6. records the installed `VERSION` (`core/VERSION`) — copied in as
    `<target>/.aide/VERSION`
 
 **`python install.py --adapter claude --into <target> --update`** re-copies the
@@ -60,6 +60,36 @@ engine and adapter (engine is framework-owned) but **never** touches `aide.toml`
 `docs/aide/` (project-owned). Pin a consumer to a `VERSION` and `--update` to move it
 forward. See [`docs/quickstart.md`](docs/quickstart.md) to go from install to first
 merged item.
+
+**`python install.py --into <target> --check`** compares the consumer's installed
+`.aide/VERSION` against this repo's `core/VERSION` and reports current / behind /
+ahead, without writing anything. It exits non-zero when the consumer is behind, so
+a project can gate on it.
+
+## Versioning
+
+`core/VERSION` is the single version of a working install; `install.py` copies it
+into a consumer as `.aide/VERSION`, and that file is what tells a project it is
+outdated. [`CHANGELOG.md`](CHANGELOG.md) records what each version changed.
+
+**Bump on every commit that touches `core/` or `adapters/`** — those are exactly
+what `--update` copies into a consumer, so a change there is a change the consumer
+receives. Commits that only touch `README.md`, `docs/`, or this repo's own tests
+change nothing a consumer installs and need no bump. SemVer, where the "API" is
+what a consumer installs — the document formats, the `aide` CLI surface,
+`aide.toml` keys, and the adapter's agents/skills/commands:
+
+| Bump | When |
+|---|---|
+| **patch** | a fix that changes no interface — `1.2.0 → 1.2.1` |
+| **minor** | a new verb, template, `aide.toml` key, agent, or skill — `1.1.0 → 1.2.0` |
+| **major** | a consumer must edit its own files to update (renamed key, dropped verb, changed document format) |
+
+This is **enforced, not remembered**: `tests/test_repo_versioning.py` fails the
+suite when the branch's diff against `main` touches `core/` or `adapters/` while
+`core/VERSION` is unchanged. The rule exists because it was already broken once —
+seventeen consumer-visible commits shipped under `1.1.0`, so a consumer comparing
+version numbers saw "up to date" while running a 27-commit-old engine.
 
 ## Repo layout
 
