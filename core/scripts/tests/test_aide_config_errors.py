@@ -70,9 +70,23 @@ def test_comments_and_blank_lines_are_not_an_error(tmp_path):
     assert aide.load_config(_repo(tmp_path, text))["project"]["name"] == "Demo"
 
 
-def test_quoted_value_containing_a_hash_is_not_truncated(tmp_path):
-    text = '[python]\ntest_command = "pytest -k \'a#b\'"\n'
-    assert "#" in aide.load_config(_repo(tmp_path, text))["python"]["test_command"]
+@pytest.mark.parametrize("line,expected", [
+    # A '#' inside a quoted value is DATA, not a comment — in both quote styles.
+    # The single-quoted case regressed silently: comment stripping keyed off
+    # `startswith('"')` only, so 'a#b' was truncated to 'a'.
+    ('msg = "a#b"', "a#b"),
+    ("msg = 'a#b'", "a#b"),
+    ('msg = "a"  # real comment', "a"),
+    ("msg = 'a'  # real comment", "a"),
+    ('msg = "plain"  # a # b', "plain"),
+    ("msg = 'C:\\path\\here'", "C:\\path\\here"),   # literal string: no escapes
+    (r'msg = "he said \"hi\""', 'he said "hi"'),    # basic string: escaped quotes
+    (r'msg = "back\\slash"', "back\\slash"),
+    ('msg = ""', ""),
+])
+def test_quoted_values_are_read_exactly(tmp_path, line, expected):
+    config = aide.load_config(_repo(tmp_path, f"[t]\n{line}\n"))
+    assert config["t"]["msg"] == expected
 
 
 # --------------------------------------------------------------------------- #
@@ -137,6 +151,73 @@ def test_error_reports_the_line_number():
         aide._parse_toml('[project]\nname = "Demo"\nsource_dir = "open\n')
 
     assert "line 3" in str(excinfo.value)
+
+
+# --------------------------------------------------------------------------- #
+# differential: the fallback must not disagree with tomllib about VALUES
+# --------------------------------------------------------------------------- #
+# Both parsers run in the wild — 3.9 venvs take the fallback, 3.11+ takes tomllib —
+# so a value they read differently is a config that means different things on
+# different machines. Comparing them directly is what caught the escaped-quote bug:
+# the fallback returned 'he said \' where tomllib returned 'he said "hi"'.
+DIFFERENTIAL_LINES = [
+    'msg = "a#b"',
+    "msg = 'a#b'",
+    'msg = "a"  # comment',
+    "msg = 'a'  # comment",
+    'msg = "plain"  # a # b',
+    r'msg = "he said \"hi\""',
+    r'msg = "back\\slash"',
+    "msg = 'C:\\literal\\path'",
+    'msg = ""',
+    "msg = 'has spaces and, commas'",
+    "msg = '__import__(\"x\").y == 0'",   # the shape of a [validation] profile
+]
+
+
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="tomllib needs 3.11+")
+@pytest.mark.parametrize("line", DIFFERENTIAL_LINES)
+def test_fallback_agrees_with_tomllib_on_values(line):
+    import tomllib
+
+    text = f"[t]\n{line}\n"
+    assert aide._parse_toml(text)["t"]["msg"] == tomllib.loads(text)["t"]["msg"]
+
+
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="tomllib needs 3.11+")
+@pytest.mark.parametrize("line", [
+    'msg = "open',
+    "msg = 'open",
+    'msg = "a" trailing junk',
+])
+def test_both_parsers_reject_the_same_malformed_lines(line):
+    """They need not raise the same TYPE — load_config normalises that — but
+    neither may quietly accept what the other rejects."""
+    import tomllib
+
+    text = f"[t]\n{line}\n"
+    with pytest.raises(aide.ConfigError):
+        aide._parse_toml(text)
+    with pytest.raises(tomllib.TOMLDecodeError):
+        tomllib.loads(text)
+
+
+def test_unsupported_escape_is_a_clear_error_not_a_wrong_value():
+    """`\\t` is a valid TOML escape this minimal reader does not decode. Rejecting it
+    keeps the two parsers from disagreeing silently — the whole point of the PR."""
+    with pytest.raises(aide.ConfigError) as excinfo:
+        aide._parse_toml(r'[t]' "\n" r'p = "C:\tools"' "\n")
+
+    message = str(excinfo.value)
+    assert "unsupported escape" in message
+    assert "literal string" in message      # tells the user what to do instead
+
+
+def test_trailing_characters_after_a_quoted_value_are_rejected():
+    with pytest.raises(aide.ConfigError) as excinfo:
+        aide._parse_toml('[t]\nmsg = "a" b\n')
+
+    assert "trailing characters" in str(excinfo.value)
 
 
 # --------------------------------------------------------------------------- #

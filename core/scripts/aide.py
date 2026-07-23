@@ -94,26 +94,51 @@ DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
 }
 
 
-def _reject_unterminated_string(key: str, value: str, lineno: int) -> None:
-    """Raise if ``value`` opens a quoted string it never closes."""
-    stripped = value.strip()
-    if not stripped or stripped[0] not in "\"'":
-        return
+# Escape sequences this reader decodes inside a basic (double-quoted) string. TOML
+# also defines \b \t \n \f \r \uXXXX \UXXXXXXXX; rather than half-implement them and
+# quietly disagree with tomllib, an unlisted escape is a ConfigError (see below).
+_BASIC_ESCAPES = {'"': '"', "\\": "\\"}
 
+
+def _read_quoted_value(key: str, stripped: str, lineno: int) -> str:
+    """Decode the quoted string at the start of ``stripped``, or raise ``ConfigError``.
+
+    Finding where a string ENDS and extracting what it CONTAINS are the same scan, so
+    they live in one function. Splitting them is what produced the bug this replaces:
+    the validator walked the value escape-aware while the extractor used a naive
+    ``split(quote, 1)[0]``, so ``msg = "he said \\"hi\\""`` passed validation and was
+    then silently truncated to ``he said \\``.
+
+    Single-quoted strings are TOML *literal* strings: no escapes, backslash is itself.
+    Double-quoted are *basic* strings, where a backslash escapes the next character.
+    """
     quote = stripped[0]
-    escaped = False
-    for i, ch in enumerate(stripped[1:], start=1):
-        if quote == '"' and not escaped and ch == "\\":
-            escaped = True
+    out: List[str] = []
+    i = 1
+    while i < len(stripped):
+        ch = stripped[i]
+        if quote == '"' and ch == "\\":
+            nxt = stripped[i + 1] if i + 1 < len(stripped) else ""
+            if nxt not in _BASIC_ESCAPES:
+                raise ConfigError(
+                    f"line {lineno}: unsupported escape '\\{nxt}' in the value for "
+                    f"key {key!r} — this minimal reader decodes only \\\\ and \\\"; "
+                    f"use a single-quoted 'literal string' (backslashes are literal "
+                    f"there) or forward slashes"
+                )
+            out.append(_BASIC_ESCAPES[nxt])
+            i += 2
             continue
-        if ch == quote and not escaped:
+        if ch == quote:
             tail = stripped[i + 1:].lstrip()
             if tail and not tail.startswith("#"):
                 raise ConfigError(
-                    f"line {lineno}: trailing characters after quoted string for key {key!r}"
+                    f"line {lineno}: trailing characters after the quoted value for "
+                    f"key {key!r}: {tail!r}"
                 )
-            return
-        escaped = False
+            return "".join(out)
+        out.append(ch)
+        i += 1
 
     raise ConfigError(
         f"line {lineno}: unterminated string for key {key!r} — "
@@ -139,10 +164,12 @@ def _parse_toml(text: str) -> Dict[str, Dict[str, object]]:
     on the project's 3.9 venv too.
 
     Deliberately lenient about what it *ignores* (unknown lines, blank tables) but
-    strict about what it would otherwise *misread*: an unterminated quoted string
-    used to yield the truncated text as the value, so a typo became a plausible
-    wrong answer on 3.9 while 3.11's tomllib rejected the same file. Raises
-    ``ConfigError`` so both paths agree.
+    strict about what it would otherwise *misread*, because a wrong-but-plausible
+    value is worse than a refusal: an unterminated quoted string used to yield the
+    truncated text, so a typo became a believable answer on 3.9 while 3.11's tomllib
+    rejected the same file. Quoted values are decoded by ``_read_quoted_value``,
+    which raises ``ConfigError`` rather than guess — so both parser paths agree on
+    which files are readable.
     """
     data: Dict[str, Dict[str, object]] = {}
     table: Optional[Dict[str, object]] = None
@@ -158,15 +185,17 @@ def _parse_toml(text: str) -> Dict[str, Dict[str, object]]:
             continue
         key, _, value = line.partition("=")
         key = key.strip()
-        _reject_unterminated_string(key, value, lineno)
-        value = value.split("#", 1)[0].strip() if not value.lstrip().startswith(('"', "'")) else value.strip()
-        # strip trailing comment for unquoted values only (quoted may contain #)
+        value = value.strip()
+        # A quoted value owns everything up to its closing quote — a '#' inside it is
+        # data, not a comment — so it is scanned before any comment stripping. Only
+        # an UNquoted value is truncated at '#'.
         if value and value[0] in "\"'":
-            table[key] = value[1:].split(value[0], 1)[0]
-        elif value.lower() in ("true", "false"):
-            table[key] = value.lower() == "true"
+            table[key] = _read_quoted_value(key, value, lineno)
+            continue
+        token = value.split("#", 1)[0].strip()
+        if token.lower() in ("true", "false"):
+            table[key] = token.lower() == "true"
         else:
-            token = value.split("#", 1)[0].strip()
             try:
                 table[key] = int(token)
             except ValueError:
