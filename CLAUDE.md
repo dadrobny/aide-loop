@@ -101,12 +101,6 @@ change, since most copied files are byte-identical no-ops.
   `_italic line_` for authoring guidance to read then replace. `aide check` flags
   any `{{…}}` surviving into a consumer's `docs/aide/**`, which is why guidance
   must never be written as a slot.
-- **Living documents carry no next-step pointers.** A template must not end with
-  a "Next: run `/aide-…`" line: the document outlives the step that created it,
-  so the pointer is stale as soon as the loop moves on. Orientation that *is*
-  durable — a document's position in the loop and what derives from it — belongs
-  in its header blockquote; the transient hand-off belongs in the creating
-  skill's closing message to the user.
 - **The engine has zero Claude coupling by design.** Nothing under `core/` may
   name Claude, a Claude model, or a `.claude/` primitive. If a change needs that,
   it belongs in the adapter, and probably in
@@ -115,7 +109,4 @@ change, since most copied files are byte-identical no-ops.
 
 ## Merge policy
 
-Work on a branch; land via a reviewed PR. Everything in this repo is by
-definition a framework/process change — it cascades into every consumer's future
-queue — so the consumer-side "work items may merge straight to main" carve-out
-has no analogue here.
+Work on a branch and land via a reviewed PR.

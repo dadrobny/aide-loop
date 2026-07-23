@@ -21,35 +21,26 @@ keys, and the adapter's agents/skills/commands.
 
 ### Changed
 
-- **Living documents no longer carry a "Next: run `/aide-…`" pointer.** Every
-  generated document ended with one, and every one of them was a lie shortly
-  after it was written: `progress.md` — edited on every merged item, the
-  most-read file in the loop — still said "run `/aide-create-queue` to generate
-  the first batch" at queue 7, and a reader had no way to tell a stale pointer
-  from a current one. A step-scoped instruction stored in a project-lifetime
-  document is guaranteed drift.
+- **Living documents no longer end with a "Next: run `/aide-…`" pointer.** Every
+  generated document carried one, and each was stale shortly after it was
+  written: `progress.md` — edited on every merged item — still said "run
+  `/aide-create-queue` to generate the first batch" at queue 7, and a reader had
+  no way to tell a stale pointer from a current one. A step-scoped instruction
+  stored in a project-lifetime document is guaranteed drift.
 
-  The hand-off is now **spoken, not stored**: `vision.md`, `roadmap.md`,
+  The hand-off is now spoken rather than stored: `vision.md`, `roadmap.md`,
   `progress.md`, `queue-NNN.md`, and `items/NNN-*.md` end at their last content
-  section, and the skill that wrote the file names the typical next step in its
-  closing message to the user instead (and, for a queue, in the PR body — which
-  is read once, at review time, and never mistaken for current state).
+  section, and the skill that writes the file names the next step in its closing
+  message to the user (and, for a queue, in the PR body). The skills' `## Next
+  Step` sections are renamed `## Hand-off`.
 
-  What replaces it is the durable half of the same information, in each
-  template's **header blockquote**: the document's step in the loop, what it
-  derives from, and what derives from it. Those are structural facts that hold
-  as long as the document exists, so direction stays legible with nothing to go
-  out of date. `vision.md` now names itself the root of roadmap/progress/queues/
+  The durable half of that information moves into each template's **header
+  blockquote** — the document's step in the loop, what it derives from, and what
+  derives from it. `vision.md` names itself the root of roadmap/progress/queues/
   items; `roadmap.md` names progress as its mirror; `progress.md` states that
   queue state derives from it and item specs deliberately carry no status;
-  `queue-NNN.md` points at `../items/` and back at `progress.md`.
-
-  Codified as `conventions.md` §1 "No next-step pointers inside a living
-  document", enforced by instruction in all five templates, the six authoring
-  skills (`aide-create-{vision,roadmap,progress,queue,item}`,
-  `aide-feedback-loop`), and the `queue-planner` / `spec-author` agents. The
-  skills' `## Next Step` sections are renamed `## Hand-off (say this, don't
-  save it)` so the distinction is unmissable at the point of use.
+  `queue-NNN.md` points at `../items/` and back at `progress.md`. Described in
+  `conventions.md` §1.
 
   **No consumer action required** — nothing parses these lines and `aide check`
   does not flag them, so existing documents stay valid. Delete the trailing
