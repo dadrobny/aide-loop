@@ -125,6 +125,8 @@ def _read_quoted_value(key: str, stripped: str, lineno: int) -> str:
                     "a backslash at the end of a basic string escapes nothing"
                 )
             if nxt not in _BASIC_ESCAPES:
+                raise ConfigError(
+                    f"line {lineno}: unsupported escape '\\{nxt}' in the value for "
                     f"key {key!r} — this minimal reader decodes only \\\\ and \\\"; "
                     f"use a single-quoted 'literal string' (backslashes are literal "
                     f"there) or forward slashes"
@@ -211,6 +213,21 @@ def _parse_toml(text: str) -> Dict[str, Dict[str, object]]:
     return data
 
 
+def _config_error(path: Path, what: str, exc: object) -> "ConfigError":
+    """One phrasing for every way ``aide.toml`` can fail, so they cannot drift.
+
+    ``what`` distinguishes the causes a reader would act on differently: a file that
+    ``is malformed`` needs an edit, one that ``cannot be read`` needs permissions or
+    disk attention. The rest — naming the path, and why defaults are not an
+    acceptable fallback — is identical in every case.
+    """
+    return ConfigError(
+        f"{path} {what}: {exc}\n"
+        f"  aide.toml states this project's facts (source_dir, git mode, test "
+        f"command); refusing to continue with defaults that would be silently wrong."
+    )
+
+
 def load_config(repo_root: Path) -> Dict[str, Dict[str, object]]:
     """Load ``aide.toml`` merged over defaults.
 
@@ -224,13 +241,13 @@ def load_config(repo_root: Path) -> Dict[str, Dict[str, object]]:
     if path.is_file():
         try:
             text = path.read_text(encoding=_ENCODING)
-        except (OSError, UnicodeDecodeError) as exc:
-            raise ConfigError(
-                f"{path} is malformed and cannot be read: {exc}\n"
-                f"  aide.toml states this project's facts (source_dir, git mode, "
-                f"test command); refusing to continue with defaults that would be "
-                f"silently wrong."
-            ) from exc
+        except UnicodeDecodeError as exc:
+            raise _config_error(path, "is malformed", exc) from exc
+        except OSError as exc:
+            # Present but unreadable (permissions, a device error, a dangling
+            # link). The file may be perfectly well-formed — say so accurately
+            # rather than sending the reader to hunt for a syntax mistake.
+            raise _config_error(path, "cannot be read", exc) from exc
         try:
             import tomllib  # type: ignore
         except ModuleNotFoundError:
@@ -244,12 +261,7 @@ def load_config(repo_root: Path) -> Dict[str, Dict[str, object]]:
         except (ConfigError, ValueError) as exc:
             # Both parsers report line/column but neither knows the path, and the
             # path is the one thing a reader needs to go fix it.
-            raise ConfigError(
-                f"{path} is malformed and cannot be read: {exc}\n"
-                f"  aide.toml states this project's facts (source_dir, git mode, "
-                f"test command); refusing to continue with defaults that would be "
-                f"silently wrong."
-            ) from exc
+            raise _config_error(path, "is malformed", exc) from exc
         for section, values in parsed.items():
             merged.setdefault(section, {})
             if isinstance(values, dict):

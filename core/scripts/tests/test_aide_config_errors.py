@@ -221,6 +221,95 @@ def test_trailing_characters_after_a_quoted_value_are_rejected():
 
 
 # --------------------------------------------------------------------------- #
+# the remaining ways a config line can be wrong
+# --------------------------------------------------------------------------- #
+def test_trailing_backslash_in_a_basic_string_is_rejected():
+    """`"abc\\` ends mid-escape: the backslash has nothing to escape.
+
+    Distinct from a plain unterminated string, and worth its own message — the
+    fix is different (drop the backslash vs add a closing quote).
+    """
+    with pytest.raises(aide.ConfigError) as excinfo:
+        aide._parse_toml('[t]\nmsg = "abc\\\n')
+
+    assert "unterminated escape" in str(excinfo.value)
+
+
+def test_a_key_with_no_value_is_rejected():
+    with pytest.raises(aide.ConfigError) as excinfo:
+        aide._parse_toml("[t]\nmode =\n")
+
+    assert "missing value" in str(excinfo.value)
+    assert "'mode'" in str(excinfo.value)
+
+
+def test_a_key_whose_value_is_only_a_comment_is_rejected():
+    with pytest.raises(aide.ConfigError) as excinfo:
+        aide._parse_toml("[t]\nmode =  # forgot to fill this in\n")
+
+    assert "missing value" in str(excinfo.value)
+
+
+def test_an_empty_quoted_value_is_not_a_missing_value():
+    """`repo = ""` is a real, intentional value — the framework ships it as the
+    default for [framework] repo. It must not trip the missing-value check."""
+    assert aide._parse_toml('[t]\nrepo = ""\n')["t"]["repo"] == ""
+
+
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="tomllib needs 3.11+")
+@pytest.mark.parametrize("line", ['msg = "abc\\', "mode ="])
+def test_tomllib_also_rejects_these(line):
+    """Keeps the two parsers agreeing on which files are readable."""
+    import tomllib
+
+    with pytest.raises(tomllib.TOMLDecodeError):
+        tomllib.loads(f"[t]\n{line}\n")
+
+
+# --------------------------------------------------------------------------- #
+# the file is there but unusable — distinct from malformed content
+# --------------------------------------------------------------------------- #
+def test_invalid_utf8_bytes_are_reported_as_malformed(tmp_path):
+    """Not valid UTF-8 at all — e.g. a file saved as UTF-16 or cp1252 with
+    non-ASCII. Must not surface as a raw UnicodeDecodeError traceback."""
+    (tmp_path / "aide.toml").write_bytes(b'[project]\nname = "caf\xe9"\n')
+
+    with pytest.raises(aide.ConfigError) as excinfo:
+        aide.load_config(tmp_path)
+
+    message = str(excinfo.value)
+    assert "aide.toml" in message
+    assert "is malformed" in message
+
+
+def test_unreadable_file_says_cannot_be_read_not_malformed(tmp_path, monkeypatch):
+    """A permissions/IO failure is not a syntax problem — telling the user their
+    file is 'malformed' would send them hunting for a typo that isn't there."""
+    _repo(tmp_path, GOOD)
+
+    def _boom(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "read_text", _boom)
+
+    with pytest.raises(aide.ConfigError) as excinfo:
+        aide.load_config(tmp_path)
+
+    message = str(excinfo.value)
+    assert "cannot be read" in message
+    assert "is malformed" not in message
+
+
+def test_a_directory_named_aide_toml_is_treated_as_absent(tmp_path):
+    """`is_file()` is False, so defaults apply rather than an error."""
+    (tmp_path / "aide.toml").mkdir()
+
+    config = aide.load_config(tmp_path)
+
+    assert config["project"]["source_dir"] == aide.DEFAULT_CONFIG["project"]["source_dir"]
+
+
+# --------------------------------------------------------------------------- #
 # what the user actually sees at the CLI
 # --------------------------------------------------------------------------- #
 def test_cli_reports_cleanly_without_a_traceback(tmp_path):
