@@ -95,21 +95,30 @@ DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
 
 
 def _reject_unterminated_string(key: str, value: str, lineno: int) -> None:
-    """Raise if ``value`` opens a quoted string it never closes.
-
-    ``name = "unterminated`` would otherwise be read as ``unterminated`` — a wrong
-    answer that looks right. Only the opening-quote case is checked; this parser
-    makes no claim to validate TOML generally (tomllib does that on 3.11+).
-    """
+    """Raise if ``value`` opens a quoted string it never closes."""
     stripped = value.strip()
     if not stripped or stripped[0] not in "\"'":
         return
+
     quote = stripped[0]
-    if quote not in stripped[1:]:
-        raise ConfigError(
-            f"line {lineno}: unterminated string for key {key!r} — "
-            f"the value opens with {quote} but never closes it"
-        )
+    escaped = False
+    for i, ch in enumerate(stripped[1:], start=1):
+        if quote == '"' and not escaped and ch == "\\":
+            escaped = True
+            continue
+        if ch == quote and not escaped:
+            tail = stripped[i + 1:].lstrip()
+            if tail and not tail.startswith("#"):
+                raise ConfigError(
+                    f"line {lineno}: trailing characters after quoted string for key {key!r}"
+                )
+            return
+        escaped = False
+
+    raise ConfigError(
+        f"line {lineno}: unterminated string for key {key!r} — "
+        f"the value opens with {quote} but never closes it"
+    )
 
 
 class ConfigError(Exception):
