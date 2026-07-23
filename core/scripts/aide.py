@@ -119,9 +119,12 @@ def _read_quoted_value(key: str, stripped: str, lineno: int) -> str:
         ch = stripped[i]
         if quote == '"' and ch == "\\":
             nxt = stripped[i + 1] if i + 1 < len(stripped) else ""
-            if nxt not in _BASIC_ESCAPES:
+            if not nxt:
                 raise ConfigError(
-                    f"line {lineno}: unsupported escape '\\{nxt}' in the value for "
+                    f"line {lineno}: unterminated escape in the value for key {key!r} — "
+                    "a backslash at the end of a basic string escapes nothing"
+                )
+            if nxt not in _BASIC_ESCAPES:
                     f"key {key!r} — this minimal reader decodes only \\\\ and \\\"; "
                     f"use a single-quoted 'literal string' (backslashes are literal "
                     f"there) or forward slashes"
