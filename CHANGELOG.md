@@ -42,6 +42,38 @@ keys, and the adapter's agents/skills/commands.
   outcome-shaped criteria; conventions.md §1 documents the split (stages track
   shipped work, targets track measured outcomes, objectives require both).
 
+## [1.3.3] — 2026-07-23
+
+### Added
+
+- **`core/README.md`, installed as `.aide/README.md` (issue #16).** A consumer's
+  `CLAUDE.md` links to `.aide/README.md` three times — for the loop, the
+  orchestrators, and the merge policy — but no installer ever shipped that file.
+  It existed in the original in-tree `.aide` skeleton and was deleted when the
+  repo adopted the standalone framework, so the links survived the file. No
+  installer change was needed: `install_engine` already copies `core/` wholesale,
+  so a file added there ships automatically.
+
+  The new file is consumer-framed (`.aide/…`, `.claude/…` paths) and covers what
+  a consumer needs that `conventions.md` deliberately doesn't: what's in `.aide/`,
+  the six-step loop, the three orchestrators, model routing by capability tier,
+  the merge policy, and shared-vs-personal files. It excludes anything about
+  maintaining the framework itself (install instructions, the version-bump
+  policy, this repo's own layout) — that stays in the root `README.md`, which now
+  links to `core/README.md` instead of carrying a second copy of the same
+  sections.
+
+  Also added `tests/test_installed_docs_links.py`, which installs into a temp
+  directory and asserts every relative markdown link under the installed
+  `.aide/` resolves — so a future file move or rename that breaks a consumer-side
+  link fails the suite instead of surfacing three commits later in someone
+  else's `CLAUDE.md`.
+
+  **Also fixed:** `pytest.ini`'s `testpaths` only listed `core adapters`, so a
+  bare `pytest` (what CI runs) silently skipped the whole top-level `tests/`
+  suite — including `test_repo_versioning.py`, the very test that enforces the
+  `core/VERSION` bump rule this entry follows. `testpaths` now includes `tests`.
+
 ## [1.3.2] — 2026-07-23
 
 ### Fixed
