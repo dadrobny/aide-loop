@@ -217,7 +217,15 @@ def load_config(repo_root: Path) -> Dict[str, Dict[str, object]]:
     merged = {k: dict(v) for k, v in DEFAULT_CONFIG.items()}
     path = repo_root / "aide.toml"
     if path.is_file():
-        text = path.read_text(encoding=_ENCODING)
+        try:
+            text = path.read_text(encoding=_ENCODING)
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ConfigError(
+                f"{path} is malformed and cannot be read: {exc}\n"
+                f"  aide.toml states this project's facts (source_dir, git mode, "
+                f"test command); refusing to continue with defaults that would be "
+                f"silently wrong."
+            ) from exc
         try:
             import tomllib  # type: ignore
         except ModuleNotFoundError:
