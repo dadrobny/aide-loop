@@ -495,6 +495,94 @@ def test_check_warns_stale_claim_branch(tmp_path: Path):
 
 
 # --------------------------------------------------------------------------- #
+# outcome targets (issue #14: shipped work vs. achieved goal are orthogonal)
+# --------------------------------------------------------------------------- #
+TARGETS = """\
+
+## Outcome targets
+
+| Target | Objective | Attempted by | Status | Evidence / follow-up |
+|--------|-----------|--------------|--------|----------------------|
+| Held-out FPR <= 0.10 | G2 | Stage 1 | ❌ Not met | FPR 0.975 → gap insight |
+| Runtime < 60 s | G1 | Stage 0 | ✅ Met (2026-07-01, CI) | timing job |
+"""
+
+
+def test_outcome_targets_parse():
+    ts = aide.outcome_targets((PROGRESS + TARGETS).splitlines())
+    assert [(t.text, t.objectives, t.kind) for t in ts] == [
+        ("Held-out FPR <= 0.10", ["G2"], "not-met"),
+        ("Runtime < 60 s", ["G1"], "met"),
+    ]
+
+
+def test_outcome_targets_absent_table_is_empty():
+    assert aide.outcome_targets(PROGRESS.splitlines()) == []
+
+
+def test_outcome_targets_multi_objective_and_unverified():
+    ts = aide.outcome_targets(
+        "## Outcome targets\n"
+        "| Target | Objective | Attempted by | Status | Notes |\n"
+        "|---|---|---|---|---|\n"
+        "| Dice >= 0.9 | G1, G3 | Stage 2 | ❓ Unverified | pending cohort |\n"
+        .splitlines())
+    assert ts[0].objectives == ["G1", "G3"]
+    assert ts[0].kind == "unverified"
+
+
+def test_unmet_target_blocks_objective_rollup_not_stage():
+    out = aide.set_item_status(PROGRESS + TARGETS, 3, "complete")
+    # The stage closes: its planned work shipped.
+    assert "## Stage 1 — Rule Engine — ✅" in out
+    assert "| 1 | Rule Engine | G2 | ✅ |" in out
+    assert "- [x] Rules fire." in out
+    # The objective does not: its outcome target is ❌ Not met.
+    assert "| G2 Rules | Stage 1 | 🚧 |" in out
+
+
+def test_met_target_does_not_block_objective():
+    met = (PROGRESS + TARGETS).replace("❌ Not met", "✅ Met (2026-07-02, eval run)")
+    out = aide.set_item_status(met, 3, "complete")
+    assert "| G2 Rules | Stage 1 | ✅ |" in out
+
+
+def test_check_clean_with_targets_table(tmp_path: Path):
+    root = _docs(tmp_path, progress=PROGRESS + TARGETS)
+    cfg = aide.load_config(root)
+    errors, warnings = aide.run_checks(root, cfg, branches=[])
+    assert errors == [], errors
+    assert not any("outcome target" in w for w in warnings), warnings
+
+
+def test_check_flags_objective_complete_over_unmet_target(tmp_path: Path):
+    lying = (PROGRESS + TARGETS).replace(
+        "| G2 Rules | Stage 1 | 🚧 |", "| G2 Rules | Stage 1 | ✅ |")
+    root = _docs(tmp_path, progress=lying)
+    cfg = aide.load_config(root)
+    errors, _ = aide.run_checks(root, cfg, branches=[])
+    assert any("objective G2 marked ✅ but outcome target" in e for e in errors)
+
+
+def test_check_warns_objective_complete_over_unverified_target(tmp_path: Path):
+    doc = (PROGRESS + TARGETS).replace("❌ Not met", "❓ Unverified").replace(
+        "| G2 Rules | Stage 1 | 🚧 |", "| G2 Rules | Stage 1 | ✅ |")
+    root = _docs(tmp_path, progress=doc)
+    cfg = aide.load_config(root)
+    errors, warnings = aide.run_checks(root, cfg, branches=[])
+    assert not any("outcome target" in e for e in errors)
+    assert any("is not ✅ Met" in w for w in warnings)
+
+
+def test_check_warns_unrecognised_target_status(tmp_path: Path):
+    doc = (PROGRESS + TARGETS).replace("❌ Not met", "TBD")
+    root = _docs(tmp_path, progress=doc)
+    cfg = aide.load_config(root)
+    _, warnings = aide.run_checks(root, cfg, branches=[])
+    assert any("unrecognised Status" in w for w in warnings)
+
+
+# --------------------------------------------------------------------------- #
 # template residue ({{slot}} left unfilled in a generated document)
 # --------------------------------------------------------------------------- #
 def test_template_residue_flags_unfilled_slot(tmp_path: Path):
