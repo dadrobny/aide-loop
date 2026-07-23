@@ -94,16 +94,50 @@ DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
 }
 
 
+def _reject_unterminated_string(key: str, value: str, lineno: int) -> None:
+    """Raise if ``value`` opens a quoted string it never closes.
+
+    ``name = "unterminated`` would otherwise be read as ``unterminated`` — a wrong
+    answer that looks right. Only the opening-quote case is checked; this parser
+    makes no claim to validate TOML generally (tomllib does that on 3.11+).
+    """
+    stripped = value.strip()
+    if not stripped or stripped[0] not in "\"'":
+        return
+    quote = stripped[0]
+    if quote not in stripped[1:]:
+        raise ConfigError(
+            f"line {lineno}: unterminated string for key {key!r} — "
+            f"the value opens with {quote} but never closes it"
+        )
+
+
+class ConfigError(Exception):
+    """``aide.toml`` cannot be trusted — malformed, so its facts are unknowable.
+
+    Raised instead of guessing. Every project fact the framework acts on comes from
+    that file, so silently falling back to defaults would scope the builder at the
+    wrong directory, pick the wrong git mode, or run the wrong test command while
+    reporting success. ``main`` catches this and prints it as a plain error.
+    """
+
+
 def _parse_toml(text: str) -> Dict[str, Dict[str, object]]:
     """Minimal TOML reader for the flat ``[table] key = value`` shape of aide.toml.
 
     Supports string/int/float/bool scalars and ``#`` comments. Used only when the
     stdlib ``tomllib`` (Python 3.11+) is unavailable, so the CLI and its tests run
     on the project's 3.9 venv too.
+
+    Deliberately lenient about what it *ignores* (unknown lines, blank tables) but
+    strict about what it would otherwise *misread*: an unterminated quoted string
+    used to yield the truncated text as the value, so a typo became a plausible
+    wrong answer on 3.9 while 3.11's tomllib rejected the same file. Raises
+    ``ConfigError`` so both paths agree.
     """
     data: Dict[str, Dict[str, object]] = {}
     table: Optional[Dict[str, object]] = None
-    for raw in text.splitlines():
+    for lineno, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -115,6 +149,7 @@ def _parse_toml(text: str) -> Dict[str, Dict[str, object]]:
             continue
         key, _, value = line.partition("=")
         key = key.strip()
+        _reject_unterminated_string(key, value, lineno)
         value = value.split("#", 1)[0].strip() if not value.lstrip().startswith('"') else value.strip()
         # strip trailing comment for unquoted values only (quoted may contain #)
         if value and value[0] in "\"'":
@@ -134,16 +169,36 @@ def _parse_toml(text: str) -> Dict[str, Dict[str, object]]:
 
 
 def load_config(repo_root: Path) -> Dict[str, Dict[str, object]]:
-    """Load ``aide.toml`` merged over defaults. Missing file -> defaults."""
+    """Load ``aide.toml`` merged over defaults.
+
+    A *missing* file is fine — defaults apply, which is what an unconfigured repo
+    means. A *malformed* file is not: it states project facts that cannot be read,
+    so this raises ``ConfigError`` naming the file rather than falling back to
+    defaults that would silently be wrong.
+    """
     merged = {k: dict(v) for k, v in DEFAULT_CONFIG.items()}
     path = repo_root / "aide.toml"
     if path.is_file():
         text = path.read_text(encoding=_ENCODING)
         try:
             import tomllib  # type: ignore
-            parsed = tomllib.loads(text)
         except ModuleNotFoundError:
-            parsed = _parse_toml(text)
+            detail_source = _parse_toml
+        else:
+            # tomllib.TOMLDecodeError subclasses ValueError; catching ValueError
+            # keeps this working if that relationship ever changes.
+            detail_source = tomllib.loads
+        try:
+            parsed = detail_source(text)
+        except (ConfigError, ValueError) as exc:
+            # Both parsers report line/column but neither knows the path, and the
+            # path is the one thing a reader needs to go fix it.
+            raise ConfigError(
+                f"{path} is malformed and cannot be read: {exc}\n"
+                f"  aide.toml states this project's facts (source_dir, git mode, "
+                f"test command); refusing to continue with defaults that would be "
+                f"silently wrong."
+            ) from exc
         for section, values in parsed.items():
             merged.setdefault(section, {})
             if isinstance(values, dict):
@@ -1413,7 +1468,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             pass
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except ConfigError as exc:
+        # A broken aide.toml is a user-fixable state, not a crash. Every
+        # subcommand loads the config, so catching it once here keeps the
+        # traceback off the screen for all of them.
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

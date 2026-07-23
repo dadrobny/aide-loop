@@ -17,6 +17,28 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.2.2] — 2026-07-23
+
+### Fixed
+
+- **A malformed `aide.toml` behaved differently on different Pythons, and one of
+  them was silent.** On 3.11 `tomllib` raised an uncaught `TOMLDecodeError` —
+  `load_config` caught only `ModuleNotFoundError` — so the user got a traceback
+  through `tomllib` internals that never named the offending file. On 3.9 the
+  fallback parser *accepted* the same file: `name = "unterminated` yielded the
+  truncated text as the value, so a typo became a plausible wrong answer.
+
+  `load_config` now raises `ConfigError` on either path, with one message naming
+  the path and the line. `main` catches it and prints `error: …` with exit 2, so
+  no subcommand shows a traceback for a user-fixable file. The fallback parser
+  rejects an unterminated quoted string rather than misreading it, which is what
+  makes the two paths agree.
+
+  A *missing* `aide.toml` is still fine — that means "unconfigured", and defaults
+  are the right answer. A malformed one is not: it states facts (`source_dir`,
+  git mode, test command) that the framework acts on, so continuing on defaults
+  would scope the builder at the wrong directory while reporting success.
+
 ## [1.2.1] — 2026-07-22
 
 ### Fixed
