@@ -58,6 +58,19 @@ _ANY_HEADER_RE = re.compile(r"^#{1,2}\s+")
 _TRAILING_ICON_RE = re.compile(r"(" + _ICON_ALT + r")\s*$")
 
 
+# Every file this CLI reads is project-owned and hand-editable — aide.toml and the
+# docs/aide/ living documents. Windows editors (Notepad, PowerShell's Out-File,
+# "Save as UTF-8" in several IDEs) prepend a BOM, and a leading U+FEFF breaks
+# first-line parsing *silently*: on the 3.9 fallback parser a BOM'd aide.toml loses
+# only its FIRST table, because "^\[table\]$" fails on that one line while every
+# later table still matches. [project] vanishes (source_dir back to its default)
+# while [git] is honoured — a half-correct config, no error, every command
+# reporting success. On 3.11 the same file raises an uncaught TOMLDecodeError.
+# "utf-8-sig" strips a BOM when present and is byte-identical to "utf-8" when
+# absent, so it is the correct default for anything a human may have touched.
+_ENCODING = "utf-8-sig"
+
+
 def _item_ref_re(num: int) -> re.Pattern:
     """Match ``*(Item NNN)*`` / ``*(Items 006, NNN)*`` for a specific number."""
     return re.compile(r"\bItems?\b[^)]*\b0*" + str(num) + r"\b")
@@ -125,7 +138,7 @@ def load_config(repo_root: Path) -> Dict[str, Dict[str, object]]:
     merged = {k: dict(v) for k, v in DEFAULT_CONFIG.items()}
     path = repo_root / "aide.toml"
     if path.is_file():
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding=_ENCODING)
         try:
             import tomllib  # type: ignore
             parsed = tomllib.loads(text)
@@ -319,7 +332,7 @@ def _spec_stage_and_title(repo_root: Path, config, number: int) -> Tuple[Optiona
     specs = sorted(idir.glob(f"{number:03d}-*.md")) if idir.is_dir() else []
     if not specs:
         return None, None
-    text = specs[0].read_text(encoding="utf-8")
+    text = specs[0].read_text(encoding=_ENCODING)
     tm = re.search(r"^#\s+Item\s+0*" + str(number) + r"\s*[—–-]\s*(.+?)\s*$", text, re.MULTILINE)
     sm = re.search(r"\*\*Stage:\*\*\s*(\d+)", text)
     return (sm.group(1) if sm else None), (tm.group(1) if tm else None)
@@ -427,7 +440,7 @@ def _progress_item_status(repo_root: Path, config) -> Dict[int, str]:
     path = docs_dir(repo_root, config) / "progress.md"
     if not path.is_file():
         return {}
-    _, _, item_status = _parse_item_status(path.read_text(encoding="utf-8").splitlines())
+    _, _, item_status = _parse_item_status(path.read_text(encoding=_ENCODING).splitlines())
     return item_status
 
 
@@ -469,7 +482,7 @@ def template_residue_errors(ddir: Path) -> List[str]:
     if not ddir.is_dir():
         return errors
     for path in sorted(ddir.rglob("*.md")):
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding=_ENCODING)
         for lineno, line in enumerate(text.splitlines(), start=1):
             for m in _TEMPLATE_SLOT_RE.finditer(line):
                 errors.append(
@@ -496,7 +509,7 @@ def insight_warnings(ddir: Path) -> List[str]:
     if not path.is_file():
         return []
     out: List[str] = []
-    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for lineno, line in enumerate(path.read_text(encoding=_ENCODING).splitlines(), start=1):
         if not line.startswith("- "):
             continue
         if not _INSIGHT_RE.match(line):
@@ -547,7 +560,7 @@ def stray_icon_warnings(ddir: Path) -> List[str]:
     if qdir.is_dir():
         paths.extend(sorted(qdir.glob("queue-*.md")))
     for path in paths:
-        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        for lineno, line in enumerate(path.read_text(encoding=_ENCODING).splitlines(), start=1):
             for icon in _stray_icons_in_line(line):
                 out.append(
                     f"{path.relative_to(ddir)}:{lineno}: status icon {icon} outside a "
@@ -571,7 +584,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
 
     if not progress_path.is_file():
         return [f"missing {progress_path}"], warnings
-    text = progress_path.read_text(encoding="utf-8")
+    text = progress_path.read_text(encoding=_ENCODING)
     lines = text.splitlines()
 
     # Mandatory sections.
@@ -622,7 +635,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     if qdir.is_dir():
         _, _, istat = _parse_item_status(lines)
         for qpath in _queue_paths(qdir):
-            qtext = qpath.read_text(encoding="utf-8")
+            qtext = qpath.read_text(encoding=_ENCODING)
             derived_open = queue_is_open(qtext, istat)
             declared = queue_status(qtext)
             if declared:
@@ -751,7 +764,7 @@ def cmd_progress(args: argparse.Namespace) -> int:
     if not progress_path.is_file():
         print(f"error: {progress_path} not found", file=sys.stderr)
         return 1
-    text = progress_path.read_text(encoding="utf-8")
+    text = progress_path.read_text(encoding=_ENCODING)
     original = text
     # An item is only trackable if some deliverable bullet references it (a
     # missing "*(Item NNN)*" would make set_item_status a silent no-op). When
@@ -815,7 +828,7 @@ def cmd_queue(args: argparse.Namespace) -> int:
     )
     superseded_by = later[-1] if later else args.number + 1
     date = args.date or _dt.date.today().isoformat()
-    text = target.read_text(encoding="utf-8")
+    text = target.read_text(encoding=_ENCODING)
     target.write_text(tidy_queue_text(text, superseded_by, date), encoding="utf-8")
     print(f"queue-{args.number:03d}: marked completed (superseded by queue-{superseded_by:03d})")
     return 0
@@ -922,7 +935,7 @@ def _item_dependencies(repo_root: Path, config, number: int) -> List[int]:
     specs = list(idir.glob(f"{number:03d}-*.md"))
     if not specs:
         return []
-    text = specs[0].read_text(encoding="utf-8")
+    text = specs[0].read_text(encoding=_ENCODING)
     m = re.search(r"^##\s+Dependencies\s*$(.*?)(^##\s|\Z)", text, re.MULTILINE | re.DOTALL)
     section = m.group(1) if m else ""
     deps = {int(x) for x in re.findall(r"\bItem[s]?\s+0*(\d+)", section)}
@@ -934,7 +947,7 @@ def _pick_item(repo_root: Path, config, queue_text: str,
                claim_branches: List[str]) -> Optional[Tuple[int, str]]:
     """First queue item that is planned, unclaimed, and unblocked. (number, title)."""
     _, _, item_status = _parse_item_status(
-        (docs_dir(repo_root, config) / "progress.md").read_text(encoding="utf-8").splitlines()
+        (docs_dir(repo_root, config) / "progress.md").read_text(encoding=_ENCODING).splitlines()
     ) if (docs_dir(repo_root, config) / "progress.md").is_file() else ([], [], {})
     claimed_nums = set()
     for br in claim_branches:
@@ -962,7 +975,7 @@ def _open_queue_texts(repo_root: Path, config) -> List[str]:
     item_status = _progress_item_status(repo_root, config)
     out: List[str] = []
     for path in _queue_paths(qdir):
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding=_ENCODING)
         if queue_is_open(text, item_status):
             out.append(text)
     return out
@@ -975,14 +988,14 @@ def _live_queue_text(repo_root: Path, config, queue_number: Optional[int]) -> Op
     qdir = docs_dir(repo_root, config) / "queue"
     if queue_number is not None:
         path = qdir / f"queue-{queue_number:03d}.md"
-        return path.read_text(encoding="utf-8") if path.is_file() else None
+        return path.read_text(encoding=_ENCODING) if path.is_file() else None
     if not qdir.is_dir():
         return None
     if (docs_dir(repo_root, config) / "progress.md").is_file():
         open_texts = _open_queue_texts(repo_root, config)
         return open_texts[0] if open_texts else None
     for path in sorted(_queue_paths(qdir), reverse=True):
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding=_ENCODING)
         if is_live_queue(text):
             return text
     return None
@@ -1216,7 +1229,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     live_seen = False
     if qdir.is_dir() and _queue_paths(qdir):
         for path in _queue_paths(qdir):
-            nums = queue_item_numbers(path.read_text(encoding="utf-8"))
+            nums = queue_item_numbers(path.read_text(encoding=_ENCODING))
             open_nums = [n for n in nums
                          if item_status.get(n, "planned") in ("planned", "in-progress")]
             if open_nums:
@@ -1276,7 +1289,7 @@ def cmd_gc(args: argparse.Namespace) -> int:
     item_status: Dict[int, str] = {}
     if progress_path.is_file():
         _, _, item_status = _parse_item_status(
-            progress_path.read_text(encoding="utf-8").splitlines())
+            progress_path.read_text(encoding=_ENCODING).splitlines())
 
     local = [b for b in _local_branches(repo_root) if b.startswith(prefix)]
     remote = [b for b in _remote_branches(repo_root) if b.startswith(prefix)]

@@ -60,6 +60,12 @@ FRAMEWORK_ROOT = Path(__file__).resolve().parent
 ADAPTER_CONTROL = ("agents", "skills", "commands", "hooks", "scripts")
 ADAPTER_SETTINGS = "settings.json"
 
+# Encoding for reading files that live in the CONSUMER repo (settings.json, the
+# overlay, .gitignore, .aide/VERSION). Those are hand-editable, and a Windows editor
+# prepends a BOM; "utf-8-sig" strips one when present and is identical to "utf-8"
+# when absent. Files read out of THIS repo are framework-written and use "utf-8".
+CONSUMER_ENCODING = "utf-8-sig"
+
 # Project-owned overlay that deterministically customises the framework settings.
 # When present, settings.json is regenerated from base+overlay on every run; the
 # `.example` is scaffolded on a fresh install so the mechanism is discoverable.
@@ -198,9 +204,7 @@ def report_version(available: str, installed_path: Path, target: Path) -> int:
               f"run install.py --into {target}", file=sys.stderr)
         return 2
 
-    # utf-8-sig: this file lives on someone else's disk and may have picked up a
-    # BOM from an editor; a stray byte must not turn into part of the version.
-    installed = installed_path.read_text(encoding="utf-8-sig").strip()
+    installed = installed_path.read_text(encoding=CONSUMER_ENCODING).strip()
     state = compare_versions(installed, available)
     if state == "current":
         print(f"aide {target}: v{installed} — up to date")
@@ -433,7 +437,10 @@ def install_settings(adapter_dir: Path, claude_dir: Path, target: Path, log: Lis
         _scaffold_overlay_example(claude_dir, log)
         return
 
-    existing_text = dst.read_text(encoding="utf-8")
+    # utf-8-sig: the consumer's settings.json may carry an editor-added BOM. Reading
+    # it as plain utf-8 would leave U+FEFF in the text, so the comparison below sees
+    # a spurious difference and a pointless .aide-merge is emitted every run.
+    existing_text = dst.read_text(encoding=CONSUMER_ENCODING)
     if existing_text.splitlines(keepends=True) == base_text.splitlines(keepends=True):
         log.append(f"  = {dst} (unchanged)")
         _scaffold_overlay_example(claude_dir, log)
@@ -511,7 +518,7 @@ def _generate_settings_from_overlay(base: dict, overlay_path: Path, dst: Path,
     """Write dst = deterministic merge of the (effective) framework base and the
     project overlay. Raises OverlayError (before any write) on a malformed input."""
     try:
-        overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+        overlay = json.loads(overlay_path.read_text(encoding=CONSUMER_ENCODING))
     except json.JSONDecodeError as exc:
         raise OverlayError(f"{overlay_path} is not valid JSON: {exc}") from exc
 
@@ -634,7 +641,7 @@ def scaffold_aide_toml(target: Path, adapter: str, version: str, args: argparse.
 
 def append_gitignore(target: Path, log: List[str]) -> None:
     path = target / ".gitignore"
-    existing = path.read_text(encoding="utf-8") if path.is_file() else ""
+    existing = path.read_text(encoding=CONSUMER_ENCODING) if path.is_file() else ""
     if GITIGNORE_MARKER in existing:
         return
     sep = "" if (not existing or existing.endswith("\n")) else "\n"

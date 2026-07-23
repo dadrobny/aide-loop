@@ -17,6 +17,31 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-07-22
+
+### Fixed
+
+- **A byte-order mark in a project-owned file silently changed how it was read.**
+  Windows editors (Notepad, PowerShell `Out-File`, several IDEs' "Save as UTF-8")
+  prepend U+FEFF; read as plain UTF-8 that codepoint survives into the text and
+  breaks first-line parsing. Every read of a file that lives in a consumer repo —
+  `aide.toml`, the `docs/aide/` living documents, `loop.local.toml`,
+  `.claude/settings.json`, the settings overlay, `.gitignore`, `.aide/VERSION` —
+  now uses `utf-8-sig`, which strips a BOM when present and is byte-identical to
+  `utf-8` when absent.
+
+  The worst case was silent rather than loud. `aide.toml` read with a BOM lost
+  **only its first table** — the fallback TOML parser's `^\[table\]$` match fails
+  on the BOM'd line while every later table parses normally — so `[project]`
+  vanished and `source_dir` reverted to its default while `[git]` was still
+  honoured. A half-correct config, no error, every command reporting success.
+  On Python 3.11 the same file raised an uncaught `TOMLDecodeError` instead.
+
+  Also fixed: a BOM'd `settings.json` crashed the permission reviewer's
+  `load_rules`, made `install.py` see a spurious difference from the framework
+  base (emitting a pointless `.aide-merge` on every run), and could cause the
+  `.gitignore` block to be appended twice.
+
 ## [1.2.0] — 2026-07-22
 
 Seventeen consumer-visible commits had accumulated under `1.1.0` before this
