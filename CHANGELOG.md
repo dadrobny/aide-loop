@@ -17,6 +17,53 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-07-23
+
+### Changed
+
+- **Living documents no longer carry a "Next: run `/aide-…`" pointer.** Every
+  generated document ended with one, and every one of them was a lie shortly
+  after it was written: `progress.md` — edited on every merged item, the
+  most-read file in the loop — still said "run `/aide-create-queue` to generate
+  the first batch" at queue 7, and a reader had no way to tell a stale pointer
+  from a current one. A step-scoped instruction stored in a project-lifetime
+  document is guaranteed drift.
+
+  The hand-off is now **spoken, not stored**: `vision.md`, `roadmap.md`,
+  `progress.md`, `queue-NNN.md`, and `items/NNN-*.md` end at their last content
+  section, and the skill that wrote the file names the typical next step in its
+  closing message to the user instead (and, for a queue, in the PR body — which
+  is read once, at review time, and never mistaken for current state).
+
+  What replaces it is the durable half of the same information, in each
+  template's **header blockquote**: the document's step in the loop, what it
+  derives from, and what derives from it. Those are structural facts that hold
+  as long as the document exists, so direction stays legible with nothing to go
+  out of date. `vision.md` now names itself the root of roadmap/progress/queues/
+  items; `roadmap.md` names progress as its mirror; `progress.md` states that
+  queue state derives from it and item specs deliberately carry no status;
+  `queue-NNN.md` points at `../items/` and back at `progress.md`.
+
+  Codified as `conventions.md` §1 "No next-step pointers inside a living
+  document", enforced by instruction in all five templates, the six authoring
+  skills (`aide-create-{vision,roadmap,progress,queue,item}`,
+  `aide-feedback-loop`), and the `queue-planner` / `spec-author` agents. The
+  skills' `## Next Step` sections are renamed `## Hand-off (say this, don't
+  save it)` so the distinction is unmissable at the point of use.
+
+  **No consumer action required** — nothing parses these lines and `aide check`
+  does not flag them, so existing documents stay valid. Delete the trailing
+  `Next:` line the next time you touch one.
+
+### Added
+
+- **`CLAUDE.md` for this repo.** aide-loop is the framework, not a consumer of
+  it, and an agent arriving here would otherwise look for `docs/aide/` and an
+  `aide.toml` that do not exist. Covers the source-vs-installed path trap (the
+  `.aide/…` references under `core/` and `adapters/` are consumer paths and must
+  not be "fixed"), the enforced `core/VERSION` bump rule, the stdlib-only test
+  setup, and how to try a change in a real consumer from the local working tree.
+
 ## [1.2.2] — 2026-07-23
 
 ### Fixed
