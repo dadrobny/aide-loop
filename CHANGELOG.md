@@ -17,6 +17,45 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-07-23
+
+### Fixed
+
+- **`*(Items A, B)*` credited only the first item, which could strand
+  `aide claim` on a finished queue.** `_parse_item_status` matched
+  `[Ii]tem[s]?\s+0*(\d+)` — the word "Item(s)" followed by *one* number — so in
+  the multi-item reference the create-queue step explicitly tells authors to
+  write (`… *(Items 006, NNN)*`, for a deliverable delivered by several items)
+  every number after the first was invisible.
+
+  Orphaned items read as `planned` forever even while sitting on a ✅
+  deliverable bullet. Because a queue is open while any of its items is
+  planned/in-progress, and the *live* queue is the lowest-numbered open one,
+  those phantom-open items pinned the live queue to a long-finished batch;
+  `aide claim`, scoped to the live queue, then reported `none left` and never
+  looked at the current one. A consumer hit exactly this: seven items across
+  four queues, all on green bullets, wedged the loop so that a newly created
+  queue would have been invisible to it.
+
+  The root cause was two different notions of "item NNN is referenced" in one
+  module: the status parse above, and `_item_ref_re` (used by `aide progress
+  set`), which matched any number literally present inside the reference. So
+  `progress set` acted happily on an item `check`/`status`/`claim` believed
+  untracked.
+
+  Both now go through a single `_referenced_item_numbers`, and the accepted
+  reference forms are written down in `conventions.md` §1: `*(Item 006)*`,
+  `*(Items 006, 044)*`, `*(Items 089/090)*`, and inclusive ranges
+  `*(Items 071–075)*` (hyphen or en-dash). **Ranges are now expanded**, so an
+  item named only inside one is tracked and `aide progress set` can flip its
+  bullet — previously `071–075` credited `071` alone and silently orphaned the
+  three interior items. A range wider than 50 is treated as a typo and
+  contributes only its endpoints.
+
+  **Consumer action:** none. Projects whose multi-item references were being
+  half-read will see the affected queues close and `aide claim` resume on the
+  correct queue after updating; no document edit is required.
+
 ## [1.3.0] — 2026-07-23
 
 ### Changed
