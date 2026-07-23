@@ -193,6 +193,8 @@ def _parse_toml(text: str) -> Dict[str, Dict[str, object]]:
             table[key] = _read_quoted_value(key, value, lineno)
             continue
         token = value.split("#", 1)[0].strip()
+        if not token:
+            raise ConfigError(f"line {lineno}: missing value for key {key!r}")
         if token.lower() in ("true", "false"):
             table[key] = token.lower() == "true"
         else:
