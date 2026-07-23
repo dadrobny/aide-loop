@@ -681,7 +681,20 @@ def insight_warnings(ddir: Path) -> List[str]:
 
 
 def _stray_icons_in_line(line: str) -> List[str]:
-    """Status icons on this line that sit OUTSIDE any structural position."""
+    """Status icons on this line that sit where one could plausibly be
+    mistaken for a structural status declaration.
+
+    conventions.md §1 is explicit that icons are read *only* at structural
+    positions — a deliverable bullet's leading icon, a table row's last cell,
+    a stage header's trailing icon — and that "an icon anywhere else […] is
+    plain text and is never read as status, so authors need not avoid the
+    icon vocabulary in free text." A bullet with no leading icon, or an
+    ordinary paragraph, therefore has *no* structural position at all, and
+    any icon it contains is exactly that free text — never stray. Only a
+    heading, whose sole structural slot is the trailing icon, can still carry
+    a status-shaped icon somewhere a reader would misread as the header's
+    status.
+    """
     icons = list(_ICON_RE.finditer(line))
     if not icons:
         return []
@@ -689,15 +702,13 @@ def _stray_icons_in_line(line: str) -> List[str]:
         return []  # "> **Status:** …" lines legitimately carry an icon
     if line.strip().startswith("|"):
         return []  # table rows: parsers read specific cells only, never prose
-    allowed: Optional[Tuple[int, int]] = None
-    m = _BULLET_RE.match(line)
-    if m:
-        allowed = m.span("icon")
-    elif re.match(r"^#{1,6}\s", line):  # any heading level may carry a trailing icon
+    if _BULLET_RE.match(line):
+        return []  # bullets: only the leading icon is structural; the rest is free prose
+    if re.match(r"^#{1,6}\s", line):  # any heading level may carry a trailing icon
         t = _TRAILING_ICON_RE.search(line)
-        if t:
-            allowed = t.span(1)
-    return [i.group(0) for i in icons if i.span() != allowed]
+        allowed = t.span(1) if t else None
+        return [i.group(0) for i in icons if i.span() != allowed]
+    return []  # ordinary paragraph text: no structural position exists here at all
 
 
 def stray_icon_warnings(ddir: Path) -> List[str]:
