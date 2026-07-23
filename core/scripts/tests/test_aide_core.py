@@ -333,13 +333,31 @@ def test_progress_set_flips_a_range_referenced_item(tmp_path: Path):
     assert "- ✅ Backend port. *(Items 071–075)*" in out
 
 
-def test_check_warns_on_stray_prose_icon(tmp_path: Path):
-    decoy = PROGRESS + "\nA stray ✅ in prose.\n"
+def test_check_warns_on_stray_heading_icon(tmp_path: Path):
+    """A heading's only structural slot is its trailing icon — one parked
+    elsewhere on the same heading is a plausible misreading, so it still
+    warns."""
+    decoy = PROGRESS + "\n## 🚧 Notes — ✅\n"
     root = _docs(tmp_path, progress=decoy)
     cfg = aide.load_config(root)
     errors, warnings = aide.run_checks(root, cfg, branches=[])
     assert errors == []
-    assert any("stray" not in w and "status icon ✅ outside" in w for w in warnings)
+    assert any("status icon 🚧 outside" in w for w in warnings)
+
+
+def test_check_silent_on_icons_in_prose(tmp_path: Path):
+    """conventions.md §1 explicitly permits the icon vocabulary in prose, a
+    non-leading bullet, and mid-bullet asides — none of those are structural
+    positions, so none should trip the stray-icon lint (issue #13)."""
+    decoy = PROGRESS + (
+        "\nA stray ✅ in prose.\n\n"
+        "- Flip the Stage 0 deliverable from 📋 to ✅ (mark it 🚧 while in progress).\n"
+    )
+    root = _docs(tmp_path, progress=decoy)
+    cfg = aide.load_config(root)
+    errors, warnings = aide.run_checks(root, cfg, branches=[])
+    assert errors == []
+    assert not any("outside a structural status position" in w for w in warnings)
 
 
 def test_check_no_stray_warning_on_clean_docs(tmp_path: Path):

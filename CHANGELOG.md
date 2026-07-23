@@ -17,6 +17,23 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-07-23
+
+### Fixed
+
+- **`aide check`'s stray-icon lint flagged the icon vocabulary anywhere it
+  appeared in prose, drowning real warnings in noise (issue #13).**
+  `_stray_icons_in_line` treated any line that wasn't a table row, a queue
+  status line, or a leading-icon bullet as fair game to flag *every* icon on
+  it — so an ordinary sentence, or a bullet whose text merely mentioned an
+  icon mid-sentence, tripped the same warning as a genuine misplaced status
+  icon. conventions.md §1 is explicit that only three positions are
+  structural (a deliverable bullet's leading icon, a table row's last cell, a
+  stage header's trailing icon); everywhere else the icon vocabulary is prose
+  by design. The lint now only ever fires on a heading whose status-shaped
+  icon sits somewhere other than the trailing position — the one remaining
+  shape where a reader could plausibly misread it as the header's status.
+
 ## [1.3.1] — 2026-07-23
 
 ### Fixed
