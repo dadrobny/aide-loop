@@ -17,6 +17,44 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-07-23
+
+### Changed
+
+- **Living documents no longer end with a "Next: run `/aide-…`" pointer.** Every
+  generated document carried one, and each was stale shortly after it was
+  written: `progress.md` — edited on every merged item — still said "run
+  `/aide-create-queue` to generate the first batch" at queue 7, and a reader had
+  no way to tell a stale pointer from a current one. A step-scoped instruction
+  stored in a project-lifetime document is guaranteed drift.
+
+  The hand-off is now spoken rather than stored: `vision.md`, `roadmap.md`,
+  `progress.md`, `queue-NNN.md`, and `items/NNN-*.md` end at their last content
+  section, and the skill that writes the file names the next step in its closing
+  message to the user (and, for a queue, in the PR body). The skills' `## Next
+  Step` sections are renamed `## Hand-off`.
+
+  The durable half of that information moves into each template's **header
+  blockquote** — the document's step in the loop, what it derives from, and what
+  derives from it. `vision.md` names itself the root of roadmap/progress/queues/
+  items; `roadmap.md` names progress as its mirror; `progress.md` states that
+  queue state derives from it and item specs deliberately carry no status;
+  `queue-NNN.md` points at `../items/` and back at `progress.md`. Described in
+  `conventions.md` §1.
+
+  **No consumer action required** — nothing parses these lines and `aide check`
+  does not flag them, so existing documents stay valid. Delete the trailing
+  `Next:` line the next time you touch one.
+
+### Added
+
+- **`CLAUDE.md` for this repo.** aide-loop is the framework, not a consumer of
+  it, and an agent arriving here would otherwise look for `docs/aide/` and an
+  `aide.toml` that do not exist. Covers the source-vs-installed path trap (the
+  `.aide/…` references under `core/` and `adapters/` are consumer paths and must
+  not be "fixed"), the enforced `core/VERSION` bump rule, the stdlib-only test
+  setup, and how to try a change in a real consumer from the local working tree.
+
 ## [1.2.2] — 2026-07-23
 
 ### Fixed
