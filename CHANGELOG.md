@@ -17,6 +17,31 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-07-23
+
+### Added
+
+- **Outcome targets — an expressible state for "the work shipped but the goal
+  was not met" (issue #14).** The rollup deliberately equates a stage's ✅ with
+  *its planned work shipped*; when a stage also carried a measured goal (an
+  error-rate target, a benchmark), that goal had nowhere honest to live — it
+  either became an Acceptance box that was auto-ticked into an over-claim, or
+  the stage was held 🚧 forever against `aide check`'s permanent warning.
+  progress.md now supports an optional `## Outcome targets` table
+  (`| Target | Objective | Attempted by | Status | Evidence / follow-up |`,
+  statuses `❓ Unverified` / `✅ Met` / `❌ Not met`, mirroring the env-gated
+  verification table's table-local vocabulary). Semantics: a target never
+  blocks its stage — it gates the **Objective coverage rows** instead.
+  `aide progress` caps an objective's rollup below ✅ while a linked target is
+  not Met; `aide check` errors on an objective claimed ✅ over a `❌ Not met`
+  target (the goal-level mirror of the deliverable-level over-claim error) and
+  warns on `❓ Unverified`; `aide status` prints every target not yet Met. A
+  `❌ Not met` target routes through the insights inbox (`gap`), so follow-on
+  work enters via the queue instead of retro-editing a closed stage's
+  deliverable list. The roadmap template gains `Target:` bullets to mark
+  outcome-shaped criteria; conventions.md §1 documents the split (stages track
+  shipped work, targets track measured outcomes, objectives require both).
+
 ## [1.3.3] — 2026-07-23
 
 ### Added
