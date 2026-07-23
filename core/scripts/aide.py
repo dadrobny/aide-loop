@@ -150,7 +150,7 @@ def _parse_toml(text: str) -> Dict[str, Dict[str, object]]:
         key, _, value = line.partition("=")
         key = key.strip()
         _reject_unterminated_string(key, value, lineno)
-        value = value.split("#", 1)[0].strip() if not value.lstrip().startswith('"') else value.strip()
+        value = value.split("#", 1)[0].strip() if not value.lstrip().startswith(('"', "'")) else value.strip()
         # strip trailing comment for unquoted values only (quoted may contain #)
         if value and value[0] in "\"'":
             table[key] = value[1:].split(value[0], 1)[0]
