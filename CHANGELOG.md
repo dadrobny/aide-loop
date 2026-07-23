@@ -17,6 +17,33 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-07-23
+
+### Fixed
+
+- **Any prose mention of "Item NNN" was read as a status declaration (issue
+  #15).** `_parse_item_status` treated every occurrence of an item reference
+  anywhere in `progress.md` as status-bearing, attributing to it whatever
+  status terminated the line or its enclosing bullet. In practice that meant a
+  verification-table Notes cell narrating a post-mortem across several item
+  numbers, or an acceptance checkbox that merely cited the item it satisfies,
+  could silently pull that item's tracked status backwards — the more
+  honestly a project documented *why* something went wrong, the more spurious
+  references it created.
+
+  conventions.md §1 is specific that the only structural status declaration is
+  a deliverable bullet's leading icon. `_parse_item_status` now attributes a
+  reference only when it sits on such a bullet or one of its wrapped
+  continuation lines (indented text with no bullet marker of its own) — a
+  table cell, a checkbox, or an ordinary paragraph may name an item freely
+  without affecting its status, exactly as the format contract already
+  promised authors.
+
+  **Consumer action:** none. A project whose narrative prose or acceptance
+  checkboxes named item numbers may see those items' derived status move
+  forward (to whatever their real deliverable bullet says, or absent if they
+  have none yet) after updating; no document edit is required.
+
 ## [1.4.0] — 2026-07-23
 
 ### Added
