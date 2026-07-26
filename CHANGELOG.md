@@ -40,14 +40,27 @@ keys, and the adapter's agents/skills/commands.
   for noting a forward reference without it being read as a blocker.
 
 - **The command-hygiene guard's `[framework] local_path` carve-out lived in
-  the shared, committed `aide.toml`.** A machine-specific filesystem path
-  (where a developer's local `aide-loop` clone happens to live) has no
-  business in a file every consumer of the project shares — the same
-  principle `aide.toml`'s own `[validation]` section already states for its
-  profiles. `local_path` now lives in the personal, gitignored
+  the shared, committed `aide.toml`, and only recognised one of the four
+  syntaxes that point git at a repo other than cwd.** A machine-specific
+  filesystem path (where a developer's local `aide-loop` clone happens to
+  live) has no business in a file every consumer of the project shares — the
+  same principle `aide.toml`'s own `[validation]` section already states for
+  its profiles. `local_path` now lives in the personal, gitignored
   `.aide/loop/loop.local.toml` (`[framework]` section, alongside the existing
   `[loop]` one) instead; `loop.local.toml.example` documents both sections.
   `install.py`'s generated `aide.toml` no longer suggests setting it there.
+
+  Separately, the guard's rule 1 recognised only `git -C <path>` — leaving
+  `--git-dir=<path>`, `--work-tree=<path>`, and the `GIT_DIR=`/
+  `GIT_WORK_TREE=` environment-variable prefixes (git's own equivalents,
+  achieving the identical effect) completely unchecked: an agent that hit
+  the `-C` block and reached for the next thing it knew could reach the exact
+  repo the exception was built to gate, without ever declaring it. All four
+  forms are now recognised, checked against the same declared `local_path`
+  (`--git-dir`/`GIT_DIR=` accept the conventional `<path>/.git` value too,
+  not only `<path>` itself), and a command mixing a declared and an
+  undeclared repo across two of the forms stays blocked rather than guessed
+  at.
 
 - **The validator's foreground-only rule didn't name `aide merge`.** The
   instruction to run the test suite synchronously in the foreground (never
