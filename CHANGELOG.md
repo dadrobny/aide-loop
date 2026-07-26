@@ -17,6 +17,61 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.4.2] — 2026-07-26
+
+### Fixed
+
+- **`_item_dependencies` only read the first number in a multi-item
+  Dependencies reference, and had no directionality check.** `aide claim`'s
+  blocking-dependency scan used its own naive `\bItem[s]?\s+0*(\d+)` regex
+  instead of the shared, already-fixed `_referenced_item_numbers` (issue
+  #15's fix, 1.3.1) — so "Items 093, 094, 095" registered only 093 as a
+  blocker, and a forward-looking aside naming a *later* item ("**Downstream:**
+  item 099 depends on this item's CI job") was misread as a backward
+  dependency on that later item. Concretely: a stage-closing item could be
+  offered by `aide claim` before its actual prerequisites existed, while an
+  unrelated item was skipped because it "depended on" a downstream item that
+  hadn't even been claimed yet.
+
+  `_item_dependencies` now reuses `_referenced_item_numbers` (same
+  case-insensitive, list/range-aware extraction every other item-reference
+  call site uses) and stops scanning at a literal `**Downstream` marker,
+  which is now a documented convention (item template + conventions.md §1)
+  for noting a forward reference without it being read as a blocker.
+
+- **The command-hygiene guard's `[framework] local_path` carve-out lived in
+  the shared, committed `aide.toml`, and only recognised one of the four
+  syntaxes that point git at a repo other than cwd.** A machine-specific
+  filesystem path (where a developer's local `aide-loop` clone happens to
+  live) has no business in a file every consumer of the project shares — the
+  same principle `aide.toml`'s own `[validation]` section already states for
+  its profiles. `local_path` now lives in the personal, gitignored
+  `.aide/loop/loop.local.toml` (`[framework]` section, alongside the existing
+  `[loop]` one) instead; `loop.local.toml.example` documents both sections.
+  `install.py`'s generated `aide.toml` no longer suggests setting it there.
+
+  Separately, the guard's rule 1 recognised only `git -C <path>` — leaving
+  `--git-dir=<path>`, `--work-tree=<path>`, and the `GIT_DIR=`/
+  `GIT_WORK_TREE=` environment-variable prefixes (git's own equivalents,
+  achieving the identical effect) completely unchecked: an agent that hit
+  the `-C` block and reached for the next thing it knew could reach the exact
+  repo the exception was built to gate, without ever declaring it. All four
+  forms are now recognised, checked against the same declared `local_path`
+  (`--git-dir`/`GIT_DIR=` accept the conventional `<path>/.git` value too,
+  not only `<path>` itself), and a command mixing a declared and an
+  undeclared repo across two of the forms stays blocked rather than guessed
+  at.
+
+- **The validator's foreground-only rule didn't name `aide merge`.** The
+  instruction to run the test suite synchronously in the foreground (never
+  backgrounded) only covered the standalone `pytest` step; `aide merge`
+  itself re-runs the full suite again under `git.mode = "auto-merge"` and
+  takes just as long, but nothing told the validator that command needed the
+  same discipline — in practice, sub-agents repeatedly deferred it to a
+  background task and ended their turn with a placeholder, leaving the
+  orchestrator with no verdict. The rule now explicitly names `aide merge`
+  at both the point it's introduced and the point it's invoked.
+
 ## [1.4.1] — 2026-07-23
 
 ### Fixed
