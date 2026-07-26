@@ -115,9 +115,9 @@ clarify = "assume"
 repo = ""
 # A local clone of the framework repo, for the documented framework-update
 # workflow, is declared per-machine via `local_path` under `[framework]` in
-# the PERSONAL .aide/loop/loop.local.toml (copy loop.local.toml.example) —
-# never here. A machine-specific filesystem path has no business in this
-# shared, committed file.
+# the PERSONAL .aide/loop/loop.local.toml (copy
+# .aide/loop/loop.local.toml.example) — never here. A machine-specific
+# filesystem path has no business in this shared, committed file.
 
 # [validation]
 # Named environment profiles for stage-validation items — each value is a
