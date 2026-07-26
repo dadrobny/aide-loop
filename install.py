@@ -113,10 +113,11 @@ clarify = "assume"
 # repo (via `gh`); empty disables the handover (entries stay pending in
 # docs/aide/insights.md).
 repo = ""
-# Path to a local clone of the framework repo, used by the documented
-# framework-update workflow. Declaring it exempts `git -C <this path>` from the
-# hygiene guard's no-directory-prefix rule (the one legitimate use).
-# local_path = "../aide-loop"
+# A local clone of the framework repo, for the documented framework-update
+# workflow, is declared per-machine via `local_path` under `[framework]` in
+# the PERSONAL .aide/loop/loop.local.toml (copy loop.local.toml.example) —
+# never here. A machine-specific filesystem path has no business in this
+# shared, committed file.
 
 # [validation]
 # Named environment profiles for stage-validation items — each value is a

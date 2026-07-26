@@ -4,7 +4,9 @@ Loads the hook by path and exercises ``violations()`` directly — no hook
 harness needed. Covers the two consumer-reported defects: rule 4 flagging
 literal ``$(...)`` prose inside a single-quoted commit message, and the missing
 carve-out for the documented framework-update workflow (``git -C`` on the
-declared ``[framework] local_path``).
+declared ``[framework] local_path``, sourced from the personal, gitignored
+``.aide/loop/loop.local.toml`` — never the shared ``aide.toml``, which must
+never carry a machine-specific filesystem path).
 """
 from __future__ import annotations
 
@@ -45,19 +47,35 @@ def test_commit_double_quoted_substitution_still_flagged():
 # rule 1 — git -C carve-out for the declared framework clone
 # --------------------------------------------------------------------------- #
 def test_git_dash_c_blocked_without_declaration(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)  # no aide.toml here
+    monkeypatch.chdir(tmp_path)  # no .aide/loop/loop.local.toml here
     assert "git -C" in _titles("git -C ../aide-loop push")
 
 
+def _declare_local_path(tmp_path, path):
+    loop_dir = tmp_path / ".aide" / "loop"
+    loop_dir.mkdir(parents=True)
+    (loop_dir / "loop.local.toml").write_text(
+        f'[framework]\nlocal_path = "{path}"\n', encoding="utf-8"
+    )
+
+
 def test_git_dash_c_allowed_for_declared_framework_path(tmp_path, monkeypatch):
+    _declare_local_path(tmp_path, "../aide-loop")
+    monkeypatch.chdir(tmp_path)
+    assert guard.violations("git -C ../aide-loop push") == []
+    # A different path stays blocked.
+    assert "git -C" in _titles("git -C ../other-repo push")
+
+
+def test_git_dash_c_declaration_in_shared_aide_toml_is_not_honoured(tmp_path, monkeypatch):
+    # A machine-specific path must never live in the committed aide.toml —
+    # only the personal, gitignored loop.local.toml source is read.
     (tmp_path / "aide.toml").write_text(
         '[framework]\nrepo = "x/aide-loop"\nlocal_path = "../aide-loop"\n',
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
-    assert guard.violations("git -C ../aide-loop push") == []
-    # A different path stays blocked.
-    assert "git -C" in _titles("git -C ../other-repo push")
+    assert "git -C" in _titles("git -C ../aide-loop push")
 
 
 # --------------------------------------------------------------------------- #
