@@ -20,6 +20,21 @@ _EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 _AGENT_FILES = sorted(_AGENTS_DIR.glob("*.md"))
 
 
+def _split(path: Path) -> tuple:
+    """``(frontmatter_block, body)``, both validated.
+
+    Every caller goes through here so none can slice on an unchecked
+    ``find()``: a missing terminator returns -1, and ``text[-1 + 5:]`` is
+    ``text[4:]`` — the frontmatter itself. A body assertion against *that* is
+    non-empty and passes, reporting success while looking at the wrong text.
+    """
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("---\n"), f"{path.name}: no frontmatter block"
+    end = text.find("\n---\n", 4)
+    assert end != -1, f"{path.name}: unterminated frontmatter block"
+    return text[4:end], text[end + 5:]
+
+
 def _frontmatter(path: Path) -> dict:
     """The YAML-ish frontmatter as a flat dict.
 
@@ -27,11 +42,7 @@ def _frontmatter(path: Path) -> dict:
     is stdlib + pytest only (CLAUDE.md), and these files use one nesting level
     plus folded `>-` blocks.
     """
-    text = path.read_text(encoding="utf-8")
-    assert text.startswith("---\n"), f"{path.name}: no frontmatter block"
-    end = text.find("\n---\n", 4)
-    assert end != -1, f"{path.name}: unterminated frontmatter block"
-    block = text[4:end]
+    block, _ = _split(path)
 
     data: dict = {}
     key = None
@@ -74,6 +85,23 @@ def test_model_and_effort_are_recognised(path: Path):
 
 @pytest.mark.parametrize("path", _AGENT_FILES, ids=lambda p: p.stem)
 def test_body_is_not_empty(path: Path):
-    text = path.read_text(encoding="utf-8")
-    body = text[text.find("\n---\n", 4) + 5:]
+    _, body = _split(path)
     assert body.strip(), f"{path.name}: frontmatter but no instructions"
+
+
+def test_split_rejects_an_unterminated_frontmatter(tmp_path: Path):
+    """The guard on the guard. Without it this module's body check passes on a
+    malformed file — `find()` returns -1, the slice yields the frontmatter, and
+    a non-empty assertion against that reports success while reading the wrong
+    text. Same silently-green shape the framework exists to catch."""
+    broken = tmp_path / "broken.md"
+    broken.write_text("---\nname: broken\nmodel: opus\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="unterminated"):
+        _split(broken)
+
+
+def test_split_rejects_a_file_with_no_frontmatter(tmp_path: Path):
+    plain = tmp_path / "plain.md"
+    plain.write_text("# Just a document\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="no frontmatter"):
+        _split(plain)

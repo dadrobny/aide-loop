@@ -40,18 +40,23 @@ re-derive any of it.** Read its report and start where it stopped.
 ## Project facts (read from config)
 
 Read `aide.toml`: `project.source_dir`, `project.tests_dir`, `project.docs_dir`.
-Reference config values, never hard-coded paths.
+Use those values rather than assuming a layout — `source_dir` and `tests_dir` in
+particular differ per project. `docs_dir` defaults to `docs/aide`, and the paths
+written `<docs_dir>/…` below are relative to whatever it is actually set to.
 
 ## What you do
 
 1. **Get the machine findings.** If the caller gave you a report path, read it.
-   Otherwise produce one:
+   Otherwise produce one, substituting the configured `docs_dir` (shown here at
+   its `docs/aide` default):
    ```
    python .aide/scripts/aide.py check --queue NNN --report docs/aide/status/queue-NNN-specs.json
    ```
-   `docs/aide/status/` is derived, regenerable output — never commit the report.
-   If that directory is not gitignored in this repo, say so in your findings
-   and write the report to a temp path instead.
+   `<docs_dir>/status/` is derived, regenerable output — never commit the
+   report. The installer's `.gitignore` block covers the default location only,
+   so if this project moved `docs_dir`, check the directory is actually ignored;
+   when it is not, say so in your findings and write the report to a temp path
+   instead.
 
 2. **Read every spec on the queue in full** — Description, Acceptance Criteria,
    Assumptions, Implementation Steps, Authorised paths, Testing Strategy,

@@ -76,9 +76,12 @@ keys, and the adapter's agents/skills/commands.
 - **`docs/aide/status/` was documented as derived output but never gitignored.**
   `core/README.md` and the status-report skill both treat it as regenerable, and
   the reviewer's report is written there — so without the entry a consumer would
-  commit it. Added to the installer's managed `.gitignore` block. Note this
-  block is appended on **fresh install only**, so an existing consumer must add
-  the line by hand.
+  commit it. Added to the installer's managed `.gitignore` block. Two limits
+  worth knowing: the block is appended on **fresh install only**, so an existing
+  consumer must add the line by hand; and it names the **default** `docs_dir`, so
+  a project that moved `docs_dir` is not covered. The reviewer is told to check
+  the directory is genuinely ignored and to fall back to a temp path when it is
+  not, rather than assuming either.
 
 ## [1.9.0] — 2026-08-17
 
