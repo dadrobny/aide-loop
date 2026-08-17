@@ -52,9 +52,22 @@ keys, and the adapter's agents/skills/commands.
   never from an arbitrary checked-out branch, which would silently retarget a
   merge. The record is local git config rather than a committed file — the base
   is a fact about this checkout's branching, so another machine falls back to
-  `main_branch` and passes `--base` explicitly. `aide merge` also now fails
-  with a clear message on a base ref that does not exist, rather than letting
-  `git switch` fail mid-merge.
+  `main_branch` and passes `--base` explicitly.
+
+  Two invariants hold the feature together, both found in review:
+
+  - **A claim branches *from* its base.** `git switch -c` with no start point
+    uses `HEAD`, which would let a branch's real starting point disagree with
+    the base it records — claiming with `--base main` while a queue branch is
+    checked out would start from the queue branch and then merge the whole of
+    it into `main`. Naming the start point makes the two agree by construction,
+    and incidentally fixes the older case of claiming from an unrelated branch.
+  - **A base must be a local branch, not merely a resolvable ref.** `git
+    switch` on a tag, a raw commit, or a remote-tracking ref like `origin/main`
+    detaches HEAD; a merge into a detached HEAD updates no branch at all, yet
+    still reports success and lets the claim branch be deleted, leaving the
+    work as an unreferenced commit. `claim` and `merge` both check the ref's
+    *kind* now, and say which of the two things is wrong.
 
 ### Fixed
 

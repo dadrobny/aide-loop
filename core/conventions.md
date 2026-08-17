@@ -446,6 +446,13 @@ measured against), `status` (what ahead/behind is reported from) and `scope`
 is a fact about this checkout's branching, so a different machine falls back to
 `main_branch` and passes `--base` explicitly.
 
+**A base is always a local branch**, and a claim always *branches from* it — the
+branch's starting point and its recorded base are the same commit by
+construction, so an item can never merge back somewhere it did not come from. A
+tag, a raw commit or a remote-tracking ref (`origin/main`) is refused rather
+than accepted: `git switch` would detach HEAD, and a merge into a detached HEAD
+updates no branch while still reporting success.
+
 ---
 
 ## 5. Clarify mode (`loop.clarify` in `aide.toml`)

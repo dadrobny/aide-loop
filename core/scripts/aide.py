@@ -1462,10 +1462,21 @@ def cmd_claim(args: argparse.Namespace) -> int:
     base = args.base or (current if _is_queue_branch(current, prefix)
                          else str(config["git"].get("main_branch", "main")))
 
+    if not _local_branch_exists(repo_root, base):
+        print(f"aide claim: base '{base}' is not a local branch — an item is "
+              f"branched from its base and merged back into it, so the base "
+              f"must be a branch this checkout can update", file=sys.stderr)
+        return 1
+
     if args.dry_run:
         print(f"would claim item {number:03d} -> {branch} ({title}); base {base}")
         return 0
-    git(["switch", "-c", branch], repo_root)
+    # Branch FROM the base, explicitly. `switch -c` with no start point uses
+    # HEAD, which would let the branch's actual starting point disagree with
+    # the base it records — claiming with `--base main` while a queue branch is
+    # checked out would start from the queue branch and then merge the whole of
+    # it into main. Naming the start point makes the two agree by construction.
+    git(["switch", "-c", branch, base], repo_root)
     _record_branch_base(repo_root, branch, base)
     if mode != "local":
         git(["push", "-u", "origin", branch], repo_root)
@@ -1497,10 +1508,13 @@ def cmd_merge(args: argparse.Namespace) -> int:
     # lived only on the queue branch and had to land as one reviewed PR, so each
     # item needed to merge *back into* that branch.
     main = resolve_base(repo_root, config, args.base, branch)
-    if not _ref_exists(repo_root, main):
-        print(f"aide merge: base ref '{main}' does not exist — pass an existing "
-              f"--base, or check out the branch this item was claimed from",
-              file=sys.stderr)
+    if not _local_branch_exists(repo_root, main):
+        detail = ("it resolves, but not to a local branch — `git switch` would "
+                  "detach HEAD, and a merge into a detached HEAD updates no "
+                  "branch while still reporting success"
+                  if _ref_exists(repo_root, main) else "no such local branch")
+        print(f"aide merge: base '{main}' cannot be merged into: {detail}. "
+              f"Pass a local branch as --base.", file=sys.stderr)
         return 1
 
     if mode == "pr":
@@ -1642,6 +1656,20 @@ def _current_branch(repo_root: Path) -> str:
 
 def _ref_exists(repo_root: Path, ref: str) -> bool:
     return git(["rev-parse", "--verify", "--quiet", ref],
+               repo_root, check=False).returncode == 0
+
+
+def _local_branch_exists(repo_root: Path, ref: str) -> bool:
+    """True only for an existing **local branch**, not any resolvable ref.
+
+    A base must be a local branch, and merely resolving is not enough: `git
+    switch` on a tag, a raw commit or a remote-tracking ref like `origin/main`
+    detaches HEAD. A merge into a detached HEAD updates no branch at all, yet
+    still reports success and lets the claim branch be deleted — the work
+    survives only as an unreferenced commit. So the check is on the ref's
+    *kind*, not its existence.
+    """
+    return git(["show-ref", "--verify", "--quiet", f"refs/heads/{ref}"],
                repo_root, check=False).returncode == 0
 
 
@@ -1849,7 +1877,13 @@ def scope_findings(changed: List[str], authorised: AuthorisedPaths,
 
 def _scope_base_ref(repo_root: Path, config, explicit: Optional[str]) -> str:
     """The ref ``scope`` diffs against: ``--base`` > the branch's recorded base
-    > ``main_branch`` — each preferring its ``origin/`` counterpart.
+    > ``main_branch``.
+
+    An explicit ``--base`` is used **verbatim** — the caller named a ref, so
+    silently substituting ``origin/`` for it would make ``--base main`` mean
+    something the caller did not write, and leave no way to ask for the local
+    ref at all. The two *derived* answers do prefer their ``origin/``
+    counterpart, since neither was chosen by anyone.
 
     The remote-tracking preference is the footgun this exists to avoid: on a
     checkout whose local ``main`` sits behind the work, the merge-base with it

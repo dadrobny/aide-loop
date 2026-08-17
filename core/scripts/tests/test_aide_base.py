@@ -236,7 +236,59 @@ def test_merge_reports_a_base_that_does_not_exist(tmp_path: Path, capsys):
     rc = aide.main(["--repo", str(repo), "merge", "27", "--base", "no/such",
                     "--no-test"])
     assert rc == 1
-    assert "does not exist" in capsys.readouterr().err
+    assert "no such local branch" in capsys.readouterr().err
+
+
+def test_merge_refuses_a_base_that_is_not_a_local_branch(tmp_path: Path, capsys):
+    """`git switch` on a tag/commit/remote-tracking ref detaches HEAD, and a
+    merge into a detached HEAD updates no branch while still reporting success
+    — then the claim branch is deleted and the work survives only as an
+    unreferenced commit. Resolving is not enough; it must be a branch."""
+    repo = _init_repo(tmp_path / "repo")
+    _run(["git", "tag", "v1"], repo)
+    aide.main(["--repo", str(repo), "claim"])
+    _commit(repo, "src/demo/bounds.py", "x = 2\n", "work")
+
+    rc = aide.main(["--repo", str(repo), "merge", "27", "--base", "v1",
+                    "--no-test"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "detach" in err
+    assert "aide/027-bounds-rules" in _branches(repo), "claim branch must survive"
+
+
+def test_claim_branches_from_the_base_not_from_head(tmp_path: Path):
+    """`switch -c` with no start point uses HEAD, which would let the branch's
+    real starting point disagree with the base it records — claiming with
+    `--base main` from a queue branch would start from the queue branch and
+    then merge all of it into main."""
+    repo = _init_repo(tmp_path / "repo")
+    _run(["git", "switch", "-c", "aide/queue-003"], repo)
+    _commit(repo, "queue_only.py", "q = 1\n", "queue-branch-only work")
+
+    assert aide.main(["--repo", str(repo), "claim", "--base", "main"]) == 0
+    assert not (repo / "queue_only.py").exists(), (
+        "claim recorded main as the base, so it must branch from main")
+
+
+def test_claim_refuses_a_base_that_is_not_a_local_branch(tmp_path: Path, capsys):
+    repo = _init_repo(tmp_path / "repo")
+    _run(["git", "tag", "v1"], repo)
+    rc = aide.main(["--repo", str(repo), "claim", "--base", "v1"])
+    assert rc == 1
+    assert "not a local branch" in capsys.readouterr().err
+    assert "aide/027-bounds-rules" not in _branches(repo)
+
+
+def test_scope_uses_an_explicit_base_verbatim(tmp_path: Path, capsys):
+    """An explicit --base is the caller's word: substituting origin/ for it
+    would make `--base main` mean something they did not write."""
+    repo = _init_repo(tmp_path / "repo")
+    _run(["git", "switch", "-c", "aide/027-bounds-rules"], repo)
+    _commit(repo, "src/demo/bounds.py", "x = 2\n", "work")
+
+    assert aide.main(["--repo", str(repo), "scope", "--base", "main"]) == 0
+    assert "vs main" in capsys.readouterr().out
 
 
 # --------------------------------------------------------------------------- #
