@@ -17,6 +17,80 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-08-17
+
+### Added
+
+- **`## Authorised paths` — an item declares its own scope (issue #25).** A
+  consumer running this loop independently invented two conventions the
+  framework had no notion of: a spec section declaring which files an item may
+  change, and a "scope fence" — a test hashing some *other* file's bytes against
+  a hardcoded literal to prove the item did not touch it. Grepping `core/` and
+  `adapters/` for either returned zero hits, so every spec author re-derived
+  them, and they collided with each other in a way nothing checked. Eight
+  recorded instances, three of which broke CI.
+
+  The section ships in `core/templates/item.md` and is specified in
+  `core/conventions.md` §1. It carries two lists: **May change** (the paths this
+  item may modify — exact path, `dir/**`, or `dir/*.ext`) and **Asserts
+  against** (files and derived artifacts its tests read and pin without
+  changing, *including* anything recomputed live from committed state).
+
+  The second list is the half the consumer's post-mortems kept arriving at:
+  predicting the one collision a spec happens to name is not the same as proving
+  no sibling assertion depends on state this item's authorised edit changes. A
+  live recomputation is *more* coupled to the underlying state than a byte-hash,
+  not less, and was missed by a survey looking only for fragile-looking hashes.
+
+  **Expected but not required.** Specs predating the convention stay workable
+  without a repo-wide back-fill; a tool that reads the section and does not find
+  it must report that with the remedy, never treat an undeclared spec as
+  unconstrained. This is the declared vocabulary that issues #26, #27 and #28
+  read — all three are unimplementable without it.
+
+### Changed
+
+- **Scope is proved by the diff, not by a hash.** `conventions.md` now states
+  the preference outright and demotes the byte-hash scope fence to a fallback,
+  with the four failure modes each instance earned: it inverts on the next
+  legitimate edit of the pinned file; a whole-tree digest collides with any
+  future edit beneath it; an unfiltered tree walk hashes gitignored
+  `__pycache__` bytes that embed mtimes, so the pin is not reproducible even
+  against an unchanged tree; and it is platform-fragile in two specific ways —
+  any path component entering a hash must be `Path.as_posix()`, and a
+  byte-exact committed fixture needs a `text eol=lf` pin in `.gitattributes`.
+
+  Two rules come with it. **Re-pinning**: when a later item is authorised to
+  change a pinned file, update the earlier constant in the same commit with a
+  comment naming the authorising item — and distinguish a diff-time scope claim
+  (belongs in **Asserts against**, retired when its item merges) from an
+  artifact-integrity invariant (legitimate and durable, but belongs in a test
+  named for the artifact and living beside it, not in an unrelated item's
+  regression module under a `_PRE_NNN_` name). **Auditing goes by shape, not by
+  name**: the distinguishing feature is a digest compared against a hardcoded
+  literal, since one compared against a value computed in the same run is a
+  determinism check that must stay. A sweep by constant name missed three
+  surviving fences in the consumer that ran it.
+
+- **Interface pinning between unbuilt siblings now runs both ways**
+  (`conventions.md` §5, `/aide-spec-queue`). The consumer-side duty was already
+  stated; the producing spec must now enumerate the **serialised** shape its
+  consumers read — the JSON layout, which records appear in a walk, what strict
+  mode rejects — not only its API. Left unpinned, each consumer independently
+  ships a tolerant reader plus a hand-back clause where a straight assertion
+  belonged, and one eventually pins an assertion against a shape no code path
+  produces.
+
+- **The declaration has readers from the moment it exists.** `spec-author` fills
+  it concretely and is told not to specify a byte-hash fence; `builder` stays
+  inside **May change** and hands back — naming the path — when an AC cannot be
+  satisfied without more, rather than widening its own scope silently;
+  `validator`'s scope check now compares the branch's changed files against the
+  list, and says so explicitly when a spec has no section rather than passing in
+  silence. `/aide-spec-queue` gained a batch-reconciliation step, since all N
+  specs being visible at once is the one moment a cross-item collision is cheap
+  to fix.
+
 ## [1.5.1] — 2026-08-17
 
 ### Fixed

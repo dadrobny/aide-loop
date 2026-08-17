@@ -64,24 +64,34 @@ in the **Assumptions** block (the builder/validator hand back if reality diverge
    status field**); Description; **atomic, observable, directly testable**
    Acceptance Criteria (one test per AC, no compound and/or); the mandatory
    **Assumptions** block; Implementation Steps (the code path in `source_dir`);
-   Testing Strategy (incl. adversarial/edge cases); Dependencies (item numbers,
-   must be ✅/🚧); and a Decisions & Trade-offs section initialised to "To be
-   updated during implementation." Add the optional **Validation** section
+   **Authorised paths**; Testing Strategy (incl. adversarial/edge cases);
+   Dependencies (item numbers, must be ✅/🚧); and a Decisions & Trade-offs
+   section initialised to "To be updated during implementation." Add the
+   optional **Validation** section
    whenever meaningful observation goes beyond the unit suite: the command to
    run / output to inspect / use case to replay, and — if it needs a special
    environment — the `[validation]` profile name plus the honest downgrade
    when absent (see the item template).
-4. **Sweep for stale test assumptions.** If the spec (or an Assumption)
+4. **Fill `## Authorised paths` concretely** — the actual files, at the
+   narrowest glob that covers the work, not a placeholder and not a whole
+   subtree you only partly need. List under **Asserts against** anything the
+   item's tests read and pin without changing, including artifacts recomputed
+   live from committed state. Never specify a test that hashes another file's
+   bytes against a hardcoded literal to prove this item did not touch it —
+   scope is proved by the diff against this list (see
+   [`.aide/conventions.md` §1](../../.aide/conventions.md)).
+5. **Sweep for stale test assumptions.** If the spec (or an Assumption)
    changes an existing default or behaviour, grep `tests_dir` for tests
    pinning the OLD behaviour and list every hit in the Testing Strategy as
    "existing tests to reconcile" — otherwise the first validation round fails
    on stale assertions instead of on the new code, costing a guaranteed extra
    round.
-5. **Commit** the spec on the branch (plain single-line message):
+6. **Commit** the spec on the branch (plain single-line message):
    `git add docs/aide/items/NNN-*.md` then
    `git commit -m "docs(NNN): work item spec for <short title>"`.
-6. **Return** a tight summary: item number, spec file path, the list of Acceptance
-   Criteria, and any Assumptions recorded (so the orchestrator can pass them on).
+7. **Return** a tight summary: item number, spec file path, the list of Acceptance
+   Criteria, the Authorised paths declared, and any Assumptions recorded (so the
+   orchestrator can pass them on).
 
 ## Hard limits
 

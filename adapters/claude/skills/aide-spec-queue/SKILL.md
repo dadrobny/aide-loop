@@ -37,17 +37,31 @@ lowest-numbered one with open items).
    together to respect the user's time), and encode the answers. When run as an
    orchestrator, spawn a fresh `spec-author` per item with "clarify mode:
    interactive" in its brief and relay its questions to the user.
-4. **Pin cross-item interfaces as Assumptions.** These specs are written before
-   their dependencies are *implemented*, so every interface a spec relies on from
-   an earlier (unbuilt) item goes into its **Assumptions** block; the
-   builder/validator hand back if reality diverged. This keeps spec-first
-   optional, not load-bearing.
-5. **Commit per spec** on the batch branch (separate Bash calls):
+4. **Pin cross-item interfaces as Assumptions — from both ends.** These specs
+   are written before their dependencies are *implemented*, so every interface a
+   spec relies on from an earlier (unbuilt) item goes into its **Assumptions**
+   block; the builder/validator hand back if reality diverged. And the
+   *producing* spec must enumerate the **serialised** shape its consumers read
+   (JSON layout, which records appear in a walk, what strict mode rejects), not
+   only its API — otherwise each consumer independently ships a tolerant reader
+   plus a hand-back clause where a straight assertion belonged. This keeps
+   spec-first optional, not load-bearing.
+5. **Reconcile the batch's `## Authorised paths` before landing it.** Every spec
+   in the batch is visible at once, which is the one moment a cross-item
+   collision is cheap to fix. Read the declarations against each other and
+   resolve, naming which side changed:
+   - two specs claiming **May change** on the same path;
+   - one spec's **May change** overlapping another's **Asserts against** — this
+     is the collision that reliably reaches CI as a red test in the *earlier*
+     item for doing exactly what the loop asked;
+   - an Acceptance Criterion that cannot be satisfied without touching a path
+     its own spec never authorised, or that its own Assumptions bar.
+6. **Commit per spec** on the batch branch (separate Bash calls):
    ```
    git add docs/aide/items/NNN-*.md
    git commit -m "docs(NNN): work item spec for <short title>"
    ```
-6. **Land the batch.** Push the branch and open a PR for human review of the
+7. **Land the batch.** Push the branch and open a PR for human review of the
    whole spec set (`gh pr create` is ask-gated — that pause is intended):
    ```
    git push -u origin aide/specs-queue-NNN
