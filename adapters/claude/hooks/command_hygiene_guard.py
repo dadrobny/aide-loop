@@ -143,22 +143,33 @@ def _hygiene_extra_repos():
     in_hygiene = False
     buf = None
     for line in text.splitlines():
-        s = line.split("#", 1)[0].strip() if buf is None else line.strip()
+        stripped = line.split("#", 1)[0].strip()
         if buf is None:
-            if s.startswith("["):
-                in_hygiene = s == "[hygiene]"
+            if stripped.startswith("["):
+                in_hygiene = stripped == "[hygiene]"
                 continue
-            if not (in_hygiene and s.split("=", 1)[0].strip() == "extra_repos"):
+            # Require the `=` before splitting on it. A bare `extra_repos` line
+            # would otherwise IndexError, and because the hook fails open that
+            # would silently disable the ENTIRE guard — every rule, not just
+            # this key — off the back of one typo in a personal config file.
+            if not in_hygiene or "=" not in stripped:
                 continue
-            buf = s.split("=", 1)[1].strip()
+            key, _, value = stripped.partition("=")
+            if key.strip() != "extra_repos":
+                continue
+            buf = value.strip()
+            # Documented as an array, so anything else is a config we do not
+            # understand. Inferring a grant from an undocumented shape is the
+            # wrong default for a key that relaxes a guard: no array, no grant.
+            if not buf.startswith("["):
+                return []
         else:
-            buf += " " + s.split("#", 1)[0].strip()
-        # A TOML array may span lines; keep accumulating until it closes.
-        if buf.startswith("[") and "]" not in buf:
+            buf += " " + stripped
+        # A TOML array may span lines; keep accumulating until it closes. An
+        # array left unterminated falls out of the loop and grants nothing.
+        if "]" not in buf:
             continue
-        inner = buf.strip()
-        if inner.startswith("[") and inner.endswith("]"):
-            inner = inner[1:-1]
+        inner = buf[1:buf.index("]")]
         return [p for p in
                 (item.strip().strip("\"'") for item in inner.split(","))
                 if p]
@@ -282,10 +293,13 @@ def violations(cmd):
     #    `GIT_WORK_TREE=` pointing git at a repo other than cwd — the Bash
     #    tool's cwd is already the repo root, and a directory prefix breaks
     #    allow-list prefix matching (this repo's path has spaces).
-    #    Exception: every repo-override path in the command resolves to the
-    #    declared `[framework] local_path` — the documented framework-update
-    #    workflow legitimately targets that second repo. Sourced from the
-    #    personal .aide/loop/loop.local.toml, never aide.toml.
+    #    Exception: every repo-override path in the command resolves to ONE
+    #    declared repo — `[framework] local_path` (the documented
+    #    framework-update workflow) or one of `[hygiene] extra_repos` (a
+    #    project that legitimately spans several repos). Both are sourced from
+    #    the personal .aide/loop/loop.local.toml, never aide.toml. Two
+    #    different repos in one command stay blocked even when both are
+    #    declared — see `_git_repo_override_all_declared`.
     has_override = bool(_GIT_REPO_OVERRIDE_TRIGGER_RE.search(bare))
     if re.match(r"\s*cd\s", cmd) or (
         has_override and not _git_repo_override_all_declared(cmd)

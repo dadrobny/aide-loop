@@ -277,3 +277,40 @@ def test_extra_repos_under_another_section_is_not_honoured(tmp_path, monkeypatch
         '[loop]\nextra_repos = ["../sibling"]\n', encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
+
+
+def _write_local_toml(tmp_path, text):
+    loop_dir = tmp_path / ".aide" / "loop"
+    loop_dir.mkdir(parents=True, exist_ok=True)
+    (loop_dir / "loop.local.toml").write_text(text, encoding="utf-8")
+
+
+def test_malformed_key_does_not_disable_the_whole_guard(tmp_path, monkeypatch):
+    """`extra_repos` with no `=` used to IndexError. The hook fails open, so
+    that one typo in a personal config silently switched off EVERY hygiene
+    rule, not just this key — a far larger blast radius than the parse bug."""
+    _write_local_toml(tmp_path, "[hygiene]\nextra_repos\n")
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")   # must not raise
+    # and every other rule must still fire
+    assert guard.violations("git status && git log")
+
+
+def test_non_array_value_grants_nothing(tmp_path, monkeypatch):
+    """The key is documented as an array. Inferring a grant from an
+    undocumented shape is the wrong default for a key that relaxes a guard."""
+    _write_local_toml(tmp_path, '[hygiene]\nextra_repos = "../sibling"\n')
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
+
+
+def test_unterminated_array_grants_nothing(tmp_path, monkeypatch):
+    _write_local_toml(tmp_path, '[hygiene]\nextra_repos = [\n  "../sibling",\n')
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
+
+
+def test_a_similarly_named_key_is_not_mistaken_for_it(tmp_path, monkeypatch):
+    _write_local_toml(tmp_path, '[hygiene]\nextra_repos_note = ["../sibling"]\n')
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
