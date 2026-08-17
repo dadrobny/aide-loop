@@ -1013,7 +1013,9 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                 warnings.append(
                     f"unrecognised branch {br}: carries the claim prefix but is "
                     f"not '{prefix}NNN-short-name' (conventions.md §4), so no "
-                    f"item status is tracked for it")
+                    f"item status is tracked for it — rename it to the claim "
+                    f"shape, or once it is merged run 'aide gc --merged' to "
+                    f"delete it")
             continue
         if item_status.get(n) == "complete":
             warnings.append(f"stale claim branch {br}: item {n:03d} is already ✅")
@@ -1731,6 +1733,51 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _merged_prefixed_branches(repo_root: Path, main: str, prefix: str) -> List[str]:
+    """Prefixed local branches already merged into *main*, per git itself."""
+    out = git(["branch", "--merged", main, "--format=%(refname:short)"],
+              repo_root, check=False).stdout
+    return [l.strip() for l in out.splitlines() if l.strip().startswith(prefix)]
+
+
+def _plural(n: int, one: str, many: str) -> str:
+    return f"{n} {one}" if n == 1 else f"{n} {many}"
+
+
+def _gc_empty_notes(repo_root: Path, prefix: str, main: str,
+                    merged_flag: bool, local: List[str],
+                    remote: List[str]) -> List[str]:
+    """Why an empty ``gc`` result may still leave cleanup available.
+
+    Two things the bare message hides. First, the default invocation checks
+    only the item ground, so a branch that no longer resolves to an item —
+    every queue and specs-queue branch — is structurally invisible to it while
+    ``--merged`` would take it. Second, `gc` only ever looks at branches under
+    ``prefix``, so a merged branch named anything else is never considered on
+    either ground.
+
+    Returns [] when there is genuinely nothing further to say, so the common
+    case stays a single terse line. The ``--merged`` probe runs only on this
+    empty path, never in the normal one.
+    """
+    notes: List[str] = []
+    if not merged_flag and (local or remote):
+        extra = _merged_prefixed_branches(repo_root, main, prefix)
+        if extra:
+            notes.append(
+                f"{_plural(len(extra), 'branch', 'branches')} under '{prefix}' "
+                f"{'is' if len(extra) == 1 else 'are'} merged into {main} — "
+                f"'aide gc --merged' will take {'it' if len(extra) == 1 else 'them'}")
+    others = [b for b in _local_branches(repo_root)
+              if not b.startswith(prefix) and b != main]
+    if others:
+        notes.append(
+            f"{_plural(len(others), 'local branch', 'local branches')} outside "
+            f"the '{prefix}' scope {'was' if len(others) == 1 else 'were'} not "
+            f"considered — gc only ever manages claim branches")
+    return notes
+
+
 def cmd_gc(args: argparse.Namespace) -> int:
     """Delete claim branches whose work has landed (item ✅ in progress.md, or
     ``--merged`` branches already merged into main). Dry-run by default; pass
@@ -1756,10 +1803,7 @@ def cmd_gc(args: argparse.Namespace) -> int:
 
     merged_local: List[str] = []
     if args.merged:
-        out = git(["branch", "--merged", main, "--format=%(refname:short)"],
-                  repo_root, check=False).stdout
-        merged_local = [l.strip() for l in out.splitlines()
-                        if l.strip().startswith(prefix)]
+        merged_local = _merged_prefixed_branches(repo_root, main, prefix)
 
     targets: Dict[str, str] = {}  # branch -> reason
     for br in sorted(set(local) | set(remote)):
@@ -1776,7 +1820,16 @@ def cmd_gc(args: argparse.Namespace) -> int:
             targets[br] = f"merged into {main}"
 
     if not targets:
+        # "Nothing to clean" is a claim about the ground and the scope this run
+        # actually checked, not about the repository — say which. The default
+        # invocation checks only the item ground, and every invocation ignores
+        # branches outside `prefix` (deliberately: gc is the one destructive
+        # verb and must not delete branches it does not own). Left unqualified,
+        # the message reads as "no cleanup is available here" and the next
+        # reach is the raw `git branch -d` the CLI exists to replace.
         print("aide gc: nothing to clean")
+        for note in _gc_empty_notes(repo_root, prefix, main, args.merged, local, remote):
+            print(f"  {note}")
         return 0
 
     current = git(["rev-parse", "--abbrev-ref", "HEAD"], repo_root, check=False).stdout.strip()
