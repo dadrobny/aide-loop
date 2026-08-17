@@ -65,6 +65,14 @@ keys, and the adapter's agents/skills/commands.
   call, no false positive. Verified against the real historical defect: the lint
   fires on the exact committed line that caused it.
 
+- **`gh run list` / `gh run view` pre-approved** in the adapter's allow-list.
+  §7 is only real if the command it names can actually run: an unattended
+  validator reaching a non-approved command stalls on a permission prompt
+  instead, which is precisely the failure mode a documented-but-unenforced rule
+  produces. `gh pr checks` was already approved but needs a PR to exist, and
+  under the default `git.mode = "auto-merge"` there is none — so `gh run` is the
+  form that works in every mode. Both are read-only.
+
 ## [1.10.0] — 2026-08-17
 
 ### Added

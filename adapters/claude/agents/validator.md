@@ -80,6 +80,9 @@ Read `aide.toml`: `project.source_dir`, `project.tests_dir`, and
    ```
    gh run list --branch <branch> --limit 1
    ```
+   (`gh run view <id>` for the detail, or `gh pr checks` when a PR exists —
+   under `git.mode = "auto-merge"` there is no PR, which is why `gh run` is the
+   form named here. All three are pre-approved.)
    Report the real answer, including **"no CI is configured"** or **"it had not
    finished"** — those are honest results; a local pass silently standing in for
    them is not. A leg that is red where local was green is a **portability
