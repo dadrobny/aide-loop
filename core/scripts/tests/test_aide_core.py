@@ -10,6 +10,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 _MODULE_PATH = Path(__file__).resolve().parents[1] / "aide.py"
 _spec = importlib.util.spec_from_file_location("aide_cli", _MODULE_PATH)
 aide = importlib.util.module_from_spec(_spec)
@@ -152,14 +154,35 @@ def test_set_item_in_progress_flips_only_bullet():
     assert "- [ ] Rules fire." in out
 
 
-def test_set_item_done_completes_stage_and_ticks_acceptance():
+def test_set_item_done_completes_stage_without_touching_acceptance():
     out = aide.set_item_status(PROGRESS, 3, "complete")
     assert "- ✅ Bounds. *(Item 003)*" in out
-    assert "- [x] Rules fire." in out
-    assert "- [x] Config-driven." in out
     assert "## Stage 1 — Rule Engine — ✅" in out
     assert "| 1 | Rule Engine | G2 | ✅ |" in out
     assert "| G2 Rules | Stage 1 | ✅ |" in out
+    # An acceptance box is a human attestation: a rollup cannot make it, so
+    # completing the stage leaves every box exactly as the author left it.
+    assert "- [ ] Rules fire." in out
+    assert "- [ ] Config-driven." in out
+
+
+def test_set_item_never_reticks_a_deliberately_unticked_box():
+    """A box left unticked in a ✅ stage records an honest 'not met'.
+
+    Any `progress set` call used to force it back to ticked — including one for
+    an unrelated item in a different stage, since every stage's rollup is
+    recomputed on every call. That silently converted a recorded shortfall into
+    a false claim, and no consumer could keep the state durable.
+    """
+    done = aide.set_item_status(PROGRESS, 3, "complete")
+    accepted, _ = aide.accept_criteria(done, "1", [1])
+    assert "- [x] Rules fire." in accepted
+    assert "- [ ] Config-driven." in accepted
+
+    # An unrelated item, in a different stage, must not disturb either box.
+    after = aide.set_item_status(accepted, 2, "complete")
+    assert "- [x] Rules fire." in after
+    assert "- [ ] Config-driven." in after
 
 
 def test_set_item_never_downgrades():
@@ -579,7 +602,6 @@ def test_unmet_target_blocks_objective_rollup_not_stage():
     # The stage closes: its planned work shipped.
     assert "## Stage 1 — Rule Engine — ✅" in out
     assert "| 1 | Rule Engine | G2 | ✅ |" in out
-    assert "- [x] Rules fire." in out
     # The objective does not: its outcome target is ❌ Not met.
     assert "| G2 Rules | Stage 1 | 🚧 |" in out
 
@@ -709,6 +731,47 @@ def test_check_locations_use_posix_separators(tmp_path: Path):
 
 
 # --------------------------------------------------------------------------- #
+# acceptance criteria — attested by a human, never by a rollup
+# --------------------------------------------------------------------------- #
+def test_accept_criteria_ticks_only_the_named_index():
+    out, msgs = aide.accept_criteria(PROGRESS, "1", [2])
+    assert "- [ ] Rules fire." in out
+    assert "- [x] Config-driven." in out
+    assert msgs == ["criterion 2: accepted"]
+
+
+def test_accept_criteria_all_and_evidence():
+    out, _ = aide.accept_criteria(PROGRESS, "1", None, evidence="2026-08-17, CI")
+    assert "- [x] Rules fire. *(2026-08-17, CI)*" in out
+    assert "- [x] Config-driven. *(2026-08-17, CI)*" in out
+
+
+def test_accept_criteria_reports_an_already_ticked_box():
+    once, _ = aide.accept_criteria(PROGRESS, "1", [1])
+    twice, msgs = aide.accept_criteria(once, "1", [1])
+    assert twice == once
+    assert msgs == ["criterion 1: already ticked, unchanged"]
+
+
+def test_accept_criteria_rejects_unknown_stage():
+    with pytest.raises(ValueError, match="no Stage 99 section"):
+        aide.accept_criteria(PROGRESS, "99", [1])
+
+
+def test_accept_criteria_rejects_out_of_range_index():
+    with pytest.raises(ValueError, match="out of range"):
+        aide.accept_criteria(PROGRESS, "1", [3])
+
+
+def test_accept_criteria_matches_a_zero_padded_stage_header():
+    """`accept 1` must find `## Stage 01`; padding is the document's choice."""
+    padded = PROGRESS.replace("## Stage 1 — Rule Engine", "## Stage 01 — Rule Engine")
+    out, msgs = aide.accept_criteria(padded, "1", [1])
+    assert "- [x] Rules fire." in out
+    assert msgs == ["criterion 1: accepted"]
+
+
+# --------------------------------------------------------------------------- #
 # insight inbox (WI-4)
 # --------------------------------------------------------------------------- #
 def test_insight_entries_well_formed(tmp_path: Path):
@@ -753,7 +816,46 @@ def test_cli_progress_set_edits_file(tmp_path: Path):
     assert rc == 0
     text = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
     assert "- ✅ Bounds. *(Item 003)*" in text
+    assert "- [ ] Rules fire." in text
+
+
+def test_cli_progress_accept_ticks_one_criterion(tmp_path: Path):
+    root = _docs(tmp_path)
+    rc = aide.main(["--repo", str(root), "progress", "accept", "1",
+                    "--criterion", "1", "--no-commit"])
+    assert rc == 0
+    text = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
     assert "- [x] Rules fire." in text
+    assert "- [ ] Config-driven." in text
+
+
+def test_cli_progress_accept_all_with_evidence(tmp_path: Path):
+    root = _docs(tmp_path)
+    rc = aide.main(["--repo", str(root), "progress", "accept", "1", "--all",
+                    "--evidence", "2026-08-17, local suite", "--no-commit"])
+    assert rc == 0
+    text = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    assert "- [x] Rules fire. *(2026-08-17, local suite)*" in text
+    assert "- [x] Config-driven. *(2026-08-17, local suite)*" in text
+
+
+def test_cli_progress_accept_requires_a_selection(tmp_path: Path):
+    root = _docs(tmp_path)
+    rc = aide.main(["--repo", str(root), "progress", "accept", "1", "--no-commit"])
+    assert rc == 2
+
+
+def test_cli_progress_accept_rejects_criterion_and_all_together(tmp_path: Path):
+    root = _docs(tmp_path)
+    rc = aide.main(["--repo", str(root), "progress", "accept", "1",
+                    "--criterion", "1", "--all", "--no-commit"])
+    assert rc == 2
+
+
+def test_cli_progress_set_without_status_is_usage_error(tmp_path: Path):
+    root = _docs(tmp_path)
+    rc = aide.main(["--repo", str(root), "progress", "set", "3", "--no-commit"])
+    assert rc == 2
 
 
 def test_cli_progress_set_untracked_item_errors(tmp_path: Path, capsys):
