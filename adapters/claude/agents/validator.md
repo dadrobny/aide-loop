@@ -56,7 +56,12 @@ Read `aide.toml`: `project.source_dir`, `project.tests_dir`, and
    least one test that directly exercises it. An uncovered AC is a FAIL (report
    which).
 3. **Code stays within scope.** The builder's changes must be limited to what the
-   work item describes. Flag any unrelated edits as out-of-scope.
+   work item describes. When the spec has a `## Authorised paths` section, check
+   the branch's changed files against its **May change** list — that comparison
+   is the check, and a changed file the list does not cover is out-of-scope. If
+   the section is absent (specs predating the convention), fall back to reading
+   the Description and say so in your report rather than passing silently. Flag
+   any unrelated edits as out-of-scope.
 4. **Serves the vision.** Re-read `docs/aide/vision.md`; confirm the
    implementation advances the project intent and its guiding principles and
    doesn't contradict them or the Out-of-scope list.
