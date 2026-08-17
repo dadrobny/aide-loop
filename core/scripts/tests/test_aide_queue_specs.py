@@ -278,6 +278,39 @@ def test_pinning_a_bookkeeping_file_is_still_reported(tmp_path: Path):
     assert any(f.kind == "changes-pinned-state" for f in findings)
 
 
+def test_a_spec_that_only_pins_is_still_compared(tmp_path: Path):
+    """An empty May change is not 'nothing declared'. A stage-validation item
+    changes only the bookkeeping every item may write, while pinning the tree
+    it validates — treating that as undeclared would drop exactly the specs
+    whose whole purpose is to assert, and miss siblings breaking their pins."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/a.py"]),
+        28: _spec_text(28, asserts=["src/a.py"]),
+    })
+    findings, _ = _findings(repo)
+    kinds = [f.kind for f in findings]
+    assert "changes-pinned-state" in kinds
+    assert "undeclared-scope" not in kinds
+
+
+def test_a_section_with_both_lists_empty_is_undeclared(tmp_path: Path):
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27),
+        28: _spec_text(28, may=["src/b.py"]),
+    })
+    findings, _ = _findings(repo)
+    assert any(f.kind == "undeclared-scope" and f.items == (27,) for f in findings)
+
+
+def test_report_without_queue_is_refused(tmp_path: Path, capsys):
+    repo = _make_repo(tmp_path, {27: _spec_text(27, may=["src/a.py"])})
+    rc = aide.main(["--repo", str(repo), "check", "--report",
+                    str(tmp_path / "out.json")])
+    assert rc == 2
+    assert "--report needs --queue" in capsys.readouterr().err
+    assert not (tmp_path / "out.json").exists()
+
+
 def test_missing_queue_file_is_an_error(tmp_path: Path):
     repo = _make_repo(tmp_path, {27: _spec_text(27, may=["src/a.py"])})
     findings, _ = _findings(repo, queue=99)

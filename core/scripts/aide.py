@@ -1188,7 +1188,7 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
             continue
         parsed = parse_authorised_paths(specs[0].read_text(encoding=_ENCODING))
         rel = specs[0].relative_to(repo_root).as_posix()
-        if parsed is None or not parsed.may_change:
+        if declares_nothing(parsed):
             findings.append(SpecFinding(
                 "warning", "undeclared-scope", (num,),
                 f"item {num:03d} ({rel}) declares no '## Authorised paths' — its "
@@ -1293,11 +1293,19 @@ def _write_findings_report(path: Path, queue_number: int,
 
 
 def cmd_check(args: argparse.Namespace) -> int:
+    queue_number = getattr(args, "queue", None)
+    if getattr(args, "report", None) and queue_number is None:
+        # Silently ignoring it would be worse than refusing: the caller asked
+        # for a file that would never appear, and only the missing file would
+        # ever say so.
+        print("aide check: --report needs --queue; there are no cross-spec "
+              "findings to report without one", file=sys.stderr)
+        return 2
+
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
     errors, warnings = run_checks(repo_root, config)
 
-    queue_number = getattr(args, "queue", None)
     if queue_number is not None:
         findings, unspecced = queue_spec_findings(repo_root, config, queue_number)
         for f in findings:
@@ -2014,6 +2022,18 @@ def _bullet_path(line: str) -> Optional[str]:
     return _strip_dot_slash(candidate)
 
 
+def declares_nothing(parsed: Optional[AuthorisedPaths]) -> bool:
+    """True when a spec's scope cannot be compared with anything.
+
+    An **empty May change is not the same as nothing declared**: a
+    stage-validation item legitimately changes only the loop bookkeeping every
+    item may write, while still pinning the tree it validates under *Asserts
+    against*. Treating that as undeclared would drop exactly the specs whose
+    whole purpose is to assert — so the test is that *both* lists are empty.
+    """
+    return parsed is None or not (parsed.may_change or parsed.asserts_against)
+
+
 def parse_authorised_paths(text: str) -> Optional[AuthorisedPaths]:
     """Parse an item spec's ``## Authorised paths`` section.
 
@@ -2162,7 +2182,7 @@ def cmd_scope(args: argparse.Namespace) -> int:
     rel_spec = spec.relative_to(repo_root).as_posix()
 
     authorised = parse_authorised_paths(spec.read_text(encoding=_ENCODING))
-    if authorised is None or not authorised.may_change:
+    if declares_nothing(authorised):
         what = ("has no '## Authorised paths' section" if authorised is None
                 else "declares no path under '## Authorised paths'")
         print(f"aide scope: {rel_spec} {what} — cannot check scope. This is "

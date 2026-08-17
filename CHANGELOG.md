@@ -58,6 +58,15 @@ keys, and the adapter's agents/skills/commands.
   mid-queue state, so it is counted and named rather than flagged. And the
   cross-spec checks are opt-in: a bare `aide check` behaves exactly as before.
 
+  **An empty May change is not "nothing declared".** A stage-validation item
+  legitimately changes only the loop bookkeeping every item may write, while
+  pinning the tree it validates under **Asserts against** — so a spec counts as
+  undeclared only when *both* lists are empty. Otherwise the specs whose whole
+  purpose is to assert would be the ones dropped from the check, and a sibling
+  breaking their pins would go unreported. The same rule now governs `aide
+  scope`, where checking such a spec is stricter than bailing out: everything
+  outside the always-authorised bookkeeping is out of scope for it.
+
   Overlap detection deliberately decides only what a script can prove —
   identical patterns, a subtree wildcard swallowing the other, a literal path
   covered by the other's glob. Two unrelated globs that might one day intersect
