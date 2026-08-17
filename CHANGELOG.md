@@ -17,6 +17,54 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.11.0] — 2026-08-17
+
+### Added
+
+- **`conventions.md` §6 — test hygiene, and §7 — verify off-platform (issue
+  #29).** No role in this loop sees a non-Linux checkout, a different working
+  directory, or real CI status: spec → tests → build → validate → merge all run
+  in one place, on one platform, against one checkout. A defect invisible under
+  those conditions is invisible to the entire loop, indefinitely. **Five have
+  reached a consumer's `main` that way, every one caught by a human reading a CI
+  log or by a reviewer outside the loop — never by a gate inside it.**
+
+  The existing rule was one thin line ("deterministic and cross-platform… no
+  absolute paths"), correct but too general to catch any of them. §6 replaces it
+  with the specifics each instance earned, in the engine rather than the adapter
+  because they are provider-agnostic and a non-Claude runtime needs them just as
+  much:
+
+  - never write the repo's own working-directory path into a test — resolve from
+    the test file;
+  - any `Path` entering a hash, comparison or match must be `.as_posix()`, since
+    `str(Path)` (an f-string included) renders the OS-native separator;
+  - a committed byte-exact fixture needs a `.gitattributes` `text eol=lf` pin;
+  - prefer calling the function over shelling out to the command that calls it;
+  - **assert a derived value is recognisable before asserting anything about
+    it** — a glob that matched nothing, an empty capture, a slice from a failed
+    `find()` each flow into the assertion and pass while checking nothing.
+
+  §7 addresses the structural half, since no amount of test-writing guidance
+  substitutes for one gate that looks at a genuinely different platform:
+  `validator` now checks **real CI once a push exists**, and must report the
+  honest answer — including "no CI configured" or "it had not finished" — rather
+  than letting a green local suite stand in for a platform the loop cannot
+  reach. A leg red where local was green is treated as a portability finding
+  until its log says otherwise, because every recorded instance looked like a
+  content problem and was a platform one.
+
+- **`aide check` warns on a test containing the repository's own absolute
+  path** — the one §6 rule a script can decide, and the one whose recorded
+  instance survived every gate for weeks. A test that hardcodes the path of the
+  repo it lives in passes on the machine that wrote it (an absolute path ignores
+  where the process runs, so even a fresh clone into a *different* directory
+  still passed) and matches nothing anywhere else; on CI the glob returned
+  nothing, the digest collapsed to SHA-256 of empty input, and all four legs
+  failed. Matching the repo root literally keeps the rule exact — no judgement
+  call, no false positive. Verified against the real historical defect: the lint
+  fires on the exact committed line that caused it.
+
 ## [1.10.0] — 2026-08-17
 
 ### Added
