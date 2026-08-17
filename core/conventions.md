@@ -162,7 +162,8 @@ Unverified` until measured, then `✅ Met (date, evidence)` or `❌ Not met
 - **One queue is live at a time, deliberately.** The queue boundary is the human
   checkpoint — one review per batch — so the model offers no concurrency above
   the item level, and a roadmap cannot ask for it. Three senses of "parallel"
-  get confused here, and only the first is real:
+  get confused here — the first two are real and useful, the third is the one
+  the model does not offer:
   - **Item independence within a queue** — supported: `aide claim` offers any
     unblocked item, so items may be worked in any order. Say this freely.
   - **Stage independence** — a scheduling *fact* ("Stage 19 needs nothing from

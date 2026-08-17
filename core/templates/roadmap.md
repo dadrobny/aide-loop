@@ -55,8 +55,8 @@ _One bullet per concrete artifact or capability._
 
 **Dependencies.** {{blocking stage numbers, or "None"}}
 
-_The slot holds **blocking** stages only: what this stage needs finished before
-it can start. Anything about *ordering without blocking* is a separate sentence
+_The slot holds **blocking** stages only: what must be complete before this
+stage can start. Anything about *ordering without blocking* is a separate sentence
 after it, e.g. `**Dependencies.** None. Independent of Stage 17 — may be queued
 in either order.`_
 

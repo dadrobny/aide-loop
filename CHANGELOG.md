@@ -23,8 +23,8 @@ keys, and the adapter's agents/skills/commands.
 
 - **"Run alongside" in a roadmap now means independence, not concurrency
   (issue #31).** The roadmap could express stage parallelism; the queue model
-  cannot represent it, so the hint was silently serialised and every planner
-  re-derived the same apology — two consecutive queues each spent a paragraph
+  cannot represent it, so the hint was silently made sequential and every
+  planner re-derived the same apology — two consecutive queues each spent a paragraph
   explaining why they were *not* honouring the roadmap's instruction, leaving a
   standing contradiction between two documents meant to mirror each other.
 
