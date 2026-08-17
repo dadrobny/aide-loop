@@ -682,7 +682,20 @@ def tidy_queue_text(text: str, superseded_by: int, date: str) -> str:
 # --------------------------------------------------------------------------- #
 # check
 # --------------------------------------------------------------------------- #
-_TEMPLATE_SLOT_RE = re.compile(r"\{\{[^}]*\}\}")
+#: An AIDE slot is a bare ``{{name}}``. The negative lookbehind exempts a `$`
+#: immediately before the braces — GitHub Actions expression syntax, which is
+#: foreign syntax a living document may legitimately quote when it documents a
+#: workflow. Without it, an item spec explaining what a CI step runs, or an
+#: insight recording a workflow's arguments, turns `aide check` red on prose
+#: that is correct as written, and the only remedy is to stop naming the real
+#: syntax — making the documentation worse exactly where accuracy matters.
+#:
+#: Suppressing matches inside backtick code spans would be the wrong fix: the
+#: item template's own `Suggested branch` line carries a genuine slot inside a
+#: code span (``aide/{{nnn}}-descriptive-name``), so that rule would make a
+#: real unfilled slot invisible. AIDE slots are never `$`-prefixed, so keying
+#: on the `$` is precise in both directions.
+_TEMPLATE_SLOT_RE = re.compile(r"(?<!\$)\{\{[^}]*\}\}")
 
 
 def template_residue_errors(ddir: Path) -> List[str]:

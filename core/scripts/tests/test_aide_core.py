@@ -651,6 +651,43 @@ def test_template_residue_scans_items_dir(tmp_path: Path):
     assert any("002-core.md" in e and "{{title}}" in e for e in errors)
 
 
+def test_template_residue_exempts_github_actions_expressions(tmp_path: Path):
+    """A document may quote workflow syntax without `aide check` going red.
+
+    An item spec explaining what a CI step runs, or an insight recording a
+    workflow's arguments, legitimately names GitHub Actions expression syntax.
+    Flagging it forced authors to describe the syntax instead of writing it,
+    making the documentation worse exactly where accuracy mattered.
+    """
+    root = _docs(tmp_path)
+    ddir = root / "docs" / "aide"
+    (ddir / "items" / "002-core.md").write_text(
+        "# Item 002 — CI scope check\n\n"
+        "The job passes `origin/${{ github.base_ref }}` as the base.\n"
+        "It also reads ${{ secrets.TOKEN }} and ${{matrix.python}}.\n",
+        encoding="utf-8",
+    )
+    assert aide.template_residue_errors(ddir) == []
+
+
+def test_template_residue_still_flags_a_slot_inside_a_code_span(tmp_path: Path):
+    """Suppressing backticked matches would have been the wrong fix.
+
+    The item template's own `Suggested branch` line carries a real slot inside
+    a code span, so a backtick-based exemption would make a genuinely unfilled
+    slot invisible. Keying on the `$` keeps both directions precise.
+    """
+    root = _docs(tmp_path)
+    ddir = root / "docs" / "aide"
+    (ddir / "items" / "002-core.md").write_text(
+        "# Item 002 — Core\n\n"
+        "> **Suggested branch:** `aide/{{nnn}}-descriptive-name`\n",
+        encoding="utf-8",
+    )
+    errors = aide.template_residue_errors(ddir)
+    assert any("002-core.md" in e and "{{nnn}}" in e for e in errors)
+
+
 def test_check_locations_use_posix_separators(tmp_path: Path):
     """`aide check` output must not vary with the host's path separator.
 
