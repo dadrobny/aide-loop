@@ -164,6 +164,15 @@ def _hygiene_extra_repos():
             if not buf.startswith("["):
                 return []
         else:
+            # A new section header ends the array whether or not it closed.
+            # Without this the header's own `]` satisfies the check below and
+            # an unterminated array yields a PARTIAL grant — the real paths
+            # plus a junk `[loop` entry — which is precisely the "malformed
+            # config grants nothing" posture inverted. A hand parser cannot be
+            # exhaustive here; this covers the shape a truncated array actually
+            # takes, and anything it still cannot parse grants nothing.
+            if stripped.startswith("[") and stripped.endswith("]"):
+                return []
             buf += " " + stripped
         # A TOML array may span lines; keep accumulating until it closes. An
         # array left unterminated falls out of the loop and grants nothing.

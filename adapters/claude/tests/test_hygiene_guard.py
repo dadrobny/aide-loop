@@ -314,3 +314,25 @@ def test_a_similarly_named_key_is_not_mistaken_for_it(tmp_path, monkeypatch):
     _write_local_toml(tmp_path, '[hygiene]\nextra_repos_note = ["../sibling"]\n')
     monkeypatch.chdir(tmp_path)
     assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
+
+
+def test_unterminated_array_followed_by_a_section_grants_nothing(tmp_path, monkeypatch):
+    """The `]` of a following section header would otherwise close the array,
+    yielding a PARTIAL grant — the real paths plus a junk `[loop` entry —
+    inverting the 'malformed config grants nothing' posture."""
+    _write_local_toml(
+        tmp_path,
+        '[hygiene]\nextra_repos = [\n  "../sibling",\n\n[loop]\ninterval = 300\n')
+    monkeypatch.chdir(tmp_path)
+    assert guard._hygiene_extra_repos() == []
+    assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
+
+
+def test_multi_line_array_still_works_when_properly_closed(tmp_path, monkeypatch):
+    """The section-header bail must not break the valid multi-line form."""
+    _write_local_toml(
+        tmp_path,
+        '[hygiene]\nextra_repos = [\n  "../one",\n  "../two",\n]\n\n[loop]\ninterval = 300\n')
+    monkeypatch.chdir(tmp_path)
+    assert guard._hygiene_extra_repos() == ["../one", "../two"]
+    assert guard.violations("git -C ../two status") == []
