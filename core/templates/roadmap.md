@@ -55,6 +55,16 @@ _One bullet per concrete artifact or capability._
 
 **Dependencies.** {{stage numbers, or "None"}}
 
+_Blocking stages only — what this stage needs finished before it can start.
+To say two stages are **independent**, say that: "independent of Stage N; may be
+queued in either order." Avoid "run alongside" / "in parallel" for stages. One
+queue is live at a time (the queue boundary is the human checkpoint), so a
+planner reading "alongside" cannot act on it and will queue them sequentially
+anyway — the phrase only makes the roadmap and the queues look like they
+disagree. If the real point is that one should come **early**, say why: "queue
+before Stage N, whose retuning is safer once this exists." That is an ordering
+constraint a planner can honour._
+
 **Validation / acceptance.**
 
 _One bullet per observable check **of the built thing** — these become the
