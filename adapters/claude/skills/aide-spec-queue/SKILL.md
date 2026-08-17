@@ -46,16 +46,23 @@ lowest-numbered one with open items).
    only its API — otherwise each consumer independently ships a tolerant reader
    plus a hand-back clause where a straight assertion belonged. This keeps
    spec-first optional, not load-bearing.
-5. **Reconcile the batch's `## Authorised paths` before landing it.** Every spec
-   in the batch is visible at once, which is the one moment a cross-item
-   collision is cheap to fix. Read the declarations against each other and
-   resolve, naming which side changed:
-   - two specs claiming **May change** on the same path;
-   - one spec's **May change** overlapping another's **Asserts against** — this
-     is the collision that reliably reaches CI as a red test in the *earlier*
-     item for doing exactly what the loop asked;
-   - an Acceptance Criterion that cannot be satisfied without touching a path
-     its own spec never authorised, or that its own Assumptions bar.
+5. **Reconcile the batch before landing it.** Every spec is visible at once,
+   which is the one moment a cross-item collision is cheap to fix. Run the
+   check rather than reading N specs against each other by eye:
+   ```
+   python .aide/scripts/aide.py check --queue NNN
+   ```
+   It reports two specs claiming **May change** on the same path, one spec's
+   **May change** overlapping another's **Asserts against** (the collision that
+   reliably reaches CI as a red test in the *earlier* item, for doing exactly
+   what the loop asked), and dependency cycles or dependencies on items that
+   exist nowhere. Fix each by amending a spec, naming which side changed.
+
+   Then read for what the check cannot decide, because it turns on what a
+   criterion *means*: an Acceptance Criterion that cannot be satisfied without
+   touching a path its own spec never authorised, or that its own Assumptions
+   bar. Both recorded instances of that needed a human call on which side was
+   wrong.
 6. **Commit per spec** on the batch branch (separate Bash calls):
    ```
    git add docs/aide/items/NNN-*.md

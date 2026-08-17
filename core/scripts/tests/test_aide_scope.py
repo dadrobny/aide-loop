@@ -260,6 +260,30 @@ def test_scope_authorises_the_bookkeeping_files_and_the_spec_itself(tmp_path: Pa
     assert aide.main(["--repo", str(repo), "scope"]) == 0
 
 
+def test_scope_checks_a_spec_that_only_pins(tmp_path: Path, capsys):
+    """A stage-validation item changes only the bookkeeping every item may
+    write, while pinning the tree it validates. That is checkable — and stricter
+    than bailing out, since an accidental source edit is then caught."""
+    repo = _init_repo(tmp_path / "repo")
+    _write(repo, "docs/aide/items/042-demo-item.md",
+           "# Item 042 — Demo\n\n## Authorised paths\n\n"
+           "**Asserts against:**\n\n- `src/demo/rules.py` — pinned\n")
+    _run(["git", "add", "-A"], repo)
+    _run(["git", "commit", "-m", "asserts-only spec"], repo)
+    _run(["git", "switch", "-c", "aide/042-demo-item"], repo)
+    _write(repo, "docs/aide/progress.md", "# p\n")
+    _run(["git", "add", "-A"], repo)
+    _run(["git", "commit", "-m", "bookkeeping only"], repo)
+
+    assert aide.main(["--repo", str(repo), "scope"]) == 0
+
+    _write(repo, "src/demo/rules.py", "x = 9\n")
+    _run(["git", "add", "-A"], repo)
+    _run(["git", "commit", "-m", "touches what it pinned"], repo)
+    assert aide.main(["--repo", str(repo), "scope"]) == 1
+    assert "Asserts against" in capsys.readouterr().out
+
+
 def test_scope_reports_a_missing_section_rather_than_passing(tmp_path: Path, capsys):
     repo = _init_repo(tmp_path / "repo")
     _write(repo, "docs/aide/items/042-demo-item.md", "# Item 042 — Demo\n\n## Description\n\nx\n")

@@ -276,6 +276,22 @@ should be retired when its item merges, while an *artifact-integrity invariant*
 — but then it belongs in a test named for the artifact, living beside it, not
 inside an unrelated item's regression module under a `_PRE_NNN_` name.
 
+**One queue's specs are checked against each other before any is built**, in the
+window `/aide-spec-queue` creates — N specs on one branch, every cross-item
+conflict still cheap to fix:
+
+```
+python .aide/scripts/aide.py check --queue NNN [--report <path>]
+```
+
+It reports two items claiming the same path under **May change** (warning), one
+item changing what another pins under **Asserts against** (error), and a
+dependency cycle or a dependency on an item that exists nowhere. `--report`
+writes the findings as JSON for a reviewer pass to pick up. The invariant is
+worth stating plainly, because a spec-by-spec reading does not give it:
+*predicting the one collision a spec happens to name is not the same as proving
+no sibling assertion depends on state this item's authorised edit changes.*
+
 **Auditing fences goes by shape, not by name.** The distinguishing feature is a
 digest compared against a **hardcoded literal**; a digest compared against a
 value computed in the same run is a determinism check and must stay. A sweep for
