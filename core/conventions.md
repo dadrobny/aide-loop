@@ -424,6 +424,28 @@ identical across modes.
 - **`local`** — no pushes at all (offline). Claim is a local branch only (no
   multi-machine signal); merge is local into `main`.
 
+**Where "`main`" above actually means "the base".** `main_branch` is the default
+and is never removed as one, but real work stacks: a queue branch carries the
+queue file, a roadmap deliverable and every item spec, and lands as **one**
+reviewed PR — so each of its items must branch off *and merge back into* that
+branch, not `main`. Two things make that work without a flag at every call site:
+
+- **`aide claim` records what it branched off.** It already creates the branch
+  from whatever is checked out, so claiming from a queue branch has always
+  branched correctly; it now remembers that as the item's base. Inference is
+  deliberately narrow — only a *recognised* queue branch (`<prefix>queue-NNN`,
+  `<prefix>specs-queue-NNN`), never an arbitrary checked-out branch, which
+  would silently retarget a merge.
+- **`aide merge` returns the item to its recorded base**, so the validator's
+  documented `aide merge NNN` step is correct on a queue branch with no change.
+
+`--base <ref>` overrides on `claim`, `merge`, `gc` (which ref `--merged` is
+measured against), `status` (what ahead/behind is reported from) and `scope`
+(what the diff is taken against). Resolution is always **`--base` > recorded >
+`main_branch`**. The record is local git config, not a committed file: the base
+is a fact about this checkout's branching, so a different machine falls back to
+`main_branch` and passes `--base` explicitly.
+
 ---
 
 ## 5. Clarify mode (`loop.clarify` in `aide.toml`)

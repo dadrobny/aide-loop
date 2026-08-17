@@ -13,7 +13,7 @@ Subcommands::
     python .aide/scripts/aide.py progress set NNN <in-progress|done>
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
-    python .aide/scripts/aide.py merge NNN             # merge a validated item per git.mode
+    python .aide/scripts/aide.py merge NNN [--base R]  # merge a validated item per git.mode
     python .aide/scripts/aide.py env                   # venv existence / import check + bootstrap
     python .aide/scripts/aide.py sync [--item NNN]     # preflight: fetch, clean-tree check, right branch
     python .aide/scripts/aide.py gc [--merged] [--yes] # delete claim branches whose work landed
@@ -1451,13 +1451,26 @@ def cmd_claim(args: argparse.Namespace) -> int:
         return 0
     number, title = pick
     branch = f"{prefix}{number:03d}-{_slug(title)}"
+
+    # What this claim branches off, and what its `merge` will return it to.
+    # `switch -c` already branches from whatever is checked out, so claiming
+    # from a queue branch has always branched correctly — only the merge target
+    # was fixed. Inferring the base from a *recognised queue branch* (never from
+    # an arbitrary branch, which would silently retarget a merge) closes that
+    # half without asking every caller to pass a flag it cannot know.
+    current = _current_branch(repo_root)
+    base = args.base or (current if _is_queue_branch(current, prefix)
+                         else str(config["git"].get("main_branch", "main")))
+
     if args.dry_run:
-        print(f"would claim item {number:03d} -> {branch} ({title})")
+        print(f"would claim item {number:03d} -> {branch} ({title}); base {base}")
         return 0
     git(["switch", "-c", branch], repo_root)
+    _record_branch_base(repo_root, branch, base)
     if mode != "local":
         git(["push", "-u", "origin", branch], repo_root)
-    print(f"claimed item {number:03d}: {branch} — {title}")
+    note = "" if base == str(config["git"].get("main_branch", "main")) else f" (base {base})"
+    print(f"claimed item {number:03d}: {branch} — {title}{note}")
     return 0
 
 
@@ -1473,16 +1486,28 @@ def cmd_merge(args: argparse.Namespace) -> int:
     config = load_config(repo_root)
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
-    main = str(config["git"].get("main_branch", "main"))
     branch = args.branch or _find_claim_branch(repo_root, prefix, args.number)
     if not branch:
         print(f"aide merge: no claim branch found for item {args.number:03d}", file=sys.stderr)
         return 1
 
+    # Where this item lands: --base > what the claim recorded > main_branch.
+    # Hard-wiring main_branch is what forced a consumer to merge every item of a
+    # queue by hand — the queue file, a roadmap deliverable and nine item specs
+    # lived only on the queue branch and had to land as one reviewed PR, so each
+    # item needed to merge *back into* that branch.
+    main = resolve_base(repo_root, config, args.base, branch)
+    if not _ref_exists(repo_root, main):
+        print(f"aide merge: base ref '{main}' does not exist — pass an existing "
+              f"--base, or check out the branch this item was claimed from",
+              file=sys.stderr)
+        return 1
+
     if mode == "pr":
         git(["push", "-u", "origin", branch], repo_root)
-        print(f"aide merge (pr mode): pushed {branch}. Open a PR to land it "
-              f"(e.g. 'gh pr create'); merge is left to the human review gate.")
+        print(f"aide merge (pr mode): pushed {branch}. Open a PR against {main} "
+              f"to land it (e.g. 'gh pr create'); merge is left to the human "
+              f"review gate.")
         return 0
 
     git(["switch", main], repo_root)
@@ -1582,6 +1607,76 @@ def _is_queue_branch(branch: str, prefix: str) -> bool:
 def _has_origin(repo_root: Path) -> bool:
     out = git(["remote"], repo_root, check=False).stdout
     return "origin" in out.split()
+
+
+# --------------------------------------------------------------------------- #
+# Base refs — what a claim branched from, and what its merge returns to
+# --------------------------------------------------------------------------- #
+#: Where a claim branch remembers its base. A git-config key under the branch's
+#: own section, so it travels with the branch through switch/rebase and needs no
+#: file in the repo. It is deliberately *local* config: the base is a fact about
+#: this checkout's branching, not something to commit and share. A machine that
+#: never ran the `claim` falls back to `main_branch`, and `--base` is always
+#: available — nothing silently merges somewhere unexpected.
+_BASE_CONFIG_KEY = "aide-base"
+
+
+def _record_branch_base(repo_root: Path, branch: str, base: str) -> None:
+    git(["config", f"branch.{branch}.{_BASE_CONFIG_KEY}", base],
+        repo_root, check=False)
+
+
+def _recorded_branch_base(repo_root: Path, branch: str) -> Optional[str]:
+    if not branch:
+        return None
+    res = git(["config", "--get", f"branch.{branch}.{_BASE_CONFIG_KEY}"],
+              repo_root, check=False)
+    value = res.stdout.strip()
+    return value or None
+
+
+def _current_branch(repo_root: Path) -> str:
+    return git(["rev-parse", "--abbrev-ref", "HEAD"],
+               repo_root, check=False).stdout.strip()
+
+
+def _ref_exists(repo_root: Path, ref: str) -> bool:
+    return git(["rev-parse", "--verify", "--quiet", ref],
+               repo_root, check=False).returncode == 0
+
+
+def _remote_or_local(repo_root: Path, ref: str) -> str:
+    """``origin/<ref>`` when it resolves, else *ref* unchanged.
+
+    Used where the question is "what has this branch actually diverged from" —
+    the remote-tracking ref is what CI compares against and what the branch will
+    merge into, and a local ref sitting behind the work answers that wrongly.
+    """
+    if _has_origin(repo_root):
+        remote = f"origin/{ref}"
+        if _ref_exists(repo_root, remote):
+            return remote
+    return ref
+
+
+def resolve_base(repo_root: Path, config: Dict[str, Dict[str, object]],
+                 explicit: Optional[str] = None,
+                 branch: Optional[str] = None) -> str:
+    """The base ref for a branch: explicit ``--base`` > recorded > config.
+
+    ``main_branch`` stays the default and is never removed as one — this only
+    adds the two ways a branch can legitimately have a *different* base, which
+    is what stacked work produces: a queue branch's items branch off it and must
+    merge back into it, so the whole queue lands as one reviewed PR.
+    """
+    if explicit:
+        return explicit
+    if branch is None:
+        branch = _current_branch(repo_root)
+    recorded = _recorded_branch_base(repo_root, branch)
+    if recorded:
+        return recorded
+    return str(config["git"].get("main_branch", "main"))
 
 
 # --------------------------------------------------------------------------- #
@@ -1752,22 +1847,21 @@ def scope_findings(changed: List[str], authorised: AuthorisedPaths,
     return unauthorised, contradictions
 
 
-def _default_base_ref(repo_root: Path, main: str) -> str:
-    """``origin/<main>`` when it resolves, else the local ref.
+def _scope_base_ref(repo_root: Path, config, explicit: Optional[str]) -> str:
+    """The ref ``scope`` diffs against: ``--base`` > the branch's recorded base
+    > ``main_branch`` — each preferring its ``origin/`` counterpart.
 
-    The local ref is the footgun this default exists to avoid: on a checkout
-    whose ``main`` sits behind the work — a queue branch carrying many merged
-    item commits, say — the merge-base with local ``main`` is local ``main``,
-    so every file those earlier items touched is reported against the current
-    item's spec. The remote-tracking ref is what CI compares against and what
-    the branch will actually merge into.
+    The remote-tracking preference is the footgun this exists to avoid: on a
+    checkout whose local ``main`` sits behind the work, the merge-base with it
+    *is* it, so every file the earlier items touched gets reported against the
+    current item's spec. Consulting the recorded base first is what makes the
+    verb correct on stacked work — an item claimed from a queue branch has
+    diverged from *that*, not from ``main``, and diffing against ``main`` would
+    report every sibling item already merged into the queue.
     """
-    if _has_origin(repo_root):
-        remote = f"origin/{main}"
-        if git(["rev-parse", "--verify", "--quiet", remote],
-               repo_root, check=False).returncode == 0:
-            return remote
-    return main
+    if explicit:
+        return explicit
+    return _remote_or_local(repo_root, resolve_base(repo_root, config))
 
 
 def cmd_scope(args: argparse.Namespace) -> int:
@@ -1784,12 +1878,10 @@ def cmd_scope(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
     prefix = str(config["git"].get("branch_prefix", "aide/"))
-    main = str(config["git"].get("main_branch", "main"))
 
     number = args.number
     if number is None:
-        branch = git(["rev-parse", "--abbrev-ref", "HEAD"],
-                     repo_root, check=False).stdout.strip()
+        branch = _current_branch(repo_root)
         if _is_queue_branch(branch, prefix):
             print(f"aide scope: {branch} is a queue branch, not an item claim — "
                   "per-item scope is checked on each claim branch as it merges "
@@ -1822,7 +1914,7 @@ def cmd_scope(args: argparse.Namespace) -> int:
               "re-run.", file=sys.stderr)
         return 2
 
-    base = args.base or _default_base_ref(repo_root, main)
+    base = _scope_base_ref(repo_root, config, args.base)
     mb = git(["merge-base", base, "HEAD"], repo_root, check=False)
     if mb.returncode != 0:
         print(f"aide scope: could not resolve a merge-base with '{base}' — "
@@ -1924,12 +2016,14 @@ def cmd_status(args: argparse.Namespace) -> int:
     config = load_config(repo_root)
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
-    main = str(config["git"].get("main_branch", "main"))
 
     if not args.no_fetch and mode != "local" and _has_origin(repo_root):
         git(["fetch", "--all", "--prune"], repo_root, check=False)
 
-    branch = git(["rev-parse", "--abbrev-ref", "HEAD"], repo_root, check=False).stdout.strip()
+    branch = _current_branch(repo_root)
+    # Report divergence from the base this branch actually has, not always from
+    # main — on stacked work the interesting distance is to the queue branch.
+    main = resolve_base(repo_root, config, args.base, branch)
     line = f"branch: {branch or '(unknown)'}"
     if mode != "local" and _has_origin(repo_root):
         counts = git(["rev-list", "--left-right", "--count", f"{main}...origin/{main}"],
@@ -2060,7 +2154,10 @@ def cmd_gc(args: argparse.Namespace) -> int:
     config = load_config(repo_root)
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
-    main = str(config["git"].get("main_branch", "main"))
+    # The `--merged` ground is "already merged into <base>", so it takes a base
+    # like everything else: on stacked work the branches that have landed have
+    # landed into the queue branch, and asking about `main` finds none of them.
+    main = resolve_base(repo_root, config, args.base)
 
     if mode != "local" and _has_origin(repo_root):
         git(["fetch", "--all", "--prune"], repo_root, check=False)
@@ -2169,12 +2266,19 @@ def register_git_subcommands(sub) -> None:
     p_claim = sub.add_parser("claim", help="pick + claim the next unclaimed 📋 item")
     p_claim.add_argument("--queue", type=int, default=None,
                          help="queue number (default: the lowest-numbered open queue)")
+    p_claim.add_argument("--base", default=None,
+                         help="branch this claim off, and merge it back into "
+                              "(default: the current branch when it is a queue "
+                              "branch, else main_branch)")
     p_claim.add_argument("--dry-run", action="store_true", help="print the pick, do not create/push a branch")
     p_claim.set_defaults(func=cmd_claim)
 
     p_merge = sub.add_parser("merge", help="merge a validated item per git.mode")
     p_merge.add_argument("number", type=int)
     p_merge.add_argument("branch", nargs="?", default=None, help="claim branch (default: found from number)")
+    p_merge.add_argument("--base", default=None,
+                         help="merge into this ref (default: what the claim "
+                              "recorded, else main_branch)")
     p_merge.add_argument("--no-test", action="store_true", help="skip the post-merge test run")
     p_merge.set_defaults(func=cmd_merge)
 
@@ -2191,12 +2295,18 @@ def register_git_subcommands(sub) -> None:
 
     p_gc = sub.add_parser("gc", help="delete claim branches whose work has landed (dry-run by default)")
     p_gc.add_argument("--merged", action="store_true",
-                      help="also delete claim branches already merged into main")
+                      help="also delete claim branches already merged into the base")
+    p_gc.add_argument("--base", default=None,
+                      help="ref --merged is measured against (default: the "
+                           "current branch's recorded base, else main_branch)")
     p_gc.add_argument("--yes", action="store_true", help="actually delete (default: dry run)")
     p_gc.set_defaults(func=cmd_gc)
 
     p_status = sub.add_parser("status", help="one-call roadmap-state report (branch, queues, claims, PRs)")
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
+    p_status.add_argument("--base", default=None,
+                          help="ref to report ahead/behind against (default: the "
+                               "current branch's recorded base, else main_branch)")
     p_status.set_defaults(func=cmd_status)
 
     p_scope = sub.add_parser("scope",
