@@ -8,7 +8,7 @@ It is **venv-independent** (it must run before/without the project venv) and
 
 Subcommands::
 
-    python .aide/scripts/aide.py check                 # consistency gate over docs/aide
+    python .aide/scripts/aide.py check [--queue NNN]   # consistency gate over docs/aide
     python .aide/scripts/aide.py scope [NNN]           # branch diff vs the item's authorised paths
     python .aide/scripts/aide.py progress set NNN <in-progress|done>
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import json
 import os
 import re
 import subprocess
@@ -1084,10 +1085,232 @@ def _list_claim_branches(repo_root: Path, prefix: str) -> List[str]:
 # --------------------------------------------------------------------------- #
 # command handlers
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Cross-spec queue check — do a queue's specs conflict, before any is built?
+# --------------------------------------------------------------------------- #
+class SpecFinding(NamedTuple):
+    """One cross-item conflict between the specs on a queue."""
+
+    severity: str          # "error" | "warning"
+    kind: str              # machine-readable class, for the --report seam
+    items: Tuple[int, ...]
+    message: str
+
+
+def patterns_overlap(a: str, b: str) -> bool:
+    """True when two ``## Authorised paths`` patterns can cover the same file.
+
+    Deliberately decides only the cases a script *can* decide: an identical
+    pattern, a subtree wildcard swallowing the other, and a literal path
+    covered by the other's glob. Two unrelated globs that would happen to
+    intersect on some file neither spec has thought of are not modelled —
+    reporting those would mean guessing at a future tree, and this check exists
+    to be trusted, not to be argued with.
+    """
+    a = _strip_dot_slash(a.strip())
+    b = _strip_dot_slash(b.strip())
+    if a == b:
+        return True
+    for x, y in ((a, b), (b, a)):
+        if x.endswith("/**"):
+            prefix = x[: -len("/**")]
+            if y == prefix or y.startswith(prefix + "/"):
+                return True
+    if not any(c in a for c in "*?[") and path_matches(a, b):
+        return True
+    if not any(c in b for c in "*?[") and path_matches(b, a):
+        return True
+    return False
+
+
+def _dependency_cycles(graph: Dict[int, List[int]]) -> List[List[int]]:
+    """Every dependency cycle in *graph*, each reported once.
+
+    A cycle deadlocks `aide claim` outright: every item in it is blocked by
+    another item in it, so none is ever claimable and the queue silently stops
+    producing work rather than failing.
+    """
+    cycles: List[List[int]] = []
+    seen: set = set()
+    state: Dict[int, int] = {}   # 0 = visiting, 1 = done
+
+    def walk(node: int, stack: List[int]) -> None:
+        state[node] = 0
+        stack.append(node)
+        for nxt in graph.get(node, []):
+            if state.get(nxt) == 0:
+                cycle = stack[stack.index(nxt):]
+                key = tuple(sorted(cycle))
+                if key not in seen:
+                    seen.add(key)
+                    cycles.append(cycle)
+            elif nxt not in state and nxt in graph:
+                walk(nxt, stack)
+        stack.pop()
+        state[node] = 1
+
+    for node in sorted(graph):
+        if node not in state:
+            walk(node, [])
+    return cycles
+
+
+def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
+                        queue_number: int) -> Tuple[List[SpecFinding], List[int]]:
+    """``(findings, unspecced)`` for every spec on queue *queue_number*.
+
+    Runs in the window `/aide-spec-queue` creates and currently leaves
+    unguarded: N specs authored on one branch before any is built, where every
+    cross-item conflict is both possible and cheap to fix. The invariant it
+    enforces is the one a consumer's post-mortem arrived at — *predicting the
+    one collision a spec happens to name is not the same as proving no sibling
+    assertion depends on state this item's authorised edit changes.*
+    """
+    ddir = docs_dir(repo_root, config)
+    qpath = ddir / "queue" / f"queue-{queue_number:03d}.md"
+    if not qpath.is_file():
+        return ([SpecFinding("error", "missing-queue", (),
+                             f"no queue file at {qpath.relative_to(repo_root).as_posix()}")],
+                [])
+
+    numbers = queue_item_numbers(qpath.read_text(encoding=_ENCODING))
+    idir = ddir / "items"
+    findings: List[SpecFinding] = []
+    unspecced: List[int] = []
+    declared: Dict[int, AuthorisedPaths] = {}
+
+    for num in numbers:
+        specs = sorted(idir.glob(f"{num:03d}-*.md")) if idir.is_dir() else []
+        if not specs:
+            # Normal mid-queue state, not a conflict: /aide-spec-queue exists to
+            # fill these. Counted and reported, never silently dropped.
+            unspecced.append(num)
+            continue
+        parsed = parse_authorised_paths(specs[0].read_text(encoding=_ENCODING))
+        rel = specs[0].relative_to(repo_root).as_posix()
+        if parsed is None or not parsed.may_change:
+            findings.append(SpecFinding(
+                "warning", "undeclared-scope", (num,),
+                f"item {num:03d} ({rel}) declares no '## Authorised paths' — its "
+                f"scope cannot be compared with its siblings'. Add the section "
+                f"(conventions.md §1); until then this item needs a human scope "
+                f"review, and `aide scope` cannot check it either"))
+            continue
+        declared[num] = parsed
+
+    # The loop bookkeeping every item writes anyway (`aide scope` authorises
+    # these without them being listed). Specs often list them redundantly, and
+    # two items "conflicting" over progress.md is not a conflict — it is the
+    # claim protocol working. Excluded from the overlap check, never from the
+    # pinned-state check: pinning progress.md would be a real assertion.
+    ddir_rel = ddir.relative_to(repo_root).as_posix()
+    bookkeeping = {f"{ddir_rel}/{name}" for name in _ALWAYS_AUTHORISED}
+
+    ordered = sorted(declared)
+    for i, a in enumerate(ordered):
+        for b in ordered[i + 1:]:
+            # Row 1 — two items claim edit rights on the same file.
+            for pa in declared[a].may_change:
+                if pa in bookkeeping:
+                    continue
+                for pb in declared[b].may_change:
+                    if patterns_overlap(pa, pb):
+                        findings.append(SpecFinding(
+                            "warning", "may-change-overlap", (a, b),
+                            f"items {a:03d} and {b:03d} both claim '{pa}'"
+                            + (f" / '{pb}'" if pa != pb else "")
+                            + " under May change — whichever builds second "
+                              "inherits the first's edits; confirm that is intended"))
+        # Rows 2+3 — one item may change what another pins. Under the
+        # `## Authorised paths` vocabulary these are one check: an "Asserts
+        # against" entry covers a byte-hash pin and a live recomputation alike,
+        # which is the point — the live-recomputed case is the one a survey
+        # hunting fragile-looking hashes missed.
+        for b in ordered:
+            if a == b:
+                continue
+            for pa in declared[a].may_change:
+                for pb in declared[b].asserts_against:
+                    if patterns_overlap(pa, pb):
+                        findings.append(SpecFinding(
+                            "error", "changes-pinned-state", (a, b),
+                            f"item {a:03d} may change '{pa}', which item {b:03d} "
+                            f"pins as '{pb}' under Asserts against — item {b:03d}'s "
+                            f"assertion breaks when item {a:03d} lands. Decide now "
+                            f"which side is wrong: widen the pin, or narrow the edit"))
+
+    # Row 5 — the dependency graph. A cycle deadlocks `aide claim`: every item
+    # in it is blocked by another in it, so the queue silently stops producing
+    # work rather than failing.
+    graph = {num: _item_dependencies(repo_root, config, num)
+             for num in numbers if num not in unspecced}
+    for cycle in _dependency_cycles(graph):
+        chain = " → ".join(f"{n:03d}" for n in cycle + [cycle[0]])
+        findings.append(SpecFinding(
+            "error", "dependency-cycle", tuple(cycle),
+            f"dependency cycle {chain} — every item in it is blocked by another "
+            f"in it, so `aide claim` will never offer any of them"))
+
+    known = set(numbers)
+    for num, deps in graph.items():
+        for dep in deps:
+            if dep in known:
+                continue
+            has_spec = bool(sorted(idir.glob(f"{dep:03d}-*.md"))) if idir.is_dir() else False
+            in_a_queue = any(dep in queue_item_numbers(p.read_text(encoding=_ENCODING))
+                             for p in _queue_paths(ddir / "queue"))
+            if not has_spec and not in_a_queue:
+                findings.append(SpecFinding(
+                    "warning", "unknown-dependency", (num, dep),
+                    f"item {num:03d} depends on item {dep:03d}, which has no spec "
+                    f"and appears in no queue — a typo here blocks the item forever"))
+
+    return findings, unspecced
+
+
+def _write_findings_report(path: Path, queue_number: int,
+                           findings: List[SpecFinding],
+                           unspecced: List[int]) -> None:
+    """Write the machine-readable report — the seam a reviewer pass consumes as
+    its worklist rather than re-deriving what this check already decided."""
+    payload = {
+        "queue": queue_number,
+        "unspecced_items": unspecced,
+        "findings": [
+            {"severity": f.severity, "kind": f.kind,
+             "items": list(f.items), "message": f.message}
+            for f in findings
+        ],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Plain utf-8, NOT `_ENCODING`: that is utf-8-sig, which writes a BOM. A BOM
+    # is right for the markdown documents (Windows editors add one and the
+    # parsers must tolerate it) and wrong here — `json.loads` rejects a leading
+    # BOM outright, so the seam would be unreadable by the very consumer it
+    # exists for.
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8")
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
     errors, warnings = run_checks(repo_root, config)
+
+    queue_number = getattr(args, "queue", None)
+    if queue_number is not None:
+        findings, unspecced = queue_spec_findings(repo_root, config, queue_number)
+        for f in findings:
+            (errors if f.severity == "error" else warnings).append(f.message)
+        if unspecced:
+            listed = ", ".join(f"{n:03d}" for n in unspecced)
+            print(f"aide check: queue {queue_number:03d} — {len(unspecced)} item(s) "
+                  f"not yet specced, so not compared: {listed}")
+        report = getattr(args, "report", None)
+        if report:
+            _write_findings_report(Path(report), queue_number, findings, unspecced)
+            print(f"aide check: wrote {report}")
+
     for w in warnings:
         print(f"warning: {w}")
     for e in errors:
@@ -2269,6 +2492,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_check = sub.add_parser("check", help="consistency gate over docs/aide")
+    p_check.add_argument("--queue", type=int, default=None,
+                         help="also check this queue's specs against each other "
+                              "(scope overlaps, pinned state, dependency graph)")
+    p_check.add_argument("--report", default=None,
+                         help="with --queue: write the findings as JSON to this path")
     p_check.set_defaults(func=cmd_check)
 
     p_prog = sub.add_parser("progress", help="edit progress.md status / acceptance")

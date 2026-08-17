@@ -17,6 +17,66 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-08-17
+
+### Added
+
+- **`aide check --queue NNN` — a queue's specs checked against each other,
+  before any is built (issue #26).** `validator` runs **per item, after build**.
+  There was no counterpart running **per queue, before any build** — which is
+  precisely the window `/aide-spec-queue` creates and left unguarded. That
+  skill's whole premise is authoring N specs on one branch before any of them
+  is built, so every cross-item conflict is both possible and cheaply fixable
+  in exactly that window, and nothing looked.
+
+  The invariant, from the consumer post-mortem that found it: *predicting the
+  one collision a spec happens to name is not the same as proving no sibling
+  assertion depends on state this item's authorised edit changes.*
+
+  Three conflict classes, each with a recorded instance:
+
+  - **Two items claim the same file** under **May change** (warning) — whichever
+    builds second inherits the first's edits.
+  - **One item may change what another pins** under **Asserts against** (error).
+    Under 1.6.0's vocabulary the issue's rows 2 and 3 are *one* check: an
+    "Asserts against" entry covers a byte-hash pin and a live recomputation
+    alike. That matters because the live-recomputed instance is the one a
+    survey hunting fragile-looking byte-hashes missed entirely.
+  - **The dependency graph** — a cycle (error) deadlocks `aide claim` outright,
+    since every item in it is blocked by another in it, so the queue silently
+    stops producing work rather than failing; a dependency on an item with no
+    spec and no queue entry (warning) is a typo that blocks an item forever.
+
+  `--report <path>` writes the findings as JSON — the seam a reviewer pass
+  (#27) consumes as its worklist rather than re-deriving what this already
+  decided. It is written as plain UTF-8, deliberately not the `utf-8-sig` the
+  markdown documents use, since `json.loads` rejects a leading BOM.
+
+  **Graceful degradation, per #25.** A spec with no `## Authorised paths` is
+  reported with its remedy, never silently skipped — an undeclared spec is not
+  an unconstrained one. A *queued* item with no spec yet is the normal
+  mid-queue state, so it is counted and named rather than flagged. And the
+  cross-spec checks are opt-in: a bare `aide check` behaves exactly as before.
+
+  Overlap detection deliberately decides only what a script can prove —
+  identical patterns, a subtree wildcard swallowing the other, a literal path
+  covered by the other's glob. Two unrelated globs that might one day intersect
+  on some file neither spec has thought of are not guessed at. Loop bookkeeping
+  (`progress.md`, `insights.md`) is excluded from the overlap check, since every
+  item writes both and "conflicting" over `progress.md` is the claim protocol
+  working — that was 4 of 16 warnings on a real consumer queue. It stays in the
+  pinned-state check, where pinning `progress.md` would be a real assertion.
+
+### Known gap
+
+- The issue's **row 7** — a spec deletes a test another committed document names
+  — is **not** implemented, and is routed to #27 instead. The generic form is
+  not soundly script-decidable: item specs legitimately name tests that do not
+  exist yet, and `insights.md` names deleted ones by design, so a name-based
+  sweep would fire on correct documents. Making it decidable needs a convention
+  marking which references assert a *live* test — a vocabulary addition of the
+  #25 kind, not something to guess at here.
+
 ## [1.8.0] — 2026-08-17
 
 ### Added
