@@ -834,10 +834,16 @@ def absolute_path_test_warnings(repo_root: Path,
     tests_dir = repo_root / str(config["project"].get("tests_dir", "tests"))
     if not tests_dir.is_dir():
         return []
-    # Compare on both separators: the offending literal is whatever the
-    # authoring platform wrote, and this check must fire wherever it runs.
+    # Three spellings, because the offending literal is whatever the authoring
+    # platform wrote and this check must fire wherever it runs. On POSIX all
+    # three collapse to one string; on Windows they are genuinely different:
+    #   as_posix()  C:/path/to/repo    — a forward-slash literal
+    #   str()       C:\path\to\repo    — a raw string, r"C:\path\to\repo"
+    #   escaped     C:\\path\\to\\repo — an ordinary literal, the COMMON form
+    # Omitting the third would make this portability lint miss the most likely
+    # Windows spelling of the very defect it exists to catch.
     root = repo_root.resolve()
-    needles = {root.as_posix(), str(root)}
+    needles = {root.as_posix(), str(root), str(root).replace("\\", "\\\\")}
     out: List[str] = []
     for path in sorted(tests_dir.rglob("*.py")):
         if "__pycache__" in path.parts:
@@ -848,7 +854,13 @@ def absolute_path_test_warnings(repo_root: Path,
             continue
         for lineno, line in enumerate(text.splitlines(), start=1):
             if any(n in line for n in needles):
-                rel = path.relative_to(repo_root).as_posix()
+                try:
+                    rel = path.relative_to(repo_root).as_posix()
+                except ValueError:
+                    # `tests_dir` can be configured absolute, or resolve
+                    # outside the repo via a symlink. A lint that raises takes
+                    # the whole `aide check` down instead of reporting.
+                    rel = path.as_posix()
                 out.append(
                     f"{rel}:{lineno}: contains this repository's absolute path — "
                     f"it passes here and matches nothing on any other checkout; "

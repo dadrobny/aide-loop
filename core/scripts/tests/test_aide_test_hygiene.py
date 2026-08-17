@@ -94,6 +94,50 @@ def test_nested_test_files_are_scanned(tmp_path: Path):
     assert "tests/unit/deep/test_deep.py" in warnings[0]
 
 
+def test_flags_the_escaped_backslash_spelling(tmp_path: Path):
+    """The common Windows literal is `"C:\\\\path\\\\to\\\\repo"` — escaped, so
+    the source text holds doubled backslashes while `str(root)` holds single
+    ones. Missing it would leave this portability lint unable to catch the most
+    likely Windows spelling of the defect it exists for.
+
+    Honest limit, per conventions.md §6: on POSIX the three needle spellings
+    collapse to one string, so here this asserts the same thing as the plain
+    case. It is a real test only on the Windows CI leg — which is exactly why
+    that leg exists, and why this is not evidence the branch works until CI
+    says so.
+    """
+    repo = _repo(tmp_path)
+    escaped = str(repo.resolve()).replace("\\", "\\\\")
+    (repo / "tests" / "test_thing.py").write_text(
+        f'GOLDEN = Path("{escaped}/tests/corpus")\n', encoding="utf-8")
+    assert len(_warn(repo)) == 1
+
+
+def test_flags_the_native_separator_spelling(tmp_path: Path):
+    """A raw string keeps the OS-native separators verbatim."""
+    repo = _repo(tmp_path)
+    (repo / "tests" / "test_thing.py").write_text(
+        f'GOLDEN = Path(r"{repo.resolve()}")\n', encoding="utf-8")
+    assert len(_warn(repo)) == 1
+
+
+def test_tests_dir_outside_the_repo_does_not_crash(tmp_path: Path):
+    """`tests_dir` may be configured absolute, so `relative_to` can raise. A
+    lint that raises takes the whole `aide check` down instead of reporting."""
+    repo = _repo(tmp_path)
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "test_thing.py").write_text(
+        f'X = "{repo.resolve().as_posix()}/x"\n', encoding="utf-8")
+    (repo / "aide.toml").write_text(
+        f'[project]\nname = "Demo"\ntests_dir = "{outside.as_posix()}"\n',
+        encoding="utf-8")
+
+    warnings = _warn(repo)          # must not raise
+    assert len(warnings) == 1
+    assert "elsewhere/test_thing.py" in warnings[0]
+
+
 def test_undecodable_file_does_not_crash_the_check(tmp_path: Path):
     """A lint that raises on one odd file takes the whole `aide check` with it."""
     repo = _repo(tmp_path)
