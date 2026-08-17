@@ -9,6 +9,7 @@ It is **venv-independent** (it must run before/without the project venv) and
 Subcommands::
 
     python .aide/scripts/aide.py check                 # consistency gate over docs/aide
+    python .aide/scripts/aide.py scope [NNN]           # branch diff vs the item's authorised paths
     python .aide/scripts/aide.py progress set NNN <in-progress|done>
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
@@ -24,6 +25,7 @@ touching git or the real filesystem (see ``.aide/scripts/tests``).
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import os
 import re
 import subprocess
@@ -1582,6 +1584,277 @@ def _has_origin(repo_root: Path) -> bool:
     return "origin" in out.split()
 
 
+# --------------------------------------------------------------------------- #
+# Scope check — a branch's diff against its item's `## Authorised paths`
+# --------------------------------------------------------------------------- #
+_AUTHORISED_HEADING = "## Authorised paths"
+#: The two sub-lists of that section (conventions.md §1), matched case- and
+#: punctuation-insensitively so `**May change:**`, `**May change**` and
+#: `May change:` all read the same.
+_MAY_CHANGE_LABEL = "may change"
+_ASSERTS_LABEL = "asserts against"
+
+#: Loop bookkeeping the `aide` CLI and the agent roles are mandated to write on
+#: *any* item, whatever that item is about — so a change to one is never
+#: evidence of scope creep, and listing them would force every spec to repeat
+#: the same boilerplate bullets just to pass. Kept explicit and wildcard-free so
+#: the set cannot silently grow into a scope hole:
+#:
+#: - ``progress.md`` — rewritten by ``aide progress set`` on every item.
+#: - ``insights.md`` — the compound-engineering inbox; conventions.md §1 names
+#:   appending to it as the one write allowed outside an agent's edit scope, so
+#:   flagging it would punish exactly the behaviour the framework requires.
+#:
+#: The item's own spec is authorised separately, by number, in ``cmd_scope`` —
+#: the builder records Decisions & Trade-offs there on every item.
+_ALWAYS_AUTHORISED = ("progress.md", "insights.md")
+
+
+class AuthorisedPaths(NamedTuple):
+    """The two lists of an item spec's ``## Authorised paths`` section."""
+
+    may_change: List[str]
+    asserts_against: List[str]
+
+
+def _strip_dot_slash(path: str) -> str:
+    """Drop a leading ``./``, and only that.
+
+    Never ``lstrip("./")``, which strips leading *characters* from that set and
+    so silently renames the dotfiles specs routinely authorise —
+    ``.gitattributes`` to ``gitattributes``, ``.github/workflows/ci.yml`` to
+    ``github/workflows/ci.yml`` — turning a declared path into one that matches
+    nothing git ever reports.
+    """
+    while path.startswith("./"):
+        path = path[2:]
+    return path
+
+
+def _sub_list_label(line: str) -> Optional[str]:
+    """The normalised sub-list label on *line*, or None if it is not one."""
+    text = line.strip().strip("*_").strip().rstrip(":").strip().lower()
+    if text == _MAY_CHANGE_LABEL:
+        return _MAY_CHANGE_LABEL
+    if text == _ASSERTS_LABEL:
+        return _ASSERTS_LABEL
+    return None
+
+
+def _bullet_path(line: str) -> Optional[str]:
+    """The repo-relative path a section bullet declares, or None.
+
+    A bullet is ``- `path` — why``: the path is the FIRST backtick span, never
+    the whole body, because the reason that follows it is prose. Falls back to
+    the text before the first dash/colon separator for a bullet written without
+    backticks. Returns None for a bullet that declares no path — an unfilled
+    ``{{slot}}`` (``aide check`` already errors on those, so failing here as
+    well would report one authoring slip twice) or a literal "None."
+    """
+    stripped = line.strip()
+    if not stripped or stripped[0] not in "-*+":
+        return None
+    body = stripped[1:].strip()
+    if not body or "{{" in body:
+        return None
+    m = re.search(r"`([^`]+)`", body)
+    if m:
+        candidate = m.group(1)
+    else:
+        candidate = re.split(r"\s+[—–-]\s+|:", body, maxsplit=1)[0]
+    candidate = candidate.strip().strip("`").strip()
+    if not candidate or candidate.rstrip(".").lower() == "none":
+        return None
+    return _strip_dot_slash(candidate)
+
+
+def parse_authorised_paths(text: str) -> Optional[AuthorisedPaths]:
+    """Parse an item spec's ``## Authorised paths`` section.
+
+    Returns None when the section is absent — distinct from a present-but-empty
+    section (``AuthorisedPaths([], [])``), because the two need different
+    remedies and neither may be read as "unconstrained" (conventions.md §1).
+
+    Bullets appearing before either sub-list label are read as **May change**,
+    which is what makes the flat single-list form — the shape consumers wrote
+    before the labels existed — parse correctly rather than silently empty.
+    """
+    lines = text.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip() == _AUTHORISED_HEADING:
+            start = i + 1
+            break
+    if start is None:
+        return None
+
+    end = len(lines)
+    for i in range(start, len(lines)):
+        if _ANY_HEADER_RE.match(lines[i]) and lines[i].strip() != _AUTHORISED_HEADING:
+            end = i
+            break
+
+    may_change: List[str] = []
+    asserts_against: List[str] = []
+    current = may_change
+    for line in lines[start:end]:
+        label = _sub_list_label(line)
+        if label is not None:
+            current = may_change if label == _MAY_CHANGE_LABEL else asserts_against
+            continue
+        path = _bullet_path(line)
+        if path is not None:
+            current.append(path)
+    return AuthorisedPaths(may_change, asserts_against)
+
+
+def path_matches(changed: str, pattern: str) -> bool:
+    """True when repo-relative *changed* is covered by *pattern*.
+
+    Three forms, per conventions.md §1:
+
+    - ``dir/**`` — the directory and anything at any depth below it.
+    - any other pattern containing ``*``, ``?`` or ``[`` — an ordinary shell
+      glob matched **per path segment**, so ``tests/golden/*.json`` covers a
+      JSON file in that directory but not one a level deeper. Anchoring per
+      segment is the point: ``fnmatch``'s ``*`` crosses ``/`` and would quietly
+      widen every glob a spec writes into a subtree wildcard.
+    - anything else — an exact path.
+    """
+    pattern = _strip_dot_slash(pattern.strip())
+    if pattern.endswith("/**"):
+        prefix = pattern[: -len("/**")]
+        return changed == prefix or changed.startswith(prefix + "/")
+    if any(ch in pattern for ch in "*?["):
+        pat_parts = pattern.split("/")
+        path_parts = changed.split("/")
+        if len(pat_parts) != len(path_parts):
+            return False
+        return all(fnmatch.fnmatchcase(p, g) for p, g in zip(path_parts, pat_parts))
+    return changed == pattern
+
+
+def scope_findings(changed: List[str], authorised: AuthorisedPaths,
+                   always: Tuple[str, ...] = ()) -> Tuple[List[str], List[str]]:
+    """``(unauthorised, contradictions)`` for a branch's *changed* paths.
+
+    A contradiction is a path the spec declared under **Asserts against** — "my
+    tests pin this without changing it" — and then changed anyway. It is
+    reported separately from an unauthorised path because the remedy differs:
+    one widens a list, the other means an assertion in this very item is now
+    asserting against state the item moved.
+    """
+    unauthorised = [p for p in changed
+                    if p not in always
+                    and not any(path_matches(p, g) for g in authorised.may_change)]
+    contradictions = [p for p in changed
+                      if any(path_matches(p, g) for g in authorised.asserts_against)]
+    return unauthorised, contradictions
+
+
+def _default_base_ref(repo_root: Path, main: str) -> str:
+    """``origin/<main>`` when it resolves, else the local ref.
+
+    The local ref is the footgun this default exists to avoid: on a checkout
+    whose ``main`` sits behind the work — a queue branch carrying many merged
+    item commits, say — the merge-base with local ``main`` is local ``main``,
+    so every file those earlier items touched is reported against the current
+    item's spec. The remote-tracking ref is what CI compares against and what
+    the branch will actually merge into.
+    """
+    if _has_origin(repo_root):
+        remote = f"origin/{main}"
+        if git(["rev-parse", "--verify", "--quiet", remote],
+               repo_root, check=False).returncode == 0:
+            return remote
+    return main
+
+
+def cmd_scope(args: argparse.Namespace) -> int:
+    """Check that this branch's changed files stay inside the item's spec.
+
+    The diff-time counterpart to a byte-hash "scope fence": it asserts the
+    claim the fence encoded — "item N changed only these files" — once, on the
+    branch, instead of enshrining it as a suite assertion that outlives its
+    truth and goes red the moment a later item is authorised to touch the
+    pinned file (conventions.md §1).
+
+    Exit 0 in scope · 1 something changed outside it · 2 could not check.
+    """
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    main = str(config["git"].get("main_branch", "main"))
+
+    number = args.number
+    if number is None:
+        branch = git(["rev-parse", "--abbrev-ref", "HEAD"],
+                     repo_root, check=False).stdout.strip()
+        if _is_queue_branch(branch, prefix):
+            print(f"aide scope: {branch} is a queue branch, not an item claim — "
+                  "per-item scope is checked on each claim branch as it merges "
+                  "here, and a queue branch legitimately aggregates many items' "
+                  "authorised paths. Nothing to check.")
+            return 0
+        number = _branch_item_number(branch, prefix)
+        if number is None:
+            print(f"aide scope: cannot tell which item to check — branch "
+                  f"'{branch}' is not {prefix}NNN-short-name. Name the item "
+                  f"explicitly: aide scope NNN", file=sys.stderr)
+            return 2
+
+    idir = docs_dir(repo_root, config) / "items"
+    specs = sorted(idir.glob(f"{number:03d}-*.md")) if idir.is_dir() else []
+    if not specs:
+        print(f"aide scope: no spec for item {number:03d} under {idir}",
+              file=sys.stderr)
+        return 2
+    spec = specs[0]
+    rel_spec = spec.relative_to(repo_root).as_posix()
+
+    authorised = parse_authorised_paths(spec.read_text(encoding=_ENCODING))
+    if authorised is None or not authorised.may_change:
+        what = ("has no '## Authorised paths' section" if authorised is None
+                else "declares no path under '## Authorised paths'")
+        print(f"aide scope: {rel_spec} {what} — cannot check scope. This is "
+              "reported, never passed silently: an undeclared spec is not an "
+              "unconstrained one. Add the section (see conventions.md §1) and "
+              "re-run.", file=sys.stderr)
+        return 2
+
+    base = args.base or _default_base_ref(repo_root, main)
+    mb = git(["merge-base", base, "HEAD"], repo_root, check=False)
+    if mb.returncode != 0:
+        print(f"aide scope: could not resolve a merge-base with '{base}' — "
+              f"{mb.stderr.strip()}", file=sys.stderr)
+        return 2
+    diff = git(["diff", "--name-only", mb.stdout.strip()], repo_root, check=False)
+    if diff.returncode != 0:
+        print(f"aide scope: git diff failed — {diff.stderr.strip()}",
+              file=sys.stderr)
+        return 2
+
+    changed = [ln.strip() for ln in diff.stdout.splitlines() if ln.strip()]
+    ddir_rel = docs_dir(repo_root, config).relative_to(repo_root).as_posix()
+    always = tuple(f"{ddir_rel}/{name}" for name in _ALWAYS_AUTHORISED) + (rel_spec,)
+    unauthorised, contradictions = scope_findings(changed, authorised, always)
+
+    for path in contradictions:
+        print(f"error: {path} changed, but {rel_spec} lists it under "
+              "'Asserts against' as pinned-not-changed")
+    for path in unauthorised:
+        print(f"error: {path} not authorised by {rel_spec}")
+
+    total = len(unauthorised) + len(contradictions)
+    if total:
+        print(f"aide scope: FAIL (item {number:03d}, {total} of {len(changed)} "
+              f"changed file(s) outside scope, vs {base})")
+        return 1
+    print(f"aide scope: OK (item {number:03d}, {len(changed)} changed file(s) "
+          f"all authorised, vs {base})")
+    return 0
+
+
 def cmd_sync(args: argparse.Namespace) -> int:
     """Deterministic preflight: fetch, verify a clean start point, land on the
     right branch. Replaces the exploratory ``git status``/``git branch``/
@@ -1925,6 +2198,15 @@ def register_git_subcommands(sub) -> None:
     p_status = sub.add_parser("status", help="one-call roadmap-state report (branch, queues, claims, PRs)")
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
     p_status.set_defaults(func=cmd_status)
+
+    p_scope = sub.add_parser("scope",
+                             help="check this branch's diff against the item's authorised paths")
+    p_scope.add_argument("number", type=int, nargs="?", default=None,
+                         help="item number (default: read from the current claim branch)")
+    p_scope.add_argument("--base", default=None,
+                         help="base ref to diff against (default: origin/<main_branch>, "
+                              "falling back to the local ref)")
+    p_scope.set_defaults(func=cmd_scope)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
