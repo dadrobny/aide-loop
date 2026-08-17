@@ -651,6 +651,26 @@ def test_template_residue_scans_items_dir(tmp_path: Path):
     assert any("002-core.md" in e and "{{title}}" in e for e in errors)
 
 
+def test_check_locations_use_posix_separators(tmp_path: Path):
+    """`aide check` output must not vary with the host's path separator.
+
+    A location with a subdirectory component rendered as `queue\\queue-002.md`
+    on Windows and `queue/queue-002.md` elsewhere, because f-stringing a Path
+    calls str(). Any consumer comparing or pinning these locations saw a
+    platform difference that read as a content difference.
+    """
+    root = _docs(tmp_path)
+    ddir = root / "docs" / "aide"
+    (ddir / "queue").mkdir(exist_ok=True)
+    (ddir / "queue" / "queue-002.md").write_text(
+        "# Queue 002 — {{title}}\n", encoding="utf-8"
+    )
+    errors = aide.template_residue_errors(ddir)
+    location = next(e for e in errors if "queue-002.md" in e)
+    assert location.startswith("queue/queue-002.md:")
+    assert "\\" not in location
+
+
 # --------------------------------------------------------------------------- #
 # insight inbox (WI-4)
 # --------------------------------------------------------------------------- #

@@ -701,7 +701,8 @@ def template_residue_errors(ddir: Path) -> List[str]:
         for lineno, line in enumerate(text.splitlines(), start=1):
             for m in _TEMPLATE_SLOT_RE.finditer(line):
                 errors.append(
-                    f"{path.relative_to(ddir)}:{lineno}: unfilled template slot {m.group(0)}"
+                    f"{path.relative_to(ddir).as_posix()}:{lineno}: "
+                    f"unfilled template slot {m.group(0)}"
                 )
     return errors
 
@@ -789,7 +790,7 @@ def stray_icon_warnings(ddir: Path) -> List[str]:
         for lineno, line in enumerate(path.read_text(encoding=_ENCODING).splitlines(), start=1):
             for icon in _stray_icons_in_line(line):
                 out.append(
-                    f"{path.relative_to(ddir)}:{lineno}: status icon {icon} outside a "
+                    f"{path.relative_to(ddir).as_posix()}:{lineno}: status icon {icon} outside a "
                     f"structural status position (parsers treat it as plain text; move "
                     f"or remove it if status was intended)"
                 )
