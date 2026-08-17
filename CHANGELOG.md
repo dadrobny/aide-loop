@@ -17,6 +17,74 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-08-17
+
+### Added
+
+- **`aide scope` — the diff-time counterpart to a byte-hash scope fence (issue
+  #28).** 1.6.0 gave an item a place to declare what it may change; this is what
+  reads it. A consumer had already built the equivalent as a project script and
+  wired it into CI, but it did framework-shaped work — enforcing a framework
+  convention, on framework documents, in the framework's own loop — while living
+  in the project, so every other consumer would have reinvented it.
+
+  ```
+  python .aide/scripts/aide.py scope [NNN] [--base <ref>]
+  ```
+
+  It asserts the claim a fence encoded — "item N changed only these files" —
+  once, on the branch, instead of enshrining it as a suite assertion that
+  outlives its truth. Exit `0` in scope · `1` something changed outside it · `2`
+  could not check.
+
+  Both defects the issue named are fixed in the promotion:
+
+  - **Glob support.** `dir/*.ext` is the form specs actually write (it appears
+    in the authorised paths of at least nine merged specs in the consumer that
+    reported this), and the original matcher understood only an exact path or a
+    `/**` suffix — so any item that legitimately regenerated a directory of
+    goldens had every one of them reported as unauthorised, a false positive
+    independent of the item's real scope. Matching is now per path segment via
+    `fnmatch`, which keeps `*` from crossing a `/` and silently widening every
+    glob into a subtree wildcard.
+  - **The base ref.** The default is now the merge-base with `origin/<main>`,
+    not a bare local ref. On a checkout whose local `main` sits behind the work,
+    the merge-base with it *is* it, so every file the earlier items touched was
+    reported against the current item's spec — ~90 of them in the recorded case,
+    a violation list byte-identical with and without the item's own edits
+    staged. CI was never affected (it passes an explicit base), which is exactly
+    what made this a local-invocation footgun, and a costly one: item specs tell
+    the builder and validator to run the scope check as a validation step.
+
+  Three things the promotion adds beyond the consumer's script:
+
+  - **It reads the item from the claim branch**, via the anchored branch→item
+    resolution added in 1.5.0 — so a queue branch resolves to no item and is
+    skipped with a reason, rather than matching a bare 3-digit run and
+    hard-erroring against an unrelated, long-finished item's spec. That is the
+    failure the consumer hit the first time a queue branch was ever PR'd.
+  - **It understands 1.6.0's two sub-lists.** Only **May change** authorises;
+    a path declared under **Asserts against** and then changed is reported as
+    its own finding, because the remedy differs — one widens a list, the other
+    means an assertion in this very item now pins state the item moved. Bullets
+    written before either label existed still read as **May change**, so the
+    flat legacy form parses rather than coming back silently empty.
+  - **Loop bookkeeping is authorised without being listed** — `progress.md` and
+    `insights.md`, which the CLI and the roles are mandated to write on any
+    item, plus the item's own spec, where the builder records decisions.
+    Otherwise every spec would repeat the same boilerplate bullets, and
+    appending an insight — named in conventions.md §1 as the one write allowed
+    outside an agent's edit scope — would be flagged as scope creep.
+
+### Changed
+
+- **`validator` runs the check instead of eyeballing the diff**, and must say so
+  in its report when the check could not run (exit 2, a spec predating the
+  convention) rather than passing in silence. `builder` can run it before
+  handing off to see what the validator will see. `conventions.md` §3's
+  "if an `aide` verb covers it, the raw git form is wrong" rule now names
+  `aide scope` alongside `sync`/`claim`/`merge`/`gc`.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added

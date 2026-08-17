@@ -220,7 +220,31 @@ with a short reason:
   underlying state, not less.
 
 **Scope is proved by the diff, not by a hash.** The mechanism is this
-declaration checked against the branch's changed files. A test that hashes some
+declaration checked against the branch's changed files, which is what
+`aide scope` does:
+
+```
+python .aide/scripts/aide.py scope [NNN] [--base <ref>]
+```
+
+With no argument it reads the item number from the current claim branch; a
+queue branch resolves to no item and is skipped, since per-item scope is checked
+on each claim branch as it merges and a queue branch legitimately aggregates
+many items' lists. It diffs against the **merge-base** with `origin/<main>` —
+not the local ref, whose merge-base on a checkout sitting behind the work is
+itself, so every file the earlier items touched would be reported against this
+item's spec. Exit `0` in scope · `1` something changed outside it · `2` could
+not check. That third code is the "reported, never silently passed" rule with
+teeth: a spec with no section cannot be read as an unconstrained one.
+
+Three paths are authorised for every item without being listed — `progress.md`
+and `insights.md`, which the CLI and the roles are mandated to write on any
+item, and the item's own spec, where the builder records decisions. A path
+declared under **Asserts against** and then changed is reported separately from
+an unauthorised one: it means an assertion in this very item now pins state the
+item moved.
+
+A test that hashes some
 *other* file's bytes against a hardcoded literal to prove this item did not
 touch it — a **scope fence** — is a fallback for cases with no diff to check
 against, not the norm, and it carries four failure modes that have each cost a
@@ -366,9 +390,10 @@ The rules (runtime-general):
 - **If an `aide` verb covers it, the raw git form is wrong.** Session preflight
   (fetch, clean-tree check, landing on the right branch) is `aide sync
   [--item NNN]`; claiming is `aide claim`; landing is `aide merge`; branch
-  clean-up is `aide gc`. Do not improvise the equivalent `git fetch`/`git
-  status`/`git switch` sequences — the verbs exist so every run does these
-  steps identically and no step is forgotten.
+  clean-up is `aide gc`; checking a branch's changed files against its item's
+  authorised paths is `aide scope`. Do not improvise the equivalent `git
+  fetch`/`git status`/`git switch`/`git diff --name-only` sequences — the verbs
+  exist so every run does these steps identically and no step is forgotten.
 - **One command per call.** Never chain with `&&` or `;` — separate calls localise
   failures and keep each invocation legible.
 - **No `cd` prefix and no directory-changing wrapper** — `git -C "<path>"`,

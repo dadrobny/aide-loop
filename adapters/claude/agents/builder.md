@@ -50,7 +50,9 @@ project-agnostic; never assume a specific path or package name.
    conventions. If an Assumption's pinned interface diverges from reality, **stop
    and hand back** rather than guessing. Likewise if an AC cannot be satisfied
    without editing a path the spec never authorised: that is a spec defect, so
-   hand back and name the path — do not widen your own scope silently.
+   hand back and name the path — do not widen your own scope silently. Before
+   you hand off, `python .aide/scripts/aide.py scope` tells you what the
+   validator will see (exit 0 in scope, 1 lists what is not).
 4. **Record decisions** back into the item spec's "Decisions & Trade-offs"
    section. Edit only that section — do **not** add any status field to the item
    header; implementation status lives solely in `progress.md`.
