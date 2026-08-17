@@ -64,7 +64,8 @@ lowest-numbered one with open items).
    spec never authorised or its Assumptions bar; a consumer asserting against a
    shape its producer never pinned; a dependency aside pointing the wrong way.
    Write the report first so the agent starts from it instead of re-deriving
-   it:
+   it, substituting this project's `docs_dir` (shown at its `docs/aide`
+   default):
    ```
    python .aide/scripts/aide.py check --queue NNN --report docs/aide/status/queue-NNN-specs.json
    ```
@@ -72,8 +73,10 @@ lowest-numbered one with open items).
    fix: relay its findings to the user and let them arbitrate — every recorded
    instance needed a human call on which side was wrong (correct the AC, or
    widen the authorised paths). Apply the decisions to the specs yourself, then
-   re-run the check. The report is derived output under the gitignored
-   `docs/aide/status/`; do not commit it.
+   re-run the check. The report is derived output under `<docs_dir>/status/`;
+   do not commit it. The installer's `.gitignore` block covers the default
+   location only, so if this project moved `docs_dir`, confirm the directory is
+   actually ignored before writing there.
 6. **Commit per spec** on the batch branch (separate Bash calls):
    ```
    git add docs/aide/items/NNN-*.md
