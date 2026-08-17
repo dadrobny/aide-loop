@@ -813,6 +813,63 @@ def insight_warnings(ddir: Path) -> List[str]:
     return out
 
 
+def absolute_path_test_warnings(repo_root: Path,
+                                config: Dict[str, Dict[str, object]]) -> List[str]:
+    """Warn on a test file containing the repository's own absolute path.
+
+    The one portability rule of conventions.md §6 a script can decide, and the
+    one whose recorded instance was invisible to every other gate for weeks: a
+    test pinned the authoring sandbox's own filesystem path instead of
+    resolving relative to the test file. Because that path *is* where the
+    project sits on that machine, it passed the builder's run, both validator
+    rounds, and even a fresh clone into a different directory — an absolute
+    path ignores where the process runs from. On every CI runner the glob
+    matched nothing, the digest collapsed to SHA-256 of empty input, and all
+    four legs failed.
+
+    Matching the repo root literally keeps this exact: a test that hardcodes
+    the path of the repository it lives in is wrong on any other machine, with
+    no judgement call and no false positive to argue about.
+    """
+    tests_dir = repo_root / str(config["project"].get("tests_dir", "tests"))
+    if not tests_dir.is_dir():
+        return []
+    # Three spellings, because the offending literal is whatever the authoring
+    # platform wrote and this check must fire wherever it runs. On POSIX all
+    # three collapse to one string; on Windows they are genuinely different:
+    #   as_posix()  C:/path/to/repo    — a forward-slash literal
+    #   str()       C:\path\to\repo    — a raw string, r"C:\path\to\repo"
+    #   escaped     C:\\path\\to\\repo — an ordinary literal, the COMMON form
+    # Omitting the third would make this portability lint miss the most likely
+    # Windows spelling of the very defect it exists to catch.
+    root = repo_root.resolve()
+    needles = {root.as_posix(), str(root), str(root).replace("\\", "\\\\")}
+    out: List[str] = []
+    for path in sorted(tests_dir.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        try:
+            text = path.read_text(encoding=_ENCODING)
+        except (OSError, UnicodeDecodeError):
+            continue
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if any(n in line for n in needles):
+                try:
+                    rel = path.relative_to(repo_root).as_posix()
+                except ValueError:
+                    # `tests_dir` can be configured absolute, or resolve
+                    # outside the repo via a symlink. A lint that raises takes
+                    # the whole `aide check` down instead of reporting.
+                    rel = path.as_posix()
+                out.append(
+                    f"{rel}:{lineno}: contains this repository's absolute path — "
+                    f"it passes here and matches nothing on any other checkout; "
+                    f"resolve from the test file instead "
+                    f"(Path(__file__).resolve().parents[N]). See conventions.md §6")
+                break   # one warning per file is enough to act on
+    return out
+
+
 def _stray_icons_in_line(line: str) -> List[str]:
     """Status icons on this line that sit where one could plausibly be
     mistaken for a structural status declaration.
@@ -884,6 +941,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     errors.extend(template_residue_errors(ddir))
     warnings.extend(stray_icon_warnings(ddir))
     warnings.extend(insight_warnings(ddir))
+    warnings.extend(absolute_path_test_warnings(repo_root, config))
 
     if not progress_path.is_file():
         return [f"missing {progress_path}"], warnings

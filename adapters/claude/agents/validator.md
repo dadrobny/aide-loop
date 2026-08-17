@@ -72,7 +72,25 @@ Read `aide.toml`: `project.source_dir`, `project.tests_dir`, and
    doesn't contradict them or the Out-of-scope list.
 5. **Assumptions are sound.** Re-read the spec's **Assumptions** block; if a
    pinned interface diverged from reality, that is a FAIL — hand back.
-6. **The Validation section was executed, honestly.** If the spec has a
+6. **Real CI, once a push exists.** A green local suite is evidence about *one*
+   platform, *one* checkout and *one* working directory — the only conditions
+   any role in this loop ever sees. Five defects have reached a consumer's
+   `main` through that blind spot, every one found by a human reading the
+   Actions tab. So once the branch is pushed, look at what CI actually said:
+   ```
+   gh run list --branch <branch> --limit 1
+   ```
+   (`gh run view <id>` for the detail, or `gh pr checks` when a PR exists —
+   under `git.mode = "auto-merge"` there is no PR, which is why `gh run` is the
+   form named here. All three are pre-approved.)
+   Report the real answer, including **"no CI is configured"** or **"it had not
+   finished"** — those are honest results; a local pass silently standing in for
+   them is not. A leg that is red where local was green is a **portability
+   finding** (`.aide/conventions.md` §6) until its log says otherwise, not a
+   flake: every recorded instance looked like a content problem and was a
+   platform one. If `gh` is unavailable or the repo has no remote, say so and
+   move on — this check informs your report, it does not block the verdict.
+7. **The Validation section was executed, honestly.** If the spec has a
    `## Validation` section, **run it** — the command, the output inspection,
    the use-case replay — and report what you observed; green tests alone do
    not satisfy it. If it names a `[validation]` environment profile, check it

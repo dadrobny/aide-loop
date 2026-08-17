@@ -491,3 +491,70 @@ consumer independently codes defensively around it — a tolerant reader plus a
 hand-back clause where a straight assertion belonged — and one of them eventually
 pins an assertion against a shape no code path produces. Pinning it once, in the
 spec that owns it, is cheaper than every consumer guessing separately.
+
+---
+
+## 6. Test hygiene (portability, and tests that can actually fail)
+
+Runtime-general, like §3 — an adapter's test-writing role points back here
+rather than restating it.
+
+**Every rule below was earned by a defect that passed every gate this loop runs
+and reached `main` anyway.** That is the structural point: spec → tests → build
+→ validate → merge all execute in one place, on one platform, against one
+checkout, so a defect invisible under those conditions is invisible to the
+entire loop, indefinitely. Each was caught by a human reading a CI log, or by a
+reviewer outside the loop — never by a gate inside it.
+
+**Portability.**
+
+- **Never write the repo's own working-directory path literally into a test.**
+  Resolve from the test file (`Path(__file__).resolve().parents[N]`). An
+  absolute path ignores where the process runs, so it passes on the machine
+  that authored it — including a fresh clone in a *different* directory — and
+  matches nothing anywhere else. Recorded: a hardcoded sandbox path made a glob
+  return nothing on every CI runner, collapsing a digest to SHA-256-of-empty
+  input and failing all four legs while every local gate stayed green.
+- **Any `Path` entering a hash, comparison, or match must be `.as_posix()`.**
+  `str(Path)` — including a `Path` interpolated into an f-string, which calls
+  `str()` — renders the OS-native separator, so an identical tree hashes
+  differently on Windows. This class alone has caused four separate CI-only
+  failures.
+- **A committed byte-exact fixture needs a `.gitattributes` `text eol=lf` pin.**
+  Without it `core.autocrlf` rewrites the file on checkout and every byte
+  comparison against it fails on Windows only.
+
+**Tests that can actually fail.**
+
+- **Prefer calling the function over shelling out to the command that calls
+  it.** The CLI's logic is importable and returns structured data; a subprocess
+  boundary adds stdout encoding, platform quirks, and a re-parse of what was
+  structured a moment earlier. Recorded: `capture_output=True, text=True`
+  returned `stdout is None` on a Windows runner — documented not to happen —
+  and the fix was to delete the boundary, not harden it.
+- **Assert a derived value is recognisable *before* asserting anything about
+  it.** A glob that matched nothing, a capture that came back empty, a slice
+  taken from a failed `find()` — each yields a value that flows into the
+  assertion and passes while checking nothing. Had that Windows capture
+  returned `""` rather than `None`, the loop over its lines would have iterated
+  zero times and the test would have reported PASS having verified nothing.
+
+`aide check` warns when a file under `tests_dir` contains the repository's own
+absolute path — the one rule here a script can decide, and the one whose
+recorded instance survived every other gate for weeks.
+
+---
+
+## 7. Verify on a platform this loop never runs on
+
+Test hygiene reduces the odds; it does not close the gap. **No role in this loop
+sees a non-Linux checkout, a different working directory, or real CI status**,
+so the honest response is to look at the one gate that does:
+
+- Once work is pushed, **check the real CI result** rather than inferring it
+  from a green local suite. Report what CI actually said, including "no CI is
+  configured here" or "it had not finished" — never let a local pass stand in
+  for a platform the loop cannot reach.
+- When CI is red on a leg that passed locally, treat it as a **portability
+  finding first** (§6), not a flake, until the log says otherwise. Every
+  recorded instance looked like a content problem and was a platform one.
