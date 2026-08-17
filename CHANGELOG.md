@@ -17,6 +17,67 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-08-17
+
+### Added
+
+- **A base ref the loop can land work on, not just `main` (issue #23).**
+  `aide merge` hard-wired its target to `[git] main_branch` and offered no
+  override, so the loop could not express the stacked branching real work
+  produces. Concretely, in a consumer's queue-016 the queue file, a roadmap
+  deliverable and all nine item specs lived only on the queue branch and were
+  meant to land as **one** reviewed PR — so each item had to branch off *and
+  merge back into* that branch. Half the machinery was already right: `aide
+  claim` creates the branch from whatever is checked out, so claiming from a
+  queue branch had always branched correctly. Only the merge target was fixed.
+
+  `--base <ref>` now exists on **`claim`**, **`merge`**, **`gc`** (which ref
+  `--merged` is measured against), **`status`** (what ahead/behind reports
+  from) and **`scope`** (what the diff is taken against). Resolution is always
+  `--base` > recorded > `main_branch`, and **`main_branch` remains the default
+  everywhere** — nothing that worked before behaves differently.
+
+  **The claim remembers what it branched off**, so the flag is rarely needed:
+  `aide merge NNN` returns the item to its recorded base, which means the
+  validator's documented merge step is already correct on a queue branch. That
+  matters because the recorded workaround was the orchestrator merging every
+  item by hand — overriding `validator.md`'s documented step once per item and
+  re-implementing the verb's pre-merge suite gate, push and branch cleanup in
+  prose. The alternative workaround, repointing `main_branch` in `aide.toml`,
+  also repoints `sync`/`gc`/`status` and leaves a trap in a committed,
+  PR-gated file.
+
+  Inference is deliberately narrow: a base is inferred **only** from a
+  recognised queue branch (`<prefix>queue-NNN`, `<prefix>specs-queue-NNN`),
+  never from an arbitrary checked-out branch, which would silently retarget a
+  merge. The record is local git config rather than a committed file — the base
+  is a fact about this checkout's branching, so another machine falls back to
+  `main_branch` and passes `--base` explicitly.
+
+  Two invariants hold the feature together, both found in review:
+
+  - **A claim branches *from* its base.** `git switch -c` with no start point
+    uses `HEAD`, which would let a branch's real starting point disagree with
+    the base it records — claiming with `--base main` while a queue branch is
+    checked out would start from the queue branch and then merge the whole of
+    it into `main`. Naming the start point makes the two agree by construction,
+    and incidentally fixes the older case of claiming from an unrelated branch.
+  - **A base must be a local branch, not merely a resolvable ref.** `git
+    switch` on a tag, a raw commit, or a remote-tracking ref like `origin/main`
+    detaches HEAD; a merge into a detached HEAD updates no branch at all, yet
+    still reports success and lets the claim branch be deleted, leaving the
+    work as an unreferenced commit. `claim` and `merge` both check the ref's
+    *kind* now, and say which of the two things is wrong.
+
+### Fixed
+
+- **`aide scope` diffed stacked work against the wrong ref.** Its default base
+  was `origin/<main_branch>`, so an item claimed from a queue branch was
+  compared against `main` — reporting every sibling item already merged into
+  that queue as the current item's own out-of-scope change. It now consults the
+  recorded base first (still preferring the `origin/` counterpart of whatever
+  it lands on), which is the gap noted when the verb shipped in 1.7.0.
+
 ## [1.7.0] — 2026-08-17
 
 ### Added

@@ -118,10 +118,15 @@ Read `aide.toml`: `project.source_dir`, `project.tests_dir`, and
      is not yours to claim.
   3. **Merge via the CLI** — it honours `git.mode` (direct-merge + re-test +
      claim-branch cleanup for `auto-merge`; push-and-stop for `pr`; local merge
-     for `local`):
+     for `local`), and lands the item on the base its claim recorded, which is
+     the queue branch when the item was claimed from one:
      ```
      python .aide/scripts/aide.py merge NNN
      ```
+     Read the base it reports back. It is `main_branch` unless the item was
+     claimed from a queue branch; if it is not what the run intends, hand back
+     rather than passing `--base` on your own initiative — a wrong merge target
+     is not yours to choose.
      **Run this synchronously in the foreground too** (see step 1) — under
      `auto-merge` it re-runs the full suite before merging, so it takes the
      same several minutes as the test run did; wait for it to actually exit and
