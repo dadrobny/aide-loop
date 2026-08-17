@@ -189,9 +189,12 @@ of scope. Any role, at any time, appends **one line** and returns to its task:
 with `<type>` one of **knowledge** (document it), **defect** (fix it), **gap**
 (plan it), **automation** (a recurring manual/agent action deterministic code
 could replace — script it), **framework** (belongs to AIDE itself). The item
-ref is optional for roles outside an item. The file is **append-only**;
-`aide check` shape-checks entries (warning, never error — capture must stay
-cheap). Template: `.aide/templates/insights.md` (copy verbatim).
+ref is optional for roles outside an item. The file is **append-only, with
+exactly two exceptions** — ticking an entry's checkbox and appending its
+`→ where it landed` pointer, both performed at triage (below). Nothing else
+about a captured line may be rewritten, and no line is ever reordered or
+deleted. `aide check` shape-checks entries (warning, never error — capture must
+stay cheap). Template: `.aide/templates/insights.md` (copy verbatim).
 
 **Triage** happens at the queue boundary (the feedback loop): each unchecked
 entry is routed — `knowledge` → the owning document; `defect`/`gap` →
