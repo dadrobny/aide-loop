@@ -63,6 +63,19 @@ third attempt), with `max` reserved for intractable one-offs. A runtime without
 sub-agents degrades gracefully to "a fresh chat per role" guidance — the roles and
 their tiers still hold.
 
+**Optional sixth definition — the queue-boundary reviewer.** Where an adapter
+supports batch spec-authoring (spec §1's spec-queue entry-point), it should also
+express a **spec-reviewer** at **T3**: one pass over *all* of a queue's specs
+after they are authored and before any is built, reporting the cross-item
+conflicts `aide check --queue` cannot decide because they turn on what an
+acceptance criterion *means* — an AC requiring a path its own spec forbids or
+never named, a consumer asserting against a shape its producer never pinned, a
+dependency aside pointing the wrong way. It is not an item role: it never enters
+one item's lifecycle, it reviews rather than edits, and every finding is
+arbitrated by the human. The deterministic half stays in the engine
+(`aide check --queue`, whose `--report` JSON is this role's worklist), so an
+adapter that omits the reviewer still gets everything a script can decide.
+
 ## 3. Three orchestrators (item ⊂ queue ⊂ roadmap)
 
 The nested drivers that sequence the roles. Where a runtime can nest

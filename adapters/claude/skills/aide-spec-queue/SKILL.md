@@ -58,11 +58,22 @@ lowest-numbered one with open items).
    what the loop asked), and dependency cycles or dependencies on items that
    exist nowhere. Fix each by amending a spec, naming which side changed.
 
-   Then read for what the check cannot decide, because it turns on what a
-   criterion *means*: an Acceptance Criterion that cannot be satisfied without
-   touching a path its own spec never authorised, or that its own Assumptions
-   bar. Both recorded instances of that needed a human call on which side was
-   wrong.
+   Then spawn the **`spec-reviewer`** agent once, for what the check cannot
+   decide, because it turns on what a criterion *means* rather than what a spec
+   declares — an AC that cannot be satisfied without touching a path its own
+   spec never authorised or its Assumptions bar; a consumer asserting against a
+   shape its producer never pinned; a dependency aside pointing the wrong way.
+   Write the report first so the agent starts from it instead of re-deriving
+   it:
+   ```
+   python .aide/scripts/aide.py check --queue NNN --report docs/aide/status/queue-NNN-specs.json
+   ```
+   Give the agent the queue number and that path. It **reviews**, it does not
+   fix: relay its findings to the user and let them arbitrate — every recorded
+   instance needed a human call on which side was wrong (correct the AC, or
+   widen the authorised paths). Apply the decisions to the specs yourself, then
+   re-run the check. The report is derived output under the gitignored
+   `docs/aide/status/`; do not commit it.
 6. **Commit per spec** on the batch branch (separate Bash calls):
    ```
    git add docs/aide/items/NNN-*.md

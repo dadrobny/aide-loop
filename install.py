@@ -82,6 +82,7 @@ GITIGNORE_BLOCK = f"""\
 .aide/**/__pycache__/
 .aide/loop/loop.local.toml
 .aide-merge
+docs/aide/status/
 # --- end AIDE ---
 """
 

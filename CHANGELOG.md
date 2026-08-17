@@ -17,6 +17,69 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.10.0] — 2026-08-17
+
+### Added
+
+- **`spec-reviewer` — the half of cross-spec checking a script cannot do
+  (issue #27).** 1.9.0 shipped the deterministic half: `aide check --queue`
+  decides overlapping claims, changed pinned state, and the dependency graph.
+  Two of the seven recorded conflict classes are left, and both turn on what an
+  acceptance criterion *means* rather than on what a spec *declares*:
+
+  - **An AC that requires editing a file its own spec forbids.** One item's AC
+    said a dataclass "gains an optional field", while that dataclass lived in a
+    file the *same spec's* Assumptions explicitly barred editing. Satisfying the
+    criterion literally required editing a file the spec forbade. No path-level
+    diff finds that — it needs someone who knows where the symbol lives. The
+    mirror instance, same queue: an item's Authorised paths omitted a JSON
+    schema whose definitions declare `additionalProperties: false`, so wiring
+    the key the AC required would have broken **unrelated already-green tests**.
+    Invisible to an overlap check, because the path appears nowhere to overlap.
+  - **Consuming an interface a sibling left unpinned.** A producer pinned its
+    iterator API precisely but never fixed its serialised JSON layout, so the
+    consumer shipped a tolerant reader plus a hand-back clause where a straight
+    assertion belonged — and a downstream AC was pinned against a value no code
+    path produces.
+
+  The agent runs **once per queue**, at the end of `/aide-spec-queue`, after
+  every spec is authored and before any is built. It takes `aide check
+  --queue`'s `--report` JSON as its worklist rather than re-deriving it, reads
+  all N specs at once (that simultaneity is the point of running here), and
+  **reports** — it never edits a spec. Every recorded instance needed a
+  maintainer call on which side was wrong, and taking that call automatically
+  destroys the evidence for it.
+
+  It also owns **row 7**, deferred from #26 with reasons: a spec that retires or
+  renames a test which a committed document still names. That is not soundly
+  script-decidable — specs legitimately name tests that do not exist yet, and
+  `insights.md` names deleted ones by design, so a name sweep fires on correct
+  documents. Judgement is the discriminator, which is what this agent is for.
+
+  Specs the script could not parse (no `## Authorised paths`) are routed here
+  for a scope read by hand — that is what "reported, never silently skipped"
+  means once it reaches a reviewer.
+
+- **`adapters/ADAPTER-SPEC.md` gains an optional sixth definition.** The
+  reviewer is deliberately *not* a sixth item role: it never enters one item's
+  lifecycle. Any adapter supporting batch spec-authoring should express it at
+  T3; one that omits it still gets everything a script can decide, since the
+  deterministic half lives in the engine.
+
+- **A frontmatter guard for every `agents/*.md`.** Agent files are discovered by
+  filename and dispatched by their `name:`, so a mismatch is not a syntax error
+  anywhere — it is an agent that silently never runs, or runs under a name no
+  orchestrator invokes. Nothing else in the suite read these files.
+
+### Fixed
+
+- **`docs/aide/status/` was documented as derived output but never gitignored.**
+  `core/README.md` and the status-report skill both treat it as regenerable, and
+  the reviewer's report is written there — so without the entry a consumer would
+  commit it. Added to the installer's managed `.gitignore` block. Note this
+  block is appended on **fresh install only**, so an existing consumer must add
+  the line by hand.
+
 ## [1.9.0] — 2026-08-17
 
 ### Added
