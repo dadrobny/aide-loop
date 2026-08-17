@@ -17,6 +17,50 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.12.1] — 2026-08-17
+
+### Changed
+
+- **"Run alongside" in a roadmap now means independence, not concurrency
+  (issue #31).** The roadmap could express stage parallelism; the queue model
+  cannot represent it, so the hint was silently made sequential and every
+  planner re-derived the same apology — two consecutive queues each spent a paragraph
+  explaining why they were *not* honouring the roadmap's instruction, leaving a
+  standing contradiction between two documents meant to mirror each other.
+
+  The issue offered two directions and asked for the hint's real usage to be
+  checked before building the expensive one. Checked, and the evidence is
+  decisive: **nobody ever wanted concurrency.** Three different senses were
+  riding on one word.
+
+  - The roadmap's own sentence gives itself away — *"19 and 20 are pure audit …
+    should run alongside 17/18, **because** every later stage that retunes a
+    rule is safer once the catalogue exists"*. The `because` clause is an
+    **ordering preference** (do the audit early), not a request to run two
+    things at once.
+  - The queue that "failed" to honour it explains itself in the same breath:
+    *"may be queued and run alongside … **but this queue stays scoped to Stage
+    17 alone to keep the batch reviewable**"*. The planner made a good call and
+    then apologised for it.
+  - Meanwhile three other queues use "in parallel" for **item-level
+    independence within one queue** — which has always worked, since `aide
+    claim` offers any unblocked item.
+
+  So the fix is vocabulary, not machinery. `conventions.md` names all three
+  senses and states plainly that one queue is live at a time *by design* — the
+  queue boundary is the human checkpoint, so the model offers no concurrency
+  above the item level and a roadmap cannot ask for it. `/aide-create-queue`
+  now tells the planner that "run alongside" means the stages do not depend on
+  each other's results, so queue next sequentially **and say nothing about it**
+  — rather than justifying a conflict that was never there. The roadmap
+  template steers authors to write the independence claim directly, or, when
+  the real point is that a stage should come early, to write that as an
+  ordering constraint a planner can actually honour.
+
+  Direction (a) — a `parallel-with:` marker and a second live queue — is
+  deliberately **not** built: no recorded instance needed it, and it would trade
+  away the one-review-per-batch checkpoint that the single live queue exists to
+  provide.
 ## [1.12.0] — 2026-08-17
 
 ### Added
