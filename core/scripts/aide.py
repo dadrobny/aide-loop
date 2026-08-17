@@ -925,14 +925,22 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
             spec_nums[n] = ipath.name
 
     # Claim-branch <-> status agreement (best effort).
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
     if branches is None:
-        branches = _list_claim_branches(repo_root, str(config["git"].get("branch_prefix", "aide/")))
+        branches = _list_claim_branches(repo_root, prefix)
     _, _, item_status = _parse_item_status(lines)
     for br in branches:
-        m = re.search(r"/(\d+)-", br) or re.search(r"(\d+)", br.rsplit("/", 1)[-1])
-        if not m:
+        n = _branch_item_number(br, prefix)
+        if n is None:
+            # Not a claim branch. A queue branch is expected and silent; anything
+            # else carrying the prefix is reported rather than ignored, so a real
+            # stale claim named unconventionally cannot hide behind the anchor.
+            if not _is_queue_branch(br, prefix):
+                warnings.append(
+                    f"unrecognised branch {br}: carries the claim prefix but is "
+                    f"not '{prefix}NNN-short-name' (conventions.md §4), so no "
+                    f"item status is tracked for it")
             continue
-        n = int(m.group(1))
         if item_status.get(n) == "complete":
             warnings.append(f"stale claim branch {br}: item {n:03d} is already ✅")
 
@@ -1328,8 +1336,7 @@ def cmd_claim(args: argparse.Namespace) -> int:
 
 def _find_claim_branch(repo_root: Path, prefix: str, number: int) -> Optional[str]:
     for br in _list_claim_branches(repo_root, prefix):
-        cm = re.search(r"/(\d+)-", br) or re.search(r"(\d+)", br.rsplit("/", 1)[-1])
-        if cm and int(cm.group(1)) == number:
+        if _branch_item_number(br, prefix) == number:
             return br
     return None
 
@@ -1412,9 +1419,37 @@ def _remote_branches(repo_root: Path) -> List[str]:
     return names
 
 
-def _branch_item_number(branch: str) -> Optional[int]:
-    m = re.search(r"/(\d+)-", branch) or re.search(r"(\d+)", branch.rsplit("/", 1)[-1])
+def _branch_item_number(branch: str, prefix: str) -> Optional[int]:
+    """Item number claimed by *branch*, or None when it is not a claim branch.
+
+    A claim branch is ``<branch_prefix>NNN-short-name`` (conventions.md §4), so
+    the number must sit *immediately* after the prefix. Anchoring is what makes
+    this correct: queue numbers and item numbers share one namespace with no
+    syntactic marker between them, so an unanchored digit search reads
+    ``aide/queue-016`` as item 016 — an unrelated, usually long-finished work
+    item — and ``aide/specs-queue-015`` likewise.
+
+    That misread is not cosmetic. ``gc`` targets any branch whose item is ✅ and
+    deletes it with ``git branch -D`` plus a remote delete, independently of
+    ``--merged``; under the old unanchored match that destroyed an in-flight
+    queue branch, and the unreviewed queue file and item specs living only on it.
+    """
+    m = re.match(re.escape(prefix) + r"0*(\d+)(?:-|$)", branch)
     return int(m.group(1)) if m else None
+
+
+#: Branches the framework itself tells authors to create that are deliberately
+#: NOT item claims: `/aide-create-queue`'s hand-off and `/aide-run-roadmap` name
+#: `<prefix>queue-NNN`, `/aide-spec-queue` names `<prefix>specs-queue-NNN`.
+#: Recognised positively so they are reported as what they are, rather than
+#: lumped in with a branch nothing can parse.
+_QUEUE_BRANCH_RE = re.compile(r"(?:specs-)?queue-\d+$")
+
+
+def _is_queue_branch(branch: str, prefix: str) -> bool:
+    """True when *branch* is a queue/specs-queue branch rather than a claim."""
+    return (branch.startswith(prefix)
+            and _QUEUE_BRANCH_RE.match(branch[len(prefix):]) is not None)
 
 
 def _has_origin(repo_root: Path) -> bool:
@@ -1544,11 +1579,14 @@ def cmd_status(args: argparse.Namespace) -> int:
     branches = _list_claim_branches(repo_root, prefix)
     if branches:
         for br in branches:
-            num = _branch_item_number(br)
-            st = item_status.get(num, "planned") if num is not None else "?"
+            num = _branch_item_number(br, prefix)
+            if num is None:
+                kind = "queue branch" if _is_queue_branch(br, prefix) else "unrecognised"
+                print(f"  branch: {br} ({kind} — not an item claim)")
+                continue
+            st = item_status.get(num, "planned")
             stale = " — STALE (item ✅; run 'aide gc')" if st == "complete" else ""
-            print(f"  claim: {br} (item {num:03d}: {st}){stale}" if num is not None
-                  else f"  claim: {br}")
+            print(f"  claim: {br} (item {num:03d}: {st}){stale}")
     else:
         print("  claims: none")
 
@@ -1602,7 +1640,13 @@ def cmd_gc(args: argparse.Namespace) -> int:
 
     targets: Dict[str, str] = {}  # branch -> reason
     for br in sorted(set(local) | set(remote)):
-        num = _branch_item_number(br)
+        # Only a positively-identified item claim is deletable on the "item is
+        # ✅" ground. A queue branch shares the number namespace but not the
+        # lifecycle: it aggregates many items and lands as one reviewed PR, so
+        # deleting it because some same-numbered item finished would discard
+        # unreviewed work. It stays eligible under --merged, where the ground
+        # is "already merged into main" and is checked against git itself.
+        num = _branch_item_number(br, prefix)
         if num is not None and item_status.get(num) == "complete":
             targets[br] = f"item {num:03d} is ✅"
         elif br in merged_local:
