@@ -170,3 +170,169 @@ def test_chaining_and_redirection_still_flagged():
 
 def test_operators_inside_quotes_do_not_false_positive():
     assert guard.violations('git commit -m "a && b; c 2>&1 inside prose"') == []
+
+
+# --------------------------------------------------------------------------- #
+# [hygiene] extra_repos — a project may legitimately span more than one repo
+# --------------------------------------------------------------------------- #
+def _declare_extra_repos(tmp_path, paths, framework=None):
+    loop_dir = tmp_path / ".aide" / "loop"
+    loop_dir.mkdir(parents=True, exist_ok=True)
+    listed = ", ".join(f'"{p}"' for p in paths)
+    text = f"[hygiene]\nextra_repos = [{listed}]\n"
+    if framework is not None:
+        text = f'[framework]\nlocal_path = "{framework}"\n\n' + text
+    (loop_dir / "loop.local.toml").write_text(text, encoding="utf-8")
+
+
+def test_extra_repo_is_allowed(tmp_path, monkeypatch):
+    """The recorded complaint: an agent could `git init` a sibling and write
+    files into it (both take a path argument) but never `add`/`commit` them."""
+    _declare_extra_repos(tmp_path, ["../programme-repo"])
+    monkeypatch.chdir(tmp_path)
+    assert guard.violations("git -C ../programme-repo add -A") == []
+    assert guard.violations("git -C ../programme-repo commit -m 'rescue docs'") == []
+
+
+def test_undeclared_repo_still_blocked_when_others_are_declared(tmp_path, monkeypatch):
+    _declare_extra_repos(tmp_path, ["../programme-repo"])
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles("git -C ../somewhere-else push")
+
+
+def test_several_extra_repos_are_each_allowed(tmp_path, monkeypatch):
+    _declare_extra_repos(tmp_path, ["../one", "../two"])
+    monkeypatch.chdir(tmp_path)
+    assert guard.violations("git -C ../one status") == []
+    assert guard.violations("git -C ../two status") == []
+
+
+def test_framework_and_extra_repos_coexist(tmp_path, monkeypatch):
+    _declare_extra_repos(tmp_path, ["../sibling"], framework="../aide-loop")
+    monkeypatch.chdir(tmp_path)
+    assert guard.violations("git -C ../aide-loop status") == []
+    assert guard.violations("git -C ../sibling status") == []
+    assert _OVERRIDE_MARKER in _titles("git -C ../third status")
+
+
+def test_two_declared_repos_in_one_command_stay_blocked(tmp_path, monkeypatch):
+    """Widening the list must not turn the dangerous shape into an approved
+    one: history read from one repo and applied to another's working tree is
+    what the single-repo rule exists to prevent, declared or not."""
+    _declare_extra_repos(tmp_path, ["../one", "../two"])
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles(
+        "git --git-dir=../one/.git --work-tree=../two status"
+    )
+
+
+def test_extra_repos_honours_the_git_dir_dot_git_flavour(tmp_path, monkeypatch):
+    _declare_extra_repos(tmp_path, ["../sibling"])
+    monkeypatch.chdir(tmp_path)
+    assert guard.violations(
+        "git --git-dir=../sibling/.git --work-tree=../sibling status") == []
+
+
+def test_empty_extra_repos_keeps_the_default_posture(tmp_path, monkeypatch):
+    _declare_extra_repos(tmp_path, [])
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles("git -C ../anything status")
+
+
+def test_extra_repos_across_multiple_lines_is_parsed(tmp_path, monkeypatch):
+    """A TOML array may be written multi-line; a reader that stops at the first
+    newline would silently honour only the first entry."""
+    loop_dir = tmp_path / ".aide" / "loop"
+    loop_dir.mkdir(parents=True)
+    (loop_dir / "loop.local.toml").write_text(
+        '[hygiene]\nextra_repos = [\n  "../one",\n  "../two",\n]\n',
+        encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert guard.violations("git -C ../two status") == []
+
+
+def test_extra_repos_ignores_a_trailing_comment(tmp_path, monkeypatch):
+    loop_dir = tmp_path / ".aide" / "loop"
+    loop_dir.mkdir(parents=True)
+    (loop_dir / "loop.local.toml").write_text(
+        '[hygiene]\nextra_repos = ["../one"]  # the sibling programme repo\n',
+        encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert guard.violations("git -C ../one status") == []
+
+
+def test_extra_repos_in_shared_aide_toml_is_not_honoured(tmp_path, monkeypatch):
+    """Machine-specific paths must not live in a committed file — same rule
+    `[framework] local_path` already follows."""
+    (tmp_path / "aide.toml").write_text(
+        '[hygiene]\nextra_repos = ["../sibling"]\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
+
+
+def test_extra_repos_under_another_section_is_not_honoured(tmp_path, monkeypatch):
+    loop_dir = tmp_path / ".aide" / "loop"
+    loop_dir.mkdir(parents=True)
+    (loop_dir / "loop.local.toml").write_text(
+        '[loop]\nextra_repos = ["../sibling"]\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
+
+
+def _write_local_toml(tmp_path, text):
+    loop_dir = tmp_path / ".aide" / "loop"
+    loop_dir.mkdir(parents=True, exist_ok=True)
+    (loop_dir / "loop.local.toml").write_text(text, encoding="utf-8")
+
+
+def test_malformed_key_does_not_disable_the_whole_guard(tmp_path, monkeypatch):
+    """`extra_repos` with no `=` used to IndexError. The hook fails open, so
+    that one typo in a personal config silently switched off EVERY hygiene
+    rule, not just this key — a far larger blast radius than the parse bug."""
+    _write_local_toml(tmp_path, "[hygiene]\nextra_repos\n")
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")   # must not raise
+    # and every other rule must still fire
+    assert guard.violations("git status && git log")
+
+
+def test_non_array_value_grants_nothing(tmp_path, monkeypatch):
+    """The key is documented as an array. Inferring a grant from an
+    undocumented shape is the wrong default for a key that relaxes a guard."""
+    _write_local_toml(tmp_path, '[hygiene]\nextra_repos = "../sibling"\n')
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
+
+
+def test_unterminated_array_grants_nothing(tmp_path, monkeypatch):
+    _write_local_toml(tmp_path, '[hygiene]\nextra_repos = [\n  "../sibling",\n')
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
+
+
+def test_a_similarly_named_key_is_not_mistaken_for_it(tmp_path, monkeypatch):
+    _write_local_toml(tmp_path, '[hygiene]\nextra_repos_note = ["../sibling"]\n')
+    monkeypatch.chdir(tmp_path)
+    assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
+
+
+def test_unterminated_array_followed_by_a_section_grants_nothing(tmp_path, monkeypatch):
+    """The `]` of a following section header would otherwise close the array,
+    yielding a PARTIAL grant — the real paths plus a junk `[loop` entry —
+    inverting the 'malformed config grants nothing' posture."""
+    _write_local_toml(
+        tmp_path,
+        '[hygiene]\nextra_repos = [\n  "../sibling",\n\n[loop]\ninterval = 300\n')
+    monkeypatch.chdir(tmp_path)
+    assert guard._hygiene_extra_repos() == []
+    assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
+
+
+def test_multi_line_array_still_works_when_properly_closed(tmp_path, monkeypatch):
+    """The section-header bail must not break the valid multi-line form."""
+    _write_local_toml(
+        tmp_path,
+        '[hygiene]\nextra_repos = [\n  "../one",\n  "../two",\n]\n\n[loop]\ninterval = 300\n')
+    monkeypatch.chdir(tmp_path)
+    assert guard._hygiene_extra_repos() == ["../one", "../two"]
+    assert guard.violations("git -C ../two status") == []

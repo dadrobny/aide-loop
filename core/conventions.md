@@ -417,7 +417,15 @@ The rules (runtime-general):
   `GIT_WORK_TREE=<path>` prefix all point git at a repo other than cwd, and
   all four are redundant and brittle the same way `cd` is (a repo path
   containing spaces or apostrophes breaks quoting). The tool's working
-  directory is already the repo root — run the bare command.
+  directory is already the repo root — run the bare command. **Unless the repo
+  is declared**: a project may legitimately span more than one repo, and an
+  adapter may let the operator name the others in personal, machine-local
+  config. A command whose repo-override paths all resolve to one declared repo
+  is allowed; one naming two different repos stays blocked even when both are
+  declared, because history read from one and applied to another's working tree
+  is a shape no legitimate workflow needs. Declaring a repo relaxes this rule
+  and grants nothing else — the command must still clear whatever permission
+  policy the runtime applies.
 - **No `2>&1`** or other redirections — the tool already captures stderr.
 - **No command substitution in commits.** Avoid `$(…)`/backticks; use single-line
   `-m "msg"`, repeated `-m` for paragraphs, or `git commit -F <file>`.

@@ -17,6 +17,54 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.12.0] — 2026-08-17
+
+### Added
+
+- **`[hygiene] extra_repos` — a project may legitimately span more than one
+  repo (issue #24).** The command-hygiene guard's rule 1 blocks every form of
+  "point git at a repo other than cwd" and granted exactly one exception,
+  `[framework] local_path`. That baked in the assumption that the consumer repo
+  is the only repo an agent ever touches, which fails the moment one project
+  spans two repos developed together — a library and a sibling programme repo
+  in the recorded case.
+
+  The failure was lopsided in the worst way: `git init` and plain file writes
+  both take a path argument, so an agent could **create** the sibling repo and
+  **write** into it, but could not `git -C <sibling> add`/`commit` — leaving
+  rescued documents uncommitted for a human to finish by hand. A lint that
+  blocks the honest spelling of a legitimate operation is one an agent is
+  rewarded for evading.
+
+  Declare the repos in the personal, gitignored `.aide/loop/loop.local.toml`:
+
+  ```toml
+  [hygiene]
+  extra_repos = ["../programme-repo"]
+  ```
+
+  **Named for its only consumer — this guard.** `[agent]` was the shape the
+  issue sketched, but it implies broad agent configuration when the key does
+  exactly one thing, and for a security-relevant setting the name should make
+  the blast radius obvious. `[framework] local_path` is unchanged and still
+  honoured; these are not framework clones, so overloading it would blur that
+  key's narrow meaning.
+
+  **Two invariants deliberately preserved.** Listing a repo *relaxes one lint
+  and grants no permission* — the command must still match the allow-list to
+  auto-approve, and `git -C …` matches none of the `Bash(git <subcommand>:*)`
+  rules, so it prompts. That is the intended posture: the guard exists to stop
+  shapes that would stall an unattended run, not to act as a trust boundary,
+  and a blanket `Bash(git -C:*)` would have un-gated `git -C <anywhere> push
+  --force` for every consumer. And **two different repos in one command stay
+  blocked even when both are declared** — history read from one repo and
+  applied to another's working tree is a shape no legitimate workflow needs, so
+  each declared repo is tried whole rather than the paths being checked against
+  a union.
+
+  `conventions.md` §3 now states the rule runtime-generally, since a
+  multi-repo project is not a Claude-specific situation.
+
 ## [1.11.0] — 2026-08-17
 
 ### Added
