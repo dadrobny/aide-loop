@@ -66,6 +66,17 @@ capability *tiers*; this adapter binds **T3 → Opus, T2 → Sonnet**:
 Recon/claim is **not** an agent — it is deterministic `aide claim`, so no `agents/`
 file and no tier. No role signs off its own work; each item gets a fresh instance.
 
+One further agent sits **outside** the five item roles, at the queue boundary:
+
+| Agent | Tier | `model:` | `effort:` | When |
+|---|---|---|---|---|
+| `spec-reviewer` | T3 | `opus` | `high` | once per queue, after `/aide-spec-queue` authors every spec and **before any is built** |
+
+It is not a sixth role — it never touches one item's lifecycle. It reads the
+whole batch at once and reports the cross-item conflicts `aide check --queue`
+cannot decide, because they turn on what a criterion *means*. It reviews only:
+every finding is handed to the human, who decides which side was wrong.
+
 ## Orchestrators → **commands** (`commands/aide-*.md`)
 
 The three nested drivers (item ⊂ queue ⊂ roadmap, [spec §3](../ADAPTER-SPEC.md)) are
@@ -197,6 +208,7 @@ calls a **pluggable probe** sitting next to it for the raw numbers.
 ```
 adapters/claude/
 ├── agents/        builder · queue-planner · spec-author · test-writer · validator
+│                  spec-reviewer (queue boundary, not an item role)
 ├── skills/        aide-{create-vision,-roadmap,-progress,-queue,-item} ·
 │                  aide-execute-item · aide-feedback-loop ·
 │                  aide-spec-queue · aide-status-report
