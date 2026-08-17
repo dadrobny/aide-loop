@@ -17,6 +17,94 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-08-17
+
+Five correctness defects found running a consumer's queues 013–016 (issue #22).
+
+### Added
+
+- **`aide progress accept <stage> (--criterion N | --all) [--evidence "…"]`** —
+  the explicit way to tick an acceptance checkbox, replacing the auto-tick
+  removed below. An already-ticked box is reported and left alone rather than
+  counted as newly accepted; an unknown stage or an out-of-range index is a
+  loud error, never a silent no-op. `--evidence` appends an annotation beside
+  the ticked box recording what was checked.
+
+### Changed
+
+- **`aide progress set` no longer ticks acceptance checkboxes.** It recomputed
+  every stage's rollup on every call and force-ticked every `- [ ]` in any
+  stage that derived complete — so a box deliberately left unticked to record
+  a criterion that shipped *unmet* was silently flipped back to ticked by the
+  next status change for **any** item in **any** stage, converting a recorded
+  shortfall into a claim nobody had made. A consumer hit this on two separate
+  stages and could not keep either honest, since `.aide/**` is generated and a
+  hand-edit is overwritten on the next update.
+
+  A derived tick is not an attestation, and the tick had no readers to serve:
+  `stage_deliverable_statuses` skips checkbox lines, the rollup never sees
+  them, and no `aide check` rule gates a ✅ stage on them. Acceptance is now
+  attested by whoever performed the check, via `aide progress accept`;
+  conventions.md §1 states that a stage may be ✅ with an unticked box, and the
+  validator's PASS sequence ticks only criteria it actually verified.
+
+  **Consumer action:** none. Already-ticked boxes stay ticked. A stage closed
+  in future will show its acceptance boxes as its author left them, which for
+  most projects means running `aide progress accept` once per verified
+  criterion where `progress set` previously ticked them wholesale.
+
+### Fixed
+
+- **A queue branch was read as an item claim, and `gc` could delete it.**
+  Branch-to-item resolution fell back to an unanchored digit search, so
+  `aide/queue-016` — the branch name `/aide-create-queue`'s hand-off and
+  `/aide-run-roadmap` both tell authors to create — resolved to *item 016*, an
+  unrelated and usually long-finished work item (`aide/specs-queue-015`
+  likewise). Queue numbers and item numbers share one namespace with no
+  syntactic marker between them.
+
+  The consequence went well past the spurious `aide check` warning that
+  surfaced it: `gc` targets any branch whose item is ✅ **independently of
+  `--merged`**, then deletes it with `git branch -D` plus a remote delete. So
+  `aide gc --yes` would destroy an in-flight queue branch, local and remote,
+  along with the queue file and item specs living only on it — for any project
+  whose item NNN had finished, which after a few queues is all of them.
+
+  Resolution is now a single anchored helper matching the branch shape
+  conventions.md §4 already documents (`<branch_prefix>NNN-short-name`), shared
+  by `check`, `merge`, `sync --item`, `status` and `gc` instead of three
+  divergent copies. Queue and specs-queue branches are recognised positively
+  and reported as what they are; a prefixed branch matching neither shape is
+  reported as unrecognised rather than silently skipped, so anchoring cannot
+  hide a real stale claim.
+
+- **`aide check` rendered OS-native path separators in its output.** Both
+  warning locations were built by f-stringing a `Path`, which calls `str()`, so
+  the identical document reported as `queue/queue-002.md:80` on Linux and
+  `queue\queue-002.md:80` on Windows — and only locations with a subdirectory
+  component diverged, making it read as a content problem rather than a
+  platform one. Now `.as_posix()`. Any consumer parsing `aide check` output
+  rather than calling `run_checks` was inheriting this.
+
+- **The unfilled-slot rule rejected GitHub Actions expressions quoted in
+  prose.** `template_residue_errors` scans for a literal `{{` and *errors*, so
+  any living document discussing a workflow — an item spec explaining what a CI
+  step runs, an insight recording a workflow's arguments — turned `aide check`
+  red on prose that was correct as written, and the only remedy was to stop
+  naming the real syntax. The pattern now exempts a `$` immediately preceding
+  the braces, and nothing else: AIDE slots are never `$`-prefixed. Suppressing
+  matches inside backtick code spans would have been wrong, since the item
+  template's own `Suggested branch` line carries a genuine slot inside one.
+
+- **The insights inbox forbade the edit its own triage procedure requires.**
+  `core/templates/insights.md` closed with "Append-only: never rewrite,
+  reorder, or delete existing lines" while instructing the triager, six lines
+  above, to tick the entry's checkbox in place and append a "→ where it landed"
+  pointer — so every triage pass had to violate the stated rule to follow the
+  stated procedure. `conventions.md` §1 carried the same contradiction
+  independently. Both now permit exactly those two triage edits and prohibit
+  any other rewrite, reorder or deletion.
+
 ## [1.4.2] — 2026-07-26
 
 ### Fixed
