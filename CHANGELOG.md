@@ -17,6 +17,55 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-08-17
+
+### Fixed
+
+- **`aide gc` and `aide check` named a problem without naming its remedy
+  (issue #33).** All three gaps were signposting, not missing capability — the
+  verb that resolves them already existed — and each one's cost was the same:
+  the reader's next reach was the raw `git branch -d` that `.aide/README.md`
+  says to prefer a verb over.
+
+  `gc` has two independent grounds, and the item ground structurally cannot
+  see a queue or unrecognised branch (deliberately, since 1.5.0). But the bare
+  invocation still reported `nothing to clean` while `aide gc --merged` would
+  have offered three branches — a true statement about the ground checked,
+  read as a false one about the repository. It now names `--merged` when that
+  ground would actually find something; the probe runs only on the empty path,
+  never in the normal one.
+
+  `gc` also only ever considers branches under `branch_prefix`, so a merged
+  branch named anything else was never examined on either ground and nothing
+  said so. The restriction is correct and unchanged — `gc` is the one
+  destructive verb and must not delete branches it does not own — but it is no
+  longer silent: an empty result now states the scope and how many other local
+  branches it therefore did not consider.
+
+  The `unrecognised branch` warning had the mirror-image shape: it explained
+  the convention that was missed but never what to do about it. It now ends
+  with the action (rename to the claim shape, or delete via `aide gc --merged`
+  once merged).
+
+### Added
+
+- **A regression guard for the `str(Path)` separator class (issue #34).** A
+  `Path` rendered with `str()` — or interpolated into an f-string, which calls
+  `str()` — carries the host's separator into any value that is then compared,
+  hashed, or matched. That class has caused four separate CI-only failures in
+  a consumer, every one invisible to a Linux checkout and every one found by a
+  human reading the Actions tab rather than by any gate.
+
+  A full sweep of every Python file a consumer installs or executes found **no
+  remaining site**: the surviving `str(...)` calls are config values,
+  subprocess `cwd`/argv (where native separators are required), git paths
+  (always POSIX by git's own contract), human-facing log output, or the
+  hygiene guard's deliberate `normcase`/`normpath` comparison of two paths on
+  one machine. But a clean sweep does not prevent the fifth instance, so
+  `run_checks`' returned `(errors, warnings)` — the surface consumers actually
+  parse — is now pinned by a test that puts findings in a subdirectory, the
+  only case where separators diverge, and asserts none carries a backslash.
+
 ## [1.5.0] — 2026-08-17
 
 Five correctness defects found running a consumer's queues 013–016 (issue #22).
