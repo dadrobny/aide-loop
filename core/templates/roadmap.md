@@ -53,17 +53,25 @@ _One bullet per concrete artifact or capability._
 
 - {{deliverable}}
 
-**Dependencies.** {{stage numbers, or "None"}}
+**Dependencies.** {{blocking stage numbers, or "None"}}
 
-_Blocking stages only — what this stage needs finished before it can start.
-To say two stages are **independent**, say that: "independent of Stage N; may be
-queued in either order." Avoid "run alongside" / "in parallel" for stages. One
-queue is live at a time (the queue boundary is the human checkpoint), so a
-planner reading "alongside" cannot act on it and will queue them sequentially
-anyway — the phrase only makes the roadmap and the queues look like they
-disagree. If the real point is that one should come **early**, say why: "queue
-before Stage N, whose retuning is safer once this exists." That is an ordering
-constraint a planner can honour._
+_The slot holds **blocking** stages only: what this stage needs finished before
+it can start. Anything about *ordering without blocking* is a separate sentence
+after it, e.g. `**Dependencies.** None. Independent of Stage 17 — may be queued
+in either order.`_
+
+_Two phrasings a planner can act on, and one it cannot:_
+
+- _**Independence** — "independent of Stage N; may be queued in either order."
+  Tells the planner the two need nothing from each other, so it may queue them
+  in any order, or as one batch if they fit the cap._
+- _**Ordering without blocking** — "queue before Stage N, whose retuning is
+  safer once this exists." A preference the planner can honour, with its reason._
+- _**Avoid "run alongside" / "in parallel"** for stages. One queue is live at a
+  time (the queue boundary is the human checkpoint), so a planner cannot act on
+  it and will queue sequentially regardless — the phrase only makes the roadmap
+  and the queues look like they disagree. Note this is about **stages**; saying
+  two *items within one queue* may be worked in parallel is accurate and useful._
 
 **Validation / acceptance.**
 
