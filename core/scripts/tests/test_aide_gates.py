@@ -291,3 +291,28 @@ def test_gate_out_of_range_is_an_error_not_a_noop(tmp_path: Path, capsys):
     repo = _repo(tmp_path, AWAITING)
     assert aide.main(["--repo", str(repo), "gate", "approve", "9", "--no-commit"]) == 2
     assert "out of range" in capsys.readouterr().err
+
+
+def test_a_queue_branch_does_not_make_an_item_unclaimable(tmp_path: Path, capsys):
+    """`aide/queue-027` is a queue branch, not a claim on item 027. The old
+    unanchored search read the trailing digits as an item number and marked it
+    permanently claimed — the 1.5.0 bug class, at the one call site that sweep
+    missed."""
+    repo = _repo(tmp_path, "| G | 999 | ⏳ Awaiting | — |")   # gate blocks nothing real
+    _run(["git", "switch", "-c", "aide/queue-027"], repo)
+    assert aide.main(["--repo", str(repo), "claim", "--dry-run"]) == 0
+    assert "item 027" in capsys.readouterr().out
+
+
+def test_a_real_claim_branch_still_marks_its_item_claimed(tmp_path: Path, capsys):
+    repo = _repo(tmp_path, "| G | 999 | ⏳ Awaiting | — |")
+    _run(["git", "switch", "-c", "aide/027-alpha"], repo)
+    assert aide.main(["--repo", str(repo), "claim", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "item 028" in out and "item 027" not in out
+
+
+def test_gate_approve_without_a_number_reports_rather_than_crashing(tmp_path: Path, capsys):
+    repo = _repo(tmp_path, AWAITING)
+    assert aide.main(["--repo", str(repo), "gate", "approve", "--no-commit"]) == 2
+    assert "needs a gate number" in capsys.readouterr().err

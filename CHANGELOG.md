@@ -19,6 +19,19 @@ keys, and the adapter's agents/skills/commands.
 
 ## [1.13.0] — 2026-08-18
 
+### Fixed
+
+- **A queue branch made an item permanently unclaimable.** `_pick_item`
+  resolved a claim branch to an item number with an *unanchored* digit search,
+  so `aide/queue-016` read as item 016 and `aide/specs-queue-015` as item 015 —
+  marking those items already-claimed and therefore never offered again. This is
+  the bug class 1.5.0 fixed by giving every branch→item call site one anchored
+  helper; this call site was missed by that sweep. Found while adding gates to
+  the same function.
+
+- **`aide gate approve` with no number crashed** with a `TypeError` instead of
+  reporting the missing argument.
+
 ### Added
 
 - **Human gates — a first-class mid-queue checkpoint (issue #30).** The loop had

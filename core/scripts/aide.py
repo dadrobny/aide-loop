@@ -1581,6 +1581,10 @@ def cmd_gate(args: argparse.Namespace) -> int:
         print(f"aide gate: {len(gates)} gate(s), {outstanding} still blocking")
         return 0
 
+    if args.number is None:
+        print(f"aide gate: '{args.action}' needs a gate number — see `aide gate list`",
+              file=sys.stderr)
+        return 2
     kind = "approved" if args.action == "approve" else "declined"
     try:
         updated = set_gate_status(text, args.number, kind, args.note)
@@ -1877,11 +1881,14 @@ def _pick_item(repo_root: Path, config, queue_text: str,
     gate_blocked, barriers = gate_blocked_items(plines)
     if barriers:
         return None
-    claimed_nums = set()
-    for br in claim_branches:
-        cm = re.search(r"/(\d+)-", br) or re.search(r"(\d+)", br.rsplit("/", 1)[-1])
-        if cm:
-            claimed_nums.add(int(cm.group(1)))
+    # Anchored resolution, like every other branch->item call site since 1.5.0.
+    # The old unanchored search read `aide/queue-016` as item 016 and
+    # `aide/specs-queue-015` as item 015, marking those items permanently
+    # "claimed" and therefore unclaimable — a queue branch is not an item claim.
+    # This call site was missed when the shared helper landed.
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    claimed_nums = {n for n in (_branch_item_number(br, prefix) for br in claim_branches)
+                    if n is not None}
     titles = _queue_titles(queue_text)
     for num in queue_item_numbers(queue_text):
         if item_status.get(num, "planned") != "planned":

@@ -102,8 +102,8 @@ _**Blocks** names item numbers (`106`, `110, 111`, `106–108`) to hold just
 those — the queue keeps producing other work — or the literal `queue` to make
 it a barrier that stops the live queue. Choose the barrier when the pending
 decision could **invalidate** downstream work; otherwise racing ahead is waste
-to throw away. Status is `⏳ Awaiting`, then `✅ Approved ({{yyyy-mm-dd}})` or
-`❌ Declined ({{yyyy-mm-dd}})` — and a decline **keeps blocking**, since
+to throw away. Status is `⏳ Awaiting`, then `✅ Approved (YYYY-MM-DD)` or
+`❌ Declined (YYYY-MM-DD)` — and a decline **keeps blocking**, since
 releasing the work would run exactly what was refused; re-plan instead._
 
 _Resolved only by a person, only via `aide gate approve <n> --evidence "…"`
