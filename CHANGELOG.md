@@ -17,6 +17,59 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.14.0] — 2026-08-18
+
+### Added
+
+- **Five conventions rules that were stated and enforced by nothing are now
+  checked.** An audit of `conventions.md` against what `aide check`, the
+  hygiene hook and the repo suite actually verify found the gap. It matters
+  because a stated rule with no check decays, which this framework demonstrated
+  on itself twice inside one week: the "guidance is never a slot" rule sat in
+  `CLAUDE.md` for months and was broken in two consecutive PRs, and the first
+  guard written for it had a blind spot that let it be broken again in the very
+  PR that added the guard.
+
+  Each check was measured against a real consumer before shipping, and each
+  found something real there:
+
+  - **Item spec shape** (§1, §5) — the `# Item NNN — Title` heading must agree
+    with the filename, the header must carry no status field (status lives only
+    in `progress.md`; a duplicate has no owner and only drifts), and the
+    mandatory `## Assumptions` block must exist. Missing-Assumptions is reported
+    as **one aggregated line**: 32 of 112 specs predated the rule in the
+    consumer, and 32 separate warnings would bury the substantive ones — the
+    failure mode issue #13 was filed for.
+  - **Flat deliverable bullets** (§1) — a nested bullet carrying its own status
+    icon is invisible to the rollup while reading as status to a human, so the
+    document and the tooling disagree with nothing to reconcile them.
+  - **Header blockquote** (§1) — scoped to the templated living documents.
+    Checking every file under `docs_dir` was 3 false positives in 8 files: a
+    generated artifact and a project note are not living documents, and
+    `insights.md`'s template deliberately opens with a comment.
+  - **Separator-dependent test values** (§6) — a relative `Path` rendered with
+    `str()`, or interpolated into an f-string, carries the OS separator.
+    Narrowed to `.relative_to(`, the shape all four recorded CI-only failures
+    took. Two real instances in the consumer.
+  - **Tests shelling out to `aide.py`** (§6) — the logic is importable and
+    returns structured data; the subprocess adds a stdout surface that has
+    failed on Windows only, and can pass while checking nothing. Matched
+    **through the AST**: the sole textual match in the consumer was a docstring
+    explaining why its author had removed a subprocess, so a line-based lint
+    would have flagged the file documenting the correct practice.
+
+  All are warnings, not errors — these are documents in flight, and the point is
+  visibility, not a gate. Together they took the consumer's `aide check` from 7
+  warnings to 12, with no false positives.
+
+### Fixed
+
+- **The status-field check would never have fired.** The item template writes
+  fields as `**Created:**`, with the colon *inside* the bold, and the first
+  pattern expected `**Status**:` — so it matched nothing. Caught only because a
+  test asserted the real template's spelling rather than the one assumed while
+  writing the regex.
+
 ## [1.13.0] — 2026-08-18
 
 ### Fixed

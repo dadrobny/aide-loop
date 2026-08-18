@@ -25,6 +25,7 @@ touching git or the real filesystem (see ``.aide/scripts/tests``).
 from __future__ import annotations
 
 import argparse
+import ast
 import fnmatch
 import json
 import os
@@ -1097,6 +1098,195 @@ def gate_warnings(lines: List[str]) -> List[str]:
     return out
 
 
+#: A deliverable bullet must be FLAT (conventions.md §1): a nested bullet
+#: carrying its own status icon makes the rollup ambiguous — is the parent's
+#: icon the truth, or the child's? The parser reads the parent and silently
+#: ignores the child, so the document says one thing and the tooling another.
+_NESTED_DELIVERABLE_RE = re.compile(r"^\s+[-*]\s*(?P<icon>" + _ICON_ALT + r")")
+
+#: Documents whose template carries a header blockquote. Not every file under
+#: docs_dir: a generated artifact or a project note is not a living document,
+#: and insights.md's template deliberately opens with a comment instead.
+_BLOCKQUOTE_DOCS = ("vision.md", "roadmap.md", "progress.md")
+
+
+#: `str(Path)` — or a Path interpolated into an f-string, which calls `str()` —
+#: renders the OS-native separator. Narrowed to `.relative_to(`, which is the
+#: shape every recorded instance took and which is essentially always destined
+#: for a comparison, a hash, or a sort: an identical tree then hashes or orders
+#: differently on Windows. Four separate CI-only failures came from this.
+_STR_PATH_RE = re.compile(r"str\(\s*[^)]*\.relative_to\(|\{[^{}]*\.relative_to\([^{}]*\}")
+
+#: Calls that spawn a process. Matched through the AST, never by line text: the
+#: one occurrence in the consumer measured against was a DOCSTRING explaining
+#: why the author had removed a subprocess — a line-based lint flags the file
+#: documenting the correct practice.
+_SUBPROCESS_FUNCS = frozenset({"run", "Popen", "check_output", "check_call", "call"})
+
+
+def _test_files(repo_root: Path, config: Dict[str, Dict[str, object]]) -> List[Path]:
+    tests_dir = repo_root / str(config["project"].get("tests_dir", "tests"))
+    if not tests_dir.is_dir():
+        return []
+    return [p for p in sorted(tests_dir.rglob("*.py"))
+            if "__pycache__" not in p.parts]
+
+
+def separator_dependent_test_warnings(repo_root: Path,
+                                      config: Dict[str, Dict[str, object]]) -> List[str]:
+    """Tests stringifying a relative `Path` into a value that gets compared.
+
+    conventions.md §6: any `Path` entering a hash, comparison or match must be
+    `.as_posix()`. This reports the one shape a script can decide without
+    guessing — and it is the shape all four recorded CI-only failures took.
+    """
+    out: List[str] = []
+    for path in _test_files(repo_root, config):
+        try:
+            text = path.read_text(encoding=_ENCODING)
+        except (OSError, UnicodeDecodeError):
+            continue
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if _STR_PATH_RE.search(line):
+                rel = path.relative_to(repo_root).as_posix()
+                out.append(
+                    f"{rel}:{lineno}: a relative Path rendered with str() carries "
+                    f"the OS separator, so this value differs on Windows — use "
+                    f".as_posix() (conventions.md §6)")
+                break
+    return out
+
+
+def cli_subprocess_test_warnings(repo_root: Path,
+                                 config: Dict[str, Dict[str, object]]) -> List[str]:
+    """Tests shelling out to `aide.py` instead of calling its function.
+
+    conventions.md §6: prefer calling the function over shelling out to the
+    command that calls it. The logic is importable and returns structured data;
+    the subprocess adds stdout encoding, platform quirks, and a re-parse of what
+    was structured a moment earlier. The recorded instance returned
+    ``stdout is None`` on a Windows runner — and had it returned ``""`` the test
+    would have passed while checking nothing.
+    """
+    out: List[str] = []
+    for path in _test_files(repo_root, config):
+        try:
+            tree = ast.parse(path.read_text(encoding=_ENCODING))
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+            if name not in _SUBPROCESS_FUNCS:
+                continue
+            if any(isinstance(c, ast.Constant) and isinstance(c.value, str)
+                   and "aide.py" in c.value for c in ast.walk(node)):
+                rel = path.relative_to(repo_root).as_posix()
+                out.append(
+                    f"{rel}:{node.lineno}: shells out to aide.py — call the "
+                    f"function instead (e.g. run_checks); a subprocess adds a "
+                    f"stdout/encoding surface that has failed on Windows only, "
+                    f"and can pass while checking nothing (conventions.md §6)")
+                break
+    return out
+
+
+def nested_deliverable_warnings(lines: List[str]) -> List[str]:
+    """Status-bearing bullets nested under a deliverable.
+
+    The rollup reads only flat bullets, so a nested one is invisible to it
+    while looking authoritative to a reader — the document and the tooling
+    disagree with nothing to reconcile them.
+    """
+    out: List[str] = []
+    for start, end, num in stage_sections(lines):
+        for i in range(start, end):
+            m = _NESTED_DELIVERABLE_RE.match(lines[i])
+            if m:
+                out.append(
+                    f"progress.md:{i + 1}: stage {num} has a nested status bullet "
+                    f"({m.group('icon')}) — the rollup reads flat deliverable "
+                    f"bullets only, so this one is ignored while reading as "
+                    f"status. Flatten it, or drop its icon.")
+    return out
+
+
+def header_blockquote_warnings(ddir: Path) -> List[str]:
+    """Living documents that do not open with their header blockquote.
+
+    The blockquote carries the document's place in the loop and what it derives
+    from — structural facts a reader landing anywhere needs (conventions.md §1).
+    """
+    out: List[str] = []
+    targets = [ddir / name for name in _BLOCKQUOTE_DOCS]
+    for sub in ("queue", "items"):
+        if (ddir / sub).is_dir():
+            targets.extend(sorted((ddir / sub).glob("*.md")))
+    for path in targets:
+        if not path.is_file():
+            continue
+        first = next((l for l in path.read_text(encoding=_ENCODING).splitlines()
+                      if l.strip() and not l.startswith("#")
+                      and not l.lstrip().startswith("<!--")), "")
+        if not first.startswith(">"):
+            rel = path.relative_to(ddir.parent.parent).as_posix() if ddir.parent.parent in path.parents else path.name
+            out.append(f"{rel}: no header blockquote — the line after the title "
+                       f"should carry this document's place in the loop and what "
+                       f"it derives from")
+    return out
+
+
+def item_spec_warnings(ddir: Path) -> List[str]:
+    """Item specs that break the shapes §1 and §5 fix.
+
+    Three rules, none previously checked: the `# Item NNN — Title` heading must
+    agree with the filename (the status report parses the title from it); the
+    header must carry NO status field (status lives only in progress.md, and a
+    duplicate has no owner and only drifts); and the **Assumptions** block is
+    mandatory, since it is what the validator surfaces for audit.
+
+    The missing-Assumptions finding is reported as ONE aggregated line. Specs
+    predating the rule are common — 32 of 112 in the consumer this was measured
+    against — and 32 separate warnings would bury the substantive ones, which is
+    the failure mode issue #13 was filed for.
+    """
+    idir = ddir / "items"
+    if not idir.is_dir():
+        return []
+    out: List[str] = []
+    missing_assumptions: List[str] = []
+    for path in sorted(idir.glob("*.md")):
+        m = re.match(r"0*(\d+)", path.name)
+        if not m:
+            continue
+        num = int(m.group(1))
+        text = path.read_text(encoding=_ENCODING)
+        if not re.search(rf"^#\s+Item\s+0*{num}\b", text, re.MULTILINE):
+            out.append(f"items/{path.name}: no '# Item {num:03d} — Title' heading "
+                       f"matching the filename")
+        head = text.split("\n---", 1)[0]
+        # The template writes fields as `**Created:**` — colon INSIDE the bold —
+        # so a pattern expecting `**Status**:` matches nothing and the check
+        # never fires. Accept both spellings.
+        sm = re.search(r"\*\*\s*(Status|Completed)\s*:?\s*\*\*", head)
+        if sm:
+            out.append(f"items/{path.name}: header carries a '{sm.group(1)}' field — "
+                       f"status lives only in progress.md; a duplicate has no owner "
+                       f"and only drifts")
+        if not re.search(r"^##\s+Assumptions", text, re.MULTILINE):
+            missing_assumptions.append(f"{num:03d}")
+    if missing_assumptions:
+        shown = ", ".join(missing_assumptions[:8])
+        more = (f" (+{len(missing_assumptions) - 8} more)"
+                if len(missing_assumptions) > 8 else "")
+        out.append(f"{len(missing_assumptions)} item spec(s) have no mandatory "
+                   f"'## Assumptions' block: {shown}{more} — it is what the "
+                   f"validator surfaces for audit at the queue boundary")
+    return out
+
+
 def _stray_icons_in_line(line: str) -> List[str]:
     """Status icons on this line that sit where one could plausibly be
     mistaken for a structural status declaration.
@@ -1169,12 +1359,17 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(stray_icon_warnings(ddir))
     warnings.extend(insight_warnings(ddir))
     warnings.extend(absolute_path_test_warnings(repo_root, config))
+    warnings.extend(separator_dependent_test_warnings(repo_root, config))
+    warnings.extend(cli_subprocess_test_warnings(repo_root, config))
+    warnings.extend(header_blockquote_warnings(ddir))
+    warnings.extend(item_spec_warnings(ddir))
     if not progress_path.is_file():
         return [f"missing {progress_path}"], warnings
     # One read, reused: two reads can disagree if the file changes between them.
     text = progress_path.read_text(encoding=_ENCODING)
     lines = text.splitlines()
     warnings.extend(gate_warnings(lines))
+    warnings.extend(nested_deliverable_warnings(lines))
 
     # Mandatory sections.
     has_stage_table = any(
