@@ -406,3 +406,24 @@ def test_a_stage_gate_naming_a_missing_stage_says_it_holds_nothing():
 def test_a_stage_gate_with_real_items_reports_its_stage_plainly():
     assert "stage 1" in aide.gate_warnings(_lines(STAGE))[0]
     assert "holds NOTHING" not in aide.gate_warnings(_lines(STAGE))[0]
+
+
+def test_a_malformed_row_with_an_empty_first_cell_still_warns():
+    """`set("") <= set("-: ")` is true, so an empty first cell used to read as a
+    separator row and the malformed-row warning never fired — the vanishing
+    gate the warning exists to catch, hiding inside the warning itself."""
+    rows = "| | 028 | ⏳ Awaiting | note with | a pipe |"
+    assert any("being SKIPPED" in w for w in aide.gate_warnings(_lines(rows)))
+
+
+def test_an_unnamed_but_well_formed_gate_still_blocks():
+    """Failing safe: a row with no gate text is odd, but it must not silently
+    stop blocking — that is the direction that loses work."""
+    rows = "|  | 028 | ⏳ Awaiting | — |"
+    blocked, _ = aide.gate_blocked_items(_lines(rows))
+    assert blocked == {28}
+
+
+def test_the_real_separator_row_is_still_ignored():
+    assert aide.gate_warnings(_lines(AWAITING)) == aide.gate_warnings(_lines(AWAITING))
+    assert len(aide.human_gates(_lines(AWAITING))) == 1

@@ -517,7 +517,7 @@ def human_gates(lines: List[str]) -> List[HumanGate]:
         if not line.strip().startswith("|"):
             continue
         cells = _split_row(line)
-        if len(cells) != 4 or cells[0].lower() == "gate" or set(cells[0]) <= set("-: "):
+        if _is_gate_table_furniture(cells) or len(cells) != 4:
             continue
         kind = next((k for icon, k in _GATE_STATUS_KIND.items()
                      if cells[2].startswith(icon)), None)
@@ -1011,6 +1011,20 @@ def absolute_path_test_warnings(repo_root: Path,
     return out
 
 
+def _is_gate_table_furniture(cells: List[str]) -> bool:
+    """True for the gates table's header or separator row — never for data.
+
+    The separator test requires a NON-EMPTY cell. `set("") <= set("-: ")` is
+    true, so an empty first cell used to read as a separator: a malformed row
+    like `| | 028 | ⏳ Awaiting | a | pipe |` was skipped *silently*, which is
+    precisely the vanishing-gate failure the warning below exists to catch.
+    """
+    if not cells:
+        return True
+    first = cells[0]
+    return first.lower() == "gate" or bool(first.strip()) and set(first) <= set("-: ")
+
+
 def _malformed_gate_row_warnings(lines: List[str]) -> List[str]:
     """Rows inside the gates table the parser had to skip.
 
@@ -1034,7 +1048,7 @@ def _malformed_gate_row_warnings(lines: List[str]) -> List[str]:
         if not stripped.startswith("|"):
             continue
         cells = _split_row(line)
-        if len(cells) == 4 or cells[0].lower() == "gate" or set(cells[0]) <= set("-: "):
+        if _is_gate_table_furniture(cells) or len(cells) == 4:
             continue
         out.append(
             f"progress.md:{i + 1}: human-gate row has {len(cells)} columns, not 4 — "
