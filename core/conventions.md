@@ -353,7 +353,7 @@ A **decision only a person can make**, blocking work until they make it. A
 ```
 
 - **Blocks** — item numbers (any §1 reference form, or bare: `106`,
-  `110, 111`, `106–108`), or the literal `queue`.
+  `110, 111`, `106–108`), `stage N`, or `all`.
 - **Status** — table-local vocabulary, like Outcome targets': `⏳ Awaiting`,
   then `✅ Approved (date)` or `❌ Declined (date)`.
 
@@ -363,13 +363,40 @@ not that, and overloading the checkboxes would repeat exactly the conflation
 Outcome targets were introduced to avoid. Gates get their own table for the
 same reason.
 
-**Reach is per gate, and that is the point.** Naming items blocks only those,
-so the queue keeps producing work — the common case, where a decision affects
-one thread. `queue` makes the gate a **barrier**: nothing in the live queue
-proceeds. Choose the barrier when the pending decision could *invalidate*
-downstream work, because then racing ahead is not progress, it is waste to
-throw away. Only the person who knows what the decision might change can make
-that call, so the table asks them rather than guessing.
+**Reach is per gate, and never a queue.** A queue is an *incidental* batch
+boundary — part of a stage, one stage, or several small ones — so "the live
+queue" names different work from one week to the next while the decision has
+not changed. Blocking is tied to the units that mean something:
+
+| Blocks | Reaches | Use when |
+|---|---|---|
+| `106`, `110, 111`, `106–108` | exactly those items | the decision affects one thread; the queue keeps producing other work |
+| `stage N` | every item that stage's deliverables reference, resolved live | the decision could *invalidate* a stage's work, so racing ahead is waste to throw away |
+| `all` | every item, everywhere | a programme-level stop — sign-off, budget, legal |
+
+`stage N` resolves through `progress.md` each time it is read, so a gate's reach
+follows the roadmap as the stage's contents change rather than freezing a list
+written when the gate was raised. Only the person who knows what the pending
+decision might change can judge which reach applies, so the table asks them.
+
+**Where a gate is raised, and where it lives.** Same split as Outcome targets:
+raised wherever it is noticed, recorded in one place.
+
+- **`roadmap.md`** — a stage whose work needs a decision or an out-of-band
+  prerequisite says so in its own section. This is the usual home for a gate
+  known at planning time, and it naturally implies `Blocks: stage N`.
+- **`items/NNN-*.md`** — a gate discovered while specifying one item is noted
+  in its Validation or Assumptions block, implying `Blocks: NNN`.
+- **`progress.md`** — the **authoritative row**, always. It is the single source
+  of truth for status and the only place the CLI reads, so a gate that exists
+  only as prose in a roadmap or a spec blocks nothing.
+
+**Any role may raise a gate; only a person may resolve one.** Creating a blocker
+is safe — the worst case is work pausing for a human — so an agent noticing that
+a decision is needed should add the row and say so. Removing one is not safe,
+and no agent may run `aide gate approve`/`decline`: a gate exists precisely
+because the decision is not derivable from the work, so an agent resolving it
+destroys the only thing it was protecting.
 
 **A declined gate keeps blocking.** It is resolved — someone decided — but the
 decision was "no", so releasing the work would run exactly what was refused.
@@ -389,9 +416,7 @@ Semantics *(aide claim, check, status, gate)*:
   aide gate (list | approve <n> | decline <n>) [--evidence "…"]
   ```
 
-**No agent may resolve a gate.** A gate exists precisely because the decision is
-not derivable from the work; an agent approving one destroys the only thing it
-was protecting. Agents *read* gates — to know why they must stop — and stop.
+Agents *read* gates — to know why they must stop — and stop.
 
 ### Environment-gated capabilities (optional, additive)
 

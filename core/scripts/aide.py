@@ -431,17 +431,49 @@ class OutcomeTarget(NamedTuple):
 _GATES_HEADING_RE = re.compile(r"^#{1,2}\s+Human gates\b", re.IGNORECASE)
 #: Table-local vocabulary, like Outcome targets': the LEADING mark decides.
 _GATE_STATUS_KIND = {"⏳": "awaiting", "✅": "approved", "❌": "declined"}
-#: A gate whose Blocks cell says this halts the whole live queue, not just the
-#: items it names — for a decision that could invalidate downstream work.
-_GATE_BLOCKS_QUEUE = "queue"
+#: A gate whose Blocks cell says this halts every item, everywhere — for a
+#: programme-level decision ("no work proceeds until sign-off").
+_GATE_BLOCKS_ALL = "all"
+#: `stage N` — every item the named stage's deliverables reference. Blocking is
+#: tied to a STAGE, never to a queue: a queue is an incidental batch boundary
+#: (part of a stage, a stage, or several small ones), so "the live queue" names
+#: different work from one week to the next while the decision has not changed.
+#: A stage is the roadmap's own unit and means the same thing over time.
+_GATE_BLOCKS_STAGE_RE = re.compile(r"^stage\s+0*(\d+)$", re.IGNORECASE)
 
 
 class HumanGate(NamedTuple):
     lineno: int              # 1-based line number in progress.md
     text: str                # the Gate cell
-    blocks: List[int]        # item numbers blocked (empty when barrier or none)
-    barrier: bool            # True when the Blocks cell says "queue"
+    blocks: List[int]        # item numbers named directly (empty for stage/all)
+    stage: Optional[str]     # stage number when the cell reads "stage N"
+    blocks_all: bool         # True when the cell reads "all"
     kind: Optional[str]      # "awaiting" | "approved" | "declined" | None
+
+    @property
+    def reach(self) -> str:
+        """How far this gate reaches, for a human-readable report."""
+        if self.blocks_all:
+            return "all items"
+        if self.stage is not None:
+            return f"stage {self.stage}"
+        return ("items " + ", ".join(f"{i:03d}" for i in self.blocks)
+                if self.blocks else "nothing named")
+
+
+def stage_item_numbers(lines: List[str], stage: str) -> List[int]:
+    """Item numbers referenced by *stage*'s deliverable bullets in progress.md.
+
+    Reuses the §1 rule that only a deliverable bullet (and its wrapped
+    continuation lines) carries an item reference, so a Notes cell or an
+    acceptance checkbox naming an item does not widen a stage gate's reach.
+    """
+    section = next((sec for sec in stage_sections(lines)
+                    if _same_stage(sec[2], stage)), None)
+    if section is None:
+        return []
+    start, end, _ = section
+    return sorted(_parse_item_status(lines[start:end])[2])
 
 
 def _blocked_item_numbers(cell: str) -> List[int]:
@@ -469,7 +501,8 @@ def human_gates(lines: List[str]) -> List[HumanGate]:
     table rather than a checkbox any role could tick.
 
     ``Blocks`` accepts the item-reference forms of §1 (``106``, ``106, 107``,
-    ``106–108``) or the literal ``queue`` for a barrier.
+    ``106–108``), ``stage N`` for every item that stage's deliverables
+    reference, or ``all`` for a programme-level stop.
     """
     out: List[HumanGate] = []
     in_section = False
@@ -489,9 +522,11 @@ def human_gates(lines: List[str]) -> List[HumanGate]:
         kind = next((k for icon, k in _GATE_STATUS_KIND.items()
                      if cells[2].startswith(icon)), None)
         blocks_cell = cells[1].strip()
-        barrier = blocks_cell.lower() == _GATE_BLOCKS_QUEUE
-        blocks = [] if barrier else _blocked_item_numbers(blocks_cell)
-        out.append(HumanGate(i + 1, cells[0], blocks, barrier, kind))
+        blocks_all = blocks_cell.lower() == _GATE_BLOCKS_ALL
+        sm = _GATE_BLOCKS_STAGE_RE.match(blocks_cell)
+        stage = sm.group(1) if sm else None
+        blocks = [] if (blocks_all or stage) else _blocked_item_numbers(blocks_cell)
+        out.append(HumanGate(i + 1, cells[0], blocks, stage, blocks_all, kind))
     return out
 
 
@@ -511,14 +546,22 @@ def blocking_gates(lines: List[str]) -> List[HumanGate]:
 
 
 def gate_blocked_items(lines: List[str]) -> Tuple[set, List[HumanGate]]:
-    """``(blocked item numbers, barrier gates)`` from the blocking gates."""
-    blocked, barriers = set(), []
+    """``(blocked item numbers, block-everything gates)`` from the blocking gates.
+
+    A ``stage N`` gate resolves through progress.md to the items that stage's
+    deliverables reference, so its reach follows the roadmap as the stage's
+    contents change — which is the whole reason reach is anchored to a stage
+    rather than to whichever queue happens to be live.
+    """
+    blocked, everything = set(), []
     for g in blocking_gates(lines):
-        if g.barrier:
-            barriers.append(g)
+        if g.blocks_all:
+            everything.append(g)
+        elif g.stage is not None:
+            blocked.update(stage_item_numbers(lines, g.stage))
         else:
             blocked.update(g.blocks)
-    return blocked, barriers
+    return blocked, everything
 
 
 def outcome_targets(lines: List[str]) -> List[OutcomeTarget]:
@@ -985,18 +1028,15 @@ def gate_warnings(lines: List[str]) -> List[str]:
                 f"unrecognised status — use ⏳ Awaiting, ✅ Approved or ❌ Declined; "
                 f"until it reads one of those the gate counts as unresolved")
             continue
-        reach_of = lambda: "the whole queue" if g.barrier else (
-            "items " + ", ".join(f"{i:03d}" for i in g.blocks) if g.blocks
-            else "nothing named")
         if g.kind == "declined":
             out.append(
                 f"progress.md:{g.lineno}: human gate {n} ({g.text}) was DECLINED "
-                f"and still blocks {reach_of()} — a refusal does not release the "
+                f"and still blocks {g.reach} — a refusal does not release the "
                 f"work it guards; drop those items or change what the gate asks")
             continue
-        reach = "the whole queue" if g.barrier else (
-            "items " + ", ".join(f"{i:03d}" for i in g.blocks) if g.blocks
-            else "nothing named — the Blocks cell names no item and is not 'queue'")
+        reach = g.reach if (g.blocks or g.stage or g.blocks_all) else (
+            "nothing named — the Blocks cell names no item, no 'stage N', and "
+            "is not 'all', so this gate holds nothing")
         out.append(f"progress.md:{g.lineno}: human gate {n} ({g.text}) is "
                    f"awaiting a decision — blocks {reach}")
     return out
@@ -1573,8 +1613,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
             print("aide gate: no '## Human gates' table (nothing gated)")
             return 0
         for n, g in enumerate(gates, start=1):
-            reach = "queue (barrier)" if g.barrier else (
-                ", ".join(f"{i:03d}" for i in g.blocks) or "—")
+            reach = g.reach
             mark = {"approved": "✅", "declined": "❌", "awaiting": "⏳"}.get(g.kind, "⚠")
             print(f"  {n}. {mark} {g.text} — blocks {reach}")
         outstanding = len(blocking_gates(text.splitlines()))
@@ -1870,16 +1909,16 @@ def _pick_item(repo_root: Path, config, queue_text: str,
 
     "Unblocked" covers three things: its `## Dependencies` are all under way,
     no claim branch exists for it, and **no unresolved human gate holds it**. A
-    gate naming the item skips just that item, so the queue keeps producing
-    work; a `queue` barrier gate stops the whole live queue, which is the point
-    of declaring one — a pending decision that could invalidate what comes next
-    must not have the loop racing ahead of it.
+    gate naming items (directly, or via `stage N`) skips just those, so the
+    queue keeps producing other work; an `all` gate stops everything, which is
+    the point of declaring one — a pending decision that could invalidate what
+    comes next must not have the loop racing ahead of it.
     """
     ppath = docs_dir(repo_root, config) / "progress.md"
     plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
     _, _, item_status = _parse_item_status(plines) if plines else ([], [], {})
-    gate_blocked, barriers = gate_blocked_items(plines)
-    if barriers:
+    gate_blocked, block_everything = gate_blocked_items(plines)
+    if block_everything:
         return None
     # Anchored resolution, like every other branch->item call site since 1.5.0.
     # The old unanchored search read `aide/queue-016` as item 016 and
@@ -1969,8 +2008,8 @@ def cmd_claim(args: argparse.Namespace) -> int:
         ppath = docs_dir(repo_root, config) / "progress.md"
         plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
         # Attribute the empty result to a gate ONLY when a gate actually
-        # explains it: a barrier, or a gate naming an item that is still open
-        # in a queue we just scanned. A gate holding unrelated items — or
+        # explains it: an `all` gate, or a gate reaching an item that is still
+        # open in a queue we just scanned. A gate holding unrelated items — or
         # naming nothing — is not why this run found no work, and blaming it
         # would be a false explanation, which is worse than none.
         _, _, gate_item_status = _parse_item_status(plines) if plines else ([], [], {})
@@ -1979,15 +2018,22 @@ def cmd_claim(args: argparse.Namespace) -> int:
             queued.update(queue_item_numbers(qt))
         open_items = {n for n in queued
                       if gate_item_status.get(n, "planned") == "planned"}
+        def _reached(g):
+            if g.blocks_all:
+                return set(open_items)
+            if g.stage is not None:
+                return set(stage_item_numbers(plines, g.stage)) & open_items
+            return set(g.blocks) & open_items
+
         relevant = [(n, g) for n, g in enumerate(human_gates(plines), start=1)
-                    if g.kind != "approved"
-                    and (g.barrier or (set(g.blocks) & open_items))]
+                    if g.kind != "approved" and (g.blocks_all or _reached(g))]
         if relevant:
             print("none left — held by an unresolved human gate:")
             for n, g in relevant:
-                reach = "the whole queue" if g.barrier else (
-                    "items " + ", ".join(f"{i:03d}" for i in sorted(set(g.blocks) & open_items)))
-                print(f"  gate {n}: {g.text} — blocks {reach}")
+                held = sorted(_reached(g))
+                where = "everything" if g.blocks_all else (
+                    f"{g.reach} — holding " + ", ".join(f"{i:03d}" for i in held))
+                print(f"  gate {n}: {g.text} — blocks {where}")
             print("  A person decides these, never an agent. Once decided: "
                   "aide gate approve <n> --evidence \"…\" (or gate decline <n>).")
             return 0
@@ -2653,8 +2699,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         for n, g in enumerate(human_gates(plines), start=1):
             if g.kind == "approved":
                 continue
-            reach = "queue" if g.barrier else (
-                ", ".join(f"{i:03d}" for i in g.blocks) or "—")
+            reach = g.reach
             label = {"declined": "❌ declined", "awaiting": "⏳ awaiting a decision"}.get(
                 g.kind, "⚠ unrecognised status")
             print(f"  gate {n}: {g.text} [blocks {reach}] — {label}")

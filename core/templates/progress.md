@@ -99,19 +99,26 @@ an expensive run authorised). Not an acceptance box: those are observable
 checks of the built thing, which a decision is not._
 
 _**Blocks** names item numbers (`106`, `110, 111`, `106–108`) to hold just
-those — the queue keeps producing other work — or the literal `queue` to make
-it a barrier that stops the live queue. Choose the barrier when the pending
-decision could **invalidate** downstream work; otherwise racing ahead is waste
-to throw away. Status is `⏳ Awaiting`, then `✅ Approved (YYYY-MM-DD)` or
-`❌ Declined (YYYY-MM-DD)` — and a decline **keeps blocking**, since
-releasing the work would run exactly what was refused; re-plan instead._
+those, `stage N` to hold every item that stage's deliverables reference, or
+`all` for a programme-level stop. Never a queue: a queue is an incidental batch
+boundary, so it names different work week to week while the decision has not
+changed. Reach `stage N` when the pending decision could **invalidate** that
+stage's work; otherwise racing ahead is waste to throw away._
+
+_Status is `⏳ Awaiting`, then `✅ Approved (YYYY-MM-DD)` or `❌ Declined
+(YYYY-MM-DD)` — and a decline **keeps blocking**, since releasing the work
+would run exactly what was refused; re-plan instead._
+
+_Raised wherever noticed — a roadmap stage for a known prerequisite, an item
+spec for one found while specifying — but the row here is authoritative: a gate
+that exists only as prose blocks nothing. Any role may raise one._
 
 _Resolved only by a person, only via `aide gate approve <n> --evidence "…"`
 (or `gate decline`). No agent may resolve one._
 
 | Gate | Blocks | Status | Decision / evidence |
 |------|--------|--------|---------------------|
-| {{what must be decided}} | {{item numbers, or queue}} | ⏳ Awaiting | {{notes}} |
+| {{what must be decided}} | {{item numbers, stage N, or all}} | ⏳ Awaiting | {{notes}} |
 
 ---
 

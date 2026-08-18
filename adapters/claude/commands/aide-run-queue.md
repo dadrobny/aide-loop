@@ -121,8 +121,8 @@ prompts (it also **rotates** the log).
   do not prompt an unattended run for a decision nobody is there to make, and
   never run `aide gate approve` yourself. A gate exists because the decision is
   not derivable from the work; resolving it destroys the thing it protects. A
-  gate naming items skips only those, so the queue may keep going; a `queue`
-  barrier stops the batch outright.
+  gate naming items — directly or via `stage N` — skips only those, so the queue
+  may keep going; an `all` gate stops everything.
 - `/aide-run-item` hands back needing a **PR**, **force-push**, or history rewrite.
 - An item needs a **major structural change** or an edit to a framework/process
   file (`CLAUDE.md`, `aide.toml`, `.aide/**`, `vision.md`, `roadmap.md`,

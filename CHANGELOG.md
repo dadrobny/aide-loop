@@ -69,13 +69,27 @@ keys, and the adapter's agents/skills/commands.
   repeat exactly the conflation Outcome targets (1.4.0) were introduced to
   avoid. Same problem, same shape of answer.
 
-  **Reach is declared per gate.** Naming items blocks only those, so `aide
-  claim` skips them and the queue keeps producing work — the common case, where
-  a decision affects one thread. The literal `queue` makes it a **barrier**
-  stopping the live queue, for a decision that could *invalidate* downstream
-  work, where racing ahead is not progress but waste to throw away. Only the
-  person who knows what the decision might change can judge which applies, so
-  the table asks rather than guessing.
+  **Reach is declared per gate, and never a queue.** A queue is an *incidental*
+  batch boundary — part of a stage, one stage, or several small ones — so "the
+  live queue" names different work from one week to the next while the decision
+  has not changed. Blocking is tied to the units that mean something:
+  item numbers for a decision affecting one thread (the queue keeps producing
+  other work), **`stage N`** when it could *invalidate* a stage's work, and
+  **`all`** for a programme-level stop. `stage N` resolves through `progress.md`
+  each time it is read, so a gate's reach follows the roadmap as the stage's
+  contents change rather than freezing a list written when it was raised.
+
+  **Where a gate is raised, and where it lives** — the same split as Outcome
+  targets. A `roadmap.md` stage declares one known at planning time (usually
+  `Blocks: stage N`); an item spec declares one found while specifying
+  (`Blocks: NNN`); and `progress.md`'s table holds the **authoritative** row,
+  because it is the single source of truth for status and the only place the CLI
+  reads — a gate existing only as prose blocks nothing. `queue-planner` and
+  `spec-author` are instructed accordingly.
+
+  **Any role may raise a gate; only a person may resolve one.** Creating a
+  blocker is safe: the worst case is work pausing for a human, so an agent that
+  notices a decision is needed should add the row and say so.
 
   **A declined gate keeps blocking.** It is resolved — someone decided — but the
   answer was "no", so releasing the work would run exactly what was refused. Only

@@ -82,6 +82,18 @@ Follow the `aide-create-queue` skill in full. In brief:
    front, or per-item during `/aide-run-queue NNN`) in the summary — the
    orchestrator carries it into the queue-PR body.
 
+## Human gates
+
+If the roadmap stage you are queueing declares a **Human gate** — a decision or
+an out-of-band prerequisite a person must supply — make sure `progress.md` has
+the matching row in its `## Human gates` table before the queue lands. A gate
+written only in the roadmap blocks nothing; the table is what `aide claim`
+reads. Reach is usually `stage N` for a roadmap-declared gate.
+
+**Raise, never resolve.** Adding a gate is safe — the worst case is work pausing
+for a human. Never run `aide gate approve`/`decline`: the decision is not yours,
+and resolving it destroys the only thing the gate protects.
+
 ## Hard limits
 
 - **Do NOT write item specs** (`docs/aide/items/`), production code, or tests.

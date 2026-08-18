@@ -53,7 +53,8 @@ def _progress(rows: str, stage_status: str = "🚧") -> str:
 
 AWAITING = "| Golden retirement approved | 028 | ⏳ Awaiting | — |"
 APPROVED = "| Golden retirement approved | 028 | ✅ Approved (2026-08-18) | ok |"
-BARRIER = "| Real segmenter output arrived | queue | ⏳ Awaiting | — |"
+ALL = "| Real segmenter output arrived | all | ⏳ Awaiting | — |"
+STAGE = "| Stage-1 direction approved | stage 1 | ⏳ Awaiting | — |"
 
 
 def _lines(rows: str):
@@ -66,7 +67,7 @@ def _lines(rows: str):
 def test_parses_a_gate_row():
     g = aide.human_gates(_lines(AWAITING))[0]
     assert g.text == "Golden retirement approved"
-    assert g.blocks == [28] and g.barrier is False and g.kind == "awaiting"
+    assert g.blocks == [28] and g.blocks_all is False and g.kind == "awaiting"
 
 
 def test_bare_numbers_in_blocks_are_parsed():
@@ -82,9 +83,28 @@ def test_item_reference_form_also_parsed():
     assert aide.human_gates(_lines(rows))[0].blocks == [106, 108]
 
 
-def test_queue_barrier_is_recognised():
-    g = aide.human_gates(_lines(BARRIER))[0]
-    assert g.barrier is True and g.blocks == []
+def test_all_is_recognised():
+    g = aide.human_gates(_lines(ALL))[0]
+    assert g.blocks_all is True and g.blocks == [] and g.stage is None
+
+
+def test_stage_reach_is_recognised():
+    g = aide.human_gates(_lines(STAGE))[0]
+    assert g.stage == "1" and g.blocks == [] and g.blocks_all is False
+
+
+def test_stage_reach_resolves_through_progress_deliverables():
+    """A stage gate follows the roadmap: its reach is whatever items that
+    stage's deliverables reference, now — not a list frozen when it was
+    written, and not whichever queue happens to be live."""
+    blocked, everything = aide.gate_blocked_items(_lines(STAGE))
+    assert blocked == {27, 28} and everything == []
+
+
+def test_stage_reach_of_an_unknown_stage_holds_nothing():
+    rows = "| G | stage 99 | ⏳ Awaiting | — |"
+    blocked, _ = aide.gate_blocked_items(_lines(rows))
+    assert blocked == set()
 
 
 def test_no_table_is_no_gates():
@@ -98,7 +118,7 @@ def test_header_and_separator_rows_are_skipped():
 
 def test_table_ends_at_the_next_heading():
     """A deliverable bullet after the table must not be read as a gate row."""
-    assert len(aide.human_gates(_lines(f"{AWAITING}\n{BARRIER}"))) == 2
+    assert len(aide.human_gates(_lines(f"{AWAITING}\n{ALL}"))) == 2
 
 
 # --------------------------------------------------------------------------- #
@@ -132,15 +152,15 @@ def test_unrecognised_status_stays_unresolved():
     assert len(pending) == 1 and pending[0].kind is None
 
 
-def test_gate_blocked_items_splits_named_from_barrier():
-    blocked, barriers = aide.gate_blocked_items(_lines(f"{AWAITING}\n{BARRIER}"))
+def test_gate_blocked_items_splits_named_from_block_everything():
+    blocked, everything = aide.gate_blocked_items(_lines(f"{AWAITING}\n{ALL}"))
     assert blocked == {28}
-    assert len(barriers) == 1
+    assert len(everything) == 1
 
 
 def test_approved_gate_blocks_nothing():
-    blocked, barriers = aide.gate_blocked_items(_lines(APPROVED))
-    assert blocked == set() and barriers == []
+    blocked, everything = aide.gate_blocked_items(_lines(APPROVED))
+    assert blocked == set() and everything == []
 
 
 # --------------------------------------------------------------------------- #
@@ -151,8 +171,12 @@ def test_awaiting_gate_warns_with_its_reach():
     assert len(w) == 1 and "items 028" in w[0]
 
 
-def test_barrier_warning_says_whole_queue():
-    assert "the whole queue" in aide.gate_warnings(_lines(BARRIER))[0]
+def test_all_warning_says_all_items():
+    assert "all items" in aide.gate_warnings(_lines(ALL))[0]
+
+
+def test_stage_warning_names_the_stage():
+    assert "stage 1" in aide.gate_warnings(_lines(STAGE))[0]
 
 
 def test_unrecognised_status_warns_about_the_vocabulary():
@@ -203,11 +227,11 @@ def test_missing_table_raises():
 
 
 def test_other_rows_are_untouched():
-    out = aide.set_gate_status(_progress(f"{AWAITING}\n{BARRIER}"), 1, "approved",
+    out = aide.set_gate_status(_progress(f"{AWAITING}\n{ALL}"), 1, "approved",
                                today="2026-08-18")
     gates = aide.human_gates(out.splitlines())
     assert gates[0].kind == "approved"
-    assert gates[1].kind == "awaiting" and gates[1].barrier is True
+    assert gates[1].kind == "awaiting" and gates[1].blocks_all is True
 
 
 def test_gate_table_does_not_disturb_the_stage_rollup():
@@ -253,27 +277,27 @@ def test_claim_skips_a_gated_item_and_offers_the_next(tmp_path: Path, capsys):
     assert "item 027" in capsys.readouterr().out
 
 
-def test_barrier_gate_stops_the_whole_queue(tmp_path: Path, capsys):
+def test_all_gate_stops_everything(tmp_path: Path, capsys):
     """A decision that could invalidate downstream work must not have the loop
     racing ahead of it."""
-    repo = _repo(tmp_path, BARRIER)
+    repo = _repo(tmp_path, ALL)
     assert aide.main(["--repo", str(repo), "claim", "--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "held by an unresolved human gate" in out
-    assert "blocks the whole queue" in out
+    assert "blocks everything" in out
     assert "item 027" not in out
 
 
 def test_gate_list_numbers_the_rows(tmp_path: Path, capsys):
-    repo = _repo(tmp_path, f"{AWAITING}\n{BARRIER}")
+    repo = _repo(tmp_path, f"{AWAITING}\n{ALL}")
     assert aide.main(["--repo", str(repo), "gate", "list"]) == 0
     out = capsys.readouterr().out
     assert "1. ⏳" in out and "2. ⏳" in out
     assert "2 gate(s), 2 still blocking" in out
 
 
-def test_approving_a_barrier_releases_the_queue(tmp_path: Path, capsys):
-    repo = _repo(tmp_path, BARRIER)
+def test_approving_an_all_gate_releases_the_queue(tmp_path: Path, capsys):
+    repo = _repo(tmp_path, ALL)
     assert aide.main(["--repo", str(repo), "gate", "approve", "1",
                       "--evidence", "data landed", "--no-commit"]) == 0
     capsys.readouterr()
