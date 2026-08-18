@@ -1159,19 +1159,27 @@ def separator_dependent_test_warnings(repo_root: Path,
         except (OSError, UnicodeDecodeError, SyntaxError):
             continue
 
-        def _stringifies_a_relative_path(node) -> bool:
-            return any(isinstance(c, ast.Call)
-                       and isinstance(c.func, ast.Attribute)
-                       and c.func.attr == "relative_to"
-                       for c in ast.walk(node))
+        def _ends_in_relative_to(node) -> bool:
+            """True when the OUTERMOST call of *node* is `.relative_to(...)`.
+
+            Deliberately the outermost, not anywhere in the subtree: searching
+            the subtree flags `str(p.relative_to(root).as_posix())`, which is
+            already separator-stable and is exactly what the rule asks for.
+            Flagging compliant code is how a lint stops being read, so this
+            errs narrow — it reports the recorded shape and stays quiet on
+            anything already normalised.
+            """
+            return (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "relative_to")
 
         for node in ast.walk(tree):
             hit = False
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                    and node.func.id == "str"):
-                hit = _stringifies_a_relative_path(node)
+                    and node.func.id == "str" and len(node.args) == 1):
+                hit = _ends_in_relative_to(node.args[0])
             elif isinstance(node, ast.JoinedStr):
-                hit = any(_stringifies_a_relative_path(v) for v in node.values
+                hit = any(_ends_in_relative_to(v.value) for v in node.values
                           if isinstance(v, ast.FormattedValue))
             if hit:
                 out.append(

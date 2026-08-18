@@ -293,3 +293,28 @@ def test_str_and_fstring_are_both_still_caught(tmp_path: Path):
     (repo / "tests" / "test_a.py").write_text("x = str(p.relative_to(r))\n", encoding="utf-8")
     (repo / "tests" / "test_b.py").write_text('y = f"{p.relative_to(r)}:1"\n', encoding="utf-8")
     assert len(aide.separator_dependent_test_warnings(repo, _cfg(repo))) == 2
+
+
+def test_str_around_an_already_normalised_path_is_silent(tmp_path: Path):
+    """`str(p.relative_to(root).as_posix())` is separator-stable — it is the
+    rule being followed. Searching the subtree for `.relative_to(` flagged it;
+    only the OUTERMOST call may decide."""
+    repo = _repo(tmp_path)
+    (repo / "tests" / "test_x.py").write_text(
+        "a = str(p.relative_to(root).as_posix())\n", encoding="utf-8")
+    assert aide.separator_dependent_test_warnings(repo, _cfg(repo)) == []
+
+
+def test_fstring_around_an_already_normalised_path_is_silent(tmp_path: Path):
+    repo = _repo(tmp_path)
+    (repo / "tests" / "test_x.py").write_text(
+        'a = f"{p.relative_to(root).as_posix()}:{n}"\n', encoding="utf-8")
+    assert aide.separator_dependent_test_warnings(repo, _cfg(repo)) == []
+
+
+def test_the_bare_shape_is_still_caught_after_narrowing(tmp_path: Path):
+    """The narrowing must not silence the recorded defect itself."""
+    repo = _repo(tmp_path)
+    (repo / "tests" / "test_a.py").write_text("a = str(p.relative_to(root))\n", encoding="utf-8")
+    (repo / "tests" / "test_b.py").write_text('b = f"{p.relative_to(d)}:{n}"\n', encoding="utf-8")
+    assert len(aide.separator_dependent_test_warnings(repo, _cfg(repo))) == 2
