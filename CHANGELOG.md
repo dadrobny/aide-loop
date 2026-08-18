@@ -17,6 +17,87 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.14.0] — 2026-08-18
+
+### Added
+
+- **Five conventions rules that were stated and enforced by nothing are now
+  checked.** An audit of `conventions.md` against what `aide check`, the
+  hygiene hook and the repo suite actually verify found the gap. It matters
+  because a stated rule with no check decays, which this framework demonstrated
+  on itself twice inside one week: the "guidance is never a slot" rule sat in
+  `CLAUDE.md` for months and was broken in two consecutive PRs, and the first
+  guard written for it had a blind spot that let it be broken again in the very
+  PR that added the guard.
+
+  Each check was measured against a real consumer before shipping, and each
+  found something real there:
+
+  - **Item spec shape** (§1, §5) — the `# Item NNN — Title` heading must agree
+    with the filename, the header blockquote must carry no status **field**
+    (status lives only in `progress.md`; a duplicate has no owner and only
+    drifts) — a colon beside the bold is required, so prose merely emphasising
+    the word is not a match — and the
+    mandatory `## Assumptions` block must exist. Missing-Assumptions is reported
+    as **one aggregated line**: 32 of 112 specs predated the rule in the
+    consumer, and 32 separate warnings would bury the substantive ones — the
+    failure mode issue #13 was filed for.
+  - **Flat deliverable bullets** (§1) — the parser matches indented bullets, so
+    a nested one counts as a full deliverable: a `📋` child quietly holds its ✅
+    parent's stage open. Scanned across the whole stage section deliberately,
+    since `stage_deliverable_statuses` reads every leading-icon bullet in it —
+    an indented bullet under **Acceptance** drags the stage the same way, so
+    scoping to the Deliverables block would under-report.
+  - **Header blockquote** (§1) — the line *immediately* after the title, so an
+    intervening heading does not satisfy it, and multi-line HTML comments are
+    skipped whole (only their opening line starts with `<!--`). Scoped to the
+    templated living documents.
+    Checking every file under `docs_dir` was 3 false positives in 8 files: a
+    generated artifact and a project note are not living documents, and
+    `insights.md`'s template deliberately opens with a comment.
+  - **Separator-dependent test values** (§6) — a relative `Path` rendered with
+    `str()`, or interpolated into an f-string, carries the OS separator.
+    Narrowed to `.relative_to(`, the shape all four recorded CI-only failures
+    took, and matched through the **AST**: a regex cannot tell an f-string's
+    `{...}` from a dict or set literal, and the first draft duly flagged
+    `{p.relative_to(d).as_posix(): …}` in the consumer — code that already
+    follows the rule. One real instance there once that was fixed.
+  - **Tests shelling out to `aide.py`** (§6) — the logic is importable and
+    returns structured data; the subprocess adds a stdout surface that has
+    failed on Windows only, and can pass while checking nothing. Matched
+    **through the AST**: the sole textual match in the consumer was a docstring
+    explaining why its author had removed a subprocess, so a line-based lint
+    would have flagged the file documenting the correct practice.
+
+  All are warnings, not errors — these are documents in flight, and the point is
+  visibility, not a gate. Together they add 6 findings to the consumer's `aide
+  check` — 7 warnings to 13 — every one real. Two of those come from requiring
+  the documented `# Item NNN — Title` heading rather than just the number: the
+  two specs concerned write `# Item NNN: Title` with a colon, so the status
+  report's title parse (`_spec_stage_and_title`) returns nothing for them.
+
+  Both test-hygiene lints share one path-display helper with the pre-existing
+  absolute-path check. That helper tolerates a `tests_dir` configured absolute
+  or resolving outside the repo, where `relative_to` raises — a crash fixed once
+  in the original lint that came straight back when two new ones were written
+  beside it with the call hand-copied.
+
+### Fixed
+
+- **The nested-bullet warning described the opposite of what happens.** It said
+  the rollup "ignores" a nested status bullet. `_BULLET_RE` allows leading
+  whitespace, so the parser reads an indented bullet as a **full deliverable** —
+  verified: a `📋` child under a `✅` parent yields `['complete', 'planned']` and
+  rolls the stage up to 🚧. That is the real hazard, and a worse one: nesting
+  says "subordinate" to a reader while the tooling counts a peer, so a sub-bullet
+  quietly holds its stage open. The warning now says so.
+
+- **The status-field check would never have fired.** The item template writes
+  fields as `**Created:**`, with the colon *inside* the bold, and the first
+  pattern expected `**Status**:` — so it matched nothing. Caught only because a
+  test asserted the real template's spelling rather than the one assumed while
+  writing the regex.
+
 ## [1.13.0] — 2026-08-18
 
 ### Fixed
