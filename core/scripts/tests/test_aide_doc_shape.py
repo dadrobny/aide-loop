@@ -41,8 +41,10 @@ def _stage(deliverables: str) -> list:
 
 
 def test_nested_status_bullet_is_reported():
-    """The rollup reads flat bullets only, so a nested one is invisible to the
-    tooling while reading as status to a human."""
+    """The parser matches indented bullets, so a nested one is COUNTED as a full
+    deliverable — it reads as subordinate to a human while the rollup treats it
+    as a peer. (Not "ignored": that was the first wording, and it was backwards.
+    A test asserting the observed statuses is further down this file.)"""
     w = aide.nested_deliverable_warnings(_stage("- ✅ A. *(Item 027)*\n  - 🚧 sub. *(Item 028)*"))
     assert len(w) == 1 and "nested status bullet" in w[0]
 
