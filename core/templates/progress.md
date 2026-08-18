@@ -90,6 +90,31 @@ feedback loop plans the follow-on work._
 
 ---
 
+## Human gates  <!-- OPTIONAL: delete if no work waits on a person's decision -->
+
+_One row per decision only a person can make, blocking work until they make it
+— a steering review before dependent work proceeds, sign-off on an
+irreversible change, or an out-of-band prerequisite (data access, credentials,
+an expensive run authorised). Not an acceptance box: those are observable
+checks of the built thing, which a decision is not._
+
+_**Blocks** names item numbers (`106`, `110, 111`, `106–108`) to hold just
+those — the queue keeps producing other work — or the literal `queue` to make
+it a barrier that stops the live queue. Choose the barrier when the pending
+decision could **invalidate** downstream work; otherwise racing ahead is waste
+to throw away. Status is `⏳ Awaiting`, then `✅ Approved ({{yyyy-mm-dd}})` or
+`❌ Declined ({{yyyy-mm-dd}})` — and a decline **keeps blocking**, since
+releasing the work would run exactly what was refused; re-plan instead._
+
+_Resolved only by a person, only via `aide gate approve <n> --evidence "…"`
+(or `gate decline`). No agent may resolve one._
+
+| Gate | Blocks | Status | Decision / evidence |
+|------|--------|--------|---------------------|
+| {{what must be decided}} | {{item numbers, or queue}} | ⏳ Awaiting | {{notes}} |
+
+---
+
 ## Stage 0 — {{title}} — 📋
 
 **Goal.** {{one line}}

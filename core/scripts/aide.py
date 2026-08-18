@@ -423,6 +423,104 @@ class OutcomeTarget(NamedTuple):
     kind: Optional[str]      # "met" | "not-met" | "unverified" | None (unrecognised)
 
 
+#: The optional `## Human gates` table — a decision only a person can make,
+#: blocking work until they make it. Kept separate from acceptance boxes
+#: deliberately: conventions.md §1 defines those as observable checks OF THE
+#: BUILT THING, which a steering decision is not. Same reasoning that gave
+#: Outcome targets their own table rather than overloading the checkboxes.
+_GATES_HEADING_RE = re.compile(r"^#{1,2}\s+Human gates\b", re.IGNORECASE)
+#: Table-local vocabulary, like Outcome targets': the LEADING mark decides.
+_GATE_STATUS_KIND = {"⏳": "awaiting", "✅": "approved", "❌": "declined"}
+#: A gate whose Blocks cell says this halts the whole live queue, not just the
+#: items it names — for a decision that could invalidate downstream work.
+_GATE_BLOCKS_QUEUE = "queue"
+
+
+class HumanGate(NamedTuple):
+    lineno: int              # 1-based line number in progress.md
+    text: str                # the Gate cell
+    blocks: List[int]        # item numbers blocked (empty when barrier or none)
+    barrier: bool            # True when the Blocks cell says "queue"
+    kind: Optional[str]      # "awaiting" | "approved" | "declined" | None
+
+
+def _blocked_item_numbers(cell: str) -> List[int]:
+    """Item numbers in a gate's ``Blocks`` cell.
+
+    Accepts the §1 reference forms (``Items 106, 110–112``) *and* the bare
+    numbers an author naturally writes in a column already headed "Blocks"
+    (``106``, ``110, 111``). The shared extractor keys off the word "Item", so
+    a bare list would parse as **nothing** — and a gate blocking nothing is a
+    gate that silently does not work, the one failure mode this table exists to
+    prevent. Normalising the cell first reuses that extractor's list/range
+    handling rather than growing a second dialect.
+    """
+    text = cell if re.search(r"\bitems?\b", cell, re.IGNORECASE) else f"Items {cell}"
+    return _referenced_item_numbers(text)
+
+
+def human_gates(lines: List[str]) -> List[HumanGate]:
+    """Rows of the optional ``## Human gates`` table in progress.md.
+
+    A gate is a decision only a person can make — approving a direction,
+    signing off an irreversible change, confirming an out-of-band prerequisite
+    arrived. It blocks work until resolved, and **no agent may resolve one**:
+    that is the entire point, and the reason the state lives in a CLI-written
+    table rather than a checkbox any role could tick.
+
+    ``Blocks`` accepts the item-reference forms of §1 (``106``, ``106, 107``,
+    ``106–108``) or the literal ``queue`` for a barrier.
+    """
+    out: List[HumanGate] = []
+    in_section = False
+    for i, line in enumerate(lines):
+        if _GATES_HEADING_RE.match(line):
+            in_section = True
+            continue
+        if not in_section:
+            continue
+        if _ANY_HEADER_RE.match(line):
+            break  # next section — the table is over
+        if not line.strip().startswith("|"):
+            continue
+        cells = _split_row(line)
+        if len(cells) != 4 or cells[0].lower() == "gate" or set(cells[0]) <= set("-: "):
+            continue
+        kind = next((k for icon, k in _GATE_STATUS_KIND.items()
+                     if cells[2].startswith(icon)), None)
+        blocks_cell = cells[1].strip()
+        barrier = blocks_cell.lower() == _GATE_BLOCKS_QUEUE
+        blocks = [] if barrier else _blocked_item_numbers(blocks_cell)
+        out.append(HumanGate(i + 1, cells[0], blocks, barrier, kind))
+    return out
+
+
+def blocking_gates(lines: List[str]) -> List[HumanGate]:
+    """Gates still holding work up — every gate that is not ``✅ Approved``.
+
+    **A declined gate keeps blocking.** It is *resolved* — a person decided —
+    but the decision was "no", so releasing the work it guards would run
+    exactly what was refused. The remedy is to re-plan (drop the item, or
+    change what the gate asks), not to let the loop proceed. Only approval
+    opens a gate.
+
+    An unrecognised status also blocks: a typo in the mark must not silently
+    open one.
+    """
+    return [g for g in human_gates(lines) if g.kind != "approved"]
+
+
+def gate_blocked_items(lines: List[str]) -> Tuple[set, List[HumanGate]]:
+    """``(blocked item numbers, barrier gates)`` from the blocking gates."""
+    blocked, barriers = set(), []
+    for g in blocking_gates(lines):
+        if g.barrier:
+            barriers.append(g)
+        else:
+            blocked.update(g.blocks)
+    return blocked, barriers
+
+
 def outcome_targets(lines: List[str]) -> List[OutcomeTarget]:
     """Rows of the optional ``## Outcome targets`` table in progress.md.
 
@@ -870,6 +968,40 @@ def absolute_path_test_warnings(repo_root: Path,
     return out
 
 
+def gate_warnings(lines: List[str]) -> List[str]:
+    """One warning per unresolved human gate, plus one per unreadable row.
+
+    A warning, never an error: an outstanding gate is a normal state — work is
+    waiting on a person, which is what it is for. The point is that the state
+    is *visible* rather than buried in an item spec's prose.
+    """
+    out: List[str] = []
+    for n, g in enumerate(human_gates(lines), start=1):
+        if g.kind == "approved":
+            continue
+        if g.kind is None:
+            out.append(
+                f"progress.md:{g.lineno}: human gate {n} ({g.text}) has an "
+                f"unrecognised status — use ⏳ Awaiting, ✅ Approved or ❌ Declined; "
+                f"until it reads one of those the gate counts as unresolved")
+            continue
+        reach_of = lambda: "the whole queue" if g.barrier else (
+            "items " + ", ".join(f"{i:03d}" for i in g.blocks) if g.blocks
+            else "nothing named")
+        if g.kind == "declined":
+            out.append(
+                f"progress.md:{g.lineno}: human gate {n} ({g.text}) was DECLINED "
+                f"and still blocks {reach_of()} — a refusal does not release the "
+                f"work it guards; drop those items or change what the gate asks")
+            continue
+        reach = "the whole queue" if g.barrier else (
+            "items " + ", ".join(f"{i:03d}" for i in g.blocks) if g.blocks
+            else "nothing named — the Blocks cell names no item and is not 'queue'")
+        out.append(f"progress.md:{g.lineno}: human gate {n} ({g.text}) is "
+                   f"awaiting a decision — blocks {reach}")
+    return out
+
+
 def _stray_icons_in_line(line: str) -> List[str]:
     """Status icons on this line that sit where one could plausibly be
     mistaken for a structural status declaration.
@@ -942,6 +1074,9 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(stray_icon_warnings(ddir))
     warnings.extend(insight_warnings(ddir))
     warnings.extend(absolute_path_test_warnings(repo_root, config))
+    if progress_path.is_file():
+        warnings.extend(gate_warnings(
+            progress_path.read_text(encoding=_ENCODING).splitlines()))
 
     if not progress_path.is_file():
         return [f"missing {progress_path}"], warnings
@@ -1388,6 +1523,78 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def set_gate_status(text: str, index: int, kind: str,
+                    note: Optional[str] = None, today: Optional[str] = None) -> str:
+    """Resolve the *index*-th (1-based) row of the ``## Human gates`` table.
+
+    Writes the decision and the date into the Status cell, and *note* into the
+    last cell. Raises ``ValueError`` for a missing table or an out-of-range
+    index — a typo must not pass as a silent no-op, which is exactly how a
+    hand-edited gate went wrong before there was a verb for it.
+    """
+    lines = text.splitlines()
+    gates = human_gates(lines)
+    if not gates:
+        raise ValueError("no '## Human gates' table in progress.md")
+    if not 1 <= index <= len(gates):
+        raise ValueError(f"there are {len(gates)} human gate(s); {index} is out of range")
+    gate = gates[index - 1]
+    icon = {"approved": "✅ Approved", "declined": "❌ Declined"}[kind]
+    import datetime as _dt
+    stamp = today or _dt.date.today().isoformat()
+    i = gate.lineno - 1
+    cells = _split_row(lines[i])
+    cells[2] = f"{icon} ({stamp})"
+    if note:
+        cells[3] = note
+    lines[i] = "| " + " | ".join(cells) + " |"
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+
+def cmd_gate(args: argparse.Namespace) -> int:
+    """List or resolve the human gates in progress.md.
+
+    Resolving a gate is a **person's** act. No agent may run `approve` or
+    `decline`: a gate exists precisely because the decision is not derivable
+    from the work, so an agent resolving one destroys the only thing it was
+    protecting.
+    """
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    ppath = docs_dir(repo_root, config) / "progress.md"
+    if not ppath.is_file():
+        print(f"aide gate: missing {ppath}", file=sys.stderr)
+        return 2
+    text = ppath.read_text(encoding=_ENCODING)
+    gates = human_gates(text.splitlines())
+
+    if args.action == "list":
+        if not gates:
+            print("aide gate: no '## Human gates' table (nothing gated)")
+            return 0
+        for n, g in enumerate(gates, start=1):
+            reach = "queue (barrier)" if g.barrier else (
+                ", ".join(f"{i:03d}" for i in g.blocks) or "—")
+            mark = {"approved": "✅", "declined": "❌", "awaiting": "⏳"}.get(g.kind, "⚠")
+            print(f"  {n}. {mark} {g.text} — blocks {reach}")
+        outstanding = len(blocking_gates(text.splitlines()))
+        print(f"aide gate: {len(gates)} gate(s), {outstanding} still blocking")
+        return 0
+
+    kind = "approved" if args.action == "approve" else "declined"
+    try:
+        updated = set_gate_status(text, args.number, kind, args.note)
+    except ValueError as exc:
+        print(f"aide gate: {exc}", file=sys.stderr)
+        return 2
+    ppath.write_text(updated, encoding=_ENCODING)
+    print(f"gate {args.number}: {kind}")
+    if not args.no_commit:
+        _commit_progress_file(repo_root, config,
+                              f"docs: human gate {args.number} {kind}")
+    return 0
+
+
 def cmd_progress(args: argparse.Namespace) -> int:
     if args.action == "accept":
         return _cmd_progress_accept(args)
@@ -1655,10 +1862,21 @@ def _item_dependencies(repo_root: Path, config, number: int) -> List[int]:
 
 def _pick_item(repo_root: Path, config, queue_text: str,
                claim_branches: List[str]) -> Optional[Tuple[int, str]]:
-    """First queue item that is planned, unclaimed, and unblocked. (number, title)."""
-    _, _, item_status = _parse_item_status(
-        (docs_dir(repo_root, config) / "progress.md").read_text(encoding=_ENCODING).splitlines()
-    ) if (docs_dir(repo_root, config) / "progress.md").is_file() else ([], [], {})
+    """First queue item that is planned, unclaimed, and unblocked. (number, title).
+
+    "Unblocked" covers three things: its `## Dependencies` are all under way,
+    no claim branch exists for it, and **no unresolved human gate holds it**. A
+    gate naming the item skips just that item, so the queue keeps producing
+    work; a `queue` barrier gate stops the whole live queue, which is the point
+    of declaring one — a pending decision that could invalidate what comes next
+    must not have the loop racing ahead of it.
+    """
+    ppath = docs_dir(repo_root, config) / "progress.md"
+    plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
+    _, _, item_status = _parse_item_status(plines) if plines else ([], [], {})
+    gate_blocked, barriers = gate_blocked_items(plines)
+    if barriers:
+        return None
     claimed_nums = set()
     for br in claim_branches:
         cm = re.search(r"/(\d+)-", br) or re.search(r"(\d+)", br.rsplit("/", 1)[-1])
@@ -1669,6 +1887,8 @@ def _pick_item(repo_root: Path, config, queue_text: str,
         if item_status.get(num, "planned") != "planned":
             continue
         if num in claimed_nums:
+            continue
+        if num in gate_blocked:
             continue
         deps = _item_dependencies(repo_root, config, num)
         if any(item_status.get(d, "planned") in ("planned", "in-progress") for d in deps):
@@ -1736,6 +1956,24 @@ def cmd_claim(args: argparse.Namespace) -> int:
         if pick is not None:
             break
     if pick is None:
+        # "none left" is a claim about the ground checked, not the repository —
+        # an unresolved gate is the one reason nothing is claimable that a
+        # reader would otherwise have no way to see (conventions.md §8).
+        ppath = docs_dir(repo_root, config) / "progress.md"
+        plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
+        pending = blocking_gates(plines)
+        if pending:
+            print("none left — held by an unresolved human gate:")
+            for n, g in enumerate(human_gates(plines), start=1):
+                if g.kind == "approved":
+                    continue
+                reach = "the whole queue" if g.barrier else (
+                    "items " + ", ".join(f"{i:03d}" for i in g.blocks)
+                    if g.blocks else "nothing named")
+                print(f"  gate {n}: {g.text} — blocks {reach}")
+            print("  A person decides these, never an agent. Once decided: "
+                  "aide gate approve <n> --evidence \"…\" (or gate decline <n>).")
+            return 0
         print("none left")
         return 0
     number, title = pick
@@ -2395,6 +2633,14 @@ def cmd_status(args: argparse.Namespace) -> int:
     ppath = docs_dir(repo_root, config) / "progress.md"
     if ppath.is_file():
         plines = ppath.read_text(encoding=_ENCODING).splitlines()
+        for n, g in enumerate(human_gates(plines), start=1):
+            if g.kind == "approved":
+                continue
+            reach = "queue" if g.barrier else (
+                ", ".join(f"{i:03d}" for i in g.blocks) or "—")
+            label = {"declined": "❌ declined", "awaiting": "⏳ awaiting a decision"}.get(
+                g.kind, "⚠ unrecognised status")
+            print(f"  gate {n}: {g.text} [blocks {reach}] — {label}")
         for t in outcome_targets(plines):
             if t.kind == "met":
                 continue
@@ -2590,6 +2836,15 @@ def build_parser() -> argparse.ArgumentParser:
                         help="accept: annotation appended to the ticked criterion")
     p_prog.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
     p_prog.set_defaults(func=cmd_progress)
+
+    p_gate = sub.add_parser("gate", help="list / resolve human gates in progress.md")
+    p_gate.add_argument("action", choices=["list", "approve", "decline"])
+    p_gate.add_argument("number", type=int, nargs="?", default=None,
+                        help="1-based gate row (approve/decline); see `aide gate list`")
+    p_gate.add_argument("--evidence", "--reason", dest="note", default=None,
+                        help="decision note written into the gate's last cell")
+    p_gate.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
+    p_gate.set_defaults(func=cmd_gate)
 
     p_queue = sub.add_parser("queue", help="queue maintenance")
     p_queue.add_argument("action", choices=["tidy"])

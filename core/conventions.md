@@ -340,6 +340,59 @@ skill/agent edit mandating it; `framework` → a GitHub issue on
 stays pending). A routed entry is ticked in place:
 `- [x] … → <where it landed>`.
 
+### Human gates (optional, additive)
+
+A **decision only a person can make**, blocking work until they make it. A
+`## Human gates` section in `progress.md`, one row per gate:
+
+```
+| Gate | Blocks | Status | Decision / evidence |
+|------|--------|--------|---------------------|
+| Golden-file retirement approved | 106 | ⏳ Awaiting | — |
+| Real segmenter output available | queue | ⏳ Awaiting | — |
+```
+
+- **Blocks** — item numbers (any §1 reference form, or bare: `106`,
+  `110, 111`, `106–108`), or the literal `queue`.
+- **Status** — table-local vocabulary, like Outcome targets': `⏳ Awaiting`,
+  then `✅ Approved (date)` or `❌ Declined (date)`.
+
+**Why not an acceptance box.** Those are observable checks *of the built thing*
+— something completing the deliverables can guarantee. A steering decision is
+not that, and overloading the checkboxes would repeat exactly the conflation
+Outcome targets were introduced to avoid. Gates get their own table for the
+same reason.
+
+**Reach is per gate, and that is the point.** Naming items blocks only those,
+so the queue keeps producing work — the common case, where a decision affects
+one thread. `queue` makes the gate a **barrier**: nothing in the live queue
+proceeds. Choose the barrier when the pending decision could *invalidate*
+downstream work, because then racing ahead is not progress, it is waste to
+throw away. Only the person who knows what the decision might change can make
+that call, so the table asks them rather than guessing.
+
+**A declined gate keeps blocking.** It is resolved — someone decided — but the
+decision was "no", so releasing the work would run exactly what was refused.
+The remedy is to re-plan: drop the blocked items, or change what the gate asks.
+Only `✅ Approved` opens a gate; an unrecognised status blocks too, so a typo
+in the mark cannot silently open one.
+
+Semantics *(aide claim, check, status, gate)*:
+
+- **`aide claim` will not offer a blocked item**, and reports the gate as the
+  reason rather than an unexplained "none left".
+- **`aide check` warns** on every gate still blocking — a normal state, not a
+  defect; the point is that it is visible instead of buried in a spec's prose.
+- **`aide status`** prints them, like Outcome targets.
+- **Resolving is a CLI operation**, never a hand edit:
+  ```
+  aide gate (list | approve <n> | decline <n>) [--evidence "…"]
+  ```
+
+**No agent may resolve a gate.** A gate exists precisely because the decision is
+not derivable from the work; an agent approving one destroys the only thing it
+was protecting. Agents *read* gates — to know why they must stop — and stop.
+
 ### Environment-gated capabilities (optional, additive)
 
 A capability gated behind an optional package or external tool (a GPU

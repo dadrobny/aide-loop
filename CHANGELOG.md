@@ -17,6 +17,65 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.13.0] — 2026-08-18
+
+### Added
+
+- **Human gates — a first-class mid-queue checkpoint (issue #30).** The loop had
+  no mechanism for one, so a consumer encoded it by hand and fragilely: item 105
+  had to obtain maintainer approval and tick a `progress.md` checkbox, item 106
+  had to halt if that box was unticked — a protocol existing only as prose in
+  two specs plus a biconditional pytest invented for the purpose. An unattended
+  run reaching it either blocked on a prompt nobody was there to answer or,
+  worse, proceeded.
+
+  A `## Human gates` table in `progress.md`, one row per decision only a person
+  can make:
+
+  ```
+  | Gate | Blocks | Status | Decision / evidence |
+  |------|--------|--------|---------------------|
+  | Golden-file retirement approved | 106 | ⏳ Awaiting | — |
+  | Real segmenter output available | queue | ⏳ Awaiting | — |
+  ```
+
+  **Its own table, not an acceptance box.** Those are observable checks *of the
+  built thing* (conventions.md §1) — something completing the deliverables can
+  guarantee. A steering decision is not, and overloading the checkboxes would
+  repeat exactly the conflation Outcome targets (1.4.0) were introduced to
+  avoid. Same problem, same shape of answer.
+
+  **Reach is declared per gate.** Naming items blocks only those, so `aide
+  claim` skips them and the queue keeps producing work — the common case, where
+  a decision affects one thread. The literal `queue` makes it a **barrier**
+  stopping the live queue, for a decision that could *invalidate* downstream
+  work, where racing ahead is not progress but waste to throw away. Only the
+  person who knows what the decision might change can judge which applies, so
+  the table asks rather than guessing.
+
+  **A declined gate keeps blocking.** It is resolved — someone decided — but the
+  answer was "no", so releasing the work would run exactly what was refused. Only
+  `✅ Approved` opens a gate, and an unrecognised status blocks too, so a typo in
+  the mark cannot silently open one. The remedy for a decline is to re-plan.
+
+  Wired through the verbs it needs to be real:
+
+  - `aide claim` refuses a blocked item and **names the gate** instead of an
+    unexplained "none left" — the failure mode that makes a blocked loop look
+    broken rather than waiting.
+  - `aide check` warns on every gate still blocking (a normal state, not a
+    defect — the point is visibility instead of prose buried in a spec).
+  - `aide status` prints them, beside Outcome targets.
+  - `aide gate (list | approve <n> | decline <n>) [--evidence "…"]` is the
+    attestation, so it is a CLI operation no hand edit and no derived rollup can
+    fake — the property #22 established for acceptance boxes, applied here.
+
+  **No agent may resolve a gate.** A gate exists precisely because the decision
+  is not derivable from the work, so an agent approving one destroys the only
+  thing it protects. `/aide-run-item` and `/aide-run-queue` now stop and surface
+  the gate rather than prompting an unattended run for a decision nobody is
+  there to make.
+
 ## [1.12.1] — 2026-08-17
 
 ### Changed
