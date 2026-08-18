@@ -996,13 +996,7 @@ def absolute_path_test_warnings(repo_root: Path,
             continue
         for lineno, line in enumerate(text.splitlines(), start=1):
             if any(n in line for n in needles):
-                try:
-                    rel = path.relative_to(repo_root).as_posix()
-                except ValueError:
-                    # `tests_dir` can be configured absolute, or resolve
-                    # outside the repo via a symlink. A lint that raises takes
-                    # the whole `aide check` down instead of reporting.
-                    rel = path.as_posix()
+                rel = _rel_display(path, repo_root)
                 out.append(
                     f"{rel}:{lineno}: contains this repository's absolute path — "
                     f"it passes here and matches nothing on any other checkout; "
@@ -1116,18 +1110,25 @@ _ITEM_STATUS_FIELD_RE = re.compile(
     r"\*\*\s*(?P<name>Status|Completed)\s*(?::\s*\*\*|\*\*\s*:)")
 
 
-#: `str(Path)` — or a Path interpolated into an f-string, which calls `str()` —
-#: renders the OS-native separator. Narrowed to `.relative_to(`, which is the
-#: shape every recorded instance took and which is essentially always destined
-#: for a comparison, a hash, or a sort: an identical tree then hashes or orders
-#: differently on Windows. Four separate CI-only failures came from this.
-_STR_PATH_RE = re.compile(r"str\(\s*[^)]*\.relative_to\(|\{[^{}]*\.relative_to\([^{}]*\}")
-
 #: Calls that spawn a process. Matched through the AST, never by line text: the
 #: one occurrence in the consumer measured against was a DOCSTRING explaining
 #: why the author had removed a subprocess — a line-based lint flags the file
 #: documenting the correct practice.
 _SUBPROCESS_FUNCS = frozenset({"run", "Popen", "check_output", "check_call", "call"})
+
+
+def _rel_display(path: Path, repo_root: Path) -> str:
+    """*path* relative to the repo for a message, falling back to absolute.
+
+    `tests_dir` may be configured absolute or resolve outside the repo via a
+    symlink, and `relative_to` raises then. Shared by every test-hygiene lint:
+    fixing this once in `absolute_path_test_warnings` and then hand-writing the
+    same call in two new ones is exactly how it came back.
+    """
+    try:
+        return path.relative_to(repo_root).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _test_files(repo_root: Path, config: Dict[str, Dict[str, object]]) -> List[Path]:
@@ -1143,22 +1144,41 @@ def separator_dependent_test_warnings(repo_root: Path,
     """Tests stringifying a relative `Path` into a value that gets compared.
 
     conventions.md §6: any `Path` entering a hash, comparison or match must be
-    `.as_posix()`. This reports the one shape a script can decide without
-    guessing — and it is the shape all four recorded CI-only failures took.
+    `.as_posix()`. Narrowed to `.relative_to(`, the shape all four recorded
+    CI-only failures took, reached two ways — an explicit `str(...)` and an
+    f-string, which calls `str()` for you.
+
+    Matched through the AST, because a regex cannot tell an f-string's `{...}`
+    from a dict or set literal: `{p.relative_to(root): 1}` never stringifies the
+    Path and must not be flagged. A lint that cries wolf stops being read.
     """
     out: List[str] = []
     for path in _test_files(repo_root, config):
         try:
-            text = path.read_text(encoding=_ENCODING)
-        except (OSError, UnicodeDecodeError):
+            tree = ast.parse(path.read_text(encoding=_ENCODING))
+        except (OSError, UnicodeDecodeError, SyntaxError):
             continue
-        for lineno, line in enumerate(text.splitlines(), start=1):
-            if _STR_PATH_RE.search(line):
-                rel = path.relative_to(repo_root).as_posix()
+
+        def _stringifies_a_relative_path(node) -> bool:
+            return any(isinstance(c, ast.Call)
+                       and isinstance(c.func, ast.Attribute)
+                       and c.func.attr == "relative_to"
+                       for c in ast.walk(node))
+
+        for node in ast.walk(tree):
+            hit = False
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == "str"):
+                hit = _stringifies_a_relative_path(node)
+            elif isinstance(node, ast.JoinedStr):
+                hit = any(_stringifies_a_relative_path(v) for v in node.values
+                          if isinstance(v, ast.FormattedValue))
+            if hit:
                 out.append(
-                    f"{rel}:{lineno}: a relative Path rendered with str() carries "
-                    f"the OS separator, so this value differs on Windows — use "
-                    f".as_posix() (conventions.md §6)")
+                    f"{_rel_display(path, repo_root)}:{node.lineno}: a relative "
+                    f"Path rendered with str() carries the OS separator, so this "
+                    f"value differs on Windows — use .as_posix() "
+                    f"(conventions.md §6)")
                 break
     return out
 
@@ -1189,7 +1209,7 @@ def cli_subprocess_test_warnings(repo_root: Path,
                 continue
             if any(isinstance(c, ast.Constant) and isinstance(c.value, str)
                    and "aide.py" in c.value for c in ast.walk(node)):
-                rel = path.relative_to(repo_root).as_posix()
+                rel = _rel_display(path, repo_root)
                 out.append(
                     f"{rel}:{node.lineno}: shells out to aide.py — call the "
                     f"function instead (e.g. run_checks); a subprocess adds a "

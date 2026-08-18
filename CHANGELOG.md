@@ -52,7 +52,10 @@ keys, and the adapter's agents/skills/commands.
   - **Separator-dependent test values** (§6) — a relative `Path` rendered with
     `str()`, or interpolated into an f-string, carries the OS separator.
     Narrowed to `.relative_to(`, the shape all four recorded CI-only failures
-    took. Two real instances in the consumer.
+    took, and matched through the **AST**: a regex cannot tell an f-string's
+    `{...}` from a dict or set literal, and the first draft duly flagged
+    `{p.relative_to(d).as_posix(): …}` in the consumer — code that already
+    follows the rule. One real instance there once that was fixed.
   - **Tests shelling out to `aide.py`** (§6) — the logic is importable and
     returns structured data; the subprocess adds a stdout surface that has
     failed on Windows only, and can pass while checking nothing. Matched
@@ -61,8 +64,14 @@ keys, and the adapter's agents/skills/commands.
     would have flagged the file documenting the correct practice.
 
   All are warnings, not errors — these are documents in flight, and the point is
-  visibility, not a gate. Together they took the consumer's `aide check` from 7
-  warnings to 12, with no false positives.
+  visibility, not a gate. Together they take the consumer's `aide check` from 7
+  warnings to 11, every one real.
+
+  Both test-hygiene lints share one path-display helper with the pre-existing
+  absolute-path check. That helper tolerates a `tests_dir` configured absolute
+  or resolving outside the repo, where `relative_to` raises — a crash fixed once
+  in the original lint that came straight back when two new ones were written
+  beside it with the call hand-copied.
 
 ### Fixed
 

@@ -257,3 +257,39 @@ def test_nested_bullet_warning_states_the_real_behaviour():
     assert aide.stage_deliverable_statuses(lines, start, end) == ["complete", "planned"]
     assert aide.rollup_status(["complete", "planned"]) == "in-progress"
     assert "counts it as a full deliverable" in aide.nested_deliverable_warnings(lines)[0]
+
+
+def test_a_dict_literal_holding_a_relative_path_is_not_flagged(tmp_path: Path):
+    """`{p.relative_to(root): 1}` never stringifies the Path. A regex cannot
+    tell it from an f-string's `{...}`, which is why this walks the AST — a lint
+    that cries wolf stops being read."""
+    repo = _repo(tmp_path)
+    (repo / "tests" / "test_x.py").write_text(
+        "counts = {p.relative_to(root): 1}\nseen = {p.relative_to(root)}\n",
+        encoding="utf-8")
+    assert aide.separator_dependent_test_warnings(repo, _cfg(repo)) == []
+
+
+def test_tests_dir_outside_the_repo_does_not_crash_either_lint(tmp_path: Path):
+    """The same ValueError fixed once in absolute_path_test_warnings came back
+    in two new lints written beside it. All three now share one helper."""
+    repo = _repo(tmp_path)
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "test_x.py").write_text(
+        'import subprocess\nsubprocess.run(["python", "aide.py", "check"])\n'
+        "n = str(p.relative_to(root))\n", encoding="utf-8")
+    (repo / "aide.toml").write_text(
+        f'[project]\nname = "D"\ndocs_dir = "docs/aide"\ntests_dir = "{outside.as_posix()}"\n',
+        encoding="utf-8")
+    cfg = aide.load_config(repo)
+    assert len(aide.separator_dependent_test_warnings(repo, cfg)) == 1   # must not raise
+    assert len(aide.cli_subprocess_test_warnings(repo, cfg)) == 1
+    assert len(aide.absolute_path_test_warnings(repo, cfg)) == 0
+
+
+def test_str_and_fstring_are_both_still_caught(tmp_path: Path):
+    repo = _repo(tmp_path)
+    (repo / "tests" / "test_a.py").write_text("x = str(p.relative_to(r))\n", encoding="utf-8")
+    (repo / "tests" / "test_b.py").write_text('y = f"{p.relative_to(r)}:1"\n', encoding="utf-8")
+    assert len(aide.separator_dependent_test_warnings(repo, _cfg(repo))) == 2
