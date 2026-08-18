@@ -1968,15 +1968,25 @@ def cmd_claim(args: argparse.Namespace) -> int:
         # reader would otherwise have no way to see (conventions.md §8).
         ppath = docs_dir(repo_root, config) / "progress.md"
         plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
-        pending = blocking_gates(plines)
-        if pending:
+        # Attribute the empty result to a gate ONLY when a gate actually
+        # explains it: a barrier, or a gate naming an item that is still open
+        # in a queue we just scanned. A gate holding unrelated items — or
+        # naming nothing — is not why this run found no work, and blaming it
+        # would be a false explanation, which is worse than none.
+        _, _, gate_item_status = _parse_item_status(plines) if plines else ([], [], {})
+        queued = set()
+        for qt in candidates:
+            queued.update(queue_item_numbers(qt))
+        open_items = {n for n in queued
+                      if gate_item_status.get(n, "planned") == "planned"}
+        relevant = [(n, g) for n, g in enumerate(human_gates(plines), start=1)
+                    if g.kind != "approved"
+                    and (g.barrier or (set(g.blocks) & open_items))]
+        if relevant:
             print("none left — held by an unresolved human gate:")
-            for n, g in enumerate(human_gates(plines), start=1):
-                if g.kind == "approved":
-                    continue
+            for n, g in relevant:
                 reach = "the whole queue" if g.barrier else (
-                    "items " + ", ".join(f"{i:03d}" for i in g.blocks)
-                    if g.blocks else "nothing named")
+                    "items " + ", ".join(f"{i:03d}" for i in sorted(set(g.blocks) & open_items)))
                 print(f"  gate {n}: {g.text} — blocks {reach}")
             print("  A person decides these, never an agent. Once decided: "
                   "aide gate approve <n> --evidence \"…\" (or gate decline <n>).")

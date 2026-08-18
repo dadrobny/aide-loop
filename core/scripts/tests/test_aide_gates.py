@@ -316,3 +316,28 @@ def test_gate_approve_without_a_number_reports_rather_than_crashing(tmp_path: Pa
     repo = _repo(tmp_path, AWAITING)
     assert aide.main(["--repo", str(repo), "gate", "approve", "--no-commit"]) == 2
     assert "needs a gate number" in capsys.readouterr().err
+
+
+def test_none_left_is_not_blamed_on_an_unrelated_gate(tmp_path: Path, capsys):
+    """A gate holding items that are not in play is not why this run found no
+    work. Blaming it is a false explanation — worse than none, and exactly the
+    'true about one ground, read as true of the repo' failure gates exist to
+    remove."""
+    repo = _repo(tmp_path, "| Unrelated | 999 | ⏳ Awaiting | — |")
+    # Both queue items already claimed, so the empty result has nothing to do
+    # with the gate.
+    _run(["git", "switch", "-c", "aide/027-alpha"], repo)
+    _run(["git", "switch", "-c", "aide/028-beta"], repo)
+    assert aide.main(["--repo", str(repo), "claim", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "none left" in out
+    assert "human gate" not in out
+
+
+def test_none_left_names_only_the_gates_that_apply(tmp_path: Path, capsys):
+    repo = _repo(tmp_path, "| Unrelated | 999 | ⏳ Awaiting | — |\n"
+                           "| Relevant | 027, 028 | ⏳ Awaiting | — |")
+    assert aide.main(["--repo", str(repo), "claim", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "Relevant" in out and "Unrelated" not in out
+    assert "items 027, 028" in out
