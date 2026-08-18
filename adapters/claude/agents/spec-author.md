@@ -80,25 +80,37 @@ in the **Assumptions** block (the builder/validator hand back if reality diverge
    bytes against a hardcoded literal to prove this item did not touch it —
    scope is proved by the diff against this list (see
    [`.aide/conventions.md` §1](../../.aide/conventions.md)).
-5. **Sweep for stale test assumptions.** If the spec (or an Assumption)
+5. **Raise a human gate if this item needs one.** When the item cannot honestly
+   proceed without a person's decision or an out-of-band prerequisite (a
+   sign-off, data access, an authorised spend), note it in the spec's
+   Validation/Assumptions **and** add the row to `progress.md`'s
+   `## Human gates` table with `Blocks: NNN` — a gate that exists only as spec
+   prose blocks nothing. Adding one is safe and always allowed; **never** run
+   `aide gate approve`/`decline`, which is a person's call alone. This is the
+   one `progress.md` edit permitted to you.
+6. **Sweep for stale test assumptions.** If the spec (or an Assumption)
    changes an existing default or behaviour, grep `tests_dir` for tests
    pinning the OLD behaviour and list every hit in the Testing Strategy as
    "existing tests to reconcile" — otherwise the first validation round fails
    on stale assertions instead of on the new code, costing a guaranteed extra
    round.
-6. **Commit** the spec on the branch (plain single-line message):
+7. **Commit** the spec on the branch (plain single-line message):
    `git add docs/aide/items/NNN-*.md` then
    `git commit -m "docs(NNN): work item spec for <short title>"`.
-7. **Return** a tight summary: item number, spec file path, the list of Acceptance
+8. **Return** a tight summary: item number, spec file path, the list of Acceptance
    Criteria, the Authorised paths declared, and any Assumptions recorded (so the
    orchestrator can pass them on).
 
 ## Hard limits
 
 - **Do NOT write production code or tests.** You only author the spec file.
+- **Never resolve a human gate.** Raising one is in scope; approving or
+  declining one is a person's call and never yours.
 - **Do NOT run `pytest`.** **Do NOT edit `progress.md`** (the builder sets 🚧, the
-  validator reconciles ✅ via the CLI).
-- Edit only `docs/aide/items/NNN-*.md`.
+  validator reconciles ✅ via the CLI) — with exactly one exception: adding a row
+  to its `## Human gates` table (step 5). Raising a blocker is safe; resolving
+  one is never yours.
+- Edit only `docs/aide/items/NNN-*.md`, plus that one gate row.
 
 ## Stop and hand back (needs human approval)
 

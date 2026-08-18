@@ -73,6 +73,12 @@ _Two phrasings a planner can act on, and one it cannot:_
   and the queues look like they disagree. Note this is about **stages**; saying
   two *items within one queue* may be worked in parallel is accurate and useful._
 
+**Human gate.** _OPTIONAL — delete unless this stage's work waits on a
+decision or an out-of-band prerequisite a person must supply (data access, a
+sign-off, an authorised spend). Name what must be decided; the authoritative
+row goes in `progress.md`'s `## Human gates` table, usually with
+`Blocks: stage N`. A gate written only here blocks nothing._
+
 **Validation / acceptance.**
 
 _One bullet per observable check **of the built thing** — these become the

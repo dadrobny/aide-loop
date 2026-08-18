@@ -17,6 +17,111 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.13.0] — 2026-08-18
+
+### Fixed
+
+- **A queue branch made an item permanently unclaimable.** `_pick_item`
+  resolved a claim branch to an item number with an *unanchored* digit search,
+  so `aide/queue-016` read as item 016 and `aide/specs-queue-015` as item 015 —
+  marking those items already-claimed and therefore never offered again. This is
+  the bug class 1.5.0 fixed by giving every branch→item call site one anchored
+  helper; this call site was missed by that sweep. Found while adding gates to
+  the same function.
+
+- **`aide gate approve` with no number crashed** with a `TypeError` instead of
+  reporting the missing argument.
+
+- **A gate could silently stop blocking.** `set_gate_status` wrote the
+  `--evidence` note straight into a markdown cell, so a note containing `|`
+  added a column — and a row with the wrong column count is skipped by the
+  parser, turning "a person must decide this" into "nothing is blocking", the
+  most dangerous way this feature can fail. The CLI now refuses such a note,
+  and `aide check` warns on any gates row it had to skip, so a mangled row
+  (a hand edit, a paste) cannot vanish quietly either.
+
+- **Template guidance no longer uses slot syntax to describe a format.** The
+  Outcome-targets and environment-gated guidance illustrated their status
+  vocabulary with `{{yyyy-mm-dd}}`, `{{evidence}}` and friends. `aide check`
+  errors on any `{{...}}` surviving into a consumer's `docs/aide/**`, so a slot
+  inside guidance turns "you left the guidance in" into a confusing "unfilled
+  template slot" pointing at text that was never a field. Guidance now writes
+  the shape plainly (`YYYY-MM-DD`); slots stay on the content lines an author
+  actually substitutes. A repo-level test now holds every template to the
+  convention it defines — the slip had recurred across two PRs, and a
+  convention nothing enforces is one that decays.
+
+### Added
+
+- **Human gates — a first-class mid-queue checkpoint (issue #30).** The loop had
+  no mechanism for one, so a consumer encoded it by hand and fragilely: item 105
+  had to obtain maintainer approval and tick a `progress.md` checkbox, item 106
+  had to halt if that box was unticked — a protocol existing only as prose in
+  two specs plus a biconditional pytest invented for the purpose. An unattended
+  run reaching it either blocked on a prompt nobody was there to answer or,
+  worse, proceeded.
+
+  A `## Human gates` table in `progress.md`, one row per decision only a person
+  can make:
+
+  ```
+  | Gate | Blocks | Status | Decision / evidence |
+  |------|--------|--------|---------------------|
+  | Golden-file retirement approved | 106 | ⏳ Awaiting | — |
+  | Real segmenter output available | stage 21 | ⏳ Awaiting | — |
+  ```
+
+  **Its own table, not an acceptance box.** Those are observable checks *of the
+  built thing* (conventions.md §1) — something completing the deliverables can
+  guarantee. A steering decision is not, and overloading the checkboxes would
+  repeat exactly the conflation Outcome targets (1.4.0) were introduced to
+  avoid. Same problem, same shape of answer.
+
+  **Reach is declared per gate, and never a queue.** A queue is an *incidental*
+  batch boundary — part of a stage, one stage, or several small ones — so "the
+  live queue" names different work from one week to the next while the decision
+  has not changed. Blocking is tied to the units that mean something:
+  item numbers for a decision affecting one thread (the queue keeps producing
+  other work), **`stage N`** when it could *invalidate* a stage's work, and
+  **`all`** for a programme-level stop. `stage N` resolves through `progress.md`
+  each time it is read, so a gate's reach follows the roadmap as the stage's
+  contents change rather than freezing a list written when it was raised.
+
+  **Where a gate is raised, and where it lives** — the same split as Outcome
+  targets. A `roadmap.md` stage declares one known at planning time (usually
+  `Blocks: stage N`); an item spec declares one found while specifying
+  (`Blocks: NNN`); and `progress.md`'s table holds the **authoritative** row,
+  because it is the single source of truth for status and the only place the CLI
+  reads — a gate existing only as prose blocks nothing. `queue-planner` and
+  `spec-author` are instructed accordingly.
+
+  **Any role may raise a gate; only a person may resolve one.** Creating a
+  blocker is safe: the worst case is work pausing for a human, so an agent that
+  notices a decision is needed should add the row and say so.
+
+  **A declined gate keeps blocking.** It is resolved — someone decided — but the
+  answer was "no", so releasing the work would run exactly what was refused. Only
+  `✅ Approved` opens a gate, and an unrecognised status blocks too, so a typo in
+  the mark cannot silently open one. The remedy for a decline is to re-plan.
+
+  Wired through the verbs it needs to be real:
+
+  - `aide claim` refuses a blocked item and **names the gate** instead of an
+    unexplained "none left" — the failure mode that makes a blocked loop look
+    broken rather than waiting.
+  - `aide check` warns on every gate still blocking (a normal state, not a
+    defect — the point is visibility instead of prose buried in a spec).
+  - `aide status` prints them, beside Outcome targets.
+  - `aide gate (list | approve <n> | decline <n>) [--evidence "…"]` is the
+    attestation, so it is a CLI operation no hand edit and no derived rollup can
+    fake — the property #22 established for acceptance boxes, applied here.
+
+  **No agent may resolve a gate.** A gate exists precisely because the decision
+  is not derivable from the work, so an agent approving one destroys the only
+  thing it protects. `/aide-run-item` and `/aide-run-queue` now stop and surface
+  the gate rather than prompting an unattended run for a decision nobody is
+  there to make.
+
 ## [1.12.1] — 2026-08-17
 
 ### Changed
