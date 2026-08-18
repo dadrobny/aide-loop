@@ -365,3 +365,23 @@ def test_none_left_names_only_the_gates_that_apply(tmp_path: Path, capsys):
     out = capsys.readouterr().out
     assert "Relevant" in out and "Unrelated" not in out
     assert "items 027, 028" in out
+
+
+def test_a_note_containing_a_pipe_is_refused():
+    """`|` would add a column; a wrong-arity row is skipped by the parser, so a
+    still-blocking gate would silently disappear."""
+    import pytest
+    with pytest.raises(ValueError, match="may not contain"):
+        aide.set_gate_status(_progress(AWAITING), 1, "approved", "a | b")
+
+
+def test_a_malformed_row_warns_instead_of_vanishing():
+    """The most dangerous failure this feature can have is a gate that stops
+    being read: "a person must decide" silently becomes "nothing is blocking"."""
+    rows = "| G | 028 | ⏳ Awaiting | note with | a pipe |"
+    w = aide.gate_warnings(_lines(rows))
+    assert any("being SKIPPED" in x for x in w)
+
+
+def test_a_well_formed_table_produces_no_arity_warning():
+    assert not any("columns, not 4" in w for w in aide.gate_warnings(_lines(AWAITING)))

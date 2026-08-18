@@ -77,7 +77,7 @@ _Two phrasings a planner can act on, and one it cannot:_
 decision or an out-of-band prerequisite a person must supply (data access, a
 sign-off, an authorised spend). Name what must be decided; the authoritative
 row goes in `progress.md`'s `## Human gates` table, usually with
-`Blocks: stage {{n}}`. A gate written only here blocks nothing._
+`Blocks: stage N`. A gate written only here blocks nothing._
 
 **Validation / acceptance.**
 

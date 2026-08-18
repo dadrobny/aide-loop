@@ -32,6 +32,14 @@ keys, and the adapter's agents/skills/commands.
 - **`aide gate approve` with no number crashed** with a `TypeError` instead of
   reporting the missing argument.
 
+- **A gate could silently stop blocking.** `set_gate_status` wrote the
+  `--evidence` note straight into a markdown cell, so a note containing `|`
+  added a column — and a row with the wrong column count is skipped by the
+  parser, turning "a person must decide this" into "nothing is blocking", the
+  most dangerous way this feature can fail. The CLI now refuses such a note,
+  and `aide check` warns on any gates row it had to skip, so a mangled row
+  (a hand edit, a paste) cannot vanish quietly either.
+
 - **Template guidance no longer uses slot syntax to describe a format.** The
   Outcome-targets and environment-gated guidance illustrated their status
   vocabulary with `{{yyyy-mm-dd}}`, `{{evidence}}` and friends. `aide check`
@@ -60,7 +68,7 @@ keys, and the adapter's agents/skills/commands.
   | Gate | Blocks | Status | Decision / evidence |
   |------|--------|--------|---------------------|
   | Golden-file retirement approved | 106 | ⏳ Awaiting | — |
-  | Real segmenter output available | queue | ⏳ Awaiting | — |
+  | Real segmenter output available | stage 21 | ⏳ Awaiting | — |
   ```
 
   **Its own table, not an acceptance box.** Those are observable checks *of the

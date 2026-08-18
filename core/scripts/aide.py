@@ -1011,6 +1011,38 @@ def absolute_path_test_warnings(repo_root: Path,
     return out
 
 
+def _malformed_gate_row_warnings(lines: List[str]) -> List[str]:
+    """Rows inside the gates table the parser had to skip.
+
+    A gate is only useful if it is read, so a row with the wrong column count
+    must not vanish in silence — that turns "a person must decide this" into
+    "nothing is blocking", which is the most dangerous way this feature can
+    fail. The CLI refuses to write a `|` into a cell; this catches the rest
+    (a hand edit, a paste).
+    """
+    out: List[str] = []
+    in_section = False
+    for i, line in enumerate(lines):
+        if _GATES_HEADING_RE.match(line):
+            in_section = True
+            continue
+        if not in_section:
+            continue
+        if _ANY_HEADER_RE.match(line):
+            break
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = _split_row(line)
+        if len(cells) == 4 or cells[0].lower() == "gate" or set(cells[0]) <= set("-: "):
+            continue
+        out.append(
+            f"progress.md:{i + 1}: human-gate row has {len(cells)} columns, not 4 — "
+            f"it is being SKIPPED, so whatever it was meant to block is not "
+            f"blocked. A '|' inside a cell is the usual cause.")
+    return out
+
+
 def gate_warnings(lines: List[str]) -> List[str]:
     """One warning per unresolved human gate, plus one per unreadable row.
 
@@ -1019,6 +1051,7 @@ def gate_warnings(lines: List[str]) -> List[str]:
     is *visible* rather than buried in an item spec's prose.
     """
     out: List[str] = []
+    out.extend(_malformed_gate_row_warnings(lines))
     for n, g in enumerate(human_gates(lines), start=1):
         if g.kind == "approved":
             continue
@@ -1579,6 +1612,11 @@ def set_gate_status(text: str, index: int, kind: str,
     if not 1 <= index <= len(gates):
         raise ValueError(f"there are {len(gates)} human gate(s); {index} is out of range")
     gate = gates[index - 1]
+    if note and "|" in note:
+        raise ValueError(
+            "the note may not contain '|' — it would add a column to the row, "
+            "and a row with the wrong column count is skipped by the parser, "
+            "making a still-blocking gate silently disappear")
     icon = {"approved": "✅ Approved", "declined": "❌ Declined"}[kind]
     import datetime as _dt
     stamp = today or _dt.date.today().isoformat()

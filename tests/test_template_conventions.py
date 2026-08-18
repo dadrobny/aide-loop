@@ -14,6 +14,7 @@ decays — the same reasoning that put the command-hygiene rules behind a hook.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -21,28 +22,34 @@ import pytest
 _TEMPLATES = sorted((Path(__file__).resolve().parents[1] / "core" / "templates").glob("*.md"))
 
 
-def _guidance_slots(path: Path) -> list:
-    """(lineno, text) for every `{{...}}` inside an italic guidance block.
+_ITALIC_DELIM_RE = re.compile(r"(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])")
 
-    A guidance block starts at a line beginning with `_` and runs until a line
-    ending with `_`, so a multi-line italic paragraph is covered — which is
-    where every recorded instance actually sat.
+
+def _guidance_slots(path: Path) -> list:
+    """(lineno, text) for every `{{...}}` that sits *inside* an italic span.
+
+    Scans positionally, carrying italic state across lines, so it covers all
+    three shapes the templates actually use: a whole italic paragraph, a
+    single-line `_guidance._`, and `**Label.** _guidance…_` that opens its
+    italics mid-line.
+
+    An earlier version tested "does the line start with `_`", which had a blind
+    spot for that third shape — and the very slip this file guards against
+    recurred *in the PR that added the guard* because of it. A guard with a
+    blind spot is worse than none, because it is trusted (conventions.md §6).
+    A `_` inside a word (`queue_cap`) is not a delimiter and never toggles.
     """
-    hits, in_block = [], False
+    hits, in_italic = [], False
     for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        stripped = line.strip()
-        if not in_block:
-            if not stripped.startswith("_"):
-                continue
-            # A one-line block opens and closes on the same line.
-            in_block = not (stripped.endswith("_") and len(stripped) > 1)
-            if "{{" in stripped:
-                hits.append((n, stripped))
-            continue
-        if "{{" in stripped:
-            hits.append((n, stripped))
-        if stripped.endswith("_"):
-            in_block = False
+        events = [(m.start(), "delim") for m in _ITALIC_DELIM_RE.finditer(line)]
+        events += [(m.start(), "slot") for m in re.finditer(r"\{\{", line)]
+        flagged = False
+        for _, kind in sorted(events):
+            if kind == "delim":
+                in_italic = not in_italic
+            elif in_italic and not flagged:
+                hits.append((n, line.strip()))
+                flagged = True
     return hits
 
 
@@ -74,6 +81,27 @@ def test_a_slot_on_a_content_line_is_allowed(tmp_path: Path):
     """Table rows and headings are exactly where slots belong."""
     ok = tmp_path / "ok.md"
     ok.write_text("| {{target}} | ⏳ Awaiting |\n\n_Plain guidance, no slots._\n",
+                  encoding="utf-8")
+    assert _guidance_slots(ok) == []
+
+
+def test_guidance_opening_mid_line_is_covered(tmp_path: Path):
+    """`**Label.** _guidance…_` opens its italics after a bold label. The first
+    version of this check only opened a block on a LEADING underscore, so it
+    missed exactly this shape — and the slip recurred in the same PR that added
+    the guard."""
+    bad = tmp_path / "midline.md"
+    bad.write_text("**Human gate.** _OPTIONAL — the row usually reads\n"
+                   "`Blocks: stage {{n}}`. A gate written only here does nothing._\n",
+                   encoding="utf-8")
+    assert [n for n, _ in _guidance_slots(bad)] == [2]
+
+
+def test_a_word_internal_underscore_is_not_a_delimiter(tmp_path: Path):
+    """`queue_cap` in prose must not be read as opening an italic block, or
+    every slot after it would be falsely flagged."""
+    ok = tmp_path / "snake.md"
+    ok.write_text("Prose naming queue_cap and loop_clarify.\n\n| {{slot}} | x |\n",
                   encoding="utf-8")
     assert _guidance_slots(ok) == []
 

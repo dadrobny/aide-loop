@@ -349,7 +349,7 @@ A **decision only a person can make**, blocking work until they make it. A
 | Gate | Blocks | Status | Decision / evidence |
 |------|--------|--------|---------------------|
 | Golden-file retirement approved | 106 | ⏳ Awaiting | — |
-| Real segmenter output available | queue | ⏳ Awaiting | — |
+| Real segmenter output available | stage 21 | ⏳ Awaiting | — |
 ```
 
 - **Blocks** — item numbers (any §1 reference form, or bare: `106`,

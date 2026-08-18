@@ -100,8 +100,11 @@ and resolving it destroys the only thing the gate protects.
 - **Do NOT push or open a PR.** Commit only; the orchestrator handles push/PR.
 - **Do NOT run `pytest`.**
 - Edit only `docs/aide/queue/*.md` and `docs/aide/progress.md` — and in
-  `progress.md` only the item-reference back-fill (step 5) and the tidy reflection
-  (step 3), never a deliverable's status icon and never new stages/acceptance.
+  `progress.md` only the item-reference back-fill (step 5), the tidy reflection
+  (step 3), and **adding a row to `## Human gates`** (above), never a
+  deliverable's status icon and never new stages/acceptance. Adding a gate row
+  is permitted because raising a blocker is safe; **resolving** one is not
+  yours, ever.
 
 ## Stop and hand back (needs human approval)
 
