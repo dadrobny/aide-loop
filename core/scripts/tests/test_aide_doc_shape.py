@@ -220,3 +220,40 @@ def test_one_warning_per_file(tmp_path: Path):
     (repo / "tests" / "test_x.py").write_text(
         "a = str(p.relative_to(r))\nb = str(q.relative_to(r))\n", encoding="utf-8")
     assert len(aide.separator_dependent_test_warnings(repo, _cfg(repo))) == 1
+
+
+def test_bold_emphasis_in_the_header_is_not_a_status_field(tmp_path: Path):
+    """A field needs a colon beside the bold. Matching bare `**Status**`
+    anywhere in the header flags prose that merely emphasises the word."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md",
+               GOOD_SPEC.replace("> **Created:**",
+                                 "> Tracks **Status** only in progress.md\n> **Created:**"))
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
+def test_a_status_field_outside_the_blockquote_is_not_flagged(tmp_path: Path):
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md",
+               "# Item 027 — Bounds\n\n**Status:** prose, not a header field\n\n"
+               "> **Created:** 2026-08-18\n\n---\n\n## Assumptions\n\nNone.\n")
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
+def test_blockquote_warning_path_is_relative_to_docs_dir(tmp_path: Path):
+    """Consistent with `progress.md:12` and `items/…`, not `docs/aide/items/…`."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md", "# Item 027 — B\n\nno blockquote\n\n## Assumptions\n\nNone.\n")
+    w = aide.header_blockquote_warnings(repo / "docs" / "aide")
+    assert w and w[0].startswith("items/027-bounds.md:")
+
+
+def test_nested_bullet_warning_states_the_real_behaviour():
+    """The parser matches indented bullets, so a nested one is COUNTED, not
+    ignored — verified: ['complete', 'planned'] rolls up to in-progress. The
+    first wording claimed the opposite."""
+    lines = _stage("- ✅ A. *(Item 027)*\n  - 📋 sub. *(Item 028)*")
+    start, end, _ = aide.stage_sections(lines)[0]
+    assert aide.stage_deliverable_statuses(lines, start, end) == ["complete", "planned"]
+    assert aide.rollup_status(["complete", "planned"]) == "in-progress"
+    assert "counts it as a full deliverable" in aide.nested_deliverable_warnings(lines)[0]

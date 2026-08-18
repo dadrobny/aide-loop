@@ -34,8 +34,10 @@ keys, and the adapter's agents/skills/commands.
   found something real there:
 
   - **Item spec shape** (§1, §5) — the `# Item NNN — Title` heading must agree
-    with the filename, the header must carry no status field (status lives only
-    in `progress.md`; a duplicate has no owner and only drifts), and the
+    with the filename, the header blockquote must carry no status **field**
+    (status lives only in `progress.md`; a duplicate has no owner and only
+    drifts) — a colon beside the bold is required, so prose merely emphasising
+    the word is not a match — and the
     mandatory `## Assumptions` block must exist. Missing-Assumptions is reported
     as **one aggregated line**: 32 of 112 specs predated the rule in the
     consumer, and 32 separate warnings would bury the substantive ones — the
@@ -63,6 +65,14 @@ keys, and the adapter's agents/skills/commands.
   warnings to 12, with no false positives.
 
 ### Fixed
+
+- **The nested-bullet warning described the opposite of what happens.** It said
+  the rollup "ignores" a nested status bullet. `_BULLET_RE` allows leading
+  whitespace, so the parser reads an indented bullet as a **full deliverable** —
+  verified: a `📋` child under a `✅` parent yields `['complete', 'planned']` and
+  rolls the stage up to 🚧. That is the real hazard, and a worse one: nesting
+  says "subordinate" to a reader while the tooling counts a peer, so a sub-bullet
+  quietly holds its stage open. The warning now says so.
 
 - **The status-field check would never have fired.** The item template writes
   fields as `**Created:**`, with the colon *inside* the bold, and the first

@@ -1098,16 +1098,22 @@ def gate_warnings(lines: List[str]) -> List[str]:
     return out
 
 
-#: A deliverable bullet must be FLAT (conventions.md §1): a nested bullet
-#: carrying its own status icon makes the rollup ambiguous — is the parent's
-#: icon the truth, or the child's? The parser reads the parent and silently
-#: ignores the child, so the document says one thing and the tooling another.
+#: A deliverable bullet must be FLAT (conventions.md §1). `_BULLET_RE` allows
+#: leading whitespace, so a nested bullet is read as a **full deliverable** —
+#: not ignored. That is the hazard: nesting implies subordination to a reader
+#: while the rollup counts it as a peer, so a `📋` child silently drags its ✅
+#: parent's stage to 🚧. Verified: ['complete', 'planned'] -> in-progress.
 _NESTED_DELIVERABLE_RE = re.compile(r"^\s+[-*]\s*(?P<icon>" + _ICON_ALT + r")")
 
 #: Documents whose template carries a header blockquote. Not every file under
 #: docs_dir: a generated artifact or a project note is not a living document,
 #: and insights.md's template deliberately opens with a comment instead.
 _BLOCKQUOTE_DOCS = ("vision.md", "roadmap.md", "progress.md")
+
+#: A status FIELD in an item header: `**Status:** x` or `**Status**: x`. The
+#: colon is required, so bold emphasis on the word in prose is not a match.
+_ITEM_STATUS_FIELD_RE = re.compile(
+    r"\*\*\s*(?P<name>Status|Completed)\s*(?::\s*\*\*|\*\*\s*:)")
 
 
 #: `str(Path)` — or a Path interpolated into an f-string, which calls `str()` —
@@ -1196,9 +1202,11 @@ def cli_subprocess_test_warnings(repo_root: Path,
 def nested_deliverable_warnings(lines: List[str]) -> List[str]:
     """Status-bearing bullets nested under a deliverable.
 
-    The rollup reads only flat bullets, so a nested one is invisible to it
-    while looking authoritative to a reader — the document and the tooling
-    disagree with nothing to reconcile them.
+    The parser matches indented bullets, so a nested one counts as a full
+    deliverable in the rollup and in item-status parsing. The nesting says
+    "subordinate" to a reader while the tooling says "peer" — so a `📋` child
+    quietly holds its ✅ parent's stage open, and nothing reconciles the two
+    readings.
     """
     out: List[str] = []
     for start, end, num in stage_sections(lines):
@@ -1207,9 +1215,10 @@ def nested_deliverable_warnings(lines: List[str]) -> List[str]:
             if m:
                 out.append(
                     f"progress.md:{i + 1}: stage {num} has a nested status bullet "
-                    f"({m.group('icon')}) — the rollup reads flat deliverable "
-                    f"bullets only, so this one is ignored while reading as "
-                    f"status. Flatten it, or drop its icon.")
+                    f"({m.group('icon')}) — the rollup counts it as a full "
+                    f"deliverable despite the indent, so it can hold the stage "
+                    f"open while reading as subordinate. Flatten it, or drop "
+                    f"its icon.")
     return out
 
 
@@ -1231,7 +1240,8 @@ def header_blockquote_warnings(ddir: Path) -> List[str]:
                       if l.strip() and not l.startswith("#")
                       and not l.lstrip().startswith("<!--")), "")
         if not first.startswith(">"):
-            rel = path.relative_to(ddir.parent.parent).as_posix() if ddir.parent.parent in path.parents else path.name
+            # Relative to docs_dir, matching `progress.md:12` and `items/…`.
+            rel = path.relative_to(ddir).as_posix()
             out.append(f"{rel}: no header blockquote — the line after the title "
                        f"should carry this document's place in the loop and what "
                        f"it derives from")
@@ -1267,12 +1277,15 @@ def item_spec_warnings(ddir: Path) -> List[str]:
             out.append(f"items/{path.name}: no '# Item {num:03d} — Title' heading "
                        f"matching the filename")
         head = text.split("\n---", 1)[0]
-        # The template writes fields as `**Created:**` — colon INSIDE the bold —
-        # so a pattern expecting `**Status**:` matches nothing and the check
-        # never fires. Accept both spellings.
-        sm = re.search(r"\*\*\s*(Status|Completed)\s*:?\s*\*\*", head)
+        # A FIELD, not bold emphasis. Two conditions keep this precise: the line
+        # is part of the header blockquote, and a colon sits beside the bold —
+        # inside it (`**Status:**`, the template's own spelling) or right after
+        # (`**Status**:`). Matching bare `**Status**` anywhere would flag prose
+        # that merely emphasises the word.
+        sm = next((m for line in head.splitlines() if line.lstrip().startswith(">")
+                   for m in [_ITEM_STATUS_FIELD_RE.search(line)] if m), None)
         if sm:
-            out.append(f"items/{path.name}: header carries a '{sm.group(1)}' field — "
+            out.append(f"items/{path.name}: header carries a '{sm.group('name')}' field — "
                        f"status lives only in progress.md; a duplicate has no owner "
                        f"and only drifts")
         if not re.search(r"^##\s+Assumptions", text, re.MULTILINE):
