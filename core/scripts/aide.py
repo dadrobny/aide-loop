@@ -1067,9 +1067,17 @@ def gate_warnings(lines: List[str]) -> List[str]:
                 f"and still blocks {g.reach} — a refusal does not release the "
                 f"work it guards; drop those items or change what the gate asks")
             continue
-        reach = g.reach if (g.blocks or g.stage or g.blocks_all) else (
-            "nothing named — the Blocks cell names no item, no 'stage N', and "
-            "is not 'all', so this gate holds nothing")
+        if g.stage is not None and not stage_item_numbers(lines, g.stage):
+            # A typo here is invisible otherwise: the gate looks like it guards
+            # a stage while holding nothing at all.
+            reach = (f"stage {g.stage} — which has no deliverable referencing "
+                     f"any item, so this gate holds NOTHING; check the stage "
+                     f"number")
+        elif g.blocks or g.stage or g.blocks_all:
+            reach = g.reach
+        else:
+            reach = ("nothing named — the Blocks cell names no item, no "
+                     "'stage N', and is not 'all', so this gate holds nothing")
         out.append(f"progress.md:{g.lineno}: human gate {n} ({g.text}) is "
                    f"awaiting a decision — blocks {reach}")
     return out
@@ -1147,14 +1155,12 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(stray_icon_warnings(ddir))
     warnings.extend(insight_warnings(ddir))
     warnings.extend(absolute_path_test_warnings(repo_root, config))
-    if progress_path.is_file():
-        warnings.extend(gate_warnings(
-            progress_path.read_text(encoding=_ENCODING).splitlines()))
-
     if not progress_path.is_file():
         return [f"missing {progress_path}"], warnings
+    # One read, reused: two reads can disagree if the file changes between them.
     text = progress_path.read_text(encoding=_ENCODING)
     lines = text.splitlines()
+    warnings.extend(gate_warnings(lines))
 
     # Mandatory sections.
     has_stage_table = any(
@@ -1612,11 +1618,11 @@ def set_gate_status(text: str, index: int, kind: str,
     if not 1 <= index <= len(gates):
         raise ValueError(f"there are {len(gates)} human gate(s); {index} is out of range")
     gate = gates[index - 1]
-    if note and "|" in note:
+    if note and ("|" in note or "\n" in note or "\r" in note):
         raise ValueError(
-            "the note may not contain '|' — it would add a column to the row, "
-            "and a row with the wrong column count is skipped by the parser, "
-            "making a still-blocking gate silently disappear")
+            "the note may not contain '|' or a line break — either breaks the "
+            "row's shape, and a row the parser cannot read is skipped, making a "
+            "still-blocking gate silently disappear")
     icon = {"approved": "✅ Approved", "declined": "❌ Declined"}[kind]
     import datetime as _dt
     stamp = today or _dt.date.today().isoformat()

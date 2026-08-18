@@ -385,3 +385,24 @@ def test_a_malformed_row_warns_instead_of_vanishing():
 
 def test_a_well_formed_table_produces_no_arity_warning():
     assert not any("columns, not 4" in w for w in aide.gate_warnings(_lines(AWAITING)))
+
+
+def test_a_note_with_a_line_break_is_refused():
+    """A newline splits the row across lines, breaking its shape exactly as a
+    `|` does — same silent-disappearance risk."""
+    import pytest
+    with pytest.raises(ValueError, match="line break"):
+        aide.set_gate_status(_progress(AWAITING), 1, "approved", "line one\nline two")
+
+
+def test_a_stage_gate_naming_a_missing_stage_says_it_holds_nothing():
+    """Otherwise a typo'd stage number reads as a guarded stage while blocking
+    nothing at all — the failure the warning exists to surface."""
+    rows = "| G | stage 99 | ⏳ Awaiting | — |"
+    w = aide.gate_warnings(_lines(rows))[0]
+    assert "holds NOTHING" in w and "check the stage number" in w
+
+
+def test_a_stage_gate_with_real_items_reports_its_stage_plainly():
+    assert "stage 1" in aide.gate_warnings(_lines(STAGE))[0]
+    assert "holds NOTHING" not in aide.gate_warnings(_lines(STAGE))[0]
