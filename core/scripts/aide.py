@@ -1228,13 +1228,22 @@ def cli_subprocess_test_warnings(repo_root: Path,
 
 
 def nested_deliverable_warnings(lines: List[str]) -> List[str]:
-    """Status-bearing bullets nested under a deliverable.
+    """Status-bearing bullets nested anywhere inside a stage section.
 
     The parser matches indented bullets, so a nested one counts as a full
     deliverable in the rollup and in item-status parsing. The nesting says
     "subordinate" to a reader while the tooling says "peer" — so a `📋` child
     quietly holds its ✅ parent's stage open, and nothing reconciles the two
     readings.
+
+    **Scanned across the whole stage section, deliberately, not just the
+    Deliverables block.** `stage_deliverable_statuses` reads `lines[start:end]`
+    — every leading-icon bullet in the section, skipping only checkboxes — so an
+    indented status bullet under **Acceptance** drags the stage exactly the same
+    way. Verified: such a bullet turns `['complete']` into
+    `['complete', 'planned']` and a ✅ stage into 🚧. Narrowing this to the
+    Deliverables block would under-report a bullet that really does break the
+    rollup.
     """
     out: List[str] = []
     for start, end, num in stage_sections(lines):
@@ -1248,6 +1257,37 @@ def nested_deliverable_warnings(lines: List[str]) -> List[str]:
                     f"open while reading as subordinate. Flatten it, or drop "
                     f"its icon.")
     return out
+
+
+def _line_after_title(lines: List[str]) -> str:
+    """The first content line after the `#` title, or "" if there is none.
+
+    Two subtleties. A multi-line HTML comment must be skipped **whole** — only
+    its opening line starts with `<!--`, so testing line-by-line lets its body
+    read as content. And the search stops at the first line after the title
+    rather than skipping further headings: "opens with a blockquote" means the
+    next thing, so `# Title` / `## Intro` / `> …` does not satisfy it.
+    """
+    in_comment = False
+    seen_title = False
+    for line in lines:
+        stripped = line.strip()
+        if in_comment:
+            if "-->" in stripped:
+                in_comment = False
+            continue
+        if stripped.startswith("<!--"):
+            if "-->" not in stripped:
+                in_comment = True
+            continue
+        if not stripped:
+            continue
+        if not seen_title:
+            if stripped.startswith("#"):
+                seen_title = True
+            continue
+        return stripped
+    return ""
 
 
 def header_blockquote_warnings(ddir: Path) -> List[str]:
@@ -1264,9 +1304,7 @@ def header_blockquote_warnings(ddir: Path) -> List[str]:
     for path in targets:
         if not path.is_file():
             continue
-        first = next((l for l in path.read_text(encoding=_ENCODING).splitlines()
-                      if l.strip() and not l.startswith("#")
-                      and not l.lstrip().startswith("<!--")), "")
+        first = _line_after_title(path.read_text(encoding=_ENCODING).splitlines())
         if not first.startswith(">"):
             # Relative to docs_dir, matching `progress.md:12` and `items/…`.
             rel = path.relative_to(ddir).as_posix()
@@ -1301,7 +1339,7 @@ def item_spec_warnings(ddir: Path) -> List[str]:
             continue
         num = int(m.group(1))
         text = path.read_text(encoding=_ENCODING)
-        if not re.search(rf"^#\s+Item\s+0*{num}\b", text, re.MULTILINE):
+        if not re.search(rf"^#\s+Item\s+0*{num}\s*[—–-]\s*\S", text, re.MULTILINE):
             out.append(f"items/{path.name}: no '# Item {num:03d} — Title' heading "
                        f"matching the filename")
         head = text.split("\n---", 1)[0]

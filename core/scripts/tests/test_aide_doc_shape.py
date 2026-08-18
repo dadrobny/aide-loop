@@ -318,3 +318,52 @@ def test_the_bare_shape_is_still_caught_after_narrowing(tmp_path: Path):
     (repo / "tests" / "test_a.py").write_text("a = str(p.relative_to(root))\n", encoding="utf-8")
     (repo / "tests" / "test_b.py").write_text('b = f"{p.relative_to(d)}:{n}"\n', encoding="utf-8")
     assert len(aide.separator_dependent_test_warnings(repo, _cfg(repo))) == 2
+
+
+def test_a_nested_bullet_outside_deliverables_is_still_reported():
+    """Scoping to the Deliverables block would UNDER-report: the rollup reads
+    every leading-icon bullet in the section, so an indented one under
+    Acceptance drags the stage exactly the same way. Verified here rather than
+    assumed."""
+    lines = ("## Stage 1 — S — ✅\n\n**Deliverables.**\n- ✅ Done. *(Item 027)*\n\n"
+             "**Acceptance.**\n- [x] Ticked.\n  - 📋 nested, outside Deliverables\n").splitlines()
+    start, end, _ = aide.stage_sections(lines)[0]
+    assert aide.stage_deliverable_statuses(lines, start, end) == ["complete", "planned"]
+    assert aide.rollup_status(["complete", "planned"]) == "in-progress"
+    assert len(aide.nested_deliverable_warnings(lines)) == 1
+
+
+def test_a_heading_after_the_title_does_not_satisfy_the_blockquote(tmp_path: Path):
+    """"Opens with a blockquote" means the NEXT thing. Skipping further headers
+    let `# Title` / `## Intro` / `> …` pass."""
+    repo = _repo(tmp_path)
+    (repo / "docs" / "aide" / "progress.md").write_text(
+        "# P\n\n## Intro\n\n> **Status:** Draft\n", encoding="utf-8")
+    assert len(aide.header_blockquote_warnings(repo / "docs" / "aide")) == 1
+
+
+def test_a_multi_line_html_comment_is_skipped_whole(tmp_path: Path):
+    """Only the opening line starts with `<!--`, so a line-by-line test lets the
+    comment body read as content and reports a false positive."""
+    repo = _repo(tmp_path)
+    (repo / "docs" / "aide" / "roadmap.md").write_text(
+        "<!--\n  Template guidance spanning\n  several lines.\n-->\n"
+        "# R\n\n> **Status:** Draft\n", encoding="utf-8")
+    assert aide.header_blockquote_warnings(repo / "docs" / "aide") == []
+
+
+def test_a_heading_without_a_title_is_reported(tmp_path: Path):
+    """`# Item 027` alone gives the status report no title to parse, so the
+    check must require the documented `— Title` too, not just the number."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md", GOOD_SPEC.replace("# Item 027 — Bounds", "# Item 027"))
+    w = aide.item_spec_warnings(repo / "docs" / "aide")
+    assert any("matching the filename" in x for x in w)
+
+
+def test_all_three_dash_styles_are_accepted(tmp_path: Path):
+    repo = _repo(tmp_path)
+    for n, dash in ((27, "—"), (28, "–"), (29, "-")):
+        _spec_file(repo, f"{n:03d}-x.md",
+                   GOOD_SPEC.replace("# Item 027 — Bounds", f"# Item {n:03d} {dash} X"))
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []

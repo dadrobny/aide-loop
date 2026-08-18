@@ -42,10 +42,16 @@ keys, and the adapter's agents/skills/commands.
     as **one aggregated line**: 32 of 112 specs predated the rule in the
     consumer, and 32 separate warnings would bury the substantive ones — the
     failure mode issue #13 was filed for.
-  - **Flat deliverable bullets** (§1) — a nested bullet carrying its own status
-    icon is invisible to the rollup while reading as status to a human, so the
-    document and the tooling disagree with nothing to reconcile them.
-  - **Header blockquote** (§1) — scoped to the templated living documents.
+  - **Flat deliverable bullets** (§1) — the parser matches indented bullets, so
+    a nested one counts as a full deliverable: a `📋` child quietly holds its ✅
+    parent's stage open. Scanned across the whole stage section deliberately,
+    since `stage_deliverable_statuses` reads every leading-icon bullet in it —
+    an indented bullet under **Acceptance** drags the stage the same way, so
+    scoping to the Deliverables block would under-report.
+  - **Header blockquote** (§1) — the line *immediately* after the title, so an
+    intervening heading does not satisfy it, and multi-line HTML comments are
+    skipped whole (only their opening line starts with `<!--`). Scoped to the
+    templated living documents.
     Checking every file under `docs_dir` was 3 false positives in 8 files: a
     generated artifact and a project note are not living documents, and
     `insights.md`'s template deliberately opens with a comment.
@@ -64,8 +70,11 @@ keys, and the adapter's agents/skills/commands.
     would have flagged the file documenting the correct practice.
 
   All are warnings, not errors — these are documents in flight, and the point is
-  visibility, not a gate. Together they take the consumer's `aide check` from 7
-  warnings to 11, every one real.
+  visibility, not a gate. Together they add 6 findings to the consumer's `aide
+  check` — 7 warnings to 13 — every one real. Two of those come from requiring
+  the documented `# Item NNN — Title` heading rather than just the number: the
+  two specs concerned write `# Item NNN: Title` with a colon, so the status
+  report's title parse (`_spec_stage_and_title`) returns nothing for them.
 
   Both test-hygiene lints share one path-display helper with the pre-existing
   absolute-path check. That helper tolerates a `tests_dir` configured absolute
