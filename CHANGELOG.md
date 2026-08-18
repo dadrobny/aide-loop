@@ -32,6 +32,17 @@ keys, and the adapter's agents/skills/commands.
 - **`aide gate approve` with no number crashed** with a `TypeError` instead of
   reporting the missing argument.
 
+- **Template guidance no longer uses slot syntax to describe a format.** The
+  Outcome-targets and environment-gated guidance illustrated their status
+  vocabulary with `{{yyyy-mm-dd}}`, `{{evidence}}` and friends. `aide check`
+  errors on any `{{...}}` surviving into a consumer's `docs/aide/**`, so a slot
+  inside guidance turns "you left the guidance in" into a confusing "unfilled
+  template slot" pointing at text that was never a field. Guidance now writes
+  the shape plainly (`YYYY-MM-DD`); slots stay on the content lines an author
+  actually substitutes. A repo-level test now holds every template to the
+  convention it defines — the slip had recurred across two PRs, and a
+  convention nothing enforces is one that decays.
+
 ### Added
 
 - **Human gates — a first-class mid-queue checkpoint (issue #30).** The loop had

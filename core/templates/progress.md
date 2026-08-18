@@ -67,7 +67,7 @@ _One row per vision objective._
 _One row per capability gated behind an optional package or external tool.
 Status is `❓ Unverified` until a human or CI runner with the dependency
 present actually exercises the gated path (not inferred from a skip-clean
-pytest run), then `✅ Verified ({{yyyy-mm-dd}}, {{host/CI description}})`._
+pytest run), then `✅ Verified (YYYY-MM-DD, host/CI description)`._
 
 | Capability | Package / Tool | Introduced by | Status | Notes |
 |------------|-----------------|----------------|--------|-------|
@@ -77,8 +77,8 @@ pytest run), then `✅ Verified ({{yyyy-mm-dd}}, {{host/CI description}})`._
 
 _One row per measured outcome the roadmap commits to (an empirical result —
 an error rate, a benchmark — that shipped work enables but cannot guarantee).
-Status is `❓ Unverified` until measured, then `✅ Met ({{yyyy-mm-dd}},
-{{evidence}})` or `❌ Not met ({{measured result}} → {{follow-up}})`. A target
+Status is `❓ Unverified` until measured, then `✅ Met (YYYY-MM-DD,
+evidence)` or `❌ Not met (measured result → follow-up)`. A target
 never holds its stage open — stages track shipped work — but an objective
 linked to a target that is not ✅ Met cannot roll up to ✅. When marking a
 target ❌ Not met, append a `- [ ] gap — …` insight in the same edit so the
