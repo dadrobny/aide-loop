@@ -105,7 +105,7 @@ aide-loop/
 │   ├── ADAPTER-SPEC.md      the engine↔adapter contract (what any runtime must express)
 │   ├── claude/              LAYER 2 — the reference adapter (agents · skills · commands · hooks · settings.json · usage_probe.py)
 │   └── copilot/ cursor/ gemini/   porting stubs (future work)
-├── docs/                    quickstart.md · concepts.md
+├── docs/                    vision.md · quickstart.md · concepts.md
 ├── install.py               the cross-OS installer
 └── README.md · LICENSE
 ```
@@ -116,6 +116,11 @@ aide-loop/
   express (seven entry-points, five role tiers, three orchestrators, the shared CLI)
   to drive the engine. The Claude adapter is its reference implementation; see
   [`adapters/claude/README.md`](adapters/claude/README.md) for the concept→primitive map.
+- [`docs/vision.md`](docs/vision.md) — what the framework is *for*, the
+  commitments that shape it, and the non-goals it refuses. Order and status for
+  the framework's own work live in its
+  [GitHub Project](https://github.com/users/dadrobny/projects/1), not in any
+  document here.
 
 **Source vs. installed paths (a gotcha for editors).** The adapter control files
 (`adapters/claude/{agents,skills,commands}`) and `core/conventions.md` reference
