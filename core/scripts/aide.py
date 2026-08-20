@@ -462,15 +462,30 @@ class HumanGate(NamedTuple):
                 if self.blocks else "nothing named")
 
 
+def stage_section(lines: List[str], stage: str) -> Optional[Tuple[int, int, str]]:
+    """The stage section numbered *stage*, or None if no such section exists.
+
+    The single place the "which section is stage N" lookup lives. Callers need
+    to tell "no such stage" from "the stage is there and empty" — an absent
+    section is a typo, an empty one is a stage nobody has queued work for yet —
+    and a helper that collapses both into a falsy return makes that
+    indistinguishable at every call site.
+    """
+    return next((sec for sec in stage_sections(lines)
+                 if _same_stage(sec[2], stage)), None)
+
+
 def stage_item_numbers(lines: List[str], stage: str) -> List[int]:
     """Item numbers referenced by *stage*'s deliverable bullets in progress.md.
 
     Reuses the §1 rule that only a deliverable bullet (and its wrapped
     continuation lines) carries an item reference, so a Notes cell or an
     acceptance checkbox naming an item does not widen a stage gate's reach.
+
+    Empty for a stage that does not exist *and* for one whose deliverables name
+    no item yet; ``stage_section`` is what separates the two.
     """
-    section = next((sec for sec in stage_sections(lines)
-                    if _same_stage(sec[2], stage)), None)
+    section = stage_section(lines, stage)
     if section is None:
         return []
     start, end, _ = section
@@ -684,8 +699,7 @@ def accept_criteria(text: str, stage: str, criteria: Optional[List[int]],
     a caller typing the correct number should not have to guess its padding.
     """
     lines = text.splitlines()
-    section = next((s for s in stage_sections(lines)
-                    if _same_stage(s[2], stage)), None)
+    section = stage_section(lines, stage)
     if section is None:
         raise ValueError(f"no Stage {stage} section in progress.md")
     start, end, _ = section
@@ -1077,11 +1091,23 @@ def gate_warnings(lines: List[str]) -> List[str]:
                 f"work it guards; drop those items or change what the gate asks")
             continue
         if g.stage is not None and not stage_item_numbers(lines, g.stage):
-            # A typo here is invisible otherwise: the gate looks like it guards
-            # a stage while holding nothing at all.
-            reach = (f"stage {g.stage} — which has no deliverable referencing "
-                     f"any item, so this gate holds NOTHING; check the stage "
-                     f"number")
+            # An empty reach has two causes and only one is a mistake.
+            if stage_section(lines, g.stage) is None:
+                # No such section: a typo, invisible otherwise — the gate looks
+                # like it guards a stage while holding nothing at all, ever.
+                reach = (f"stage {g.stage} — which has no deliverable "
+                         f"referencing any item, so this gate holds NOTHING; "
+                         f"check the stage number")
+            else:
+                # The section is there and simply has nothing queued for it
+                # yet. Raising a gate before the work exists is the cheapest
+                # time to raise one, and `stage N` reach re-resolves through
+                # progress.md on every read — so this gate is armed and will
+                # hold that stage's items as they appear. Calling the feature's
+                # own happy path a typo trains the reader to ignore the check.
+                reach = (f"stage {g.stage} — which has no items queued yet, so "
+                         f"it holds nothing today and will block that stage's "
+                         f"items as they are created")
         elif g.blocks or g.stage or g.blocks_all:
             reach = g.reach
         else:
