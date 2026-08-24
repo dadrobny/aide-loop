@@ -743,7 +743,16 @@ reviewer outside the loop — never by a gate inside it.
   failures.
 - **A committed byte-exact fixture needs a `.gitattributes` `text eol=lf` pin.**
   Without it `core.autocrlf` rewrites the file on checkout and every byte
-  comparison against it fails on Windows only.
+  comparison against it fails on Windows only. `aide check` warns on the cases
+  it can decide: a path built from literals, compared with `==` or fed to a
+  hash, resolving to a file that exists in the checkout and is covered by no
+  `eol=lf` pattern. It reports **only what it can resolve** — a fixture reached
+  through a `tmp_path`, a function argument, or a constant imported from
+  another package is skipped in silence rather than guessed at, because the
+  majority of `read_bytes()` calls in a real suite compare two freshly
+  generated files to each other and need no pin at all. Treat a warning as
+  authoritative and its silence as partial: the pin is still your
+  responsibility on a path the check cannot see.
 
 **Tests that can actually fail.**
 

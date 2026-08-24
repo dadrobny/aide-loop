@@ -17,6 +17,44 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.19.0] — 2026-08-24
+
+### Added
+
+- **`aide check` now enforces the `.gitattributes` `eol=lf` rule (issue #46).**
+  §6 and §1 both stated it — *"a committed byte-exact fixture needs a
+  `.gitattributes` `text eol=lf` pin"* — and nothing checked it. Without the
+  pin, `core.autocrlf` rewrites the file on a Windows checkout and every byte
+  comparison against it fails **on Windows only**, the platform §7 says no gate
+  in this loop ever sees; the recorded instance cost 13 red tests across three
+  modules, invisible to every local run. Its sibling rule got a deterministic
+  lint in 1.11.0 only because a repo-root string match could decide it. The new
+  `gitattributes_eol_pin_warnings` resolves a fixture path through the AST —
+  `Path(__file__)` walked up and joined with string literals — and warns when
+  that path exists in the checkout and no `eol=lf` pattern covers it.
+
+  **Precision over recall, deliberately**, per the issue. The pattern matcher
+  follows git's rules rather than `fnmatch`'s, since a false *silence* is the
+  failure being prevented: a single `*` does not cross a `/` (so `tests/*.json`
+  does not cover `tests/golden/x.json`), `**` does, and a pattern with no slash
+  matches at any depth. A read only counts when it feeds an `==`/`!=`
+  comparison or a hash — the narrowing that makes the lint usable, and one that
+  only surfaced by running an early draft against a real consumer: flagging
+  every `read_text()` produced twenty-odd warnings, nearly all of them plain
+  helper reads whose callers assert a substring, which universal-newline
+  translation makes immune to the rewrite anyway. Paths reached through a
+  `tmp_path`, a function argument or a constant imported from another package
+  resolve to nothing and are skipped in silence, because two freshly generated
+  files compared to each other is a determinism check needing no pin — the
+  shape of the majority of `read_bytes()` calls in a real suite.
+
+  Validated against `dadrobny/segfacet` before landing, the way the issue asked:
+  zero false positives on that fully-pinned repo, and six genuine byte-exact
+  comparisons against committed files correctly resolved and read as pinned.
+  §6 now records both the check and the honest limit — treat a warning as
+  authoritative and its silence as partial.
+
+
 ## [1.18.1] — 2026-08-24
 
 ### Changed

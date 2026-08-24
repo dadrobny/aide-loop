@@ -1539,6 +1539,302 @@ def cli_subprocess_test_warnings(repo_root: Path,
     return out
 
 
+def _gitattributes_lf_patterns(repo_root: Path) -> Optional[List[str]]:
+    """Every pattern in `.gitattributes` carrying an `eol=lf` pin.
+
+    ``None`` (not ``[]``) when the file is absent, so the caller can tell "no
+    pins" from "no file" and say the more useful of the two.
+    """
+    path = repo_root / ".gitattributes"
+    if not path.is_file():
+        return None
+    out: List[str] = []
+    try:
+        text = path.read_text(encoding=_ENCODING)
+    except (OSError, UnicodeDecodeError):
+        return None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        # `eol=lf` alone is enough: `text eol=lf` and a bare `eol=lf` both stop
+        # core.autocrlf rewriting the file, which is the whole point here.
+        if len(parts) > 1 and any(a == "eol=lf" for a in parts[1:]):
+            out.append(parts[0])
+    return out
+
+
+def _gitattributes_matches(rel_posix: str, pattern: str) -> bool:
+    """Does a `.gitattributes` pattern cover this repo-relative path?
+
+    Git's pattern rules, not `fnmatch`'s: a `*` stops at a `/` (so
+    `tests/*.json` must not match `tests/a/b.json`, which `fnmatch` would),
+    `**` crosses separators, and a pattern with **no** slash matches at any
+    depth — which is how `*.json` covers the whole tree.
+    """
+    pattern = pattern.strip().rstrip("/")
+    if not pattern:
+        return False
+    if pattern.startswith("/"):
+        pattern = pattern[1:]
+    if "/" not in pattern:
+        # basename match at any depth, per gitattributes(5)
+        return _glob_segment(rel_posix.rsplit("/", 1)[-1], pattern)
+    return _glob_path(rel_posix, pattern)
+
+
+def _glob_segment(name: str, pattern: str) -> bool:
+    """`fnmatch` on a single path component (no separators involved)."""
+    return fnmatch.fnmatchcase(name, pattern)
+
+
+def _glob_path(rel_posix: str, pattern: str) -> bool:
+    """Match a path against a slash-aware glob, honouring `**`."""
+    regex = []
+    i = 0
+    while i < len(pattern):
+        ch = pattern[i]
+        if pattern.startswith("**/", i):
+            regex.append("(?:.*/)?")     # zero or more leading directories
+            i += 3
+            continue
+        if pattern.startswith("**", i):
+            regex.append(".*")
+            i += 2
+            continue
+        if ch == "*":
+            regex.append("[^/]*")        # a single `*` never crosses a `/`
+        elif ch == "?":
+            regex.append("[^/]")
+        elif ch == "/":
+            regex.append("/")
+        else:
+            regex.append(re.escape(ch))
+        i += 1
+    return re.fullmatch("".join(regex), rel_posix) is not None
+
+
+class _LiteralPathResolver(ast.NodeVisitor):
+    """Module-level names whose value is a path built only from literals.
+
+    Deliberately narrow. It follows exactly two roots — ``Path(__file__)``
+    walked up with ``.parent`` / ``.parents[N]``, and a name this same module
+    already resolved — joined with string literals via ``/``. Anything built at
+    run time (a ``tmp_path`` fixture, a function argument, a constant imported
+    from another package) resolves to nothing and is skipped, which is the
+    point: those are not committed files, and guessing at them is how a lint
+    starts crying wolf.
+    """
+
+    def __init__(self, file_path: Path) -> None:
+        self.file_path = file_path
+        self.names: Dict[str, Path] = {}
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        resolved = self._resolve(node.value)
+        if resolved is not None:
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self.names[target.id] = resolved
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        # `GOLDEN: Path = REPO_ROOT / "x.json"` — annotated, same shape.
+        if node.value is None or not isinstance(node.target, ast.Name):
+            return
+        resolved = self._resolve(node.value)
+        if resolved is not None:
+            self.names[node.target.id] = resolved
+
+    def _resolve(self, node: ast.AST) -> Optional[Path]:
+        if isinstance(node, ast.Name):
+            return self.names.get(node.id)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            left = self._resolve(node.left)
+            if left is None:
+                return None
+            right = node.right
+            if isinstance(right, ast.Constant) and isinstance(right.value, str):
+                return left / right.value
+            return None
+        if isinstance(node, ast.Attribute) and node.attr == "parent":
+            base = self._resolve(node.value)
+            return None if base is None else base.parent
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute) \
+                and node.value.attr == "parents":
+            base = self._resolve(node.value.value)
+            index = node.slice
+            if base is None or not isinstance(index, ast.Constant) \
+                    or not isinstance(index.value, int):
+                return None
+            try:
+                return base.parents[index.value]
+            except IndexError:
+                return None
+        if isinstance(node, ast.Call):
+            func = node.func
+            # `.resolve()` / `.absolute()` are identity here: the file path this
+            # walks from is already absolute.
+            if isinstance(func, ast.Attribute) and func.attr in ("resolve", "absolute"):
+                return self._resolve(func.value)
+            if isinstance(func, ast.Name) and func.id == "Path" and len(node.args) == 1:
+                arg = node.args[0]
+                if isinstance(arg, ast.Name) and arg.id == "__file__":
+                    return self.file_path
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    candidate = Path(arg.value)
+                    return candidate if candidate.is_absolute() else None
+        return None
+
+
+#: Attribute calls that read a file's exact bytes, or text that a byte-exact
+#: golden comparison is one edit away from. `read_text()` is included because
+#: its universal-newline translation only *hides* an unpinned CRLF checkout —
+#: the consumer instance that prompted this had two such comparisons sitting
+#: latent until someone switched them to `read_bytes()`.
+_BYTE_EXACT_READS = ("read_bytes", "read_text")
+
+
+def _read_call_name(node: ast.AST) -> Optional[Tuple[str, int]]:
+    """`(name, lineno)` if *node* is `NAME.read_bytes()` / `NAME.read_text()`."""
+    if not isinstance(node, ast.Call):
+        return None
+    func = node.func
+    if isinstance(func, ast.Attribute) and func.attr in _BYTE_EXACT_READS \
+            and isinstance(func.value, ast.Name):
+        return func.value.id, func.lineno
+    return None
+
+
+def _byte_exact_reads(tree: ast.AST) -> List[Tuple[str, int]]:
+    """`(name, lineno)` for reads whose bytes are actually *compared*.
+
+    The narrowing that keeps this lint worth reading. An earlier draft flagged
+    every `NAME.read_text()` in the tests tree and, run against a real consumer,
+    produced twenty-odd warnings of which the overwhelming majority were plain
+    helper reads --
+
+        def _read_progress() -> str:
+            return _PROGRESS_PATH.read_text(encoding="utf-8")
+
+    -- whose callers go on to assert a *substring*. Universal-newline
+    translation makes those immune to the CRLF rewrite, so a pin buys them
+    nothing and the warning is pure noise. Requiring the read to sit directly
+    inside an equality comparison, or to be fed to a hash, is what separates
+    `a.read_bytes() == golden.read_bytes()` from reading a file to look inside
+    it. A read stored in a local and compared later is missed on purpose: that
+    indirection is the shape of a determinism check between two generated
+    files, which needs no pin at all.
+    """
+    out: List[Tuple[str, int]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare):
+            # Only `==` / `!=`: an ordering or membership test on file contents
+            # is not a byte-exactness claim.
+            if not all(isinstance(op, (ast.Eq, ast.NotEq)) for op in node.ops):
+                continue
+            for side in [node.left, *node.comparators]:
+                found = _read_call_name(side)
+                if found is not None:
+                    out.append(found)
+        elif isinstance(node, ast.Call):
+            func = node.func
+            # `h.update(p.read_bytes())` and `hashlib.sha256(p.read_bytes())` --
+            # a digest is a byte-exact claim by another name, and the recorded
+            # whole-tree-hash failures took exactly this shape.
+            is_hash_sink = (
+                (isinstance(func, ast.Attribute)
+                 and (func.attr == "update"
+                      or func.attr.startswith(("sha", "md5", "blake"))))
+                or (isinstance(func, ast.Name)
+                    and func.id.startswith(("sha", "md5", "blake")))
+            )
+            if not is_hash_sink:
+                continue
+            for arg in node.args:
+                found = _read_call_name(arg)
+                if found is not None:
+                    out.append(found)
+    return out
+
+
+def gitattributes_eol_pin_warnings(repo_root: Path,
+                                   config: Dict[str, Dict[str, object]]) -> List[str]:
+    """Warn on a committed fixture compared byte-for-byte with no `eol=lf` pin.
+
+    conventions.md §6 states the rule — *"a committed byte-exact fixture needs a
+    `.gitattributes` `text eol=lf` pin"* — and until now nothing checked it.
+    Without the pin, `core.autocrlf` rewrites the file on a Windows checkout and
+    every byte comparison against it fails **on Windows only**, which is exactly
+    the platform §7 says no gate in this loop ever sees. The recorded instance
+    cost 13 red tests across three modules, invisible to every local run.
+
+    **Precision over recall, deliberately.** The resolver follows only paths
+    built from literals — `Path(__file__)` walked up, joined with string
+    constants — so a fixture whose path arrives from a `tmp_path` fixture, a
+    function argument or a constant imported from another package resolves to
+    nothing and is skipped in silence. That is not a gap to be closed later by
+    guessing: the overwhelming majority of `read_bytes()` calls in a real suite
+    compare two *freshly generated* files to each other (a determinism check),
+    and those need no pin at all. Flagging them would make the lint noise, and a
+    lint that cries wolf stops being read. What remains — a literal path or an
+    obvious glob beside a `read_bytes()` — is every instance recorded so far.
+
+    A resolved path is only reported if it **exists** in the checkout, which is
+    the cheap proxy for "committed": a path that resolves but is not there is a
+    generated artifact, not a fixture.
+    """
+    files = _test_files(repo_root, config)
+    if not files:
+        return []
+    patterns = _gitattributes_lf_patterns(repo_root)
+    out: List[str] = []
+    seen: set = set()
+    root = repo_root.resolve()
+    for path in files:
+        try:
+            source = path.read_text(encoding=_ENCODING)
+            tree = ast.parse(source)
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        resolver = _LiteralPathResolver(path.resolve())
+        resolver.visit(tree)
+        if not resolver.names:
+            continue
+        for name, lineno in _byte_exact_reads(tree):
+            target = resolver.names.get(name)
+            if target is None:
+                continue
+            try:
+                rel = target.resolve().relative_to(root)
+            except ValueError:
+                continue                      # outside the repo: not ours to pin
+            if not target.exists():
+                continue                      # generated, not committed
+            rel_posix = rel.as_posix()
+            key = (_rel_display(path, repo_root), rel_posix)
+            if key in seen:
+                continue
+            seen.add(key)
+            if patterns is None:
+                out.append(
+                    f"{_rel_display(path, repo_root)}:{lineno}: compares "
+                    f"{rel_posix} byte-for-byte, but this repo has no "
+                    f".gitattributes — on a Windows checkout core.autocrlf "
+                    f"rewrites it and the comparison fails there and nowhere "
+                    f"else. Add `{rel_posix} text eol=lf`. See conventions.md §6")
+                continue
+            if any(_gitattributes_matches(rel_posix, p) for p in patterns):
+                continue
+            out.append(
+                f"{_rel_display(path, repo_root)}:{lineno}: compares "
+                f"{rel_posix} byte-for-byte, but no .gitattributes `eol=lf` "
+                f"pin covers it — on a Windows checkout core.autocrlf rewrites "
+                f"it and the comparison fails there and nowhere else. Add "
+                f"`{rel_posix} text eol=lf`. See conventions.md §6")
+    return out
+
+
 def nested_deliverable_warnings(lines: List[str]) -> List[str]:
     """Status-bearing bullets nested anywhere inside a stage section.
 
@@ -1740,12 +2036,12 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                branches: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
     """Return ``(errors, warnings)``. Empty errors == pass.
 
-    The first eight checks all run before, and survive, the two early returns
-    below, but for two different reasons. Three of them —
+    The first nine checks all run before, and survive, the two early returns
+    below, but for two different reasons. Four of them —
     `absolute_path_test_warnings`, `separator_dependent_test_warnings`,
-    `cli_subprocess_test_warnings` — read `tests_dir` and never touch
-    `docs_dir`, so they are the ones that make this function worth calling in a
-    repo with no document set. The other five *are* document checks; they
+    `cli_subprocess_test_warnings`, `gitattributes_eol_pin_warnings` — read
+    `tests_dir` and never touch `docs_dir`, so they are the ones that make this
+    function worth calling in a repo with no document set. The other five *are* document checks; they
     simply find nothing to say when `docs_dir` is absent, so keeping them costs
     nothing and they still report on a `docs_dir` that exists but has no
     `progress.md`.
@@ -1767,6 +2063,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(absolute_path_test_warnings(repo_root, config))
     warnings.extend(separator_dependent_test_warnings(repo_root, config))
     warnings.extend(cli_subprocess_test_warnings(repo_root, config))
+    warnings.extend(gitattributes_eol_pin_warnings(repo_root, config))
     warnings.extend(header_blockquote_warnings(ddir))
     warnings.extend(item_spec_warnings(ddir))
     if ddir.exists() and not ddir.is_dir():
