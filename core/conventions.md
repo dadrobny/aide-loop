@@ -275,8 +275,10 @@ python .aide/scripts/aide.py scope [NNN] [--base <ref>]
 With no argument it reads the item number from the current claim branch; a
 queue branch resolves to no item and is skipped, since per-item scope is checked
 on each claim branch as it merges and a queue branch legitimately aggregates
-many items' lists. It diffs against the **merge-base** with `origin/<main>` —
-not the local ref, whose merge-base on a checkout sitting behind the work is
+many items' lists. Whether that per-item check is ever reachable from CI — as
+opposed to only from the validator, in-loop — is decided by `git.mode` alone;
+see §4. It diffs against the **merge-base** with `origin/<main>` — not the
+local ref, whose merge-base on a checkout sitting behind the work is
 itself, so every file the earlier items touched would be reported against this
 item's spec. Exit `0` in scope · `1` something changed outside it · `2` could
 not check. That third code is the "reported, never silently passed" rule with
@@ -615,6 +617,32 @@ identical across modes.
   ("open a PR"). The human opens the PR (`gh pr create` stays `ask`-gated).
 - **`local`** — no pushes at all (offline). Claim is a local branch only (no
   multi-machine signal); merge is local into `main`.
+
+**The mode also decides whether any CI job can ever see a claim branch — pick it
+for that too.** Per-item scope is checked as each claim branch merges (§1), but a
+CI job can only run that check if an `aide/NNN-` branch becomes a PR, and only
+one mode produces one:
+
+| `git.mode` | Claim branch reaches a PR | Per-item scope in CI |
+|---|---|---|
+| `auto-merge` | no — merged to the base and deleted in-loop | **unreachable** |
+| `pr` | yes — head `aide/NNN-…`, base the item's recorded base | **works** |
+| `local` | no — nothing is pushed | **unreachable** |
+
+Under `auto-merge` the gate is enforced **only** by the validator running
+`aide scope` in-loop: same machine, same platform, same checkout that built the
+item — the §7 blind spot exactly. The trade is real in both directions.
+`auto-merge` buys unattended throughput and forfeits the independent,
+second-platform scope signal; `pr` buys the signal back and costs one human PR
+open per item. Choose deliberately rather than inheriting the default, because
+**a CI scope job wired under `auto-merge` is green forever while checking
+nothing** — it resolves no item number from a branch named anything other than
+`aide/NNN-`, and correctly skips.
+
+The branch *shape* is an independent axis and does not decide this: under the
+stacked queue-branch model below, `pr` still works, since the PR's head is the
+`aide/NNN-` claim branch and its base is the pushed queue branch — the right
+diff base.
 
 **Where "`main`" above actually means "the base".** `main_branch` is the default
 and is never removed as one, but real work stacks: a queue branch carries the
