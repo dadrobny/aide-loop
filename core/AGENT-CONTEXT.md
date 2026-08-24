@@ -76,3 +76,11 @@ nothing pre-approved. Full treatment: `conventions.md` §3.
 Any role may *raise* a gate — the worst case is work pausing. No agent may
 approve or decline one: a gate exists precisely because the decision is not
 derivable from the work. Full treatment: `conventions.md` §1 → Human gates.
+
+## Another repository's instructions bind before you edit it
+
+A runtime loads instruction files for the working directory's repo only. A
+sibling repo declared in `.aide/loop/loop.local.toml` — the framework clone
+included — gets nothing, and nothing announces the gap. Read that repo's own
+instruction file before acting inside it; where two repos disagree about a file,
+the repo that owns the file wins. Full treatment: `conventions.md` §8.

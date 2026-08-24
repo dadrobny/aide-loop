@@ -7,7 +7,8 @@ into a target repo:
     python install.py --adapter claude --into <target-repo>
 
   1. copy  core/                              -> <target>/.aide/
-  2. copy  adapters/<adapter>/{agents,skills,commands,hooks,scripts,settings.json}
+  2. copy  adapters/<adapter>/{agents,skills,commands,hooks,scripts,settings.json,
+           default-context.json}
                                               -> <target>/.claude/
            settings.json reconciliation depends on whether the project has
            adopted an overlay (see `install_settings`):
@@ -1018,6 +1019,16 @@ def run(args: argparse.Namespace) -> int:
         src = adapter_dir / name
         if src.is_dir():
             copy_tree(src, claude_dir / name, log)
+
+    # 2b. The adapter's §7 declaration travels with the adapter. It is read here
+    #     at install time from the source tree, but the §8 sibling-instruction
+    #     hook needs the same answer at RUNTIME, from the installed .claude/ —
+    #     and a hook that cannot find it would fall back to a second hard-coded
+    #     copy of the filename, which is exactly the drift the declaration exists
+    #     to prevent.
+    declaration = adapter_dir / ADAPTER_DEFAULT_CONTEXT
+    if declaration.is_file():
+        copy_file(declaration, claude_dir / ADAPTER_DEFAULT_CONTEXT, log)
 
     # 3. project-owned aide.toml scaffold — fresh install only, and BEFORE settings
     #    so the write-scope globs can be templated from its source_dir/tests_dir.

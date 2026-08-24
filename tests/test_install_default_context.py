@@ -368,3 +368,52 @@ def test_a_missing_install_still_outranks_drift(tmp_path: Path, capsys):
     target = _consumer(tmp_path)
     assert install.main(["--into", str(target), "--check"]) == 2
     assert "no install found" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# the declaration travels with the adapter (ADAPTER-SPEC §8)
+# --------------------------------------------------------------------------- #
+def test_the_declaration_is_installed_alongside_the_adapter(tmp_path: Path):
+    """§7 reads the declaration here, at install time, from the source tree. The
+    §8 sibling-instruction hook needs the same answer at RUNTIME, from the
+    installed `.claude/` — so the file has to travel with the adapter it
+    describes, or the hook falls back to a second hard-coded copy of the
+    filename and the two can drift apart in silence."""
+    target = _consumer(tmp_path)
+    assert _install(target) == 0
+    installed = target / ".claude" / install.ADAPTER_DEFAULT_CONTEXT
+    assert installed.is_file()
+    assert json.loads(installed.read_text(encoding="utf-8")) == json.loads(
+        (CLAUDE_ADAPTER / install.ADAPTER_DEFAULT_CONTEXT).read_text(encoding="utf-8")
+    )
+
+
+def test_the_installed_hook_reads_the_installed_declaration(tmp_path: Path):
+    """The whole point of copying it: load the hook from the CONSUMER's
+    `.claude/hooks/` and confirm it resolves the declared filename from beside
+    itself, not from a fallback that happens to agree today."""
+    import importlib.util
+
+    target = _consumer(tmp_path)
+    assert _install(target) == 0
+
+    module_path = target / ".claude" / "hooks" / "sibling_instructions.py"
+    spec = importlib.util.spec_from_file_location("installed_sibling_hook", module_path)
+    hook = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hook)
+
+    # Rewrite the installed declaration to something the fallback would never
+    # produce; the hook must follow it.
+    (target / ".claude" / install.ADAPTER_DEFAULT_CONTEXT).write_text(
+        json.dumps({"file": ".github/AGENTS.md", "import": "@{path}"}), encoding="utf-8"
+    )
+    assert hook._instruction_filename() == ".github/AGENTS.md"
+
+
+def test_an_update_refreshes_the_installed_declaration(tmp_path: Path):
+    target = _consumer(tmp_path)
+    assert _install(target) == 0
+    installed = target / ".claude" / install.ADAPTER_DEFAULT_CONTEXT
+    installed.write_text('{"file": "STALE.md", "import": "@{path}"}', encoding="utf-8")
+    assert _install(target, "--update") == 0
+    assert json.loads(installed.read_text(encoding="utf-8"))["file"] == "CLAUDE.md"
