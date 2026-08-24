@@ -358,6 +358,24 @@ ref is optional for roles outside an item. `aide check` shape-checks entries
 (warning, never error — capture must stay cheap). Template:
 `.aide/templates/insights.md` (copy verbatim).
 
+**Capture is a plain append; everything after it has a verb.** Reading and
+triaging the file by hand is what made triage expensive enough to defer:
+
+```
+python .aide/scripts/aide.py insights list [--open] [--type T] [--trail]
+python .aide/scripts/aide.py insights tick N --pointer "<where it landed>"
+python .aide/scripts/aide.py insights archive --before YYYY-MM-DD [--yes]
+```
+
+`list` numbers entries by position and prints the backlog without the closed
+history around it; `tick` performs the one in-place edit below, or appends a
+dated trail line when the entry is already ticked; `archive` moves **closed**
+entries older than a date into `insights/archive-YYYY-QN.md`, each moved entry
+and its trail carried across line for line, and says so — an archive renumbers
+what remains, so re-run `list` after one.
+Archived entries are frozen and no longer shape-checked, since the immutability
+rule leaves no way to act on a warning about one.
+
 **The claim is immutable; its status is not.** The captured line is never
 reworded, reordered, or deleted — that is what protects provenance, and it is
 load-bearing precisely when an entry turns out to be *wrong*: the wrongness is

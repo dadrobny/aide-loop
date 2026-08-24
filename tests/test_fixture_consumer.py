@@ -104,6 +104,18 @@ A greeting function.
 """
 
 
+INSIGHTS = """\
+# Insight Inbox
+
+_Entries below, newest last._
+
+- [x] framework — the inbox has no verb *(item 001, 2026-01-09)* → aide-loop #52
+  - **2026-01-10** → accepted into wave 3
+- [ ] defect — greet() does not strip whitespace *(item 001, 2026-08-20)*
+- [ ] gap — nothing checks the farewell *(2026-08-21)*
+"""
+
+
 def _git(args, cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], cwd=str(cwd), check=True,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -141,6 +153,7 @@ def prototype(tmp_path_factory) -> Path:
     (ddir / "progress.md").write_text(PROGRESS, encoding="utf-8")
     (ddir / "queue" / "queue-001.md").write_text(QUEUE, encoding="utf-8")
     (ddir / "items" / "001-the-greeter.md").write_text(SPEC_001, encoding="utf-8")
+    (ddir / "insights.md").write_text(INSIGHTS, encoding="utf-8")
     (target / "src").mkdir()
     (target / "tests").mkdir()
 
@@ -469,3 +482,77 @@ def test_status_reports_a_finished_queue_as_done(aide, consumer: Path, capsys):
     capsys.readouterr()
     assert aide.main(["--repo", str(consumer), "status"]) == 0
     assert "queue-001.md: done" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
+# insights — the inbox verbs, against the installed engine
+# --------------------------------------------------------------------------- #
+def test_insights_list_numbers_the_whole_inbox(aide, consumer: Path, capsys):
+    assert aide.main(["--repo", str(consumer), "insights", "list"]) == 0
+    out = capsys.readouterr().out
+    assert "3 entries, 2 open" in out
+    assert "1 defect, 1 gap" in out
+
+
+def test_insights_list_open_omits_the_closed_history(aide, consumer: Path, capsys):
+    assert aide.main(["--repo", str(consumer), "insights", "list", "--open"]) == 0
+    out = capsys.readouterr().out
+    assert "the inbox has no verb" not in out
+    assert "greet() does not strip whitespace" in out
+
+
+def test_insights_tick_edits_and_commits_in_the_consumer(aide, consumer: Path):
+    assert aide.main(["--repo", str(consumer), "insights", "tick", "2",
+                      "--pointer", "item 003", "--date", "2026-08-24"]) == 0
+    text = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert "- [x] defect — greet() does not strip whitespace" in text
+    assert text.rstrip().endswith("*(2026-08-21)*")  # the untouched entry below it
+    assert "→ item 003" in text
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
+def test_insights_tick_on_a_closed_entry_appends_to_its_trail(aide, consumer: Path):
+    assert aide.main(["--repo", str(consumer), "insights", "tick", "1",
+                      "--pointer", "shipped in 1.17.0", "--date", "2026-08-24",
+                      "--no-commit"]) == 0
+    lines = (consumer / "docs" / "aide" / "insights.md").read_text(
+        encoding="utf-8").splitlines()
+    assert lines[4] == INSIGHTS.splitlines()[4]  # the claim, unaltered
+    assert lines[6] == "  - **2026-08-24** → shipped in 1.17.0"
+
+
+def test_insights_archive_is_a_dry_run_until_yes(aide, consumer: Path, capsys):
+    inbox = consumer / "docs" / "aide" / "insights.md"
+    before = inbox.read_text(encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "insights", "archive",
+                      "--before", "2026-06-01"]) == 0
+    assert "dry run" in capsys.readouterr().out
+    assert inbox.read_text(encoding="utf-8") == before
+    assert not (consumer / "docs" / "aide" / "insights").exists()
+
+
+def test_insights_archive_yes_moves_only_the_closed_entry(aide, consumer: Path):
+    assert aide.main(["--repo", str(consumer), "insights", "archive",
+                      "--before", "2026-06-01", "--yes"]) == 0
+    archive = consumer / "docs" / "aide" / "insights" / "archive-2026-Q1.md"
+    assert "the inbox has no verb" in archive.read_text(encoding="utf-8")
+    live = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert "the inbox has no verb" not in live
+    assert "greet() does not strip whitespace" in live
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
+def test_check_stays_clean_after_an_archive(aide, consumer: Path):
+    """An archived claim is frozen — the gate must not start warning about it."""
+    assert aide.main(["--repo", str(consumer), "insights", "archive",
+                      "--before", "2026-06-01", "--yes"]) == 0
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+
+def test_scope_authorises_the_archive_the_verb_just_wrote(aide, consumer: Path):
+    """`insights archive` is loop bookkeeping, so item 001 is not out of scope."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "insights", "archive",
+                      "--before", "2026-06-01", "--yes"]) == 0
+    assert aide.main(["--repo", str(consumer), "scope", "--base", "main"]) == 0
