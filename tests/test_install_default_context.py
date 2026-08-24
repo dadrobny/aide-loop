@@ -80,6 +80,72 @@ def test_a_malformed_declaration_degrades_to_nothing(tmp_path: Path):
         assert install.default_context_declaration(tmp_path) is None, body
 
 
+def _fake_adapter(tmp_path: Path, file: str, syntax: str = "@{path}") -> Path:
+    """An adapter declaring *file* — for the shapes this repo does not ship."""
+    adapter = tmp_path / "adapter"
+    adapter.mkdir(exist_ok=True)
+    (adapter / install.ADAPTER_DEFAULT_CONTEXT).write_text(
+        json.dumps({"file": file, "import": syntax}), encoding="utf-8")
+    return adapter
+
+
+def test_a_declared_path_that_escapes_the_repo_is_refused(tmp_path: Path):
+    """§7's path is joined onto someone else's repo and the installer creates
+    parent directories for it, so a path that is absolute or climbs out would
+    have it writing where the consumer never asked. Degrades like any other
+    malformed field rather than doing it."""
+    for bad in ("/etc/instructions.md", "../outside.md", "a/../../outside.md",
+                r"C:\Windows\instructions.md", "//host/share/x.md"):
+        adapter = _fake_adapter(tmp_path, bad)
+        assert install.default_context_declaration(adapter) is None, bad
+
+
+def test_a_nested_declaration_is_allowed(tmp_path: Path):
+    adapter = _fake_adapter(tmp_path, ".github/copilot-instructions.md")
+    assert install.default_context_declaration(adapter) == (
+        ".github/copilot-instructions.md", IMPORT_LINE)
+
+
+def test_a_nested_declaration_creates_its_parent_directory(tmp_path: Path):
+    """The directory a runtime keeps its instructions in need not exist yet."""
+    target = _consumer(tmp_path)
+    adapter = _fake_adapter(tmp_path, ".github/copilot-instructions.md")
+
+    install.install_default_context(target, adapter, [])
+    assert _import_lines(target / ".github" / "copilot-instructions.md") == 1
+
+
+def test_a_nested_declaration_appends_to_an_existing_file(tmp_path: Path):
+    target = _consumer(tmp_path)
+    nested = target / ".github" / "copilot-instructions.md"
+    nested.parent.mkdir(parents=True)
+    nested.write_text("# Theirs\n", encoding="utf-8")
+    adapter = _fake_adapter(tmp_path, ".github/copilot-instructions.md")
+
+    install.install_default_context(target, adapter, [])
+    body = nested.read_text(encoding="utf-8")
+    assert body.startswith("# Theirs\n")
+    assert _import_lines(nested) == 1
+
+
+def test_drift_names_a_nested_file_by_its_whole_path(tmp_path: Path):
+    """A basename leaves a nested declaration ambiguous about which file to
+    repair — there may well be more than one `copilot-instructions.md`."""
+    target = _consumer(tmp_path)
+    adapter = _fake_adapter(tmp_path, ".github/copilot-instructions.md")
+
+    drift = install.default_context_drift(target, adapter)
+    assert ".github/copilot-instructions.md" in drift
+    assert "is missing" in drift
+
+    install.install_default_context(target, adapter, [])
+    assert install.default_context_drift(target, adapter) is None
+
+
+def test_an_adapter_declaring_nothing_reports_no_drift(tmp_path: Path):
+    assert install.default_context_drift(_consumer(tmp_path), tmp_path / "none") is None
+
+
 # --------------------------------------------------------------------------- #
 # what a fresh install produces
 # --------------------------------------------------------------------------- #

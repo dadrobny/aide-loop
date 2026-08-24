@@ -169,10 +169,13 @@ declares two things, in `default-context.json` at the adapter root:
 ```
 
 - **`file`** — the instruction file the runtime loads by default, relative to
-  the repo root. Runtimes differ here and the set moves, so pinning it is the
-  adapter's job. Whether a runtime-neutral name (`AGENTS.md`) beats a
-  provider-specific one is likewise a per-adapter decision, not an engine
-  default.
+  the repo root. It may be nested (`.github/…`) and the installer creates the
+  directory, but it must stay *inside* the repo: an absolute or `..`-climbing
+  path is refused, since the installer would otherwise create directories and
+  write files in a repo nobody named. Runtimes differ in this filename and the
+  set moves, so pinning it is the adapter's job. Whether a runtime-neutral name
+  (`AGENTS.md`) beats a provider-specific one is likewise a per-adapter
+  decision, not an engine default.
 - **`import`** — the runtime's syntax for inlining another file, with `{path}`
   standing for the imported file. The Claude adapter declares `@{path}`, so the
   installed line is `@.aide/AGENT-CONTEXT.md`.
@@ -182,9 +185,9 @@ Given the declaration, `install.py`:
 - ensures the rendered import line is present in the declared file, appending it
   and nothing else when it is missing (idempotent — the project keeps full
   control of everything it wrote);
-- creates the file containing just that line when it does not exist, since a new
-  file cannot clobber anything and a silently absent channel is the failure mode
-  worth avoiding;
+- creates the file — and any parent directory it names — containing just that
+  line when it does not exist, since a new file cannot clobber anything and a
+  silently absent channel is the failure mode worth avoiding;
 - reports a missing import line under `--check` as drift, the same way it
   reports a stale `VERSION`.
 

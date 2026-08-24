@@ -50,7 +50,7 @@ import difflib
 import json
 import shutil
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import List, Optional, Tuple
 
 FRAMEWORK_ROOT = Path(__file__).resolve().parent
@@ -78,9 +78,9 @@ AGENT_CONTEXT_REL = ".aide/AGENT-CONTEXT.md"
 INSTRUCTION_FILE_TEMPLATE = """\
 # {name}
 
-Project instructions — yours to write. The only line the AIDE installer
-maintains is the `{import_line}` import at the top of this file;
-everything else here is untouched by an update.
+Project instructions — yours to write. The one line the AIDE installer
+maintains is the `{import_line}` import; everything else in this
+file is yours and is never touched by an update.
 """
 
 # Encoding for reading files that live in the CONSUMER repo (settings.json, the
@@ -699,6 +699,13 @@ def default_context_declaration(adapter_dir: Path) -> Optional[Tuple[str, str]]:
         return None
     if not name or "{path}" not in syntax:
         return None
+    # §7 says the declared file is relative to the repo root, so it may be
+    # nested (`.github/…`) — but it is joined onto someone else's repo, and an
+    # absolute or climbing path would have the installer create directories and
+    # write files outside the target. Degrade like any other malformed field.
+    posix = PurePosixPath(name.replace("\\", "/"))
+    if posix.is_absolute() or PureWindowsPath(name).is_absolute() or ".." in posix.parts:
+        return None
     return name, syntax.replace("{path}", AGENT_CONTEXT_REL)
 
 
@@ -722,6 +729,24 @@ def default_context_state(target: Path, adapter_dir: Path) -> Tuple[Optional[Pat
     return path, any(ln.strip() == line for ln in existing.splitlines())
 
 
+def default_context_drift(target: Path, adapter_dir: Path) -> Optional[str]:
+    """``--check``'s description of a missing import, or None when linked.
+
+    A file that is gone and a file that lost the line are different repairs, so
+    they read differently. The path is repo-relative rather than a basename: §7
+    permits a nested declaration (`.github/…`), which a basename leaves
+    ambiguous about *which* file to fix.
+    """
+    ctx_path, linked = default_context_state(target, adapter_dir)
+    if linked:
+        return None
+    rel = ctx_path.relative_to(target).as_posix()
+    lost = (f"does not import {AGENT_CONTEXT_REL}" if ctx_path.is_file()
+            else f"is missing, so nothing imports {AGENT_CONTEXT_REL}")
+    return (f"{rel} {lost} (ADAPTER-SPEC §7) — the framework's default-context "
+            f"rules never reach an interactive session in this repo")
+
+
 def install_default_context(target: Path, adapter_dir: Path, log: List[str]) -> None:
     """Ensure the consumer's instruction file imports ``.aide/AGENT-CONTEXT.md``.
 
@@ -738,8 +763,12 @@ def install_default_context(target: Path, adapter_dir: Path, log: List[str]) -> 
         log.append(f"  = {path} (already imports {AGENT_CONTEXT_REL})")
         return
     if not path.is_file():
-        path.write_text(line + "\n\n" + INSTRUCTION_FILE_TEMPLATE.format(name=target.name, import_line=line),
-                        encoding="utf-8")
+        # A declared path may be nested, and the directory need not exist yet.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            line + "\n\n" + INSTRUCTION_FILE_TEMPLATE.format(name=target.name,
+                                                              import_line=line),
+            encoding="utf-8")
         log.append(f"  + {path} (created; imports {AGENT_CONTEXT_REL})")
         return
     existing = path.read_text(encoding=CONSUMER_ENCODING)
@@ -786,13 +815,7 @@ def run(args: argparse.Namespace) -> int:
     log: List[str] = []
 
     if args.check:
-        ctx_path, linked = default_context_state(target, adapter_dir)
-        drift = None if linked else (
-            f"{ctx_path.name} "
-            + (f"does not import {AGENT_CONTEXT_REL}" if ctx_path.is_file()
-               else f"is missing, so nothing imports {AGENT_CONTEXT_REL}")
-            + " (ADAPTER-SPEC §7) — the framework's default-context rules never "
-              "reach an interactive session in this repo")
+        drift = default_context_drift(target, adapter_dir)
         return report_version(version, aide_dir / "VERSION", target, drift)
 
     mode = "update" if args.update else "install"
