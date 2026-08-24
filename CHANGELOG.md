@@ -71,6 +71,23 @@ keys, and the adapter's agents/skills/commands.
   no verb changes behaviour, and `aide scope` short-circuiting on a queue branch
   remains correct.
 
+### Fixed
+
+- **`aide scope`'s documented base ref had lagged its own fix.** §1 said the verb
+  "diffs against the merge-base with `origin/<main>`", and `--base`'s `--help`
+  said the default was `origin/<main_branch>` falling back to the local ref. Both
+  described behaviour that 1.8.0 deliberately replaced: the base resolves
+  `--base` > the branch's **recorded** base > `main_branch`, and only the two
+  *derived* answers prefer their `origin/` counterpart (an explicit `--base` is
+  used verbatim). The stale wording was not merely imprecise — it was wrong in
+  exactly the case the resolution order exists to get right, since an item
+  claimed from a queue branch has diverged from *that*, not from `main`, and a
+  reader who believed the prose would expect every sibling item already merged
+  into the queue to be reported against this item's spec. §1 now states the
+  resolution order, the `origin/` preference and the stacked-work case, and the
+  `--help` string matches. Documentation and help text only; no behaviour
+  changes. Caught by Copilot review on the PR for the two items above.
+
 ## [1.18.0] — 2026-08-24
 
 ### Added

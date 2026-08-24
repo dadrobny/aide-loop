@@ -1057,10 +1057,11 @@ def run(args: argparse.Namespace) -> int:
 
     print("\n".join(log))
     print(f"\nDone. Installed engine version recorded at {aide_dir / 'VERSION'}.")
-    # The engine's own suite ships with every install and is collected by no
-    # consumer's pytest config, so the only place the answer can reach the
-    # reader is here — on update above all, which is when a shipped test can
-    # newly go red. See core/README.md, "Running the engine's own suite".
+    # The engine's own suite ships with every install and no default `pytest`
+    # run collects it (.aide/ is a dot-directory; norecursedirs skips `.*`),
+    # unless the consumer deliberately opts it in. So the only place the answer
+    # reaches the reader is here — on update above all, which is when a shipped
+    # test can newly go red. See core/README.md, "Running the engine's own suite".
     print("The engine ships its own suite at .aide/scripts/tests/ — no bare "
           "`pytest` collects it.")
     print("Verify this engine where it landed: python -m pytest "

@@ -277,11 +277,16 @@ queue branch resolves to no item and is skipped, since per-item scope is checked
 on each claim branch as it merges and a queue branch legitimately aggregates
 many items' lists. Whether that per-item check is ever reachable from CI — as
 opposed to only from the validator, in-loop — is decided by `git.mode` alone;
-see §4. It diffs against the **merge-base** with `origin/<main>` — not the
-local ref, whose merge-base on a checkout sitting behind the work is
-itself, so every file the earlier items touched would be reported against this
-item's spec. Exit `0` in scope · `1` something changed outside it · `2` could
-not check. That third code is the "reported, never silently passed" rule with
+see §4. It diffs against the **merge-base with the item's base** — `--base` if
+given, else the branch's recorded base, else `main_branch`, resolved exactly as
+§4 describes. The two *derived* answers prefer the `origin/` counterpart over
+the local ref, whose merge-base on a checkout sitting behind the work is itself,
+so every file the earlier items touched would be reported against this item's
+spec. On stacked work the base is the **queue branch**, not `main`: an item
+claimed from one has diverged from that, and diffing against `main` would report
+every sibling item already merged into the queue.
+
+Exit `0` in scope · `1` something changed outside it · `2` could not check. That third code is the "reported, never silently passed" rule with
 teeth: a spec with no section cannot be read as an unconstrained one.
 
 Three paths are authorised for every item without being listed — `progress.md`
