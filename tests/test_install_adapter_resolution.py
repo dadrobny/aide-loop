@@ -154,6 +154,17 @@ def test_the_engine_wins_over_a_decoy_aide_on_the_path_and_in_sys_modules(
         install._ENGINE_LOAD_CONFIG = saved_cache
 
 
+def test_a_missing_engine_file_falls_back_rather_than_crashing(tmp_path: Path,
+                                                               monkeypatch):
+    """The readers fall back on any exception; the loader must raise a *named*
+    one rather than an AttributeError from an unusable spec."""
+    monkeypatch.setattr(install, "FRAMEWORK_ROOT", tmp_path / "nowhere")
+    monkeypatch.setattr(install, "_ENGINE_LOAD_CONFIG", None)
+    assert install.resolve_adapter(_target(tmp_path, "copilot"),
+                                   None) == (install.DEFAULT_ADAPTER, None)
+    assert install._project_scope(tmp_path) == ("src", "tests")
+
+
 def test_the_engine_handle_is_not_published_under_a_guessable_name(tmp_path: Path):
     """Loading by path and then registering the module in `sys.modules` would
     reintroduce the collision from the other side."""

@@ -593,6 +593,12 @@ def _engine_load_config():
     if _ENGINE_LOAD_CONFIG is None:
         path = FRAMEWORK_ROOT / "core" / "scripts" / "aide.py"
         spec = importlib.util.spec_from_file_location("_aide_engine", path)
+        if spec is None or spec.loader is None:
+            # Both callers fall back on any exception, so this would otherwise
+            # surface as an AttributeError two lines down and be swallowed as
+            # "engine unavailable". Naming the file that could not be loaded is
+            # the difference between a debuggable fallback and a silent one.
+            raise ImportError(f"cannot load the engine from {path}")
         module = importlib.util.module_from_spec(spec)
         # Not registered in sys.modules: this is install.py's private handle on
         # the engine, and publishing it under a guessable name is the very
