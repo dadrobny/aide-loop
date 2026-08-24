@@ -18,6 +18,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 FRAMEWORK_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FRAMEWORK_ROOT))
 import install  # noqa: E402  (path shim above)
@@ -28,12 +30,16 @@ IMPORT_LINE = "@.aide/AGENT-CONTEXT.md"
 def _target(tmp_path: Path, adapter: str | None = None, *, table: bool = True) -> Path:
     """A consumer directory, optionally with an aide.toml recording *adapter*."""
     target = tmp_path / "consumer"
-    target.mkdir()
+    target.mkdir(parents=True)
     body = '[project]\nname = "Demo"\n'
     if table:
         body += "\n[aide]\nversion = \"1.0.0\"\n"
         if adapter is not None:
-            body += f'adapter = "{adapter}"\n'
+            # A backslash is an escape inside a TOML basic string, so a value
+            # meant to DECODE to `a\b` has to be written doubled — otherwise
+            # the file is malformed and the fallback, not the guard, is what
+            # the test would be measuring.
+            body += 'adapter = "%s"\n' % adapter.replace("\\", "\\\\")
     (target / "aide.toml").write_text(body, encoding="utf-8")
     return target
 
@@ -121,6 +127,44 @@ def test_an_entry_already_on_the_path_is_left_there(tmp_path: Path):
         assert sys.path.count(entry) == expected
     finally:
         sys.path.remove(entry)
+
+
+# --------------------------------------------------------------------------- #
+# an adapter name is a directory name, from either source
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("bad", ["..", "../core", "a/b", "a\\b", "C:x", ".", "/etc"])
+def test_a_recorded_value_that_is_a_path_is_refused(tmp_path: Path, bad: str):
+    """The adapter is joined onto FRAMEWORK_ROOT, and since it became readable
+    from a project-owned aide.toml it no longer arrives only from a typed flag.
+    `../core` would resolve outside `adapters/` and have --update copy from an
+    unintended framework directory."""
+    adapter, err = install.resolve_adapter(_target(tmp_path, bad), None)
+    assert adapter is None
+    assert err and "not an adapter name" in err
+    assert "aide.toml" in err  # the reader has to be told which source to fix
+
+
+@pytest.mark.parametrize("bad", ["..", "../core", "a/b"])
+def test_a_flag_that_is_a_path_is_refused_too(tmp_path: Path, bad: str):
+    adapter, err = install.resolve_adapter(_target(tmp_path, None, table=False), bad)
+    assert adapter is None
+    assert err and "--adapter" in err
+
+
+def test_a_legitimate_name_still_resolves(tmp_path: Path):
+    """The guard must not cost an adapter a normal name."""
+    for name in ("claude", "copilot", "some-runtime_2.0"):
+        assert install.resolve_adapter(_target(tmp_path / name, name), None) == (name, None)
+    assert install.resolve_adapter(_target(tmp_path / "f", None, table=False),
+                                   "copilot") == ("copilot", None)
+
+
+def test_the_traversal_never_reaches_the_filesystem(tmp_path: Path, capsys):
+    """End to end: the refusal is exit 2 before anything is copied."""
+    target = _target(tmp_path, "../core")
+    assert install.main(["--into", str(target), "--update"]) == 2
+    assert "not an adapter name" in capsys.readouterr().err
+    assert not (target / ".aide").exists()
 
 
 # --------------------------------------------------------------------------- #

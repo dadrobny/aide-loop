@@ -78,6 +78,16 @@ keys, and the adapter's agents/skills/commands.
   share a repair: no `--update` deletes a project-owned file, so that state
   exits non-zero without prescribing one.
 
+- **An adapter name is validated as a directory name.** The adapter is joined
+  onto `FRAMEWORK_ROOT / "adapters"`, and reading it back from `aide.toml` means
+  it no longer arrives only from a typed flag — so a recorded `../core` would
+  resolve outside `adapters/` and have `--update` copy from an unintended
+  framework directory. Both sources are now checked against a whitelist
+  (`ADAPTER_NAME_RE`) before use, which covers `..`, `/`, `\` and a Windows
+  drive-relative `C:x` as one rule on every platform, and the refusal names
+  which source to fix. Same reasoning as ADAPTER-SPEC §7's existing check on an
+  adapter's declared instruction file.
+
 - **`install.py`'s config readers no longer leak `sys.path` entries.** Both
   `_project_scope` (pre-existing) and the new `_recorded_adapter` import the
   engine's `load_config` so the installer and the engine interpret one

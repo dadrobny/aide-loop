@@ -54,6 +54,7 @@ import contextlib
 import copy
 import difflib
 import json
+import re
 import shutil
 import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -77,6 +78,16 @@ ADAPTER_DEFAULT_CONTEXT = "default-context.json"
 # defaults to None so a defaulted flag is distinguishable from a typed one: a
 # defaulted flag must never be able to contradict what the target recorded.
 DEFAULT_ADAPTER = "claude"
+
+# An adapter name is ONE directory under `adapters/`, never a path. It is joined
+# onto FRAMEWORK_ROOT, and since the adapter became readable from a
+# project-owned aide.toml it no longer arrives only from a typed flag — so
+# `../core` would resolve outside `adapters/` and have `--update` copy from an
+# unintended framework directory. A whitelist rather than a blacklist of
+# separators: `..`, `/`, `\` and a Windows drive-relative `C:x` are all one
+# rule this way, on every platform. Same reasoning as ADAPTER-SPEC §7's check on
+# an adapter's declared instruction file.
+ADAPTER_NAME_RE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
 
 # The engine page that has to be in context before anything points at
 # conventions.md — installed as part of core/, linked from the consumer's
@@ -633,6 +644,16 @@ def resolve_adapter(target: Path, requested: Optional[str]) -> Tuple[Optional[st
     why `--adapter` defaults to None.
     """
     recorded = _recorded_adapter(target)
+    for value, where in ((recorded, f"[aide] adapter in {(target / 'aide.toml').as_posix()}"),
+                         (requested, "--adapter")):
+        # `..` is the reason this exists, but the refusal is stated as the rule
+        # rather than as the attack: an adapter is a directory name, and a value
+        # that is not one cannot be resolved at all.
+        if value is not None and not ADAPTER_NAME_RE.match(value):
+            return None, (
+                f"{where} is {value!r}, which is not an adapter name. An adapter "
+                f"is a single directory under adapters/ — letters, digits, "
+                f"'.', '_' and '-' only, no path separators and no '..'.")
     if recorded and requested and requested != recorded:
         return None, (
             f"--adapter {requested} contradicts the adapter recorded in "
