@@ -1519,7 +1519,14 @@ def stray_icon_warnings(ddir: Path) -> List[str]:
 
 def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                branches: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
-    """Return ``(errors, warnings)``. Empty errors == pass."""
+    """Return ``(errors, warnings)``. Empty errors == pass.
+
+    The first eight checks are *document-independent* — three of them lint
+    `tests_dir` rather than `docs_dir` — so they run before, and survive, the
+    two early returns below. A repo with no `docs_dir` at all gets those and
+    passes; only a repo that has a document set but has lost its `progress.md`
+    is an error.
+    """
     errors: List[str] = []
     warnings: List[str] = []
     ddir = docs_dir(repo_root, config)
@@ -1533,7 +1540,18 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(cli_subprocess_test_warnings(repo_root, config))
     warnings.extend(header_blockquote_warnings(ddir))
     warnings.extend(item_spec_warnings(ddir))
+    if not ddir.is_dir():
+        # Two different situations used to produce one error. A repo with no
+        # document set at all is not a broken loop repo — it is a repo that
+        # adopted the conventions and the CLI without the roadmap documents,
+        # and the document checks simply do not apply to it. Everything above
+        # has already run and is kept: three of those lints read `tests_dir`,
+        # not `docs_dir`, and conflating the two cases made them unreachable
+        # for any such repo — this framework's own repository included, which
+        # is where they were written (issue #57).
+        return errors, warnings
     if not progress_path.is_file():
+        # `docs_dir` exists but its central document does not: a real error.
         return [f"missing {progress_path}"], warnings
     # One read, reused: two reads can disagree if the file changes between them.
     text = progress_path.read_text(encoding=_ENCODING)
@@ -1957,7 +1975,14 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
+    ddir = docs_dir(repo_root, config)
     errors, warnings = run_checks(repo_root, config)
+
+    if not ddir.is_dir():
+        # A notice, not a warning: nothing is wrong, but the reader must not
+        # read "OK" as "the documents were checked and are fine".
+        print(f"notice: no {_rel_display(ddir, repo_root)}/ — this repo has no "
+              f"AIDE document set, so only the repo-agnostic checks ran")
 
     if queue is not None:
         findings, unspecced = queue_spec_findings(repo_root, config, queue)

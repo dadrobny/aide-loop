@@ -51,6 +51,7 @@ def test_engine_readme_ships_and_its_links_resolve(tmp_path: Path):
             continue  # template links point at not-yet-generated project docs
         for link in _relative_link_targets(md.read_text(encoding="utf-8")):
             resolved = (md.parent / link).resolve()
-            assert resolved.exists(), f"{md.relative_to(target)} links to missing '{link}'"
+            assert resolved.exists(), (
+                f"{md.relative_to(target).as_posix()} links to missing '{link}'")
             checked += 1
     assert checked > 0, "expected at least one relative markdown link to verify"

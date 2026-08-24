@@ -17,6 +17,36 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.16.0] — 2026-08-24
+
+### Fixed
+
+- **`aide check` no longer needs the full document set to run at all.**
+  `run_checks` early-returned `missing <docs_dir>/progress.md` as a hard error,
+  which conflated two unrelated situations: a loop repo that lost its central
+  document (a real error) and a repo that never had a document set because it
+  adopted only the conventions and the CLI (nothing wrong). Because the return
+  discarded the warnings computed before it, **eight checks were unreachable for
+  the second case — three of them test-hygiene lints that read `tests_dir` and
+  have nothing to do with the loop's documents at all.**
+
+  Those three exist because four cross-platform defects reached a consumer's
+  `main` and were caught by a human reading the Actions tab rather than by any
+  gate. A repo doing installer or CLI path work on a mixed CI matrix is the
+  exact risk class they cover, and it was the class that could not run them.
+
+  The two cases are now distinguished the way #48 distinguished a not-yet-queued
+  stage from a typo'd one: **no `docs_dir` at all** runs the repo-agnostic
+  checks, prints a `notice:` naming the configured directory, and exits 0;
+  **`docs_dir` present without `progress.md`** keeps today's error verbatim. The
+  `(errors, warnings)` return shape is unchanged — the notice is presentational,
+  emitted by `cmd_check` — so nothing that parses `run_checks` is affected.
+
+  This repository was the demonstration case: it has no `docs/aide/`, so it
+  could not lint its own tests, and the one finding that surfaced the moment it
+  could — an assert message in `tests/test_installed_docs_links.py` rendering a
+  relative `Path` with the OS separator — is fixed here too.
+
 ## [1.15.0] — 2026-08-24
 
 ### Added
