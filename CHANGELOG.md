@@ -21,6 +21,33 @@ keys, and the adapter's agents/skills/commands.
 
 ### Fixed
 
+- **A fixture consumer now runs in CI.** The engine is developed at `core/` and
+  executed at `.aide/`, inside someone else's git repository, by verbs that
+  shell out to git — and none of that was under test. The only automated
+  evidence a release still worked was the framework's unit tests passing against
+  source files no consumer runs in that layout. Closed #29 records the cost:
+  four CI-only failures reached a consumer's `main`, every one caught by a human
+  reading the Actions tab rather than by a gate.
+
+  `tests/test_fixture_consumer.py` installs into a `tmp_path`, `git init`s it,
+  scaffolds the minimum living documents (one stage, one queue, two items, one
+  spec), and drives the loop end to end against the engine loaded from
+  `.aide/scripts/aide.py`: `check` clean on the scaffold and failing on a lost
+  `progress.md`; `claim` creating, switching to and recording the branch's base;
+  `scope` passing in bounds, exiting 1 out of them and 2 on an unspecced item;
+  `merge` landing the work in `local` mode and refusing to touch `main` in `pr`
+  mode; `gc` dry-running by default, deleting only landed claims and never a
+  branch outside the prefix; `status` reporting the state the test just made.
+  Also covered: `--update` leaving project-owned documents byte-identical, and
+  an overlay regenerating into `settings.json`.
+
+  Exit codes and effects, never prose. No new CI infrastructure — the matrix
+  already runs ubuntu and windows, and the job is `pytest` picking up `tests/`.
+  Extending `tests/test_installed_docs_links.py`'s existing real-install pattern
+  rather than self-hosting AIDE in this repo, which would give every engine file
+  two committed copies and make the "never hand-edit `.aide/**`" rule
+  unfollowable.
+
 - **`install.py` now reads back the adapter it recorded.** `scaffold_aide_toml`
   wrote `[aide] adapter` into a consumer's `aide.toml` and nothing ever read it:
   `run()` re-derived the adapter from `--adapter` on every invocation,
