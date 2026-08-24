@@ -78,7 +78,7 @@ The installer copies from the **local working tree**, so no push is needed to
 try a change:
 
 ```
-python install.py --adapter claude --into <consumer-repo> --update
+python install.py --into <consumer-repo> --update
 python install.py --into <consumer-repo> --check     # writes nothing, non-zero if behind
 ```
 

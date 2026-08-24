@@ -59,7 +59,7 @@ Stdlib-only, cross-OS. It:
 7. records the installed `VERSION` (`core/VERSION`) — copied in as
    `<target>/.aide/VERSION`
 
-**`python install.py --adapter claude --into <target> --update`** re-copies the
+**`python install.py --into <target> --update`** re-copies the
 engine and adapter (engine is framework-owned) but **never** touches `aide.toml` or
 `docs/aide/` (project-owned). Pin a consumer to a `VERSION` and `--update` to move it
 forward. See [`docs/quickstart.md`](docs/quickstart.md) to go from install to first

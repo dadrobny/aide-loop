@@ -21,6 +21,36 @@ keys, and the adapter's agents/skills/commands.
 
 ### Fixed
 
+- **`install.py` now reads back the adapter it recorded.** `scaffold_aide_toml`
+  wrote `[aide] adapter` into a consumer's `aide.toml` and nothing ever read it:
+  `run()` re-derived the adapter from `--adapter` on every invocation,
+  `--update` and `--check` included, where the flag defaulted to `claude`. With
+  one adapter implemented that wrong default is accidentally always right. The
+  moment `adapters/copilot/` becomes real it stops being right, and the failure
+  is not a clean error — it is a repo that quietly acquires a second provider's
+  control files and, since 1.15.0, a root `CLAUDE.md` importing
+  `AGENT-CONTEXT.md`, having never chosen Claude.
+
+  The target now decides. `resolve_adapter` reads `[aide] adapter` through the
+  engine's own config loader — the treatment `_project_scope` already gives
+  `source_dir`/`tests_dir`, so installer and engine cannot disagree about one
+  file — falling back to `--adapter`, then to `claude`, when nothing is
+  recorded. A **typed** `--adapter` contradicting the record is an error naming
+  both: switching adapters is a real intention, but not one a flag nobody typed
+  should express, which is why `--adapter` now defaults to `None` rather than
+  `"claude"`. The install log line reports the resolved adapter instead of the
+  flag — the value that was wrong in the first place. `--update` in the docs no
+  longer carries the flag at all.
+
+  `--check` also gains a second report: another adapter's declared instruction
+  file still carrying the `AGENT-CONTEXT.md` import — a superseded provider left
+  behind by a mis-flagged update or a deliberate switch. It is **reported, never
+  removed** (`docs/vision.md` principle 4 — the framework does not touch
+  project-owned files, and a root instruction file emphatically is one), and it
+  is kept separate from import drift in `report_version` because the two do not
+  share a repair: no `--update` deletes a project-owned file, so that state
+  exits non-zero without prescribing one.
+
 - **`aide check` no longer needs the full document set to run at all.**
   `run_checks` early-returned `missing <docs_dir>/progress.md` as a hard error,
   which conflated two unrelated situations: a loop repo that lost its central

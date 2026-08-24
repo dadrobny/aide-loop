@@ -34,11 +34,16 @@ into a target repo:
   6. record the installed VERSION (from core/VERSION) — in the scaffolded aide.toml
      and, authoritatively, as the copied-in <target>/.aide/VERSION
 
-    python install.py --adapter claude --into <target-repo> --update
+    python install.py --into <target-repo> --update
 
   re-copies core/ (+ the adapter control files, + usage_probe.py) so the engine
   tracks the framework, but NEVER touches <target>/aide.toml or <target>/docs/aide/
   (owned by the project). settings.json stays non-clobbering on --update too.
+
+  No --adapter: the target's aide.toml records the adapter under [aide], and an
+  update reads it back (`resolve_adapter`). Passing one that contradicts the
+  record is an error naming both, because a flag defaulting to an adapter must
+  never be able to install a second provider's files over the first's.
 
 Stdlib-only, so it runs on any OS with the Python the engine already needs.
 """
@@ -65,6 +70,12 @@ ADAPTER_SETTINGS = "settings.json"
 # then links the engine's AGENT-CONTEXT.md into it. Absent, there is no such
 # runtime concept and nothing below runs.
 ADAPTER_DEFAULT_CONTEXT = "default-context.json"
+
+# Used only when the target records no adapter and none was asked for — an
+# install predating the [aide] table, or a brand-new repo. `--adapter` itself
+# defaults to None so a defaulted flag is distinguishable from a typed one: a
+# defaulted flag must never be able to contradict what the target recorded.
+DEFAULT_ADAPTER = "claude"
 
 # The engine page that has to be in context before anything points at
 # conventions.md — installed as part of core/, linked from the consumer's
@@ -219,20 +230,27 @@ def compare_versions(installed: str, available: str) -> str:
 
 
 def report_version(available: str, installed_path: Path, target: Path,
-                   drift: Optional[str] = None) -> int:
+                   drift: Optional[str] = None,
+                   orphans: Optional[List[str]] = None) -> int:
     """``--check``: report whether the target's install is current.
 
-    Writes nothing. Exit 2 when the target has no install to compare, 1 when it
-    needs an ``--update`` — the version is behind, *or* *drift* was passed —
-    and 0 otherwise.
+    Writes nothing. Exit 2 when the target has no install to compare, 1 when
+    something needs fixing — the version is behind, *or* *drift*, *or* *orphans*
+    — and 0 otherwise.
 
-    *drift*, when given, describes installed state that is out of date for a
-    reason the version number cannot express: today, an instruction file that
-    never got the ``AGENT-CONTEXT.md`` import (ADAPTER-SPEC §7), which an
-    up-to-date and even an ahead-of-this-checkout consumer can be missing. It
-    forces the non-zero exit because the fix is the same ``--update``, and a
-    channel that is silently absent is exactly the failure the import exists to
-    prevent.
+    The two extra arguments are both installed state the version number cannot
+    express, kept apart because **they do not have the same repair**:
+
+    *drift* is an instruction file that never got the ``AGENT-CONTEXT.md``
+    import (ADAPTER-SPEC §7), which an up-to-date and even an
+    ahead-of-this-checkout consumer can be missing. The fix is the same
+    ``--update``, and a channel silently absent is the failure the import exists
+    to prevent.
+
+    *orphans* are another adapter's instruction files still carrying that
+    import — a superseded provider left behind. No ``--update`` repairs one;
+    the fix is a deletion the framework will not perform on a project-owned
+    file, so each line says so itself and this function only refuses to exit 0.
     """
     if not installed_path.is_file():
         print(f"aide {target}: no install found ({installed_path} missing) — "
@@ -243,6 +261,8 @@ def report_version(available: str, installed_path: Path, target: Path,
     state = compare_versions(installed, available)
     if drift:
         print(f"aide {target}: {drift}")
+    for orphan in orphans or ():
+        print(f"aide {target}: {orphan}")
     if state == "behind":
         print(f"aide {target}: v{installed} is BEHIND v{available} — "
               f"run install.py --into {target} --update (see CHANGELOG.md)")
@@ -257,10 +277,16 @@ def report_version(available: str, installed_path: Path, target: Path,
             # does not has to say what to do instead.
             print(f"aide {target}: add the import by hand, or --update from the "
                   f"newer framework checkout this install came from")
-            return 1
-        return 0
+        return 1 if (drift or orphans) else 0
     if drift:
         print(f"aide {target}: v{installed} — run install.py --into {target} --update")
+        return 1
+    if orphans:
+        # Deliberately not "run --update": nothing an update does removes a
+        # project-owned file, so pointing at one would send the reader in a
+        # circle. The orphan lines above carry the repair.
+        print(f"aide {target}: v{installed} — engine up to date, but the "
+              f"instruction files above need a decision")
         return 1
     print(f"aide {target}: v{installed} — up to date")
     return 0
@@ -545,6 +571,89 @@ def _project_scope(target: Path) -> Tuple[str, str]:
         return "src", "tests"
 
 
+def _recorded_adapter(target: Path) -> Optional[str]:
+    """The adapter *target*'s aide.toml records, or None.
+
+    Read through the engine's own config loader for the same reason
+    `_project_scope` does: install.py and the engine must interpret one
+    aide.toml identically. None covers both "no aide.toml" and "an install
+    predating the [aide] table" — neither is an error, and both fall back.
+    """
+    try:
+        sys.path.insert(0, str(FRAMEWORK_ROOT / "core" / "scripts"))
+        from aide import load_config  # the engine's config reader
+        value = load_config(target).get("aide", {}).get("adapter")
+    except Exception:  # a broken/unreadable aide.toml must not break the install
+        return None
+    value = str(value).strip() if value is not None else ""
+    return value or None
+
+
+def resolve_adapter(target: Path, requested: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """``(adapter, error)`` for *target* — the recorded value wins over the default.
+
+    The defect this closes: `scaffold_aide_toml` wrote `[aide] adapter` and
+    nothing ever read it back, so every `--update` and `--check` re-derived the
+    adapter from a command-line flag defaulting to `claude`. With one adapter
+    implemented the wrong default is accidentally always right; the moment a
+    second exists, an update quietly installs a second provider's files — and,
+    since #59, creates a root instruction file importing AGENT-CONTEXT.md — into
+    a repo that never chose it.
+
+    A *typed* `--adapter` that contradicts the record is an **error naming
+    both**, not a silent overwrite. Switching adapters is a real intention, but
+    it is not one a flag nobody typed should be able to express, and there is no
+    way to tell the two apart once argparse has substituted a default — which is
+    why `--adapter` defaults to None.
+    """
+    recorded = _recorded_adapter(target)
+    if recorded and requested and requested != recorded:
+        return None, (
+            f"--adapter {requested} contradicts the adapter recorded in "
+            f"{(target / 'aide.toml').as_posix()}: {recorded}. Installing "
+            f"{requested} over a {recorded} repo leaves both providers' control "
+            f"files in place. To switch deliberately, edit [aide] adapter in "
+            f"aide.toml first; to update in place, drop --adapter.")
+    return recorded or requested or DEFAULT_ADAPTER, None
+
+
+def foreign_context_drift(target: Path, adapter: str) -> List[str]:
+    """Instruction files belonging to OTHER adapters that carry our import line.
+
+    `resolve_adapter` stops this state from forming; this is what surfaces a
+    repo already in it — a mis-flagged `--update`, or a deliberate switch, that
+    left the previous provider's instruction file behind with a now-dangling
+    `AGENT-CONTEXT.md` import. Two plausible instruction files is the damaging
+    part: `--check` previously validated only the adapter it was told about, so
+    the stale one was invisible.
+
+    Reported, never removed. `docs/vision.md` principle 4 — the framework does
+    not touch a consumer's project-owned files, and a root instruction file is
+    emphatically one.
+    """
+    adapters_dir = FRAMEWORK_ROOT / "adapters"
+    if not adapters_dir.is_dir():
+        return []
+    ours, _ = default_context_state(target, adapters_dir / adapter)
+    out: List[str] = []
+    for other in sorted(adapters_dir.iterdir()):
+        if not other.is_dir() or other.name == adapter:
+            continue
+        path, linked = default_context_state(target, other)
+        # `linked` is True for an adapter declaring nothing, where path is None.
+        if path is None or not linked:
+            continue
+        if ours is not None and path == ours:
+            continue  # two adapters naming one file: it is ours, not a leftover
+        out.append(
+            f"{path.relative_to(target).as_posix()} imports {AGENT_CONTEXT_REL} "
+            f"but belongs to the '{other.name}' adapter, not the '{adapter}' one "
+            f"this repo records — a superseded provider's instruction file. "
+            f"Remove it by hand if the switch was deliberate; the framework does "
+            f"not delete project-owned files.")
+    return out
+
+
 def _effective_base(src: Path, source_dir: str, tests_dir: str) -> Tuple[dict, str]:
     """Load the framework settings.json and template its write-scope globs.
 
@@ -803,18 +912,26 @@ def append_gitignore(target: Path, log: List[str]) -> None:
 # main
 # --------------------------------------------------------------------------- #
 def run(args: argparse.Namespace) -> int:
-    adapter_dir = FRAMEWORK_ROOT / "adapters" / args.adapter
     core_dir = FRAMEWORK_ROOT / "core"
-    if not adapter_dir.is_dir():
-        print(f"error: unknown adapter '{args.adapter}' (no {adapter_dir})", file=sys.stderr)
-        return 2
     if not (core_dir / "VERSION").is_file():
         print(f"error: framework core not found at {core_dir}", file=sys.stderr)
         return 2
 
+    # The target is resolved BEFORE the adapter, because the target is what
+    # says which adapter this is: its aide.toml records the choice, and that
+    # record outranks a flag nobody typed.
     target = args.into.resolve()
     if not target.is_dir():
         print(f"error: --into target does not exist: {target}", file=sys.stderr)
+        return 2
+
+    adapter, err = resolve_adapter(target, args.adapter)
+    if err:
+        print(f"error: {err}", file=sys.stderr)
+        return 2
+    adapter_dir = FRAMEWORK_ROOT / "adapters" / adapter
+    if not adapter_dir.is_dir():
+        print(f"error: unknown adapter '{adapter}' (no {adapter_dir})", file=sys.stderr)
         return 2
 
     version = (core_dir / "VERSION").read_text(encoding="utf-8").strip()
@@ -823,11 +940,14 @@ def run(args: argparse.Namespace) -> int:
     log: List[str] = []
 
     if args.check:
-        drift = default_context_drift(target, adapter_dir)
-        return report_version(version, aide_dir / "VERSION", target, drift)
+        return report_version(version, aide_dir / "VERSION", target,
+                              default_context_drift(target, adapter_dir),
+                              foreign_context_drift(target, adapter))
 
     mode = "update" if args.update else "install"
-    print(f"AIDE {mode}: {args.adapter} v{version} -> {target}")
+    # The resolved adapter, not args.adapter — the latter is the value that was
+    # wrong in the first place, and the log line is where a person would notice.
+    print(f"AIDE {mode}: {adapter} v{version} -> {target}")
 
     # 1. engine -> .aide/
     copy_tree(core_dir, aide_dir, log)
@@ -841,7 +961,7 @@ def run(args: argparse.Namespace) -> int:
     # 3. project-owned aide.toml scaffold — fresh install only, and BEFORE settings
     #    so the write-scope globs can be templated from its source_dir/tests_dir.
     if not args.update:
-        scaffold_aide_toml(target, args.adapter, version, args, log)
+        scaffold_aide_toml(target, adapter, version, args, log)
     else:
         log.append("  = aide.toml, docs/aide/ (left untouched — project-owned)")
 
@@ -875,7 +995,11 @@ def run(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Install/update the AIDE framework into a repo.")
-    p.add_argument("--adapter", default="claude", help="adapter to install (default: claude)")
+    p.add_argument("--adapter", default=None,
+                   help=f"adapter to install. Defaults to the one the target's "
+                        f"aide.toml records under [aide], then to "
+                        f"{DEFAULT_ADAPTER}; naming one that contradicts the "
+                        f"record is an error")
     p.add_argument("--into", type=Path, required=True, help="target repo to install into")
     p.add_argument("--update", action="store_true",
                    help="re-copy engine + adapter; never touch aide.toml or docs/aide/")

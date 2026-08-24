@@ -117,7 +117,7 @@ and the folder must have been trusted once interactively.
 ## 6. Pulling framework updates
 
 ```
-python install.py --adapter claude --into /path/to/your-repo --update
+python install.py --into /path/to/your-repo --update
 ```
 
 Re-copies the engine + adapter (framework-owned), leaves `aide.toml` and
