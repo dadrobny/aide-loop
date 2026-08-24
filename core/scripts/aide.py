@@ -873,8 +873,10 @@ def iter_queue_paths(qdir: Path) -> List[Path]:
     """
     if not qdir.is_dir():
         return []
-    paths = [p for p in qdir.glob("queue-*.md") if queue_number(p) is not None]
-    return sorted(paths, key=lambda p: (queue_number(p), p.name))
+    numbered = [(n, p.name, p) for p, n in
+                ((p, queue_number(p)) for p in qdir.glob("queue-*.md"))
+                if n is not None]
+    return [p for _, _, p in sorted(numbered)]
 
 
 def queue_path(qdir: Path, number: int) -> Optional[Path]:

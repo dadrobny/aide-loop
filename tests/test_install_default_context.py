@@ -24,7 +24,18 @@ import install  # noqa: E402  (path shim above)
 
 CLAUDE_ADAPTER = FRAMEWORK_ROOT / "adapters" / "claude"
 IMPORT_LINE = "@.aide/AGENT-CONTEXT.md"
-BOM = "﻿"
+BOM = "\ufeff"  # U+FEFF, spelled out: invisible in a diff otherwise
+
+
+def _import_lines(path: Path) -> int:
+    """How many times the import line itself appears.
+
+    Not a substring count: the generated body names the path in its prose so the
+    file explains itself, and the installer matches whole lines precisely so
+    that mention cannot read as a second import.
+    """
+    body = path.read_text(encoding=install.CONSUMER_ENCODING)
+    return sum(1 for ln in body.splitlines() if ln.strip() == IMPORT_LINE)
 
 
 def _consumer(tmp_path: Path) -> Path:
@@ -89,6 +100,18 @@ def test_a_repo_with_no_instruction_file_gets_a_minimal_one(tmp_path: Path):
     assert IMPORT_LINE in body.splitlines()
 
 
+def test_the_created_file_says_which_line_the_installer_maintains(tmp_path: Path):
+    """A consumer reading the generated file has to be able to tell which line
+    an update will rewrite and which is theirs. Naming the import in the prose
+    is safe because the installer matches whole lines, so the mention cannot
+    read back as a second import."""
+    target = _consumer(tmp_path)
+    assert _install(target) == 0
+    body = (target / "CLAUDE.md").read_text(encoding="utf-8")
+    assert f"`{IMPORT_LINE}`" in body
+    assert _import_lines(target / "CLAUDE.md") == 1
+
+
 def test_agent_context_is_reachable_from_the_import_line(tmp_path: Path):
     """The link must resolve as written, from the repo root the runtime reads."""
     target = _consumer(tmp_path)
@@ -140,7 +163,7 @@ def test_linking_is_idempotent(tmp_path: Path):
     assert _install(target, "--update") == 0
     second = (target / "CLAUDE.md").read_text(encoding="utf-8")
     assert first == second
-    assert second.count(IMPORT_LINE) == 1
+    assert _import_lines(target / "CLAUDE.md") == 1
 
 
 def test_update_links_a_consumer_installed_before_the_channel_existed(tmp_path: Path):
@@ -160,8 +183,7 @@ def test_a_bom_prefixed_instruction_file_is_not_relinked(tmp_path: Path):
     (target / "CLAUDE.md").write_text(BOM + IMPORT_LINE + "\n\n# Mine\n", encoding="utf-8")
 
     assert _install(target) == 0
-    body = (target / "CLAUDE.md").read_text(encoding=install.CONSUMER_ENCODING)
-    assert body.count(IMPORT_LINE) == 1
+    assert _import_lines(target / "CLAUDE.md") == 1
 
 
 def test_a_prose_mention_is_not_an_import(tmp_path: Path):
@@ -197,17 +219,24 @@ def test_check_reports_a_missing_import_as_drift(tmp_path: Path, capsys):
     assert install.main(["--into", str(target), "--check"]) == 1
     out = capsys.readouterr().out
     assert "CLAUDE.md" in out and install.AGENT_CONTEXT_REL in out
+    assert "does not import" in out
     assert "--update" in out
 
 
 def test_check_reports_drift_when_the_instruction_file_is_gone(tmp_path: Path, capsys):
+    """A missing file and a file that lost the line are different repairs to
+    reason about, so they read differently — "does not import" is a false
+    description of a file that is not there."""
     target = _consumer(tmp_path)
     assert _install(target) == 0
     (target / "CLAUDE.md").unlink()
     capsys.readouterr()
 
     assert install.main(["--into", str(target), "--check"]) == 1
-    assert install.AGENT_CONTEXT_REL in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert install.AGENT_CONTEXT_REL in out
+    assert "is missing" in out
+    assert "does not import" not in out
 
 
 def test_check_still_writes_nothing_when_it_reports_drift(tmp_path: Path):

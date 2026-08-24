@@ -78,8 +78,9 @@ AGENT_CONTEXT_REL = ".aide/AGENT-CONTEXT.md"
 INSTRUCTION_FILE_TEMPLATE = """\
 # {name}
 
-Project instructions. Everything below is yours to write; the line above is
-maintained by the AIDE installer (see `.aide/AGENT-CONTEXT.md`).
+Project instructions — yours to write. The only line the AIDE installer
+maintains is the `{import_line}` import at the top of this file;
+everything else here is untouched by an update.
 """
 
 # Encoding for reading files that live in the CONSUMER repo (settings.json, the
@@ -219,16 +220,19 @@ def compare_versions(installed: str, available: str) -> str:
 
 def report_version(available: str, installed_path: Path, target: Path,
                    drift: Optional[str] = None) -> int:
-    """``--check``: compare the target's installed VERSION against this framework.
+    """``--check``: report whether the target's install is current.
 
-    Writes nothing. Exit 0 when current or ahead, 1 when behind (so a consumer can
-    gate on it), 2 when the target has no install to compare. *drift*, when given,
-    describes installed state that is out of date for a reason the version number
-    cannot express — today, an instruction file that never got the
-    ``AGENT-CONTEXT.md`` import (ADAPTER-SPEC §7). It is reported alongside the
-    version and forces the same non-zero exit, because the fix is the same
-    ``--update`` and a channel that is silently absent is exactly the failure the
-    import exists to prevent.
+    Writes nothing. Exit 2 when the target has no install to compare, 1 when it
+    needs an ``--update`` — the version is behind, *or* *drift* was passed —
+    and 0 otherwise.
+
+    *drift*, when given, describes installed state that is out of date for a
+    reason the version number cannot express: today, an instruction file that
+    never got the ``AGENT-CONTEXT.md`` import (ADAPTER-SPEC §7), which an
+    up-to-date and even an ahead-of-this-checkout consumer can be missing. It
+    forces the non-zero exit because the fix is the same ``--update``, and a
+    channel that is silently absent is exactly the failure the import exists to
+    prevent.
     """
     if not installed_path.is_file():
         print(f"aide {target}: no install found ({installed_path} missing) — "
@@ -734,7 +738,7 @@ def install_default_context(target: Path, adapter_dir: Path, log: List[str]) -> 
         log.append(f"  = {path} (already imports {AGENT_CONTEXT_REL})")
         return
     if not path.is_file():
-        path.write_text(line + "\n\n" + INSTRUCTION_FILE_TEMPLATE.format(name=target.name),
+        path.write_text(line + "\n\n" + INSTRUCTION_FILE_TEMPLATE.format(name=target.name, import_line=line),
                         encoding="utf-8")
         log.append(f"  + {path} (created; imports {AGENT_CONTEXT_REL})")
         return
@@ -784,9 +788,11 @@ def run(args: argparse.Namespace) -> int:
     if args.check:
         ctx_path, linked = default_context_state(target, adapter_dir)
         drift = None if linked else (
-            f"{ctx_path.name} does not import {AGENT_CONTEXT_REL} "
-            f"(ADAPTER-SPEC §7) — the framework's default-context rules never "
-            f"reach an interactive session in this repo")
+            f"{ctx_path.name} "
+            + (f"does not import {AGENT_CONTEXT_REL}" if ctx_path.is_file()
+               else f"is missing, so nothing imports {AGENT_CONTEXT_REL}")
+            + " (ADAPTER-SPEC §7) — the framework's default-context rules never "
+              "reach an interactive session in this repo")
         return report_version(version, aide_dir / "VERSION", target, drift)
 
     mode = "update" if args.update else "install"
