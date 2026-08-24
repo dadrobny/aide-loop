@@ -16,6 +16,7 @@ synthesised adapter under `tmp_path` is enough.
 from __future__ import annotations
 
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -101,11 +102,11 @@ def test_a_blank_recorded_adapter_is_treated_as_absent(tmp_path: Path):
     assert install.resolve_adapter(target, None) == (install.DEFAULT_ADAPTER, None)
 
 
-def test_reading_the_config_leaves_sys_path_exactly_as_it_found_it(tmp_path: Path):
-    """Both config readers import the engine to interpret one aide.toml the way
-    the engine does. Doing that with a bare `sys.path.insert` left one entry
-    per call at position 0, never removed — in a pytest session that is dozens,
-    silently outranking every other import path for the rest of the run."""
+def test_reading_the_config_never_touches_sys_path_at_all(tmp_path: Path):
+    """The engine is loaded by file path, so global import state stays out of
+    it. An earlier attempt prepended `sys.path` and left one entry per call —
+    in a pytest session that is dozens, silently outranking every other import
+    path for the rest of the run."""
     target = _target(tmp_path, "claude")
     before = list(sys.path)
     for _ in range(5):
@@ -114,53 +115,56 @@ def test_reading_the_config_leaves_sys_path_exactly_as_it_found_it(tmp_path: Pat
     assert sys.path == before
 
 
-def test_an_entry_already_on_the_path_is_left_there(tmp_path: Path):
-    """Restoring must undo only what this call added: removing an entry the
-    caller put there would be a different bug in the same place."""
-    entry = str(install.FRAMEWORK_ROOT / "core" / "scripts")
-    sys.path.insert(0, entry)
-    # Counted rather than pinned to 1: another test module in the same session
-    # may legitimately have the entry on the path already.
-    expected = sys.path.count(entry)
-    try:
-        install.resolve_adapter(_target(tmp_path, "claude"), None)
-        assert sys.path.count(entry) == expected
-    finally:
-        sys.path.remove(entry)
+def test_the_engine_wins_over_a_decoy_aide_on_the_path_and_in_sys_modules(
+        tmp_path: Path):
+    """The property that makes path-loading the right mechanism.
 
-
-def test_the_engine_outranks_another_aide_module_on_the_path(tmp_path: Path):
-    """No-residue and precedence are one property, not two.
-
-    Restoring `sys.path` by inserting only when the entry is *absent* leaks
-    nothing but loses the guarantee: an entry already present yet ranked below
-    some other `aide` lets that one answer the import, and install.py then
-    reads a different config loader than the engine uses. A decoy earlier on
-    the path proves the engine still wins.
+    `import aide` resolves through `sys.path` *and* `sys.modules`, and neither
+    belongs to install.py. Prepending to `sys.path` answers only the first: a
+    host process that bound some other `aide` before install.py ran wins the
+    name outright, whatever the path order, and install.py would then read a
+    different config loader than the engine uses. Both decoys are planted here;
+    the engine must still answer.
     """
-    decoy = tmp_path / "decoy"
-    decoy.mkdir()
-    (decoy / "aide.py").write_text(
+    decoy_dir = tmp_path / "decoy"
+    decoy_dir.mkdir()
+    (decoy_dir / "aide.py").write_text(
         "def load_config(target):\n"
         "    return {'aide': {'adapter': 'DECOY'}}\n", encoding="utf-8")
 
+    decoy_mod = types.ModuleType("aide")
+    decoy_mod.load_config = lambda target: {"aide": {"adapter": "DECOY"}}
+
     target = _target(tmp_path, "copilot")
-    entry = str(install.FRAMEWORK_ROOT / "core" / "scripts")
-    saved_path, saved_mod = list(sys.path), sys.modules.pop("aide", None)
-    # The arrangement that discriminates: the engine IS on the path, but ranked
-    # below the decoy. An "insert only when absent" helper skips the insert here
-    # and the decoy answers; only putting the engine at 0 gets the right loader.
-    sys.path.insert(0, str(decoy))
-    sys.path.append(entry)
+    saved_path = list(sys.path)
+    saved_mod = sys.modules.get("aide")
+    saved_cache = install._ENGINE_LOAD_CONFIG
+    sys.path.insert(0, str(decoy_dir))
+    sys.modules["aide"] = decoy_mod
+    install._ENGINE_LOAD_CONFIG = None   # force a real load, not a warm cache
     try:
         assert install.resolve_adapter(target, None) == ("copilot", None)
     finally:
         sys.path[:] = saved_path
-        # Leave the decoy nowhere: a cached wrong `aide` would follow this test
+        # Leave no decoy behind: a cached wrong `aide` would follow this test
         # into every later one in the session.
         sys.modules.pop("aide", None)
         if saved_mod is not None:
             sys.modules["aide"] = saved_mod
+        install._ENGINE_LOAD_CONFIG = saved_cache
+
+
+def test_the_engine_handle_is_not_published_under_a_guessable_name(tmp_path: Path):
+    """Loading by path and then registering the module in `sys.modules` would
+    reintroduce the collision from the other side."""
+    saved = sys.modules.get("aide")
+    sys.modules.pop("aide", None)
+    try:
+        install.resolve_adapter(_target(tmp_path, "claude"), None)
+        assert "aide" not in sys.modules
+    finally:
+        if saved is not None:
+            sys.modules["aide"] = saved
 
 
 # --------------------------------------------------------------------------- #

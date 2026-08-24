@@ -88,18 +88,21 @@ keys, and the adapter's agents/skills/commands.
   which source to fix. Same reasoning as ADAPTER-SPEC §7's existing check on an
   adapter's declared instruction file.
 
-- **`install.py`'s config readers no longer leak `sys.path` entries.** Both
-  `_project_scope` (pre-existing) and the new `_recorded_adapter` import the
-  engine's `load_config` so the installer and the engine interpret one
-  `aide.toml` identically. Each did it with a bare `sys.path.insert(0, …)` and
-  never removed the entry, so in any long-lived process — a pytest session runs
-  these dozens of times — duplicates accumulated at position 0 and silently
-  outranked every other import path for the rest of the run. Both now go through
-  an `_engine_on_path()` context manager that snapshots `sys.path`, inserts at
-  position 0, and restores the snapshot. Both halves matter and the obvious fix
-  for either breaks the other: inserting only when the entry is *absent* leaks
-  nothing but loses precedence, since an entry already present yet ranked below
-  some other `aide` would let that one answer the import.
+- **`install.py` loads the engine by path, not by name.** Both `_project_scope`
+  (pre-existing) and the new `_recorded_adapter` need the engine's `load_config`
+  so the installer and the engine interpret one `aide.toml` identically. Each
+  did it with a bare `sys.path.insert(0, …)` and `import aide`, which has two
+  independent problems: the entry was never removed, so in a long-lived process
+  duplicates accumulated at position 0 and outranked every other import path for
+  the rest of the run; and `import aide` resolves through `sys.modules` as well,
+  so a host process that had already bound some other `aide` won the name
+  outright whatever the path said.
+
+  `_engine_load_config()` now loads `core/scripts/aide.py` through
+  `importlib.util.spec_from_file_location` — the file whose path is already
+  known — touching no global import state and registering nothing in
+  `sys.modules`, which is how every test module in this repo loads the engine.
+  Cached, since the readers run more than once per invocation.
 
 - **`aide check` no longer needs the full document set to run at all.**
   `run_checks` early-returned `missing <docs_dir>/progress.md` as a hard error,

@@ -50,9 +50,9 @@ Stdlib-only, so it runs on any OS with the Python the engine already needs.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import copy
 import difflib
+import importlib.util
 import json
 import re
 import shutil
@@ -570,38 +570,36 @@ def _apply_scope_template(base: dict, source_dir: str, tests_dir: str) -> dict:
     return result
 
 
-@contextlib.contextmanager
-def _engine_on_path():
-    """Make the engine importable, then leave ``sys.path`` as it was found.
+_ENGINE_LOAD_CONFIG = None
 
-    Both readers below load the engine's `load_config` so install.py and the
-    engine interpret one aide.toml identically. That needs two things at once,
-    and the obvious fix for either breaks the other:
 
-    * **Precedence** — the engine's directory has to outrank any other `aide`
-      on the path, or the wrong loader answers.
-    * **No residue** — a bare `sys.path.insert` left one entry *per call*,
-      never removed, so in any long-lived process (a pytest session runs these
-      dozens of times) they accumulate at position 0 and outrank every other
-      import path for the rest of the run.
+def _engine_load_config():
+    """The engine's own ``load_config``, loaded by file path.
 
-    Snapshotting the list, inserting at 0 unconditionally, and restoring the
-    snapshot satisfies both. The engine imports nothing that touches
-    `sys.path`, so nothing legitimate is discarded by the restore.
+    Both readers below use it so install.py and the engine interpret one
+    aide.toml identically — same TOML subset, same defaults. Deliberately not
+    ``import aide``: that name resolves through ``sys.path`` *and*
+    ``sys.modules``, and neither is ours to rely on. Prepending to `sys.path`
+    fixes only the first, leaves an entry behind unless carefully unwound, and
+    is beaten outright by a host process that already bound some other `aide`
+    before install.py ran.
+
+    Loading the file whose path we already know removes both questions, touches
+    no global import state, and is how every test module in this repo loads the
+    engine. Cached because the reader is called more than once per run and the
+    module is 3k lines.
     """
-    entry = str(FRAMEWORK_ROOT / "core" / "scripts")
-    saved = list(sys.path)
-    # Unconditionally at position 0, then the whole list restored. Inserting
-    # only when the entry is *absent* would be the smaller edit and the wrong
-    # one: an entry already present but ranked below some other `aide` on the
-    # path would let that one win the import, and install.py would read a
-    # different config loader than the engine uses. Snapshot-and-restore gets
-    # precedence and no residue from the same two lines.
-    sys.path.insert(0, entry)
-    try:
-        yield
-    finally:
-        sys.path[:] = saved
+    global _ENGINE_LOAD_CONFIG
+    if _ENGINE_LOAD_CONFIG is None:
+        path = FRAMEWORK_ROOT / "core" / "scripts" / "aide.py"
+        spec = importlib.util.spec_from_file_location("_aide_engine", path)
+        module = importlib.util.module_from_spec(spec)
+        # Not registered in sys.modules: this is install.py's private handle on
+        # the engine, and publishing it under a guessable name is the very
+        # collision the path-based load exists to avoid.
+        spec.loader.exec_module(module)
+        _ENGINE_LOAD_CONFIG = module.load_config
+    return _ENGINE_LOAD_CONFIG
 
 
 def _project_scope(target: Path) -> Tuple[str, str]:
@@ -609,9 +607,7 @@ def _project_scope(target: Path) -> Tuple[str, str]:
     loader so install.py and the engine interpret aide.toml identically (same TOML
     subset, same defaults). Falls back to the framework defaults if unavailable."""
     try:
-        with _engine_on_path():
-            from aide import load_config  # the engine's config reader
-            project = load_config(target).get("project", {})
+        project = _engine_load_config()(target).get("project", {})
         return str(project.get("source_dir", "src")), str(project.get("tests_dir", "tests"))
     except Exception:  # engine import/parse failure must never break the install
         return "src", "tests"
@@ -626,9 +622,7 @@ def _recorded_adapter(target: Path) -> Optional[str]:
     predating the [aide] table" — neither is an error, and both fall back.
     """
     try:
-        with _engine_on_path():
-            from aide import load_config  # the engine's config reader
-            value = load_config(target).get("aide", {}).get("adapter")
+        value = _engine_load_config()(target).get("aide", {}).get("adapter")
     except Exception:  # a broken/unreadable aide.toml must not break the install
         return None
     value = str(value).strip() if value is not None else ""
