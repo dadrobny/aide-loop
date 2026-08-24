@@ -1057,6 +1057,15 @@ def run(args: argparse.Namespace) -> int:
 
     print("\n".join(log))
     print(f"\nDone. Installed engine version recorded at {aide_dir / 'VERSION'}.")
+    # The engine's own suite ships with every install and no default `pytest`
+    # run collects it (.aide/ is a dot-directory; norecursedirs skips `.*`),
+    # unless the consumer deliberately opts it in. So the only place the answer
+    # reaches the reader is here — on update above all, which is when a shipped
+    # test can newly go red. See core/README.md, "Running the engine's own suite".
+    print("The engine ships its own suite at .aide/scripts/tests/ — not "
+          "collected by default.")
+    print("Verify this engine where it landed: python -m pytest "
+          ".aide/scripts/tests")
     if not args.update:
         print("Next: `python .aide/scripts/aide.py check` in the target repo.")
         print("Before any unattended run: launch the runtime once interactively in the")

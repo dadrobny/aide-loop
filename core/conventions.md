@@ -275,11 +275,19 @@ python .aide/scripts/aide.py scope [NNN] [--base <ref>]
 With no argument it reads the item number from the current claim branch; a
 queue branch resolves to no item and is skipped, since per-item scope is checked
 on each claim branch as it merges and a queue branch legitimately aggregates
-many items' lists. It diffs against the **merge-base** with `origin/<main>` —
-not the local ref, whose merge-base on a checkout sitting behind the work is
-itself, so every file the earlier items touched would be reported against this
-item's spec. Exit `0` in scope · `1` something changed outside it · `2` could
-not check. That third code is the "reported, never silently passed" rule with
+many items' lists. Whether that per-item check is ever reachable from CI — as
+opposed to only from the validator, in-loop — depends on `git.mode`, which
+decides whether a claim branch is pushed and whether it ever carries a PR
+context; see §4. It diffs against the **merge-base with the item's base** — `--base` if
+given, else the branch's recorded base, else `main_branch`, resolved exactly as
+§4 describes. The two *derived* answers prefer the `origin/` counterpart over
+the local ref, whose merge-base on a checkout sitting behind the work is itself,
+so every file the earlier items touched would be reported against this item's
+spec. On stacked work the base is the **queue branch**, not `main`: an item
+claimed from one has diverged from that, and diffing against `main` would report
+every sibling item already merged into the queue.
+
+Exit `0` in scope · `1` something changed outside it · `2` could not check. That third code is the "reported, never silently passed" rule with
 teeth: a spec with no section cannot be read as an unconstrained one.
 
 Three paths are authorised for every item without being listed — `progress.md`
@@ -615,6 +623,43 @@ identical across modes.
   ("open a PR"). The human opens the PR (`gh pr create` stays `ask`-gated).
 - **`local`** — no pushes at all (offline). Claim is a local branch only (no
   multi-machine signal); merge is local into `main`.
+
+**The mode also decides what kind of CI gate can see a claim branch — pick it for
+that too.** Per-item scope is checked as each claim branch merges (§1). Whether a
+CI job can run that check depends on what the mode leaves behind for CI to
+trigger on:
+
+| `git.mode` | Claim branch pushed | PR opened | Per-item scope gate in CI |
+|---|---|---|---|
+| `auto-merge` | yes | no | **push-triggered only** — and see the caveats below |
+| `pr` | yes | yes, by the human | **works**, in PR context |
+| `local` | no | no | **unreachable** — nothing leaves the machine |
+
+The distinction that matters is **PR context**, not visibility. `auto-merge`
+pushes the claim branch like `pr` does, so a push-triggered workflow matching
+`<branch_prefix>**` (§2 — default `aide/**`) can see it — but there is no pull request, so no `github.base_ref` to
+diff against: the job must supply `--base` itself, and it races the in-loop
+merge, which deletes the branch as soon as the item lands. Under `pr` the PR
+carries both refs — head `aide/NNN-…`, base the item's recorded base — which is
+exactly the diff `aide scope` wants, with no branch-name parsing at all.
+
+So the trade is real in both directions. `auto-merge` buys unattended throughput
+and, unless a push workflow is deliberately built for it, leaves the gate
+enforced **only** by the validator running `aide scope` in-loop: same machine,
+same platform, same checkout that built the item — the §7 blind spot exactly.
+`pr` buys the independent, second-platform signal back and costs one human PR
+open per item.
+
+Choose deliberately rather than inheriting the default, because **a scope job
+written for PR context is green forever under `auto-merge` while checking
+nothing**: with no PR it either never triggers, or triggers on a branch whose
+name yields no item number and correctly skips. A gate can decay this way from a
+mode change alone, long after it was correctly built.
+
+The branch *shape* is an independent axis and does not decide this: under the
+stacked queue-branch model below, `pr` still works, since the PR's head is the
+`aide/NNN-` claim branch and its base is the pushed queue branch — the right
+diff base.
 
 **Where "`main`" above actually means "the base".** `main_branch` is the default
 and is never removed as one, but real work stacks: a queue branch carries the

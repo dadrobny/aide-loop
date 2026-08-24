@@ -3864,8 +3864,9 @@ def register_git_subcommands(sub) -> None:
     p_scope.add_argument("number", type=int, nargs="?", default=None,
                          help="item number (default: read from the current claim branch)")
     p_scope.add_argument("--base", default=None,
-                         help="base ref to diff against (default: origin/<main_branch>, "
-                              "falling back to the local ref)")
+                         help="base ref to diff against (default: the branch's "
+                              "recorded base, else <main_branch>; derived answers "
+                              "prefer origin/<base>, falling back to the local ref)")
     p_scope.set_defaults(func=cmd_scope)
 
 

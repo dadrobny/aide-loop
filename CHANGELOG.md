@@ -17,6 +17,81 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.18.1] — 2026-08-24
+
+### Changed
+
+- **The installer ships a test suite and now says whether to run it.**
+  `install.py` copies `core/scripts/tests/` into every consumer as
+  `.aide/scripts/tests/` — 14 modules, 462 tests — and nothing anywhere said
+  whether the consumer was meant to run them. The default outcome was that
+  nobody did, and for a stronger reason than the `testpaths` convention alone:
+  **`.aide/` is a dot-directory**, so pytest's default `norecursedirs` (`.*`)
+  skips it whether or not the repo sets `testpaths` at all — verified by
+  clearing `norecursedirs` in a fixture consumer, which takes collection from 1
+  test to 463. So an engine update landed with its own suite never executed, and
+  a broken verb was discovered mid-loop instead. The answer is now stated in both
+  places a reader can meet it: `core/README.md`'s file table gains a
+  `scripts/tests/` row, and a new *"Running the engine's own suite"* section
+  states the exclusion **and its mechanism** (so the claim does not quietly
+  become false if the engine ever leaves a dotted directory), explains why that
+  is the right default — a red test in there is not something the project can
+  fix, and must not block the project's own CI — gives the explicit one-liner to
+  run when accepting an update, notes that adding the path to a consumer's own
+  `testpaths` is a supported choice at the cost of coupling the two CIs, and —
+  the question the silence also left open — names the only two remedies when a
+  shipped test goes red: `--update` forward from a newer framework checkout, or
+  `--update` back from an older one. Never a hand-edit under `.aide/`, which the
+  next update silently overwrites. `install.py`'s completion output now names the
+  directory and the command on **both** the fresh-install and the `--update`
+  path, so the answer arrives at the moment the files do — and above all on
+  update, which is when a shipped test can newly go red. Guarded by
+  `tests/test_install_shipped_suite_signpost.py`, whose `--update` case fails if
+  the line is ever moved back inside the fresh-install-only branch.
+
+- **`conventions.md` §4 now states what a `git.mode` choice costs in CI.** §1
+  promises that per-item scope is checked on each claim branch as it merges, and
+  §4 described the three modes purely in terms of pushes and merges — never
+  mentioning that the choice also decides what kind of CI gate can see a claim
+  branch at all. A consumer could read §1, wire a scope job, and have it report
+  green forever while checking nothing. That is a gate which decays with a config
+  change rather than one that never worked, which is why it goes unnoticed.
+  §4 gains a table across the three modes — is the claim branch pushed, is a PR
+  opened, what gate is possible — and names the distinction that actually
+  governs: **PR context, not visibility.** `auto-merge` pushes the claim branch
+  exactly as `pr` does, so a push-triggered workflow can see it; what it does not
+  produce is a pull request, hence no `github.base_ref` to diff against (the job
+  must pass `--base` itself) and a race against the in-loop merge that deletes
+  the branch. Under `pr` the PR carries head and base directly, which is the diff
+  `aide scope` wants with no branch-name parsing. The trade is named in both
+  directions: `auto-merge` buys unattended throughput and, absent a purpose-built
+  push workflow, leaves the gate enforced only by the validator in-loop — same
+  machine, same platform, same checkout that built the item, the §7 blind spot
+  exactly; `pr` buys the independent second-platform signal back at one human PR
+  open per item. §4 also records that the branch *shape* is an independent axis:
+  under the stacked queue-branch model `pr` still works, the PR's head being the
+  claim branch and its base the pushed queue branch. §1's claim now points
+  forward to §4 rather than standing alone. Documentation only: no verb changes
+  behaviour, and `aide scope` short-circuiting on a queue branch remains
+  correct.
+
+### Fixed
+
+- **`aide scope`'s documented base ref had lagged its own fix.** §1 said the verb
+  "diffs against the merge-base with `origin/<main>`", and `--base`'s `--help`
+  said the default was `origin/<main_branch>` falling back to the local ref. Both
+  described behaviour that 1.8.0 deliberately replaced: the base resolves
+  `--base` > the branch's **recorded** base > `main_branch`, and only the two
+  *derived* answers prefer their `origin/` counterpart (an explicit `--base` is
+  used verbatim). The stale wording was not merely imprecise — it was wrong in
+  exactly the case the resolution order exists to get right, since an item
+  claimed from a queue branch has diverged from *that*, not from `main`, and a
+  reader who believed the prose would expect every sibling item already merged
+  into the queue to be reported against this item's spec. §1 now states the
+  resolution order, the `origin/` preference and the stacked-work case, and the
+  `--help` string matches. Documentation and help text only; no behaviour
+  changes. Caught by Copilot review on the PR for the two items above.
+
 ## [1.18.0] — 2026-08-24
 
 ### Added
