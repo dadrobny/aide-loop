@@ -637,7 +637,7 @@ trigger on:
 
 The distinction that matters is **PR context**, not visibility. `auto-merge`
 pushes the claim branch like `pr` does, so a push-triggered workflow matching
-`aide/**` can see it — but there is no pull request, so no `github.base_ref` to
+`<branch_prefix>**` (§2 — default `aide/**`) can see it — but there is no pull request, so no `github.base_ref` to
 diff against: the job must supply `--base` itself, and it races the in-loop
 merge, which deletes the branch as soon as the item lands. Under `pr` the PR
 carries both refs — head `aide/NNN-…`, base the item's recorded base — which is
