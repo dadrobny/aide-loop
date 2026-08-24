@@ -51,8 +51,12 @@ Stdlib-only, cross-OS. It:
 3. copies the usage probe → `<target>/.aide/loop/usage_probe.py` (the loop's seam)
 4. scaffolds `<target>/aide.toml` (prompts for `source_dir`, `test_command`,
    `git.mode`; `--yes` + flags for non-interactive/CI use)
-5. appends the framework `.gitignore` block if absent
-6. records the installed `VERSION` (`core/VERSION`) — copied in as
+5. ensures the runtime's instruction file (for Claude, `<target>/CLAUDE.md`)
+   imports `.aide/AGENT-CONTEXT.md` — **one line**, appended, creating the file
+   if it does not exist; everything else in it stays the project's
+   ([ADAPTER-SPEC §7](adapters/ADAPTER-SPEC.md))
+6. appends the framework `.gitignore` block if absent
+7. records the installed `VERSION` (`core/VERSION`) — copied in as
    `<target>/.aide/VERSION`
 
 **`python install.py --adapter claude --into <target> --update`** re-copies the
@@ -63,8 +67,9 @@ merged item.
 
 **`python install.py --into <target> --check`** compares the consumer's installed
 `.aide/VERSION` against this repo's `core/VERSION` and reports current / behind /
-ahead, without writing anything. It exits non-zero when the consumer is behind, so
-a project can gate on it.
+ahead, without writing anything. It exits non-zero when the consumer is behind —
+or when the instruction file has lost its `.aide/AGENT-CONTEXT.md` import, which
+no version number can express — so a project can gate on it.
 
 ## Versioning
 
@@ -97,13 +102,14 @@ version numbers saw "up to date" while running a 27-commit-old engine.
 aide-loop/
 ├── core/                    LAYER 1 — provider-agnostic engine
 │   ├── conventions.md       format contract · claim protocol · command hygiene · git/clarify modes
+│   ├── AGENT-CONTEXT.md     the page of it that must bind before anything points at it
 │   ├── templates/           vision · roadmap · progress · queue · item
 │   ├── scripts/aide.py      the stdlib CLI (+ tests/)
 │   ├── loop/loop.py         the usage-gated supervisor (+ a pluggable probe seam)
 │   └── VERSION
 ├── adapters/
 │   ├── ADAPTER-SPEC.md      the engine↔adapter contract (what any runtime must express)
-│   ├── claude/              LAYER 2 — the reference adapter (agents · skills · commands · hooks · settings.json · usage_probe.py)
+│   ├── claude/              LAYER 2 — the reference adapter (agents · skills · commands · hooks · settings.json · usage_probe.py · default-context.json)
 │   └── copilot/ cursor/ gemini/   porting stubs (future work)
 ├── docs/                    vision.md · quickstart.md · concepts.md
 ├── install.py               the cross-OS installer

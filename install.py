@@ -50,7 +50,7 @@ import difflib
 import json
 import shutil
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import List, Optional, Tuple
 
 FRAMEWORK_ROOT = Path(__file__).resolve().parent
@@ -59,6 +59,29 @@ FRAMEWORK_ROOT = Path(__file__).resolve().parent
 # adapters/<name>/ (README.md, usage_probe.py) is handled out of band.
 ADAPTER_CONTROL = ("agents", "skills", "commands", "hooks", "scripts")
 ADAPTER_SETTINGS = "settings.json"
+
+# ADAPTER-SPEC §7. An adapter whose runtime loads a project instruction file by
+# default declares that file and the runtime's import syntax here; the installer
+# then links the engine's AGENT-CONTEXT.md into it. Absent, there is no such
+# runtime concept and nothing below runs.
+ADAPTER_DEFAULT_CONTEXT = "default-context.json"
+
+# The engine page that has to be in context before anything points at
+# conventions.md — installed as part of core/, linked from the consumer's
+# instruction file rather than copied into it.
+AGENT_CONTEXT_REL = ".aide/AGENT-CONTEXT.md"
+
+# Body for an instruction file the consumer does not have yet. A new file cannot
+# clobber anything, and making the default correct beats leaving the channel
+# silently absent — but it stays minimal, because everything below the import is
+# the project's to write.
+INSTRUCTION_FILE_TEMPLATE = """\
+# {name}
+
+Project instructions — yours to write. The one line the AIDE installer
+maintains is the `{import_line}` import; everything else in this
+file is yours and is never touched by an update.
+"""
 
 # Encoding for reading files that live in the CONSUMER repo (settings.json, the
 # overlay, .gitignore, .aide/VERSION). Those are hand-editable, and a Windows editor
@@ -195,11 +218,21 @@ def compare_versions(installed: str, available: str) -> str:
     return "behind" if lhs < rhs else "ahead"
 
 
-def report_version(available: str, installed_path: Path, target: Path) -> int:
-    """``--check``: compare the target's installed VERSION against this framework.
+def report_version(available: str, installed_path: Path, target: Path,
+                   drift: Optional[str] = None) -> int:
+    """``--check``: report whether the target's install is current.
 
-    Writes nothing. Exit 0 when current or ahead, 1 when behind (so a consumer can
-    gate on it), 2 when the target has no install to compare.
+    Writes nothing. Exit 2 when the target has no install to compare, 1 when it
+    needs an ``--update`` — the version is behind, *or* *drift* was passed —
+    and 0 otherwise.
+
+    *drift*, when given, describes installed state that is out of date for a
+    reason the version number cannot express: today, an instruction file that
+    never got the ``AGENT-CONTEXT.md`` import (ADAPTER-SPEC §7), which an
+    up-to-date and even an ahead-of-this-checkout consumer can be missing. It
+    forces the non-zero exit because the fix is the same ``--update``, and a
+    channel that is silently absent is exactly the failure the import exists to
+    prevent.
     """
     if not installed_path.is_file():
         print(f"aide {target}: no install found ({installed_path} missing) — "
@@ -208,16 +241,29 @@ def report_version(available: str, installed_path: Path, target: Path) -> int:
 
     installed = installed_path.read_text(encoding=CONSUMER_ENCODING).strip()
     state = compare_versions(installed, available)
-    if state == "current":
-        print(f"aide {target}: v{installed} — up to date")
-        return 0
+    if drift:
+        print(f"aide {target}: {drift}")
+    if state == "behind":
+        print(f"aide {target}: v{installed} is BEHIND v{available} — "
+              f"run install.py --into {target} --update (see CHANGELOG.md)")
+        return 1
     if state == "ahead":
         print(f"aide {target}: v{installed} is AHEAD of this framework (v{available}) — "
               f"this checkout is older than the consumer's install")
+        if drift:
+            # NOT "run --update": from a checkout this old that would roll the
+            # consumer's engine backwards to fix a missing line. Every other
+            # failing state repairs with the same --update, so the one that
+            # does not has to say what to do instead.
+            print(f"aide {target}: add the import by hand, or --update from the "
+                  f"newer framework checkout this install came from")
+            return 1
         return 0
-    print(f"aide {target}: v{installed} is BEHIND v{available} — "
-          f"run install.py --into {target} --update (see CHANGELOG.md)")
-    return 1
+    if drift:
+        print(f"aide {target}: v{installed} — run install.py --into {target} --update")
+        return 1
+    print(f"aide {target}: v{installed} — up to date")
+    return 0
 
 
 class OverlayError(ValueError):
@@ -641,6 +687,106 @@ def scaffold_aide_toml(target: Path, adapter: str, version: str, args: argparse.
     log.append(f"  + {path}")
 
 
+def default_context_declaration(adapter_dir: Path) -> Optional[Tuple[str, str]]:
+    """``(instruction file, import line)`` an adapter declares, or None.
+
+    None means the runtime has no default-context concept (ADAPTER-SPEC §7 is
+    optional), so the caller does nothing — the same graceful degradation as a
+    missing ``usage_probe.py``. A malformed declaration is treated the same way
+    rather than failing an install over an optional channel; the drift report
+    under ``--check`` is what surfaces a channel that never got linked.
+    """
+    path = adapter_dir / ADAPTER_DEFAULT_CONTEXT
+    if not path.is_file():
+        return None
+    try:
+        decl = json.loads(path.read_text(encoding="utf-8"))
+        name = str(decl["file"])
+        syntax = str(decl["import"])
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not name or "{path}" not in syntax:
+        return None
+    # §7 says the declared file is relative to the repo root, so it may be
+    # nested (`.github/…`) — but it is joined onto someone else's repo, and an
+    # absolute or climbing path would have the installer create directories and
+    # write files outside the target. Degrade like any other malformed field.
+    posix = PurePosixPath(name.replace("\\", "/"))
+    if posix.is_absolute() or PureWindowsPath(name).is_absolute() or ".." in posix.parts:
+        return None
+    return name, syntax.replace("{path}", AGENT_CONTEXT_REL)
+
+
+def default_context_state(target: Path, adapter_dir: Path) -> Tuple[Optional[Path], bool]:
+    """``(instruction file, whether it already imports AGENT-CONTEXT.md)``.
+
+    ``(None, True)`` when the adapter declares nothing — nothing to report. The
+    presence test is for the **exact line** the installer writes, deliberately:
+    what it maintains is a line it wrote, not a sentence it guessed at. A
+    duplicate reference costs nothing; a channel wrongly assumed present is the
+    failure this whole mechanism exists to avoid.
+    """
+    decl = default_context_declaration(adapter_dir)
+    if decl is None:
+        return None, True
+    name, line = decl
+    path = target / name
+    if not path.is_file():
+        return path, False
+    existing = path.read_text(encoding=CONSUMER_ENCODING)
+    return path, any(ln.strip() == line for ln in existing.splitlines())
+
+
+def default_context_drift(target: Path, adapter_dir: Path) -> Optional[str]:
+    """``--check``'s description of a missing import, or None when linked.
+
+    A file that is gone and a file that lost the line are different repairs, so
+    they read differently. The path is repo-relative rather than a basename: §7
+    permits a nested declaration (`.github/…`), which a basename leaves
+    ambiguous about *which* file to fix.
+    """
+    ctx_path, linked = default_context_state(target, adapter_dir)
+    if linked:
+        return None
+    rel = ctx_path.relative_to(target).as_posix()
+    lost = (f"does not import {AGENT_CONTEXT_REL}" if ctx_path.is_file()
+            else f"is missing, so nothing imports {AGENT_CONTEXT_REL}")
+    return (f"{rel} {lost} (ADAPTER-SPEC §7) — the framework's default-context "
+            f"rules never reach an interactive session in this repo")
+
+
+def install_default_context(target: Path, adapter_dir: Path, log: List[str]) -> None:
+    """Ensure the consumer's instruction file imports ``.aide/AGENT-CONTEXT.md``.
+
+    One line, appended; everything else in the file is the project's and is read
+    for nothing but the presence of that line. Idempotent, so an ``--update`` on
+    a linked repo writes nothing.
+    """
+    decl = default_context_declaration(adapter_dir)
+    if decl is None:
+        return
+    _, line = decl
+    path, linked = default_context_state(target, adapter_dir)
+    if linked:
+        log.append(f"  = {path} (already imports {AGENT_CONTEXT_REL})")
+        return
+    if not path.is_file():
+        # A declared path may be nested, and the directory need not exist yet.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            line + "\n\n" + INSTRUCTION_FILE_TEMPLATE.format(name=target.name,
+                                                              import_line=line),
+            encoding="utf-8")
+        log.append(f"  + {path} (created; imports {AGENT_CONTEXT_REL})")
+        return
+    existing = path.read_text(encoding=CONSUMER_ENCODING)
+    sep = "" if (not existing or existing.endswith("\n")) else "\n"
+    prefix = "\n" if existing and not existing.endswith("\n\n") else ""
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(sep + prefix + line + "\n")
+    log.append(f"  ~ {path} ({AGENT_CONTEXT_REL} import appended)")
+
+
 def append_gitignore(target: Path, log: List[str]) -> None:
     path = target / ".gitignore"
     existing = path.read_text(encoding=CONSUMER_ENCODING) if path.is_file() else ""
@@ -677,7 +823,8 @@ def run(args: argparse.Namespace) -> int:
     log: List[str] = []
 
     if args.check:
-        return report_version(version, aide_dir / "VERSION", target)
+        drift = default_context_drift(target, adapter_dir)
+        return report_version(version, aide_dir / "VERSION", target, drift)
 
     mode = "update" if args.update else "install"
     print(f"AIDE {mode}: {args.adapter} v{version} -> {target}")
@@ -707,7 +854,12 @@ def run(args: argparse.Namespace) -> int:
     if probe.is_file():
         copy_file(probe, aide_dir / "loop" / "usage_probe.py", log)
 
-    # 6. .gitignore block — fresh install only
+    # 6. instruction-file import -> .aide/AGENT-CONTEXT.md  (ADAPTER-SPEC §7).
+    #    Runs on update too: the line is how a framework rule reaches an
+    #    interactive session, and it is one idempotent line either way.
+    install_default_context(target, adapter_dir, log)
+
+    # 7. .gitignore block — fresh install only
     if not args.update:
         append_gitignore(target, log)
 

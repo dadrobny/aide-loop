@@ -17,6 +17,92 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.15.0] — 2026-08-24
+
+### Added
+
+- **`AGENT-CONTEXT.md` — a channel from the framework into a session's default
+  context.** Every rule the framework writes lived in `conventions.md`, which is
+  read only when something points at it. That works for an agent spec in the
+  unattended loop and fails for an interactive session, where a person and the
+  runtime produce durable artifacts — commit messages, issue bodies,
+  `insights.md` entries — with no agent spec in play. The framework had no way
+  to reach that session: `core/templates/` held no instruction-file template and
+  `install.py` never mentioned one.
+
+  The engine now ships `AGENT-CONTEXT.md`, about a page of the rules that must
+  bind *before* anything points at `conventions.md`, each linking to its full
+  treatment there. It reaches a session **by import, not by managed block**:
+  ADAPTER-SPEC gains an optional **§7** in which an adapter declares, in
+  `default-context.json`, the file its runtime loads by default and that
+  runtime's import syntax. The Claude adapter declares `CLAUDE.md` and `@{path}`.
+
+  `install.py` then ensures one line — `@.aide/AGENT-CONTEXT.md` — is present in
+  that file: appended if the file exists (nothing else touched; the project keeps
+  everything it wrote), created with a minimal body if it does not, and reported
+  as drift under `--check`, which now exits non-zero for a missing import the
+  way it does for a stale `VERSION`. The imported page is framework-owned
+  wholesale, the ownership pattern §5 already establishes, so there is no
+  delimited region inside a project-owned document. A runtime with no
+  default-context concept omits `default-context.json` and nothing runs. (#59)
+
+- **Durable artifacts must read cold — `conventions.md` §1.** Everything the
+  loop produces outlives its session, and nothing said it had to be readable
+  without one. Three rules: no chat-local identifiers (a label coined for one
+  conversation's convenience is scaffolding, not a name); cross-reference by
+  resolvable identity (an issue number, a path, a dated entry — never "the
+  companion PR"); record the decision and why it holds, not the route to it.
+  Provider-agnostic, and binding on the framework's own artifact shapes, so it
+  sits beside the format contract — and it is the first rule carried by
+  `AGENT-CONTEXT.md`, since the sessions it binds are exactly the ones that
+  never read `conventions.md`. (#59)
+
+### Changed
+
+- **Item and queue file naming lives behind named helpers, the way branch
+  naming already did.** `_branch_item_number` and `_is_queue_branch` centralised
+  the shared-namespace hazard for branches in 1.13.0 — after an unanchored match
+  read `aide/queue-016` as long-finished item 016 and let `gc` delete an
+  in-flight queue branch carrying the only copy of its queue file and specs.
+  Filenames kept re-deriving the same convention as raw globs and f-strings at
+  thirteen sites, five of them the identical `idir.glob(f"{n:03d}-*.md")`.
+
+  `queue_name`, `queue_number`, `iter_queue_paths`, `queue_path` and
+  `item_spec_paths` now hold it, and all thirteen sites call them. No live bug
+  is fixed — every site was correct — so the change is containment: one place
+  for the 1.13.0 class of misread to reappear, and one place that is tested.
+  Two behavioural improvements fall out: `queue_path` **resolves by glob rather
+  than constructing** a name, and `iter_queue_paths` orders by the parsed number
+  rather than lexicographically, so a slugged queue file (#55) would be a naming
+  decision rather than an engine sweep. Four parameters named `queue_number`
+  were renamed, since the helper now owns that name at module scope. (#54)
+
+- **An insight entry's *claim* is immutable; its *status* is not.**
+  `conventions.md` §1 said the inbox was append-only "with exactly two
+  exceptions" — ticking the checkbox and appending one `→ where it landed`
+  pointer, both at triage. Triage happens once, so nothing could record that an
+  entry's premise later decayed: "fixed in 1.15.0", "superseded", "this turned
+  out to be wrong" were all forbidden by the letter of the rule. The checker
+  never enforced it (`insight_warnings` skips indented lines and stops caring
+  after the provenance date), and practice had already broken ranks — in one
+  consumer's 77-entry inbox, 17 entries carried two or more pointers.
+
+  The rule now separates the two things it was conflating. The captured line
+  stays immutable — never reworded, reordered or deleted, which is what makes a
+  *wrong* entry instructive rather than quietly erased — and an entry may carry
+  an appendable **status trail**: dated lines, indented beneath it, newest last.
+  Ticking the checkbox remains the one in-place edit. The shape already
+  validated, so no checker change was needed; three tests now pin it, including
+  one that runs the example in `conventions.md` itself through `aide check`, so
+  the documented shape cannot drift from the accepted one. (#51)
+
+- **`framework` insights may be triaged on capture, not only at the queue
+  boundary.** The boundary is right for the types that become candidate items —
+  the queue PR reviews the routing — but a `framework` entry leaves for an issue
+  on another repo, and nothing about that destination needs a queue. Coupling
+  them meant the inbox accumulated for exactly as long as a queue ran: 13 of 15
+  open entries in the consumer above dated from one week, untouched since. (#51)
+
 ## [1.14.1] — 2026-08-20
 
 ### Fixed

@@ -23,6 +23,36 @@ left in a generated `docs/aide/**.md` file as an unfilled template slot.
 Dates are always **ISO 8601** (`YYYY-MM-DD`) — the templates' `{{yyyy-mm-dd}}`
 slot spells the format out so no separate lookup is needed.
 
+**Durable artifacts must read cold.** Everything the loop produces outlives
+the session that produced it — item specs, `insights.md` entries, commit
+messages, issue bodies, roadmap and progress prose. The reader who matters is
+someone opening it months later with none of the conversation, so a durable
+artifact is written to be understood with no access to how it was made. Three
+rules follow, and they apply wherever the loop writes, not only to the documents
+whose shape is fixed above:
+
+1. **No chat-local identifiers.** A label coined for the convenience of one
+   conversation — "the second option", "the batch we just scoped", a letter or
+   wave assigned while planning — is scaffolding, not a name. It resolves only
+   for someone who was there, and a reader who was not cannot even tell what the
+   series contained or what happened to the rest of it. Name a thing by what it
+   *is*, and title a change by the change, not by the batch it was scheduled in.
+2. **Cross-reference by resolvable identity.** An issue number, a file path, a
+   commit, a stage number, a dated `insights.md` entry — something a reader can
+   look up. Never "the conventions issue", "the companion PR", or "as discussed
+   above" pointing outside the artifact.
+3. **Record the decision and why it holds, not the route to it.** "My earlier
+   lean was wrong", "agreed direction", "settled while drafting" narrate a
+   process the reader was not part of, and they age badly: the moment the
+   decision is revisited, prose about who once thought what is noise around the
+   reasoning that is actually load-bearing. A superseded decision is recorded by
+   stating the new one and what changed, not by leaving a trail of leans.
+
+The rules bind interactive sessions as much as unattended ones — a human and a
+runtime writing a commit message or an issue body are producing exactly these
+artifacts, with no agent spec in play. `.aide/AGENT-CONTEXT.md` exists so they
+reach that session without anything having to point at this file.
+
 **Header blockquote** — every living document opens with one, carrying its step
 number in the loop, what it derives from, and what derives from it. Those are
 structural facts that hold as long as the document exists, so a reader landing
@@ -324,21 +354,48 @@ of scope. Any role, at any time, appends **one line** and returns to its task:
 with `<type>` one of **knowledge** (document it), **defect** (fix it), **gap**
 (plan it), **automation** (a recurring manual/agent action deterministic code
 could replace — script it), **framework** (belongs to AIDE itself). The item
-ref is optional for roles outside an item. The file is **append-only, with
-exactly two exceptions** — ticking an entry's checkbox and appending its
-`→ where it landed` pointer, both performed at triage (below). Nothing else
-about a captured line may be rewritten, and no line is ever reordered or
-deleted. `aide check` shape-checks entries (warning, never error — capture must
-stay cheap). Template: `.aide/templates/insights.md` (copy verbatim).
+ref is optional for roles outside an item. `aide check` shape-checks entries
+(warning, never error — capture must stay cheap). Template:
+`.aide/templates/insights.md` (copy verbatim).
 
-**Triage** happens at the queue boundary (the feedback loop): each unchecked
-entry is routed — `knowledge` → the owning document; `defect`/`gap` →
-candidate items for the queue being authored (so the queue PR reviews them);
-`automation` → a candidate item that adds a CLI verb/script *and* the
-skill/agent edit mandating it; `framework` → a GitHub issue on
-`[framework] repo` from `aide.toml` (via `gh`; if unset/offline the entry
-stays pending). A routed entry is ticked in place:
-`- [x] … → <where it landed>`.
+**The claim is immutable; its status is not.** The captured line is never
+reworded, reordered, or deleted — that is what protects provenance, and it is
+load-bearing precisely when an entry turns out to be *wrong*: the wrongness is
+the record, and a correction written beneath it teaches what a silent rewrite
+would erase. Ticking the checkbox is the one in-place edit.
+
+Status *about* a claim is bookkeeping, and freezing bookkeeping buys nothing. An
+entry may carry an **appendable status trail** — dated lines, indented under the
+entry, newest last:
+
+```
+- [x] framework — <the original claim, never touched> *(item 117, 2026-08-20)*
+  - **2026-08-20** → aide-loop issue #50
+  - **2026-09-02** → issue rewritten; the original framing overstated the finding
+  - **2026-10-11** → resolved in engine 1.16.0
+```
+
+A single routing pointer may still be appended to the entry line itself
+(`- [x] … → <where it landed>`); the trail is what a *second* update goes in,
+and what an entry whose premise decayed needs. Without it there is nowhere to
+record that half a claim has since been fixed, so the next reader re-derives all
+of it.
+
+**Triage** routes each unchecked entry by type — `knowledge` → the owning
+document; `defect`/`gap` → candidate items for the queue being authored (so the
+queue PR reviews them); `automation` → a candidate item that adds a CLI
+verb/script *and* the skill/agent edit mandating it; `framework` → a GitHub
+issue on `[framework] repo` from `aide.toml` (via `gh`; if unset/offline the
+entry stays pending).
+
+**When triage happens depends on the destination.** `knowledge`, `defect`,
+`gap` and `automation` all land in this project — a document it owns, or a
+candidate item — so they wait for the queue boundary (the feedback loop), where
+the queue PR reviews the routing. `framework` does not: it leaves for an issue
+on another repo, and nothing about that destination needs a queue, so a
+`framework` entry may be triaged **on capture or on demand**. Routing it through
+the boundary too means the inbox accumulates for exactly as long as a queue
+runs, and a long queue is normal.
 
 ### Human gates (optional, additive)
 

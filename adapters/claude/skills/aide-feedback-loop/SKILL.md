@@ -17,7 +17,9 @@ Analyze the current state of the project documents and recent work.
 
 The roles capture out-of-scope insights as one-line inbox entries during
 execution (see `.aide/conventions.md` §1 → `insights.md`); this step routes
-them. For each **unchecked** entry, by type:
+them. It is the boundary for every type that lands in *this* project — a
+`framework` entry may already have been handed over on capture, so expect some
+to be ticked before you arrive. For each **unchecked** entry, by type:
 
 - **knowledge** → fold the fact into its owning document (`docs/`, `CLAUDE.md`,
   a living document, code comments) — smallest edit that preserves it.
@@ -35,7 +37,19 @@ them. For each **unchecked** entry, by type:
   Otherwise leave the entry unchecked with a `(pending handover)` note.
 
 Tick each routed entry **in place**, appending where it landed:
-`- [x] <type> — … → <doc/item/issue>`. The file is append-only otherwise.
+`- [x] <type> — … → <doc/item/issue>`. Never reword, reorder or delete a
+captured claim — including one that turned out to be wrong; the correction goes
+*beneath* it, as a dated line in the entry's status trail:
+
+```
+- [x] defect — <the original claim, never touched> *(item 117, 2026-08-20)*
+  - **2026-09-02** → superseded: the fence it names was retired by item 121
+```
+
+Use the trail for anything after the first routing — a re-route, a resolution,
+a premise that decayed. Add one when you find a ticked entry whose status you
+now know to be stale; that is triage too, and it is what stops the next reader
+re-deriving it.
 
 ### 1. Document gaps
 

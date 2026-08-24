@@ -765,7 +765,7 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str]) -> N
 def _spec_stage_and_title(repo_root: Path, config, number: int) -> Tuple[Optional[str], Optional[str]]:
     """(stage, title) from the item's spec header, best effort."""
     idir = docs_dir(repo_root, config) / "items"
-    specs = sorted(idir.glob(f"{number:03d}-*.md")) if idir.is_dir() else []
+    specs = item_spec_paths(idir, number)
     if not specs:
         return None, None
     text = specs[0].read_text(encoding=_ENCODING)
@@ -835,6 +835,76 @@ def set_item_status(text: str, num: int, status: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Item & queue file naming — the filename half of the branch helpers
+# --------------------------------------------------------------------------- #
+#: Item numbers and queue numbers share one namespace with no syntactic marker
+#: between them. `_branch_item_number`/`_is_queue_branch` centralise that hazard
+#: for BRANCH names (and their docstrings record what it cost to learn); these
+#: four do the same for FILE names, which were previously re-derived as raw
+#: globs and f-strings at thirteen call sites. Nothing here fixes a live bug —
+#: every one of those sites was correct. The point is that the convention is now
+#: written down once, so the 1.13.0 class of misread has one place to reappear
+#: and one place to be tested, and a change to the convention is a change here.
+
+
+def queue_name(number: int) -> str:
+    """``queue-NNN`` — the stem a queue file and its status prose both use."""
+    return f"queue-{number:03d}"
+
+
+def queue_number(path: Path) -> Optional[int]:
+    """Queue number named by *path*, or None when it names no queue.
+
+    Anchored at the start of the stem, for the same reason the branch helpers
+    are: an unanchored digit search reads ``specs-queue-015.md`` or a consumer's
+    ``notes-on-queue-016.md`` as a queue file. Tolerates a trailing slug
+    (``queue-016-stage-27.md``) so the deferred naming harmonisation does not
+    have to touch the parser, and unpadded digits on read.
+    """
+    m = re.match(r"queue-0*(\d+)(?:-|$)", path.stem)
+    return int(m.group(1)) if m else None
+
+
+def iter_queue_paths(qdir: Path) -> List[Path]:
+    """Every queue file under *qdir*, in queue-number order ([] if no dir).
+
+    Ordered by the parsed number rather than lexicographically, so the order
+    stays the number's even once a name carries a slug after it.
+    """
+    if not qdir.is_dir():
+        return []
+    numbered = [(n, p.name, p) for p, n in
+                ((p, queue_number(p)) for p in qdir.glob("queue-*.md"))
+                if n is not None]
+    return [p for _, _, p in sorted(numbered)]
+
+
+def queue_path(qdir: Path, number: int) -> Optional[Path]:
+    """The queue file for *number*, or None when it does not exist.
+
+    **Resolves by glob, never by construction.** Constructing
+    ``qdir / f"queue-{n:03d}.md"`` hardcodes the assumption that the number is
+    the whole name; resolving means a slugged queue file is found by the same
+    call, and a caller that wants a name for an error message asks
+    `queue_name` for one instead of half-building a path it may not have.
+    """
+    matches = [p for p in iter_queue_paths(qdir) if queue_number(p) == number]
+    return matches[0] if matches else None
+
+
+def item_spec_paths(idir: Path, number: int) -> List[Path]:
+    """Spec files for item *number* under *idir* — ``items/NNN-*.md``, sorted.
+
+    Returns a list because the convention permits only one and the filesystem
+    does not; every caller takes ``[0]`` and the extras are a consumer's
+    problem, not something to raise over here.
+    """
+    if not idir.is_dir():
+        return []
+    return sorted(idir.glob(f"{number:03d}-*.md"))
+
+
+# --------------------------------------------------------------------------- #
 # queue.md helpers
 # --------------------------------------------------------------------------- #
 _QUEUE_STATUS_RE = re.compile(r"^>\s*\*\*Status:\*\*\s*(.*)$")
@@ -878,13 +948,10 @@ def _progress_item_status(repo_root: Path, config) -> Dict[int, str]:
     return item_status
 
 
-def _queue_paths(qdir: Path) -> List[Path]:
-    return sorted(qdir.glob("queue-*.md"))
-
-
 def tidy_queue_text(text: str, superseded_by: int, date: str) -> str:
     """Rewrite a queue's Status line to 'Completed — superseded by queue-NNN'."""
-    new_status = f"> **Status:** ✅ Completed — superseded by queue-{superseded_by:03d} ({date})."
+    new_status = (f"> **Status:** ✅ Completed — superseded by "
+                  f"{queue_name(superseded_by)} ({date}).")
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if _QUEUE_STATUS_RE.match(line):
@@ -1438,9 +1505,7 @@ def stray_icon_warnings(ddir: Path) -> List[str]:
     progress = ddir / "progress.md"
     if progress.is_file():
         paths.append(progress)
-    qdir = ddir / "queue"
-    if qdir.is_dir():
-        paths.extend(sorted(qdir.glob("queue-*.md")))
+    paths.extend(iter_queue_paths(ddir / "queue"))
     for path in paths:
         for lineno, line in enumerate(path.read_text(encoding=_ENCODING).splitlines(), start=1):
             for icon in _stray_icons_in_line(line):
@@ -1554,7 +1619,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     seen: Dict[int, str] = {}
     if qdir.is_dir():
         _, _, istat = _parse_item_status(lines)
-        for qpath in _queue_paths(qdir):
+        for qpath in iter_queue_paths(qdir):
             qtext = qpath.read_text(encoding=_ENCODING)
             derived_open = queue_is_open(qtext, istat)
             declared = queue_status(qtext)
@@ -1742,8 +1807,8 @@ def _dependency_cycles(graph: Dict[int, List[int]]) -> List[List[int]]:
 
 
 def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
-                        queue_number: int) -> Tuple[List[SpecFinding], List[int]]:
-    """``(findings, unspecced)`` for every spec on queue *queue_number*.
+                        number: int) -> Tuple[List[SpecFinding], List[int]]:
+    """``(findings, unspecced)`` for every spec on queue *number*.
 
     Runs in the window `/aide-spec-queue` creates and currently leaves
     unguarded: N specs authored on one branch before any is built, where every
@@ -1753,10 +1818,12 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     assertion depends on state this item's authorised edit changes.*
     """
     ddir = docs_dir(repo_root, config)
-    qpath = ddir / "queue" / f"queue-{queue_number:03d}.md"
-    if not qpath.is_file():
+    qdir = ddir / "queue"
+    qpath = queue_path(qdir, number)
+    if qpath is None:
         return ([SpecFinding("error", "missing-queue", (),
-                             f"no queue file at {qpath.relative_to(repo_root).as_posix()}")],
+                             f"no {queue_name(number)} file under "
+                             f"{qdir.relative_to(repo_root).as_posix()}")],
                 [])
 
     numbers = queue_item_numbers(qpath.read_text(encoding=_ENCODING))
@@ -1766,7 +1833,7 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     declared: Dict[int, AuthorisedPaths] = {}
 
     for num in numbers:
-        specs = sorted(idir.glob(f"{num:03d}-*.md")) if idir.is_dir() else []
+        specs = item_spec_paths(idir, num)
         if not specs:
             # Normal mid-queue state, not a conflict: /aide-spec-queue exists to
             # fill these. Counted and reported, never silently dropped.
@@ -1842,9 +1909,9 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
         for dep in deps:
             if dep in known:
                 continue
-            has_spec = bool(sorted(idir.glob(f"{dep:03d}-*.md"))) if idir.is_dir() else False
+            has_spec = bool(item_spec_paths(idir, dep))
             in_a_queue = any(dep in queue_item_numbers(p.read_text(encoding=_ENCODING))
-                             for p in _queue_paths(ddir / "queue"))
+                             for p in iter_queue_paths(ddir / "queue"))
             if not has_spec and not in_a_queue:
                 findings.append(SpecFinding(
                     "warning", "unknown-dependency", (num, dep),
@@ -1854,13 +1921,13 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     return findings, unspecced
 
 
-def _write_findings_report(path: Path, queue_number: int,
+def _write_findings_report(path: Path, number: int,
                            findings: List[SpecFinding],
                            unspecced: List[int]) -> None:
     """Write the machine-readable report — the seam a reviewer pass consumes as
     its worklist rather than re-deriving what this check already decided."""
     payload = {
-        "queue": queue_number,
+        "queue": number,
         "unspecced_items": unspecced,
         "findings": [
             {"severity": f.severity, "kind": f.kind,
@@ -1879,8 +1946,8 @@ def _write_findings_report(path: Path, queue_number: int,
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    queue_number = getattr(args, "queue", None)
-    if getattr(args, "report", None) and queue_number is None:
+    queue = getattr(args, "queue", None)
+    if getattr(args, "report", None) and queue is None:
         # Silently ignoring it would be worse than refusing: the caller asked
         # for a file that would never appear, and only the missing file would
         # ever say so.
@@ -1892,17 +1959,17 @@ def cmd_check(args: argparse.Namespace) -> int:
     config = load_config(repo_root)
     errors, warnings = run_checks(repo_root, config)
 
-    if queue_number is not None:
-        findings, unspecced = queue_spec_findings(repo_root, config, queue_number)
+    if queue is not None:
+        findings, unspecced = queue_spec_findings(repo_root, config, queue)
         for f in findings:
             (errors if f.severity == "error" else warnings).append(f.message)
         if unspecced:
             listed = ", ".join(f"{n:03d}" for n in unspecced)
-            print(f"aide check: queue {queue_number:03d} — {len(unspecced)} item(s) "
+            print(f"aide check: queue {queue:03d} — {len(unspecced)} item(s) "
                   f"not yet specced, so not compared: {listed}")
         report = getattr(args, "report", None)
         if report:
-            _write_findings_report(Path(report), queue_number, findings, unspecced)
+            _write_findings_report(Path(report), queue, findings, unspecced)
             print(f"aide check: wrote {report}")
 
     for w in warnings:
@@ -2112,20 +2179,19 @@ def cmd_queue(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
     qdir = docs_dir(repo_root, config) / "queue"
-    target = qdir / f"queue-{args.number:03d}.md"
-    if not target.is_file():
-        print(f"error: {target} not found", file=sys.stderr)
+    target = queue_path(qdir, args.number)
+    if target is None:
+        print(f"error: no {queue_name(args.number)} file under {qdir}", file=sys.stderr)
         return 1
     # Supersede by the highest-numbered queue after this one.
-    later = sorted(
-        int(p.stem.split("-")[1]) for p in qdir.glob("queue-*.md")
-        if p.stem.split("-")[1].isdigit() and int(p.stem.split("-")[1]) > args.number
-    )
-    superseded_by = later[-1] if later else args.number + 1
+    later = [n for n in (queue_number(p) for p in iter_queue_paths(qdir))
+             if n > args.number]
+    superseded_by = max(later) if later else args.number + 1
     date = args.date or _dt.date.today().isoformat()
     text = target.read_text(encoding=_ENCODING)
     target.write_text(tidy_queue_text(text, superseded_by, date), encoding="utf-8")
-    print(f"queue-{args.number:03d}: marked completed (superseded by queue-{superseded_by:03d})")
+    print(f"{queue_name(args.number)}: marked completed "
+          f"(superseded by {queue_name(superseded_by)})")
     return 0
 
 
@@ -2245,9 +2311,7 @@ def _item_dependencies(repo_root: Path, config, number: int) -> List[int]:
     depends on this" aside does not register as a backward blocker.
     """
     idir = docs_dir(repo_root, config) / "items"
-    if not idir.is_dir():
-        return []
-    specs = list(idir.glob(f"{number:03d}-*.md"))
+    specs = item_spec_paths(idir, number)
     if not specs:
         return []
     text = specs[0].read_text(encoding=_ENCODING)
@@ -2308,27 +2372,27 @@ def _open_queue_texts(repo_root: Path, config) -> List[str]:
         return []
     item_status = _progress_item_status(repo_root, config)
     out: List[str] = []
-    for path in _queue_paths(qdir):
+    for path in iter_queue_paths(qdir):
         text = path.read_text(encoding=_ENCODING)
         if queue_is_open(text, item_status):
             out.append(text)
     return out
 
 
-def _live_queue_text(repo_root: Path, config, queue_number: Optional[int]) -> Optional[str]:
+def _live_queue_text(repo_root: Path, config, number: Optional[int]) -> Optional[str]:
     """The queue to work: an explicit number, else the lowest-numbered OPEN
     queue (state derived from progress.md). Falls back to the highest queue
     declaring ``Status: Live`` only when progress.md is missing (legacy)."""
     qdir = docs_dir(repo_root, config) / "queue"
-    if queue_number is not None:
-        path = qdir / f"queue-{queue_number:03d}.md"
-        return path.read_text(encoding=_ENCODING) if path.is_file() else None
+    if number is not None:
+        path = queue_path(qdir, number)
+        return path.read_text(encoding=_ENCODING) if path is not None else None
     if not qdir.is_dir():
         return None
     if (docs_dir(repo_root, config) / "progress.md").is_file():
         open_texts = _open_queue_texts(repo_root, config)
         return open_texts[0] if open_texts else None
-    for path in sorted(_queue_paths(qdir), reverse=True):
+    for path in sorted(iter_queue_paths(qdir), reverse=True):
         text = path.read_text(encoding=_ENCODING)
         if is_live_queue(text):
             return text
@@ -2890,7 +2954,7 @@ def cmd_scope(args: argparse.Namespace) -> int:
             return 2
 
     idir = docs_dir(repo_root, config) / "items"
-    specs = sorted(idir.glob(f"{number:03d}-*.md")) if idir.is_dir() else []
+    specs = item_spec_paths(idir, number)
     if not specs:
         print(f"aide scope: no spec for item {number:03d} under {idir}",
               file=sys.stderr)
@@ -3034,8 +3098,8 @@ def cmd_status(args: argparse.Namespace) -> int:
     item_status = _progress_item_status(repo_root, config)
     qdir = docs_dir(repo_root, config) / "queue"
     live_seen = False
-    if qdir.is_dir() and _queue_paths(qdir):
-        for path in _queue_paths(qdir):
+    if iter_queue_paths(qdir):
+        for path in iter_queue_paths(qdir):
             nums = queue_item_numbers(path.read_text(encoding=_ENCODING))
             open_nums = [n for n in nums
                          if item_status.get(n, "planned") in ("planned", "in-progress")]
