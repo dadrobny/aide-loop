@@ -17,6 +17,36 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.15.0] — 2026-08-24
+
+### Changed
+
+- **An insight entry's *claim* is immutable; its *status* is not.**
+  `conventions.md` §1 said the inbox was append-only "with exactly two
+  exceptions" — ticking the checkbox and appending one `→ where it landed`
+  pointer, both at triage. Triage happens once, so nothing could record that an
+  entry's premise later decayed: "fixed in 1.15.0", "superseded", "this turned
+  out to be wrong" were all forbidden by the letter of the rule. The checker
+  never enforced it (`insight_warnings` skips indented lines and stops caring
+  after the provenance date), and practice had already broken ranks — in one
+  consumer's 77-entry inbox, 17 entries carried two or more pointers.
+
+  The rule now separates the two things it was conflating. The captured line
+  stays immutable — never reworded, reordered or deleted, which is what makes a
+  *wrong* entry instructive rather than quietly erased — and an entry may carry
+  an appendable **status trail**: dated lines, indented beneath it, newest last.
+  Ticking the checkbox remains the one in-place edit. The shape already
+  validated, so no checker change was needed; three tests now pin it, including
+  one that runs the example in `conventions.md` itself through `aide check`, so
+  the documented shape cannot drift from the accepted one. (#51)
+
+- **`framework` insights may be triaged on capture, not only at the queue
+  boundary.** The boundary is right for the types that become candidate items —
+  the queue PR reviews the routing — but a `framework` entry leaves for an issue
+  on another repo, and nothing about that destination needs a queue. Coupling
+  them meant the inbox accumulated for exactly as long as a queue ran: 13 of 15
+  open entries in the consumer above dated from one week, untouched since. (#51)
+
 ## [1.14.1] — 2026-08-20
 
 ### Fixed
