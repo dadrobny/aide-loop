@@ -19,6 +19,44 @@ keys, and the adapter's agents/skills/commands.
 
 ## [1.15.0] — 2026-08-24
 
+### Added
+
+- **`AGENT-CONTEXT.md` — a channel from the framework into a session's default
+  context.** Every rule the framework writes lived in `conventions.md`, which is
+  read only when something points at it. That works for an agent spec in the
+  unattended loop and fails for an interactive session, where a person and the
+  runtime produce durable artifacts — commit messages, issue bodies,
+  `insights.md` entries — with no agent spec in play. The framework had no way
+  to reach that session: `core/templates/` held no instruction-file template and
+  `install.py` never mentioned one.
+
+  The engine now ships `AGENT-CONTEXT.md`, about a page of the rules that must
+  bind *before* anything points at `conventions.md`, each linking to its full
+  treatment there. It reaches a session **by import, not by managed block**:
+  ADAPTER-SPEC gains an optional **§7** in which an adapter declares, in
+  `default-context.json`, the file its runtime loads by default and that
+  runtime's import syntax. The Claude adapter declares `CLAUDE.md` and `@{path}`.
+
+  `install.py` then ensures one line — `@.aide/AGENT-CONTEXT.md` — is present in
+  that file: appended if the file exists (nothing else touched; the project keeps
+  everything it wrote), created with a minimal body if it does not, and reported
+  as drift under `--check`, which now exits non-zero for a missing import the
+  way it does for a stale `VERSION`. The imported page is framework-owned
+  wholesale, the ownership pattern §5 already establishes, so there is no
+  delimited region inside a project-owned document. A runtime with no
+  default-context concept omits `default-context.json` and nothing runs. (#59)
+
+- **Durable artifacts must read cold — `conventions.md` §1.** Everything the
+  loop produces outlives its session, and nothing said it had to be readable
+  without one. Three rules: no chat-local identifiers (a label coined for one
+  conversation's convenience is scaffolding, not a name); cross-reference by
+  resolvable identity (an issue number, a path, a dated entry — never "the
+  companion PR"); record the decision and why it holds, not the route to it.
+  Provider-agnostic, and binding on the framework's own artifact shapes, so it
+  sits beside the format contract — and it is the first rule carried by
+  `AGENT-CONTEXT.md`, since the sessions it binds are exactly the ones that
+  never read `conventions.md`. (#59)
+
 ### Changed
 
 - **Item and queue file naming lives behind named helpers, the way branch

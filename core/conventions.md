@@ -23,6 +23,36 @@ left in a generated `docs/aide/**.md` file as an unfilled template slot.
 Dates are always **ISO 8601** (`YYYY-MM-DD`) — the templates' `{{yyyy-mm-dd}}`
 slot spells the format out so no separate lookup is needed.
 
+**Durable artifacts must read cold.** Everything the loop produces outlives
+the session that produced it — item specs, `insights.md` entries, commit
+messages, issue bodies, roadmap and progress prose. The reader who matters is
+someone opening it months later with none of the conversation, so a durable
+artifact is written to be understood with no access to how it was made. Three
+rules follow, and they apply wherever the loop writes, not only to the documents
+whose shape is fixed above:
+
+1. **No chat-local identifiers.** A label coined for the convenience of one
+   conversation — "the second option", "the batch we just scoped", a letter or
+   wave assigned while planning — is scaffolding, not a name. It resolves only
+   for someone who was there, and a reader who was not cannot even tell what the
+   series contained or what happened to the rest of it. Name a thing by what it
+   *is*, and title a change by the change, not by the batch it was scheduled in.
+2. **Cross-reference by resolvable identity.** An issue number, a file path, a
+   commit, a stage number, a dated `insights.md` entry — something a reader can
+   look up. Never "the conventions issue", "the companion PR", or "as discussed
+   above" pointing outside the artifact.
+3. **Record the decision and why it holds, not the route to it.** "My earlier
+   lean was wrong", "agreed direction", "settled while drafting" narrate a
+   process the reader was not part of, and they age badly: the moment the
+   decision is revisited, prose about who once thought what is noise around the
+   reasoning that is actually load-bearing. A superseded decision is recorded by
+   stating the new one and what changed, not by leaving a trail of leans.
+
+The rules bind interactive sessions as much as unattended ones — a human and a
+runtime writing a commit message or an issue body are producing exactly these
+artifacts, with no agent spec in play. `.aide/AGENT-CONTEXT.md` exists so they
+reach that session without anything having to point at this file.
+
 **Header blockquote** — every living document opens with one, carrying its step
 number in the loop, what it derives from, and what derives from it. Those are
 structural facts that hold as long as the document exists, so a reader landing

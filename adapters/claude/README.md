@@ -14,6 +14,7 @@ models.
 |---|---|---|
 | `agents/` `skills/` `commands/` `hooks/` `scripts/` `settings.json` | `<repo>/.claude/` | the Claude harness |
 | `usage_probe.py` | `<repo>/.aide/loop/usage_probe.py` | the loop's usage seam (co-located with the engine `loop.py`) |
+| `default-context.json` | — | not installed; declares the instruction file and import syntax `install.py` uses to link `.aide/AGENT-CONTEXT.md` |
 | `README.md` (this file) | — | not installed; documents the adapter |
 
 Everything mechanical (recon/claim, progress reconciliation, queue tidy, merge,
@@ -203,6 +204,30 @@ calls a **pluggable probe** sitting next to it for the raw numbers.
 
 ---
 
+## Default-context instructions → **`default-context.json`** (`CLAUDE.md` + `@path`)
+
+This is [spec §7](../ADAPTER-SPEC.md). The engine's rules live in
+`.aide/conventions.md`, which is read only when something points at it — fine for
+an agent spec in the unattended loop, useless for an interactive session, where a
+person and Claude Code produce durable artifacts (commit messages, issue bodies,
+`insights.md` entries) with no agent spec in play.
+
+Claude Code loads a `CLAUDE.md` at the repo root automatically and inlines `@path`
+lines recursively, so the channel costs one line. The adapter declares both facts:
+
+```json
+{ "file": "CLAUDE.md", "import": "@{path}" }
+```
+
+`install.py` renders that to `@.aide/AGENT-CONTEXT.md` and ensures the line is
+present in `<repo>/CLAUDE.md`, appending it (or creating a minimal file) and
+touching nothing else — the project keeps everything it wrote. `--check` reports
+a missing line as drift. The imported page is framework-owned wholesale: it is
+part of `core/`, not a managed block inside a project-owned document, so there is
+no drift detection to invent and no third ownership pattern.
+
+---
+
 ## Layout
 
 ```
@@ -217,6 +242,7 @@ adapters/claude/
 ├── scripts/       review_permissions.py
 ├── settings.json  permission allow/ask-list + hook registration
 ├── usage_probe.py the anthropic-oauth usage probe (installed into .aide/loop/)
+├── default-context.json   CLAUDE.md + @path — how .aide/AGENT-CONTEXT.md gets linked
 └── tests/         test_usage_probe.py  (adapter/installer conformance)
 ```
 

@@ -15,7 +15,7 @@ identically by every runtime. An adapter re-expresses only the ~18 markdown
 control files (entry-points, roles, orchestrators) plus, optionally, a permission
 policy and a usage probe. Nothing below re-implements engine logic.
 
-A conforming adapter provides all of §1–§4; §5–§6 are optional and only apply to
+A conforming adapter provides all of §1–§4; §5–§7 are optional and only apply to
 runtimes whose feature set supports them.
 
 ---
@@ -147,6 +147,56 @@ numbers via a **pluggable probe** — the one core/adapter seam in the loop:
 An adapter for a runtime with no usage endpoint sets `usage_probe = "none"` and
 ships no probe file; the contract is still satisfied.
 
+## 7. Optional: default-context instructions
+
+Only runtimes that load a project instruction file automatically provide this.
+The engine ships `AGENT-CONTEXT.md` — about a page of the rules that must bind
+*before* anything points at `conventions.md`, each linking to its full treatment
+there. It exists because `conventions.md` is read only when something points at
+it: fine for an agent spec in the unattended loop, useless for an interactive
+session, where a person and the runtime produce durable artifacts (commit
+messages, issue bodies, `insights.md` entries) with no agent spec in play.
+
+The same split as §5: the **rules** are runtime-general and live in
+`conventions.md`; only the *delivery mechanism* is adapter-local. An adapter
+declares two things, in `default-context.json` at the adapter root:
+
+```json
+{
+  "file": "CLAUDE.md",
+  "import": "@{path}"
+}
+```
+
+- **`file`** — the instruction file the runtime loads by default, relative to
+  the repo root. Runtimes differ here and the set moves, so pinning it is the
+  adapter's job. Whether a runtime-neutral name (`AGENTS.md`) beats a
+  provider-specific one is likewise a per-adapter decision, not an engine
+  default.
+- **`import`** — the runtime's syntax for inlining another file, with `{path}`
+  standing for the imported file. The Claude adapter declares `@{path}`, so the
+  installed line is `@.aide/AGENT-CONTEXT.md`.
+
+Given the declaration, `install.py`:
+
+- ensures the rendered import line is present in the declared file, appending it
+  and nothing else when it is missing (idempotent — the project keeps full
+  control of everything it wrote);
+- creates the file containing just that line when it does not exist, since a new
+  file cannot clobber anything and a silently absent channel is the failure mode
+  worth avoiding;
+- reports a missing import line under `--check` as drift, the same way it
+  reports a stale `VERSION`.
+
+The imported file is **framework-owned wholesale** — the ownership pattern §5
+already establishes for non-JSON adapter files. There is no delimited region
+inside a project-owned document and no third ownership pattern to invent.
+
+An adapter for a runtime with **no import mechanism** ships a managed delimited
+block instead; one with no default-context concept at all omits `default-context.json`
+and this section, and relies on `conventions.md` being read — the same graceful
+degradation §5 and §6 use.
+
 ---
 
 ## Conformance checklist
@@ -157,3 +207,5 @@ ships no probe file; the contract is still satisfied.
 - [ ] Every mechanical action routed through `python .aide/scripts/aide.py …`.
 - [ ] *(if the runtime has one)* a permission policy enforcing `conventions.md` §3.
 - [ ] *(if unattended runs are wanted)* a `usage_probe.py`, or `usage_probe = "none"`.
+- [ ] *(if the runtime loads an instruction file by default)* a `default-context.json`
+      declaring that file and the runtime's import syntax.

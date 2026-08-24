@@ -60,6 +60,28 @@ FRAMEWORK_ROOT = Path(__file__).resolve().parent
 ADAPTER_CONTROL = ("agents", "skills", "commands", "hooks", "scripts")
 ADAPTER_SETTINGS = "settings.json"
 
+# ADAPTER-SPEC §7. An adapter whose runtime loads a project instruction file by
+# default declares that file and the runtime's import syntax here; the installer
+# then links the engine's AGENT-CONTEXT.md into it. Absent, there is no such
+# runtime concept and nothing below runs.
+ADAPTER_DEFAULT_CONTEXT = "default-context.json"
+
+# The engine page that has to be in context before anything points at
+# conventions.md — installed as part of core/, linked from the consumer's
+# instruction file rather than copied into it.
+AGENT_CONTEXT_REL = ".aide/AGENT-CONTEXT.md"
+
+# Body for an instruction file the consumer does not have yet. A new file cannot
+# clobber anything, and making the default correct beats leaving the channel
+# silently absent — but it stays minimal, because everything below the import is
+# the project's to write.
+INSTRUCTION_FILE_TEMPLATE = """\
+# {name}
+
+Project instructions. Everything below is yours to write; the line above is
+maintained by the AIDE installer (see `.aide/AGENT-CONTEXT.md`).
+"""
+
 # Encoding for reading files that live in the CONSUMER repo (settings.json, the
 # overlay, .gitignore, .aide/VERSION). Those are hand-editable, and a Windows editor
 # prepends a BOM; "utf-8-sig" strips one when present and is identical to "utf-8"
@@ -195,11 +217,18 @@ def compare_versions(installed: str, available: str) -> str:
     return "behind" if lhs < rhs else "ahead"
 
 
-def report_version(available: str, installed_path: Path, target: Path) -> int:
+def report_version(available: str, installed_path: Path, target: Path,
+                   drift: Optional[str] = None) -> int:
     """``--check``: compare the target's installed VERSION against this framework.
 
     Writes nothing. Exit 0 when current or ahead, 1 when behind (so a consumer can
-    gate on it), 2 when the target has no install to compare.
+    gate on it), 2 when the target has no install to compare. *drift*, when given,
+    describes installed state that is out of date for a reason the version number
+    cannot express — today, an instruction file that never got the
+    ``AGENT-CONTEXT.md`` import (ADAPTER-SPEC §7). It is reported alongside the
+    version and forces the same non-zero exit, because the fix is the same
+    ``--update`` and a channel that is silently absent is exactly the failure the
+    import exists to prevent.
     """
     if not installed_path.is_file():
         print(f"aide {target}: no install found ({installed_path} missing) — "
@@ -208,13 +237,18 @@ def report_version(available: str, installed_path: Path, target: Path) -> int:
 
     installed = installed_path.read_text(encoding=CONSUMER_ENCODING).strip()
     state = compare_versions(installed, available)
+    if drift:
+        print(f"aide {target}: {drift}")
     if state == "current":
+        if drift:
+            print(f"aide {target}: v{installed} — run install.py --into {target} --update")
+            return 1
         print(f"aide {target}: v{installed} — up to date")
         return 0
     if state == "ahead":
         print(f"aide {target}: v{installed} is AHEAD of this framework (v{available}) — "
               f"this checkout is older than the consumer's install")
-        return 0
+        return 1 if drift else 0
     print(f"aide {target}: v{installed} is BEHIND v{available} — "
           f"run install.py --into {target} --update (see CHANGELOG.md)")
     return 1
@@ -641,6 +675,73 @@ def scaffold_aide_toml(target: Path, adapter: str, version: str, args: argparse.
     log.append(f"  + {path}")
 
 
+def default_context_declaration(adapter_dir: Path) -> Optional[Tuple[str, str]]:
+    """``(instruction file, import line)`` an adapter declares, or None.
+
+    None means the runtime has no default-context concept (ADAPTER-SPEC §7 is
+    optional), so the caller does nothing — the same graceful degradation as a
+    missing ``usage_probe.py``. A malformed declaration is treated the same way
+    rather than failing an install over an optional channel; the drift report
+    under ``--check`` is what surfaces a channel that never got linked.
+    """
+    path = adapter_dir / ADAPTER_DEFAULT_CONTEXT
+    if not path.is_file():
+        return None
+    try:
+        decl = json.loads(path.read_text(encoding="utf-8"))
+        name = str(decl["file"])
+        syntax = str(decl["import"])
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not name or "{path}" not in syntax:
+        return None
+    return name, syntax.replace("{path}", AGENT_CONTEXT_REL)
+
+
+def default_context_state(target: Path, adapter_dir: Path) -> Tuple[Optional[Path], bool]:
+    """``(instruction file, whether it already imports AGENT-CONTEXT.md)``.
+
+    ``(None, True)`` when the adapter declares nothing — nothing to report.
+    """
+    decl = default_context_declaration(adapter_dir)
+    if decl is None:
+        return None, True
+    name, line = decl
+    path = target / name
+    if not path.is_file():
+        return path, False
+    existing = path.read_text(encoding=CONSUMER_ENCODING)
+    return path, any(l.strip() == line for l in existing.splitlines())
+
+
+def install_default_context(target: Path, adapter_dir: Path, log: List[str]) -> None:
+    """Ensure the consumer's instruction file imports ``.aide/AGENT-CONTEXT.md``.
+
+    One line, appended; everything else in the file is the project's and is not
+    read for anything but the presence of that line. Idempotent, so an
+    ``--update`` on a linked repo writes nothing.
+    """
+    decl = default_context_declaration(adapter_dir)
+    if decl is None:
+        return
+    name, line = decl
+    path = target / name
+    if not path.is_file():
+        path.write_text(line + "\n\n" + INSTRUCTION_FILE_TEMPLATE.format(name=target.name),
+                        encoding="utf-8")
+        log.append(f"  + {path} (created; imports {AGENT_CONTEXT_REL})")
+        return
+    existing = path.read_text(encoding=CONSUMER_ENCODING)
+    if any(l.strip() == line for l in existing.splitlines()):
+        log.append(f"  = {path} (already imports {AGENT_CONTEXT_REL})")
+        return
+    sep = "" if (not existing or existing.endswith("\n")) else "\n"
+    prefix = "\n" if existing and not existing.endswith("\n\n") else ""
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(sep + prefix + line + "\n")
+    log.append(f"  ~ {path} ({AGENT_CONTEXT_REL} import appended)")
+
+
 def append_gitignore(target: Path, log: List[str]) -> None:
     path = target / ".gitignore"
     existing = path.read_text(encoding=CONSUMER_ENCODING) if path.is_file() else ""
@@ -677,7 +778,12 @@ def run(args: argparse.Namespace) -> int:
     log: List[str] = []
 
     if args.check:
-        return report_version(version, aide_dir / "VERSION", target)
+        ctx_path, linked = default_context_state(target, adapter_dir)
+        drift = None if linked else (
+            f"{ctx_path.name} does not import {AGENT_CONTEXT_REL} "
+            f"(ADAPTER-SPEC §7) — the framework's default-context rules never "
+            f"reach an interactive session in this repo")
+        return report_version(version, aide_dir / "VERSION", target, drift)
 
     mode = "update" if args.update else "install"
     print(f"AIDE {mode}: {args.adapter} v{version} -> {target}")
@@ -707,7 +813,12 @@ def run(args: argparse.Namespace) -> int:
     if probe.is_file():
         copy_file(probe, aide_dir / "loop" / "usage_probe.py", log)
 
-    # 6. .gitignore block — fresh install only
+    # 6. instruction-file import -> .aide/AGENT-CONTEXT.md  (ADAPTER-SPEC §7).
+    #    Runs on update too: the line is how a framework rule reaches an
+    #    interactive session, and it is one idempotent line either way.
+    install_default_context(target, adapter_dir, log)
+
+    # 7. .gitignore block — fresh install only
     if not args.update:
         append_gitignore(target, log)
 
