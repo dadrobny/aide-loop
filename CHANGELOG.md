@@ -17,6 +17,31 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.14.1] — 2026-08-20
+
+### Fixed
+
+- **A human gate on a stage that has no items queued yet is no longer reported
+  as a typo.** `aide check` derives a stage gate's reach by resolving `stage N`
+  through `progress.md` on every read — deliberately, so the reach follows the
+  roadmap instead of freezing a list written when the gate was raised. That
+  makes raising a gate at planning time, before anything is queued for the
+  stage, the feature's primary use. The reach check read the resulting empty
+  list as evidence of a mistyped stage number and told the author to "check the
+  stage number", firing on the happy path and training consumers to ignore the
+  one warning standing between a typo and a gate that silently guards nothing.
+  The two causes of an empty reach are now separated by whether the stage
+  section exists at all: an absent section keeps the blunt original wording, a
+  present but unqueued one reports neutrally that the gate "has no items queued
+  yet … and will block that stage's items as they are created". Reported from
+  `dadrobny/segfacet` against 1.14.0. (#48)
+
+  The section lookup both cases need is now one named helper, `stage_section`,
+  rather than the same `stage_sections`/`_same_stage` generator expression
+  inlined at three call sites — a helper that returns only item numbers cannot
+  tell "no such stage" from "stage with nothing in it", which is precisely the
+  distinction that was missing.
+
 ## [1.14.0] — 2026-08-18
 
 ### Added

@@ -6,8 +6,10 @@ no work queue here. Do not look for the loop's living documents; you are editing
 the machinery that produces them elsewhere.
 
 Start with [`README.md`](README.md) (the three-layer model, the loop, model
-routing) and [`docs/concepts.md`](docs/concepts.md). This file holds only what an
-agent editing *this* repo needs and cannot infer from the code.
+routing), [`docs/concepts.md`](docs/concepts.md) (the mental model), and
+[`docs/vision.md`](docs/vision.md) (what the framework is for, and what it
+refuses). This file holds only what an agent editing *this* repo needs and cannot
+infer from the code.
 
 ## What lives where
 
@@ -106,6 +108,26 @@ change, since most copied files are byte-identical no-ops.
   it belongs in the adapter, and probably in
   [`adapters/ADAPTER-SPEC.md`](adapters/ADAPTER-SPEC.md) as a contract point
   every runtime must express.
+
+## Where direction lives — three places, no overlap
+
+[`docs/vision.md`](docs/vision.md) holds **purpose and non-goals**. The
+[GitHub Project](https://github.com/users/dadrobny/projects/1) holds **order and
+status**, as fields on the issues themselves. Issue bodies hold **per-item
+rationale**. None of the three duplicates another — in particular, **nothing
+outside the tracker records whether work is done**, so do not add a status
+section, a checklist, or a "current focus" heading to any document in this repo.
+
+Reading the Project needs network plus `gh` authenticated with the `project`
+scope (`gh auth refresh -s project`); `gh project item-list 1 --owner dadrobny
+--format json` is the whole interface. The board's `Wave` field is the ordering —
+issues within one wave are a coherent batch, and dependencies between issues stay
+as prose in their bodies, since GitHub has no native "blocks" edge.
+
+The vision earns its keep by licensing a **close**: an issue that crosses a stated
+non-goal can be closed as out of scope rather than left open forever. If a
+proposal fits nowhere in it, say so in the issue — either it is out of scope, or
+`docs/vision.md` is out of date and wants a PR.
 
 ## Merge policy
 
