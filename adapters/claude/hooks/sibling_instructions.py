@@ -10,21 +10,23 @@ declared sibling repository gets nothing, even when the tool is configured to
 work in it — "additional working directory" does not imply "instructions
 loaded". This hook extends the semantics the runtime already applies to
 *subdirectory* instruction files across a repo boundary: on the first tool call
-that touches a path under a declared sibling, that repo's own instruction file
-is injected once, and nothing is paid by a session that never reaches across.
+that touches a path under a declared sibling, the session is pointed at that
+repo's own instruction file once, and nothing is paid by a session that never
+reaches across.
 
 Contract:
 - Reads the PreToolUse hook JSON on stdin (``session_id``, ``cwd``,
   ``tool_name``, ``tool_input`` …).
 - When a touched path lands inside a declared sibling repo not yet surfaced in
   this session, writes ``hookSpecificOutput.additionalContext`` to **stdout** as
-  JSON and exits 0.
+  JSON and exits 0. That context is a **pointer** to the repo's instruction
+  file, never its contents — see ``_render`` for why.
 - Otherwise writes nothing and exits 0.
 
 Design rules:
 - **JSON or nothing.** A PreToolUse hook's plain stdout is written to the debug
   log and never shown to the model — only ``hookSpecificOutput.additionalContext``
-  reaches it. Printing the file would look like it worked and deliver nothing.
+  reaches it. Printing to stdout would look like it worked and deliver nothing.
 - **Never block.** No ``permissionDecision`` is emitted and the exit status is
   always 0, so the ordinary permission flow is untouched. Exit 2 would *block*
   the tool call, which is the opposite of the intent.
@@ -47,10 +49,10 @@ import sys
 import tempfile
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-#: A pathological instruction file must not blow up the context window it is
-#: being injected into. Beyond this the file is truncated and the reader is
-#: pointed at the original.
-_MAX_BYTES = 64 * 1024
+#: How much of an instruction file is read to decide it is worth pointing at.
+#: The body is never injected, so the whole file is never needed — and this runs
+#: before every tool call that touches a declared repo.
+_PROBE_BYTES = 4096
 
 #: Fallback when ``default-context.json`` is missing or unreadable. Every
 #: runtime that loads an instruction file by default names it in that file; this
@@ -197,57 +199,68 @@ def _already_surfaced(marker, repo_root):
 
 
 def _record_surfaced(marker, repo_root):
+    """Append a surfaced repo to this session's marker.
+
+    Created 0600: the file names absolute paths to the repos on this machine,
+    and the system temp directory is world-readable on a shared one. The mode
+    applies at creation, so a marker that somehow already exists keeps whatever
+    it had — the fix for that is a fresh session id, which every session brings.
+    """
     try:
-        with marker.open("a", encoding="utf-8") as fh:
+        fd = os.open(str(marker), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
             fh.write(os.path.normcase(str(repo_root)) + "\n")
     except OSError:
-        # Losing the marker costs a repeat injection later, never correctness.
+        # Losing the marker costs a repeated pointer later, never correctness.
         pass
 
 
-def _read_instructions(instruction_path):
-    """``(text, truncated)`` for an instruction file, or ``(None, False)``.
+def _has_instructions(instruction_path):
+    """Whether there is a non-empty instruction file worth pointing at.
 
-    The flag is returned rather than inferred from a marker in the text because
-    the rendered preamble has to state which case it is in — an injected block
-    that says "in full" over a truncated file is a durable artifact telling the
-    reader something untrue about how much of the rules it is looking at.
+    Pointing at a file that is absent or empty is noise, and noise in an injected
+    block is what teaches a reader to skim past the block that matters.
+
+    Reads a bounded prefix rather than the file, because this runs on the hot
+    path of a tool call and the answer never needs more: a file whose first 4 KB
+    is entirely whitespace is one nobody is being usefully sent to.
     """
     try:
-        text = instruction_path.read_text(encoding="utf-8", errors="replace")
+        if not instruction_path.is_file():
+            return False
+        with instruction_path.open("rb") as fh:
+            head = fh.read(_PROBE_BYTES)
     except OSError:
-        return None, False
-    if not text.strip():
-        return None, False
-    encoded = text.encode("utf-8")
-    if len(encoded) <= _MAX_BYTES:
-        return text, False
-    text = encoded[:_MAX_BYTES].decode("utf-8", errors="ignore")
-    text += "\n\n[truncated — read the rest at " + str(instruction_path) + "]"
-    return text, True
+        return False
+    return bool(head.decode("utf-8", errors="replace").strip())
 
 
-def _render(repo_root, instruction_path, text, truncated=False):
-    if truncated:
-        extent = (
-            "It is too large to inject whole, so what follows is the **beginning "
-            "of** that file, truncated. Read `" + str(instruction_path) + "` for "
-            "the rest before relying on it."
-        )
-    else:
-        extent = "It is reproduced below in full."
+def _render(repo_root, instruction_path):
+    """The pointer. Deliberately not the file's contents.
+
+    Injecting the body looks more helpful and is worse on three counts. It goes
+    **stale**: the flagship case is a session *editing* the sibling, so a copy
+    taken at first touch can be wrong by the time it is used — and wrong
+    invisibly, which is the failure this whole mechanism exists to remove. It is
+    **capped**: a runtime bounds injected context (Claude Code at 10,000
+    characters, past which the output is spilled to a file and replaced with a
+    preview and its path — the runtime improvising this very pointer). And it is
+    **paid in full every time**, where a pointer costs a few hundred characters
+    and the reader spends the rest only if it opens the file.
+
+    So the hook does the part a session cannot do for itself — noticing that it
+    has crossed into a repo whose rules it was never given — and leaves the
+    reading to the reader, who then reads the file as it is now.
+    """
     return (
-        "This session has reached into `" + str(repo_root) + "`, a separate "
-        "repository declared in `.aide/loop/loop.local.toml`. A runtime loads "
-        "instruction files for the working directory's repository only, so that "
-        "repository's own instructions have not been in context until now.\n\n"
-        + extent + " They govern work **inside that repository**; the working "
-        "directory's own instructions continue to govern everything else. Where "
-        "the two disagree about a file, the repository that owns the file "
-        "wins.\n\n"
-        "--- begin " + str(instruction_path) + " ---\n"
-        + text.rstrip("\n") + "\n"
-        "--- end " + str(instruction_path) + " ---"
+        "You are about to act inside `" + str(repo_root) + "`, a **separate "
+        "repository** declared in `.aide/loop/loop.local.toml`. A runtime loads "
+        "instruction files for the working directory's repository only, so this "
+        "repository's own instructions are **not** in context.\n\n"
+        "**Read `" + str(instruction_path) + "` before continuing.** It governs "
+        "work inside that repository; the working directory's own instructions "
+        "continue to govern everything else, and where the two disagree about a "
+        "file, the repository that owns the file wins."
     )
 
 
@@ -299,13 +312,13 @@ def main():
         if _already_surfaced(marker, repo_root):
             continue
         instruction_path = repo_root / instruction_file
-        text, truncated = _read_instructions(instruction_path)
         # Record either way: a sibling with no instruction file must not be
         # re-examined on every single tool call for the rest of the session.
+        has_instructions = _has_instructions(instruction_path)
         _record_surfaced(marker, repo_root)
-        if text is None:
+        if not has_instructions:
             continue
-        blocks.append(_render(repo_root, instruction_path, text, truncated))
+        blocks.append(_render(repo_root, instruction_path))
 
     if not blocks:
         return

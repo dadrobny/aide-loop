@@ -771,9 +771,11 @@ documented update workflow edits the framework clone from a consumer's checkout,
 which is precisely a session with the framework's instructions unloaded.
 
 **A runtime may automate this.** Where one can inject context on demand, an
-adapter should surface a declared sibling's instruction file the first time a
-session touches a path inside it — lazily, so a session that never reaches
-across pays nothing. That is a delivery mechanism and therefore adapter-local
+adapter should **point** a session at a declared sibling's instruction file the
+first time it touches a path inside it — lazily, so a session that never reaches
+across pays nothing. A pointer and not the file's contents: the reader then opens
+it as it is *now*, which matters most in the case that motivates the rule, where
+the session is editing that very file. That is a delivery mechanism and therefore adapter-local
 (`ADAPTER-SPEC.md` §8); the rule above is what binds when a runtime has no such
 mechanism, which is the same graceful degradation §3's hygiene guard already
 relies on.

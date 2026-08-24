@@ -96,14 +96,41 @@ def _isolate_markers(tmp_path, monkeypatch):
 # --------------------------------------------------------------------------- #
 # the wire contract — what the runtime actually receives
 # --------------------------------------------------------------------------- #
-def test_reaching_into_a_declared_sibling_injects_its_instructions(tmp_path, monkeypatch):
+def test_reaching_into_a_declared_sibling_points_at_its_instructions(tmp_path, monkeypatch):
     repo = _consumer(tmp_path, extra_repos=["../sibling"])
     result = _run(
         monkeypatch, repo, "Edit",
         {"file_path": str((repo / ".." / "sibling" / "x.py").resolve())},
     )
     assert result is not None
-    assert "Never 'fix' the consumer paths." in _context(result)
+    context = _context(result)
+    assert str((repo / ".." / "sibling" / "CLAUDE.md").resolve()) in context
+    assert "Read" in context
+
+
+def test_the_pointer_never_carries_the_file_body(tmp_path, monkeypatch):
+    """The body would go stale — the flagship case is a session *editing* the
+    sibling — and a runtime caps injected context (Claude Code at 10,000 chars).
+    The hook names the file; the reader opens it, and gets it as it is then."""
+    repo = _consumer(tmp_path, extra_repos=["../sibling"],
+                     sibling_text="# rules\n\nDISTINCTIVE BODY SENTINEL\n")
+    result = _run(
+        monkeypatch, repo, "Edit",
+        {"file_path": str((repo / ".." / "sibling" / "x.py").resolve())},
+    )
+    assert "DISTINCTIVE BODY SENTINEL" not in _context(result)
+
+
+def test_the_pointer_stays_far_inside_the_runtime_cap(tmp_path, monkeypatch):
+    """A huge sibling file must not change the injected size at all — that is
+    the property body-injection could not have."""
+    repo = _consumer(tmp_path, extra_repos=["../sibling"],
+                     sibling_text="z" * 500_000)
+    result = _run(
+        monkeypatch, repo, "Edit",
+        {"file_path": str((repo / ".." / "sibling" / "x.py").resolve())},
+    )
+    assert len(_context(result)) < 2_000
 
 
 def test_output_is_context_only_and_never_a_permission_decision(tmp_path, monkeypatch):
@@ -277,7 +304,8 @@ def test_two_siblings_touched_in_one_call_are_both_injected(tmp_path, monkeypatc
     (repo / ".." / "two" / "CLAUDE.md").resolve().write_text("TWO RULES\n", encoding="utf-8")
     result = _run(monkeypatch, repo, "Bash", {"command": "diff ../one/a.py ../two/a.py"})
     context = _context(result)
-    assert "ONE RULES" in context and "TWO RULES" in context
+    assert str((repo / ".." / "one" / "CLAUDE.md").resolve()) in context
+    assert str((repo / ".." / "two" / "CLAUDE.md").resolve()) in context
 
 
 def test_a_second_sibling_is_injected_even_after_the_first(tmp_path, monkeypatch):
@@ -288,9 +316,11 @@ def test_a_second_sibling_is_injected_even_after_the_first(tmp_path, monkeypatch
     (repo / ".." / "two" / "CLAUDE.md").resolve().write_text("TWO RULES\n", encoding="utf-8")
     first = _run(monkeypatch, repo, "Edit", {"file_path": str((repo / ".." / "one" / "a.py").resolve())})
     second = _run(monkeypatch, repo, "Edit", {"file_path": str((repo / ".." / "two" / "a.py").resolve())})
-    assert "ONE RULES" in _context(first)
-    assert "TWO RULES" in _context(second)
-    assert "ONE RULES" not in _context(second)
+    one = str((repo / ".." / "one" / "CLAUDE.md").resolve())
+    two = str((repo / ".." / "two" / "CLAUDE.md").resolve())
+    assert one in _context(first)
+    assert two in _context(second)
+    assert one not in _context(second)
 
 
 def test_the_framework_clone_is_a_sibling_like_any_other(tmp_path, monkeypatch):
@@ -303,59 +333,45 @@ def test_the_framework_clone_is_a_sibling_like_any_other(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# size cap
+# cost and exposure of the mechanism itself
 # --------------------------------------------------------------------------- #
-def test_an_oversized_instruction_file_is_truncated_with_a_pointer(tmp_path, monkeypatch):
-    huge = "x" * (hook._MAX_BYTES + 5000) + "\nTAIL MARKER\n"
-    repo = _consumer(tmp_path, extra_repos=["../sibling"], sibling_text=huge)
-    result = _run(monkeypatch, repo, "Edit",
-                  {"file_path": str((repo / ".." / "sibling" / "x.py").resolve())})
-    context = _context(result)
-    assert "TAIL MARKER" not in context
-    assert "truncated" in context
-    assert len(context.encode("utf-8")) < hook._MAX_BYTES + 2000
-    # The preamble must not claim completeness over a file it cut short.
-    assert "in full" not in context
-
-
-def test_a_truncated_block_says_so_and_points_at_the_original(tmp_path, monkeypatch):
-    huge = "x" * (hook._MAX_BYTES + 5000)
-    repo = _consumer(tmp_path, extra_repos=["../sibling"], sibling_text=huge)
-    result = _run(monkeypatch, repo, "Edit",
-                  {"file_path": str((repo / ".." / "sibling" / "x.py").resolve())})
-    context = _context(result)
-    original = (repo / ".." / "sibling" / "CLAUDE.md").resolve()
-    assert "beginning of" in context
-    assert str(original) in context
-
-
-def test_an_untruncated_block_states_it_is_complete(tmp_path, monkeypatch):
-    """The claim is only safe on the branch that earns it."""
+def test_a_huge_instruction_file_is_never_read_whole(tmp_path, monkeypatch):
+    """This runs before every tool call touching a declared repo. The body is
+    never injected, so reading it to answer "is it non-empty" is pure cost."""
     repo = _consumer(tmp_path, extra_repos=["../sibling"])
-    result = _run(monkeypatch, repo, "Edit",
-                  {"file_path": str((repo / ".." / "sibling" / "x.py").resolve())})
-    context = _context(result)
-    assert "in full" in context
-    # Phrase-precise: the tmp_path this test runs in carries the test's own name,
-    # so a bare `"truncated" not in context` matches "untruncated" in the path.
-    assert "too large to inject whole" not in context
-    assert "beginning of" not in context
+    target = (repo / ".." / "sibling" / "CLAUDE.md").resolve()
+    target.write_text("# rules\n" + "z" * 5_000_000, encoding="utf-8")
+
+    reads = []
+    real_open = Path.open
+
+    def counting_open(self, *a, **kw):
+        fh = real_open(self, *a, **kw)
+        if self == target:
+            reads.append(fh)
+        return fh
+
+    monkeypatch.setattr(Path, "open", counting_open)
+    assert _run(monkeypatch, repo, "Edit",
+                {"file_path": str((repo / ".." / "sibling" / "x.py").resolve())}) is not None
+    assert hook._PROBE_BYTES <= 64 * 1024
 
 
-def test_read_instructions_reports_truncation_to_its_caller(tmp_path):
-    """The renderer needs the fact, not a guess derived from the text."""
-    small = tmp_path / "small.md"
-    small.write_text("short\n", encoding="utf-8")
-    assert hook._read_instructions(small) == ("short\n", False)
+def test_an_all_whitespace_prefix_is_treated_as_no_instructions(tmp_path, monkeypatch):
+    repo = _consumer(tmp_path, extra_repos=["../sibling"],
+                     sibling_text=" " * (hook._PROBE_BYTES + 100))
+    assert _run(monkeypatch, repo, "Edit",
+                {"file_path": str((repo / ".." / "sibling" / "x.py").resolve())}) is None
 
-    big = tmp_path / "big.md"
-    big.write_text("y" * (hook._MAX_BYTES + 10), encoding="utf-8")
-    text, truncated = hook._read_instructions(big)
-    assert truncated is True
-    assert text is not None
 
-    missing = tmp_path / "nope.md"
-    assert hook._read_instructions(missing) == (None, False)
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+def test_the_marker_is_not_world_readable(tmp_path, monkeypatch):
+    """It names absolute paths to this machine's repos, in a shared temp dir."""
+    repo = _consumer(tmp_path, extra_repos=["../sibling"])
+    assert _run(monkeypatch, repo, "Edit",
+                {"file_path": str((repo / ".." / "sibling" / "x.py").resolve())}) is not None
+    mode = hook._marker_path("s1").stat().st_mode & 0o777
+    assert mode & 0o077 == 0, oct(mode)
 
 
 # --------------------------------------------------------------------------- #
@@ -409,8 +425,8 @@ def test_the_happy_path_also_exits_zero_as_a_subprocess(tmp_path):
         input=payload, capture_output=True, text=True, cwd=str(repo),
     )
     assert proc.returncode == 0, proc.stderr
-    assert "Never 'fix' the consumer paths." in json.loads(proc.stdout)[
-        "hookSpecificOutput"]["additionalContext"]
+    assert str((repo / ".." / "sibling" / "CLAUDE.md").resolve()) in json.loads(
+        proc.stdout)["hookSpecificOutput"]["additionalContext"]
 
 
 # --------------------------------------------------------------------------- #

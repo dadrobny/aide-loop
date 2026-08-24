@@ -48,7 +48,20 @@ keys, and the adapter's agents/skills/commands.
   - **The mechanism** (adapter): `ADAPTER-SPEC.md` **§8**, and the Claude
     adapter's `hooks/sibling_instructions.py`, registered on `PreToolUse` for the
     path-touching tools. On the first call touching a path inside a declared
-    sibling, that repo's instruction file is injected once.
+    sibling, the session is pointed at that repo's instruction file once.
+
+  **A pointer, not the file.** Injecting the body looks more helpful and is worse
+  three ways. It goes **stale** — the case that motivates the rule is a session
+  *editing* the sibling, so a copy taken at first touch can be wrong by the time
+  it is used, and wrong invisibly, which is the failure this exists to remove. It
+  is **capped** — a runtime bounds injected context, Claude Code at 10,000
+  characters, past which the output is spilled to a file and replaced with a
+  preview and its path, the runtime improvising this very pointer. And it is
+  **paid in full every time**, where a pointer costs a few hundred characters and
+  the reader spends the rest only if it opens the file. The hook does the part a
+  session cannot do for itself — noticing it has crossed into a repo whose rules
+  it was never given — and leaves the reading to the reader, against the file as
+  it is then.
 
   **No new configuration.** The repos come from `[framework] local_path` and
   `[hygiene] extra_repos` in the personal, gitignored `.aide/loop/loop.local.toml`
@@ -59,12 +72,15 @@ keys, and the adapter's agents/skills/commands.
   `default-context.json` (§7), so it is named once. The hook reuses the guard's
   own config parser rather than growing a second reader of the same file.
 
-  **Lazy, not eager.** A `SessionStart` injection of every declared repo is
-  simpler and paid by every session: 15–20 KB of instructions for repos most
-  sessions never open, on top of the project's own file. Surfacing on first reach
-  costs nothing until a session actually reaches across. Each repo is surfaced
-  once per session — including a declared repo with *no* instruction file, so a
-  missing file is not re-checked on every subsequent call.
+  **Lazy, not eager.** An eager `SessionStart` list names every declared repo,
+  most of which a given session never opens — and a block that is usually
+  irrelevant is one a reader learns to skip, including on the session where it
+  was not. Pointing at the moment of the crossing makes the message true of what
+  is happening right then, and costs nothing in a session that never reaches
+  across. Each repo is pointed at once per session — including a declared repo
+  with *no* instruction file, so a missing file is not re-checked on every
+  subsequent call. The check reads a bounded 4 KB prefix, never the whole file:
+  this runs ahead of tool calls and the body is never injected anyway.
 
   **It watches; it does not gate.** No `permissionDecision` is emitted and the
   exit status is always 0, so the permission flow is untouched. Every failure
@@ -72,7 +88,9 @@ keys, and the adapter's agents/skills/commands.
   swallowed, leaving the session exactly as it would have been. A malformed
   `loop.local.toml` grants nothing, inherited from the guard's parse, so a typo in
   a personal config file cannot start leaking an undeclared repo's file into
-  context. Oversized files are truncated with a pointer to the original.
+  context. The per-session marker is created `0600` — it names absolute paths to
+  this machine's repos, and the system temp directory is world-readable on a
+  shared one.
 
 ### Changed
 

@@ -233,18 +233,33 @@ named once.
 
 An adapter that provides this must:
 
-- act **lazily** — surface a repo's instruction file on the first action touching
-  a path inside it, not eagerly at session start. Eager is simpler and paid by
-  every session: a handful of declared repos is 15–20 KB of instructions for
-  repos most sessions never open, on top of the project's own file. Lazy costs
-  nothing until a session actually reaches across;
-- surface each repo **once per session**, and once for a declared repo with no
-  instruction file too, so a missing file is not re-checked on every call;
+- **point at the instruction file; do not inject its contents.** The body looks
+  more helpful and is worse three ways. It goes **stale** — the case that
+  motivates the rule is a session *editing* the sibling, so a copy taken at first
+  touch can be wrong when used, and wrong invisibly, which is the failure the
+  mechanism exists to remove. It is **capped** — runtimes bound injected context
+  (Claude Code at 10,000 characters, past which output is spilled to a file and
+  replaced with a preview and its path, the runtime improvising this very
+  pointer). And it is **paid in full every time**, where a pointer costs a few
+  hundred characters and the reader spends the rest only if it opens the file.
+  The mechanism's job is the part a session cannot do for itself: noticing it has
+  crossed into a repo whose rules it was never given.
+- act **lazily** — point on the first action touching a path inside a repo, not
+  eagerly at session start. Size is the weaker half of this argument once the
+  payload is a pointer; **relevance** is the strong half. An eager list names
+  every declared repo, most of which a given session never opens, and a block
+  that is usually irrelevant is one a reader learns to skip — including on the
+  session where it was not. Pointing at the moment of the crossing makes the
+  message true of what is happening right then, and costs nothing in a session
+  that never reaches across;
+- point at each repo **once per session**, and mark a declared repo with no
+  instruction file as done too, so a missing file is not re-checked on every call;
 - **never alter the action it observes.** The mechanism watches; it does not
   gate. It must not block, deny, or approve, and a failure in it — an unreadable
   config, a malformed declaration, its own bug — must leave the session exactly
   as it would have been without it;
-- **cap the injected size**, and say so in the injected text when it truncates.
+- **stay cheap on the hot path** — this runs before tool calls, so it must not
+  read a whole instruction file to decide whether to name it.
 
 The Claude adapter implements it as `hooks/sibling_instructions.py`, registered
 on `PreToolUse` for the path-touching tools. One detail there generalises to any
