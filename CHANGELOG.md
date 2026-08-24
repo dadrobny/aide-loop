@@ -78,6 +78,16 @@ keys, and the adapter's agents/skills/commands.
   share a repair: no `--update` deletes a project-owned file, so that state
   exits non-zero without prescribing one.
 
+- **`install.py`'s config readers no longer leak `sys.path` entries.** Both
+  `_project_scope` (pre-existing) and the new `_recorded_adapter` import the
+  engine's `load_config` so the installer and the engine interpret one
+  `aide.toml` identically. Each did it with a bare `sys.path.insert(0, …)` and
+  never removed the entry, so in any long-lived process — a pytest session runs
+  these dozens of times — duplicates accumulated at position 0 and silently
+  outranked every other import path for the rest of the run. Both now go through
+  an `_engine_on_path()` context manager that inserts only when the entry is
+  absent and restores on the way out.
+
 - **`aide check` no longer needs the full document set to run at all.**
   `run_checks` early-returned `missing <docs_dir>/progress.md` as a hard error,
   which conflated two unrelated situations: a loop repo that lost its central

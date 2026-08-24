@@ -1521,9 +1521,17 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                branches: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
     """Return ``(errors, warnings)``. Empty errors == pass.
 
-    The first eight checks are *document-independent* — three of them lint
-    `tests_dir` rather than `docs_dir` — so they run before, and survive, the
-    two early returns below. A repo with no `docs_dir` at all gets those and
+    The first eight checks all run before, and survive, the two early returns
+    below, but for two different reasons. Three of them —
+    `absolute_path_test_warnings`, `separator_dependent_test_warnings`,
+    `cli_subprocess_test_warnings` — read `tests_dir` and never touch
+    `docs_dir`, so they are the ones that make this function worth calling in a
+    repo with no document set. The other five *are* document checks; they
+    simply find nothing to say when `docs_dir` is absent, so keeping them costs
+    nothing and they still report on a `docs_dir` that exists but has no
+    `progress.md`.
+
+    A repo with no `docs_dir` at all therefore gets the test-hygiene lints and
     passes; only a repo that has a document set but has lost its `progress.md`
     is an error.
     """

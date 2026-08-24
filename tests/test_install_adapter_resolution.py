@@ -95,6 +95,34 @@ def test_a_blank_recorded_adapter_is_treated_as_absent(tmp_path: Path):
     assert install.resolve_adapter(target, None) == (install.DEFAULT_ADAPTER, None)
 
 
+def test_reading_the_config_leaves_sys_path_exactly_as_it_found_it(tmp_path: Path):
+    """Both config readers import the engine to interpret one aide.toml the way
+    the engine does. Doing that with a bare `sys.path.insert` left one entry
+    per call at position 0, never removed — in a pytest session that is dozens,
+    silently outranking every other import path for the rest of the run."""
+    target = _target(tmp_path, "claude")
+    before = list(sys.path)
+    for _ in range(5):
+        install.resolve_adapter(target, None)
+        install._project_scope(target)
+    assert sys.path == before
+
+
+def test_an_entry_already_on_the_path_is_left_there(tmp_path: Path):
+    """Restoring must undo only what this call added: removing an entry the
+    caller put there would be a different bug in the same place."""
+    entry = str(install.FRAMEWORK_ROOT / "core" / "scripts")
+    sys.path.insert(0, entry)
+    # Counted rather than pinned to 1: another test module in the same session
+    # may legitimately have the entry on the path already.
+    expected = sys.path.count(entry)
+    try:
+        install.resolve_adapter(_target(tmp_path, "claude"), None)
+        assert sys.path.count(entry) == expected
+    finally:
+        sys.path.remove(entry)
+
+
 # --------------------------------------------------------------------------- #
 # foreign_context_drift — the superseded provider's file, reported not removed
 # --------------------------------------------------------------------------- #
