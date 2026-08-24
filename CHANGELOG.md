@@ -17,6 +17,129 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.16.0] — 2026-08-24
+
+### Fixed
+
+- **A fixture consumer now runs in CI.** The engine is developed at `core/` and
+  executed at `.aide/`, inside someone else's git repository, by verbs that
+  shell out to git — and none of that was under test. The only automated
+  evidence a release still worked was the framework's unit tests passing against
+  source files no consumer runs in that layout. Closed #29 records the cost:
+  four CI-only failures reached a consumer's `main`, every one caught by a human
+  reading the Actions tab rather than by a gate.
+
+  `tests/test_fixture_consumer.py` installs into a `tmp_path`, `git init`s it,
+  scaffolds the minimum living documents (one stage, one queue, two items, one
+  spec), and drives the loop end to end against the engine loaded from
+  `.aide/scripts/aide.py`: `check` clean on the scaffold and failing on a lost
+  `progress.md`; `claim` creating, switching to and recording the branch's base;
+  `scope` passing in bounds, exiting 1 out of them and 2 on an unspecced item;
+  `merge` landing the work in `local` mode and refusing to touch `main` in `pr`
+  mode; `gc` dry-running by default, deleting only landed claims and never a
+  branch outside the prefix; `status` reporting the state the test just made.
+  Also covered: `--update` leaving project-owned documents byte-identical, and
+  an overlay regenerating into `settings.json`.
+
+  Exit codes and effects, never prose. No new CI infrastructure — the matrix
+  already runs ubuntu and windows, and the job is `pytest` picking up `tests/`.
+  Extending `tests/test_installed_docs_links.py`'s existing real-install pattern
+  rather than self-hosting AIDE in this repo, which would give every engine file
+  two committed copies and make the "never hand-edit `.aide/**`" rule
+  unfollowable.
+
+- **`install.py` now reads back the adapter it recorded.** `scaffold_aide_toml`
+  wrote `[aide] adapter` into a consumer's `aide.toml` and nothing ever read it:
+  `run()` re-derived the adapter from `--adapter` on every invocation,
+  `--update` and `--check` included, where the flag defaulted to `claude`. With
+  one adapter implemented that wrong default is accidentally always right. The
+  moment `adapters/copilot/` becomes real it stops being right, and the failure
+  is not a clean error — it is a repo that quietly acquires a second provider's
+  control files and, since 1.15.0, a root `CLAUDE.md` importing
+  `AGENT-CONTEXT.md`, having never chosen Claude.
+
+  The target now decides. `resolve_adapter` reads `[aide] adapter` through the
+  engine's own config loader — the treatment `_project_scope` already gives
+  `source_dir`/`tests_dir`, so installer and engine cannot disagree about one
+  file — falling back to `--adapter`, then to `claude`, when nothing is
+  recorded. A **typed** `--adapter` contradicting the record is an error naming
+  both: switching adapters is a real intention, but not one a flag nobody typed
+  should express, which is why `--adapter` now defaults to `None` rather than
+  `"claude"`. The install log line reports the resolved adapter instead of the
+  flag — the value that was wrong in the first place. `--update` in the docs no
+  longer carries the flag at all.
+
+  `--check` also gains a second report: another adapter's declared instruction
+  file still carrying the `AGENT-CONTEXT.md` import — a superseded provider left
+  behind by a mis-flagged update or a deliberate switch. It is **reported, never
+  removed** (`docs/vision.md` principle 4 — the framework does not touch
+  project-owned files, and a root instruction file emphatically is one), and it
+  is kept separate from import drift in `report_version` because the two do not
+  share a repair: no `--update` deletes a project-owned file, so that state
+  exits non-zero without prescribing one.
+
+- **An adapter name is validated as a directory name.** The adapter is joined
+  onto `FRAMEWORK_ROOT / "adapters"`, and reading it back from `aide.toml` means
+  it no longer arrives only from a typed flag — so a recorded `../core` would
+  resolve outside `adapters/` and have `--update` copy from an unintended
+  framework directory. Both sources are now checked against a whitelist
+  (`ADAPTER_NAME_RE`) before use, which covers `..`, `/`, `\` and a Windows
+  drive-relative `C:x` as one rule on every platform, and the refusal names
+  which source to fix. Same reasoning as ADAPTER-SPEC §7's existing check on an
+  adapter's declared instruction file.
+
+- **`install.py` loads the engine by path, not by name.** Both `_project_scope`
+  (pre-existing) and the new `_recorded_adapter` need the engine's `load_config`
+  so the installer and the engine interpret one `aide.toml` identically. Each
+  did it with a bare `sys.path.insert(0, …)` and `import aide`, which has two
+  independent problems: the entry was never removed, so in a long-lived process
+  duplicates accumulated at position 0 and outranked every other import path for
+  the rest of the run; and `import aide` resolves through `sys.modules` as well,
+  so a host process that had already bound some other `aide` won the name
+  outright whatever the path said.
+
+  `_engine_load_config()` now loads `core/scripts/aide.py` through
+  `importlib.util.spec_from_file_location` — the file whose path is already
+  known — touching no global import state and registering nothing in
+  `sys.modules`, which is how every test module in this repo loads the engine.
+  Cached, since the readers run more than once per invocation.
+
+- **`aide check` no longer needs the full document set to run at all.**
+  `run_checks` early-returned `missing <docs_dir>/progress.md` as a hard error,
+  which conflated two unrelated situations: a loop repo that lost its central
+  document (a real error) and a repo that never had a document set because it
+  adopted only the conventions and the CLI (nothing wrong). Because the return
+  discarded the warnings computed before it, **eight checks were unreachable for
+  the second case — three of them test-hygiene lints that read `tests_dir` and
+  have nothing to do with the loop's documents at all.**
+
+  Those three exist because four cross-platform defects reached a consumer's
+  `main` and were caught by a human reading the Actions tab rather than by any
+  gate. A repo doing installer or CLI path work on a mixed CI matrix is the
+  exact risk class they cover, and it was the class that could not run them.
+
+  The cases are now distinguished the way #48 distinguished a not-yet-queued
+  stage from a typo'd one — three of them, not two: **no `docs_dir` at all**
+  runs the repo-agnostic checks, prints a `notice:` naming the configured
+  directory, and exits 0; **`docs_dir` present without `progress.md`** keeps
+  today's error verbatim; and **`docs_dir` naming something that is not a
+  directory** is a misconfigured `aide.toml`, reported as an error naming the
+  key to fix rather than passing as a deliberate choice not to adopt the loop.
+  The
+  `(errors, warnings)` return shape is unchanged — the notice is presentational,
+  emitted by `cmd_check` — so nothing that parses `run_checks` is affected.
+
+  The notice is withheld on a `--queue` run: `--queue` sends the cross-spec
+  check looking for a queue file under the same absent directory, so it runs and
+  errors, and "only the repo-agnostic checks ran" would be false next to that
+  error. The notice exists to stop a *pass* being over-read; a failing run needs
+  no such guard.
+
+  This repository was the demonstration case: it has no `docs/aide/`, so it
+  could not lint its own tests, and the one finding that surfaced the moment it
+  could — an assert message in `tests/test_installed_docs_links.py` rendering a
+  relative `Path` with the OS separator — is fixed here too.
+
 ## [1.15.0] — 2026-08-24
 
 ### Added

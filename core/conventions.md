@@ -701,6 +701,11 @@ reviewer outside the loop — never by a gate inside it.
 absolute path — the one rule here a script can decide, and the one whose
 recorded instance survived every other gate for weeks.
 
+The lints in this section read `tests_dir`, never `docs_dir`, so they do **not**
+require the roadmap document set: `aide check` in a repo with no `docs_dir` runs
+them, says so in a `notice:`, and exits 0. A repo may adopt these conventions and
+the CLI without adopting the loop.
+
 ---
 
 ## 7. Verify on a platform this loop never runs on

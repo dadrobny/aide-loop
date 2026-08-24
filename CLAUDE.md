@@ -60,6 +60,7 @@ Stdlib + pytest only — **no venv, no dependencies, no editable install**:
 ```
 pytest                                   # whole suite (this is what CI runs)
 pytest tests/test_repo_versioning.py     # the version gate alone
+pytest tests/test_fixture_consumer.py    # the loop verbs against a real install
 pytest core/scripts/tests/               # the aide CLI
 pytest adapters/claude/tests/            # hygiene guard, settings overlay, probe
 ```
@@ -69,8 +70,16 @@ on ubuntu **and** windows — the installer and the CLI both do path work, so a
 POSIX-only assumption fails there and not locally. There is no linter or
 formatter; `pytest` is the only gate.
 
-The suite is the *framework's* tests. It does not exercise a real consumer:
-verifying a change actually lands correctly means installing it into one (below).
+Most of the suite exercises this repo's **source** layout.
+[`tests/test_fixture_consumer.py`](tests/test_fixture_consumer.py) is the one
+that does not: it installs into a `tmp_path`, `git init`s it, scaffolds the
+minimum living documents, and drives `check`/`claim`/`scope`/`merge`/`gc`/
+`status` through the engine loaded from `.aide/scripts/aide.py` — the path a
+consumer executes — asserting exit codes and effects, never prose. **A change to
+a verb's behaviour belongs there**, on both matrix legs.
+
+It is still a fixture, not a project: it says the install works, not that *your*
+consumer is happy. Landing a change in a real one (below) remains the last step.
 
 ## Landing a change in a consumer
 
@@ -78,7 +87,7 @@ The installer copies from the **local working tree**, so no push is needed to
 try a change:
 
 ```
-python install.py --adapter claude --into <consumer-repo> --update
+python install.py --into <consumer-repo> --update
 python install.py --into <consumer-repo> --check     # writes nothing, non-zero if behind
 ```
 
