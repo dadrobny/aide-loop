@@ -63,6 +63,18 @@ keys, and the adapter's agents/skills/commands.
   entries out, so it reports that the remaining numbers have shifted, and `tick`
   refuses an ordinal it cannot resolve rather than editing the wrong line.
 
+### Fixed
+
+- **`aide gate approve|decline` prepended a BOM to `progress.md`.** `_ENCODING`
+  is `"utf-8-sig"`, which *strips* a leading U+FEFF on read but *writes* one on
+  write — so passing it to `write_text` made every gate decision manufacture the
+  exact hazard the constant exists to absorb, and the file's first git diff
+  after a decision was the whole file. `cmd_gate` was the one writer in the
+  module doing this; `cmd_progress`, `cmd_queue` and the new `insights` verbs
+  all already wrote plain `"utf-8"`. Read tolerantly, write clean. Found by
+  review while checking the new code for the same mistake, which it did not
+  have.
+
 ### Changed
 
 - **`_ALWAYS_AUTHORISED` gains `insights/archive-*.md`, deliberately.** Its

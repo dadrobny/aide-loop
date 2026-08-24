@@ -491,3 +491,23 @@ def test_an_unnamed_but_well_formed_gate_still_blocks():
 def test_the_real_separator_row_is_still_ignored():
     assert aide.gate_warnings(_lines(AWAITING)) == aide.gate_warnings(_lines(AWAITING))
     assert len(aide.human_gates(_lines(AWAITING))) == 1
+
+
+def test_resolving_a_gate_does_not_prepend_a_bom(tmp_path: Path):
+    """Read tolerantly, write clean — `utf-8-sig` writes the BOM it strips."""
+    repo = _repo(tmp_path, "| Pick a schema | Stage 1 | ⏳ Awaiting | |")
+    ppath = repo / "docs" / "aide" / "progress.md"
+    assert not ppath.read_bytes().startswith(b"\xef\xbb\xbf")
+    assert aide.main(["--repo", str(repo), "gate", "approve", "1",
+                      "--evidence", "chose X", "--no-commit"]) == 0
+    assert not ppath.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
+def test_a_bom_already_in_the_file_is_stripped_not_preserved(tmp_path: Path):
+    """The tolerant read is what removes it; the clean write keeps it removed."""
+    repo = _repo(tmp_path, "| Pick a schema | Stage 1 | ⏳ Awaiting | |")
+    ppath = repo / "docs" / "aide" / "progress.md"
+    ppath.write_bytes(b"\xef\xbb\xbf" + ppath.read_bytes())
+    assert aide.main(["--repo", str(repo), "gate", "approve", "1",
+                      "--no-commit"]) == 0
+    assert not ppath.read_bytes().startswith(b"\xef\xbb\xbf")

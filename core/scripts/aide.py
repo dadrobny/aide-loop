@@ -2326,7 +2326,12 @@ def cmd_gate(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"aide gate: {exc}", file=sys.stderr)
         return 2
-    ppath.write_text(updated, encoding=_ENCODING)
+    # NOT _ENCODING: "utf-8-sig" *strips* a BOM on read but *writes* one, so
+    # passing it here made every gate decision prepend U+FEFF to progress.md —
+    # manufacturing the exact hazard that constant exists to absorb. Every
+    # other writer in this module already writes plain "utf-8"; this was the
+    # one outlier. Read tolerantly, write clean.
+    ppath.write_text(updated, encoding="utf-8")
     print(f"gate {args.number}: {kind}")
     if not args.no_commit:
         _commit_progress_file(repo_root, config,
