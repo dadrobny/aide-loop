@@ -1978,9 +1978,15 @@ def cmd_check(args: argparse.Namespace) -> int:
     ddir = docs_dir(repo_root, config)
     errors, warnings = run_checks(repo_root, config)
 
-    if not ddir.is_dir():
+    if not ddir.is_dir() and queue is None:
         # A notice, not a warning: nothing is wrong, but the reader must not
         # read "OK" as "the documents were checked and are fine".
+        #
+        # Only on a non-`--queue` run. `--queue` sends `queue_spec_findings`
+        # looking for a queue file under the same absent directory, so it runs
+        # and errors — and "only the repo-agnostic checks ran" would be false
+        # next to that error. The notice exists to stop a *pass* being
+        # over-read; a run that fails needs no such guard.
         print(f"notice: no {_rel_display(ddir, repo_root)}/ — this repo has no "
               f"AIDE document set, so only the repo-agnostic checks ran")
 

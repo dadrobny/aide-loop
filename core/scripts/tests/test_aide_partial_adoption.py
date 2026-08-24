@@ -132,3 +132,24 @@ def test_a_present_document_set_still_gets_its_document_checks(tmp_path: Path, c
 def test_queue_check_still_fails_with_no_document_set(tmp_path: Path):
     repo = _repo(tmp_path)
     assert aide.main(["--repo", str(repo), "check", "--queue", "3"]) == 1
+
+
+def test_the_notice_is_withheld_on_a_queue_run(tmp_path: Path, capsys):
+    """`--queue` sends the cross-spec check looking for a queue under the same
+    absent directory, so it runs and errors. Printing "only the repo-agnostic
+    checks ran" next to that error would be false — and the notice only ever
+    existed to stop a *pass* being over-read."""
+    repo = _repo(tmp_path)
+    assert aide.main(["--repo", str(repo), "check", "--queue", "3"]) == 1
+    out = capsys.readouterr().out
+    assert "notice:" not in out
+    assert "FAIL" in out
+
+
+def test_the_notice_still_appears_on_a_queue_run_that_has_a_document_set(
+        tmp_path: Path, capsys):
+    """Guard against the gate over-reaching in the other direction: a repo WITH
+    a document set never got the notice, and still must not."""
+    repo = _repo(tmp_path, docs=True, progress=True)
+    assert aide.main(["--repo", str(repo), "check", "--queue", "3"]) == 1
+    assert "notice:" not in capsys.readouterr().out

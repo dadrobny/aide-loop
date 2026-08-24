@@ -99,6 +99,12 @@ keys, and the adapter's agents/skills/commands.
   `(errors, warnings)` return shape is unchanged — the notice is presentational,
   emitted by `cmd_check` — so nothing that parses `run_checks` is affected.
 
+  The notice is withheld on a `--queue` run: `--queue` sends the cross-spec
+  check looking for a queue file under the same absent directory, so it runs and
+  errors, and "only the repo-agnostic checks ran" would be false next to that
+  error. The notice exists to stop a *pass* being over-read; a failing run needs
+  no such guard.
+
   This repository was the demonstration case: it has no `docs/aide/`, so it
   could not lint its own tests, and the one finding that surfaced the moment it
   could — an assert message in `tests/test_installed_docs_links.py` rendering a

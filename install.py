@@ -274,7 +274,7 @@ def report_version(available: str, installed_path: Path, target: Path,
             # NOT "run --update": from a checkout this old that would roll the
             # consumer's engine backwards to fix a missing line. Every other
             # failing state repairs with the same --update, so the one that
-            # does not has to say what to do instead.
+            # does not, has to say what to do instead.
             print(f"aide {target}: add the import by hand, or --update from the "
                   f"newer framework checkout this install came from")
         return 1 if (drift or orphans) else 0
