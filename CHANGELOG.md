@@ -41,7 +41,9 @@ keys, and the adapter's agents/skills/commands.
     conventions.md §1 permits. On an entry that is **already** ticked it appends
     a dated status-trail line instead, which is the same section's rule that
     everything after the first routing is appendable bookkeeping. Neither path
-    touches the captured claim.
+    touches the captured claim. A pointer containing a line break is refused,
+    as `aide gate`'s note already is: it is written into a single entry line,
+    so a break would split one claim into two and renumber everything below.
   - `insights archive --before YYYY-MM-DD [--yes]` — moves **closed** entries
     older than a date into `insights/archive-YYYY-QN.md`, byte for byte, trail
     included. Dry run by default, like `aide gc`. An open entry never moves

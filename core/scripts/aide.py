@@ -1160,13 +1160,20 @@ def tick_insight_text(text: str, ordinal: int, pointer: str,
     ``(new_text, message)``; raises ``ValueError`` if the ordinal does not
     resolve or the entry is too malformed to edit safely.
     """
+    if "\n" in pointer or "\r" in pointer:
+        raise ValueError(
+            "the pointer may not contain a line break — it is written into a "
+            "single entry line, so a break would split one claim into two and "
+            "renumber everything below it")
     entries = parse_insights(text)
     entry = _find_entry(entries, ordinal)
     lines = text.splitlines()
     trailing_newline = text.endswith("\n")
 
     if entry.ticked:
-        insert_at = entry.end_lineno  # 0-based index just past the last line
+        # end_lineno is 1-based, so as a 0-based list index it is the slot
+        # just past the entry's last line — where the next trail line goes.
+        insert_at = entry.end_lineno
         indent = "  "
         if entry.trail:
             indent = entry.trail[-1][: len(entry.trail[-1]) - len(entry.trail[-1].lstrip())]
@@ -1186,6 +1193,7 @@ def tick_insight_text(text: str, ordinal: int, pointer: str,
             # A pointer written by hand before the tick: keep it, and record
             # this routing where a second one belongs.
             lines[entry.lineno - 1] = line
+            # 1-based end_lineno as a 0-based index = just past the entry.
             lines.insert(entry.end_lineno,
                          f"  - **{date}** {_INSIGHT_POINTER.strip()} {pointer}")
             return ("\n".join(lines) + ("\n" if trailing_newline else ""),
@@ -1211,8 +1219,10 @@ def archive_insight_text(text: str, before: str) -> Tuple[str, Dict[str, List[st
     An entry travels with its whole status trail, so the archive stays readable
     on its own.
 
-    Pure, and it never rewrites a claim — the lines land in the archive byte
-    for byte, which is what keeps the immutability rule true across the move.
+    Pure, and it never rewrites a claim: each line's *text* is carried across
+    unchanged, which is what keeps the immutability rule true through the move.
+    Line endings are not carried — like every writer in this module, it rebuilds
+    the text with ``\n`` — so the promise is the claim, not the bytes around it.
     """
     lines = text.splitlines()
     entries = parse_insights(text)

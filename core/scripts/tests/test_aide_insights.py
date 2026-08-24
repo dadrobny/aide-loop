@@ -150,6 +150,27 @@ def test_tick_rejects_an_ordinal_that_does_not_exist():
         raise AssertionError("expected ValueError")
 
 
+def test_tick_refuses_a_pointer_containing_a_line_break():
+    """A break would split one claim into two and renumber everything below."""
+    for bad in ("item 121\nnot a claim", "item 121\r- [ ] forged", "a\rb"):
+        try:
+            aide.tick_insight_text(INBOX, 2, bad, "2026-08-24")
+        except ValueError as exc:
+            assert "line break" in str(exc)
+        else:
+            raise AssertionError(f"expected ValueError for {bad!r}")
+
+
+def test_a_rejected_pointer_leaves_the_file_untouched(tmp_path: Path):
+    repo = _repo(tmp_path)
+    before = _inbox(repo)
+    assert aide.main(["--repo", str(repo), "insights", "tick", "2",
+                      "--pointer", "item 121\n- [ ] forged entry",
+                      "--no-commit"]) == 1
+    assert _inbox(repo) == before
+    assert len(aide.parse_insights(_inbox(repo))) == 4
+
+
 def test_tick_refuses_a_malformed_entry_rather_than_guessing():
     text = "- [ ] defect no separator and no provenance\n"
     try:
