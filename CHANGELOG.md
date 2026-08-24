@@ -95,8 +95,11 @@ keys, and the adapter's agents/skills/commands.
   never removed the entry, so in any long-lived process — a pytest session runs
   these dozens of times — duplicates accumulated at position 0 and silently
   outranked every other import path for the rest of the run. Both now go through
-  an `_engine_on_path()` context manager that inserts only when the entry is
-  absent and restores on the way out.
+  an `_engine_on_path()` context manager that snapshots `sys.path`, inserts at
+  position 0, and restores the snapshot. Both halves matter and the obvious fix
+  for either breaks the other: inserting only when the entry is *absent* leaks
+  nothing but loses precedence, since an entry already present yet ranked below
+  some other `aide` would let that one answer the import.
 
 - **`aide check` no longer needs the full document set to run at all.**
   `run_checks` early-returned `missing <docs_dir>/progress.md` as a hard error,

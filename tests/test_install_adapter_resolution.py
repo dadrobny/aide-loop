@@ -129,6 +129,40 @@ def test_an_entry_already_on_the_path_is_left_there(tmp_path: Path):
         sys.path.remove(entry)
 
 
+def test_the_engine_outranks_another_aide_module_on_the_path(tmp_path: Path):
+    """No-residue and precedence are one property, not two.
+
+    Restoring `sys.path` by inserting only when the entry is *absent* leaks
+    nothing but loses the guarantee: an entry already present yet ranked below
+    some other `aide` lets that one answer the import, and install.py then
+    reads a different config loader than the engine uses. A decoy earlier on
+    the path proves the engine still wins.
+    """
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    (decoy / "aide.py").write_text(
+        "def load_config(target):\n"
+        "    return {'aide': {'adapter': 'DECOY'}}\n", encoding="utf-8")
+
+    target = _target(tmp_path, "copilot")
+    entry = str(install.FRAMEWORK_ROOT / "core" / "scripts")
+    saved_path, saved_mod = list(sys.path), sys.modules.pop("aide", None)
+    # The arrangement that discriminates: the engine IS on the path, but ranked
+    # below the decoy. An "insert only when absent" helper skips the insert here
+    # and the decoy answers; only putting the engine at 0 gets the right loader.
+    sys.path.insert(0, str(decoy))
+    sys.path.append(entry)
+    try:
+        assert install.resolve_adapter(target, None) == ("copilot", None)
+    finally:
+        sys.path[:] = saved_path
+        # Leave the decoy nowhere: a cached wrong `aide` would follow this test
+        # into every later one in the session.
+        sys.modules.pop("aide", None)
+        if saved_mod is not None:
+            sys.modules["aide"] = saved_mod
+
+
 # --------------------------------------------------------------------------- #
 # an adapter name is a directory name, from either source
 # --------------------------------------------------------------------------- #

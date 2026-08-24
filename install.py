@@ -575,24 +575,33 @@ def _engine_on_path():
     """Make the engine importable, then leave ``sys.path`` as it was found.
 
     Both readers below load the engine's `load_config` so install.py and the
-    engine interpret one aide.toml identically. A bare `sys.path.insert` did
-    that at the cost of one duplicate entry *per call*, never removed: in any
-    long-lived process — a pytest session runs these dozens of times — the
-    entry accumulates at position 0 and silently outranks every other import
-    path for the rest of the run.
+    engine interpret one aide.toml identically. That needs two things at once,
+    and the obvious fix for either breaks the other:
+
+    * **Precedence** — the engine's directory has to outrank any other `aide`
+      on the path, or the wrong loader answers.
+    * **No residue** — a bare `sys.path.insert` left one entry *per call*,
+      never removed, so in any long-lived process (a pytest session runs these
+      dozens of times) they accumulate at position 0 and outrank every other
+      import path for the rest of the run.
+
+    Snapshotting the list, inserting at 0 unconditionally, and restoring the
+    snapshot satisfies both. The engine imports nothing that touches
+    `sys.path`, so nothing legitimate is discarded by the restore.
     """
     entry = str(FRAMEWORK_ROOT / "core" / "scripts")
-    added = entry not in sys.path
-    if added:
-        sys.path.insert(0, entry)
+    saved = list(sys.path)
+    # Unconditionally at position 0, then the whole list restored. Inserting
+    # only when the entry is *absent* would be the smaller edit and the wrong
+    # one: an entry already present but ranked below some other `aide` on the
+    # path would let that one win the import, and install.py would read a
+    # different config loader than the engine uses. Snapshot-and-restore gets
+    # precedence and no residue from the same two lines.
+    sys.path.insert(0, entry)
     try:
         yield
     finally:
-        if added:
-            try:
-                sys.path.remove(entry)
-            except ValueError:  # someone else removed it; nothing left to undo
-                pass
+        sys.path[:] = saved
 
 
 def _project_scope(target: Path) -> Tuple[str, str]:
