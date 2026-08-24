@@ -1057,6 +1057,14 @@ def run(args: argparse.Namespace) -> int:
 
     print("\n".join(log))
     print(f"\nDone. Installed engine version recorded at {aide_dir / 'VERSION'}.")
+    # The engine's own suite ships with every install and is collected by no
+    # consumer's pytest config, so the only place the answer can reach the
+    # reader is here — on update above all, which is when a shipped test can
+    # newly go red. See core/README.md, "Running the engine's own suite".
+    print("The engine ships its own suite at .aide/scripts/tests/ — no bare "
+          "`pytest` collects it.")
+    print("Verify this engine where it landed: python -m pytest "
+          ".aide/scripts/tests")
     if not args.update:
         print("Next: `python .aide/scripts/aide.py check` in the target repo.")
         print("Before any unattended run: launch the runtime once interactively in the")
