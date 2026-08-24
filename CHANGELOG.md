@@ -45,8 +45,10 @@ keys, and the adapter's agents/skills/commands.
     as `aide gate`'s note already is: it is written into a single entry line,
     so a break would split one claim into two and renumber everything below.
   - `insights archive --before YYYY-MM-DD [--yes]` — moves **closed** entries
-    older than a date into `insights/archive-YYYY-QN.md`, byte for byte, trail
-    included. Dry run by default, like `aide gc`. An open entry never moves
+    older than a date into `insights/archive-YYYY-QN.md`, each moved entry and
+    its trail carried across line for line (the module rebuilds text with `\n`
+    like every other writer in it, so the promise is the claim, not the
+    surrounding bytes). Dry run by default, like `aide gc`. An open entry never moves
     whatever its age: it is the working set, and archiving it would hide exactly
     what `list` exists to surface.
 

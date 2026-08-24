@@ -370,8 +370,9 @@ python .aide/scripts/aide.py insights archive --before YYYY-MM-DD [--yes]
 `list` numbers entries by position and prints the backlog without the closed
 history around it; `tick` performs the one in-place edit below, or appends a
 dated trail line when the entry is already ticked; `archive` moves **closed**
-entries older than a date into `insights/archive-YYYY-QN.md`, byte for byte,
-and says so — an archive renumbers what remains, so re-run `list` after one.
+entries older than a date into `insights/archive-YYYY-QN.md`, each moved entry
+and its trail carried across line for line, and says so — an archive renumbers
+what remains, so re-run `list` after one.
 Archived entries are frozen and no longer shape-checked, since the immutability
 rule leaves no way to act on a warning about one.
 

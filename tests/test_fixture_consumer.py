@@ -517,7 +517,7 @@ def test_insights_tick_on_a_closed_entry_appends_to_its_trail(aide, consumer: Pa
                       "--no-commit"]) == 0
     lines = (consumer / "docs" / "aide" / "insights.md").read_text(
         encoding="utf-8").splitlines()
-    assert lines[4] == INSIGHTS.splitlines()[4]  # the claim, byte for byte
+    assert lines[4] == INSIGHTS.splitlines()[4]  # the claim, unaltered
     assert lines[6] == "  - **2026-08-24** → shipped in 1.17.0"
 
 
