@@ -11,7 +11,9 @@ Subcommands::
     python .aide/scripts/aide.py check [--queue NNN]   # consistency gate over docs/aide
     python .aide/scripts/aide.py scope [NNN]           # branch diff vs the item's authorised paths
     python .aide/scripts/aide.py progress set NNN <in-progress|done>
+    python .aide/scripts/aide.py gate list|approve|decline [N]  # human gates in progress.md
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
+    python .aide/scripts/aide.py insights list|tick|archive     # the insight inbox
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
     python .aide/scripts/aide.py merge NNN [--base R]  # merge a validated item per git.mode
     python .aide/scripts/aide.py env                   # venv existence / import check + bootstrap
@@ -1019,6 +1021,14 @@ def insight_warnings(ddir: Path) -> List[str]:
 
     Non-blocking: capture must stay cheap, so a malformed entry is a warning,
     never an error. Every ``- `` bullet in the file is expected to be an entry.
+
+    **The live file only.** ``aide insights archive`` moves closed entries into
+    ``insights/archive-YYYY-QN.md``, and those are deliberately not re-checked
+    here: an archived claim is frozen, so a warning on one names a defect no
+    one may fix — the immutability rule forbids rewording the line. (Unfilled
+    ``{{slot}}`` markers *are* still caught in archives, because
+    ``template_residue_errors`` walks the whole tree; that one is a genuine
+    error wherever it appears.)
     """
     path = ddir / "insights.md"
     if not path.is_file():
@@ -1034,6 +1044,205 @@ def insight_warnings(ddir: Path) -> List[str]:
                 f"*(item NNN, YYYY-MM-DD)*'"
             )
     return out
+
+
+#: An entry's full shape, parsed rather than merely validated: the claim, its
+#: provenance, and the optional " → <where it landed>" pointer a tick appends.
+#: ``text`` is non-greedy up to the provenance so a claim may itself contain
+#: parentheses; ``tail`` is whatever follows it, which is the pointer or "".
+_INSIGHT_FULL_RE = re.compile(
+    r"^- \[(?P<mark>[ xX])\] (?P<type>" + "|".join(_INSIGHT_TYPES) + r") [—–-] "
+    r"(?P<text>.+?)\*\((?:[Ii]tem (?P<item>\d+), )?(?P<date>\d{4}-\d{2}-\d{2})\)\*"
+    r"(?P<tail>.*)$"
+)
+#: A status-trail line: indented under its entry, newest last (conventions.md
+#: §1). Indentation is what distinguishes it from the next entry, so this must
+#: require leading whitespace where the entry pattern forbids it.
+_INSIGHT_TRAIL_RE = re.compile(r"^\s+[-*]\s")
+#: The pointer separator, written by `tick` and by hand before it existed.
+_INSIGHT_POINTER = " → "
+#: An ISO date, validated rather than trusted: `archive --before` compares it
+#: lexicographically against every entry's date, which is only equivalent to
+#: comparing dates while both sides are known to be YYYY-MM-DD.
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+class InsightEntry(NamedTuple):
+    """One inbox entry: the parsed claim plus where it sits in the file.
+
+    ``ordinal`` is 1-based position in the live file and is the identity every
+    verb here takes, because an entry has no number of its own. That is sound
+    only because the file is append-only by contract — a claim is "never
+    reworded, reordered or deleted" — so an entry's position is stable for as
+    long as it lives in the file. ``archive`` is the one thing that moves
+    entries out, and it therefore renumbers what remains; it says so when it
+    runs, and ``tick`` refuses to invent a pointer on a number it cannot
+    resolve.
+
+    A malformed entry (one ``aide check`` warns about) still gets an ordinal.
+    Skipping it would make ``insights list`` number entries differently from
+    the file itself, so the one number a reader can act on would be wrong for
+    every entry after the first typo.
+    """
+
+    ordinal: int
+    lineno: int                 # 1-based, of the entry line itself
+    raw: str                    # the entry line, verbatim
+    ticked: bool
+    type: Optional[str]         # None when the line does not parse
+    text: str                   # the claim, without provenance or pointer
+    date: Optional[str]
+    item: Optional[int]
+    pointer: Optional[str]      # what follows " → ", when ticked in place
+    trail: List[str]            # raw status-trail lines, in file order
+    end_lineno: int             # 1-based, of the entry's last trail line
+
+
+def parse_insights(text: str) -> List[InsightEntry]:
+    """Parse ``insights.md`` into entries, malformed ones included.
+
+    Pure: it takes the file's text, never a path, so the shape rules are
+    testable without a filesystem (the module convention — see
+    ``.aide/scripts/tests``).
+    """
+    lines = text.splitlines()
+    entries: List[InsightEntry] = []
+    for lineno, line in enumerate(lines, start=1):
+        if not line.startswith("- "):
+            if entries and _INSIGHT_TRAIL_RE.match(line):
+                # A trail line belongs to the entry above it; NamedTuple is
+                # immutable, so grow the list it holds rather than rebuilding.
+                entries[-1].trail.append(line)
+                entries[-1] = entries[-1]._replace(end_lineno=lineno)
+            continue
+        m = _INSIGHT_FULL_RE.match(line)
+        if m is None:
+            entries.append(InsightEntry(
+                ordinal=len(entries) + 1, lineno=lineno, raw=line,
+                ticked=line.startswith("- [x]") or line.startswith("- [X]"),
+                type=None, text=line[2:].strip(), date=None, item=None,
+                pointer=None, trail=[], end_lineno=lineno))
+            continue
+        tail = m.group("tail")
+        pointer = (tail.split(_INSIGHT_POINTER, 1)[1].strip()
+                   if _INSIGHT_POINTER in tail else None)
+        entries.append(InsightEntry(
+            ordinal=len(entries) + 1, lineno=lineno, raw=line,
+            ticked=m.group("mark") in ("x", "X"),
+            type=m.group("type"), text=m.group("text").strip(),
+            date=m.group("date"),
+            item=int(m.group("item")) if m.group("item") else None,
+            pointer=pointer, trail=[], end_lineno=lineno))
+    return entries
+
+
+def _find_entry(entries: List[InsightEntry], ordinal: int) -> InsightEntry:
+    for e in entries:
+        if e.ordinal == ordinal:
+            return e
+    raise ValueError(
+        f"no entry {ordinal} — the file holds {len(entries)} "
+        f"entr{'y' if len(entries) == 1 else 'ies'}; run `insights list` for "
+        f"current numbers (an archive renumbers what remains)")
+
+
+def tick_insight_text(text: str, ordinal: int, pointer: str,
+                      date: str) -> Tuple[str, str]:
+    """Tick entry *ordinal*, or append a dated trail line if already ticked.
+
+    The two halves of conventions.md §1's lifecycle, chosen by the entry's own
+    state rather than by a flag: the **first** routing flips the checkbox and
+    records where the claim landed on the entry line; **everything after** it —
+    a re-route, a resolution, a premise that decayed — is bookkeeping and goes
+    in the appendable status trail underneath.
+
+    The captured claim is never touched by either path. Returns
+    ``(new_text, message)``; raises ``ValueError`` if the ordinal does not
+    resolve or the entry is too malformed to edit safely.
+    """
+    entries = parse_insights(text)
+    entry = _find_entry(entries, ordinal)
+    lines = text.splitlines()
+    trailing_newline = text.endswith("\n")
+
+    if entry.ticked:
+        insert_at = entry.end_lineno  # 0-based index just past the last line
+        indent = "  "
+        if entry.trail:
+            indent = entry.trail[-1][: len(entry.trail[-1]) - len(entry.trail[-1].lstrip())]
+        lines.insert(insert_at, f"{indent}- **{date}** {_INSIGHT_POINTER.strip()} {pointer}")
+        message = f"entry {ordinal}: already ticked — appended a {date} trail line"
+    else:
+        if entry.type is None:
+            raise ValueError(
+                f"entry {ordinal} does not parse as an inbox entry, so there "
+                f"is no checkbox to tick safely: {entry.raw!r}. Fix the line's "
+                f"shape first (`aide check` names the rule)")
+        line = entry.raw.replace("- [ ]", "- [x]", 1)
+        if entry.pointer is None:
+            line = line + _INSIGHT_POINTER + pointer
+            message = f"entry {ordinal}: ticked → {pointer}"
+        else:
+            # A pointer written by hand before the tick: keep it, and record
+            # this routing where a second one belongs.
+            lines[entry.lineno - 1] = line
+            lines.insert(entry.end_lineno,
+                         f"  - **{date}** {_INSIGHT_POINTER.strip()} {pointer}")
+            return ("\n".join(lines) + ("\n" if trailing_newline else ""),
+                    f"entry {ordinal}: ticked; existing pointer kept, "
+                    f"added a {date} trail line")
+        lines[entry.lineno - 1] = line
+
+    return ("\n".join(lines) + ("\n" if trailing_newline else "")), message
+
+
+def insight_quarter(date: str) -> str:
+    """``"2026-08-24"`` → ``"2026-Q3"`` — the archive file an entry belongs to."""
+    year, month = int(date[:4]), int(date[5:7])
+    return f"{year}-Q{(month - 1) // 3 + 1}"
+
+
+def archive_insight_text(text: str, before: str) -> Tuple[str, Dict[str, List[str]]]:
+    """Split closed entries dated before *before* out of the live file.
+
+    Returns ``(remaining_text, {quarter: [lines]})``. **Only ticked entries
+    move**: an open entry is the live working set whatever its date, and
+    archiving one would hide exactly the backlog this verb exists to surface.
+    An entry travels with its whole status trail, so the archive stays readable
+    on its own.
+
+    Pure, and it never rewrites a claim — the lines land in the archive byte
+    for byte, which is what keeps the immutability rule true across the move.
+    """
+    lines = text.splitlines()
+    entries = parse_insights(text)
+    moving = {e.ordinal for e in entries
+              if e.ticked and e.date is not None and e.date < before}
+    moved: Dict[str, List[str]] = {}
+    drop: set = set()
+    for e in entries:
+        if e.ordinal not in moving:
+            continue
+        block = lines[e.lineno - 1:e.end_lineno]
+        moved.setdefault(insight_quarter(e.date), []).extend(block)
+        drop.update(range(e.lineno - 1, e.end_lineno))
+    kept = [ln for i, ln in enumerate(lines) if i not in drop]
+    return _collapse_blank_runs(kept, text.endswith("\n")), moved
+
+
+def _collapse_blank_runs(lines: List[str], trailing_newline: bool) -> str:
+    """Join *lines*, leaving at most one blank line where entries were removed.
+
+    Lifting entries out of a blank-separated list otherwise leaves the gaps
+    behind, and a file that grows whitespace every time it is tidied is not
+    tidied.
+    """
+    out: List[str] = []
+    for line in lines:
+        if not line.strip() and out and not out[-1].strip():
+            continue
+        out.append(line)
+    return "\n".join(out) + ("\n" if trailing_newline else "")
 
 
 def absolute_path_test_warnings(repo_root: Path,
@@ -2215,12 +2424,180 @@ def _commit_progress(repo_root: Path, config, number: int, status: str) -> None:
 
 
 def _commit_progress_file(repo_root: Path, config, message: str) -> None:
-    git(["pull", "--rebase"], repo_root, check=False)
     rel = str(config["project"].get("docs_dir", "docs/aide")) + "/progress.md"
-    git(["add", rel], repo_root, check=False)
+    _commit_docs_files(repo_root, config, message, [rel])
+
+
+def _commit_docs_files(repo_root: Path, config, message: str,
+                       rels: List[str]) -> None:
+    """Commit exactly *rels* — repo-relative paths — with *message*.
+
+    Named paths, never ``git add -A``: these verbs run mid-item, alongside a
+    builder's uncommitted work, and a broad add would sweep that into a
+    bookkeeping commit.
+    """
+    git(["pull", "--rebase"], repo_root, check=False)
+    for rel in rels:
+        git(["add", rel], repo_root, check=False)
     res = git(["commit", "-m", message], repo_root, check=False)
     if res.returncode != 0 and "nothing to commit" not in (res.stdout + res.stderr):
         print(res.stderr.strip(), file=sys.stderr)
+
+
+def insights_path(ddir: Path) -> Path:
+    """The live inbox. One name, one place — see ``queue_name``/``item_spec_paths``."""
+    return ddir / "insights.md"
+
+
+def insight_archive_path(ddir: Path, quarter: str) -> Path:
+    """``docs/aide/insights/archive-2026-Q3.md`` — one file per quarter.
+
+    A directory sibling to the live file, not a suffix on it, so the live file
+    keeps the exact name every role appends to and the archive can grow without
+    that name ever changing.
+    """
+    return ddir / "insights" / f"archive-{quarter}.md"
+
+
+_ARCHIVE_HEADER = (
+    "# Insight Archive — {quarter}\n\n"
+    "_Closed entries moved out of `insights.md` by `aide insights archive`._\n"
+    "_Frozen: the claims are immutable and, unlike the live file, this one is_\n"
+    "_not shape-checked — see `insight_warnings`._\n"
+)
+
+
+def cmd_insights(args: argparse.Namespace) -> int:
+    """Read and maintain ``insights.md`` — the one living document with no verb.
+
+    Every other document has the CLI doing its mechanical work; this one made
+    each triage pass an agent reading and hand-parsing the whole file, which is
+    the cost that kept triage getting deferred. ``list`` answers "what is
+    outstanding" without loading the archive with it, ``tick`` performs the one
+    in-place edit the immutability rule permits, and ``archive`` keeps the live
+    file the size of its working set.
+    """
+    import datetime as _dt
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    ddir = docs_dir(repo_root, config)
+    path = insights_path(ddir)
+    if not path.is_file():
+        print(f"aide insights: no {path} — capture creates it from "
+              ".aide/templates/insights.md (conventions.md §1)", file=sys.stderr)
+        return 2
+    text = path.read_text(encoding=_ENCODING)
+    ddir_rel = ddir.relative_to(repo_root).as_posix()
+
+    if args.action == "list":
+        return _cmd_insights_list(parse_insights(text), args)
+    if args.action == "tick":
+        return _cmd_insights_tick(path, text, ddir_rel, repo_root, config, args,
+                                  _dt.date.today().isoformat())
+    return _cmd_insights_archive(path, text, ddir, ddir_rel, repo_root, config, args)
+
+
+def _cmd_insights_list(entries: List[InsightEntry], args: argparse.Namespace) -> int:
+    if args.type and args.type not in _INSIGHT_TYPES:
+        print(f"aide insights: --type must be one of {', '.join(_INSIGHT_TYPES)}",
+              file=sys.stderr)
+        return 2
+    shown = [e for e in entries
+             if (not args.open_only or not e.ticked)
+             and (not args.type or e.type == args.type)]
+    for e in shown:
+        if e.type is None:
+            # Nothing parsed, so render the line as it stands rather than
+            # dressing it in fields this listing only guessed at.
+            print(f"  {e.ordinal:>3}. ?? {e.raw}")
+            continue
+        # The provenance is reprinted whole, item reference included: "which
+        # item captured this" is half of what triage routes on, and a listing
+        # that drops it sends the reader back to the file it exists to replace.
+        prov = f" *({f'item {e.item:03d}, ' if e.item is not None else ''}{e.date})*" if e.date else ""
+        mark = "x" if e.ticked else " "
+        print(f"  {e.ordinal:>3}. [{mark}] {e.type:<10} — {e.text}{prov}"
+              f"{_INSIGHT_POINTER + e.pointer if e.pointer else ''}")
+        if args.trail:
+            for line in e.trail:
+                print(f"        {line.strip()}")
+    open_entries = [e for e in entries if not e.ticked]
+    by_type = {t: sum(1 for e in open_entries if e.type == t) for t in _INSIGHT_TYPES}
+    breakdown = ", ".join(f"{n} {t}" for t, n in by_type.items() if n)
+    malformed = sum(1 for e in entries if e.type is None)
+    print(f"aide insights: {len(entries)} entr{'y' if len(entries) == 1 else 'ies'}, "
+          f"{len(open_entries)} open"
+          f"{' (' + breakdown + ')' if breakdown else ''}"
+          f"{f'; {malformed} malformed — see `aide check`' if malformed else ''}")
+    if len(shown) != len(entries):
+        print(f"aide insights: {len(shown)} shown by the filters given")
+    return 0
+
+
+def _cmd_insights_tick(path: Path, text: str, ddir_rel: str, repo_root: Path,
+                       config, args: argparse.Namespace, today: str) -> int:
+    if args.number is None:
+        print("usage: aide insights tick N --pointer TEXT", file=sys.stderr)
+        return 2
+    if not (args.pointer or "").strip():
+        print("aide insights tick: --pointer says where the claim landed — a "
+              "doc, an item, an issue. A tick without one records that triage "
+              "happened and loses what it decided.", file=sys.stderr)
+        return 2
+    try:
+        updated, message = tick_insight_text(text, args.number, args.pointer.strip(),
+                                             args.date or today)
+    except ValueError as exc:
+        print(f"aide insights tick: {exc}", file=sys.stderr)
+        return 1
+    path.write_text(updated, encoding="utf-8")
+    print(message)
+    if not args.no_commit and (repo_root / ".git").exists():
+        _commit_docs_files(repo_root, config, f"docs(aide): triage insight {args.number}",
+                           [f"{ddir_rel}/insights.md"])
+    return 0
+
+
+def _cmd_insights_archive(path: Path, text: str, ddir: Path, ddir_rel: str,
+                          repo_root: Path, config, args: argparse.Namespace) -> int:
+    if not _DATE_RE.match(args.before or ""):
+        print("usage: aide insights archive --before YYYY-MM-DD", file=sys.stderr)
+        return 2
+    remaining, moved = archive_insight_text(text, args.before)
+    if not moved:
+        print(f"aide insights: nothing closed before {args.before} to archive")
+        return 0
+    total = 0
+    for quarter in sorted(moved):
+        entries = sum(1 for ln in moved[quarter] if ln.startswith("- "))
+        total += entries
+        print(f"  {insight_archive_path(ddir, quarter).relative_to(repo_root).as_posix()}"
+              f" ← {entries} closed entr{'y' if entries == 1 else 'ies'}")
+    if not args.yes:
+        print(f"aide insights archive: dry run — {total} entr"
+              f"{'y' if total == 1 else 'ies'} would move; re-run with --yes")
+        return 0
+
+    rels = [f"{ddir_rel}/insights.md"]
+    for quarter in sorted(moved):
+        apath = insight_archive_path(ddir, quarter)
+        apath.parent.mkdir(parents=True, exist_ok=True)
+        body = "\n".join(moved[quarter]) + "\n"
+        if apath.is_file():
+            existing = apath.read_text(encoding=_ENCODING)
+            apath.write_text(existing.rstrip("\n") + "\n" + body, encoding="utf-8")
+        else:
+            apath.write_text(_ARCHIVE_HEADER.format(quarter=quarter) + "\n" + body,
+                             encoding="utf-8")
+        rels.append(apath.relative_to(repo_root).as_posix())
+    path.write_text(remaining, encoding="utf-8")
+    print(f"aide insights archive: moved {total} entr{'y' if total == 1 else 'ies'}; "
+          f"{len(parse_insights(remaining))} remain — their list numbers have shifted")
+    if not args.no_commit and (repo_root / ".git").exists():
+        _commit_docs_files(repo_root, config,
+                           f"docs(aide): archive insights closed before {args.before}",
+                           rels)
+    return 0
 
 
 def cmd_queue(args: argparse.Namespace) -> int:
@@ -2791,10 +3168,16 @@ _ASSERTS_LABEL = "asserts against"
 #: - ``insights.md`` — the compound-engineering inbox; conventions.md §1 names
 #:   appending to it as the one write allowed outside an agent's edit scope, so
 #:   flagging it would punish exactly the behaviour the framework requires.
+#: - ``insights/archive-*.md`` — where ``aide insights archive`` moves closed
+#:   entries. The one pattern here, added deliberately rather than by widening
+#:   the rule: it is bounded to a single directory *and* a single filename
+#:   shape, and ``path_matches`` anchors a bare ``*`` per path segment, so it
+#:   cannot reach a subdirectory or a second name. It buys nothing an attacker
+#:   or a careless agent wants — only the file the verb above it writes.
 #:
 #: The item's own spec is authorised separately, by number, in ``cmd_scope`` —
 #: the builder records Decisions & Trade-offs there on every item.
-_ALWAYS_AUTHORISED = ("progress.md", "insights.md")
+_ALWAYS_AUTHORISED = ("progress.md", "insights.md", "insights/archive-*.md")
 
 
 class AuthorisedPaths(NamedTuple):
@@ -2944,7 +3327,7 @@ def scope_findings(changed: List[str], authorised: AuthorisedPaths,
     asserting against state the item moved.
     """
     unauthorised = [p for p in changed
-                    if p not in always
+                    if not any(path_matches(p, a) for a in always)
                     and not any(path_matches(p, g) for g in authorised.may_change)]
     contradictions = [p for p in changed
                       if any(path_matches(p, g) for g in authorised.asserts_against)]
@@ -3387,6 +3770,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_queue.add_argument("number", type=int)
     p_queue.add_argument("--date", default=None, help="override the supersede date (YYYY-MM-DD)")
     p_queue.set_defaults(func=cmd_queue)
+
+    p_ins = sub.add_parser("insights", help="list / tick / archive the insight inbox")
+    p_ins.add_argument("action", choices=["list", "tick", "archive"])
+    p_ins.add_argument("number", type=int, nargs="?", default=None,
+                       help="tick: the entry number from `insights list`")
+    p_ins.add_argument("--open", action="store_true", dest="open_only",
+                       help="list: only entries still untriaged")
+    p_ins.add_argument("--type", default=None,
+                       help="list: one of " + ", ".join(_INSIGHT_TYPES))
+    p_ins.add_argument("--trail", action="store_true",
+                       help="list: also print each entry's status trail")
+    p_ins.add_argument("--pointer", default=None,
+                       help="tick: where the claim landed (a doc, item, or issue)")
+    p_ins.add_argument("--before", default=None,
+                       help="archive: move entries closed before this date (YYYY-MM-DD)")
+    p_ins.add_argument("--date", default=None,
+                       help="tick: override the trail-line date (default: today)")
+    p_ins.add_argument("--yes", action="store_true",
+                       help="archive: actually move (default: dry run)")
+    p_ins.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
+    p_ins.set_defaults(func=cmd_insights)
 
     register_git_subcommands(sub)  # claim / merge / env (git layer)
     return parser

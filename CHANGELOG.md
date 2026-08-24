@@ -17,6 +17,73 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.17.0] — 2026-08-24
+
+### Added
+
+- **`aide insights` — the one living document the CLI could not read now has a
+  verb.** Every other continuously-written document had the CLI doing its
+  mechanical work: `progress.md` has `aide progress` and `aide gate`,
+  `queue-NNN.md` has `aide queue tidy` and `aide claim --queue`, `items/NNN-*.md`
+  has `aide claim`/`scope`/`check --queue`. `insights.md` had `aide check`
+  shape-checking it and nothing else, so every triage pass meant an agent
+  reading and hand-parsing the whole file — and that cost is why triage kept
+  getting deferred.
+
+  Measured on a consumer's inbox at 77 entries: 110,867 characters ≈ 29k tokens,
+  of which the live working set was **15 open entries**. Closed and open are
+  interleaved in one file, so there was no way to look at the backlog without
+  loading the archive with it.
+
+  - `insights list [--open] [--type T] [--trail]` — the backlog without the
+    history around it, numbered so the other verbs have something to take.
+  - `insights tick N --pointer "<where it landed>"` — the one in-place edit
+    conventions.md §1 permits. On an entry that is **already** ticked it appends
+    a dated status-trail line instead, which is the same section's rule that
+    everything after the first routing is appendable bookkeeping. Neither path
+    touches the captured claim.
+  - `insights archive --before YYYY-MM-DD [--yes]` — moves **closed** entries
+    older than a date into `insights/archive-YYYY-QN.md`, byte for byte, trail
+    included. Dry run by default, like `aide gc`. An open entry never moves
+    whatever its age: it is the working set, and archiving it would hide exactly
+    what `list` exists to surface.
+
+  Capture is deliberately unchanged — append one line to one file, atomic,
+  conflict-free, no number to allocate, no network. A folder-per-insight layout
+  would tax that moment with number allocation; a GitHub-issue-per-insight store
+  would make it depend on network and `gh` auth, which `git.mode = "local"`
+  exists to avoid.
+
+  Entry identity is **position in the live file**, which is sound only because
+  the file is append-only by contract. `archive` is the one thing that moves
+  entries out, so it reports that the remaining numbers have shifted, and `tick`
+  refuses an ordinal it cannot resolve rather than editing the wrong line.
+
+### Changed
+
+- **`_ALWAYS_AUTHORISED` gains `insights/archive-*.md`, deliberately.** Its
+  comment argues against exactly the wildcard that would have made this
+  automatic, so it was added as one bounded pattern rather than by widening the
+  rule: `path_matches` anchors a bare `*` per path segment, so it reaches one
+  directory and one filename shape and cannot become a subtree hole. This
+  required `scope_findings` to glob-match its always-authorised set instead of
+  comparing it exactly — no behaviour change for the two literal entries.
+
+- **An archive is frozen and stays unchecked by `insight_warnings`**, now stated
+  in the docstring rather than left to be discovered. A shape warning on an
+  archived claim would name a defect nobody may fix, since the immutability rule
+  forbids rewording the line. Unfilled `{{slot}}` markers are still caught
+  there, because `template_residue_errors` walks the whole tree and that one is
+  a genuine error wherever it appears.
+
+- `aide-feedback-loop`'s triage step reads the backlog with `insights list
+  --open` and ticks with `insights tick`, instead of opening the file and
+  editing entries by hand.
+
+- The `aide.py` module docstring's `Subcommands::` block lists `gate`, which
+  shipped in 1.13.0 and was never added there, and `insights`. `core/README.md`
+  gains both in its verb list.
+
 ## [1.16.0] — 2026-08-24
 
 ### Fixed
