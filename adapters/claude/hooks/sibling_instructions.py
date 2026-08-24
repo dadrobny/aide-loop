@@ -45,7 +45,7 @@ import os
 import re
 import sys
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 #: A pathological instruction file must not blow up the context window it is
 #: being injected into. Beyond this the file is truncated and the reader is
@@ -106,11 +106,15 @@ def _instruction_filename(path=None):
     if not isinstance(declared, str) or not declared.strip():
         return _FALLBACK_INSTRUCTION_FILE
     declared = declared.strip()
-    # `ntpath`-style drive letters are absolute on Windows and merely odd on
-    # POSIX, where `isabs` would pass them through as a relative name.
-    if os.path.isabs(declared) or ":" in declared:
+    # Both path flavours, exactly as `install.py` checks this same field — a
+    # single-flavour test is wrong on whichever platform it is not. `os.path` is
+    # not enough: since 3.13 `ntpath.isabs("/etc/passwd")` is **False**, because
+    # a leading-separator path is drive-relative rather than fully qualified, so
+    # a POSIX absolute path would sail through on Windows as a relative name.
+    posix = PurePosixPath(declared.replace("\\", "/"))
+    if posix.is_absolute() or PureWindowsPath(declared).is_absolute():
         return _FALLBACK_INSTRUCTION_FILE
-    if ".." in Path(declared.replace("\\", "/")).parts:
+    if ".." in posix.parts:
         return _FALLBACK_INSTRUCTION_FILE
     return declared
 

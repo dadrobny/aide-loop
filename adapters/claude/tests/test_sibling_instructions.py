@@ -394,6 +394,22 @@ def test_an_escaping_or_junk_declaration_falls_back_to_the_default(tmp_path, dec
     assert hook._instruction_filename(fake) == "CLAUDE.md"
 
 
+def test_an_escaping_declaration_is_refused_in_both_path_flavours(tmp_path):
+    """The check must not depend on the platform it runs on.
+
+    `os.path.isabs` alone is wrong on whichever platform it is not: since 3.13
+    `ntpath.isabs("/etc/passwd")` is **False** — a leading-separator path is
+    drive-relative, not fully qualified — so a POSIX absolute path passed the
+    Windows leg as an ordinary relative name. This pins both flavours the way
+    `install.py` already checks the same field.
+    """
+    for declared in ("/etc/passwd", "\\\\server\\share\\x.md", "C:/x.md",
+                     "C:\\x.md", "a/../../out.md"):
+        fake = tmp_path / "default-context.json"
+        fake.write_text(json.dumps({"file": declared}), encoding="utf-8")
+        assert hook._instruction_filename(fake) == "CLAUDE.md", declared
+
+
 def test_a_nested_declaration_is_honoured(tmp_path):
     """ADAPTER-SPEC §7 allows a nested instruction file (`.github/…`)."""
     fake = tmp_path / "default-context.json"
