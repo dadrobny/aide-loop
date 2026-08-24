@@ -206,29 +206,45 @@ def _record_surfaced(marker, repo_root):
 
 
 def _read_instructions(instruction_path):
+    """``(text, truncated)`` for an instruction file, or ``(None, False)``.
+
+    The flag is returned rather than inferred from a marker in the text because
+    the rendered preamble has to state which case it is in — an injected block
+    that says "in full" over a truncated file is a durable artifact telling the
+    reader something untrue about how much of the rules it is looking at.
+    """
     try:
         text = instruction_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return None
+        return None, False
     if not text.strip():
-        return None
+        return None, False
     encoded = text.encode("utf-8")
-    if len(encoded) > _MAX_BYTES:
-        text = encoded[:_MAX_BYTES].decode("utf-8", errors="ignore")
-        text += "\n\n[truncated — read the rest at " + str(instruction_path) + "]"
-    return text
+    if len(encoded) <= _MAX_BYTES:
+        return text, False
+    text = encoded[:_MAX_BYTES].decode("utf-8", errors="ignore")
+    text += "\n\n[truncated — read the rest at " + str(instruction_path) + "]"
+    return text, True
 
 
-def _render(repo_root, instruction_path, text):
+def _render(repo_root, instruction_path, text, truncated=False):
+    if truncated:
+        extent = (
+            "It is too large to inject whole, so what follows is the **beginning "
+            "of** that file, truncated. Read `" + str(instruction_path) + "` for "
+            "the rest before relying on it."
+        )
+    else:
+        extent = "It is reproduced below in full."
     return (
         "This session has reached into `" + str(repo_root) + "`, a separate "
         "repository declared in `.aide/loop/loop.local.toml`. A runtime loads "
-        "instruction files for the working directory's repository only, so this "
-        "one's have not been in context until now.\n\n"
-        "They are reproduced in full below and govern work **inside that "
-        "repository**; the working directory's own instructions continue to "
-        "govern everything else. Where the two disagree about a file, the "
-        "repository that owns the file wins.\n\n"
+        "instruction files for the working directory's repository only, so that "
+        "repository's own instructions have not been in context until now.\n\n"
+        + extent + " They govern work **inside that repository**; the working "
+        "directory's own instructions continue to govern everything else. Where "
+        "the two disagree about a file, the repository that owns the file "
+        "wins.\n\n"
         "--- begin " + str(instruction_path) + " ---\n"
         + text.rstrip("\n") + "\n"
         "--- end " + str(instruction_path) + " ---"
@@ -283,13 +299,13 @@ def main():
         if _already_surfaced(marker, repo_root):
             continue
         instruction_path = repo_root / instruction_file
-        text = _read_instructions(instruction_path)
+        text, truncated = _read_instructions(instruction_path)
         # Record either way: a sibling with no instruction file must not be
         # re-examined on every single tool call for the rest of the session.
         _record_surfaced(marker, repo_root)
         if text is None:
             continue
-        blocks.append(_render(repo_root, instruction_path, text))
+        blocks.append(_render(repo_root, instruction_path, text, truncated))
 
     if not blocks:
         return

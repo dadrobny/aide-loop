@@ -314,6 +314,48 @@ def test_an_oversized_instruction_file_is_truncated_with_a_pointer(tmp_path, mon
     assert "TAIL MARKER" not in context
     assert "truncated" in context
     assert len(context.encode("utf-8")) < hook._MAX_BYTES + 2000
+    # The preamble must not claim completeness over a file it cut short.
+    assert "in full" not in context
+
+
+def test_a_truncated_block_says_so_and_points_at_the_original(tmp_path, monkeypatch):
+    huge = "x" * (hook._MAX_BYTES + 5000)
+    repo = _consumer(tmp_path, extra_repos=["../sibling"], sibling_text=huge)
+    result = _run(monkeypatch, repo, "Edit",
+                  {"file_path": str((repo / ".." / "sibling" / "x.py").resolve())})
+    context = _context(result)
+    original = (repo / ".." / "sibling" / "CLAUDE.md").resolve()
+    assert "beginning of" in context
+    assert str(original) in context
+
+
+def test_an_untruncated_block_states_it_is_complete(tmp_path, monkeypatch):
+    """The claim is only safe on the branch that earns it."""
+    repo = _consumer(tmp_path, extra_repos=["../sibling"])
+    result = _run(monkeypatch, repo, "Edit",
+                  {"file_path": str((repo / ".." / "sibling" / "x.py").resolve())})
+    context = _context(result)
+    assert "in full" in context
+    # Phrase-precise: the tmp_path this test runs in carries the test's own name,
+    # so a bare `"truncated" not in context` matches "untruncated" in the path.
+    assert "too large to inject whole" not in context
+    assert "beginning of" not in context
+
+
+def test_read_instructions_reports_truncation_to_its_caller(tmp_path):
+    """The renderer needs the fact, not a guess derived from the text."""
+    small = tmp_path / "small.md"
+    small.write_text("short\n", encoding="utf-8")
+    assert hook._read_instructions(small) == ("short\n", False)
+
+    big = tmp_path / "big.md"
+    big.write_text("y" * (hook._MAX_BYTES + 10), encoding="utf-8")
+    text, truncated = hook._read_instructions(big)
+    assert truncated is True
+    assert text is not None
+
+    missing = tmp_path / "nope.md"
+    assert hook._read_instructions(missing) == (None, False)
 
 
 # --------------------------------------------------------------------------- #
