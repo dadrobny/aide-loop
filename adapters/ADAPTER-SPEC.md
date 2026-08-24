@@ -207,6 +207,73 @@ degradation §5 and §6 use.
 
 ---
 
+## 8. Optional: sibling-repo instructions
+
+Only runtimes that can inject context mid-session provide this. It is §7's
+sibling and its mirror image: §7 gets a **framework-owned** file into the
+project's default context once, at install time, through an import line; this
+gets **another repository's own** file into a session that reaches across into
+it, on demand, at the moment it does.
+
+They stay separate sections because nothing is shared but the motivation. The
+carrier differs (a durable import line vs. a per-session injection), the content
+owner differs (the framework vs. a repo nobody here controls), and a runtime can
+easily have one mechanism and not the other.
+
+The **rule** — "a repository's own instructions bind for work inside it" — is
+runtime-general and lives in `conventions.md` §8, restated in `AGENT-CONTEXT.md`
+so it binds from the first message. Only the mechanism is adapter-local.
+
+**The declaration already exists.** No new configuration: `[framework] local_path`
+and `[hygiene] extra_repos` in the personal, gitignored `.aide/loop/loop.local.toml`
+are already the machine's answer to "which repos does this project legitimately
+span", in the one file permitted to hold absolute paths. The instruction filename
+is the `file` an adapter already declares in `default-context.json` (§7), so it is
+named once.
+
+An adapter that provides this must:
+
+- **point at the instruction file; do not inject its contents.** The body looks
+  more helpful and is worse three ways. It goes **stale** — the case that
+  motivates the rule is a session *editing* the sibling, so a copy taken at first
+  touch can be wrong when used, and wrong invisibly, which is the failure the
+  mechanism exists to remove. It is **capped** — runtimes bound injected context
+  (Claude Code at 10,000 characters, past which output is spilled to a file and
+  replaced with a preview and its path, the runtime improvising this very
+  pointer). And it is **paid in full every time**, where a pointer costs a few
+  hundred characters and the reader spends the rest only if it opens the file.
+  The mechanism's job is the part a session cannot do for itself: noticing it has
+  crossed into a repo whose rules it was never given.
+- act **lazily** — point on the first action touching a path inside a repo, not
+  eagerly at session start. Size is the weaker half of this argument once the
+  payload is a pointer; **relevance** is the strong half. An eager list names
+  every declared repo, most of which a given session never opens, and a block
+  that is usually irrelevant is one a reader learns to skip — including on the
+  session where it was not. Pointing at the moment of the crossing makes the
+  message true of what is happening right then, and costs nothing in a session
+  that never reaches across;
+- point at each repo **once per session**, and mark a declared repo with no
+  instruction file as done too, so a missing file is not re-checked on every call;
+- **never alter the action it observes.** The mechanism watches; it does not
+  gate. It must not block, deny, or approve, and a failure in it — an unreadable
+  config, a malformed declaration, its own bug — must leave the session exactly
+  as it would have been without it;
+- **stay cheap on the hot path** — this runs before tool calls, so it must not
+  read a whole instruction file to decide whether to name it.
+
+The Claude adapter implements it as `hooks/sibling_instructions.py`, registered
+on `PreToolUse` for the path-touching tools. One detail there generalises to any
+runtime: **verify that the mechanism's output actually reaches the model.** A
+Claude Code `PreToolUse` hook's plain stdout goes to the debug log and is never
+shown — only `hookSpecificOutput.additionalContext` is — so the obvious
+implementation prints the file, appears to work, and delivers nothing.
+
+A runtime with **no way to inject context mid-session** omits this and relies on
+the `conventions.md` §8 rule being read, the same graceful degradation §5, §6 and
+§7 use.
+
+---
+
 ## Conformance checklist
 
 - [ ] Seven workflow entry-points, each honouring the `conventions.md` document shapes.
@@ -217,3 +284,6 @@ degradation §5 and §6 use.
 - [ ] *(if unattended runs are wanted)* a `usage_probe.py`, or `usage_probe = "none"`.
 - [ ] *(if the runtime loads an instruction file by default)* a `default-context.json`
       declaring that file and the runtime's import syntax.
+- [ ] *(if the runtime can inject context mid-session)* a lazy, non-blocking
+      mechanism surfacing a declared sibling repo's instruction file, once, on
+      first reach.

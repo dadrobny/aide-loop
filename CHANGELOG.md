@@ -17,6 +17,100 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.18.0] — 2026-08-24
+
+### Added
+
+- **A sibling repo's own instructions now reach a session that edits it.** A
+  runtime loads instruction files for the **working directory's** repo — its root
+  file, and subdirectory files as it reaches into them. A sibling repository gets
+  nothing: *"declared as an additional working directory"* does not imply
+  *"instructions loaded"*, and nothing announces the gap. An agent editing a
+  sibling works without rules that were written down, that it would have
+  followed, and whose absence is invisible — precisely the material that cannot
+  be inferred from the code (a versioning rule enforced by that repo's own suite,
+  a merge policy, a path convention that looks like a typo and is not).
+
+  Observed directly: in a session with four sibling repos configured as
+  additional working directories, only the cwd repo's `CLAUDE.md` was in context.
+  That session went on to assess another repo's architecture and file eight
+  issues against it without that repo's rules ever in hand.
+
+  **This bites the framework's own maintenance hardest.** The documented update
+  workflow edits the framework clone *from a consumer's checkout* — by
+  construction, a session with the framework's instructions unloaded.
+
+  - **The rule** (engine, runtime-general): `conventions.md` **§8 — Reaching into
+    another repository**. A repository's own instructions bind for work inside
+    it; read them before acting; where two repos disagree about a file, the repo
+    that owns the file wins. Restated in `AGENT-CONTEXT.md` so it binds from the
+    first message rather than when something points at it.
+  - **The mechanism** (adapter): `ADAPTER-SPEC.md` **§8**, and the Claude
+    adapter's `hooks/sibling_instructions.py`, registered on `PreToolUse` for the
+    path-touching tools. On the first call touching a path inside a declared
+    sibling, the session is pointed at that repo's instruction file once.
+
+  **A pointer, not the file.** Injecting the body looks more helpful and is worse
+  three ways. It goes **stale** — the case that motivates the rule is a session
+  *editing* the sibling, so a copy taken at first touch can be wrong by the time
+  it is used, and wrong invisibly, which is the failure this exists to remove. It
+  is **capped** — a runtime bounds injected context, Claude Code at 10,000
+  characters, past which the output is spilled to a file and replaced with a
+  preview and its path, the runtime improvising this very pointer. And it is
+  **paid in full every time**, where a pointer costs a few hundred characters and
+  the reader spends the rest only if it opens the file. The hook does the part a
+  session cannot do for itself — noticing it has crossed into a repo whose rules
+  it was never given — and leaves the reading to the reader, against the file as
+  it is then.
+
+  **No new configuration.** The repos come from `[framework] local_path` and
+  `[hygiene] extra_repos` in the personal, gitignored `.aide/loop/loop.local.toml`
+  — already the machine's answer to "which repos does this project legitimately
+  span", in the one file permitted to hold absolute paths. `extra_repos` was
+  added in 1.12.0 for the hygiene guard's `git -C` carve-out and now has a second
+  consumer; the instruction filename is the `file` the adapter already declares in
+  `default-context.json` (§7), so it is named once. The hook reuses the guard's
+  own config parser rather than growing a second reader of the same file.
+
+  **Lazy, not eager.** An eager `SessionStart` list names every declared repo,
+  most of which a given session never opens — and a block that is usually
+  irrelevant is one a reader learns to skip, including on the session where it
+  was not. Pointing at the moment of the crossing makes the message true of what
+  is happening right then, and costs nothing in a session that never reaches
+  across. Each repo is pointed at once per session — including a declared repo
+  with *no* instruction file, so a missing file is not re-checked on every
+  subsequent call. The check reads a bounded 4 KB prefix, never the whole file:
+  this runs ahead of tool calls and the body is never injected anyway.
+
+  **It watches; it does not gate.** No `permissionDecision` is emitted and the
+  exit status is always 0, so the permission flow is untouched. Every failure
+  mode — unreadable config, malformed declaration, an internal bug — is
+  swallowed, leaving the session exactly as it would have been. A malformed
+  `loop.local.toml` grants nothing, inherited from the guard's parse, so a typo in
+  a personal config file cannot start leaking an undeclared repo's file into
+  context. The per-session marker is created `0600` — it names absolute paths to
+  this machine's repos, and the system temp directory is world-readable on a
+  shared one.
+
+### Changed
+
+- **`install.py` now copies the adapter's `default-context.json` into
+  `.claude/`.** It was previously read only from the framework's own tree, at
+  install time. The §8 hook needs the same declaration at *runtime*, from the
+  installed adapter; without the copy it would fall back to a second hard-coded
+  copy of the instruction filename — the precise drift the declaration exists to
+  prevent. Consumers gain one file and no behaviour change.
+
+### Notes
+
+- One implementation detail worth recording because it silently defeats the
+  obvious approach: **a `PreToolUse` hook's plain stdout is written to the debug
+  log and never shown to the model** — only
+  `hookSpecificOutput.additionalContext` reaches it. Printing the file looks like
+  it works and delivers nothing. This was the open question gating the design;
+  `ADAPTER-SPEC.md` §8 states it as a check any runtime must make of its own
+  mechanism.
+
 ## [1.17.0] — 2026-08-24
 
 ### Added
