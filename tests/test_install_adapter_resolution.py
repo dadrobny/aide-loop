@@ -151,6 +151,21 @@ def test_another_adapters_instruction_file_carrying_our_import_is_reported(
     assert (target / "CLAUDE.md").is_file()
 
 
+def test_the_report_claims_no_record_when_the_adapter_was_default_resolved(
+        tmp_path: Path, monkeypatch):
+    """Every install predating the [aide] table resolves by fallback, not by
+    record. The one message whose job is to be trusted about which provider is
+    live must not claim the repo chose it."""
+    target = _target(tmp_path, None, table=False)
+    _adapters(tmp_path, monkeypatch, claude="CLAUDE.md", copilot="COPILOT.md")
+    (target / "COPILOT.md").write_text(IMPORT_LINE + "\n", encoding="utf-8")
+
+    adapter, err = install.resolve_adapter(target, None)
+    assert (adapter, err) == ("claude", None)      # resolved by fallback
+    found = install.foreign_context_drift(target, adapter)
+    assert len(found) == 1 and "records" not in found[0]
+
+
 def test_a_foreign_file_without_our_import_is_none_of_our_business(
         tmp_path: Path, monkeypatch):
     """A project may have a file that happens to share the name. Only the line

@@ -671,10 +671,15 @@ def foreign_context_drift(target: Path, adapter: str) -> List[str]:
             continue
         if ours is not None and path == ours:
             continue  # two adapters naming one file: it is ours, not a leftover
+        # "is using", not "records": `resolve_adapter` falls back to the
+        # default when no `[aide] adapter` is present, which every install
+        # predating that table is. Claiming the repo recorded a choice it never
+        # made would be a false statement in the one message whose whole job is
+        # to be trusted about which provider is live here.
         out.append(
             f"{path.relative_to(target).as_posix()} imports {AGENT_CONTEXT_REL} "
             f"but belongs to the '{other.name}' adapter, not the '{adapter}' one "
-            f"this repo records — a superseded provider's instruction file. "
+            f"this repo is using — a superseded provider's instruction file. "
             f"Remove it by hand if the switch was deliberate; the framework does "
             f"not delete project-owned files.")
     return out
