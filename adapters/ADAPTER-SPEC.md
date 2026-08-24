@@ -185,9 +185,14 @@ Given the declaration, `install.py`:
 - ensures the rendered import line is present in the declared file, appending it
   and nothing else when it is missing (idempotent — the project keeps full
   control of everything it wrote);
-- creates the file — and any parent directory it names — containing just that
-  line when it does not exist, since a new file cannot clobber anything and a
-  silently absent channel is the failure mode worth avoiding;
+- creates the file — and any parent directory it names — when it does not
+  exist, holding the import line plus a two-sentence note saying that the line
+  is the only thing an update will rewrite. A new file cannot clobber anything,
+  and a silently absent channel is the failure mode worth avoiding; the note is
+  there because a consumer opening a file it did not write needs to know which
+  part is theirs. It is markdown, as every instruction file a runtime loads by
+  default is today — an adapter whose runtime wants some other format is the
+  point at which that assumption should be revisited;
 - reports a missing import line under `--check` as drift, the same way it
   reports a stale `VERSION`.
 

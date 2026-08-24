@@ -305,6 +305,52 @@ def test_check_reports_drift_when_the_instruction_file_is_gone(tmp_path: Path, c
     assert "does not import" not in out
 
 
+def test_drift_on_an_ahead_consumer_does_not_advise_a_downgrade(tmp_path: Path, capsys):
+    """Every other failing state repairs with `--update`. This one does not:
+    the consumer's engine is newer than this checkout, so updating from here
+    would roll it back to fix a missing line. The report has to say so, rather
+    than fail with the generic advice or with none at all."""
+    target = _consumer(tmp_path)
+    assert _install(target) == 0
+    (target / ".aide" / "VERSION").write_text("99.0.0\n", encoding="utf-8")
+    (target / "CLAUDE.md").write_text("# Mine only\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert install.main(["--into", str(target), "--check"]) == 1
+    out = capsys.readouterr().out
+    assert "is AHEAD" in out
+    assert install.AGENT_CONTEXT_REL in out
+    assert "add the import by hand" in out
+    assert f"--into {target} --update" not in out
+
+
+def test_an_ahead_consumer_that_is_linked_still_passes(tmp_path: Path, capsys):
+    """Being ahead is not itself a failure — only the missing import is."""
+    target = _consumer(tmp_path)
+    assert _install(target) == 0
+    (target / ".aide" / "VERSION").write_text("99.0.0\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert install.main(["--into", str(target), "--check"]) == 0
+    assert "is AHEAD" in capsys.readouterr().out
+
+
+def test_the_created_file_matches_what_the_spec_says_it_holds(tmp_path: Path):
+    """ADAPTER-SPEC §7 describes the created file as the import line plus a
+    short note about which line an update rewrites. A spec that describes
+    content the installer does not write is the drift this test exists to
+    catch — it went unnoticed once already."""
+    spec = (FRAMEWORK_ROOT / "adapters" / "ADAPTER-SPEC.md").read_text(encoding="utf-8")
+    assert "holding the import line plus a two-sentence note" in spec
+
+    target = _consumer(tmp_path)
+    assert _install(target) == 0
+    lines = [ln for ln in (target / "CLAUDE.md").read_text(encoding="utf-8").splitlines()
+             if ln.strip()]
+    assert lines[0] == IMPORT_LINE
+    assert len(lines) > 1, "the note the spec promises is missing"
+
+
 def test_check_still_writes_nothing_when_it_reports_drift(tmp_path: Path):
     target = _consumer(tmp_path)
     assert _install(target) == 0

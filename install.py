@@ -243,19 +243,27 @@ def report_version(available: str, installed_path: Path, target: Path,
     state = compare_versions(installed, available)
     if drift:
         print(f"aide {target}: {drift}")
-    if state == "current":
-        if drift:
-            print(f"aide {target}: v{installed} — run install.py --into {target} --update")
-            return 1
-        print(f"aide {target}: v{installed} — up to date")
-        return 0
+    if state == "behind":
+        print(f"aide {target}: v{installed} is BEHIND v{available} — "
+              f"run install.py --into {target} --update (see CHANGELOG.md)")
+        return 1
     if state == "ahead":
         print(f"aide {target}: v{installed} is AHEAD of this framework (v{available}) — "
               f"this checkout is older than the consumer's install")
-        return 1 if drift else 0
-    print(f"aide {target}: v{installed} is BEHIND v{available} — "
-          f"run install.py --into {target} --update (see CHANGELOG.md)")
-    return 1
+        if drift:
+            # NOT "run --update": from a checkout this old that would roll the
+            # consumer's engine backwards to fix a missing line. Every other
+            # failing state repairs with the same --update, so the one that
+            # does not has to say what to do instead.
+            print(f"aide {target}: add the import by hand, or --update from the "
+                  f"newer framework checkout this install came from")
+            return 1
+        return 0
+    if drift:
+        print(f"aide {target}: v{installed} — run install.py --into {target} --update")
+        return 1
+    print(f"aide {target}: v{installed} — up to date")
+    return 0
 
 
 class OverlayError(ValueError):
