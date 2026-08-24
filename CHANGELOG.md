@@ -50,26 +50,30 @@ keys, and the adapter's agents/skills/commands.
   the line is ever moved back inside the fresh-install-only branch.
 
 - **`conventions.md` §4 now states what a `git.mode` choice costs in CI.** §1
-  promises that per-item scope is checked on each claim branch as it merges. A CI
-  job can only run that check if an `aide/NNN-` claim branch ever becomes a PR,
-  and per §4 only `pr` mode produces one: `auto-merge` merges to the base and
-  deletes the branch in-loop, `local` pushes nothing. §4 described the three
-  modes purely in terms of pushes and merges and never mentioned that the choice
-  also decides whether *any* CI gate can see a claim branch — so a consumer
-  could read §1, wire a scope job, and have it report green forever while
-  resolving no item number and correctly skipping. That is a gate which decays
-  with a config change rather than one that never worked, which is why it goes
-  unnoticed. §4 gains a reachability table across the three modes and names the
-  trade in both directions: `auto-merge` buys unattended throughput and forfeits
-  the independent, second-platform scope signal, leaving the gate enforced only
-  by the validator in-loop — same machine, same platform, same checkout that
-  built the item, the §7 blind spot exactly; `pr` buys the signal back at one
-  human PR open per item. It also records that the branch *shape* is an
-  independent axis — under the stacked queue-branch model `pr` still works, the
-  PR's head being the claim branch and its base the pushed queue branch. §1's
-  claim now points forward to §4 rather than standing alone. Documentation only:
-  no verb changes behaviour, and `aide scope` short-circuiting on a queue branch
-  remains correct.
+  promises that per-item scope is checked on each claim branch as it merges, and
+  §4 described the three modes purely in terms of pushes and merges — never
+  mentioning that the choice also decides what kind of CI gate can see a claim
+  branch at all. A consumer could read §1, wire a scope job, and have it report
+  green forever while checking nothing. That is a gate which decays with a config
+  change rather than one that never worked, which is why it goes unnoticed.
+  §4 gains a table across the three modes — is the claim branch pushed, is a PR
+  opened, what gate is possible — and names the distinction that actually
+  governs: **PR context, not visibility.** `auto-merge` pushes the claim branch
+  exactly as `pr` does, so a push-triggered workflow can see it; what it does not
+  produce is a pull request, hence no `github.base_ref` to diff against (the job
+  must pass `--base` itself) and a race against the in-loop merge that deletes
+  the branch. Under `pr` the PR carries head and base directly, which is the diff
+  `aide scope` wants with no branch-name parsing. The trade is named in both
+  directions: `auto-merge` buys unattended throughput and, absent a purpose-built
+  push workflow, leaves the gate enforced only by the validator in-loop — same
+  machine, same platform, same checkout that built the item, the §7 blind spot
+  exactly; `pr` buys the independent second-platform signal back at one human PR
+  open per item. §4 also records that the branch *shape* is an independent axis:
+  under the stacked queue-branch model `pr` still works, the PR's head being the
+  claim branch and its base the pushed queue branch. §1's claim now points
+  forward to §4 rather than standing alone. Documentation only: no verb changes
+  behaviour, and `aide scope` short-circuiting on a queue branch remains
+  correct.
 
 ### Fixed
 

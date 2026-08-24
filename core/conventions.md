@@ -276,8 +276,9 @@ With no argument it reads the item number from the current claim branch; a
 queue branch resolves to no item and is skipped, since per-item scope is checked
 on each claim branch as it merges and a queue branch legitimately aggregates
 many items' lists. Whether that per-item check is ever reachable from CI — as
-opposed to only from the validator, in-loop — is decided by `git.mode` alone;
-see §4. It diffs against the **merge-base with the item's base** — `--base` if
+opposed to only from the validator, in-loop — depends on `git.mode`, which
+decides whether a claim branch is pushed and whether it ever carries a PR
+context; see §4. It diffs against the **merge-base with the item's base** — `--base` if
 given, else the branch's recorded base, else `main_branch`, resolved exactly as
 §4 describes. The two *derived* answers prefer the `origin/` counterpart over
 the local ref, whose merge-base on a checkout sitting behind the work is itself,
@@ -623,26 +624,37 @@ identical across modes.
 - **`local`** — no pushes at all (offline). Claim is a local branch only (no
   multi-machine signal); merge is local into `main`.
 
-**The mode also decides whether any CI job can ever see a claim branch — pick it
-for that too.** Per-item scope is checked as each claim branch merges (§1), but a
-CI job can only run that check if an `aide/NNN-` branch becomes a PR, and only
-one mode produces one:
+**The mode also decides what kind of CI gate can see a claim branch — pick it for
+that too.** Per-item scope is checked as each claim branch merges (§1). Whether a
+CI job can run that check depends on what the mode leaves behind for CI to
+trigger on:
 
-| `git.mode` | Claim branch reaches a PR | Per-item scope in CI |
-|---|---|---|
-| `auto-merge` | no — merged to the base and deleted in-loop | **unreachable** |
-| `pr` | yes — head `aide/NNN-…`, base the item's recorded base | **works** |
-| `local` | no — nothing is pushed | **unreachable** |
+| `git.mode` | Claim branch pushed | PR opened | Per-item scope gate in CI |
+|---|---|---|---|
+| `auto-merge` | yes | no | **push-triggered only** — and see the caveats below |
+| `pr` | yes | yes, by the human | **works**, in PR context |
+| `local` | no | no | **unreachable** — nothing leaves the machine |
 
-Under `auto-merge` the gate is enforced **only** by the validator running
-`aide scope` in-loop: same machine, same platform, same checkout that built the
-item — the §7 blind spot exactly. The trade is real in both directions.
-`auto-merge` buys unattended throughput and forfeits the independent,
-second-platform scope signal; `pr` buys the signal back and costs one human PR
-open per item. Choose deliberately rather than inheriting the default, because
-**a CI scope job wired under `auto-merge` is green forever while checking
-nothing** — it resolves no item number from a branch named anything other than
-`aide/NNN-`, and correctly skips.
+The distinction that matters is **PR context**, not visibility. `auto-merge`
+pushes the claim branch like `pr` does, so a push-triggered workflow matching
+`aide/**` can see it — but there is no pull request, so no `github.base_ref` to
+diff against: the job must supply `--base` itself, and it races the in-loop
+merge, which deletes the branch as soon as the item lands. Under `pr` the PR
+carries both refs — head `aide/NNN-…`, base the item's recorded base — which is
+exactly the diff `aide scope` wants, with no branch-name parsing at all.
+
+So the trade is real in both directions. `auto-merge` buys unattended throughput
+and, unless a push workflow is deliberately built for it, leaves the gate
+enforced **only** by the validator running `aide scope` in-loop: same machine,
+same platform, same checkout that built the item — the §7 blind spot exactly.
+`pr` buys the independent, second-platform signal back and costs one human PR
+open per item.
+
+Choose deliberately rather than inheriting the default, because **a scope job
+written for PR context is green forever under `auto-merge` while checking
+nothing**: with no PR it either never triggers, or triggers on a branch whose
+name yields no item number and correctly skips. A gate can decay this way from a
+mode change alone, long after it was correctly built.
 
 The branch *shape* is an independent axis and does not decide this: under the
 stacked queue-branch model below, `pr` still works, since the PR's head is the

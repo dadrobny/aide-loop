@@ -77,7 +77,7 @@ def test_the_signpost_points_at_a_directory_the_install_really_created(tmp_path)
     assert shipped.relative_to(target).parts[0].startswith(".")
 
 
-def test_the_engine_readme_answers_whether_to_run_it(tmp_path):
+def test_the_engine_readme_answers_whether_to_run_it():
     readme = CORE_README.read_text(encoding="utf-8")
     assert "`scripts/tests/`" in readme, "no row for the shipped suite"
     assert f"pytest {SHIPPED_TESTS}" in readme, "no runnable command"
