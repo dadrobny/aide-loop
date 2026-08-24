@@ -21,6 +21,24 @@ keys, and the adapter's agents/skills/commands.
 
 ### Changed
 
+- **Item and queue file naming lives behind named helpers, the way branch
+  naming already did.** `_branch_item_number` and `_is_queue_branch` centralised
+  the shared-namespace hazard for branches in 1.13.0 — after an unanchored match
+  read `aide/queue-016` as long-finished item 016 and let `gc` delete an
+  in-flight queue branch carrying the only copy of its queue file and specs.
+  Filenames kept re-deriving the same convention as raw globs and f-strings at
+  thirteen sites, five of them the identical `idir.glob(f"{n:03d}-*.md")`.
+
+  `queue_name`, `queue_number`, `iter_queue_paths`, `queue_path` and
+  `item_spec_paths` now hold it, and all thirteen sites call them. No live bug
+  is fixed — every site was correct — so the change is containment: one place
+  for the 1.13.0 class of misread to reappear, and one place that is tested.
+  Two behavioural improvements fall out: `queue_path` **resolves by glob rather
+  than constructing** a name, and `iter_queue_paths` orders by the parsed number
+  rather than lexicographically, so a slugged queue file (#55) would be a naming
+  decision rather than an engine sweep. Four parameters named `queue_number`
+  were renamed, since the helper now owns that name at module scope. (#54)
+
 - **An insight entry's *claim* is immutable; its *status* is not.**
   `conventions.md` §1 said the inbox was append-only "with exactly two
   exceptions" — ticking the checkbox and appending one `→ where it landed`
