@@ -1531,9 +1531,11 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     nothing and they still report on a `docs_dir` that exists but has no
     `progress.md`.
 
-    A repo with no `docs_dir` at all therefore gets the test-hygiene lints and
-    passes; only a repo that has a document set but has lost its `progress.md`
-    is an error.
+    Three cases, kept apart: a repo with **no `docs_dir` at all** gets the
+    test-hygiene lints and passes; a `docs_dir` that **exists but is not a
+    directory** is a misconfigured `aide.toml` and an error; and a `docs_dir`
+    that is a directory but has **lost its `progress.md`** is the error it
+    always was.
     """
     errors: List[str] = []
     warnings: List[str] = []
@@ -1548,6 +1550,17 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(cli_subprocess_test_warnings(repo_root, config))
     warnings.extend(header_blockquote_warnings(ddir))
     warnings.extend(item_spec_warnings(ddir))
+    if ddir.exists() and not ddir.is_dir():
+        # `docs_dir` pointing at something that is not a directory is a
+        # misconfiguration, and a third case again: it is neither "no document
+        # set" nor "a document set missing its progress.md". Left folded into
+        # the partial-adoption branch below it would report "this repo has no
+        # AIDE document set" and exit 0 — a typo in aide.toml passing as a
+        # deliberate choice not to adopt the loop.
+        errors.append(
+            f"{_rel_display(ddir, repo_root)} is configured as docs_dir but is "
+            f"not a directory — fix [project] docs_dir in aide.toml")
+        return errors, warnings
     if not ddir.is_dir():
         # Two different situations used to produce one error. A repo with no
         # document set at all is not a broken loop repo — it is a repo that
@@ -1986,7 +1999,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     ddir = docs_dir(repo_root, config)
     errors, warnings = run_checks(repo_root, config)
 
-    if not ddir.is_dir() and queue is None:
+    if not ddir.exists() and queue is None:
         # A notice, not a warning: nothing is wrong, but the reader must not
         # read "OK" as "the documents were checked and are fine".
         #

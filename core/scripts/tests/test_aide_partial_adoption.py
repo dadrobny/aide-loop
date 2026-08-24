@@ -127,6 +127,44 @@ def test_a_present_document_set_still_gets_its_document_checks(tmp_path: Path, c
 
 
 # --------------------------------------------------------------------------- #
+# A docs_dir that is not a directory: a third case, and a real error
+# --------------------------------------------------------------------------- #
+def _misconfigured(tmp_path: Path) -> Path:
+    """A repo whose `docs_dir` names a file."""
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "aide.toml").write_text(
+        '[project]\nname = "Demo"\ndocs_dir = "NOTES.md"\n', encoding="utf-8")
+    (repo / "NOTES.md").write_text("# notes\n", encoding="utf-8")
+    return repo
+
+
+def test_a_docs_dir_that_is_not_a_directory_is_an_error(tmp_path: Path):
+    """Folded into the partial-adoption branch this would report "this repo has
+    no AIDE document set" and exit 0 — a typo in aide.toml passing as a
+    deliberate choice not to adopt the loop."""
+    repo = _misconfigured(tmp_path)
+    errors, _ = aide.run_checks(repo, aide.load_config(repo))
+    assert len(errors) == 1
+    assert "not a directory" in errors[0] and "NOTES.md" in errors[0]
+
+
+def test_a_misconfigured_docs_dir_gets_no_partial_adoption_notice(
+        tmp_path: Path, capsys):
+    repo = _misconfigured(tmp_path)
+    assert aide.main(["--repo", str(repo), "check"]) == 1
+    out = capsys.readouterr().out
+    assert "notice:" not in out
+    assert "no AIDE document set" not in out
+
+
+def test_the_misconfiguration_error_names_the_key_to_fix(tmp_path: Path, capsys):
+    repo = _misconfigured(tmp_path)
+    aide.main(["--repo", str(repo), "check"])
+    assert "docs_dir" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
 # --queue must not silently pass just because there is nowhere to look
 # --------------------------------------------------------------------------- #
 def test_queue_check_still_fails_with_no_document_set(tmp_path: Path):

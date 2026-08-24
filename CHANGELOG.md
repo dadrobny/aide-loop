@@ -118,10 +118,14 @@ keys, and the adapter's agents/skills/commands.
   gate. A repo doing installer or CLI path work on a mixed CI matrix is the
   exact risk class they cover, and it was the class that could not run them.
 
-  The two cases are now distinguished the way #48 distinguished a not-yet-queued
-  stage from a typo'd one: **no `docs_dir` at all** runs the repo-agnostic
-  checks, prints a `notice:` naming the configured directory, and exits 0;
-  **`docs_dir` present without `progress.md`** keeps today's error verbatim. The
+  The cases are now distinguished the way #48 distinguished a not-yet-queued
+  stage from a typo'd one — three of them, not two: **no `docs_dir` at all**
+  runs the repo-agnostic checks, prints a `notice:` naming the configured
+  directory, and exits 0; **`docs_dir` present without `progress.md`** keeps
+  today's error verbatim; and **`docs_dir` naming something that is not a
+  directory** is a misconfigured `aide.toml`, reported as an error naming the
+  key to fix rather than passing as a deliberate choice not to adopt the loop.
+  The
   `(errors, warnings)` return shape is unchanged — the notice is presentational,
   emitted by `cmd_check` — so nothing that parses `run_checks` is affected.
 
