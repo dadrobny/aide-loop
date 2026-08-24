@@ -123,6 +123,15 @@ def test_the_import_lands_on_its_own_line_without_a_trailing_newline(tmp_path: P
     assert IMPORT_LINE in lines
 
 
+def test_an_empty_instruction_file_gets_just_the_line(tmp_path: Path):
+    """No leading blank lines to separate the import from nothing."""
+    target = _consumer(tmp_path)
+    (target / "CLAUDE.md").write_text("", encoding="utf-8")
+
+    assert _install(target) == 0
+    assert (target / "CLAUDE.md").read_text(encoding="utf-8") == IMPORT_LINE + "\n"
+
+
 def test_linking_is_idempotent(tmp_path: Path):
     target = _consumer(tmp_path)
     assert _install(target) == 0

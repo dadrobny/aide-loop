@@ -701,7 +701,11 @@ def default_context_declaration(adapter_dir: Path) -> Optional[Tuple[str, str]]:
 def default_context_state(target: Path, adapter_dir: Path) -> Tuple[Optional[Path], bool]:
     """``(instruction file, whether it already imports AGENT-CONTEXT.md)``.
 
-    ``(None, True)`` when the adapter declares nothing — nothing to report.
+    ``(None, True)`` when the adapter declares nothing — nothing to report. The
+    presence test is for the **exact line** the installer writes, deliberately:
+    what it maintains is a line it wrote, not a sentence it guessed at. A
+    duplicate reference costs nothing; a channel wrongly assumed present is the
+    failure this whole mechanism exists to avoid.
     """
     decl = default_context_declaration(adapter_dir)
     if decl is None:
@@ -711,30 +715,30 @@ def default_context_state(target: Path, adapter_dir: Path) -> Tuple[Optional[Pat
     if not path.is_file():
         return path, False
     existing = path.read_text(encoding=CONSUMER_ENCODING)
-    return path, any(l.strip() == line for l in existing.splitlines())
+    return path, any(ln.strip() == line for ln in existing.splitlines())
 
 
 def install_default_context(target: Path, adapter_dir: Path, log: List[str]) -> None:
     """Ensure the consumer's instruction file imports ``.aide/AGENT-CONTEXT.md``.
 
-    One line, appended; everything else in the file is the project's and is not
-    read for anything but the presence of that line. Idempotent, so an
-    ``--update`` on a linked repo writes nothing.
+    One line, appended; everything else in the file is the project's and is read
+    for nothing but the presence of that line. Idempotent, so an ``--update`` on
+    a linked repo writes nothing.
     """
     decl = default_context_declaration(adapter_dir)
     if decl is None:
         return
-    name, line = decl
-    path = target / name
+    _, line = decl
+    path, linked = default_context_state(target, adapter_dir)
+    if linked:
+        log.append(f"  = {path} (already imports {AGENT_CONTEXT_REL})")
+        return
     if not path.is_file():
         path.write_text(line + "\n\n" + INSTRUCTION_FILE_TEMPLATE.format(name=target.name),
                         encoding="utf-8")
         log.append(f"  + {path} (created; imports {AGENT_CONTEXT_REL})")
         return
     existing = path.read_text(encoding=CONSUMER_ENCODING)
-    if any(l.strip() == line for l in existing.splitlines()):
-        log.append(f"  = {path} (already imports {AGENT_CONTEXT_REL})")
-        return
     sep = "" if (not existing or existing.endswith("\n")) else "\n"
     prefix = "\n" if existing and not existing.endswith("\n\n") else ""
     with path.open("a", encoding="utf-8") as fh:
