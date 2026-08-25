@@ -59,13 +59,18 @@ import re
 import shutil
 import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 FRAMEWORK_ROOT = Path(__file__).resolve().parent
 
 # Adapter control files copied into <target>/.claude/. Everything else under
 # adapters/<name>/ (README.md, usage_probe.py) is handled out of band.
-ADAPTER_CONTROL = ("agents", "skills", "commands", "hooks", "scripts")
+ADAPTER_CONTROL = ("agents", "skills", "commands", "hooks", "rules", "scripts")
+
+# Paths under .aide/ that the installer writes from somewhere OTHER than core/.
+# `prune_stale` compares the installed tree against core/, so without this a
+# file the installer itself put there would be deleted on the next update.
+AIDE_FOREIGN_PATHS = ("loop/usage_probe.py",)
 ADAPTER_SETTINGS = "settings.json"
 
 # ADAPTER-SPEC §7. An adapter whose runtime loads a project instruction file by
@@ -130,6 +135,8 @@ GITIGNORE_BLOCK = f"""\
 .aide/loop/loop.local.toml
 .aide-merge
 docs/aide/status/
+docs/aide/permissions/*.jsonl
+docs/aide/instructions/*.jsonl
 # --- end AIDE ---
 """
 
@@ -479,6 +486,48 @@ def copy_tree(src: Path, dst: Path, log: List[str]) -> None:
             existed = target.exists()
             shutil.copy2(child, target)
             log.append(f"  {'~' if existed else '+'} {target}")
+
+
+def prune_stale(src: Path, dst: Path, log: List[str],
+                keep: Iterable[str] = ()) -> None:
+    """Delete files under ``dst`` that ``src`` no longer has.
+
+    ``copy_tree`` overwrites and adds but never removes, so a file dropped from
+    the engine stays in every consumer forever — still installed, still
+    readable, and a version behind whatever replaced it. Reorganising a
+    document into a directory is the case that makes this bite: the old
+    single-file copy sits beside the new tree, both plausible, with nothing
+    saying which one is live.
+
+    **Only ``.aide/`` is pruned.** That tree is framework-owned in full, which
+    is what makes "not in the source" mean "removed from the engine".
+    ``.claude/agents/`` and its siblings are directories a project legitimately
+    adds its own files to, so the same inference there would delete a
+    consumer's own agent.
+
+    Skips the junk/private names ``copy_tree`` skips, so a `__pycache__` or a
+    personal `loop.local.toml` is never a prune candidate, and removes a
+    directory only once this prune has emptied it.
+    """
+    if not dst.is_dir():
+        return
+    protected = {Path(k) for k in keep}
+    # Deepest first, so a directory is considered after the files inside it.
+    for path in sorted(dst.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        rel = path.relative_to(dst)
+        if rel in protected:
+            continue
+        if any(part in SKIP_NAMES for part in rel.parts) or rel.suffix in SKIP_SUFFIXES:
+            continue
+        if (src / rel).exists():
+            continue
+        if path.is_dir():
+            if not any(path.iterdir()):
+                path.rmdir()
+                log.append(f"  - {path}/")
+        else:
+            path.unlink()
+            log.append(f"  - {path}")
 
 
 def copy_file(src: Path, dst: Path, log: List[str]) -> None:
@@ -1013,6 +1062,7 @@ def run(args: argparse.Namespace) -> int:
 
     # 1. engine -> .aide/
     copy_tree(core_dir, aide_dir, log)
+    prune_stale(core_dir, aide_dir, log, keep=AIDE_FOREIGN_PATHS)
 
     # 2. adapter control files -> .claude/
     for name in ADAPTER_CONTROL:

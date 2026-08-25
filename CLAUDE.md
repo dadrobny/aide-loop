@@ -17,8 +17,8 @@ Three layers; the first two are what a consumer installs.
 
 | In this repo | Installed into a consumer as | What it is |
 |---|---|---|
-| [`core/`](core/) | `<repo>/.aide/` | The **engine** — provider-agnostic: document templates, `conventions.md`, the `aide.py` CLI, the supervisor loop |
-| [`adapters/claude/`](adapters/claude/) | `<repo>/.claude/` | The **Claude adapter** — agents, skills, commands, hooks, `settings.json` |
+| [`core/`](core/) | `<repo>/.aide/` | The **engine** — provider-agnostic: document templates, `conventions.md` + `conventions/`, the `aide.py` CLI, the supervisor loop |
+| [`adapters/claude/`](adapters/claude/) | `<repo>/.claude/` | The **Claude adapter** — agents, skills, commands, rules, hooks, `settings.json` |
 | [`install.py`](install.py) | — | The cross-OS installer that copies both and scaffolds `aide.toml` |
 
 Not installed, and therefore free of the version rule below:
@@ -34,9 +34,33 @@ they are correct.** Never "fix" them to this repo's source layout (`core/…`,
 currently sits. Only the repo-level docs (`README.md`, `docs/`, the adapter
 READMEs, this file) describe this repo's own structure.
 
-The same applies to relative links inside agents/skills: `../../.aide/conventions.md`
-resolves correctly from `.claude/agents/` in a consumer, which is the only place
-it is ever read.
+The same applies to relative links inside agents/skills and rules: a path like
+`.aide/conventions/6-test-hygiene.md` resolves in a consumer, which is the only
+place it is ever read.
+
+## The contract is sectioned, and delivered
+
+[`core/conventions.md`](core/conventions.md) is an **index**. Each numbered
+section is one file under [`core/conventions/`](core/conventions/), so `§6` is
+`conventions/6-test-hygiene.md` and `§1 → insights.md` is
+`conventions/1-format-contract/insights.md`. Write pointers as `§N` — the form
+is used in a hundred places, it survives a file being renamed, and the index
+resolves it.
+
+**Sections are runtime-general; an adapter delivers them, it does not restate
+them.** The Claude adapter does this with
+[`adapters/claude/rules/`](adapters/claude/rules/): one unscoped file (loads in
+every session and every sub-agent) and `paths:`-scoped files (load only when a
+matching file is read). Three obligations, pinned by
+[`adapters/claude/tests/test_rules.py`](adapters/claude/tests/test_rules.py) and
+stated in `ADAPTER-SPEC.md` §7 — a rule loads without the role choosing to,
+names the section it delivers, and **adds no rule the engine does not have**. A
+rule invented in the adapter binds one runtime and is invisible to every other;
+put it in `conventions/` first.
+
+Do not re-inline a contract restatement into an agent spec. Six of them carried
+the command-hygiene block verbatim, one had already drifted, and a test now
+fails if the heading comes back.
 
 ## Versioning — enforced, not remembered
 

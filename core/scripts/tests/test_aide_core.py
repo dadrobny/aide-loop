@@ -862,14 +862,21 @@ def test_insight_trail_does_not_swallow_a_malformed_entry(tmp_path: Path):
 
 
 def test_the_documented_trail_example_validates(tmp_path: Path):
-    """The example in `conventions.md` must be one the checker accepts.
+    """The example in the conventions must be one the checker accepts.
 
     A worked example that would warn if pasted is worse than none — it teaches
     a shape the tool rejects. Reads the shipped conventions rather than a copy,
     so the two cannot drift apart silently.
+
+    Sweeps the whole `conventions/` tree rather than naming one file: the
+    sections move between files as the contract is reorganised, and a hardcoded
+    path would fail with "no such file" instead of telling anyone the example
+    itself regressed.
     """
-    conventions = Path(__file__).resolve().parents[2] / "conventions.md"
-    blocks = [b for b in conventions.read_text(encoding="utf-8").split("```")
+    tree = Path(__file__).resolve().parents[2] / "conventions"
+    assert tree.is_dir(), f"{tree} missing — the conventions layout moved"
+    blocks = [b for f in sorted(tree.rglob("*.md"))
+              for b in f.read_text(encoding="utf-8").split("```")
               if "→ aide-loop issue" in b]
     assert len(blocks) == 1, "expected exactly one status-trail example to check"
 

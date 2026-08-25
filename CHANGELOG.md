@@ -17,6 +17,111 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.22.0] — 2026-08-25
+
+### Changed
+
+- **`conventions.md` is now an index; its sections are files (issue #78).**
+  Each numbered section moved to `conventions/N-*.md`, and §1's document shapes
+  to `conventions/1-format-contract/*.md`, so the pointer form already used in
+  a hundred places resolves to a file: `§6` is `conventions/6-test-hygiene.md`,
+  `§1 → insights.md` is `conventions/1-format-contract/insights.md`. The prose
+  is unchanged — this is a move, not a rewrite. `conventions.md` keeps its path
+  and its opening line and now carries the section table.
+
+  Its opening paragraph claimed "three parts" while the file had eight
+  sections, and had been wrong since the bootstrap commit — §4 and §5 already
+  existed there. Nobody caught it because nobody reads this file top to bottom,
+  which is the same fact the rest of this entry is about. The index replaces
+  the sentence rather than correcting it.
+
+- **The Claude adapter delivers contract sections instead of pointing at them.**
+  Measured across 11 sessions of a consumer on engine 1.20.0, **164 sub-agent
+  spawns produced 5 reads of `conventions.md` — about 3%**, every one a slice.
+  A pointer is followed only if the reader chooses to, so what was actually
+  binding was the command-hygiene block restated verbatim in all six agent
+  specs; one of the six had already drifted.
+
+  New `adapters/claude/rules/` (installed to `.claude/rules/`):
+
+  | File | Loads | Delivers |
+  |---|---|---|
+  | `aide-command-hygiene.md` | unscoped — every session and sub-agent | §3, in positive form |
+  | `aide-test-hygiene.md` | `paths:` — any file pytest would collect | §6 |
+  | `aide-living-documents.md` | `paths:` — the living documents by name | the §1 shapes that bind on any edit |
+
+  The two scoped rules match **by filename, not by `project.tests_dir` /
+  `project.docs_dir`**: a rule whose globs silently stop matching is the exact
+  failure this replaces, and templating the globs at install time would
+  reintroduce it as a config error.
+
+  The six per-agent `## Command hygiene` blocks are **removed**; a test fails if
+  one comes back. `ADAPTER-SPEC.md` §7 gains a **§-level delivery** contract
+  point with the three properties that make a mechanism conformant rather than
+  decorative — it loads without the role choosing to, it names the section it
+  delivers, and it adds no rule the engine does not have. §3 and §6 now state
+  the delivery obligation themselves, runtime-generally, so an adapter is not
+  inventing it.
+
+- **`install.py --update` now removes engine files the framework has dropped.**
+  `copy_tree` overwrote and added but never deleted, so every file ever shipped
+  stayed in a consumer forever — the sectioning above would otherwise have left
+  a superseded `.aide/conventions.md` beside the new tree in every install.
+
+  **Only `.aide/` is pruned**, because that tree is framework-owned in full,
+  which is what makes "absent from the source" mean "removed from the engine".
+  `.claude/agents/` and its siblings are directories a project legitimately
+  adds its own files to, and the same inference there would delete a consumer's
+  own agent. `loop.local.toml`, `__pycache__`, `*.pyc` and the adapter-supplied
+  `loop/usage_probe.py` are never candidates. If you keep hand-written files
+  under `.aide/`, move them before updating.
+
+- **Four files compacted, against a stated test.** `AGENT-CONTEXT.md` (loaded
+  into every context, so its size is multiplied by every spawn) and the three
+  heaviest agent specs, together about 83% of the measured per-queue budget:
+
+  ```
+  core/AGENT-CONTEXT.md   4354 -> 3539   (-19%)
+  agents/validator.md    11660 -> 9610   (-18%)
+  agents/test-writer.md   6436 -> 5392   (-16%)
+  agents/spec-author.md   8513 -> 7483   (-12%)
+  ```
+
+  Cut: the counterfactual argument for a rejected alternative, defect-provenance
+  narrative, and intra-section restatement. Kept: every normative statement, the
+  fenced shape examples, the one-line *why* at a decision boundary, and the
+  disambiguators that pre-empt a known misread. The test for a cut was whether
+  an agent that never saw the sentence would decide differently. The largest
+  single cut is the "Model & effort" paragraph in three specs, which argued for
+  a value the frontmatter already sets.
+
+  `conventions.md` was **not** compacted: at ~0.3 sliced reads per queue it is
+  under 1% of the budget, and its size was never the problem.
+
+### Added
+
+- **`InstructionsLoaded` instrumentation** — `hooks/log_instructions_loaded.py`
+  records every instruction file that loads, with the runtime's reason
+  (`session_start`, `path_glob_match`, …), to `docs/aide/instructions/log.jsonl`
+  (per-machine, gitignored). `scripts/review_instructions.py` reports it and,
+  under `--strict`, exits non-zero when a shipped rule never loaded — a
+  `paths:`-scoped rule whose globs stopped matching is otherwise silently inert.
+
+  The event's payload fields are not pinned by public documentation, so the hook
+  accepts several spellings and keeps anything unrecognised, truncated, under
+  `extra`: a renamed field must degrade the record, not blank it, because an
+  empty `paths` reads identically to "nothing loaded".
+
+  It measures **delivery, not reading**. Nothing loads on a `Read`, so the 3%
+  above remains a transcript question.
+
+### Fixed
+
+- **`docs/aide/permissions/*.jsonl` is now actually gitignored.** `core/README.md`
+  had listed it as personal and git-ignored since it was introduced; the
+  installer's managed `.gitignore` block never named it. Fresh installs only —
+  the block is not rewritten on update.
+
 ## [1.21.0] — 2026-08-25
 
 ### Fixed

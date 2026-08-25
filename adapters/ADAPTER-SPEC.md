@@ -159,11 +159,19 @@ ships no probe file; the contract is still satisfied.
 
 Only runtimes that load a project instruction file automatically provide this.
 The engine ships `AGENT-CONTEXT.md` — about a page of the rules that must bind
-*before* anything points at `conventions.md`, each linking to its full treatment
-there. It exists because `conventions.md` is read only when something points at
-it: fine for an agent spec in the unattended loop, useless for an interactive
-session, where a person and the runtime produce durable artifacts (commit
-messages, issue bodies, `insights.md` entries) with no agent spec in play.
+*before* anything points anywhere, each naming the `conventions.md` section that
+carries its full treatment. It exists because a pointer is followed only if the
+reader chooses to follow it, and in an interactive session nothing points at
+`conventions.md` at all: a person and the runtime produce durable artifacts
+(commit messages, issue bodies, `insights.md` entries) with no agent spec in
+play.
+
+**A pointer is weak in an agent spec too.** Measured across 11 sessions of a
+consumer on engine 1.20.0, 164 sub-agent spawns produced 5 reads of
+`conventions.md` — about 3% — and every one was a slice, never the whole file.
+An adapter that satisfies this section by pointing has satisfied it on paper.
+That is why §-level delivery below is part of the contract and not an
+optimisation.
 
 The same split as §5: the **rules** are runtime-general and live in
 `conventions.md`; only the *delivery mechanism* is adapter-local. An adapter
@@ -212,6 +220,38 @@ An adapter for a runtime with **no import mechanism** ships a managed delimited
 block instead; one with no default-context concept at all omits `default-context.json`
 and this section, and relies on `conventions.md` being read — the same graceful
 degradation §5 and §6 use.
+
+### §-level delivery
+
+`conventions.md` is an **index**: each section is one file under
+`conventions/`, so `§6` is `conventions/6-test-hygiene.md` and `§1 →
+insights.md` is `conventions/1-format-contract/insights.md`. A section is
+therefore addressable, and an adapter can put one in front of a role without
+putting all of them in front of every role — which matters, because no role
+needs more than about two thirds of the contract and most need a third.
+
+Two sections say so themselves: **§3** (command hygiene) is delivered in
+positive form through whatever always-loaded channel the runtime has, and
+**§6** (test hygiene) is delivered to a role about to write a test. An adapter
+that can scope its channel by the file being touched should prefer that: a
+section delivered when it is relevant costs nothing when it is not.
+
+Three properties make a delivery mechanism conformant rather than decorative:
+
+- **It loads without being chosen.** If the role has to decide to read it, this
+  is a pointer wearing a different name, and the 3% above is what it is worth.
+- **It names the section it delivers, and defers to it.** The engine section is
+  the source of truth; the delivered copy is a restatement that will drift, and
+  the reader has to know which one wins.
+- **It carries no rule the engine does not have.** A rule that exists only in an
+  adapter binds one runtime and is invisible to every other — the failure the
+  engine/adapter split exists to prevent. Add it to `conventions.md` first.
+
+The Claude adapter uses `.claude/rules/`: one unscoped file for §3 (loaded into
+every session and every sub-agent) and `paths:`-scoped files for §6 and the §1
+document shapes, which load only when a matching file is read. A runtime with
+no such channel keeps pointing at the section — the same graceful degradation
+as above, now with an honest account of what it costs.
 
 ---
 
@@ -292,6 +332,9 @@ the `conventions.md` §8 rule being read, the same graceful degradation §5, §6
 - [ ] *(if unattended runs are wanted)* a `usage_probe.py`, or `usage_probe = "none"`.
 - [ ] *(if the runtime loads an instruction file by default)* a `default-context.json`
       declaring that file and the runtime's import syntax.
+- [ ] *(if the runtime can scope context to the files in play)* §3 and §6 delivered,
+      not pointed at — loaded without the role choosing to, naming the section it
+      delivers, and adding no rule the engine does not have.
 - [ ] *(if the runtime can inject context mid-session)* a lazy, non-blocking
       mechanism surfacing a declared sibling repo's instruction file, once, on
       first reach.
