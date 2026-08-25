@@ -84,10 +84,11 @@ lowest-numbered one with open items).
    git add docs/aide/items/NNN-*.md
    git commit -m "docs(NNN): work item spec for <short title>"
    ```
-7. **Land the batch.** Push the branch and open a PR for human review of the
-   whole spec set (`gh pr create` is ask-gated — that pause is intended):
+7. **Land the batch.** Push the specs and open a PR for human review of the
+   whole spec set (`gh pr create` is ask-gated — that pause is intended). Step 2
+   already set the upstream, so this types no branch name either:
    ```
-   git push -u origin aide/specs-queue-NNN
+   git push
    ```
    After the PR merges, run `/aide-run-queue NNN` — execution proceeds
    unattended, claiming per-item branches as usual.

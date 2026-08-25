@@ -3010,6 +3010,15 @@ def _queue_start(args: argparse.Namespace) -> int:
         print(f"aide queue start: {branch} already exists — switch to it rather "
               f"than recreating it", file=sys.stderr)
         return 1
+    # Also on origin: another machine (or another session) already started this
+    # queue. Creating it locally would succeed and the `push -u` would then fail
+    # — an uncaught CalledProcessError, i.e. a raw traceback in what is meant to
+    # be an unattended flow. Fail as a sentence instead.
+    if mode != "local" and _has_origin(repo_root) and branch in _remote_branches(repo_root):
+        print(f"aide queue start: {branch} already exists on origin — someone "
+              f"has started this queue; fetch and switch to it rather than "
+              f"recreating it", file=sys.stderr)
+        return 1
 
     if args.dry_run:
         print(f"would start {branch}; base {base}")
@@ -3190,7 +3199,13 @@ def _pick_item(repo_root: Path, config, queue_text: str,
         if num in gate_blocked:
             continue
         deps = _item_dependencies(repo_root, config, num)
-        if any(item_status.get(d, "planned") in ("planned", "in-progress") for d in deps):
+        # 🔍 blocks like 🚧 does: an item whose PR is still open is work that is
+        # not in the base, so claiming a dependent off that base would branch
+        # from a tree missing the very thing the dependency provides. Under
+        # `auto-merge` this window is milliseconds; under `pr` it is however
+        # long the human takes, which is exactly when it matters.
+        if any(item_status.get(d, "planned") in ("planned", "in-progress", "in-review")
+               for d in deps):
             continue
         return num, titles.get(num, f"item {num}")
     return None
@@ -3400,6 +3415,17 @@ def cmd_merge(args: argparse.Namespace) -> int:
     if merge_res.returncode != 0:
         print(f"aide merge: merge of {branch} failed:\n{merge_res.stdout}{merge_res.stderr}", file=sys.stderr)
         return 1
+    # ✅ is set HERE, by the process that just did the merge, so it always means
+    # "merged" — not "an agent said so before attempting one". The validator
+    # marks the item 🔍 before this call; whether it becomes ✅ is a fact about
+    # git, and in `pr` mode the return above leaves it 🔍 for the human's merge.
+    #
+    # It must precede the push: the tick is a commit like any other, and the
+    # single `git push` below is the only one that carries `main` to origin.
+    # Recording it afterwards stranded it locally, so origin's progress.md
+    # under-reported — and on a queue's last item nothing would ever push it.
+    _promote_item_to_complete(repo_root, config, args.number,
+                              getattr(args, "no_commit", False))
     if mode != "local":
         git(["push"], repo_root, check=False)
 
@@ -3423,13 +3449,6 @@ def cmd_merge(args: argparse.Namespace) -> int:
         push_res = git(["push", "origin", "--delete", branch], repo_root, check=False)
         remote_gone = (push_res.returncode == 0
                        or "remote ref does not exist" in (push_res.stderr or ""))
-    # ✅ is set HERE, by the process that just did the merge, so it always means
-    # "merged" — not "an agent said so before attempting one". The validator
-    # marks the item 🔍 before this call; whether it becomes ✅ is a fact about
-    # git, and in `pr` mode the return above leaves it 🔍 for the human's merge.
-    _promote_item_to_complete(repo_root, config, args.number,
-                              getattr(args, "no_commit", False))
-
     if local_gone and remote_gone:
         print(f"aide merge: item {args.number:03d} merged to {main} and claim branch {branch} deleted")
     else:
@@ -3493,7 +3512,7 @@ def _branch_item_number(branch: str, prefix: str) -> Optional[int]:
 #: a string out of a markdown file, which is why the round-trip test that now
 #: pins this could not previously be written.
 _QUEUE_BRANCH_RE = re.compile(
-    "(?:" + re.escape(_SPECS_TOKEN) + ")?" + re.escape(_QUEUE_TOKEN) + r"0*\d+$")
+    "(?:" + re.escape(_SPECS_TOKEN) + ")?" + re.escape(_QUEUE_TOKEN) + r"\d+$")
 
 
 def claim_branch_name(prefix: str, number: int, title: str) -> str:
@@ -4349,15 +4368,29 @@ def cmd_gc(args: argparse.Namespace) -> int:
         if not args.yes:
             print(f"would delete {br} ({_where(br)}; {reason})")
             continue
+        failures: List[str] = []
         if br in local:
             # -D: a ✅/merged item's branch may have landed via squash/PR, so
             # git's ancestry-based -d safety check can refuse a branch whose
             # work is in fact on main. Safe here only because the content check
             # above already asked git whether the work landed.
-            git(["branch", "-D", br], repo_root, check=False)
+            res = git(["branch", "-D", br], repo_root, check=False)
+            if res.returncode != 0:
+                failures.append(f"local ({(res.stderr or '').strip()})")
         if br in remote and mode != "local":
-            git(["push", "origin", "--delete", br], repo_root, check=False)
-        print(f"deleted {br} ({_where(br)}; {reason})")
+            res = git(["push", "origin", "--delete", br], repo_root, check=False)
+            if res.returncode != 0:
+                failures.append(f"remote ({(res.stderr or '').strip()})")
+        # Report what git did, not what was asked of it. `-D` still refuses a
+        # branch checked out in ANOTHER worktree, which `_checked_out_branches`
+        # cannot see from here — and printing "deleted" over a refusal makes the
+        # report the very thing this verb was just fixed to stop being: a claim
+        # that does not match what happened.
+        if failures:
+            print(f"could NOT delete {br} ({_where(br)}; {reason}): "
+                  f"{'; '.join(failures)}", file=sys.stderr)
+        else:
+            print(f"deleted {br} ({_where(br)}; {reason})")
     if not targets:
         print("aide gc: nothing to delete")
     if not args.yes and targets:

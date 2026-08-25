@@ -104,7 +104,11 @@ prepare the branch and handle push/PR around it.
 - **Spawn `queue-planner`**: "Generate queue NNN on branch `aide/queue-NNN`;
   tidy the previous queue; commit both; consider the triaged insight candidates;
   do not push or PR." Wait for its summary.
-- `queue start` has already pushed the branch; open a **PR**:
+- `git push` the planner's commits — `queue start` pushed the branch when it
+  was empty and set its upstream, so a bare `git push` is enough and no
+  branch name is typed. Do this **before** `gh pr create`: with commits
+  unpushed it prompts for where to push, and a prompt stalls an unattended
+  run rather than failing loudly. Then open a **PR**:
   `gh pr create` titled `docs(aide): work queue NNN`, body summarising the batch.
 - **STOP and tell the user**: review/edit/merge the queue PR, then re-invoke
   `/aide-run-roadmap` (or `/aide-run-queue NNN`) to execute it. A queue PR is

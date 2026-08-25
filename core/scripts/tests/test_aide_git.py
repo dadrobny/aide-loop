@@ -986,3 +986,107 @@ def test_sync_is_silent_about_a_review_item_still_awaiting_its_merge(
     capsys.readouterr()
     assert aide.main(["--repo", str(root), "sync"]) == 0
     assert "is 🔍 but its work is now in" not in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
+# The tick reaches origin — regression: it was committed after the only push
+# --------------------------------------------------------------------------- #
+def test_auto_merge_pushes_the_commit_that_records_the_tick(tmp_path: Path):
+    """`aide merge` writes the ✅ itself, so that commit must ride the push.
+
+    Recorded after it, the tick was stranded on local main: origin's
+    progress.md under-reported, and on a queue's last item nothing in the CLI
+    would ever push it (`aide sync` only fetches and pulls).
+    """
+    remote = _mkbare(tmp_path / "remote.git")
+    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    _run(["git", "remote", "add", "origin", str(remote)], root)
+    _run(["git", "push", "-u", "origin", "main"], root)
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "27",
+                      "in-review"]) == 0
+    _run(["git", "push"], root)
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 0
+    ahead = _run(["git", "rev-list", "--count", "origin/main..main"], root).stdout.strip()
+    assert ahead == "0", "the ✅ commit never reached origin"
+    _, _, status = aide._parse_item_status(
+        _run(["git", "show", "origin/main:docs/aide/progress.md"], root).stdout.splitlines())
+    assert status[27] == "complete"
+
+
+def test_merge_no_commit_leaves_the_tick_uncommitted(tmp_path: Path):
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test",
+                      "--no-commit"]) == 0
+    dirty = _run(["git", "status", "--porcelain"], root).stdout
+    assert "progress.md" in dirty
+    progress = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    _, _, status = aide._parse_item_status(progress.splitlines())
+    assert status[27] == "complete"  # written, just not committed
+
+
+# --------------------------------------------------------------------------- #
+# A dependency awaiting review has not landed, so it still blocks
+# --------------------------------------------------------------------------- #
+def test_claim_skips_an_item_whose_dependency_is_only_in_review(tmp_path: Path):
+    """Claiming off a base that lacks the dependency's work branches from a
+    tree missing the very thing the dependency provides."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    idir = root / "docs" / "aide" / "items"
+    (idir / "027-bounds-rules.md").write_text(
+        "# Item 027 — Bounds rules\n\n## Dependencies\n- Item 026 provides the engine.\n",
+        encoding="utf-8")
+    _run(["git", "add", "-A"], root)
+    _run(["git", "commit", "-m", "spec"], root)
+    # Downgrade 026 to 🔍 by hand: `progress set` never walks a status backwards.
+    ppath = root / "docs" / "aide" / "progress.md"
+    ppath.write_text(ppath.read_text(encoding="utf-8")
+                     .replace("- ✅ Core. *(Item 026)*", "- 🔍 Core. *(Item 026)*"),
+                     encoding="utf-8")
+    _run(["git", "add", "-A"], root)
+    _run(["git", "commit", "-m", "026 in review"], root)
+
+    rc = aide.main(["--repo", str(root), "claim"])
+    on = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], root).stdout.strip()
+    assert on != "aide/027-bounds-rules", "claimed an item whose dependency is unmerged"
+    # 028 has no dependencies, so claiming moves on to it rather than stalling.
+    assert rc == 0 and on == "aide/028-coverage-rules"
+
+
+# --------------------------------------------------------------------------- #
+# gc reports what git did, not what was asked of it
+# --------------------------------------------------------------------------- #
+def test_gc_does_not_claim_a_delete_git_refused(tmp_path: Path, capsys):
+    """`-D` still refuses a branch checked out in ANOTHER worktree, which the
+    checked-out guard cannot see. Printing "deleted" over that refusal makes the
+    report the very thing this verb was fixed to stop being."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
+    _squash_merge(root, "aide/026-rule-engine-core", "squash 026")
+    _run(["git", "worktree", "add", str(tmp_path / "wt"),
+          "aide/026-rule-engine-core"], root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "gc", "--yes"]) == 0
+    captured = capsys.readouterr()
+    assert "deleted aide/026-rule-engine-core" not in captured.out
+    assert "could NOT delete" in captured.err
+    assert "aide/026-rule-engine-core" in _run(["git", "branch"], root).stdout
+
+
+def test_queue_start_refuses_a_name_that_exists_only_on_origin(tmp_path: Path, capsys):
+    """It used to create the branch locally and then raise an uncaught
+    CalledProcessError from the failing push — a traceback in an unattended flow."""
+    remote = _mkbare(tmp_path / "remote.git")
+    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    _run(["git", "remote", "add", "origin", str(remote)], root)
+    _run(["git", "push", "-u", "origin", "main"], root)
+    _run(["git", "switch", "-c", "aide/queue-016"], root)
+    _run(["git", "push", "-u", "origin", "aide/queue-016"], root)
+    _run(["git", "switch", "main"], root)
+    _run(["git", "branch", "-D", "aide/queue-016"], root)
+    _run(["git", "fetch", "origin"], root)
+    capsys.readouterr()
+    rc = aide.main(["--repo", str(root), "queue", "start", "16"])
+    assert rc == 1
+    assert "already exists on origin" in capsys.readouterr().err
