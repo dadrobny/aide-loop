@@ -871,3 +871,118 @@ def _mkbare(path: Path) -> Path:
     subprocess.run(["git", "init", "--bare", "-b", "main", str(path)], check=True,
                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return path
+
+
+# --------------------------------------------------------------------------- #
+# 🔍 In Review — ✅ means "merged", in every git.mode
+# --------------------------------------------------------------------------- #
+def test_in_review_rolls_a_stage_up_to_in_progress_not_complete():
+    """The whole point: an open PR must not roll a stage up to "shipped"."""
+    assert aide.rollup_status(["in-review"]) == "in-progress"
+    assert aide.rollup_status(["complete", "in-review"]) == "in-progress"
+    assert aide.rollup_status(["complete"]) == "complete"
+
+
+def test_in_review_outranks_in_progress_and_is_outranked_by_complete():
+    assert aide.RANK["in-progress"] < aide.RANK["in-review"] < aide.RANK["complete"]
+
+
+def test_in_review_keeps_its_queue_open():
+    """A queue is not finished with an item whose review has not happened."""
+    text = "### Item 026 — x\n"
+    assert aide.queue_is_open(text, {26: "in-review"})
+    assert not aide.queue_is_open(text, {26: "complete"})
+
+
+def test_merge_records_the_tick_itself_in_local_mode(tmp_path: Path):
+    """✅ is set by the process that did the merge, so it cannot outrun it."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "27", "in-review",
+                      "--no-commit"]) == 0
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 0
+    progress = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    assert "✅ Bounds rules" in progress or "27" in progress
+    _, _, status = aide._parse_item_status(progress.splitlines())
+    assert status[27] == "complete"
+
+
+def test_pr_mode_merge_leaves_the_item_in_review(tmp_path: Path, capsys):
+    """The designed state #71 names: pushed, awaiting a human — NOT ✅."""
+    remote = _mkbare(tmp_path / "remote.git")
+    root = _init_repo(tmp_path / "r", mode="pr")
+    _run(["git", "remote", "add", "origin", str(remote)], root)
+    _run(["git", "push", "-u", "origin", "main"], root)
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "27", "in-review",
+                      "--no-commit"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 0
+    progress = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    _, _, status = aide._parse_item_status(progress.splitlines())
+    assert status[27] == "in-review"
+
+
+def test_gc_never_targets_an_item_awaiting_review(tmp_path: Path, capsys):
+    """The load-bearing fix: `gc`'s ground is "the item is ✅", and a `pr`-mode
+    item is no longer ✅ — so the exhaustion sweep cannot offer to delete the
+    head branch of an open PR."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "27", "in-review",
+                      "--no-commit"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "gc", "--yes"]) == 0
+    assert "aide/027-bounds-rules" in _run(["git", "branch"], root).stdout
+    assert "would delete" not in capsys.readouterr().out
+
+
+def test_check_does_not_call_a_branch_awaiting_review_stale(tmp_path: Path, capsys):
+    """A warning that fires on every run until a human merges is a warning
+    that gets tuned out."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "27", "in-review",
+                      "--no-commit"]) == 0
+    capsys.readouterr()
+    aide.main(["--repo", str(root), "check"])
+    assert "stale claim branch" not in capsys.readouterr().out
+
+
+def test_status_does_not_recommend_gc_for_a_branch_awaiting_review(
+        tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "27", "in-review",
+                      "--no-commit"]) == 0
+    capsys.readouterr()
+    aide.main(["--repo", str(root), "status"])
+    out = capsys.readouterr().out
+    assert "awaiting review" in out
+    assert "run 'aide gc'" not in out
+
+
+def test_sync_reports_a_review_item_whose_work_has_landed(tmp_path: Path, capsys):
+    """🔍 needs a way home: in `pr` mode nothing in the loop observes the merge,
+    so without this an item enters the state and never leaves it."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "27",
+                      "in-review"]) == 0
+    _squash_merge(root, "aide/027-bounds-rules", "squash 027")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "sync"]) == 0
+    out = capsys.readouterr().out
+    assert "item 027 is 🔍" in out
+    assert "progress set 027 done" in out
+
+
+def test_sync_is_silent_about_a_review_item_still_awaiting_its_merge(
+        tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "27",
+                      "in-review"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "sync"]) == 0
+    assert "is 🔍 but its work is now in" not in capsys.readouterr().out

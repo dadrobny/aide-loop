@@ -206,6 +206,14 @@ def _do_the_work(repo: Path) -> None:
     _commit(repo, "feat: greeter")
 
 
+def _land_by_squash(repo: Path, branch: str) -> None:
+    """Land *branch* on main as GitHub's "Squash and merge" does — content on
+    main, tip no ancestor of it. The shape `gc` reaches for `-D` to cope with."""
+    _git(["switch", "main"], repo)
+    _git(["merge", "--squash", branch], repo)
+    _git(["commit", "-m", f"squash {branch}"], repo)
+
+
 # --------------------------------------------------------------------------- #
 # install — a complete, coherent tree at the paths a consumer executes
 # --------------------------------------------------------------------------- #
@@ -421,6 +429,65 @@ def test_merge_in_local_mode_lands_the_work_and_deletes_the_branch(
     assert (consumer / "src" / "greeter.py").is_file()  # the work is ON main
 
 
+def _item_status(aide, repo: Path, number: int) -> str:
+    text = (repo / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    return aide._parse_item_status(text.splitlines())[2].get(number, "planned")
+
+
+def test_merge_records_the_tick_so_a_check_always_means_merged(
+        aide, consumer: Path):
+    """✅ is written by the process that did the merge, through the installed
+    engine — so it cannot outrun the merge in any mode."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "in-review"]) == 0
+    assert _item_status(aide, consumer, 1) == "in-review"
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 0
+    assert _item_status(aide, consumer, 1) == "complete"
+
+
+def test_a_run_under_pr_mode_never_offers_to_delete_an_open_prs_branch(
+        aide, consumer: Path, capsys):
+    """#71's acceptance, end to end: the queue-exhaustion sweep is safe under
+    `pr` mode because the item is 🔍, not ✅ — so `gc`'s ground never matches."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "in-review"]) == 0
+    _git(["switch", "main"], consumer)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "gc"]) == 0
+    out = capsys.readouterr().out
+    assert "would delete" not in out
+    assert "aide/001-the-greeter" in _branches(consumer)
+    # ...and `check` does not nag about it on every run until the human merges.
+    capsys.readouterr()
+    aide.main(["--repo", str(consumer), "check"])
+    assert "stale claim branch" not in capsys.readouterr().out
+
+
+def test_an_item_awaiting_review_keeps_its_queue_open(aide, consumer: Path, capsys):
+    for n, st in (("1", "in-review"), ("2", "done")):
+        assert aide.main(["--repo", str(consumer), "progress", "set", n, st]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "status"]) == 0
+    assert "queue-001.md: open" in capsys.readouterr().out
+
+
+def test_sync_points_a_landed_review_item_back_at_done(aide, consumer: Path, capsys):
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "in-review"]) == 0
+    _land_by_squash(consumer, "aide/001-the-greeter")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "sync"]) == 0
+    out = capsys.readouterr().out
+    assert "item 001 is 🔍" in out
+    assert "progress set 001 done" in out
+
+
 def test_merge_refuses_an_item_with_no_claim_branch(aide, consumer: Path):
     assert aide.main(["--repo", str(consumer), "merge", "2", "--no-test"]) == 1
 
@@ -453,14 +520,6 @@ def test_merge_in_pr_mode_pushes_and_leaves_the_merge_to_a_human(
 # --------------------------------------------------------------------------- #
 # gc — deletes only what landed, and never by default
 # --------------------------------------------------------------------------- #
-def _land_by_squash(repo: Path, branch: str) -> None:
-    """Land *branch* on main as GitHub's "Squash and merge" does — content on
-    main, tip no ancestor of it. The shape `gc` reaches for `-D` to cope with."""
-    _git(["switch", "main"], repo)
-    _git(["merge", "--squash", branch], repo)
-    _git(["commit", "-m", f"squash {branch}"], repo)
-
-
 def test_gc_is_a_dry_run_by_default(aide, consumer: Path, capsys):
     assert _claim(aide, consumer) == 0
     _do_the_work(consumer)

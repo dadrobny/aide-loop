@@ -10,7 +10,7 @@ Subcommands::
 
     python .aide/scripts/aide.py check [--queue NNN]   # consistency gate over docs/aide
     python .aide/scripts/aide.py scope [NNN]           # branch diff vs the item's authorised paths
-    python .aide/scripts/aide.py progress set NNN <in-progress|done>
+    python .aide/scripts/aide.py progress set NNN <in-progress|in-review|done>
     python .aide/scripts/aide.py gate list|approve|decline [N]  # human gates in progress.md
     python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
@@ -44,12 +44,21 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 STATUS_TO_ICON = {
     "planned": "📋",
     "in-progress": "🚧",
+    "in-review": "🔍",
     "complete": "✅",
     "deferred": "⏸️",
     "excluded": "❌",
 }
 ICON_TO_STATUS = {v: k for k, v in STATUS_TO_ICON.items()}
-RANK = {"planned": 0, "excluded": 1, "deferred": 2, "in-progress": 3, "complete": 4}
+#: `in-review` sits between 🚧 and ✅ because it is strictly more advanced than
+#: in-progress and strictly less than merged. It exists because ✅ used to mean
+#: two different things depending on `git.mode`: under `auto-merge` the item was
+#: merged, under `pr` it was pushed and awaiting a human — and everything
+#: downstream read ✅ as "done", including the destructive sweep, which then
+#: offered to delete the head branch of an open PR. **✅ now means merged, in
+#: every mode**, and is set by `aide merge` when the merge actually happens.
+RANK = {"planned": 0, "excluded": 1, "deferred": 2, "in-progress": 3,
+        "in-review": 4, "complete": 5}
 
 # Icons may be multi-codepoint (⏸️ = U+23F8 U+FE0F), so match by alternation
 # (longest first), never a character class.
@@ -406,7 +415,11 @@ def rollup_status(statuses: List[str]) -> Optional[str]:
         s == "complete" for s in statuses
     ):
         return "complete"
-    if any(s in ("complete", "in-progress") for s in statuses):
+    # 🔍 is deliberately absent from the set above: an item awaiting review has
+    # not landed, so a stage holding one is 🚧, never ✅. That is the whole point
+    # of the state — a `pr`-mode run must not roll a stage up to "shipped" on
+    # work that is still an open PR.
+    if any(s in ("complete", "in-progress", "in-review") for s in statuses):
         return "in-progress"
     return "planned"
 
@@ -755,7 +768,7 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str]) -> N
             statuses = [stage_status.get(n) for n in nums if stage_status.get(n)]
             if statuses and all(s == "complete" for s in statuses):
                 derived = "complete"
-            elif any(s in ("complete", "in-progress") for s in statuses):
+            elif any(s in ("complete", "in-progress", "in-review") for s in statuses):
                 derived = "in-progress"
             else:
                 derived = current
@@ -803,7 +816,7 @@ def insert_item_reference(text: str, number: int, stage: str, title: str) -> Opt
 def set_item_status(text: str, num: int, status: str) -> str:
     """Flip item NNN's deliverable bullet(s) to ``status`` and roll stages up.
 
-    ``status`` is ``in-progress`` or ``complete``. Updates summary/header/
+    ``status`` is ``in-progress``, ``in-review`` or ``complete``. Updates summary/header/
     objective rows only for stages that fully complete. Never downgrades an
     existing status (additive log), and never touches an acceptance checkbox —
     those are human attestations, ticked only by ``aide progress accept``.
@@ -941,14 +954,18 @@ def queue_item_numbers(text: str) -> List[int]:
 
 
 def queue_is_open(text: str, item_status: Dict[int, str]) -> bool:
-    """Derived queue state: open iff any of its items is 📋/🚧 per progress.md.
+    """Derived queue state: open iff any item is 📋/🚧/🔍 per progress.md.
+
+    🔍 counts as open: an item whose PR is still awaiting review is not work the
+    queue is finished with, and marking the queue completed over it would strand
+    the review.
 
     Queue state is DERIVED, never declared — a ``> **Status:**`` line in a
     queue file is decorative (kept for human readers), and the "live" queue is
     simply the lowest-numbered open one. An item progress.md doesn't know yet
     counts as planned, so a freshly wired queue is open.
     """
-    return any(item_status.get(n, "planned") in ("planned", "in-progress")
+    return any(item_status.get(n, "planned") in ("planned", "in-progress", "in-review")
                for n in queue_item_numbers(text))
 
 
@@ -2236,6 +2253,9 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                     f"shape, or once it is merged run 'aide gc --merged' to "
                     f"delete it")
             continue
+        # 🔍 is deliberately NOT reported: a claim branch whose item is awaiting
+        # review is a normal, correct state, and warning about it on every run
+        # until the human merges is how a real warning gets tuned out.
         if item_status.get(n) == "complete":
             warnings.append(f"stale claim branch {br}: item {n:03d} is already ✅")
 
@@ -2646,19 +2666,26 @@ def cmd_gate(args: argparse.Namespace) -> int:
     return 0
 
 
+#: What `aide progress set` accepts, and the tracked status each records.
+#: `done` stays the word for ✅ — a consumer's muscle memory and every existing
+#: runbook use it — and `in-review` is additive.
+_SET_STATUS_MAP = {"in-progress": "in-progress", "in-review": "in-review",
+                   "done": "complete"}
+
+
 def cmd_progress(args: argparse.Namespace) -> int:
     if args.action == "accept":
         return _cmd_progress_accept(args)
     if args.action != "set":
-        print("usage: aide progress set NNN <in-progress|done>", file=sys.stderr)
+        print("usage: aide progress set NNN <in-progress|in-review|done>", file=sys.stderr)
         return 2
     if args.status is None:
-        print("usage: aide progress set NNN <in-progress|done>", file=sys.stderr)
+        print("usage: aide progress set NNN <in-progress|in-review|done>", file=sys.stderr)
         return 2
-    status_map = {"in-progress": "in-progress", "done": "complete"}
-    if args.status not in status_map:
-        print("status must be 'in-progress' or 'done'", file=sys.stderr)
+    if args.status not in _SET_STATUS_MAP:
+        print("status must be 'in-progress', 'in-review' or 'done'", file=sys.stderr)
         return 2
+    status_map = _SET_STATUS_MAP
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
     progress_path = docs_dir(repo_root, config) / "progress.md"
@@ -3308,6 +3335,31 @@ def _find_claim_branch(repo_root: Path, prefix: str, number: int) -> Optional[st
     return None
 
 
+def _promote_item_to_complete(repo_root: Path, config, number: int,
+                              no_commit: bool = False) -> None:
+    """Record item *number* as ✅ in progress.md — best effort, never fatal.
+
+    Deliberately quiet about a no-op: the item may already be ✅ (a re-run, or a
+    consumer still driving the old `progress set NNN done` ordering), and the
+    merge itself is the thing that succeeded. It is *not* quiet about a missing
+    progress.md, which is a real misconfiguration — but even that must not fail
+    a merge that has already landed.
+    """
+    progress_path = docs_dir(repo_root, config) / "progress.md"
+    if not progress_path.is_file():
+        print(f"aide merge: item {number:03d} merged, but {progress_path} was "
+              f"not found, so its status was NOT recorded", file=sys.stderr)
+        return
+    text = progress_path.read_text(encoding=_ENCODING)
+    updated = set_item_status(text, number, "complete")
+    if updated == text:
+        return
+    progress_path.write_text(updated, encoding="utf-8")
+    print(f"item {number:03d}: set to done (merged)")
+    if not no_commit and (repo_root / ".git").exists():
+        _commit_progress(repo_root, config, number, "done")
+
+
 def cmd_merge(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
@@ -3337,7 +3389,8 @@ def cmd_merge(args: argparse.Namespace) -> int:
         git(["push", "-u", "origin", branch], repo_root)
         print(f"aide merge (pr mode): pushed {branch}. Open a PR against {main} "
               f"to land it (e.g. 'gh pr create'); merge is left to the human "
-              f"review gate.")
+              f"review gate. Item {args.number:03d} stays 🔍 until it merges — "
+              f"then run 'aide progress set {args.number:03d} done'.")
         return 0
 
     git(["switch", main], repo_root)
@@ -3370,6 +3423,13 @@ def cmd_merge(args: argparse.Namespace) -> int:
         push_res = git(["push", "origin", "--delete", branch], repo_root, check=False)
         remote_gone = (push_res.returncode == 0
                        or "remote ref does not exist" in (push_res.stderr or ""))
+    # ✅ is set HERE, by the process that just did the merge, so it always means
+    # "merged" — not "an agent said so before attempting one". The validator
+    # marks the item 🔍 before this call; whether it becomes ✅ is a fact about
+    # git, and in `pr` mode the return above leaves it 🔍 for the human's merge.
+    _promote_item_to_complete(repo_root, config, args.number,
+                              getattr(args, "no_commit", False))
+
     if local_gone and remote_gone:
         print(f"aide merge: item {args.number:03d} merged to {main} and claim branch {branch} deleted")
     else:
@@ -3838,6 +3898,37 @@ def cmd_scope(args: argparse.Namespace) -> int:
     return 0
 
 
+def _landed_review_items(repo_root: Path, config, prefix: str,
+                         base: str) -> List[str]:
+    """Lines naming every 🔍 item whose branch has since landed in *base*.
+
+    In `pr` mode nothing inside the loop ever observes the merge — the human
+    does it on the forge, hours or days later — so 🔍 needs a way home or it is
+    a state items enter and never leave. This is that way home, and it needs no
+    knowledge of what a PR is: the same content oracle `gc` uses answers "has
+    this work landed?" without a forge call that would silently degrade to
+    "no open PRs found" when `gh` is missing or unauthenticated.
+
+    Reports rather than edits. `sync` is a preflight, and a preflight that
+    rewrites a tracked document as a side effect is not one.
+    """
+    item_status = _progress_item_status(repo_root, config)
+    reviewing = {n for n, st in item_status.items() if st == "in-review"}
+    if not reviewing or not _has_merge_tree(repo_root):
+        return []
+    local = _local_branches(repo_root)
+    lines: List[str] = []
+    for br in sorted(_list_claim_branches(repo_root, prefix)):
+        num = _branch_item_number(br, prefix)
+        if num not in reviewing:
+            continue
+        if _branch_content_landed(repo_root, base, _gc_ref(br, local)) is True:
+            lines.append(f"aide sync: item {num:03d} is 🔍 but its work is now in "
+                         f"{base} — run 'python .aide/scripts/aide.py progress "
+                         f"set {num:03d} done'")
+    return lines
+
+
 def cmd_sync(args: argparse.Namespace) -> int:
     """Deterministic preflight: fetch, verify a clean start point, land on the
     right branch. Replaces the exploratory ``git status``/``git branch``/
@@ -3894,6 +3985,9 @@ def cmd_sync(args: argparse.Namespace) -> int:
         if mode != "local" and _has_origin(repo_root) and claim in _remote_branches(repo_root):
             git(["pull", "--rebase", "origin", claim], repo_root, check=False)
 
+    for line in _landed_review_items(repo_root, config, prefix, main):
+        print(line)
+
     print(f"aide sync: OK — on '{branch}', tree clean"
           + ("" if mode == "local" else ", remotes fetched"))
     return 0
@@ -3935,7 +4029,8 @@ def cmd_status(args: argparse.Namespace) -> int:
         for path in iter_queue_paths(qdir):
             nums = queue_item_numbers(path.read_text(encoding=_ENCODING))
             open_nums = [n for n in nums
-                         if item_status.get(n, "planned") in ("planned", "in-progress")]
+                         if item_status.get(n, "planned")
+                         in ("planned", "in-progress", "in-review")]
             if open_nums:
                 tag = " (live)" if not live_seen else ""
                 live_seen = True
@@ -3975,10 +4070,21 @@ def cmd_status(args: argparse.Namespace) -> int:
                 print(f"  branch: {br} ({kind} — not an item claim)")
                 continue
             st = item_status.get(num, "planned")
-            stale = " — STALE (item ✅; run 'aide gc')" if st == "complete" else ""
-            print(f"  claim: {br} (item {num:03d}: {st}){stale}")
+            note = ""
+            if st == "complete":
+                note = " — STALE (item ✅; run 'aide gc')"
+            elif st == "in-review":
+                # Recommending `gc` here would be recommending the deletion of
+                # an open PR's head branch. It is awaiting a human, not stale.
+                note = " — awaiting review (merge the PR, then 'aide progress "
+                note += f"set {num:03d} done')"
+            print(f"  claim: {br} (item {num:03d}: {st}){note}")
     else:
         print("  claims: none")
+
+    for line in _landed_review_items(repo_root, config, prefix,
+                                     str(config["git"].get("main_branch", "main"))):
+        print("  " + line.replace("aide sync: ", ""))
 
     # Open PRs, best effort — informative only, silently skipped without `gh`.
     try:
@@ -4280,7 +4386,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_prog.add_argument("action", choices=["set", "accept"])
     p_prog.add_argument("number", type=int,
                         help="item number (set) | stage number (accept)")
-    p_prog.add_argument("status", nargs="?", default=None, help="set: in-progress | done")
+    p_prog.add_argument("status", nargs="?", default=None,
+                        help="set: in-progress | in-review | done "
+                             "(in-review = pushed, awaiting a human's merge)")
     p_prog.add_argument("--criterion", type=int, default=None,
                         help="accept: 1-based acceptance-criterion index within the stage")
     p_prog.add_argument("--all", action="store_true", dest="all_criteria",
@@ -4355,6 +4463,8 @@ def register_git_subcommands(sub) -> None:
                          help="merge into this ref (default: what the claim "
                               "recorded, else main_branch)")
     p_merge.add_argument("--no-test", action="store_true", help="skip the post-merge test run")
+    p_merge.add_argument("--no-commit", action="store_true",
+                         help="do not commit the progress.md status the merge records")
     p_merge.set_defaults(func=cmd_merge)
 
     p_env = sub.add_parser("env", help="venv existence / import check + bootstrap")
