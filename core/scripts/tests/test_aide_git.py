@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 _MODULE_PATH = Path(__file__).resolve().parents[1] / "aide.py"
 _spec = importlib.util.spec_from_file_location("aide_cli_git", _MODULE_PATH)
 aide = importlib.util.module_from_spec(_spec)
@@ -488,6 +490,134 @@ def test_branch_item_number_rejects_an_unnumbered_branch():
 def test_branch_item_number_honours_a_custom_prefix():
     assert aide._branch_item_number("wip/031-x", "wip/") == 31
     assert aide._branch_item_number("aide/031-x", "wip/") is None
+
+
+# --------------------------------------------------------------------------- #
+# branch construction — every name the engine produces, read back by the
+# recogniser that must later parse it
+# --------------------------------------------------------------------------- #
+#: Prefixes chosen to break a careless implementation: the default; one with no
+#: separator; one containing a digit (a prefix-swallowing `\d+` reads `2` as the
+#: number); and one whose text ends in the queue token itself.
+_PREFIXES = ["aide/", "wip/", "v2/", "aide", "team/queue-"]
+
+
+@pytest.mark.parametrize("prefix", _PREFIXES)
+@pytest.mark.parametrize("number", [1, 16, 123, 1234])
+def test_queue_branch_name_round_trips_through_its_recogniser(prefix, number):
+    """The test #72 exists to make possible.
+
+    Until 1.20.0 `<prefix>queue-NNN` had no constructor — an agent typed it out
+    of a markdown file — so there was nothing to round-trip and the regex that
+    parses it never saw a name until something had already gone wrong.
+    """
+    branch = aide.queue_branch_name(prefix, number)
+    assert aide._is_queue_branch(branch, prefix)
+    # And is never mistaken for the same-numbered item claim, which is the
+    # misread that once let `gc` delete an in-flight queue branch.
+    assert aide._branch_item_number(branch, prefix) is None
+
+
+@pytest.mark.parametrize("prefix", _PREFIXES)
+@pytest.mark.parametrize("number", [1, 16, 123, 1234])
+def test_specs_queue_branch_name_round_trips_through_its_recogniser(prefix, number):
+    branch = aide.specs_queue_branch_name(prefix, number)
+    assert aide._is_queue_branch(branch, prefix)
+    assert aide._branch_item_number(branch, prefix) is None
+
+
+@pytest.mark.parametrize("prefix", _PREFIXES)
+@pytest.mark.parametrize("number", [1, 16, 123, 1234])
+def test_claim_branch_name_round_trips_through_its_recogniser(prefix, number):
+    branch = aide.claim_branch_name(prefix, number, "Rule engine core")
+    assert aide._branch_item_number(branch, prefix) == number
+    assert not aide._is_queue_branch(branch, prefix)
+
+
+def test_branch_constructors_produce_the_documented_shapes():
+    """Pins the literal text, so a refactor of the token cannot quietly
+    re-shape every branch name the framework tells a human to expect."""
+    assert aide.queue_branch_name("aide/", 16) == "aide/queue-016"
+    assert aide.specs_queue_branch_name("aide/", 15) == "aide/specs-queue-015"
+    assert aide.claim_branch_name("aide/", 26, "Rule engine core") == \
+        "aide/026-rule-engine-core"
+
+
+def test_queue_branch_recogniser_still_accepts_unpadded_digits():
+    """Constructors always pad; a human or an older run may not have."""
+    assert aide._is_queue_branch("aide/queue-16", "aide/")
+    assert aide._is_queue_branch("aide/specs-queue-5", "aide/")
+
+
+def test_a_slugged_queue_branch_is_still_not_recognised():
+    """#55 (queue slugs) is deferred and this records the state, not a wish.
+
+    With one constructor, changing the shape becomes a one-place edit whose
+    failure this suite catches — rather than a mis-targeted merge in a live run.
+    """
+    assert not aide._is_queue_branch("aide/queue-016-stage-27", "aide/")
+
+
+# --------------------------------------------------------------------------- #
+# aide queue start
+# --------------------------------------------------------------------------- #
+def test_queue_start_creates_and_records_its_base(tmp_path: Path):
+    root = _init_repo(tmp_path / "r", mode="local")
+    rc = aide.main(["--repo", str(root), "queue", "start", "16"])
+    assert rc == 0
+    assert _current_branch(root) == "aide/queue-016"
+    assert aide._recorded_branch_base(root, "aide/queue-016") == "main"
+
+
+def test_queue_start_specs_creates_the_specs_branch(tmp_path: Path):
+    root = _init_repo(tmp_path / "r", mode="local")
+    rc = aide.main(["--repo", str(root), "queue", "start", "15", "--specs"])
+    assert rc == 0
+    assert _current_branch(root) == "aide/specs-queue-015"
+
+
+def test_queue_start_dry_run_creates_nothing(tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="local")
+    rc = aide.main(["--repo", str(root), "queue", "start", "16", "--dry-run"])
+    assert rc == 0
+    assert "aide/queue-016" in capsys.readouterr().out
+    assert _current_branch(root) == "main"
+    assert "aide/queue-016" not in _run(["git", "branch"], root).stdout
+
+
+def test_queue_start_refuses_a_base_that_is_not_a_local_branch(tmp_path: Path):
+    root = _init_repo(tmp_path / "r", mode="local")
+    rc = aide.main(["--repo", str(root), "queue", "start", "16", "--base", "nope"])
+    assert rc == 1
+    assert _current_branch(root) == "main"
+
+
+def test_queue_start_refuses_to_recreate_an_existing_branch(tmp_path: Path):
+    root = _init_repo(tmp_path / "r", mode="local")
+    assert aide.main(["--repo", str(root), "queue", "start", "16"]) == 0
+    _run(["git", "switch", "main"], root)
+    assert aide.main(["--repo", str(root), "queue", "start", "16"]) == 1
+
+
+def test_queue_start_branches_from_the_named_base_not_head(tmp_path: Path):
+    """`switch -c` with no start point uses HEAD, which would let the branch's
+    real origin disagree with the base it records."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/099-elsewhere", "stray.txt")
+    _run(["git", "switch", "aide/099-elsewhere"], root)
+    rc = aide.main(["--repo", str(root), "queue", "start", "16", "--base", "main"])
+    assert rc == 0
+    assert not (root / "stray.txt").is_file()
+
+
+def test_a_claim_off_a_started_queue_branch_merges_back_into_it(tmp_path: Path):
+    """The failure #72 measured: an unrecognised queue branch made `claim`
+    fall back to `main_branch`, merging the item past the queue branch."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    assert aide.main(["--repo", str(root), "queue", "start", "3"]) == 0
+    assert aide.main(["--repo", str(root), "claim", "--queue", "3"]) == 0
+    branch = _current_branch(root)
+    assert aide._recorded_branch_base(root, branch) == "aide/queue-003"
 
 
 def test_gc_never_deletes_a_queue_branch_for_a_same_numbered_item(tmp_path: Path, capsys):

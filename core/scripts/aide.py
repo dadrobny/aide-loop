@@ -12,6 +12,7 @@ Subcommands::
     python .aide/scripts/aide.py scope [NNN]           # branch diff vs the item's authorised paths
     python .aide/scripts/aide.py progress set NNN <in-progress|done>
     python .aide/scripts/aide.py gate list|approve|decline [N]  # human gates in progress.md
+    python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
     python .aide/scripts/aide.py insights list|tick|archive     # the insight inbox
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
@@ -849,9 +850,18 @@ def set_item_status(text: str, num: int, status: str) -> str:
 #: and one place to be tested, and a change to the convention is a change here.
 
 
+#: The literal tokens every queue name is built from — the file stem, both
+#: branch shapes, and the regexes that read them back. Written once so that a
+#: change to the convention is a change *here* and everything moves with it;
+#: restating "queue-" in a constructor and again in a recogniser is exactly the
+#: drift 1.15.0 removed for filenames and this block removes for branches.
+_QUEUE_TOKEN = "queue-"
+_SPECS_TOKEN = "specs-"
+
+
 def queue_name(number: int) -> str:
     """``queue-NNN`` — the stem a queue file and its status prose both use."""
-    return f"queue-{number:03d}"
+    return f"{_QUEUE_TOKEN}{number:03d}"
 
 
 def queue_number(path: Path) -> Optional[int]:
@@ -863,7 +873,7 @@ def queue_number(path: Path) -> Optional[int]:
     (``queue-016-stage-27.md``) so the deferred naming harmonisation does not
     have to touch the parser, and unpadded digits on read.
     """
-    m = re.match(r"queue-0*(\d+)(?:-|$)", path.stem)
+    m = re.match(re.escape(_QUEUE_TOKEN) + r"0*(\d+)(?:-|$)", path.stem)
     return int(m.group(1)) if m else None
 
 
@@ -876,7 +886,7 @@ def iter_queue_paths(qdir: Path) -> List[Path]:
     if not qdir.is_dir():
         return []
     numbered = [(n, p.name, p) for p, n in
-                ((p, queue_number(p)) for p in qdir.glob("queue-*.md"))
+                ((p, queue_number(p)) for p in qdir.glob(f"{_QUEUE_TOKEN}*.md"))
                 if n is not None]
     return [p for _, _, p in sorted(numbered)]
 
@@ -2913,8 +2923,10 @@ def _cmd_insights_archive(path: Path, text: str, ddir: Path, ddir_rel: str,
 
 
 def cmd_queue(args: argparse.Namespace) -> int:
+    if args.action == "start":
+        return _queue_start(args)
     if args.action != "tidy":
-        print("usage: aide queue tidy NNN", file=sys.stderr)
+        print("usage: aide queue {start|tidy} NNN", file=sys.stderr)
         return 2
     import datetime as _dt
     repo_root = find_repo_root(args.repo)
@@ -2933,6 +2945,57 @@ def cmd_queue(args: argparse.Namespace) -> int:
     target.write_text(tidy_queue_text(text, superseded_by, date), encoding="utf-8")
     print(f"{queue_name(args.number)}: marked completed "
           f"(superseded by {queue_name(superseded_by)})")
+    return 0
+
+
+def _queue_start(args: argparse.Namespace) -> int:
+    """Create (and, off ``local`` mode, push) a queue or specs-queue branch.
+
+    The branch half of what `claim` does for an item. It exists because
+    conventions.md §3 says a raw git form is wrong wherever a verb covers it,
+    and until 1.20.0 two of the three branch shapes the engine recognises were
+    covered by no verb at all: the framework's own prose told an agent to type
+    `git switch -c <prefix>queue-NNN`, and the regex that must later parse that
+    name never saw it until something had already gone wrong. A typo did not
+    fail loudly — it made `claim` infer `main_branch` as the base and merge the
+    item past the queue branch, silently.
+
+    Recording the base is the second half. `_record_branch_base` ran only at
+    claim, so a queue branch had no recorded base of its own; a queue branched
+    off something other than `main_branch` had to be given `--base` at every
+    later call that cared.
+    """
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    mode = str(config["git"].get("mode", "auto-merge"))
+    branch = (specs_queue_branch_name(prefix, args.number) if args.specs
+              else queue_branch_name(prefix, args.number))
+
+    base = args.base or str(config["git"].get("main_branch", "main"))
+    if not _local_branch_exists(repo_root, base):
+        print(f"aide queue start: base '{base}' is not a local branch — a queue "
+              f"branch is branched from its base and merged back into it, so "
+              f"the base must be a branch this checkout can update",
+              file=sys.stderr)
+        return 1
+    if _local_branch_exists(repo_root, branch):
+        print(f"aide queue start: {branch} already exists — switch to it rather "
+              f"than recreating it", file=sys.stderr)
+        return 1
+
+    if args.dry_run:
+        print(f"would start {branch}; base {base}")
+        return 0
+    # Branch FROM the base explicitly, for the reason `claim` does: with no
+    # start point `switch -c` uses HEAD, which lets the branch's actual origin
+    # disagree with the base it records.
+    git(["switch", "-c", branch, base], repo_root)
+    _record_branch_base(repo_root, branch, base)
+    if mode != "local":
+        git(["push", "-u", "origin", branch], repo_root)
+    note = "" if base == str(config["git"].get("main_branch", "main")) else f" (base {base})"
+    print(f"started {branch}{note}")
     return 0
 
 
@@ -3203,7 +3266,7 @@ def cmd_claim(args: argparse.Namespace) -> int:
         print("none left")
         return 0
     number, title = pick
-    branch = f"{prefix}{number:03d}-{_slug(title)}"
+    branch = claim_branch_name(prefix, number, title)
 
     # What this claim branches off, and what its `merge` will return it to.
     # `switch -c` already branches from whatever is checked out, so claiming
@@ -3362,7 +3425,30 @@ def _branch_item_number(branch: str, prefix: str) -> Optional[int]:
 #: `<prefix>queue-NNN`, `/aide-spec-queue` names `<prefix>specs-queue-NNN`.
 #: Recognised positively so they are reported as what they are, rather than
 #: lumped in with a branch nothing can parse.
-_QUEUE_BRANCH_RE = re.compile(r"(?:specs-)?queue-\d+$")
+#:
+#: Built from `_QUEUE_TOKEN`/`_SPECS_TOKEN` — the same literals the constructors
+#: below and `queue_name` use — so the recogniser cannot drift from the names
+#: actually produced. 1.13.0 centralised branch *parsing*; until 1.20.0 two of
+#: the three shapes had no constructor at all and were typed by an agent copying
+#: a string out of a markdown file, which is why the round-trip test that now
+#: pins this could not previously be written.
+_QUEUE_BRANCH_RE = re.compile(
+    "(?:" + re.escape(_SPECS_TOKEN) + ")?" + re.escape(_QUEUE_TOKEN) + r"0*\d+$")
+
+
+def claim_branch_name(prefix: str, number: int, title: str) -> str:
+    """``<prefix>NNN-short-name`` — the branch `aide claim` creates for an item."""
+    return f"{prefix}{number:03d}-{_slug(title)}"
+
+
+def queue_branch_name(prefix: str, number: int) -> str:
+    """``<prefix>queue-NNN`` — the branch a queue is planned and run on."""
+    return f"{prefix}{queue_name(number)}"
+
+
+def specs_queue_branch_name(prefix: str, number: int) -> str:
+    """``<prefix>specs-queue-NNN`` — the branch a queue's specs are authored on."""
+    return f"{prefix}{_SPECS_TOKEN}{queue_name(number)}"
 
 
 def _is_queue_branch(branch: str, prefix: str) -> bool:
@@ -4077,10 +4163,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_gate.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
     p_gate.set_defaults(func=cmd_gate)
 
-    p_queue = sub.add_parser("queue", help="queue maintenance")
-    p_queue.add_argument("action", choices=["tidy"])
+    p_queue = sub.add_parser("queue", help="queue branch creation / maintenance")
+    p_queue.add_argument("action", choices=["start", "tidy"])
     p_queue.add_argument("number", type=int)
-    p_queue.add_argument("--date", default=None, help="override the supersede date (YYYY-MM-DD)")
+    p_queue.add_argument("--specs", action="store_true",
+                         help="start: create the specs-queue branch instead")
+    p_queue.add_argument("--base", default=None,
+                         help="start: branch from this ref (default: main_branch)")
+    p_queue.add_argument("--dry-run", action="store_true",
+                         help="start: print what would be created, create nothing")
+    p_queue.add_argument("--date", default=None, help="tidy: override the supersede date (YYYY-MM-DD)")
     p_queue.set_defaults(func=cmd_queue)
 
     p_ins = sub.add_parser("insights", help="list / tick / archive the insight inbox")

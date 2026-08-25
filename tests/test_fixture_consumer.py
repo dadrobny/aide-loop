@@ -286,6 +286,40 @@ def test_check_queue_passes_and_names_the_unspecced_item(aide, consumer: Path, c
 
 
 # --------------------------------------------------------------------------- #
+# queue start — the branch shapes that are not claims
+# --------------------------------------------------------------------------- #
+def test_queue_start_creates_the_queue_branch_and_records_its_base(aide, consumer: Path):
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    branch = "aide/queue-001"
+    assert _branch(consumer) == branch
+    recorded = _git(["config", "--get", f"branch.{branch}.{aide._BASE_CONFIG_KEY}"],
+                    consumer).stdout.strip()
+    assert recorded == "main"
+
+
+def test_queue_start_specs_creates_the_specs_queue_branch(aide, consumer: Path):
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1", "--specs"]) == 0
+    assert _branch(consumer) == "aide/specs-queue-001"
+
+
+def test_a_claim_off_a_started_queue_branch_merges_back_into_it(aide, consumer: Path):
+    """The whole point of the verb, through the installed engine: the item's
+    base is the queue branch, so the queue still lands as one reviewed PR."""
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    assert _claim(aide, consumer) == 0
+    recorded = _git(["config", "--get",
+                     f"branch.{_branch(consumer)}.{aide._BASE_CONFIG_KEY}"],
+                    consumer).stdout.strip()
+    assert recorded == "aide/queue-001"
+
+
+def test_queue_start_refuses_to_recreate_an_existing_branch(aide, consumer: Path):
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    _git(["switch", "main"], consumer)
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 1
+
+
+# --------------------------------------------------------------------------- #
 # claim — creates the branch and records its base
 # --------------------------------------------------------------------------- #
 def test_claim_creates_switches_to_and_records_the_branch(aide, consumer: Path):

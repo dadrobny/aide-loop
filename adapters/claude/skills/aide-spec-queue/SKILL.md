@@ -26,9 +26,11 @@ lowest-numbered one with open items).
    argument) and list its items that have **no** spec file in `docs/aide/items/`.
    If none, report "queue fully specced" and stop.
 2. **One branch for the whole batch** — not per-item claim branches (those are
-   created later, at execution time, by `aide claim`):
+   created later, at execution time, by `aide claim`). Let the CLI name it; a
+   hand-typed name that `aide claim` does not recognise as a queue branch
+   retargets the merge silently:
    ```
-   git switch -c aide/specs-queue-NNN
+   python .aide/scripts/aide.py queue start NNN --specs
    ```
 3. **Loop over the unspecced items in queue order.** For each, author the spec
    per the `aide-create-item` skill and `.aide/templates/item.md`, with clarify

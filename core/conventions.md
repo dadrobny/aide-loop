@@ -559,6 +559,16 @@ taken" signal is the **pushed `<branch_prefix>NNN-*` branch** (config
 3. Create and push `aide/NNN-short-name` (push depends on `git.mode`; `local`
    mode does not push and so has no multi-machine claim signal).
 
+**The two branch shapes that are not claims** — `<prefix>queue-NNN` (a queue is
+planned and run on it) and `<prefix>specs-queue-NNN` (its specs are authored on
+it) — are created by `aide queue start NNN [--specs]`, never typed by hand. The
+engine both *constructs* and *recognises* all three shapes from one definition,
+so a name it produces is a name it can parse. A hand-typed name that misses the
+shape is not a cosmetic problem: `aide claim` infers an item's base only from a
+**recognised** queue branch, so an unrecognised one sends every item's merge to
+`main_branch` instead of the queue branch, silently. `queue start` also records
+the branch's own base, which `claim` alone could not do.
+
 One person (or one loop) owns an item at a time. Abandoning an item means
 deleting its remote branch so the item returns to the pool; `aide check` flags a
 claim branch whose item is already ✅ (stale claim), and `aide gc` deletes such
@@ -581,10 +591,11 @@ The rules (runtime-general):
 
 - **If an `aide` verb covers it, the raw git form is wrong.** Session preflight
   (fetch, clean-tree check, landing on the right branch) is `aide sync
-  [--item NNN]`; claiming is `aide claim`; landing is `aide merge`; branch
+  [--item NNN]`; claiming is `aide claim`; starting a queue or specs-queue
+  branch is `aide queue start NNN [--specs]`; landing is `aide merge`; branch
   clean-up is `aide gc`; checking a branch's changed files against its item's
   authorised paths is `aide scope`. Do not improvise the equivalent `git
-  fetch`/`git status`/`git switch`/`git diff --name-only` sequences — the verbs
+  fetch`/`git status`/`git switch -c`/`git diff --name-only` sequences — the verbs
   exist so every run does these steps identically and no step is forgotten.
 - **One command per call.** Never chain with `&&` or `;` — separate calls localise
   failures and keep each invocation legible.
