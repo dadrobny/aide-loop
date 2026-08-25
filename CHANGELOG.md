@@ -17,6 +17,59 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.21.0] — 2026-08-25
+
+### Fixed
+
+- **An insight's provenance is free-form; only its date is load-bearing
+  (issue #76).** The entry shape accepted `*(item NNN, YYYY-MM-DD)*` or a bare
+  `*(YYYY-MM-DD)*` and nothing else, which rejected two provenances **the loop
+  itself produces routinely**: `queue-NNN`, for planning and spec-authoring done
+  before any item exists, and `items NNN-NNN`, for a finding that genuinely
+  spans several. A consumer had three such entries.
+
+  Neither was fixable where it sat. `conventions.md` §1 makes a captured claim
+  immutable — "never reworded, reordered or deleted" — so the warnings were
+  permanent, and permanent noise is what teaches a reader to skim the one run
+  where a warning was real. Collapsing `items 099-101` to `item 099` would be
+  both a rewording and the destruction of the provenance the marker exists to
+  record.
+
+  Worse than the warning: the same pattern is what yields the date, so
+  `archive --before` skipped these entries however old and however closed —
+  `date is None` fails the cut silently. They were neither working set nor
+  archivable, pinned in the live file forever, which is the exact failure
+  1.17.0's `archive` verb exists to prevent.
+
+  **The fix is to stop enumerating.** Anything but a close-paren or a line
+  break may now stand before the date. Enumerating the accepted forms means
+  predicting what an author will write, and here predicting wrong costs a
+  warning that can never be cleared — `specs-queue-NNN`, `PR #73` and `stage 4`
+  would each have needed another round. Only the ISO date is load-bearing
+  (`archive` cuts on it, `list` prints it); nothing routes on the item number,
+  and the frame already pins the checkbox, a known type, the dash, a non-empty
+  claim and the date. Canonical spellings — `item NNN`, `items NNN-NNN`,
+  `queue-NNN` — are documented in `conventions.md` §1 and the `insights.md`
+  template header as **guidance a reader can follow**, not a grammar the CLI
+  enforces.
+
+  `InsightEntry` gains `source`, the provenance verbatim; `item` is still
+  parsed, but only from a provenance naming exactly one item. `insights list`
+  reprints `source` rather than rebuilding the marker from `item`, which could
+  only ever print the single-item form back. `queue-planner` and `spec-reviewer`
+  now show `queue-NNN` in their capture instructions, since neither has an item
+  to name.
+
+- **`aide insights archive` names the closed entries it could not date.** An
+  entry too malformed to parse is excluded from every `--before` cut in
+  silence, with nothing reporting why the live file will not shrink — a path
+  that outlives the widened shape above, since a future unparseable line still
+  reaches it. `archive_insight_text` now returns those entries alongside what
+  it moved, and the command prints each one with its line number, *before* the
+  early return: the run where nothing moved at all is the run that needs the
+  report most. Open undated entries are not reported — they never move anyway,
+  so naming them would be noise rather than a finding.
+
 ## [1.20.0] — 2026-08-25
 
 ### Added
