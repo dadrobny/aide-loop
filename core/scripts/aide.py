@@ -3999,10 +3999,98 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def _merged_prefixed_branches(repo_root: Path, main: str, prefix: str) -> List[str]:
-    """Prefixed local branches already merged into *main*, per git itself."""
+    """Prefixed local branches already merged into *main*, per git itself.
+
+    Ancestry-based, so it misses **every** squash merge — which is the shape
+    GitHub's "Squash and merge" produces. `_branch_content_landed` is the
+    stronger oracle and is preferred wherever git is new enough; this remains
+    the fallback on git < 2.38, where being conservative means deleting *less*.
+    """
     out = git(["branch", "--merged", main, "--format=%(refname:short)"],
               repo_root, check=False).stdout
     return [l.strip() for l in out.splitlines() if l.strip().startswith(prefix)]
+
+
+#: `git merge-tree --write-tree` landed in git 2.38 (Oct 2022). As of Aug 2026
+#: the only realistic holdout is Ubuntu 22.04 LTS (git 2.34.1, in standard
+#: support until April 2027); 24.04, Debian 12, Git for Windows, macOS CLT and
+#: this repo's CI are all past it. There is deliberately **no fallback oracle**:
+#: on older git `gc` refuses to delete on the ✅ ground rather than degrading to
+#: a weaker test, so old git is always *more* conservative and there is one
+#: oracle to keep honest rather than two.
+_MERGE_TREE_MIN_GIT = (2, 38)
+
+
+def _git_version(repo_root: Path) -> Optional[Tuple[int, int]]:
+    """(major, minor) of the git on PATH, or None when it cannot be read."""
+    out = git(["--version"], repo_root, check=False).stdout
+    m = re.search(r"(\d+)\.(\d+)", out)
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def _has_merge_tree(repo_root: Path) -> bool:
+    version = _git_version(repo_root)
+    return version is not None and version >= _MERGE_TREE_MIN_GIT
+
+
+def _branch_content_landed(repo_root: Path, base: str,
+                           branch_ref: str) -> Optional[bool]:
+    """True when merging *branch_ref* into *base* would change *base* not at all.
+
+    The question `gc` actually needs answered before force-deleting: is this
+    branch's work already in the base? `git branch --merged` answers a *different*
+    question (is the tip an ancestor) and so misses every squash merge, which is
+    why `gc` reaches for `-D` in the first place. `git cherry` gets a
+    single-commit squash right and a multi-commit squash wrong — a false alarm on
+    the exact shape "Squash and merge" produces. Measured against fixtures of all
+    three shapes:
+
+    ======================  ===============  ============  =================
+    branch                  branch --merged  git cherry    merge-tree
+    ======================  ===============  ============  =================
+    1 commit, squashed      misses           correct       no-op
+    2 commits, squashed     misses           false alarm   no-op
+    genuinely unmerged      correct          correct       would change base
+    ======================  ===============  ============  =================
+
+    Comparing the merged tree to the base's own tree also stays correct after the
+    base advances with unrelated work, since that work is in both sides.
+
+    Returns None when the answer cannot be established (unreadable ref, git too
+    old, unexpected output) — a caller must treat that as "do not delete", never
+    as "landed".
+    """
+    if not _has_merge_tree(repo_root):
+        return None
+    res = git(["merge-tree", "--write-tree", base, branch_ref], repo_root, check=False)
+    if res.returncode == 1:
+        return False  # conflicts: the branch certainly carries content the base lacks
+    if res.returncode != 0:
+        return None
+    merged = res.stdout.strip().splitlines()
+    base_tree = git(["rev-parse", f"{base}^{{tree}}"], repo_root, check=False).stdout.strip()
+    if not merged or not base_tree:
+        return None
+    return merged[0].strip() == base_tree
+
+
+def _checked_out_branches(repo_root: Path) -> set:
+    """Branch names `gc` must never delete because HEAD is sitting on them.
+
+    `git rev-parse --abbrev-ref HEAD` returns the literal string `HEAD` on a
+    detached HEAD, and no branch is ever equal to that — so the "currently
+    checked out" guard silently protected nothing in that state. Detached, the
+    thing to protect is every branch at the checked-out commit.
+    """
+    name = _current_branch(repo_root)
+    if name and name != "HEAD":
+        return {name}
+    head = git(["rev-parse", "HEAD"], repo_root, check=False).stdout.strip()
+    if not head:
+        return set()
+    out = git(["branch", "--points-at", head, "--format=%(refname:short)"],
+              repo_root, check=False).stdout
+    return {l.strip() for l in out.splitlines() if l.strip()}
 
 
 def _plural(n: int, one: str, many: str) -> str:
@@ -4043,6 +4131,11 @@ def _gc_empty_notes(repo_root: Path, prefix: str, main: str,
     return notes
 
 
+def _gc_ref(branch: str, local: List[str]) -> str:
+    """The ref to measure *branch* by: the local branch, else its remote copy."""
+    return branch if branch in local else f"origin/{branch}"
+
+
 def cmd_gc(args: argparse.Namespace) -> int:
     """Delete claim branches whose work has landed (item ✅ in progress.md, or
     ``--merged`` branches already merged into main). Dry-run by default; pass
@@ -4069,11 +4162,17 @@ def cmd_gc(args: argparse.Namespace) -> int:
     local = [b for b in _local_branches(repo_root) if b.startswith(prefix)]
     remote = [b for b in _remote_branches(repo_root) if b.startswith(prefix)]
 
+    # The content oracle is what makes `-D` on the ✅ ground safe; without it
+    # that ground refuses outright (see `_MERGE_TREE_MIN_GIT`).
+    can_measure = _has_merge_tree(repo_root)
+
     merged_local: List[str] = []
     if args.merged:
         merged_local = _merged_prefixed_branches(repo_root, main, prefix)
 
     targets: Dict[str, str] = {}  # branch -> reason
+    skips: Dict[str, str] = {}    # branch -> why it is NOT acted on
+    protected = _checked_out_branches(repo_root)
     for br in sorted(set(local) | set(remote)):
         # Only a positively-identified item claim is deletable on the "item is
         # ✅" ground. A queue branch shares the number namespace but not the
@@ -4083,11 +4182,37 @@ def cmd_gc(args: argparse.Namespace) -> int:
         # is "already merged into main" and is checked against git itself.
         num = _branch_item_number(br, prefix)
         if num is not None and item_status.get(num) == "complete":
-            targets[br] = f"item {num:03d} is ✅"
+            reason = f"item {num:03d} is ✅"
+            # `progress.md` is a document, edited by agents and humans; git is
+            # the authority on whether the commits landed, and until 1.20.0 it
+            # was never asked. A ✅ can outrun the merge easily — a commit added
+            # after the validator marked it done, a hand-edit, the `pr`-mode
+            # window — and the action here is `git branch -D` plus a remote
+            # delete, where the remote half is unrecoverable on a plain git host.
+            if args.abandon:
+                targets[br] = reason + "; --abandon"
+            elif not can_measure:
+                skips[br] = (f"{reason}, but this git cannot verify the work "
+                             f"landed (needs "
+                             f"{_MERGE_TREE_MIN_GIT[0]}.{_MERGE_TREE_MIN_GIT[1]}+ "
+                             f"for 'merge-tree --write-tree'); use --merged or "
+                             f"--abandon")
+            elif _branch_content_landed(repo_root, main, _gc_ref(br, local)) is True:
+                targets[br] = reason
+            else:
+                skips[br] = (f"{reason} but the branch has content not in "
+                             f"{main}; re-check it, or pass --abandon to delete "
+                             f"it anyway")
         elif br in merged_local:
             targets[br] = f"merged into {main}"
+        elif (args.merged and can_measure
+              and _branch_content_landed(repo_root, main, _gc_ref(br, local)) is True):
+            # `--merged` is built on `git branch --merged`, which is ancestry-
+            # based and so misses every squash merge — the very shape `-D` was
+            # reached for. The same oracle that guards the ✅ ground closes that.
+            targets[br] = f"content already in {main}"
 
-    if not targets:
+    if not targets and not skips:
         # "Nothing to clean" is a claim about the ground and the scope this run
         # actually checked, not about the repository — say which. The default
         # invocation checks only the item ground, and every invocation ignores
@@ -4100,25 +4225,36 @@ def cmd_gc(args: argparse.Namespace) -> int:
             print(f"  {note}")
         return 0
 
-    current = git(["rev-parse", "--abbrev-ref", "HEAD"], repo_root, check=False).stdout.strip()
+    # Every skip is decided BEFORE anything is printed, so the preview is the
+    # set `--yes` acts on rather than a promise it then quietly narrows. A dry
+    # run that overstates trains the reader to skim it, and this is the one
+    # destructive verb — the list a human is asked to approve must be exact.
+    for br in [b for b in targets if b in protected]:
+        del targets[br]
+        skips[br] = "currently checked out"
+
+    def _where(br: str) -> str:
+        return ("local+remote" if br in local and br in remote
+                else "local" if br in local else "remote")
+
+    for br in sorted(skips):
+        print(f"skipping {br} ({_where(br)}): {skips[br]}")
     for br, reason in targets.items():
-        where = ("local+remote" if br in local and br in remote
-                 else "local" if br in local else "remote")
         if not args.yes:
-            print(f"would delete {br} ({where}; {reason})")
-            continue
-        if br == current:
-            print(f"skipping {br}: currently checked out", file=sys.stderr)
+            print(f"would delete {br} ({_where(br)}; {reason})")
             continue
         if br in local:
             # -D: a ✅/merged item's branch may have landed via squash/PR, so
             # git's ancestry-based -d safety check can refuse a branch whose
-            # work is in fact on main.
+            # work is in fact on main. Safe here only because the content check
+            # above already asked git whether the work landed.
             git(["branch", "-D", br], repo_root, check=False)
         if br in remote and mode != "local":
             git(["push", "origin", "--delete", br], repo_root, check=False)
-        print(f"deleted {br} ({where}; {reason})")
-    if not args.yes:
+        print(f"deleted {br} ({_where(br)}; {reason})")
+    if not targets:
+        print("aide gc: nothing to delete")
+    if not args.yes and targets:
         print("aide gc: dry run — re-run with --yes to delete")
     return 0
 
@@ -4238,6 +4374,9 @@ def register_git_subcommands(sub) -> None:
     p_gc.add_argument("--base", default=None,
                       help="ref --merged is measured against (default: the "
                            "current branch's recorded base, else main_branch)")
+    p_gc.add_argument("--abandon", action="store_true",
+                      help="delete a ✅ item's branch even though its content "
+                           "is not in the base — for a genuinely abandoned claim")
     p_gc.add_argument("--yes", action="store_true", help="actually delete (default: dry run)")
     p_gc.set_defaults(func=cmd_gc)
 

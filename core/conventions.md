@@ -575,6 +575,22 @@ claim branch whose item is already ✅ (stale claim), and `aide gc` deletes such
 branches — local and remote — deterministically (dry-run by default, `--yes` to
 act; `--merged` also collects branches already merged into main).
 
+**`gc` asks git, not the document.** A ✅ is a claim made by a document that
+agents and humans both edit, and the action it triggers is `git branch -D` plus
+a remote delete — unrecoverable on a plain git host. So on the ✅ ground `gc`
+deletes a branch only when `git merge-tree --write-tree` says merging it into
+the base would change nothing: the content question, which (unlike `git branch
+--merged`) stays correct across a squash merge, and which also strengthens
+`--merged`. A ✅ item whose branch still carries unlanded content is **skipped**
+with the base named; `--abandon` deletes it anyway, for the genuinely abandoned
+claim. `merge-tree --write-tree` needs git ≥ 2.38 — on older git the ✅ ground
+refuses rather than falling back to a weaker test, so old git is always *more*
+conservative.
+
+**The preview is the set `--yes` acts on.** Every skip — checked out, unlanded,
+git too old — is decided before anything is printed and shown as `skipping <br>:
+<reason>` on both paths. A dry run a human is asked to approve must not overstate.
+
 ---
 
 ## 3. Command hygiene (canonical rules)

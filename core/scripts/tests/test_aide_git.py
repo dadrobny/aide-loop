@@ -409,10 +409,23 @@ def test_sync_fast_forwards_main(tmp_path: Path):
 # --------------------------------------------------------------------------- #
 # gc (WI-3: claim-branch garbage collection)
 # --------------------------------------------------------------------------- #
-def test_gc_dry_run_lists_stale_branch(tmp_path: Path, capsys):
+def _squash_merge(root: Path, branch: str, message: str) -> None:
+    """Land *branch* on main the way GitHub's "Squash and merge" does.
+
+    The shape `gc` reaches for `git branch -D` to cope with: the content is on
+    main, but the branch tip is no ancestor of it, so `git branch --merged`
+    cannot see it.
+    """
+    _run(["git", "switch", "main"], root)
+    _run(["git", "merge", "--squash", branch], root)
+    _run(["git", "commit", "-m", message], root)
+
+
+def test_gc_dry_run_lists_a_landed_stale_branch(tmp_path: Path, capsys):
     root = _init_repo(tmp_path / "r", mode="local")
-    # Item 026 is ✅ in progress.md; its leftover claim branch is stale.
+    # Item 026 is ✅ in progress.md; its work landed, so the branch is stale.
     _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
+    _squash_merge(root, "aide/026-rule-engine-core", "squash 026")
     rc = aide.main(["--repo", str(root), "gc"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -429,12 +442,153 @@ def test_gc_yes_deletes_local_and_remote(tmp_path: Path):
     _run(["git", "push", "-u", "origin", "main"], root)
     _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
     _run(["git", "push", "-u", "origin", "aide/026-rule-engine-core"], root)
+    _squash_merge(root, "aide/026-rule-engine-core", "squash 026")
+    _run(["git", "push", "origin", "main"], root)
     rc = aide.main(["--repo", str(root), "gc", "--yes"])
     assert rc == 0
     branches = _run(["git", "branch"], root).stdout
     assert "aide/026-rule-engine-core" not in branches
     refs = _run(["git", "ls-remote", "--heads", str(remote)], root).stdout
     assert "aide/026-rule-engine-core" not in refs
+
+
+# --------------------------------------------------------------------------- #
+# gc — the ✅ ground asks git whether the work actually landed
+# --------------------------------------------------------------------------- #
+def test_gc_refuses_a_tick_whose_branch_has_unlanded_content(tmp_path: Path, capsys):
+    """The defect: `progress.md` said ✅, git was never asked, and `-D` plus a
+    remote delete discarded a commit that had never merged."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
+    rc = aide.main(["--repo", str(root), "gc", "--yes"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "aide/026-rule-engine-core" in _run(["git", "branch"], root).stdout
+    assert "skipping aide/026-rule-engine-core" in out
+    assert "main" in out  # the skip names the base it was measured against
+
+
+def test_gc_abandon_deletes_an_unlanded_tick_on_purpose(tmp_path: Path):
+    """Abandoning a claim is a real part of the lifecycle (conventions §2) — it
+    just has to be asked for, not inferred from a document."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
+    rc = aide.main(["--repo", str(root), "gc", "--abandon", "--yes"])
+    assert rc == 0
+    assert "aide/026-rule-engine-core" not in _run(["git", "branch"], root).stdout
+
+
+def test_gc_deletes_a_single_commit_squash_merge(tmp_path: Path):
+    """No regression in the case `-D` exists to serve."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
+    _squash_merge(root, "aide/026-rule-engine-core", "squash 026")
+    assert aide.main(["--repo", str(root), "gc", "--yes"]) == 0
+    assert "aide/026-rule-engine-core" not in _run(["git", "branch"], root).stdout
+
+
+def test_gc_deletes_a_multi_commit_squash_merge(tmp_path: Path):
+    """The shape `git cherry` gets wrong — it reports a false alarm — and the
+    reason `merge-tree --write-tree` is the oracle rather than `cherry`."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _run(["git", "switch", "-c", "aide/026-rule-engine-core"], root)
+    for n in ("one", "two"):
+        (root / f"{n}.txt").write_text(f"{n}\n", encoding="utf-8")
+        _run(["git", "add", "-A"], root)
+        _run(["git", "commit", "-m", f"part {n}"], root)
+    _squash_merge(root, "aide/026-rule-engine-core", "squash 026")
+    assert aide.main(["--repo", str(root), "gc", "--yes"]) == 0
+    assert "aide/026-rule-engine-core" not in _run(["git", "branch"], root).stdout
+
+
+def test_gc_still_deletes_after_the_base_advances_with_unrelated_work(tmp_path: Path):
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
+    _squash_merge(root, "aide/026-rule-engine-core", "squash 026")
+    (root / "unrelated.txt").write_text("later\n", encoding="utf-8")
+    _run(["git", "add", "-A"], root)
+    _run(["git", "commit", "-m", "unrelated work"], root)
+    assert aide.main(["--repo", str(root), "gc", "--yes"]) == 0
+    assert "aide/026-rule-engine-core" not in _run(["git", "branch"], root).stdout
+
+
+def test_gc_refuses_the_tick_ground_on_git_too_old(tmp_path: Path, capsys, monkeypatch):
+    """Old git becomes MORE conservative, never less: no second oracle, and
+    nobody's `gc` stops working — it just declines this ground and says why."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
+    _squash_merge(root, "aide/026-rule-engine-core", "squash 026")
+    monkeypatch.setattr(aide, "_git_version", lambda _root: (2, 34))
+    rc = aide.main(["--repo", str(root), "gc", "--yes"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "aide/026-rule-engine-core" in _run(["git", "branch"], root).stdout
+    assert "2.38" in out
+
+
+# --------------------------------------------------------------------------- #
+# gc — the preview is the set --yes acts on
+# --------------------------------------------------------------------------- #
+def _gc_lines(capsys) -> set:
+    """Branch names the run reported as deletable, from either path."""
+    out = capsys.readouterr().out
+    prefixes = ("would delete ", "deleted ")
+    return {line[len(pre):].split()[0]
+            for line in out.splitlines() for pre in prefixes
+            if line.startswith(pre)}
+
+
+def test_gc_preview_and_yes_report_the_same_set(tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
+    _squash_merge(root, "aide/026-rule-engine-core", "squash 026")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")  # 📋, kept
+    capsys.readouterr()
+    aide.main(["--repo", str(root), "gc"])
+    previewed = _gc_lines(capsys)
+    aide.main(["--repo", str(root), "gc", "--yes"])
+    assert _gc_lines(capsys) == previewed
+
+
+def test_gc_preview_does_not_promise_to_delete_the_checked_out_branch(
+        tmp_path: Path, capsys):
+    """The preview used to list a branch `--yes` then silently skipped."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
+    _squash_merge(root, "aide/026-rule-engine-core", "squash 026")
+    _run(["git", "switch", "aide/026-rule-engine-core"], root)
+    capsys.readouterr()
+    aide.main(["--repo", str(root), "gc"])
+    previewed = _gc_lines(capsys)
+    assert previewed == set()
+    aide.main(["--repo", str(root), "gc", "--yes"])
+    assert _gc_lines(capsys) == previewed
+    assert "aide/026-rule-engine-core" in _run(["git", "branch"], root).stdout
+
+
+def test_gc_protects_a_branch_at_a_detached_head(tmp_path: Path, capsys):
+    """`rev-parse --abbrev-ref HEAD` returns the literal 'HEAD' when detached,
+    and no branch equals that — so the guard protected nothing."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
+    _squash_merge(root, "aide/026-rule-engine-core", "squash 026")
+    _run(["git", "checkout", "--detach", "aide/026-rule-engine-core"], root)
+    capsys.readouterr()
+    rc = aide.main(["--repo", str(root), "gc", "--yes"])
+    assert rc == 0
+    assert _gc_lines(capsys) == set()
+    assert "aide/026-rule-engine-core" in _run(["git", "branch"], root).stdout
+
+
+def test_gc_merged_now_sees_a_squash_merge(tmp_path: Path):
+    """`--merged` is built on ancestry and missed every squash merge; the same
+    oracle that guards the ✅ ground closes that too."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    # Item 027 is 📋, so only the --merged ground can collect this.
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    _squash_merge(root, "aide/027-bounds-rules", "squash 027")
+    assert aide.main(["--repo", str(root), "gc", "--merged", "--yes"]) == 0
+    assert "aide/027-bounds-rules" not in _run(["git", "branch"], root).stdout
 
 
 def test_gc_keeps_active_item_branch(tmp_path: Path, capsys):
