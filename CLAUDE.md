@@ -121,17 +121,29 @@ change, since most copied files are byte-identical no-ops.
 ## Where direction lives — three places, no overlap
 
 [`docs/vision.md`](docs/vision.md) holds **purpose and non-goals**. The
-[GitHub Project](https://github.com/users/dadrobny/projects/1) holds **order and
-status**, as fields on the issues themselves. Issue bodies hold **per-item
+[GitHub Project](https://github.com/users/dadrobny/projects/1) holds **status and
+grouping**, as fields on the issues themselves. Issue bodies hold **per-item
 rationale**. None of the three duplicates another — in particular, **nothing
 outside the tracker records whether work is done**, so do not add a status
 section, a checklist, or a "current focus" heading to any document in this repo.
 
 Reading the Project needs network plus `gh` authenticated with the `project`
 scope (`gh auth refresh -s project`); `gh project item-list 1 --owner dadrobny
---format json` is the whole interface. The board's `Wave` field is the ordering —
-issues within one wave are a coherent batch, and dependencies between issues stay
-as prose in their bodies, since GitHub has no native "blocks" edge.
+--format json` is the whole interface. Two fields carry meaning: **Status**
+(Todo / In Progress / Done) and **Theme** (the concern an issue belongs to).
+
+**There is deliberately no priority or ordering field.** A `Wave` one existed and
+was dropped: it encoded the ordering of a single initial batch, mixed three
+different axes (sequence, dependency role, kind of work), and went meaningless
+the moment that batch finished — every non-deferred wave reached 100% Done, so
+the next issue filed had no honest wave to enter. Its descriptive half duplicated
+`Theme`. Do not re-add one without a reason that survives the batch it was
+invented for.
+
+**Scheduling is carried by the `deferred` label alone**: an open issue without it
+is fair game, an open issue with it is recorded and deliberately not scheduled
+(and its title says so too). Dependencies between issues stay as prose in their
+bodies, since GitHub has no native "blocks" edge.
 
 The vision earns its keep by licensing a **close**: an issue that crosses a stated
 non-goal can be closed as out of scope rather than left open forever. If a
