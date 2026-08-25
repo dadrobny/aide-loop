@@ -91,6 +91,14 @@ in the same order satisfies the contract.
   roadmap is exhausted. **Each new queue lands via a human-reviewed checkpoint**
   (for Claude, a PR) — one human review per ~10 items.
 
+**Branch names are engine-owned, not adapter prose.** All three shapes —
+`<prefix>NNN-short-name`, `<prefix>queue-NNN`, `<prefix>specs-queue-NNN` — are
+both constructed and recognised by the engine, so an adapter must **invoke**
+`aide claim` and `aide queue start NNN [--specs]` rather than restate a name for
+its runtime to type. A name the engine did not build is a name it may not parse,
+and the failure is silent: base inference falls back to `main_branch` and an
+item merges past its queue branch.
+
 Git commits are the durable checkpoint, so a restart re-enters cleanly regardless
 of how the orchestrator is expressed.
 

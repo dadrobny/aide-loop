@@ -10,8 +10,9 @@ Subcommands::
 
     python .aide/scripts/aide.py check [--queue NNN]   # consistency gate over docs/aide
     python .aide/scripts/aide.py scope [NNN]           # branch diff vs the item's authorised paths
-    python .aide/scripts/aide.py progress set NNN <in-progress|done>
+    python .aide/scripts/aide.py progress set NNN <in-progress|in-review|done>
     python .aide/scripts/aide.py gate list|approve|decline [N]  # human gates in progress.md
+    python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
     python .aide/scripts/aide.py insights list|tick|archive     # the insight inbox
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
@@ -43,12 +44,21 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 STATUS_TO_ICON = {
     "planned": "📋",
     "in-progress": "🚧",
+    "in-review": "🔍",
     "complete": "✅",
     "deferred": "⏸️",
     "excluded": "❌",
 }
 ICON_TO_STATUS = {v: k for k, v in STATUS_TO_ICON.items()}
-RANK = {"planned": 0, "excluded": 1, "deferred": 2, "in-progress": 3, "complete": 4}
+#: `in-review` sits between 🚧 and ✅ because it is strictly more advanced than
+#: in-progress and strictly less than merged. It exists because ✅ used to mean
+#: two different things depending on `git.mode`: under `auto-merge` the item was
+#: merged, under `pr` it was pushed and awaiting a human — and everything
+#: downstream read ✅ as "done", including the destructive sweep, which then
+#: offered to delete the head branch of an open PR. **✅ now means merged, in
+#: every mode**, and is set by `aide merge` when the merge actually happens.
+RANK = {"planned": 0, "excluded": 1, "deferred": 2, "in-progress": 3,
+        "in-review": 4, "complete": 5}
 
 # Icons may be multi-codepoint (⏸️ = U+23F8 U+FE0F), so match by alternation
 # (longest first), never a character class.
@@ -405,7 +415,11 @@ def rollup_status(statuses: List[str]) -> Optional[str]:
         s == "complete" for s in statuses
     ):
         return "complete"
-    if any(s in ("complete", "in-progress") for s in statuses):
+    # 🔍 is deliberately absent from the set above: an item awaiting review has
+    # not landed, so a stage holding one is 🚧, never ✅. That is the whole point
+    # of the state — a `pr`-mode run must not roll a stage up to "shipped" on
+    # work that is still an open PR.
+    if any(s in ("complete", "in-progress", "in-review") for s in statuses):
         return "in-progress"
     return "planned"
 
@@ -754,7 +768,7 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str]) -> N
             statuses = [stage_status.get(n) for n in nums if stage_status.get(n)]
             if statuses and all(s == "complete" for s in statuses):
                 derived = "complete"
-            elif any(s in ("complete", "in-progress") for s in statuses):
+            elif any(s in ("complete", "in-progress", "in-review") for s in statuses):
                 derived = "in-progress"
             else:
                 derived = current
@@ -802,7 +816,7 @@ def insert_item_reference(text: str, number: int, stage: str, title: str) -> Opt
 def set_item_status(text: str, num: int, status: str) -> str:
     """Flip item NNN's deliverable bullet(s) to ``status`` and roll stages up.
 
-    ``status`` is ``in-progress`` or ``complete``. Updates summary/header/
+    ``status`` is ``in-progress``, ``in-review`` or ``complete``. Updates summary/header/
     objective rows only for stages that fully complete. Never downgrades an
     existing status (additive log), and never touches an acceptance checkbox —
     those are human attestations, ticked only by ``aide progress accept``.
@@ -849,9 +863,18 @@ def set_item_status(text: str, num: int, status: str) -> str:
 #: and one place to be tested, and a change to the convention is a change here.
 
 
+#: The literal tokens every queue name is built from — the file stem, both
+#: branch shapes, and the regexes that read them back. Written once so that a
+#: change to the convention is a change *here* and everything moves with it;
+#: restating "queue-" in a constructor and again in a recogniser is exactly the
+#: drift 1.15.0 removed for filenames and this block removes for branches.
+_QUEUE_TOKEN = "queue-"
+_SPECS_TOKEN = "specs-"
+
+
 def queue_name(number: int) -> str:
     """``queue-NNN`` — the stem a queue file and its status prose both use."""
-    return f"queue-{number:03d}"
+    return f"{_QUEUE_TOKEN}{number:03d}"
 
 
 def queue_number(path: Path) -> Optional[int]:
@@ -863,7 +886,7 @@ def queue_number(path: Path) -> Optional[int]:
     (``queue-016-stage-27.md``) so the deferred naming harmonisation does not
     have to touch the parser, and unpadded digits on read.
     """
-    m = re.match(r"queue-0*(\d+)(?:-|$)", path.stem)
+    m = re.match(re.escape(_QUEUE_TOKEN) + r"0*(\d+)(?:-|$)", path.stem)
     return int(m.group(1)) if m else None
 
 
@@ -876,7 +899,7 @@ def iter_queue_paths(qdir: Path) -> List[Path]:
     if not qdir.is_dir():
         return []
     numbered = [(n, p.name, p) for p, n in
-                ((p, queue_number(p)) for p in qdir.glob("queue-*.md"))
+                ((p, queue_number(p)) for p in qdir.glob(f"{_QUEUE_TOKEN}*.md"))
                 if n is not None]
     return [p for _, _, p in sorted(numbered)]
 
@@ -931,14 +954,18 @@ def queue_item_numbers(text: str) -> List[int]:
 
 
 def queue_is_open(text: str, item_status: Dict[int, str]) -> bool:
-    """Derived queue state: open iff any of its items is 📋/🚧 per progress.md.
+    """Derived queue state: open iff any item is 📋/🚧/🔍 per progress.md.
+
+    🔍 counts as open: an item whose PR is still awaiting review is not work the
+    queue is finished with, and marking the queue completed over it would strand
+    the review.
 
     Queue state is DERIVED, never declared — a ``> **Status:**`` line in a
     queue file is decorative (kept for human readers), and the "live" queue is
     simply the lowest-numbered open one. An item progress.md doesn't know yet
     counts as planned, so a freshly wired queue is open.
     """
-    return any(item_status.get(n, "planned") in ("planned", "in-progress")
+    return any(item_status.get(n, "planned") in ("planned", "in-progress", "in-review")
                for n in queue_item_numbers(text))
 
 
@@ -2226,6 +2253,9 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                     f"shape, or once it is merged run 'aide gc --merged' to "
                     f"delete it")
             continue
+        # 🔍 is deliberately NOT reported: a claim branch whose item is awaiting
+        # review is a normal, correct state, and warning about it on every run
+        # until the human merges is how a real warning gets tuned out.
         if item_status.get(n) == "complete":
             warnings.append(f"stale claim branch {br}: item {n:03d} is already ✅")
 
@@ -2636,19 +2666,26 @@ def cmd_gate(args: argparse.Namespace) -> int:
     return 0
 
 
+#: What `aide progress set` accepts, and the tracked status each records.
+#: `done` stays the word for ✅ — a consumer's muscle memory and every existing
+#: runbook use it — and `in-review` is additive.
+_SET_STATUS_MAP = {"in-progress": "in-progress", "in-review": "in-review",
+                   "done": "complete"}
+
+
 def cmd_progress(args: argparse.Namespace) -> int:
     if args.action == "accept":
         return _cmd_progress_accept(args)
     if args.action != "set":
-        print("usage: aide progress set NNN <in-progress|done>", file=sys.stderr)
+        print("usage: aide progress set NNN <in-progress|in-review|done>", file=sys.stderr)
         return 2
     if args.status is None:
-        print("usage: aide progress set NNN <in-progress|done>", file=sys.stderr)
+        print("usage: aide progress set NNN <in-progress|in-review|done>", file=sys.stderr)
         return 2
-    status_map = {"in-progress": "in-progress", "done": "complete"}
-    if args.status not in status_map:
-        print("status must be 'in-progress' or 'done'", file=sys.stderr)
+    if args.status not in _SET_STATUS_MAP:
+        print("status must be 'in-progress', 'in-review' or 'done'", file=sys.stderr)
         return 2
+    status_map = _SET_STATUS_MAP
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
     progress_path = docs_dir(repo_root, config) / "progress.md"
@@ -2913,8 +2950,10 @@ def _cmd_insights_archive(path: Path, text: str, ddir: Path, ddir_rel: str,
 
 
 def cmd_queue(args: argparse.Namespace) -> int:
+    if args.action == "start":
+        return _queue_start(args)
     if args.action != "tidy":
-        print("usage: aide queue tidy NNN", file=sys.stderr)
+        print("usage: aide queue {start|tidy} NNN", file=sys.stderr)
         return 2
     import datetime as _dt
     repo_root = find_repo_root(args.repo)
@@ -2933,6 +2972,66 @@ def cmd_queue(args: argparse.Namespace) -> int:
     target.write_text(tidy_queue_text(text, superseded_by, date), encoding="utf-8")
     print(f"{queue_name(args.number)}: marked completed "
           f"(superseded by {queue_name(superseded_by)})")
+    return 0
+
+
+def _queue_start(args: argparse.Namespace) -> int:
+    """Create (and, off ``local`` mode, push) a queue or specs-queue branch.
+
+    The branch half of what `claim` does for an item. It exists because
+    conventions.md §3 says a raw git form is wrong wherever a verb covers it,
+    and until 1.20.0 two of the three branch shapes the engine recognises were
+    covered by no verb at all: the framework's own prose told an agent to type
+    `git switch -c <prefix>queue-NNN`, and the regex that must later parse that
+    name never saw it until something had already gone wrong. A typo did not
+    fail loudly — it made `claim` infer `main_branch` as the base and merge the
+    item past the queue branch, silently.
+
+    Recording the base is the second half. `_record_branch_base` ran only at
+    claim, so a queue branch had no recorded base of its own; a queue branched
+    off something other than `main_branch` had to be given `--base` at every
+    later call that cared.
+    """
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    mode = str(config["git"].get("mode", "auto-merge"))
+    branch = (specs_queue_branch_name(prefix, args.number) if args.specs
+              else queue_branch_name(prefix, args.number))
+
+    base = args.base or str(config["git"].get("main_branch", "main"))
+    if not _local_branch_exists(repo_root, base):
+        print(f"aide queue start: base '{base}' is not a local branch — a queue "
+              f"branch is branched from its base and merged back into it, so "
+              f"the base must be a branch this checkout can update",
+              file=sys.stderr)
+        return 1
+    if _local_branch_exists(repo_root, branch):
+        print(f"aide queue start: {branch} already exists — switch to it rather "
+              f"than recreating it", file=sys.stderr)
+        return 1
+    # Also on origin: another machine (or another session) already started this
+    # queue. Creating it locally would succeed and the `push -u` would then fail
+    # — an uncaught CalledProcessError, i.e. a raw traceback in what is meant to
+    # be an unattended flow. Fail as a sentence instead.
+    if mode != "local" and _has_origin(repo_root) and branch in _remote_branches(repo_root):
+        print(f"aide queue start: {branch} already exists on origin — someone "
+              f"has started this queue; fetch and switch to it rather than "
+              f"recreating it", file=sys.stderr)
+        return 1
+
+    if args.dry_run:
+        print(f"would start {branch}; base {base}")
+        return 0
+    # Branch FROM the base explicitly, for the reason `claim` does: with no
+    # start point `switch -c` uses HEAD, which lets the branch's actual origin
+    # disagree with the base it records.
+    git(["switch", "-c", branch, base], repo_root)
+    _record_branch_base(repo_root, branch, base)
+    if mode != "local":
+        git(["push", "-u", "origin", branch], repo_root)
+    note = "" if base == str(config["git"].get("main_branch", "main")) else f" (base {base})"
+    print(f"started {branch}{note}")
     return 0
 
 
@@ -3100,7 +3199,13 @@ def _pick_item(repo_root: Path, config, queue_text: str,
         if num in gate_blocked:
             continue
         deps = _item_dependencies(repo_root, config, num)
-        if any(item_status.get(d, "planned") in ("planned", "in-progress") for d in deps):
+        # 🔍 blocks like 🚧 does: an item whose PR is still open is work that is
+        # not in the base, so claiming a dependent off that base would branch
+        # from a tree missing the very thing the dependency provides. Under
+        # `auto-merge` this window is milliseconds; under `pr` it is however
+        # long the human takes, which is exactly when it matters.
+        if any(item_status.get(d, "planned") in ("planned", "in-progress", "in-review")
+               for d in deps):
             continue
         return num, titles.get(num, f"item {num}")
     return None
@@ -3203,7 +3308,7 @@ def cmd_claim(args: argparse.Namespace) -> int:
         print("none left")
         return 0
     number, title = pick
-    branch = f"{prefix}{number:03d}-{_slug(title)}"
+    branch = claim_branch_name(prefix, number, title)
 
     # What this claim branches off, and what its `merge` will return it to.
     # `switch -c` already branches from whatever is checked out, so claiming
@@ -3245,6 +3350,31 @@ def _find_claim_branch(repo_root: Path, prefix: str, number: int) -> Optional[st
     return None
 
 
+def _promote_item_to_complete(repo_root: Path, config, number: int,
+                              no_commit: bool = False) -> None:
+    """Record item *number* as ✅ in progress.md — best effort, never fatal.
+
+    Deliberately quiet about a no-op: the item may already be ✅ (a re-run, or a
+    consumer still driving the old `progress set NNN done` ordering), and the
+    merge itself is the thing that succeeded. It is *not* quiet about a missing
+    progress.md, which is a real misconfiguration — but even that must not fail
+    a merge that has already landed.
+    """
+    progress_path = docs_dir(repo_root, config) / "progress.md"
+    if not progress_path.is_file():
+        print(f"aide merge: item {number:03d} merged, but {progress_path} was "
+              f"not found, so its status was NOT recorded", file=sys.stderr)
+        return
+    text = progress_path.read_text(encoding=_ENCODING)
+    updated = set_item_status(text, number, "complete")
+    if updated == text:
+        return
+    progress_path.write_text(updated, encoding="utf-8")
+    print(f"item {number:03d}: set to done (merged)")
+    if not no_commit and (repo_root / ".git").exists():
+        _commit_progress(repo_root, config, number, "done")
+
+
 def cmd_merge(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
@@ -3274,7 +3404,8 @@ def cmd_merge(args: argparse.Namespace) -> int:
         git(["push", "-u", "origin", branch], repo_root)
         print(f"aide merge (pr mode): pushed {branch}. Open a PR against {main} "
               f"to land it (e.g. 'gh pr create'); merge is left to the human "
-              f"review gate.")
+              f"review gate. Item {args.number:03d} stays 🔍 until it merges — "
+              f"then run 'aide progress set {args.number:03d} done'.")
         return 0
 
     git(["switch", main], repo_root)
@@ -3284,6 +3415,17 @@ def cmd_merge(args: argparse.Namespace) -> int:
     if merge_res.returncode != 0:
         print(f"aide merge: merge of {branch} failed:\n{merge_res.stdout}{merge_res.stderr}", file=sys.stderr)
         return 1
+    # ✅ is set HERE, by the process that just did the merge, so it always means
+    # "merged" — not "an agent said so before attempting one". The validator
+    # marks the item 🔍 before this call; whether it becomes ✅ is a fact about
+    # git, and in `pr` mode the return above leaves it 🔍 for the human's merge.
+    #
+    # It must precede the push: the tick is a commit like any other, and the
+    # single `git push` below is the only one that carries `main` to origin.
+    # Recording it afterwards stranded it locally, so origin's progress.md
+    # under-reported — and on a queue's last item nothing would ever push it.
+    _promote_item_to_complete(repo_root, config, args.number,
+                              getattr(args, "no_commit", False))
     if mode != "local":
         git(["push"], repo_root, check=False)
 
@@ -3362,7 +3504,30 @@ def _branch_item_number(branch: str, prefix: str) -> Optional[int]:
 #: `<prefix>queue-NNN`, `/aide-spec-queue` names `<prefix>specs-queue-NNN`.
 #: Recognised positively so they are reported as what they are, rather than
 #: lumped in with a branch nothing can parse.
-_QUEUE_BRANCH_RE = re.compile(r"(?:specs-)?queue-\d+$")
+#:
+#: Built from `_QUEUE_TOKEN`/`_SPECS_TOKEN` — the same literals the constructors
+#: below and `queue_name` use — so the recogniser cannot drift from the names
+#: actually produced. 1.13.0 centralised branch *parsing*; until 1.20.0 two of
+#: the three shapes had no constructor at all and were typed by an agent copying
+#: a string out of a markdown file, which is why the round-trip test that now
+#: pins this could not previously be written.
+_QUEUE_BRANCH_RE = re.compile(
+    "(?:" + re.escape(_SPECS_TOKEN) + ")?" + re.escape(_QUEUE_TOKEN) + r"\d+$")
+
+
+def claim_branch_name(prefix: str, number: int, title: str) -> str:
+    """``<prefix>NNN-short-name`` — the branch `aide claim` creates for an item."""
+    return f"{prefix}{number:03d}-{_slug(title)}"
+
+
+def queue_branch_name(prefix: str, number: int) -> str:
+    """``<prefix>queue-NNN`` — the branch a queue is planned and run on."""
+    return f"{prefix}{queue_name(number)}"
+
+
+def specs_queue_branch_name(prefix: str, number: int) -> str:
+    """``<prefix>specs-queue-NNN`` — the branch a queue's specs are authored on."""
+    return f"{prefix}{_SPECS_TOKEN}{queue_name(number)}"
 
 
 def _is_queue_branch(branch: str, prefix: str) -> bool:
@@ -3752,6 +3917,37 @@ def cmd_scope(args: argparse.Namespace) -> int:
     return 0
 
 
+def _landed_review_items(repo_root: Path, config, prefix: str,
+                         base: str) -> List[str]:
+    """Lines naming every 🔍 item whose branch has since landed in *base*.
+
+    In `pr` mode nothing inside the loop ever observes the merge — the human
+    does it on the forge, hours or days later — so 🔍 needs a way home or it is
+    a state items enter and never leave. This is that way home, and it needs no
+    knowledge of what a PR is: the same content oracle `gc` uses answers "has
+    this work landed?" without a forge call that would silently degrade to
+    "no open PRs found" when `gh` is missing or unauthenticated.
+
+    Reports rather than edits. `sync` is a preflight, and a preflight that
+    rewrites a tracked document as a side effect is not one.
+    """
+    item_status = _progress_item_status(repo_root, config)
+    reviewing = {n for n, st in item_status.items() if st == "in-review"}
+    if not reviewing or not _has_merge_tree(repo_root):
+        return []
+    local = _local_branches(repo_root)
+    lines: List[str] = []
+    for br in sorted(_list_claim_branches(repo_root, prefix)):
+        num = _branch_item_number(br, prefix)
+        if num not in reviewing:
+            continue
+        if _branch_content_landed(repo_root, base, _gc_ref(br, local)) is True:
+            lines.append(f"aide sync: item {num:03d} is 🔍 but its work is now in "
+                         f"{base} — run 'python .aide/scripts/aide.py progress "
+                         f"set {num:03d} done'")
+    return lines
+
+
 def cmd_sync(args: argparse.Namespace) -> int:
     """Deterministic preflight: fetch, verify a clean start point, land on the
     right branch. Replaces the exploratory ``git status``/``git branch``/
@@ -3808,6 +4004,9 @@ def cmd_sync(args: argparse.Namespace) -> int:
         if mode != "local" and _has_origin(repo_root) and claim in _remote_branches(repo_root):
             git(["pull", "--rebase", "origin", claim], repo_root, check=False)
 
+    for line in _landed_review_items(repo_root, config, prefix, main):
+        print(line)
+
     print(f"aide sync: OK — on '{branch}', tree clean"
           + ("" if mode == "local" else ", remotes fetched"))
     return 0
@@ -3849,7 +4048,8 @@ def cmd_status(args: argparse.Namespace) -> int:
         for path in iter_queue_paths(qdir):
             nums = queue_item_numbers(path.read_text(encoding=_ENCODING))
             open_nums = [n for n in nums
-                         if item_status.get(n, "planned") in ("planned", "in-progress")]
+                         if item_status.get(n, "planned")
+                         in ("planned", "in-progress", "in-review")]
             if open_nums:
                 tag = " (live)" if not live_seen else ""
                 live_seen = True
@@ -3889,10 +4089,21 @@ def cmd_status(args: argparse.Namespace) -> int:
                 print(f"  branch: {br} ({kind} — not an item claim)")
                 continue
             st = item_status.get(num, "planned")
-            stale = " — STALE (item ✅; run 'aide gc')" if st == "complete" else ""
-            print(f"  claim: {br} (item {num:03d}: {st}){stale}")
+            note = ""
+            if st == "complete":
+                note = " — STALE (item ✅; run 'aide gc')"
+            elif st == "in-review":
+                # Recommending `gc` here would be recommending the deletion of
+                # an open PR's head branch. It is awaiting a human, not stale.
+                note = " — awaiting review (merge the PR, then 'aide progress "
+                note += f"set {num:03d} done')"
+            print(f"  claim: {br} (item {num:03d}: {st}){note}")
     else:
         print("  claims: none")
+
+    for line in _landed_review_items(repo_root, config, prefix,
+                                     str(config["git"].get("main_branch", "main"))):
+        print("  " + line.replace("aide sync: ", ""))
 
     # Open PRs, best effort — informative only, silently skipped without `gh`.
     try:
@@ -3913,10 +4124,121 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def _merged_prefixed_branches(repo_root: Path, main: str, prefix: str) -> List[str]:
-    """Prefixed local branches already merged into *main*, per git itself."""
+    """Prefixed local branches already merged into *main*, per git itself.
+
+    Ancestry-based, so it misses **every** squash merge — which is the shape
+    GitHub's "Squash and merge" produces. `_branch_content_landed` is the
+    stronger oracle and is preferred wherever git is new enough; this remains
+    the fallback on git < 2.38, where being conservative means deleting *less*.
+    """
     out = git(["branch", "--merged", main, "--format=%(refname:short)"],
               repo_root, check=False).stdout
     return [l.strip() for l in out.splitlines() if l.strip().startswith(prefix)]
+
+
+#: `git merge-tree --write-tree` landed in git 2.38 (Oct 2022). As of Aug 2026
+#: the only realistic holdout is Ubuntu 22.04 LTS (git 2.34.1, in standard
+#: support until April 2027); 24.04, Debian 12, Git for Windows, macOS CLT and
+#: this repo's CI are all past it. There is deliberately **no fallback oracle**:
+#: on older git `gc` refuses to delete on the ✅ ground rather than degrading to
+#: a weaker test, so old git is always *more* conservative and there is one
+#: oracle to keep honest rather than two.
+_MERGE_TREE_MIN_GIT = (2, 38)
+
+
+def _git_version(repo_root: Path) -> Optional[Tuple[int, int]]:
+    """(major, minor) of the git on PATH, or None when it cannot be read."""
+    out = git(["--version"], repo_root, check=False).stdout
+    m = re.search(r"(\d+)\.(\d+)", out)
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def _has_merge_tree(repo_root: Path) -> bool:
+    version = _git_version(repo_root)
+    return version is not None and version >= _MERGE_TREE_MIN_GIT
+
+
+def _branch_content_landed(repo_root: Path, base: str,
+                           branch_ref: str) -> Optional[bool]:
+    """True when merging *branch_ref* into *base* would change *base* not at all.
+
+    The question `gc` actually needs answered before force-deleting: is this
+    branch's work already in the base? `git branch --merged` answers a *different*
+    question (is the tip an ancestor) and so misses every squash merge, which is
+    why `gc` reaches for `-D` in the first place. `git cherry` gets a
+    single-commit squash right and a multi-commit squash wrong — a false alarm on
+    the exact shape "Squash and merge" produces. Measured against fixtures of all
+    three shapes:
+
+    ======================  ===============  ============  =================
+    branch                  branch --merged  git cherry    merge-tree
+    ======================  ===============  ============  =================
+    1 commit, squashed      misses           correct       no-op
+    2 commits, squashed     misses           false alarm   no-op
+    genuinely unmerged      correct          correct       would change base
+    ======================  ===============  ============  =================
+
+    Comparing the merged tree to the base's own tree also stays correct after the
+    base advances with unrelated work, since that work is in both sides.
+
+    Returns None when the answer cannot be established (unreadable ref, git too
+    old, unexpected output) — a caller must treat that as "do not delete", never
+    as "landed".
+    """
+    if not _has_merge_tree(repo_root):
+        return None
+    # Resolve first, so an unreadable ref is reported as unmeasurable rather than
+    # as content: `merge-tree` exits 1 for a bad ref exactly as it does for a
+    # conflict, and mapping both to False made `gc` skip for the right reason but
+    # state the wrong one — "has content not in main" about a ref it never read.
+    if not _ref_exists(repo_root, branch_ref):
+        return None
+    res = git(["merge-tree", "--write-tree", base, branch_ref], repo_root, check=False)
+    if res.returncode == 1:
+        return False  # conflicts: the branch certainly carries content the base lacks
+    if res.returncode != 0:
+        return None
+    merged = res.stdout.strip().splitlines()
+    base_tree = git(["rev-parse", f"{base}^{{tree}}"], repo_root, check=False).stdout.strip()
+    if not merged or not base_tree:
+        return None
+    return merged[0].strip() == base_tree
+
+
+def _checked_out_branches(repo_root: Path) -> set:
+    """Branch names `gc` must never delete because a checkout is sitting on them.
+
+    Three ways that happens, and the guard has to cover all three or the preview
+    promises a delete `--yes` cannot perform:
+
+    - **This worktree, on a branch.** The original case.
+    - **This worktree, detached.** `git rev-parse --abbrev-ref HEAD` returns the
+      literal string `HEAD`, and no branch is ever equal to that — so the guard
+      silently protected nothing. Detached, the thing to protect is every branch
+      at the checked-out commit.
+    - **Another worktree.** `git branch -D` refuses these (git's own check), so
+      without asking `git worktree list` the preview lists a branch the delete
+      then bounces off.
+    """
+    protected = set()
+    # `worktree list --porcelain` names the branch of every attached worktree —
+    # including this one when it is not detached — as `branch refs/heads/<name>`.
+    out = git(["worktree", "list", "--porcelain"], repo_root, check=False).stdout
+    for line in out.splitlines():
+        if line.startswith("branch refs/heads/"):
+            protected.add(line[len("branch refs/heads/"):].strip())
+
+    name = _current_branch(repo_root)
+    if name and name != "HEAD":
+        protected.add(name)
+        return protected
+    head = git(["rev-parse", "HEAD"], repo_root, check=False).stdout.strip()
+    if not head:
+        return protected
+    points_at = git(["branch", "--points-at", head, "--format=%(refname:short)"],
+                    repo_root, check=False).stdout
+    protected.update(l.strip() for l in points_at.splitlines() if l.strip())
+    return protected
 
 
 def _plural(n: int, one: str, many: str) -> str:
@@ -3957,6 +4279,11 @@ def _gc_empty_notes(repo_root: Path, prefix: str, main: str,
     return notes
 
 
+def _gc_ref(branch: str, local: List[str]) -> str:
+    """The ref to measure *branch* by: the local branch, else its remote copy."""
+    return branch if branch in local else f"origin/{branch}"
+
+
 def cmd_gc(args: argparse.Namespace) -> int:
     """Delete claim branches whose work has landed (item ✅ in progress.md, or
     ``--merged`` branches already merged into main). Dry-run by default; pass
@@ -3983,11 +4310,17 @@ def cmd_gc(args: argparse.Namespace) -> int:
     local = [b for b in _local_branches(repo_root) if b.startswith(prefix)]
     remote = [b for b in _remote_branches(repo_root) if b.startswith(prefix)]
 
+    # The content oracle is what makes `-D` on the ✅ ground safe; without it
+    # that ground refuses outright (see `_MERGE_TREE_MIN_GIT`).
+    can_measure = _has_merge_tree(repo_root)
+
     merged_local: List[str] = []
     if args.merged:
         merged_local = _merged_prefixed_branches(repo_root, main, prefix)
 
     targets: Dict[str, str] = {}  # branch -> reason
+    skips: Dict[str, str] = {}    # branch -> why it is NOT acted on
+    protected = _checked_out_branches(repo_root)
     for br in sorted(set(local) | set(remote)):
         # Only a positively-identified item claim is deletable on the "item is
         # ✅" ground. A queue branch shares the number namespace but not the
@@ -3997,11 +4330,47 @@ def cmd_gc(args: argparse.Namespace) -> int:
         # is "already merged into main" and is checked against git itself.
         num = _branch_item_number(br, prefix)
         if num is not None and item_status.get(num) == "complete":
-            targets[br] = f"item {num:03d} is ✅"
+            reason = f"item {num:03d} is ✅"
+            # `progress.md` is a document, edited by agents and humans; git is
+            # the authority on whether the commits landed, and until 1.20.0 it
+            # was never asked. A ✅ can outrun the merge easily — a commit added
+            # after the validator marked it done, a hand-edit, the `pr`-mode
+            # window — and the action here is `git branch -D` plus a remote
+            # delete, where the remote half is unrecoverable on a plain git host.
+            if args.abandon:
+                targets[br] = reason + "; --abandon"
+            elif not can_measure:
+                skips[br] = (f"{reason}, but this git cannot verify the work "
+                             f"landed (needs "
+                             f"{_MERGE_TREE_MIN_GIT[0]}.{_MERGE_TREE_MIN_GIT[1]}+ "
+                             f"for 'merge-tree --write-tree'); use --merged or "
+                             f"--abandon")
+            else:
+                landed = _branch_content_landed(repo_root, main, _gc_ref(br, local))
+                if landed is True:
+                    targets[br] = reason
+                elif landed is False:
+                    skips[br] = (f"{reason} but the branch has content not in "
+                                 f"{main}; re-check it, or pass --abandon to "
+                                 f"delete it anyway")
+                else:
+                    # Not the same statement, and this is the one destructive
+                    # verb: say the measurement failed, not that the branch
+                    # carries work it may not carry.
+                    skips[br] = (f"{reason}, but whether its work is in {main} "
+                                 f"could not be determined (ref "
+                                 f"'{_gc_ref(br, local)}' unreadable); not "
+                                 f"deleting — pass --abandon to delete anyway")
         elif br in merged_local:
             targets[br] = f"merged into {main}"
+        elif (args.merged and can_measure
+              and _branch_content_landed(repo_root, main, _gc_ref(br, local)) is True):
+            # `--merged` is built on `git branch --merged`, which is ancestry-
+            # based and so misses every squash merge — the very shape `-D` was
+            # reached for. The same oracle that guards the ✅ ground closes that.
+            targets[br] = f"content already in {main}"
 
-    if not targets:
+    if not targets and not skips:
         # "Nothing to clean" is a claim about the ground and the scope this run
         # actually checked, not about the repository — say which. The default
         # invocation checks only the item ground, and every invocation ignores
@@ -4014,25 +4383,51 @@ def cmd_gc(args: argparse.Namespace) -> int:
             print(f"  {note}")
         return 0
 
-    current = git(["rev-parse", "--abbrev-ref", "HEAD"], repo_root, check=False).stdout.strip()
+    # Every skip is decided BEFORE anything is printed, so the preview is the
+    # set `--yes` acts on rather than a promise it then quietly narrows. A dry
+    # run that overstates trains the reader to skim it, and this is the one
+    # destructive verb — the list a human is asked to approve must be exact.
+    for br in [b for b in targets if b in protected]:
+        del targets[br]
+        skips[br] = ("checked out (here or in another worktree) — git refuses to "
+                     "delete a branch a checkout is sitting on")
+
+    def _where(br: str) -> str:
+        return ("local+remote" if br in local and br in remote
+                else "local" if br in local else "remote")
+
+    for br in sorted(skips):
+        print(f"skipping {br} ({_where(br)}): {skips[br]}")
     for br, reason in targets.items():
-        where = ("local+remote" if br in local and br in remote
-                 else "local" if br in local else "remote")
         if not args.yes:
-            print(f"would delete {br} ({where}; {reason})")
+            print(f"would delete {br} ({_where(br)}; {reason})")
             continue
-        if br == current:
-            print(f"skipping {br}: currently checked out", file=sys.stderr)
-            continue
+        failures: List[str] = []
         if br in local:
             # -D: a ✅/merged item's branch may have landed via squash/PR, so
             # git's ancestry-based -d safety check can refuse a branch whose
-            # work is in fact on main.
-            git(["branch", "-D", br], repo_root, check=False)
+            # work is in fact on main. Safe here only because the content check
+            # above already asked git whether the work landed.
+            res = git(["branch", "-D", br], repo_root, check=False)
+            if res.returncode != 0:
+                failures.append(f"local ({(res.stderr or '').strip()})")
         if br in remote and mode != "local":
-            git(["push", "origin", "--delete", br], repo_root, check=False)
-        print(f"deleted {br} ({where}; {reason})")
-    if not args.yes:
+            res = git(["push", "origin", "--delete", br], repo_root, check=False)
+            if res.returncode != 0:
+                failures.append(f"remote ({(res.stderr or '').strip()})")
+        # Report what git did, not what was asked of it. `-D` still refuses a
+        # branch checked out in ANOTHER worktree, which `_checked_out_branches`
+        # cannot see from here — and printing "deleted" over a refusal makes the
+        # report the very thing this verb was just fixed to stop being: a claim
+        # that does not match what happened.
+        if failures:
+            print(f"could NOT delete {br} ({_where(br)}; {reason}): "
+                  f"{'; '.join(failures)}", file=sys.stderr)
+        else:
+            print(f"deleted {br} ({_where(br)}; {reason})")
+    if not targets:
+        print("aide gc: nothing to delete")
+    if not args.yes and targets:
         print("aide gc: dry run — re-run with --yes to delete")
     return 0
 
@@ -4058,7 +4453,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_prog.add_argument("action", choices=["set", "accept"])
     p_prog.add_argument("number", type=int,
                         help="item number (set) | stage number (accept)")
-    p_prog.add_argument("status", nargs="?", default=None, help="set: in-progress | done")
+    p_prog.add_argument("status", nargs="?", default=None,
+                        help="set: in-progress | in-review | done "
+                             "(in-review = pushed, awaiting a human's merge)")
     p_prog.add_argument("--criterion", type=int, default=None,
                         help="accept: 1-based acceptance-criterion index within the stage")
     p_prog.add_argument("--all", action="store_true", dest="all_criteria",
@@ -4077,10 +4474,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_gate.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
     p_gate.set_defaults(func=cmd_gate)
 
-    p_queue = sub.add_parser("queue", help="queue maintenance")
-    p_queue.add_argument("action", choices=["tidy"])
+    p_queue = sub.add_parser("queue", help="queue branch creation / maintenance")
+    p_queue.add_argument("action", choices=["start", "tidy"])
     p_queue.add_argument("number", type=int)
-    p_queue.add_argument("--date", default=None, help="override the supersede date (YYYY-MM-DD)")
+    p_queue.add_argument("--specs", action="store_true",
+                         help="start: create the specs-queue branch instead")
+    p_queue.add_argument("--base", default=None,
+                         help="start: branch from this ref (default: main_branch)")
+    p_queue.add_argument("--dry-run", action="store_true",
+                         help="start: print what would be created, create nothing")
+    p_queue.add_argument("--date", default=None, help="tidy: override the supersede date (YYYY-MM-DD)")
     p_queue.set_defaults(func=cmd_queue)
 
     p_ins = sub.add_parser("insights", help="list / tick / archive the insight inbox")
@@ -4127,6 +4530,8 @@ def register_git_subcommands(sub) -> None:
                          help="merge into this ref (default: what the claim "
                               "recorded, else main_branch)")
     p_merge.add_argument("--no-test", action="store_true", help="skip the post-merge test run")
+    p_merge.add_argument("--no-commit", action="store_true",
+                         help="do not commit the progress.md status the merge records")
     p_merge.set_defaults(func=cmd_merge)
 
     p_env = sub.add_parser("env", help="venv existence / import check + bootstrap")
@@ -4146,6 +4551,9 @@ def register_git_subcommands(sub) -> None:
     p_gc.add_argument("--base", default=None,
                       help="ref --merged is measured against (default: the "
                            "current branch's recorded base, else main_branch)")
+    p_gc.add_argument("--abandon", action="store_true",
+                      help="delete a ✅ item's branch even though its content "
+                           "is not in the base — for a genuinely abandoned claim")
     p_gc.add_argument("--yes", action="store_true", help="actually delete (default: dry run)")
     p_gc.set_defaults(func=cmd_gc)
 

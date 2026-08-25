@@ -17,6 +17,125 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.20.0] — 2026-08-25
+
+### Added
+
+- **One constructor per branch shape, and `aide queue start NNN` (issue #72).**
+  1.13.0 centralised branch *parsing*; construction was never centralised. The
+  engine built exactly one branch name — `cmd_claim`'s f-string — and recognised
+  three, so **two of the three shapes it depends on were produced by an agent
+  copying a string out of a markdown file**, and the regex that must later parse
+  them never saw a name until something had already gone wrong.
+
+  The failure is silent, not loud. `aide claim` infers an item's base only from
+  a *recognised* queue branch and otherwise falls back to `main_branch` — so a
+  typo, a slug, or a consumer's own convention sends every item's merge to
+  `main` instead of the queue branch, which is the exact failure the base-ref
+  inference exists to close. (`aide check` warns, `aide scope` errors, `aide
+  status` says `unrecognised`; the 1.13.0 data-loss hazard does *not* return,
+  since `_branch_item_number` still rejects both shapes.)
+
+  `claim_branch_name`, `queue_branch_name` and `specs_queue_branch_name` now sit
+  in the helper block beside the recognisers, and `_QUEUE_BRANCH_RE` is built
+  from the same `_QUEUE_TOKEN`/`_SPECS_TOKEN` literals `queue_name` uses. That
+  makes the round-trip test possible for the first time — every constructor
+  through its recogniser, over an adversarial prefix set (no separator, a digit
+  inside the prefix, a prefix ending in the queue token itself). It also makes
+  the deferred queue-slug question (#55) cheap either way: changing the shape
+  becomes a one-place edit whose failure a test catches, rather than a
+  mis-targeted merge in a live run.
+
+  `aide queue start NNN [--specs] [--base R] [--dry-run]` creates and pushes the
+  branch and records its base, which `_record_branch_base` previously did only
+  at claim. The `git switch -c` in `aide-run-roadmap.md` and
+  `aide-spec-queue/SKILL.md` was already an exception to conventions §3 (*"if an
+  `aide` verb covers it, the raw git form is wrong"*); both now invoke the verb,
+  and **no framework prose types a branch name**.
+
+- **`🔍 In Review` — a status for work pushed but not yet merged (issue #71).**
+  `✅` meant two different things depending on `git.mode`: under `auto-merge`
+  the item was merged, under `pr` it was *pushed and awaiting a human*. Nothing
+  recorded the difference and everything downstream read `✅` as "done" —
+  including `aide gc`, whose default ground is "the item is ✅" and whose action
+  is `git branch -D` plus a remote delete. `/aide-run-queue` sends the
+  orchestrator into that state deliberately at queue exhaustion, and the line a
+  human was asked to approve (`would delete aide/077-x (local+remote; item 077
+  is ✅)`) read like confirmation rather than *"this is the head of an open PR"*.
+  A run must be stable under either mode.
+
+  **`✅` now means merged, in every mode**, and is written by `aide merge` when
+  the merge actually happens rather than claimed by an agent ahead of one. The
+  validator marks the item `in-review` — one instruction, mode-independent — and
+  `merge` promotes it on the `auto-merge`/`local` path or leaves it `🔍` on the
+  `pr` path. A `🔍` item holds its stage at `🚧` and its queue open; `aide check`
+  no longer calls its branch stale (a warning firing on every run until a human
+  merges is one that gets tuned out) and `aide status` reports it as awaiting
+  review instead of recommending the destructive verb.
+
+  Because in `pr` mode nothing inside the loop ever observes the merge, `🔍`
+  needs a way home: `aide sync` and `aide status` name any `🔍` item whose work
+  has since landed in the base and print the `aide progress set NNN done` that
+  closes it. That reuses the content check below, so it needs **no** forge call —
+  a `gh pr list` guard would degrade silently to "no open PRs found" when `gh`
+  is missing or unauthenticated, which is exactly the false silence a safety
+  check must not have.
+
+  **Migration: none.** No existing document contains the new icon, so nothing
+  already written changes meaning; the status legend in a consumer's
+  `progress.md` is decorative (the engine never parses it) and can gain its row
+  whenever convenient. `aide progress set NNN done` still works. A consumer on
+  `git.mode = "auto-merge"` sees no behavioural change at all. Under `pr`, a
+  stage now correctly sits `🚧` until its PRs land, where it previously read `✅`
+  immediately.
+
+### Fixed
+
+- **`aide gc`: the dry run overstated, and the `✅` ground force-deleted without
+  asking git (issue #70).** Two defects in the same loop.
+
+  `would delete <br>` was printed for every target and only *then*, on the
+  `--yes` path, was the checked-out branch skipped — so the preview was not the
+  set `--yes` acted on. A preview that overstates trains the reader to skim it,
+  which matters far more for the one destructive verb than anywhere else. Every
+  skip is now decided before anything is printed and shown as `skipping <br>:
+  <reason>` on both paths. `current` also came from `git rev-parse --abbrev-ref
+  HEAD`, which returns the literal string `HEAD` on a detached HEAD; no branch
+  ever equals that, so the "currently checked out" protection silently did not
+  apply in that state. It now resolves to the branches at the checked-out commit.
+
+  The `✅` ground deleted with `git branch -D` — the flag that suppresses git's
+  own "this is not merged" refusal — plus `git push origin --delete`, and
+  **nothing in that path asked git whether the work had landed**. `progress.md`
+  is a document that agents and humans both edit; a `✅` outruns the merge
+  easily (a commit added after the validator ticked it, a hand-edit, the
+  `pr`-mode window above). Local loss is recoverable from the reflog until
+  prune and a deleted PR head survives as `refs/pull/N/head`, but on a plain git
+  remote the remote delete is not recoverable at all.
+
+  The oracle is `git merge-tree --write-tree`, compared against the base's own
+  tree: *would merging this branch change the base?* `git branch --merged` asks
+  about ancestry and so misses **every** squash merge — which is precisely why
+  `-D` was reached for — and `git cherry` gets a *multi-commit* squash wrong, a
+  false alarm on the exact shape GitHub's "Squash and merge" produces. The same
+  check strengthens `--merged`, which carried that ancestry weakness too, and it
+  stays correct after the base advances with unrelated work.
+
+  A `✅` item whose branch still carries unlanded content is **skipped**, with
+  the base it was measured against named; the new `--abandon` deletes it anyway,
+  for the genuinely abandoned claim (`--abandon` rather than `--force`, since
+  abandoning a claim is a real part of the lifecycle per conventions §2). A
+  branch that fails to parse as a claim was already invisible to this ground, so
+  the exposure was entirely on correctly-named branches.
+
+  `merge-tree --write-tree` needs **git 2.38** (Oct 2022); the only realistic
+  holdout is Ubuntu 22.04 LTS (git 2.34.1, standard support to April 2027). On
+  older git the `✅` ground **refuses rather than degrading** — no fallback
+  oracle and no hard version requirement, so old git is always *more*
+  conservative and nobody's `gc` stops working. A second merge-detection path
+  would need its own adversarial tests to stay honest, which is more machinery
+  than eight remaining months of 22.04 justify.
+
 ## [1.19.0] — 2026-08-24
 
 ### Added

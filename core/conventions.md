@@ -61,18 +61,38 @@ line current when a document's relationships change. The transient hand-off
 ("run `/aide-…` next") is spoken by the skill that wrote the file, not stored
 in it.
 
-### Status icons (the only five)
+### Status icons (the only six)
 
 | Icon | Meaning | Rank |
 |------|---------|------|
 | 📋 | Planned | 0 |
 | 🚧 | In Progress | 3 |
-| ✅ | Complete | 4 |
+| 🔍 | In Review | 4 |
+| ✅ | Complete | 5 |
 | ⏸️ | Deferred | 2 |
 | ❌ | Excluded | 1 |
 
 Rank is used when one item is referenced on several lines: the most-advanced
 status wins.
+
+**✅ means merged — in every `git.mode`.** It is written by `aide merge` when
+the merge actually happens, not by an agent ahead of one. 🔍 is the state
+between: the work is pushed and awaiting a human's merge. It exists because ✅
+used to mean two different things depending on the mode — merged under
+`auto-merge`, *pushed and awaiting review* under `pr` — while everything
+downstream read it as "done", including `aide gc`, whose default ground is "the
+item is ✅" and whose action is `git branch -D` plus a remote delete. The
+exhaustion sweep therefore offered to delete the head branch of an open PR, and
+the line a human was asked to approve read like confirmation. A run must be
+stable under either mode, so the mode no longer changes what a status asserts.
+
+A 🔍 item **holds its stage at 🚧** (an open PR has not shipped) and **holds its
+queue open**. `aide check` does not call its claim branch stale, and `aide
+status` reports it as awaiting review rather than recommending `gc`. Because in
+`pr` mode nothing inside the loop ever observes the merge, `aide sync` and `aide
+status` name any 🔍 item whose work has since landed in the base and print the
+`aide progress set NNN done` that closes it — the same content check `gc` uses,
+so it needs no forge call that could silently degrade to "no open PRs found".
 
 **Structural positions only.** The parsers read icons *only* at structural
 positions: a table row's **Status (last) cell**, a stage header's **trailing**
@@ -559,11 +579,37 @@ taken" signal is the **pushed `<branch_prefix>NNN-*` branch** (config
 3. Create and push `aide/NNN-short-name` (push depends on `git.mode`; `local`
    mode does not push and so has no multi-machine claim signal).
 
+**The two branch shapes that are not claims** — `<prefix>queue-NNN` (a queue is
+planned and run on it) and `<prefix>specs-queue-NNN` (its specs are authored on
+it) — are created by `aide queue start NNN [--specs]`, never typed by hand. The
+engine both *constructs* and *recognises* all three shapes from one definition,
+so a name it produces is a name it can parse. A hand-typed name that misses the
+shape is not a cosmetic problem: `aide claim` infers an item's base only from a
+**recognised** queue branch, so an unrecognised one sends every item's merge to
+`main_branch` instead of the queue branch, silently. `queue start` also records
+the branch's own base, which `claim` alone could not do.
+
 One person (or one loop) owns an item at a time. Abandoning an item means
 deleting its remote branch so the item returns to the pool; `aide check` flags a
 claim branch whose item is already ✅ (stale claim), and `aide gc` deletes such
 branches — local and remote — deterministically (dry-run by default, `--yes` to
 act; `--merged` also collects branches already merged into main).
+
+**`gc` asks git, not the document.** A ✅ is a claim made by a document that
+agents and humans both edit, and the action it triggers is `git branch -D` plus
+a remote delete — unrecoverable on a plain git host. So on the ✅ ground `gc`
+deletes a branch only when `git merge-tree --write-tree` says merging it into
+the base would change nothing: the content question, which (unlike `git branch
+--merged`) stays correct across a squash merge, and which also strengthens
+`--merged`. A ✅ item whose branch still carries unlanded content is **skipped**
+with the base named; `--abandon` deletes it anyway, for the genuinely abandoned
+claim. `merge-tree --write-tree` needs git ≥ 2.38 — on older git the ✅ ground
+refuses rather than falling back to a weaker test, so old git is always *more*
+conservative.
+
+**The preview is the set `--yes` acts on.** Every skip — checked out, unlanded,
+git too old — is decided before anything is printed and shown as `skipping <br>:
+<reason>` on both paths. A dry run a human is asked to approve must not overstate.
 
 ---
 
@@ -581,10 +627,11 @@ The rules (runtime-general):
 
 - **If an `aide` verb covers it, the raw git form is wrong.** Session preflight
   (fetch, clean-tree check, landing on the right branch) is `aide sync
-  [--item NNN]`; claiming is `aide claim`; landing is `aide merge`; branch
+  [--item NNN]`; claiming is `aide claim`; starting a queue or specs-queue
+  branch is `aide queue start NNN [--specs]`; landing is `aide merge`; branch
   clean-up is `aide gc`; checking a branch's changed files against its item's
   authorised paths is `aide scope`. Do not improvise the equivalent `git
-  fetch`/`git status`/`git switch`/`git diff --name-only` sequences — the verbs
+  fetch`/`git status`/`git switch -c`/`git diff --name-only` sequences — the verbs
   exist so every run does these steps identically and no step is forgotten.
 - **One command per call.** Never chain with `&&` or `;` — separate calls localise
   failures and keep each invocation legible.

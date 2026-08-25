@@ -206,6 +206,14 @@ def _do_the_work(repo: Path) -> None:
     _commit(repo, "feat: greeter")
 
 
+def _land_by_squash(repo: Path, branch: str) -> None:
+    """Land *branch* on main as GitHub's "Squash and merge" does — content on
+    main, tip no ancestor of it. The shape `gc` reaches for `-D` to cope with."""
+    _git(["switch", "main"], repo)
+    _git(["merge", "--squash", branch], repo)
+    _git(["commit", "-m", f"squash {branch}"], repo)
+
+
 # --------------------------------------------------------------------------- #
 # install — a complete, coherent tree at the paths a consumer executes
 # --------------------------------------------------------------------------- #
@@ -283,6 +291,40 @@ def test_check_queue_passes_and_names_the_unspecced_item(aide, consumer: Path, c
     reported, never a failure."""
     assert aide.main(["--repo", str(consumer), "check", "--queue", "1"]) == 0
     assert "002" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
+# queue start — the branch shapes that are not claims
+# --------------------------------------------------------------------------- #
+def test_queue_start_creates_the_queue_branch_and_records_its_base(aide, consumer: Path):
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    branch = "aide/queue-001"
+    assert _branch(consumer) == branch
+    recorded = _git(["config", "--get", f"branch.{branch}.{aide._BASE_CONFIG_KEY}"],
+                    consumer).stdout.strip()
+    assert recorded == "main"
+
+
+def test_queue_start_specs_creates_the_specs_queue_branch(aide, consumer: Path):
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1", "--specs"]) == 0
+    assert _branch(consumer) == "aide/specs-queue-001"
+
+
+def test_a_claim_off_a_started_queue_branch_merges_back_into_it(aide, consumer: Path):
+    """The whole point of the verb, through the installed engine: the item's
+    base is the queue branch, so the queue still lands as one reviewed PR."""
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    assert _claim(aide, consumer) == 0
+    recorded = _git(["config", "--get",
+                     f"branch.{_branch(consumer)}.{aide._BASE_CONFIG_KEY}"],
+                    consumer).stdout.strip()
+    assert recorded == "aide/queue-001"
+
+
+def test_queue_start_refuses_to_recreate_an_existing_branch(aide, consumer: Path):
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    _git(["switch", "main"], consumer)
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -387,6 +429,65 @@ def test_merge_in_local_mode_lands_the_work_and_deletes_the_branch(
     assert (consumer / "src" / "greeter.py").is_file()  # the work is ON main
 
 
+def _item_status(aide, repo: Path, number: int) -> str:
+    text = (repo / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    return aide._parse_item_status(text.splitlines())[2].get(number, "planned")
+
+
+def test_merge_records_the_tick_so_a_check_always_means_merged(
+        aide, consumer: Path):
+    """✅ is written by the process that did the merge, through the installed
+    engine — so it cannot outrun the merge in any mode."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "in-review"]) == 0
+    assert _item_status(aide, consumer, 1) == "in-review"
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 0
+    assert _item_status(aide, consumer, 1) == "complete"
+
+
+def test_a_run_under_pr_mode_never_offers_to_delete_an_open_prs_branch(
+        aide, consumer: Path, capsys):
+    """#71's acceptance, end to end: the queue-exhaustion sweep is safe under
+    `pr` mode because the item is 🔍, not ✅ — so `gc`'s ground never matches."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "in-review"]) == 0
+    _git(["switch", "main"], consumer)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "gc"]) == 0
+    out = capsys.readouterr().out
+    assert "would delete" not in out
+    assert "aide/001-the-greeter" in _branches(consumer)
+    # ...and `check` does not nag about it on every run until the human merges.
+    capsys.readouterr()
+    aide.main(["--repo", str(consumer), "check"])
+    assert "stale claim branch" not in capsys.readouterr().out
+
+
+def test_an_item_awaiting_review_keeps_its_queue_open(aide, consumer: Path, capsys):
+    for n, st in (("1", "in-review"), ("2", "done")):
+        assert aide.main(["--repo", str(consumer), "progress", "set", n, st]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "status"]) == 0
+    assert "queue-001.md: open" in capsys.readouterr().out
+
+
+def test_sync_points_a_landed_review_item_back_at_done(aide, consumer: Path, capsys):
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "in-review"]) == 0
+    _land_by_squash(consumer, "aide/001-the-greeter")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "sync"]) == 0
+    out = capsys.readouterr().out
+    assert "item 001 is 🔍" in out
+    assert "progress set 001 done" in out
+
+
 def test_merge_refuses_an_item_with_no_claim_branch(aide, consumer: Path):
     assert aide.main(["--repo", str(consumer), "merge", "2", "--no-test"]) == 1
 
@@ -422,10 +523,59 @@ def test_merge_in_pr_mode_pushes_and_leaves_the_merge_to_a_human(
 def test_gc_is_a_dry_run_by_default(aide, consumer: Path, capsys):
     assert _claim(aide, consumer) == 0
     _do_the_work(consumer)
+    _land_by_squash(consumer, "aide/001-the-greeter")
     assert aide.main(["--repo", str(consumer), "progress", "set", "1", "done"]) == 0
     capsys.readouterr()
     assert aide.main(["--repo", str(consumer), "gc"]) == 0
     assert "would delete" in capsys.readouterr().out
+    assert "aide/001-the-greeter" in _branches(consumer)
+
+
+def test_gc_refuses_a_tick_whose_branch_never_landed(aide, consumer: Path, capsys):
+    """A ✅ can outrun the merge — a commit added after the validator ticked it,
+    a hand-edit, the `pr`-mode window. git is the authority on whether the work
+    landed, and `-D` plus a remote delete is unrecoverable on a plain git host."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    _git(["switch", "main"], consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1", "done"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "gc", "--yes"]) == 0
+    out = capsys.readouterr().out
+    assert "skipping aide/001-the-greeter" in out
+    assert "main" in out  # the skip names the base it was measured against
+    assert "aide/001-the-greeter" in _branches(consumer)
+
+
+def test_gc_abandon_deletes_an_unlanded_tick_on_purpose(aide, consumer: Path):
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    _git(["switch", "main"], consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1", "done"]) == 0
+    assert aide.main(["--repo", str(consumer), "gc", "--abandon", "--yes"]) == 0
+    assert "aide/001-the-greeter" not in _branches(consumer)
+
+
+def test_gc_previews_exactly_the_set_it_deletes(aide, consumer: Path, capsys):
+    """A preview that overstates trains the reader to skim the one list a human
+    is explicitly asked to approve before the one destructive verb runs."""
+    def _named(out: str) -> set:
+        prefixes = ("would delete ", "deleted ")
+        return {line[len(pre):].split()[0]
+                for line in out.splitlines() for pre in prefixes
+                if line.startswith(pre)}
+
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    _land_by_squash(consumer, "aide/001-the-greeter")
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1", "done"]) == 0
+    # Sit on the branch gc would otherwise delete: the preview must not promise it.
+    _git(["switch", "aide/001-the-greeter"], consumer)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "gc"]) == 0
+    previewed = _named(capsys.readouterr().out)
+    assert aide.main(["--repo", str(consumer), "gc", "--yes"]) == 0
+    assert _named(capsys.readouterr().out) == previewed
     assert "aide/001-the-greeter" in _branches(consumer)
 
 
