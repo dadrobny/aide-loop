@@ -4187,6 +4187,12 @@ def _branch_content_landed(repo_root: Path, base: str,
     """
     if not _has_merge_tree(repo_root):
         return None
+    # Resolve first, so an unreadable ref is reported as unmeasurable rather than
+    # as content: `merge-tree` exits 1 for a bad ref exactly as it does for a
+    # conflict, and mapping both to False made `gc` skip for the right reason but
+    # state the wrong one — "has content not in main" about a ref it never read.
+    if not _ref_exists(repo_root, branch_ref):
+        return None
     res = git(["merge-tree", "--write-tree", base, branch_ref], repo_root, check=False)
     if res.returncode == 1:
         return False  # conflicts: the branch certainly carries content the base lacks
@@ -4339,12 +4345,22 @@ def cmd_gc(args: argparse.Namespace) -> int:
                              f"{_MERGE_TREE_MIN_GIT[0]}.{_MERGE_TREE_MIN_GIT[1]}+ "
                              f"for 'merge-tree --write-tree'); use --merged or "
                              f"--abandon")
-            elif _branch_content_landed(repo_root, main, _gc_ref(br, local)) is True:
-                targets[br] = reason
             else:
-                skips[br] = (f"{reason} but the branch has content not in "
-                             f"{main}; re-check it, or pass --abandon to delete "
-                             f"it anyway")
+                landed = _branch_content_landed(repo_root, main, _gc_ref(br, local))
+                if landed is True:
+                    targets[br] = reason
+                elif landed is False:
+                    skips[br] = (f"{reason} but the branch has content not in "
+                                 f"{main}; re-check it, or pass --abandon to "
+                                 f"delete it anyway")
+                else:
+                    # Not the same statement, and this is the one destructive
+                    # verb: say the measurement failed, not that the branch
+                    # carries work it may not carry.
+                    skips[br] = (f"{reason}, but whether its work is in {main} "
+                                 f"could not be determined (ref "
+                                 f"'{_gc_ref(br, local)}' unreadable); not "
+                                 f"deleting — pass --abandon to delete anyway")
         elif br in merged_local:
             targets[br] = f"merged into {main}"
         elif (args.merged and can_measure

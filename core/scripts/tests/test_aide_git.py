@@ -83,6 +83,22 @@ def _run(args, cwd):
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
 
+def _show_utf8(cwd: Path, rev_path: str) -> str:
+    """`git show <rev>:<path>`, decoded as UTF-8 **explicitly**.
+
+    `_run` passes `text=True` with no encoding, so Python decodes with the
+    locale codec — cp1252 on the Windows CI leg, which mangles the status icons
+    into characters `_parse_item_status` cannot match. The documents this
+    project reads are UTF-8 by definition (conventions.md §1), so anything
+    reading one out of git says so rather than inheriting the platform's guess.
+    This is the conventions §6 defect class exactly: green on Linux, red only
+    on the platform no local run sees.
+    """
+    out = subprocess.run(["git", "show", rev_path], cwd=str(cwd), check=True,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout
+    return out.decode("utf-8")
+
+
 def _init_repo(path: Path, mode: str = "local") -> Path:
     path.mkdir(parents=True, exist_ok=True)
     _run(["git", "init", "-b", "main"], path)
@@ -1010,7 +1026,7 @@ def test_auto_merge_pushes_the_commit_that_records_the_tick(tmp_path: Path):
     ahead = _run(["git", "rev-list", "--count", "origin/main..main"], root).stdout.strip()
     assert ahead == "0", "the ✅ commit never reached origin"
     _, _, status = aide._parse_item_status(
-        _run(["git", "show", "origin/main:docs/aide/progress.md"], root).stdout.splitlines())
+        _show_utf8(root, "origin/main:docs/aide/progress.md").splitlines())
     assert status[27] == "complete"
 
 
