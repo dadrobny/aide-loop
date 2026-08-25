@@ -3,7 +3,7 @@ paths:
   - "**/test_*.py"
   - "**/*_test.py"
   - "**/conftest.py"
-  - "tests/**/*.py"
+  - "**/tests/**/*.py"
 ---
 
 # Test hygiene
@@ -13,7 +13,8 @@ was earned by. This file is how §6 reaches a session that is about to touch a
 test; it is **delivery, not a second source of truth**.
 
 Scoped by filename rather than by `project.tests_dir`, so it holds whatever a
-consumer configured — a file pytest will collect is a file these patterns match.
+consumer configured — a file pytest will collect is a file these patterns match,
+and the last pattern picks up non-test helpers in any directory named `tests`.
 
 **The gap these close.** Every gate in this loop runs in one place, on one
 platform, against one checkout, so a defect invisible under those conditions is

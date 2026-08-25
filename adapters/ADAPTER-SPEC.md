@@ -240,6 +240,11 @@ Three properties make a delivery mechanism conformant rather than decorative:
 
 - **It loads without being chosen.** If the role has to decide to read it, this
   is a pointer wearing a different name, and the 3% above is what it is worth.
+  A file-scoped channel is a partial exception worth stating plainly: it is
+  armed by the role *opening a matching file*, so a role that creates a new one
+  without ever opening a sibling can still miss it. Scope such a channel by the
+  files the role must read anyway, or use an unconditional one for a rule that
+  must bind before the first write.
 - **It names the section it delivers, and defers to it.** The engine section is
   the source of truth; the delivered copy is a restatement that will drift, and
   the reader has to know which one wins.
