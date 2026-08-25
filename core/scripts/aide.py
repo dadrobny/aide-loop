@@ -4200,22 +4200,39 @@ def _branch_content_landed(repo_root: Path, base: str,
 
 
 def _checked_out_branches(repo_root: Path) -> set:
-    """Branch names `gc` must never delete because HEAD is sitting on them.
+    """Branch names `gc` must never delete because a checkout is sitting on them.
 
-    `git rev-parse --abbrev-ref HEAD` returns the literal string `HEAD` on a
-    detached HEAD, and no branch is ever equal to that — so the "currently
-    checked out" guard silently protected nothing in that state. Detached, the
-    thing to protect is every branch at the checked-out commit.
+    Three ways that happens, and the guard has to cover all three or the preview
+    promises a delete `--yes` cannot perform:
+
+    - **This worktree, on a branch.** The original case.
+    - **This worktree, detached.** `git rev-parse --abbrev-ref HEAD` returns the
+      literal string `HEAD`, and no branch is ever equal to that — so the guard
+      silently protected nothing. Detached, the thing to protect is every branch
+      at the checked-out commit.
+    - **Another worktree.** `git branch -D` refuses these (git's own check), so
+      without asking `git worktree list` the preview lists a branch the delete
+      then bounces off.
     """
+    protected = set()
+    # `worktree list --porcelain` names the branch of every attached worktree —
+    # including this one when it is not detached — as `branch refs/heads/<name>`.
+    out = git(["worktree", "list", "--porcelain"], repo_root, check=False).stdout
+    for line in out.splitlines():
+        if line.startswith("branch refs/heads/"):
+            protected.add(line[len("branch refs/heads/"):].strip())
+
     name = _current_branch(repo_root)
     if name and name != "HEAD":
-        return {name}
+        protected.add(name)
+        return protected
     head = git(["rev-parse", "HEAD"], repo_root, check=False).stdout.strip()
     if not head:
-        return set()
-    out = git(["branch", "--points-at", head, "--format=%(refname:short)"],
-              repo_root, check=False).stdout
-    return {l.strip() for l in out.splitlines() if l.strip()}
+        return protected
+    points_at = git(["branch", "--points-at", head, "--format=%(refname:short)"],
+                    repo_root, check=False).stdout
+    protected.update(l.strip() for l in points_at.splitlines() if l.strip())
+    return protected
 
 
 def _plural(n: int, one: str, many: str) -> str:
@@ -4356,7 +4373,8 @@ def cmd_gc(args: argparse.Namespace) -> int:
     # destructive verb — the list a human is asked to approve must be exact.
     for br in [b for b in targets if b in protected]:
         del targets[br]
-        skips[br] = "currently checked out"
+        skips[br] = ("checked out (here or in another worktree) — git refuses to "
+                     "delete a branch a checkout is sitting on")
 
     def _where(br: str) -> str:
         return ("local+remote" if br in local and br in remote

@@ -1057,20 +1057,23 @@ def test_claim_skips_an_item_whose_dependency_is_only_in_review(tmp_path: Path):
 # --------------------------------------------------------------------------- #
 # gc reports what git did, not what was asked of it
 # --------------------------------------------------------------------------- #
-def test_gc_does_not_claim_a_delete_git_refused(tmp_path: Path, capsys):
-    """`-D` still refuses a branch checked out in ANOTHER worktree, which the
-    checked-out guard cannot see. Printing "deleted" over that refusal makes the
-    report the very thing this verb was fixed to stop being."""
+def test_gc_skips_a_branch_checked_out_in_another_worktree(tmp_path: Path, capsys):
+    """`git branch -D` refuses a branch any worktree is sitting on, so the guard
+    has to ask `git worktree list` — otherwise the preview promises a delete
+    that then bounces off, which is the exact defect #70 was filed about."""
     root = _init_repo(tmp_path / "r", mode="local")
     _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
     _squash_merge(root, "aide/026-rule-engine-core", "squash 026")
     _run(["git", "worktree", "add", str(tmp_path / "wt"),
           "aide/026-rule-engine-core"], root)
     capsys.readouterr()
+    # The PREVIEW must not promise it either — that is #70's first acceptance
+    # criterion, "identical on every path", and a worktree is one of the paths.
+    assert aide.main(["--repo", str(root), "gc"]) == 0
+    previewed = _gc_lines(capsys)
+    assert previewed == set()
     assert aide.main(["--repo", str(root), "gc", "--yes"]) == 0
-    captured = capsys.readouterr()
-    assert "deleted aide/026-rule-engine-core" not in captured.out
-    assert "could NOT delete" in captured.err
+    assert _gc_lines(capsys) == previewed
     assert "aide/026-rule-engine-core" in _run(["git", "branch"], root).stdout
 
 
