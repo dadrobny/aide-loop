@@ -599,3 +599,60 @@ def test_the_report_survives_a_run_where_nothing_moved(tmp_path: Path, capsys):
     captured = capsys.readouterr()
     assert "nothing closed before 2020-01-01" in captured.out
     assert "could not be dated" in captured.err
+
+
+# --------------------------------------------------------------------------- #
+# which marker is the provenance, when a line carries more than one
+#
+# A free-form provenance means an aside inside the claim can wear the marker's
+# shape. Position alone cannot decide it: the first match takes the claim's
+# aside, the last takes the pointer's. The rule is the marker that leaves a
+# well-formed tail — nothing, or the `→` pointer.
+# --------------------------------------------------------------------------- #
+def test_an_aside_inside_the_claim_does_not_steal_the_provenance():
+    """Taking the aside's date would file the entry in the wrong quarter, silently."""
+    line = ("- [ ] defect — config default is *(prod, 2020-01-01)* not "
+            "*(item 099, 2026-07-26)*\n")
+    e = aide.parse_insights(line)[0]
+    assert (e.source, e.date, e.item) == ("item 099", "2026-07-26", 99)
+    assert e.text == "config default is *(prod, 2020-01-01)* not"
+
+
+def test_an_aside_inside_the_pointer_does_not_steal_it_either():
+    """The symmetric case, which taking the *last* marker would get wrong."""
+    line = "- [x] gap — a *(item 099, 2026-07-26)* → see *(note, 2026-08-01)*\n"
+    e = aide.parse_insights(line)[0]
+    assert (e.source, e.date) == ("item 099", "2026-07-26")
+    assert e.pointer == "see *(note, 2026-08-01)*"
+
+
+def test_an_aside_that_would_be_archived_to_the_wrong_quarter_is_not():
+    """The consequence the parse rule exists to prevent, through the verb itself."""
+    text = ("- [x] defect — was *(prod, 2020-01-01)* now *(item 099, 2026-07-26)*\n")
+    _, moved, _u = aide.archive_insight_text(text, "2026-08-01")
+    assert list(moved) == ["2026-Q3"]          # not 2020-Q1
+
+
+def test_a_hand_written_tail_still_parses_as_it_always_did():
+    """Entries predating `tick` carry tails that are neither empty nor a pointer."""
+    e = aide.parse_insights("- [x] gap — a *(2026-01-01)* — landed in X\n")[0]
+    assert (e.date, e.pointer) == ("2026-01-01", None)
+
+
+def test_a_blank_provenance_is_still_a_shape_warning(tmp_path: Path):
+    """Free-form is not empty: a stray comma says nothing and should be fixed."""
+    d = tmp_path / "docs" / "aide"
+    d.mkdir(parents=True)
+    (d / "insights.md").write_text(
+        "# I\n\n- [ ] gap — a stray comma *(   , 2026-01-01)*\n", encoding="utf-8")
+    assert len(aide.insight_warnings(d)) == 1
+    assert aide.parse_insights("- [ ] gap — a *(   , 2026-01-01)*\n")[0].date is None
+
+
+def test_the_patterns_do_not_backtrack_catastrophically():
+    """Both are run over every bullet in the file, malformed ones included."""
+    import time
+    evil = "- [ ] gap — " + "a(" * 4000 + " *(item 1, 2026-01-01)*"
+    start = time.time()
+    aide.parse_insights(evil)
+    assert time.time() - start < 1.0

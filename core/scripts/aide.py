@@ -1060,7 +1060,11 @@ _INSIGHT_TYPES = ("knowledge", "defect", "gap", "automation", "framework")
 #: Canonical forms are still documented (conventions.md §1, and the template's
 #: header) so captures converge — guidance, which the reader can follow, rather
 #: than enforcement, which the immutability rule makes permanent.
-_INSIGHT_SOURCE = r"[^)\n]+"
+#:
+#: It must still end in a non-blank character, so a stray comma — ``*(   ,
+#: 2026-01-01)*`` — is a shape warning rather than a silently accepted
+#: provenance that says nothing. Free-form is not the same as empty.
+_INSIGHT_SOURCE = r"[^)\n]*[^\s)\n]"
 #: A provenance naming exactly one item — the only form that yields an item
 #: *number*. A range, a queue, or anything else leaves ``item`` ``None``, as a
 #: bare date always has.
@@ -1108,20 +1112,36 @@ def insight_warnings(ddir: Path) -> List[str]:
 #: provenance, and the optional " → <where it landed>" pointer a tick appends.
 #: ``text`` is non-greedy up to the provenance so a claim may itself contain
 #: parentheses; ``tail`` is whatever follows it, which is the pointer or "".
+#: The pointer separator, written by `tick` and by hand before it existed.
+_INSIGHT_POINTER = " → "
 #: ``source`` is the provenance verbatim (``None`` for a bare date), because a
 #: listing that re-derives it from an item number can print nothing else back.
-_INSIGHT_FULL_RE = re.compile(
+_INSIGHT_ENTRY_HEAD = (
     r"^- \[(?P<mark>[ xX])\] (?P<type>" + "|".join(_INSIGHT_TYPES) + r") [—–-] "
     r"(?P<text>.+?)\*\((?:(?P<source>" + _INSIGHT_SOURCE + r"), )?"
     r"(?P<date>\d{4}-\d{2}-\d{2})\)\*"
-    r"(?P<tail>.*)$"
 )
+#: Which marker is the provenance, when a line carries more than one.
+#:
+#: ``text`` is non-greedy, so it stops at the *first* ``*(…, date)*`` — and a
+#: free-form provenance means an aside inside the claim can wear that shape:
+#: ``… default is *(prod, 2020-01-01)* not *(item 099, 2026-07-26)*`` would take
+#: the aside's date and file the entry in the wrong archive quarter, silently,
+#: since the line still parses. Greedy is not the answer either — it takes the
+#: *last* marker, which a pointer may equally carry (``→ see *(note, …)*``).
+#:
+#: So neither position decides it: the provenance is the marker that leaves a
+#: **well-formed tail** — nothing, or the ``→`` pointer `tick` writes. That is
+#: the strict pattern, and it resolves both cases above. A tail matching
+#: neither is a hand-written entry predating `tick` (``*(…)* — landed in X``);
+#: the loose pattern accepts it exactly as before, so widening the provenance
+#: costs no entry its parse.
+_INSIGHT_FULL_RE = re.compile(_INSIGHT_ENTRY_HEAD + r"(?P<tail>\s*(?:→.*)?)$")
+_INSIGHT_FULL_LOOSE_RE = re.compile(_INSIGHT_ENTRY_HEAD + r"(?P<tail>.*)$")
 #: A status-trail line: indented under its entry, newest last (conventions.md
 #: §1). Indentation is what distinguishes it from the next entry, so this must
 #: require leading whitespace where the entry pattern forbids it.
 _INSIGHT_TRAIL_RE = re.compile(r"^\s+[-*]\s")
-#: The pointer separator, written by `tick` and by hand before it existed.
-_INSIGHT_POINTER = " → "
 #: An ISO date, validated rather than trusted: `archive --before` compares it
 #: lexicographically against every entry's date, which is only equivalent to
 #: comparing dates while both sides are known to be YYYY-MM-DD.
@@ -1177,7 +1197,7 @@ def parse_insights(text: str) -> List[InsightEntry]:
                 entries[-1].trail.append(line)
                 entries[-1] = entries[-1]._replace(end_lineno=lineno)
             continue
-        m = _INSIGHT_FULL_RE.match(line)
+        m = _INSIGHT_FULL_RE.match(line) or _INSIGHT_FULL_LOOSE_RE.match(line)
         if m is None:
             entries.append(InsightEntry(
                 ordinal=len(entries) + 1, lineno=lineno, raw=line,

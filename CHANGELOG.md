@@ -60,6 +60,20 @@ keys, and the adapter's agents/skills/commands.
   now show `queue-NNN` in their capture instructions, since neither has an item
   to name.
 
+- **Which marker is the provenance, when a line carries more than one.** A
+  free-form provenance means an aside inside the claim can wear the marker's
+  shape, and position alone cannot decide between them: `text` is non-greedy so
+  the *first* match wins, and `… default is *(prod, 2020-01-01)* not *(item 099,
+  2026-07-26)*` would take the aside's date and file the entry in the wrong
+  archive quarter — silently, since the line still parses. Greedy is no better;
+  it takes the *last* marker, which a pointer may equally carry (`→ see *(note,
+  …)*`). The provenance is now the marker that leaves a **well-formed tail** —
+  nothing, or the `→` pointer `tick` writes — with the previous, looser pattern
+  kept as a fallback so hand-written tails predating `tick` parse exactly as
+  they did. A provenance must also end in a non-blank character, so a stray
+  comma stays a shape warning rather than becoming a silently accepted
+  provenance that says nothing.
+
 - **`aide insights archive` names the closed entries it could not date.** An
   entry too malformed to parse is excluded from every `--before` cut in
   silence, with nothing reporting why the live file will not shrink — a path
