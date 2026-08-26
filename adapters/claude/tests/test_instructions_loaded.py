@@ -269,3 +269,37 @@ def test_an_existing_consumers_settings_are_not_clobbered_by_a_new_hook():
         "settings.json became clobbering — the CHANGELOG's caveat about the "
         "InstructionsLoaded hook needing an overlay is now wrong")
 
+
+
+def test_every_logging_hooks_output_path_is_covered_by_the_managed_gitignore():
+    """A per-machine log that is not ignored gets committed.
+
+    `docs/aide/permissions/*.jsonl` was documented as git-ignored from the day
+    it was introduced and was never in the block; this PR added a second log
+    and would have repeated it. The check is the pairing itself: a hook that
+    writes a path the block does not cover is the whole bug.
+    """
+    import fnmatch
+    import sys as _sys
+    _sys.path.insert(0, str(_ADAPTER.parents[1]))
+    import install  # noqa: E402
+
+    patterns = [ln.strip() for ln in install.GITIGNORE_BLOCK.splitlines()
+                if ln.strip() and not ln.strip().startswith("#")]
+
+    log_paths = []
+    for hook_file in sorted((_ADAPTER / "hooks").glob("*.py")):
+        source = hook_file.read_text(encoding="utf-8")
+        if "LOG_PATH" not in source:
+            continue
+        module = _load(hook_file.stem + "_probe", hook_file)
+        # parents[2] of the INSTALLED location is the consumer root, so the
+        # project-relative form is what the .gitignore patterns see.
+        log_paths.append((hook_file.name,
+                          module.LOG_PATH.relative_to(
+                              module.LOG_PATH.parents[3]).as_posix()))
+
+    assert log_paths, "no logging hook found — this guard is watching nothing"
+    for name, rel in log_paths:
+        assert any(fnmatch.fnmatch(rel, pat) for pat in patterns), (
+            f"{name} writes {rel}, which no GITIGNORE_BLOCK pattern covers")

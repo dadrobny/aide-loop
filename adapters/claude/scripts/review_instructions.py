@@ -74,15 +74,20 @@ def load_records(log_path):
     return records
 
 
-def _rel(path_str):
+def _rel(path_str, root=None):
     """A path as written relative to the project root, for stable grouping.
 
     Falls back to the original string: the log may carry an absolute path from
     another checkout, and mangling it into something that looks local would be
     worse than showing it as it is.
+
+    `root` resolves at CALL time for the same reason `shipped_rules` does — a
+    module-level default binds once, so redirecting `_PROJECT_ROOT` would leave
+    this reading the original tree while its caller read the new one.
     """
     try:
-        return Path(path_str).resolve().relative_to(_PROJECT_ROOT).as_posix()
+        base = _PROJECT_ROOT if root is None else root
+        return Path(path_str).resolve().relative_to(base).as_posix()
     except (ValueError, OSError):
         return path_str
 
