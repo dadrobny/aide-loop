@@ -20,7 +20,7 @@
   external tool (GPU library, Docker, a large/optional pip extra, ...). Its
   point is to make the eventual real-dependency verification trackable in
   progress.md rather than silently inferred from a green (skip-clean) test
-  run — see conventions.md's Environment-Gated Capability Verification rule.
+  run — see conventions.md §1 → Environment-gated capabilities.
   Omit the section entirely for items with no such capability.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
@@ -128,7 +128,8 @@ package or external tool (GPU library, Docker, a large/optional pip extra,
   Verification table as `❓ Unverified` until a human or a CI runner with the
   dependency actually runs the gated path — a green skip-clean suite does
   **not** count as verification, and a stage-closing item must add/update
-  this table's row for any capability it introduces (see conventions.md).
+  this table's row for any capability it introduces (conventions.md §1 →
+  Environment-gated capabilities).
 
 ## Decisions & Trade-offs
 

@@ -12,7 +12,7 @@ models.
 
 | Source (here) | Installed to | Role |
 |---|---|---|
-| `agents/` `skills/` `commands/` `hooks/` `scripts/` `settings.json` | `<repo>/.claude/` | the Claude harness |
+| `agents/` `skills/` `commands/` `rules/` `hooks/` `scripts/` `settings.json` | `<repo>/.claude/` | the Claude harness |
 | `usage_probe.py` | `<repo>/.aide/loop/usage_probe.py` | the loop's usage seam (co-located with the engine `loop.py`) |
 | `default-context.json` | — | not installed; declares the instruction file and import syntax `install.py` uses to link `.aide/AGENT-CONTEXT.md` |
 | `README.md` (this file) | — | not installed; documents the adapter |
@@ -146,7 +146,7 @@ in `core/conventions.md`; only the **enforcement mechanism** and the
   **Scope:** `settings.json` is the only JSON file the framework installs, so it is
   the only overlay target today; the merge engine is file-agnostic JSON and extends
   to any future framework-owned JSON with no new code. It does **not** apply to the
-  Markdown control files (`agents/`, `skills/`, `commands/`) or the Python hooks —
+  Markdown control files (`agents/`, `skills/`, `commands/`, `rules/`) or the Python hooks —
   those are framework-owned wholesale, and a project diverges through its own seams
   (`CLAUDE.md`, `docs/aide/`, `aide.toml`), not by editing installed framework files.
 - **`hooks/command_hygiene_guard.py`** — a `PreToolUse` hook on `Bash` that *enforces*
@@ -157,6 +157,11 @@ in `core/conventions.md`; only the **enforcement mechanism** and the
   prompt-eligible calls (`Bash`/`Edit`/`Write`/`Web…`) to
   `docs/aide/permissions/log.jsonl`; the request/completion pair lets a reviewer infer
   grant vs deny. It never replicates the allow-list.
+- **`hooks/log_instructions_loaded.py`** + **`scripts/review_instructions.py`** —
+  `InstructionsLoaded` logging to `docs/aide/instructions/log.jsonl`, and the
+  report over it. This is how the §7 delivery contract stays checkable: a
+  `paths:`-scoped rule whose globs stop matching is silently inert, and
+  `review_instructions.py --strict` is the thing that says so.
 - **`scripts/review_permissions.py`** + the **`aide-review-permissions`** command —
   aggregate that log into recurring bottlenecks and propose safe, recurring prompts to
   promote into the allow-list. The human makes the final allow/ask/leave call and the
@@ -165,7 +170,9 @@ in `core/conventions.md`; only the **enforcement mechanism** and the
 **Allow-list command shaping.** The allow-list matches a command **prefix** and
 auto-approves a compound only if *every* part matches — so beyond the runtime-general
 hygiene in `conventions.md` §3, this adapter needs commands emitted in the shape the
-matcher recognises, or an unattended run stalls on a prompt:
+matcher recognises, or an unattended run stalls on a prompt. These shapes are
+delivered to every session and sub-agent by `rules/aide-command-hygiene.md`,
+not restated per agent:
 
 - **Recon via the Bash tool with `grep`** (`git branch -r | grep aide/`), never the
   PowerShell tool / `Select-String` — only `Bash(...)` rules are allow-listed.
@@ -180,7 +187,55 @@ matcher recognises, or an unattended run stalls on a prompt:
 
 These shaping rules are Claude-adapter-specific (they exist because of the permission
 allow-list); the underlying hygiene they build on is runtime-general and lives in the
-engine's `conventions.md`.
+engine's `conventions.md` §3.
+
+## Contract delivery → **`rules/`** (`paths:`-scoped where it helps)
+
+This is [spec §7](../ADAPTER-SPEC.md)'s §-level half. `conventions.md` is an
+index over one file per section, and a section that is only *pointed at* is
+read about 3% of the time — measured over 164 sub-agent spawns in a real
+consumer. `.claude/rules/` closes that: a rule file loads because the runtime
+loads it, not because a role decided to follow a link.
+
+| File | Scope | Delivers |
+|---|---|---|
+| `rules/aide-command-hygiene.md` | unscoped — every session and every sub-agent | `conventions.md` §3, in positive form |
+| `rules/aide-test-hygiene.md` | `paths:` — any file pytest would collect | §6 |
+| `rules/aide-living-documents.md` | `paths:` — `progress.md`, `roadmap.md`, `vision.md`, `insights.md`, `queue/*.md`, `items/*.md` | the §1 document shapes |
+
+**Scoped is not the same as rare.** `aide-living-documents.md` matches
+`items/*.md` and `insights.md`, which all six roles reach, so it loads on
+effectively every spawn — it is scoped for *correctness* (it is always
+relevant), not for economy. It carries only the shapes; the durable-artifact,
+insight-immutability and human-gate rules live in `AGENT-CONTEXT.md`, already
+in every context. `aide-test-hygiene.md` is the one that genuinely fires only
+where it matters.
+
+The two scoped rules are matched **by filename, not by `project.tests_dir` /
+`project.docs_dir`**, so they hold whatever a consumer configured — a rule that
+silently stops matching is the failure this mechanism exists to remove, and
+templating the globs at install time would reintroduce it as a config error.
+
+**A `paths:` rule is armed by a read, not by a write.** `Edit` requires the file
+to have been read first, so editing an existing document always arms the rule;
+creating a *new* file that matches does not, on its own. The globs therefore
+cover the files each role reads on the way to writing — `test-writer` is
+*instructed* to read existing tests for style, `spec-author` reads
+`queue/queue-NNN.md` before writing `items/NNN-*.md`.
+
+That leaves one real hole: **a repo with no tests yet**. `test-writer` has
+nothing to open, `Write` to a new file does not arm the rule, and it is exactly
+when the fixture conventions are being set. Its spec therefore still carries an
+explicit instruction to go read §6 itself. If that proves insufficient, the
+mechanism that closes it completely is `skills:` frontmatter, which preloads
+content at agent startup with no read involved — per-role, and cheaper than an
+always-on rule. `review_instructions.py` is what would show the gap: a
+`path_glob_match` count far below the number of runs.
+
+A rule **defers to its section**: the engine copy is the source of truth, and a
+rule that invents a rule of its own binds Claude and no other runtime.
+[`tests/test_rules.py`](tests/test_rules.py) pins all three obligations, and
+that the six agent specs never re-inline the block this replaced.
 
 ## Usage probe → **`usage_probe.py`** (`anthropic-oauth`)
 
@@ -207,10 +262,10 @@ calls a **pluggable probe** sitting next to it for the raw numbers.
 ## Default-context instructions → **`default-context.json`** (`CLAUDE.md` + `@path`)
 
 This is [spec §7](../ADAPTER-SPEC.md). The engine's rules live in
-`.aide/conventions.md`, which is read only when something points at it — fine for
-an agent spec in the unattended loop, useless for an interactive session, where a
-person and Claude Code produce durable artifacts (commit messages, issue bodies,
-`insights.md` entries) with no agent spec in play.
+`.aide/conventions.md`, which is read only when something points at it — weak in
+an agent spec (about 3% of spawns follow the pointer) and absent entirely from an
+interactive session, where a person and Claude Code produce durable artifacts
+(commit messages, issue bodies, `insights.md` entries) with no agent spec in play.
 
 Claude Code loads a `CLAUDE.md` at the repo root automatically and inlines `@path`
 lines recursively, so the channel costs one line. The adapter declares both facts:

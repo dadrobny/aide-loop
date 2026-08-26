@@ -17,6 +17,223 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.22.0] — 2026-08-25
+
+### Changed
+
+- **`conventions.md` is now an index; its sections are files (issue #78).**
+  Each numbered section moved to `conventions/N-*.md`, and §1's document shapes
+  to `conventions/1-format-contract/*.md`, so the pointer form already used in
+  a hundred places resolves to a file: `§6` is `conventions/6-test-hygiene.md`,
+  `§1 → insights.md` is `conventions/1-format-contract/insights.md`.
+  `conventions.md` keeps its path and its opening line and now carries the
+  section table.
+
+  The move is content-preserving except in three places, all deliberate: the
+  opening paragraph (below), and the §3 and §6 preambles, which now state the
+  delivery obligation. No other prose changed, no heading level moved, and no
+  fenced example was split across files.
+
+  **A slicing read of the old file no longer works.** Agents were measured
+  accessing `conventions.md` exclusively by `offset`/`limit` or
+  `sed -n '60,100p'`; every one of those now returns index prose or nothing.
+  It fails loudly rather than silently, but it is the most visible day-one
+  change for a human with the habit.
+
+  Its opening paragraph claimed "three parts" while the file had eight
+  sections, and had been wrong since the bootstrap commit — §4 and §5 already
+  existed there. Nobody caught it because nobody reads this file top to bottom,
+  which is the same fact the rest of this entry is about. The index replaces
+  the sentence rather than correcting it.
+
+- **The Claude adapter delivers contract sections instead of pointing at them.**
+  Measured across 11 sessions of a consumer on engine 1.20.0, **164 sub-agent
+  spawns produced 5 reads of `conventions.md` — about 3%**, every one a slice.
+  A pointer is followed only if the reader chooses to, so what was actually
+  binding was the command-hygiene block restated verbatim in all six agent
+  specs; one of the six had already drifted.
+
+  **Rules that were nominally binding were not reaching agents at all.** Two
+  gaps, both checkable against 1.21.0 rather than inferred:
+
+  - §3's *first* rule — "if an `aide` verb covers it, the raw git form is
+    wrong" — appeared in **none of the six** agent specs. The rule most likely
+    to make an agent improvise `git switch -c` instead of `aide claim` was
+    delivered to nobody.
+  - The **six status icons** and the rule that they are read at three
+    *structural* positions only appeared in `queue-planner` and `validator`.
+    `builder`, `spec-author`, `spec-reviewer` and `test-writer` had none of it,
+    and neither did `AGENT-CONTEXT.md` — the one file loaded into every
+    context. `builder` sets 🚧 and `spec-author` adds a human-gate row by hand,
+    both against a document shape they were never given.
+
+  In both cases the contract existed and was reachable only by following a
+  pointer, which measurement puts at about 3%. So this is a **functional fix**
+  first: agents now receive rules they were previously missing. Eliminating the
+  drift between six hand-maintained copies is the second benefit, not the first.
+
+  New `adapters/claude/rules/` (installed to `.claude/rules/`):
+
+  | File | Loads | Delivers |
+  |---|---|---|
+  | `aide-command-hygiene.md` | unscoped — every session and sub-agent | §3, in positive form |
+  | `aide-test-hygiene.md` | `paths:` — any file pytest would collect | §6 |
+  | `aide-living-documents.md` | `paths:` — the living documents by name | the §1 shapes that bind on any edit |
+
+  The two scoped rules match **by filename, not by `project.tests_dir` /
+  `project.docs_dir`**: a rule whose globs silently stop matching is the exact
+  failure this replaces, and templating the globs at install time would
+  reintroduce it as a config error.
+
+  **A `paths:` rule is armed by a read, not by a write.** `Edit` requires a
+  prior read, so editing an existing file always arms one; creating a *new*
+  matching file does not. The globs therefore cover the files each role reads
+  on the way to writing, and `test-writer` keeps an explicit instruction to go
+  read §6 itself — a repo with no tests yet gives the rule nothing to fire on,
+  which is exactly when the fixture conventions are being set.
+
+  If that instruction proves too weak in your project, the mechanism that
+  closes it outright is `skills:` frontmatter on the agent, which preloads a
+  skill's full body at agent startup with no read involved. Move the rule's
+  body to `.claude/skills/<name>/SKILL.md`, keep its `paths:` frontmatter (a
+  skill accepts the same field, so it still auto-loads for everyone else), and
+  add `skills: [<name>]` to `.claude/agents/test-writer.md`. That is per-role
+  and costs nothing in the roles that do not name it.
+
+  **`aide-living-documents.md` is scoped but not rare.** Its globs include
+  `items/*.md` and `insights.md`, which all six roles reach, so it loads on
+  effectively every spawn. It carries only the document *shapes*; the
+  durable-artifact, insight-immutability and human-gate rules it first
+  duplicated are in `AGENT-CONTEXT.md`, already in every context.
+
+  The six per-agent `## Command hygiene` blocks are **removed**; a test fails if
+  one comes back. `ADAPTER-SPEC.md` §7 gains a **§-level delivery** contract
+  point with the three properties that make a mechanism conformant rather than
+  decorative — it loads without the role choosing to, it names the section it
+  delivers, and it adds no rule the engine does not have. §3 and §6 now state
+  the delivery obligation themselves, runtime-generally, so an adapter is not
+  inventing it.
+
+- **`install.py --update` now removes engine files the framework has dropped.**
+  `copy_tree` overwrote and added but never deleted, so every file ever shipped
+  stayed in a consumer forever — the sectioning above would otherwise have left
+  a superseded `.aide/conventions.md` beside the new tree in every install.
+
+  It removes nothing the engine itself shipped today — the sectioning kept
+  `conventions.md` at its path — but it is not a no-op: it deletes anything a
+  consumer put under `.aide/` themselves, on `--update` **and on a plain
+  re-`--install`**, since both are the same reconciliation. `--check` previews
+  each such file and exits non-zero, and an update prints them in their own
+  block after the log, so neither happens silently.
+
+  **Only `.aide/` is pruned**, because that tree is framework-owned in full,
+  which is what makes "absent from the source" mean "removed from the engine".
+  `.claude/agents/` and its siblings are directories a project legitimately
+  adds its own files to, and the same inference there would delete a consumer's
+  own agent. `loop.local.toml`, `__pycache__`, `*.pyc` and the adapter-supplied
+  `loop/usage_probe.py` are never candidates. If you keep hand-written files
+  under `.aide/`, move them before updating.
+
+- **Four files compacted, against a stated test.** `AGENT-CONTEXT.md` (loaded
+  into every context, so its size is multiplied by every spawn) and the three
+  heaviest agent specs, together about 83% of the measured per-queue budget:
+
+  ```
+  core/AGENT-CONTEXT.md   4354 -> 3666   (-16%)
+  agents/validator.md    11660 -> 8596   (-26%)
+  agents/test-writer.md   6436 -> 4525   (-30%)
+  agents/spec-author.md   8513 -> 6414   (-25%)
+  ```
+
+  Cut: the counterfactual argument for a rejected alternative, defect-provenance
+  narrative, and intra-section restatement. Kept: every normative statement, the
+  fenced shape examples, the one-line *why* at a decision boundary, and the
+  disambiguators that pre-empt a known misread. The test for a cut was whether
+  an agent that never saw the sentence would decide differently. The largest
+  single cut is the "Model & effort" paragraph in three specs, which argued for
+  a value the frontmatter already sets.
+
+  `conventions.md` was **not** compacted: at ~0.3 sliced reads per queue it is
+  under 1% of the budget, and its size was never the problem.
+
+- **What the fix costs.** Issue #78 opened with a budget question, so the
+  arithmetic is stated plainly: delivering the rules above costs more than the
+  compaction saves. Against issue #78's spawn model (8-item queue, ~44 spawns,
+  ~4 bytes/token), over the agent specs, `AGENT-CONTEXT.md` and the rules:
+
+  ```
+  compaction (specs + AGENT-CONTEXT)              -30.8k
+  unscoped command-hygiene rule   x44             +17.9k
+  living-documents rule           x44             +19.5k
+  test-hygiene rule               x15..x35    +8.5k..+19.9k
+  ----------------------------------------------------------
+  net per 8-item queue                      +15.1k..+26.5k   (+11%..+19%)
+  ```
+
+  The per-spawn floor rises from 1,088 to 1,322 tokens (`AGENT-CONTEXT.md`
+  plus the unscoped rule). That is the price of the two gaps above being
+  closed, not a regression against a goal: a rule that loads is not the same
+  thing as a pointer that might be followed, and the six inlined hygiene blocks
+  had already drifted (`spec-reviewer` was missing the commit-substitution
+  rule) precisely because six hand-maintained copies is not a delivery
+  mechanism either.
+
+  A consumer who would rather have the compaction without the cost can delete
+  a file from `.claude/rules/`; it degrades to the pointer that was there
+  before. Issue #85 proposes getting most of the cost back by delivering
+  per-role via `skills:` instead of per-file via `paths:`.
+
+### Added
+
+- **`InstructionsLoaded` instrumentation** — `hooks/log_instructions_loaded.py`
+  records every instruction file that loads, with the runtime's reason
+  (`session_start`, `path_glob_match`, …), to `docs/aide/instructions/log.jsonl`
+  (per-machine, gitignored). `scripts/review_instructions.py` reports it and,
+  under `--strict`, exits non-zero when a shipped rule never loaded — a
+  `paths:`-scoped rule whose globs stopped matching is otherwise silently inert.
+
+  The event's payload fields are not pinned by public documentation, so the hook
+  accepts several spellings and keeps anything unrecognised, truncated, under
+  `extra`: a renamed field must degrade the record, not blank it, because an
+  empty `paths` reads identically to "nothing loaded".
+
+  It measures **delivery, not reading**. Nothing loads on a `Read`, so the 3%
+  above remains a transcript question.
+
+  **It does not activate on `--update` by itself.** `settings.json` is
+  non-clobbering by design, so an existing consumer gets the hook *file* but
+  not its registration; the `.aide-merge` diff names what is missing. Adopt
+  `.claude/settings.overlay.json` (regenerated deterministically from
+  framework-base + overlay on every run) and it activates and stays activated.
+
+### Fixed
+
+- **`docs/aide/permissions/*.jsonl` is now actually gitignored**, and the
+  managed `.gitignore` block is **reconciled on update**, not only appended on
+  install. `core/README.md` had listed that path as personal and git-ignored
+  since it was introduced while the block never named it — and append-only
+  meant the fix would have reached no existing consumer, exactly as the new
+  `docs/aide/instructions/*.jsonl` line would not have.
+
+  The block is marker-delimited and says in its first line that the installer
+  manages it, so only the lines *between* the markers are rewritten; content
+  above and below is untouched, and a consumer's BOM survives. A block whose
+  `# --- end AIDE ---` line has been removed is left alone with a notice
+  rather than guessed at.
+
+- **`install.py` no longer aborts an update on an unremovable file under
+  `.aide/`.** The prune followed symlinks, so a link to an empty directory
+  reached `rmdir()` and raised — after the engine and `.aide/VERSION` had been
+  written but before the adapter was copied, leaving a consumer on a 1.22.0
+  engine with a 1.21.0 adapter and an `install.py --check` that reported it up
+  to date. A symlink is now removed as a link (never following it to its
+  target), any `OSError` is logged and stepped over, and the prune runs **last**
+  so nothing it does can leave an install half-applied.
+
+  `--check` now previews the files an update would delete and exits non-zero,
+  and an update prints them in their own block after the log rather than
+  burying them in it.
+
 ## [1.21.0] — 2026-08-25
 
 ### Fixed

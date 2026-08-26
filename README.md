@@ -101,15 +101,16 @@ version numbers saw "up to date" while running a 27-commit-old engine.
 ```
 aide-loop/
 ├── core/                    LAYER 1 — provider-agnostic engine
-│   ├── conventions.md       format contract · claim protocol · command hygiene · git/clarify modes
-│   ├── AGENT-CONTEXT.md     the page of it that must bind before anything points at it
+│   ├── conventions.md       the index: §N -> conventions/N-*.md
+│   ├── conventions/         format contract · claim protocol · command hygiene · git/clarify modes · test hygiene · off-platform · sibling repos
+│   ├── AGENT-CONTEXT.md     the page that must bind before anything points anywhere
 │   ├── templates/           vision · roadmap · progress · queue · item
 │   ├── scripts/aide.py      the stdlib CLI (+ tests/)
 │   ├── loop/loop.py         the usage-gated supervisor (+ a pluggable probe seam)
 │   └── VERSION
 ├── adapters/
 │   ├── ADAPTER-SPEC.md      the engine↔adapter contract (what any runtime must express)
-│   ├── claude/              LAYER 2 — the reference adapter (agents · skills · commands · hooks · settings.json · usage_probe.py · default-context.json)
+│   ├── claude/              LAYER 2 — the reference adapter (agents · skills · commands · rules · hooks · settings.json · usage_probe.py · default-context.json)
 │   └── copilot/ cursor/ gemini/   porting stubs (future work)
 ├── docs/                    vision.md · quickstart.md · concepts.md
 ├── install.py               the cross-OS installer
@@ -117,7 +118,9 @@ aide-loop/
 ```
 
 - [`core/conventions.md`](core/conventions.md) — the shared contract every agent,
-  script, and human obeys. Read it; the loop assumes it.
+  script, and human obeys, as an index over
+  [`core/conventions/`](core/conventions/): one file per numbered section, so a
+  `§N` pointer resolves to a file rather than an offset into a long document.
 - [`adapters/ADAPTER-SPEC.md`](adapters/ADAPTER-SPEC.md) — what any runtime must
   express (seven entry-points, five role tiers, three orchestrators, the shared CLI)
   to drive the engine. The Claude adapter is its reference implementation; see
@@ -129,7 +132,7 @@ aide-loop/
   document here.
 
 **Source vs. installed paths (a gotcha for editors).** The adapter control files
-(`adapters/claude/{agents,skills,commands}`) and `core/conventions.md` reference
+(`adapters/claude/{agents,skills,commands,rules}`) and `core/conventions/**` reference
 `.aide/…`, `.claude/…`, and `python .aide/scripts/aide.py`. Those are *consumer*
 paths — the layout `install.py` materialises in a target repo — and are **correct**;
 do **not** rewrite them to this repo's source layout (`core/…`, `adapters/…`). The
