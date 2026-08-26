@@ -13,6 +13,9 @@ reviewer outside the loop — never by a gate inside it.
 
 **Portability.**
 
+- **A test must be deterministic and pass on Windows, macOS and Linux, with no
+  network access.** The rules below are the specific ways that is lost; this is
+  the general statement they serve, and it binds a case none of them names.
 - **Never write the repo's own working-directory path literally into a test.**
   Resolve from the test file (`Path(__file__).resolve().parents[N]`). An
   absolute path ignores where the process runs, so it passes on the machine

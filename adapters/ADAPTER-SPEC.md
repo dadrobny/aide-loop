@@ -337,9 +337,10 @@ the `conventions.md` §8 rule being read, the same graceful degradation §5, §6
 - [ ] *(if unattended runs are wanted)* a `usage_probe.py`, or `usage_probe = "none"`.
 - [ ] *(if the runtime loads an instruction file by default)* a `default-context.json`
       declaring that file and the runtime's import syntax.
-- [ ] *(if the runtime can scope context to the files in play)* §3 and §6 delivered,
-      not pointed at — loaded without the role choosing to, naming the section it
-      delivers, and adding no rule the engine does not have.
+- [ ] *(if the runtime has any always-loaded instruction channel)* §3 delivered,
+      not pointed at. *(if it can additionally scope context to the files in
+      play)* §6 too. Either way: loaded without the role choosing to, naming
+      the section it delivers, and adding no rule the engine does not have.
 - [ ] *(if the runtime can inject context mid-session)* a lazy, non-blocking
       mechanism surfacing a declared sibling repo's instruction file, once, on
       first reach.

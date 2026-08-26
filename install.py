@@ -129,6 +129,7 @@ SKIP_NAMES = {"__pycache__", ".DS_Store", "loop.local.toml"}
 SKIP_SUFFIXES = {".pyc"}
 
 GITIGNORE_MARKER = "# --- AIDE framework (managed by aide-loop install.py) ---"
+GITIGNORE_END = "# --- end AIDE ---"
 GITIGNORE_BLOCK = f"""\
 {GITIGNORE_MARKER}
 .aide/**/__pycache__/
@@ -251,7 +252,8 @@ def compare_versions(installed: str, available: str) -> str:
 
 def report_version(available: str, installed_path: Path, target: Path,
                    drift: Optional[str] = None,
-                   orphans: Optional[List[str]] = None) -> int:
+                   orphans: Optional[List[str]] = None,
+                   stale: Optional[List[Path]] = None) -> int:
     """``--check``: report whether the target's install is current.
 
     Writes nothing. Exit 2 when the target has no install to compare, 1 when
@@ -271,6 +273,11 @@ def report_version(available: str, installed_path: Path, target: Path,
     import — a superseded provider left behind. No ``--update`` repairs one;
     the fix is a deletion the framework will not perform on a project-owned
     file, so each line says so itself and this function only refuses to exit 0.
+
+    *stale* are files under ``.aide/`` the engine no longer ships, which the
+    next ``--update`` will delete. Reported here because ``--check`` writing
+    nothing is what makes it safe to run, and a deletion nobody could preview
+    is one a consumer only learns about from the aftermath.
     """
     if not installed_path.is_file():
         print(f"aide {target}: no install found ({installed_path} missing) — "
@@ -283,6 +290,9 @@ def report_version(available: str, installed_path: Path, target: Path,
         print(f"aide {target}: {drift}")
     for orphan in orphans or ():
         print(f"aide {target}: {orphan}")
+    for path in stale or ():
+        print(f"aide {target}: {path} is no longer part of the engine and "
+              f"--update will DELETE it — move it first if it is yours")
     if state == "behind":
         print(f"aide {target}: v{installed} is BEHIND v{available} — "
               f"run install.py --into {target} --update (see CHANGELOG.md)")
@@ -297,7 +307,7 @@ def report_version(available: str, installed_path: Path, target: Path,
             # does not, has to say what to do instead.
             print(f"aide {target}: add the import by hand, or --update from the "
                   f"newer framework checkout this install came from")
-        return 1 if (drift or orphans) else 0
+        return 1 if (drift or orphans or stale) else 0
     if drift:
         print(f"aide {target}: v{installed} — run install.py --into {target} --update")
         return 1
@@ -307,6 +317,13 @@ def report_version(available: str, installed_path: Path, target: Path,
         # circle. The orphan lines above carry the repair.
         print(f"aide {target}: v{installed} — engine up to date, but the "
               f"instruction files above need a decision")
+        return 1
+    if stale:
+        # Same shape as orphans: --update is what deletes them, so naming it as
+        # the repair would be pointing at the thing the reader is being warned
+        # about. Exiting non-zero is the whole message.
+        print(f"aide {target}: v{installed} — engine up to date, but the "
+              f"file(s) above are no longer part of it and --update removes them")
         return 1
     print(f"aide {target}: v{installed} — up to date")
     return 0
@@ -489,8 +506,8 @@ def copy_tree(src: Path, dst: Path, log: List[str]) -> None:
 
 
 def prune_stale(src: Path, dst: Path, log: List[str],
-                keep: Iterable[str] = ()) -> None:
-    """Delete files under ``dst`` that ``src`` no longer has.
+                keep: Iterable[str] = (), dry_run: bool = False) -> List[Path]:
+    """Delete files under ``dst`` that ``src`` no longer has; return what went.
 
     ``copy_tree`` overwrites and adds but never removes, so a file dropped from
     the engine stays in every consumer forever — still installed, still
@@ -508,9 +525,21 @@ def prune_stale(src: Path, dst: Path, log: List[str],
     Skips the junk/private names ``copy_tree`` skips, so a `__pycache__` or a
     personal `loop.local.toml` is never a prune candidate, and removes a
     directory only once this prune has emptied it.
+
+    **Never raises.** A prune runs after the engine has already been copied and
+    the VERSION file rewritten, so aborting here would leave a consumer marked
+    as the new version with the rest of the install unfinished — and
+    ``--check`` would then report it up to date. A removal that cannot happen
+    (a read-only file, a Windows file held open by a running supervisor) is
+    logged and stepped over instead.
+
+    ``dry_run`` computes the same list without touching anything, which is what
+    ``--check`` reports so a deletion is previewable before it happens.
     """
+    removed: List[Path] = []
+    gone = set()
     if not dst.is_dir():
-        return
+        return removed
     protected = {Path(k) for k in keep}
     # Deepest first, so a directory is considered after the files inside it.
     for path in sorted(dst.rglob("*"), key=lambda p: len(p.parts), reverse=True):
@@ -521,13 +550,30 @@ def prune_stale(src: Path, dst: Path, log: List[str],
             continue
         if (src / rel).exists():
             continue
-        if path.is_dir():
-            if not any(path.iterdir()):
-                path.rmdir()
-                log.append(f"  - {path}/")
-        else:
-            path.unlink()
-            log.append(f"  - {path}")
+        # `is_dir()` follows symlinks, so a link to a directory would reach
+        # `rmdir()` and raise on the link itself. A symlink is a file here
+        # whatever it points at: removing the link never touches the target.
+        is_real_dir = path.is_dir() and not path.is_symlink()
+        try:
+            if is_real_dir:
+                # A real run has already deleted the children, so `iterdir()`
+                # is empty; a dry run has not, so ask whether every child is
+                # itself on the way out. One rule covers both, and it is what
+                # makes the `--check` preview equal to what `--update` does.
+                if not all(child in gone for child in path.iterdir()):
+                    continue
+                if not dry_run:
+                    path.rmdir()
+            elif not dry_run:
+                path.unlink()
+        except OSError as exc:
+            log.append(f"  ! {path} could not be removed ({exc.strerror}) — "
+                       f"remove it by hand; it is no longer part of the engine")
+            continue
+        removed.append(path)
+        gone.add(path)
+        log.append(f"  - {path}{'/' if is_real_dir else ''}")
+    return removed
 
 
 def copy_file(src: Path, dst: Path, log: List[str]) -> None:
@@ -1008,10 +1054,44 @@ def install_default_context(target: Path, adapter_dir: Path, log: List[str]) -> 
 
 
 def append_gitignore(target: Path, log: List[str]) -> None:
+    """Add the managed ignore block, or reconcile one that is already there.
+
+    Runs on update as well as install. The block is delimited by its own
+    markers and says in its first line that the installer manages it, so
+    rewriting *between* the markers is the same deterministic ownership the
+    settings overlay uses — and appending-only meant a path added to the block
+    (`docs/aide/instructions/*.jsonl`) never reached a single existing
+    consumer, while every document claimed it was ignored.
+
+    A block whose end marker is missing has been hand-edited into a shape this
+    cannot reason about. Say so and change nothing: a bad guess here commits a
+    per-machine log, which is the outcome the block exists to prevent.
+    """
     path = target / ".gitignore"
     existing = path.read_text(encoding=CONSUMER_ENCODING) if path.is_file() else ""
+    # CONSUMER_ENCODING strips a BOM on the way in, so a rewrite would drop one
+    # the consumer's editor put there. Reconciling a block is not a licence to
+    # re-encode the file around it.
+    bom = "\ufeff" if path.is_file() and path.read_bytes().startswith(
+        b"\xef\xbb\xbf") else ""
+
     if GITIGNORE_MARKER in existing:
+        lines = existing.splitlines(keepends=True)
+        start = next(i for i, ln in enumerate(lines)
+                     if ln.strip() == GITIGNORE_MARKER)
+        end = next((i for i, ln in enumerate(lines)
+                    if i > start and ln.strip() == GITIGNORE_END), None)
+        if end is None:
+            log.append(f"  ! {path} has the AIDE marker but no '{GITIGNORE_END}' "
+                       f"line — left untouched; re-add the block by hand")
+            return
+        rebuilt = "".join(lines[:start]) + GITIGNORE_BLOCK + "".join(lines[end + 1:])
+        if rebuilt == existing:
+            return
+        path.write_text(bom + rebuilt, encoding="utf-8")
+        log.append(f"  ~ {path} (AIDE block reconciled)")
         return
+
     sep = "" if (not existing or existing.endswith("\n")) else "\n"
     prefix = "\n" if existing and not existing.endswith("\n\n") else ""
     with path.open("a", encoding="utf-8") as fh:
@@ -1053,7 +1133,9 @@ def run(args: argparse.Namespace) -> int:
     if args.check:
         return report_version(version, aide_dir / "VERSION", target,
                               default_context_drift(target, adapter_dir),
-                              foreign_context_drift(target, adapter))
+                              foreign_context_drift(target, adapter),
+                              prune_stale(core_dir, aide_dir, [],
+                                          keep=AIDE_FOREIGN_PATHS, dry_run=True))
 
     mode = "update" if args.update else "install"
     # The resolved adapter, not args.adapter — the latter is the value that was
@@ -1062,7 +1144,6 @@ def run(args: argparse.Namespace) -> int:
 
     # 1. engine -> .aide/
     copy_tree(core_dir, aide_dir, log)
-    prune_stale(core_dir, aide_dir, log, keep=AIDE_FOREIGN_PATHS)
 
     # 2. adapter control files -> .claude/
     for name in ADAPTER_CONTROL:
@@ -1101,11 +1182,27 @@ def run(args: argparse.Namespace) -> int:
     #    interactive session, and it is one idempotent line either way.
     install_default_context(target, adapter_dir, log)
 
-    # 7. .gitignore block — fresh install only
-    if not args.update:
-        append_gitignore(target, log)
+    # 7. .gitignore block — added on install, reconciled on update.
+    append_gitignore(target, log)
+
+    # 8. Prune .aide/ of files the engine no longer ships. LAST, deliberately:
+    #    everything above has landed by now, so a prune that cannot finish
+    #    leaves a complete install with one leftover file rather than a
+    #    half-applied one carrying the new VERSION.
+    stale = prune_stale(core_dir, aide_dir, log, keep=AIDE_FOREIGN_PATHS)
 
     print("\n".join(log))
+    if stale:
+        # Above the "Done." line and on its own: a deletion inside a 200-line
+        # log is a deletion nobody sees. `.aide/` is framework-owned, so this
+        # is normally routine — it is the consumer who kept notes there who
+        # needs to read it.
+        print(f"\nRemoved {len(stale)} file(s) under {aide_dir} that this engine "
+              f"no longer ships:")
+        for path in stale:
+            print(f"  - {path}")
+        print("If any of those were yours, `.aide/` is framework-owned and "
+              "overwritten on every update — keep project files outside it.")
     print(f"\nDone. Installed engine version recorded at {aide_dir / 'VERSION'}.")
     # The engine's own suite ships with every install and no default `pytest`
     # run collects it (.aide/ is a dot-directory; norecursedirs skips `.*`),

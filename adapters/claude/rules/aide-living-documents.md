@@ -8,20 +8,18 @@ paths:
   - "**/items/*.md"
 ---
 
-# Living documents
+# Living-document shapes
 
 `.aide/scripts/aide.py` parses these files by exact shape. `.aide/conventions.md`
-§1 is the source of truth and carries one file per document shape
-(`§1 → progress.md` is `conventions/1-format-contract/progress.md`, and so on);
-this file is how the parts that bind on *any* edit reach the session, and it is
-**delivery, not a second source of truth**.
+§1 is the source of truth and carries one file per shape (`§1 → progress.md` is
+`conventions/1-format-contract/progress.md`, and so on); this file is **delivery,
+not a second source of truth**, and carries only the shape rules — the durable
+artifact, insight-immutability and human-gate rules are in `AGENT-CONTEXT.md`,
+already in this context.
 
-Scoped by document name rather than by `project.docs_dir`, so it holds whatever a
-consumer configured.
-
-**Edit through the CLI where a verb exists.** `aide progress set`, `aide progress
-accept`, `aide queue tidy`, `aide gate` — hand-editing is what makes a document
-unparseable, and `progress.md` in particular is only ever written by a verb.
+Scoped by document name rather than by `project.docs_dir`, so it holds whatever
+a consumer configured. Every role reaches at least one of these files, so treat
+this rule as one you will always see, not one that fires rarely.
 
 **The six status icons, and nothing else:** 📋 Planned · 🚧 In Progress ·
 🔍 In Review · ✅ Done · ⏸️ Blocked · ❓ Unverified. They are read at three
@@ -34,14 +32,8 @@ guidance to read then replace.** `aide check` flags any `{{…}}` surviving into
 generated document as an unfilled slot, so guidance must never be written as a
 slot.
 
-**A captured insight is immutable.** Never reworded, reordered or deleted, not
-even when it turns out to be wrong. Ticking its checkbox is the one in-place
-edit; anything afterwards goes in dated lines indented beneath it.
-
-**Only a person resolves a human gate.** Any role may add a row to the `## Human
-gates` table — the worst case is work pausing. No agent runs `aide gate approve`
-or `decline`.
-
-**Durable artifacts must read cold.** No chat-local identifiers; cross-reference
-by resolvable identity (issue number, path, commit, stage, dated insight);
-record the decision and why it holds, not the route to it.
+**Prefer the verb to a hand edit**: `aide progress set`, `aide progress accept`,
+`aide queue tidy`, `aide gate`. `progress.md`'s status rows and acceptance boxes
+are written *only* by a verb — the one hand edit anyone makes there is adding a
+row to the `## Human gates` table, which has no verb (`aide gate` only lists,
+approves and declines).

@@ -131,3 +131,119 @@ def test_update_removes_a_stale_engine_file_end_to_end(tmp_path: Path):
     assert probe.is_file()
     assert (target / ".aide" / "conventions.md").is_file()
     assert (target / ".aide" / "conventions" / "6-test-hygiene.md").is_file()
+
+
+# --------------------------------------------------------------------------- #
+# the prune must never abort the install it runs inside
+# --------------------------------------------------------------------------- #
+def test_a_symlink_to_a_directory_is_unlinked_and_its_target_survives(tmp_path: Path):
+    """`is_dir()` follows symlinks, so a link to a dir reaches `rmdir()`.
+
+    On an EMPTY target that raised `NotADirectoryError` and aborted the whole
+    update — after `.aide/VERSION` had already been rewritten, so `--check`
+    then reported the half-applied install as up to date.
+    """
+    outside = tmp_path / "outside" / "empty"
+    outside.mkdir(parents=True)
+    src = _tree(tmp_path / "src", "keep.md")
+    dst = _tree(tmp_path / "dst", "keep.md")
+    (dst / "link").symlink_to(outside, target_is_directory=True)
+
+    install.prune_stale(src, dst, [])
+
+    assert not (dst / "link").exists() and not (dst / "link").is_symlink()
+    assert outside.is_dir(), "removing the link must never touch the target"
+
+
+def test_a_symlink_to_a_non_empty_directory_is_also_unlinked(tmp_path: Path):
+    """The emptiness of the TARGET must not decide the fate of the link."""
+    outside = tmp_path / "outside" / "full"
+    outside.mkdir(parents=True)
+    (outside / "a.md").write_text("a", encoding="utf-8")
+    src = _tree(tmp_path / "src", "keep.md")
+    dst = _tree(tmp_path / "dst", "keep.md")
+    (dst / "link").symlink_to(outside, target_is_directory=True)
+
+    install.prune_stale(src, dst, [])
+
+    assert not (dst / "link").is_symlink()
+    assert (outside / "a.md").is_file()
+
+
+def test_a_removal_that_fails_is_logged_and_stepped_over(tmp_path: Path):
+    """One unremovable file must not cost the consumer the rest of the update.
+
+    On Windows this is `.aide/loop/loop.py` held open by a running supervisor —
+    a realistic state during exactly the unattended run an update interrupts.
+    """
+    src = _tree(tmp_path / "src", "keep.md")
+    dst = _tree(tmp_path / "dst", "keep.md", "locked/gone.md", "also-gone.md")
+    (dst / "locked").chmod(0o500)          # no write bit: the unlink will fail
+    log: list = []
+    try:
+        removed = install.prune_stale(src, dst, log)
+        assert (dst / "locked" / "gone.md").is_file(), "test setup did not lock"
+        assert any("could not be removed" in line for line in log), log
+        assert not (dst / "also-gone.md").exists(), "the prune stopped early"
+        assert (dst / "locked" / "gone.md") not in removed
+    finally:
+        (dst / "locked").chmod(0o700)
+
+
+def test_dry_run_reports_the_same_paths_and_deletes_nothing(tmp_path: Path):
+    """What `--check` previews has to be what `--update` then does."""
+    src = _tree(tmp_path / "src", "keep.md")
+    dst = _tree(tmp_path / "dst", "keep.md", "gone.md", "retired/a.md")
+
+    preview = install.prune_stale(src, dst, [], dry_run=True)
+
+    assert (dst / "gone.md").is_file() and (dst / "retired" / "a.md").is_file()
+    assert install.prune_stale(src, dst, []) == preview
+
+
+def test_check_previews_a_pending_deletion_and_writes_nothing(tmp_path: Path, capsys):
+    target = tmp_path / "consumer"
+    target.mkdir()
+    assert install.main(["--into", str(target), "--yes"]) == 0
+    stale = target / ".aide" / "notes-of-mine.md"
+    stale.write_text("mine\n", encoding="utf-8")
+
+    rc = install.main(["--into", str(target), "--check"])
+
+    assert stale.is_file(), "--check must never write"
+    assert "notes-of-mine.md" in capsys.readouterr().out
+    assert rc == 1, "a pending deletion is something to act on before updating"
+
+
+def test_an_update_names_every_file_it_deleted(tmp_path: Path, capsys):
+    """A deletion buried in a 200-line log is a deletion nobody sees."""
+    target = tmp_path / "consumer"
+    target.mkdir()
+    assert install.main(["--into", str(target), "--yes"]) == 0
+    (target / ".aide" / "notes-of-mine.md").write_text("mine\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert install.main(["--into", str(target), "--update"]) == 0
+
+    out = capsys.readouterr().out
+    assert "Removed 1 file(s)" in out
+    assert "notes-of-mine.md" in out.split("Removed 1 file(s)")[1]
+
+
+def test_an_update_reconciles_the_managed_gitignore_block(tmp_path: Path):
+    """Append-only meant a path ADDED to the block never reached a consumer,
+    while `core/README.md` went on calling it git-ignored."""
+    target = tmp_path / "consumer"
+    target.mkdir()
+    assert install.main(["--into", str(target), "--yes"]) == 0
+    gitignore = target / ".gitignore"
+    text = gitignore.read_text(encoding=install.CONSUMER_ENCODING)
+    gitignore.write_text(
+        text.replace("docs/aide/instructions/*.jsonl\n", ""), encoding="utf-8")
+
+    assert install.main(["--into", str(target), "--update"]) == 0
+
+    text = gitignore.read_text(encoding=install.CONSUMER_ENCODING)
+    assert "docs/aide/instructions/*.jsonl" in text
+    assert text.count(install.GITIGNORE_MARKER) == 1
+

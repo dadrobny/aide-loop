@@ -30,14 +30,42 @@ sys.path.insert(0, str(FRAMEWORK_ROOT))
 import install  # noqa: E402  (path shim above)
 
 
+#: Rules that MUST carry `paths:`. Named, because the frontmatter check below
+#: can only verify the keys of a block that parses — a file whose delimiter
+#: stopped being recognised has no keys to be wrong, and the runtime reads it
+#: as an unscoped rule loaded into every context. That is the failure this
+#: whole file exists to catch, and it cannot be caught by inspection alone.
+_MUST_BE_SCOPED = ("aide-test-hygiene.md", "aide-living-documents.md")
+
+
 def _split(path: Path) -> tuple:
-    """``(frontmatter_or_None, body)``. A rule may legitimately have neither."""
-    text = path.read_text(encoding="utf-8")
+    """``(frontmatter_or_None, body)``. A rule may legitimately have neither.
+
+    Reads with `utf-8-sig` and normalises CRLF before looking for the
+    delimiter. A BOM from a Windows editor, or CRLF line endings, would
+    otherwise make `startswith("---\n")` false — and this helper would report a
+    scoped rule as an unscoped one with a clean bill of health.
+    """
+    text = path.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
     if not text.startswith("---\n"):
         return None, text
     end = text.find("\n---\n", 4)
     assert end != -1, f"{path.name}: unterminated frontmatter block"
     return text[4:end], text[end + 5:]
+
+
+@pytest.mark.parametrize("name", _MUST_BE_SCOPED)
+def test_a_rule_that_must_be_scoped_still_parses_as_scoped(name: str):
+    """Fails closed. `test_frontmatter_...` returns early on a block it cannot
+    read, so without this an unparseable delimiter is indistinguishable from a
+    deliberate unscoped rule — and costs ~560 tokens on every spawn, silently.
+    """
+    path = _RULES_DIR / name
+    assert path.is_file(), f"{name} is gone; the scoping guarantee went with it"
+    raw = path.read_bytes()
+    assert raw.startswith(b"---"), f"{name}: no frontmatter delimiter at byte 0"
+    block, _ = _split(path)
+    assert block is not None and "paths:" in block, f"{name}: lost its `paths:`"
 
 
 def test_the_adapter_ships_rules():

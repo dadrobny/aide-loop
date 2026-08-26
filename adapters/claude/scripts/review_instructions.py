@@ -11,7 +11,9 @@ Three things it reports, in order of what they cost to get wrong:
    matching is silently inert — the file is still there, still correct, and
    reaches nobody. This is the failure the whole mechanism exists to avoid, so
    it is reported first and it is the only one that sets a non-zero exit under
-   ``--strict``.
+   ``--strict``. ``--strict`` is for a log you know covers work the rule should
+   have matched; over a log of sessions that touched nothing relevant, a silent
+   rule is the correct outcome, not a fault.
 2. **Load reason per file**, since `session_start` and `path_glob_match` mean
    very different things: the first is a cost paid in every context, the second
    is a cost paid only where the rule is relevant.
@@ -24,7 +26,8 @@ conventions section by hand leaves no trace here. This measures delivery, not
 reading.
 
 Everything below the ``main`` boundary is a pure function so it can be unit
-tested (see ``tests/test_instruction_review.py``).
+tested (see ``.claude/tests/test_instructions_loaded.py`` in this repo's
+source tree).
 """
 
 import argparse

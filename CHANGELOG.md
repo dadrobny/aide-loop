@@ -25,9 +25,20 @@ keys, and the adapter's agents/skills/commands.
   Each numbered section moved to `conventions/N-*.md`, and §1's document shapes
   to `conventions/1-format-contract/*.md`, so the pointer form already used in
   a hundred places resolves to a file: `§6` is `conventions/6-test-hygiene.md`,
-  `§1 → insights.md` is `conventions/1-format-contract/insights.md`. The prose
-  is unchanged — this is a move, not a rewrite. `conventions.md` keeps its path
-  and its opening line and now carries the section table.
+  `§1 → insights.md` is `conventions/1-format-contract/insights.md`.
+  `conventions.md` keeps its path and its opening line and now carries the
+  section table.
+
+  The move is content-preserving except in three places, all deliberate: the
+  opening paragraph (below), and the §3 and §6 preambles, which now state the
+  delivery obligation. No other prose changed, no heading level moved, and no
+  fenced example was split across files.
+
+  **A slicing read of the old file no longer works.** Agents were measured
+  accessing `conventions.md` exclusively by `offset`/`limit` or
+  `sed -n '60,100p'`; every one of those now returns index prose or nothing.
+  It fails loudly rather than silently, but it is the most visible day-one
+  change for a human with the habit.
 
   Its opening paragraph claimed "three parts" while the file had eight
   sections, and had been wrong since the bootstrap commit — §4 and §5 already
@@ -55,6 +66,19 @@ keys, and the adapter's agents/skills/commands.
   failure this replaces, and templating the globs at install time would
   reintroduce it as a config error.
 
+  **A `paths:` rule is armed by a read, not by a write.** `Edit` requires a
+  prior read, so editing an existing file always arms one; creating a *new*
+  matching file does not. The globs therefore cover the files each role reads
+  on the way to writing, and `test-writer` keeps an explicit instruction to go
+  read §6 itself — a repo with no tests yet gives the rule nothing to fire on,
+  which is exactly when the fixture conventions are being set.
+
+  **`aide-living-documents.md` is scoped but not rare.** Its globs include
+  `items/*.md` and `insights.md`, which all six roles reach, so it loads on
+  effectively every spawn. It carries only the document *shapes*; the
+  durable-artifact, insight-immutability and human-gate rules it first
+  duplicated are in `AGENT-CONTEXT.md`, already in every context.
+
   The six per-agent `## Command hygiene` blocks are **removed**; a test fails if
   one comes back. `ADAPTER-SPEC.md` §7 gains a **§-level delivery** contract
   point with the three properties that make a mechanism conformant rather than
@@ -81,10 +105,10 @@ keys, and the adapter's agents/skills/commands.
   heaviest agent specs, together about 83% of the measured per-queue budget:
 
   ```
-  core/AGENT-CONTEXT.md   4354 -> 3539   (-19%)
-  agents/validator.md    11660 -> 9610   (-18%)
-  agents/test-writer.md   6436 -> 5392   (-16%)
-  agents/spec-author.md   8513 -> 7483   (-12%)
+  core/AGENT-CONTEXT.md   4354 -> 3666   (-16%)
+  agents/validator.md    11660 -> 8596   (-26%)
+  agents/test-writer.md   6436 -> 4525   (-30%)
+  agents/spec-author.md   8513 -> 6414   (-25%)
   ```
 
   Cut: the counterfactual argument for a rejected alternative, defect-provenance
@@ -97,6 +121,28 @@ keys, and the adapter's agents/skills/commands.
 
   `conventions.md` was **not** compacted: at ~0.3 sliced reads per queue it is
   under 1% of the budget, and its size was never the problem.
+
+- **This release costs tokens; it does not save them.** Stated plainly because
+  issue #78 opened with a budget question and the answer turned out to be the
+  other way round. Against issue #78's spawn model (8-item queue, ~44 spawns,
+  ~4 bytes/token), over the agent specs, `AGENT-CONTEXT.md` and the rules:
+
+  ```
+  compaction (specs + AGENT-CONTEXT)              -30.8k
+  unscoped command-hygiene rule   x44             +17.9k
+  living-documents rule           x44             +19.5k
+  test-hygiene rule               x15..x35    +8.5k..+19.9k
+  ----------------------------------------------------------
+  net per 8-item queue                      +15.1k..+26.5k   (+11%..+19%)
+  ```
+
+  The per-spawn floor rises from 1,088 to 1,322 tokens (`AGENT-CONTEXT.md`
+  plus the unscoped rule). What this release buys is **delivery and one source
+  of truth**, not budget: the six inlined hygiene blocks had already drifted
+  (`spec-reviewer` was missing the commit-substitution rule), and a rule that
+  loads is not the same thing as a pointer that might be followed. A consumer
+  who wants the compaction without the cost can delete a rule from
+  `.claude/rules/` — it degrades to the pointer that was there before.
 
 ### Added
 
@@ -115,12 +161,39 @@ keys, and the adapter's agents/skills/commands.
   It measures **delivery, not reading**. Nothing loads on a `Read`, so the 3%
   above remains a transcript question.
 
+  **It does not activate on `--update` by itself.** `settings.json` is
+  non-clobbering by design, so an existing consumer gets the hook *file* but
+  not its registration; the `.aide-merge` diff names what is missing. Adopt
+  `.claude/settings.overlay.json` (regenerated deterministically from
+  framework-base + overlay on every run) and it activates and stays activated.
+
 ### Fixed
 
-- **`docs/aide/permissions/*.jsonl` is now actually gitignored.** `core/README.md`
-  had listed it as personal and git-ignored since it was introduced; the
-  installer's managed `.gitignore` block never named it. Fresh installs only —
-  the block is not rewritten on update.
+- **`docs/aide/permissions/*.jsonl` is now actually gitignored**, and the
+  managed `.gitignore` block is **reconciled on update**, not only appended on
+  install. `core/README.md` had listed that path as personal and git-ignored
+  since it was introduced while the block never named it — and append-only
+  meant the fix would have reached no existing consumer, exactly as the new
+  `docs/aide/instructions/*.jsonl` line would not have.
+
+  The block is marker-delimited and says in its first line that the installer
+  manages it, so only the lines *between* the markers are rewritten; content
+  above and below is untouched, and a consumer's BOM survives. A block whose
+  `# --- end AIDE ---` line has been removed is left alone with a notice
+  rather than guessed at.
+
+- **`install.py` no longer aborts an update on an unremovable file under
+  `.aide/`.** The prune followed symlinks, so a link to an empty directory
+  reached `rmdir()` and raised — after the engine and `.aide/VERSION` had been
+  written but before the adapter was copied, leaving a consumer on a 1.22.0
+  engine with a 1.21.0 adapter and an `install.py --check` that reported it up
+  to date. A symlink is now removed as a link (never following it to its
+  target), any `OSError` is logged and stepped over, and the prune runs **last**
+  so nothing it does can leave an install half-applied.
+
+  `--check` now previews the files an update would delete and exits non-zero,
+  and an update prints them in their own block after the log rather than
+  burying them in it.
 
 ## [1.21.0] — 2026-08-25
 

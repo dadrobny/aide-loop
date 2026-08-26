@@ -134,7 +134,8 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      **Run this in the foreground** (see step 1) — under `auto-merge` it re-runs
      the full suite first and takes as long as the test run did.
 
-     Read the base it reports back. If it is not what the run intends, hand back
+     Read the base it reports back: it is `main_branch` unless the item was
+     claimed from a queue branch. If it is not what the run intends, hand back
      rather than passing `--base` on your own initiative — a wrong merge target
      is not yours to choose. If it reports `pr` mode (pushed, awaiting a PR),
      leave the item 🔍, **report that it is awaiting review**, and surface the

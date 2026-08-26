@@ -225,3 +225,47 @@ def test_the_shipped_rules_are_the_ones_the_report_looks_for():
     assert review.RULES_DIR.name == "rules"
     assert (_ADAPTER / "rules").is_dir()
     assert sorted(p.name for p in (_ADAPTER / "rules").glob("*.md"))
+
+
+# --------------------------------------------------------------------------- #
+# registration — a hook that ships unregistered does nothing at all
+# --------------------------------------------------------------------------- #
+def test_every_shipped_hook_is_registered_in_the_framework_settings():
+    """A hook file is inert until `settings.json` names it.
+
+    `install.py` copies `hooks/` wholesale but is deliberately non-clobbering
+    about `settings.json`, so forgetting the registration ships the file to
+    every consumer and fires it in none of them — and nothing else in the suite
+    would notice, because the file is present, imports, and passes its tests.
+    """
+    settings = json.loads(
+        (_ADAPTER / "settings.json").read_text(encoding="utf-8"))
+    registered = json.dumps(settings.get("hooks", {}))
+    for hook_file in sorted((_ADAPTER / "hooks").glob("*.py")):
+        assert hook_file.name in registered, (
+            f"{hook_file.name} ships but no settings.json hook invokes it")
+
+
+def test_the_instructions_hook_is_registered_on_its_own_event():
+    """Registered on the wrong event it would log nothing and look healthy."""
+    settings = json.loads(
+        (_ADAPTER / "settings.json").read_text(encoding="utf-8"))
+    entries = settings.get("hooks", {}).get("InstructionsLoaded")
+    assert entries, "no InstructionsLoaded registration"
+    assert "log_instructions_loaded.py" in json.dumps(entries)
+
+
+def test_an_existing_consumers_settings_are_not_clobbered_by_a_new_hook():
+    """Pins the consequence, so nobody claims an update installs this.
+
+    `install_settings` keeps a consumer's `settings.json` and writes a
+    `.aide-merge` instead. That is the deliberate ownership rule, and it means
+    adding a hook to the framework base does NOT activate it for an existing
+    consumer until they adopt `settings.overlay.json`. The CHANGELOG says so;
+    this is the test that keeps that statement true.
+    """
+    source = (_ADAPTER.parents[1] / "install.py").read_text(encoding="utf-8")
+    assert "kept (existing)" in source, (
+        "settings.json became clobbering — the CHANGELOG's caveat about the "
+        "InstructionsLoaded hook needing an overlay is now wrong")
+

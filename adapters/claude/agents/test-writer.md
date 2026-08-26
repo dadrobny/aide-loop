@@ -61,8 +61,10 @@ fixture conventions only.
 - Do **not** modify shared `conftest.py` unless a fixture is genuinely necessary
   and cannot be handled with inline `tmp_path`.
 - Tests must be deterministic and cross-platform (Windows + macOS + Linux),
-  with no network calls — §6 has the specifics and is delivered as a rule when
-  you open a test file.
+  with no network calls. `.aide/conventions/6-test-hygiene.md` has the
+  specifics and arrives as a rule once you open a test file — **but read it
+  yourself before writing a test that touches a path, hashes a file, or parses
+  output**, because a repo with no tests yet gives the rule nothing to fire on.
 - **A test that cannot fail is worse than no test.** Before you assert on
   anything you derived — a captured stdout, a globbed file list, a parsed
   field — assert it is non-empty and recognisable *first*. A glob that matched
