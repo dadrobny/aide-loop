@@ -53,6 +53,25 @@ keys, and the adapter's agents/skills/commands.
   binding was the command-hygiene block restated verbatim in all six agent
   specs; one of the six had already drifted.
 
+  **Rules that were nominally binding were not reaching agents at all.** Two
+  gaps, both checkable against 1.21.0 rather than inferred:
+
+  - §3's *first* rule — "if an `aide` verb covers it, the raw git form is
+    wrong" — appeared in **none of the six** agent specs. The rule most likely
+    to make an agent improvise `git switch -c` instead of `aide claim` was
+    delivered to nobody.
+  - The **six status icons** and the rule that they are read at three
+    *structural* positions only appeared in `queue-planner` and `validator`.
+    `builder`, `spec-author`, `spec-reviewer` and `test-writer` had none of it,
+    and neither did `AGENT-CONTEXT.md` — the one file loaded into every
+    context. `builder` sets 🚧 and `spec-author` adds a human-gate row by hand,
+    both against a document shape they were never given.
+
+  In both cases the contract existed and was reachable only by following a
+  pointer, which measurement puts at about 3%. So this is a **functional fix**
+  first: agents now receive rules they were previously missing. Eliminating the
+  drift between six hand-maintained copies is the second benefit, not the first.
+
   New `adapters/claude/rules/` (installed to `.claude/rules/`):
 
   | File | Loads | Delivers |
@@ -137,9 +156,9 @@ keys, and the adapter's agents/skills/commands.
   `conventions.md` was **not** compacted: at ~0.3 sliced reads per queue it is
   under 1% of the budget, and its size was never the problem.
 
-- **This release costs tokens; it does not save them.** Stated plainly because
-  issue #78 opened with a budget question and the answer turned out to be the
-  other way round. Against issue #78's spawn model (8-item queue, ~44 spawns,
+- **What the fix costs.** Issue #78 opened with a budget question, so the
+  arithmetic is stated plainly: delivering the rules above costs more than the
+  compaction saves. Against issue #78's spawn model (8-item queue, ~44 spawns,
   ~4 bytes/token), over the agent specs, `AGENT-CONTEXT.md` and the rules:
 
   ```
@@ -152,12 +171,17 @@ keys, and the adapter's agents/skills/commands.
   ```
 
   The per-spawn floor rises from 1,088 to 1,322 tokens (`AGENT-CONTEXT.md`
-  plus the unscoped rule). What this release buys is **delivery and one source
-  of truth**, not budget: the six inlined hygiene blocks had already drifted
-  (`spec-reviewer` was missing the commit-substitution rule), and a rule that
-  loads is not the same thing as a pointer that might be followed. A consumer
-  who wants the compaction without the cost can delete a rule from
-  `.claude/rules/` — it degrades to the pointer that was there before.
+  plus the unscoped rule). That is the price of the two gaps above being
+  closed, not a regression against a goal: a rule that loads is not the same
+  thing as a pointer that might be followed, and the six inlined hygiene blocks
+  had already drifted (`spec-reviewer` was missing the commit-substitution
+  rule) precisely because six hand-maintained copies is not a delivery
+  mechanism either.
+
+  A consumer who would rather have the compaction without the cost can delete
+  a file from `.claude/rules/`; it degrades to the pointer that was there
+  before. Issue #85 proposes getting most of the cost back by delivering
+  per-role via `skills:` instead of per-file via `paths:`.
 
 ### Added
 
