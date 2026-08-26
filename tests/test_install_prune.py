@@ -13,12 +13,31 @@ Stdlib + pytest only; `install.py` is imported as a module.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+
+import pytest
 
 FRAMEWORK_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FRAMEWORK_ROOT))
 import install  # noqa: E402  (path shim above)
+
+
+def _symlinks_work(tmp_path: Path) -> bool:
+    """Whether this machine can create one at all.
+
+    Windows needs Administrator or Developer Mode. The GitHub runner happens to
+    have it; a contributor's machine is not guaranteed to, and an OSError from
+    the *setup* of a test reads as a failure of the code under test.
+    """
+    probe = tmp_path / "_symlink_probe"
+    try:
+        probe.symlink_to(tmp_path)
+    except (OSError, NotImplementedError):
+        return False
+    probe.unlink()
+    return True
 
 
 def _tree(root: Path, *rel: str) -> Path:
@@ -143,6 +162,9 @@ def test_a_symlink_to_a_directory_is_unlinked_and_its_target_survives(tmp_path: 
     update — after `.aide/VERSION` had already been rewritten, so `--check`
     then reported the half-applied install as up to date.
     """
+    if not _symlinks_work(tmp_path):
+        pytest.skip("this machine cannot create symlinks "
+                    "(Windows without Developer Mode)")
     outside = tmp_path / "outside" / "empty"
     outside.mkdir(parents=True)
     src = _tree(tmp_path / "src", "keep.md")
@@ -157,6 +179,9 @@ def test_a_symlink_to_a_directory_is_unlinked_and_its_target_survives(tmp_path: 
 
 def test_a_symlink_to_a_non_empty_directory_is_also_unlinked(tmp_path: Path):
     """The emptiness of the TARGET must not decide the fate of the link."""
+    if not _symlinks_work(tmp_path):
+        pytest.skip("this machine cannot create symlinks "
+                    "(Windows without Developer Mode)")
     outside = tmp_path / "outside" / "full"
     outside.mkdir(parents=True)
     (outside / "a.md").write_text("a", encoding="utf-8")
@@ -170,22 +195,58 @@ def test_a_symlink_to_a_non_empty_directory_is_also_unlinked(tmp_path: Path):
     assert (outside / "a.md").is_file()
 
 
-def test_a_removal_that_fails_is_logged_and_stepped_over(tmp_path: Path):
+def test_a_removal_that_fails_is_logged_and_stepped_over(tmp_path, monkeypatch):
     """One unremovable file must not cost the consumer the rest of the update.
 
-    On Windows this is `.aide/loop/loop.py` held open by a running supervisor —
-    a realistic state during exactly the unattended run an update interrupts.
+    The realistic case is Windows: `.aide/loop/loop.py` held open by a running
+    supervisor, during exactly the unattended run an update interrupts.
+
+    The failure is injected rather than staged from the filesystem. What is
+    under test is the `except OSError` branch, and every way of producing a
+    real one is platform-specific in a different direction — a POSIX
+    unwritable directory does not stop a delete on Windows, a Windows
+    read-only file does not stop one on POSIX. Staging it would test the OS.
+    """
+    src = _tree(tmp_path / "src", "keep.md")
+    dst = _tree(tmp_path / "dst", "keep.md", "doomed/gone.md", "also-gone.md")
+
+    real_unlink = Path.unlink
+
+    def refuse_one(self, *args, **kwargs):
+        if self.name == "gone.md":
+            raise PermissionError(13, "Permission denied")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse_one)
+    log: list = []
+    removed = install.prune_stale(src, dst, log)
+
+    assert (dst / "doomed" / "gone.md").is_file(), "injection did not take"
+    assert any("could not be removed" in line for line in log), log
+    assert (dst / "doomed" / "gone.md") not in removed
+    assert not (dst / "also-gone.md").exists(), "the prune stopped early"
+    assert (dst / "doomed").is_dir(), (
+        "a directory the prune could not empty must not be reported gone")
+    assert (dst / "keep.md").is_file()
+
+
+@pytest.mark.skipif(os.name == "nt",
+                    reason="POSIX mode bits do not gate deletion on Windows")
+def test_a_real_permission_error_is_an_oserror_the_prune_catches(tmp_path: Path):
+    """The injected error above is only right if a real one has the same type.
+
+    POSIX only, deliberately: this asserts what the operating system raises,
+    which is the half the injection cannot speak for.
     """
     src = _tree(tmp_path / "src", "keep.md")
     dst = _tree(tmp_path / "dst", "keep.md", "locked/gone.md", "also-gone.md")
     (dst / "locked").chmod(0o500)          # no write bit: the unlink will fail
     log: list = []
     try:
-        removed = install.prune_stale(src, dst, log)
+        install.prune_stale(src, dst, log)
         assert (dst / "locked" / "gone.md").is_file(), "test setup did not lock"
         assert any("could not be removed" in line for line in log), log
         assert not (dst / "also-gone.md").exists(), "the prune stopped early"
-        assert (dst / "locked" / "gone.md") not in removed
     finally:
         (dst / "locked").chmod(0o700)
 
