@@ -92,6 +92,13 @@ keys, and the adapter's agents/skills/commands.
   stayed in a consumer forever — the sectioning above would otherwise have left
   a superseded `.aide/conventions.md` beside the new tree in every install.
 
+  It removes nothing the engine itself shipped today — the sectioning kept
+  `conventions.md` at its path — but it is not a no-op: it deletes anything a
+  consumer put under `.aide/` themselves, on `--update` **and on a plain
+  re-`--install`**, since both are the same reconciliation. `--check` previews
+  each such file and exits non-zero, and an update prints them in their own
+  block after the log, so neither happens silently.
+
   **Only `.aide/` is pruned**, because that tree is framework-owned in full,
   which is what makes "absent from the source" mean "removed from the engine".
   `.claude/agents/` and its siblings are directories a project legitimately
