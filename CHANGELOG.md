@@ -73,6 +73,14 @@ keys, and the adapter's agents/skills/commands.
   read §6 itself — a repo with no tests yet gives the rule nothing to fire on,
   which is exactly when the fixture conventions are being set.
 
+  If that instruction proves too weak in your project, the mechanism that
+  closes it outright is `skills:` frontmatter on the agent, which preloads a
+  skill's full body at agent startup with no read involved. Move the rule's
+  body to `.claude/skills/<name>/SKILL.md`, keep its `paths:` frontmatter (a
+  skill accepts the same field, so it still auto-loads for everyone else), and
+  add `skills: [<name>]` to `.claude/agents/test-writer.md`. That is per-role
+  and costs nothing in the roles that do not name it.
+
   **`aide-living-documents.md` is scoped but not rare.** Its globs include
   `items/*.md` and `insights.md`, which all six roles reach, so it loads on
   effectively every spawn. It carries only the document *shapes*; the
