@@ -36,7 +36,14 @@ consumer (issues #88, #93).
   thing that IS live in a body: `$(…)`/backtick substitution under an unquoted
   delimiter (`<<EOF`); under a quoted one (`<<'EOF'`, `<<"EOF"`, `<<\EOF`) the
   body is fully literal and stays invisible. Here-strings (`<<<`) have no body
-  and are untouched.
+  and are untouched. Because a phantom opener's "body" would run to the end of
+  the input and exempt everything after it from every rule, a `<<` is only an
+  opener in redirection position, outside quotes and outside `((…))`
+  arithmetic — a shift, a quoted mention, or prose never silences the guard —
+  and a CRLF command's `\r`-suffixed terminator still ends its body. Rule 1's
+  path-value scan reads bodies as blanks too, so a commit message *naming*
+  `--git-dir` is not read as a second repo blocking the declared-sibling
+  commit shape.
 
 ### Changed
 

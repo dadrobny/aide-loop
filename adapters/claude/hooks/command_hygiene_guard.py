@@ -57,14 +57,44 @@ def _blank_quoted(cmd):
     return "".join(out)
 
 
-#: A heredoc opener: `<<` or `<<-`, then the delimiter word, whose quoting
-#: decides whether the body interpolates. `(?<!<)` / `(?!<)` keep a `<<<`
-#: here-string (which has no body) from matching at either offset.
+#: A heredoc opener CANDIDATE: `<<` or `<<-`, then the delimiter word, whose
+#: quoting decides whether the body interpolates. `(?<!<)` / `(?!<)` keep a
+#: `<<<` here-string (which has no body) from matching at either offset. The
+#: delimiter must sit on the opener's own line (`[ \t]*`, never a newline).
+#: A match is only a candidate — `_heredoc_body_spans` still rejects one that
+#: is not in redirection position, or sits inside quotes or `((…))`
+#: arithmetic, where `<<` is prose or a shift, not a redirection.
 _HEREDOC_OPEN_RE = re.compile(
-    r"(?<!<)<<(?P<dash>-?)\s*"
+    r"(?<!<)<<(?!<)(?P<dash>-?)[ \t]*"
     r"(?:'(?P<sq>[^'\n]+)'|\"(?P<dq>[^\"\n]+)\"|\\(?P<bs>\S+)"
     r"|(?P<bare>[A-Za-z0-9_][A-Za-z0-9_.-]*))"
 )
+
+
+def _quoted_at(cmd, pos, skip_spans):
+    """True when *pos* sits inside a single- or double-quoted span, scanning
+    from the start with already-collected heredoc bodies skipped (a body is
+    data — an apostrophe in its prose opens no quote)."""
+    quote = None
+    i = 0
+    while i < pos:
+        if any(s <= i < e for s, e, _ in skip_spans):
+            i += 1
+            continue
+        ch = cmd[i]
+        if quote:
+            if quote == '"' and ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch == "\\":
+            i += 2
+            continue
+        elif ch in "'\"":
+            quote = ch
+        i += 1
+    return quote is not None
 
 
 def _heredoc_body_spans(cmd):
@@ -82,14 +112,35 @@ def _heredoc_body_spans(cmd):
     keep watching the bodies where substitution really runs.
 
     The body runs from the line after its opener to the terminator line (bare
-    delimiter; ``<<-`` also strips leading tabs). Several openers on one line
-    stack their bodies in order. An unterminated body extends to the end —
-    which is what the shell does with it too. Openers inside an
-    already-collected body (prose quoting a heredoc) are not new heredocs.
+    delimiter; ``<<-`` also strips leading tabs; a trailing ``\\r`` is
+    tolerated so a CRLF command does not read as unterminated). Several
+    openers on one line stack their bodies in order. An unterminated body
+    extends to the end — which is what the shell does with it too.
+
+    A candidate that is not actually a redirection is REJECTED, because a
+    phantom opener's "body" runs to the end of the input and would blank —
+    i.e. exempt from every rule — everything after it. Rejected: an opener
+    inside an already-collected body (prose quoting a heredoc); one not in
+    redirection position (must follow start-of-line, whitespace, ``|``,
+    ``&``, ``;`` or ``(`` — so ``a<<b`` never fires, which forgoes bash's
+    mid-word redirection and the ``3<<EOF`` fd form in exchange for never
+    misreading a shift or prose, the pre-existing posture for those); one
+    inside ``((…))`` arithmetic, where ``<<`` shifts; and one inside quotes,
+    where it is a string. A rejected candidate's body text stays visible to
+    the lints, which is exactly the pre-#88 behaviour for that command.
     """
     spans = []
     for m in _HEREDOC_OPEN_RE.finditer(cmd):
         if any(s <= m.start() < e for s, e, _ in spans):
+            continue
+        prev = cmd[m.start() - 1] if m.start() else ""
+        if prev and prev not in " \t\n|&;(":
+            continue
+        floor = spans[-1][1] if spans else 0
+        arith = cmd.rfind("((", floor, m.start())
+        if arith != -1 and cmd.find("))", arith, m.start()) == -1:
+            continue
+        if _quoted_at(cmd, m.start(), spans):
             continue
         delim = m.group("sq") or m.group("dq") or m.group("bs") or m.group("bare")
         interpolates = m.group("bare") is not None
@@ -103,6 +154,7 @@ def _heredoc_body_spans(cmd):
         while i < len(cmd):
             j = cmd.find("\n", i)
             line = cmd[i:j] if j != -1 else cmd[i:]
+            line = line.rstrip("\r")
             if (line.lstrip("\t") if m.group("dash") else line) == delim:
                 end = i  # up to, not including, the terminator line
                 break
@@ -277,10 +329,12 @@ def _declared_repo_paths():
 #: Presence (this regex, no captured value — matched against the
 #: quote-blanked ``bare`` text, same as every other rule here, so an operator
 #: *inside* a commit message never false-positives) is checked separately
-#: from the actual path VALUE (`_git_repo_override_paths`, matched against
-#: the raw, unblanked ``cmd`` — a legitimately quoted path containing a space
+#: from the actual path VALUE (`_git_repo_override_paths`, matched with
+#: quotes left visible — a legitimately quoted path containing a space
 #: would itself be blanked to nothing in ``bare`` and silently vanish from a
-#: value-capturing match, wrongly suppressing the trigger).
+#: value-capturing match, wrongly suppressing the trigger — though with
+#: heredoc bodies removed, since a flag named in a commit message's prose is
+#: not a path the command operates on).
 _GIT_REPO_OVERRIDE_TRIGGER_RE = re.compile(
     r"\bgit\s+-C\b|--git-dir\b|--work-tree\b|\bGIT_DIR=|\bGIT_WORK_TREE="
 )
@@ -309,8 +363,9 @@ _GIT_DIR_FLAVOURED_GROUPS = frozenset({"gitdir", "envdir"})
 
 def _git_repo_override_paths(cmd):
     """Every ``(group_name, path)`` argument to `-C`/`--git-dir`/`--work-tree`/
-    `GIT_DIR=`/`GIT_WORK_TREE=` in *cmd* (the raw, unblanked command — see
-    `_GIT_REPO_OVERRIDE_TRIGGER_RE`'s docstring for why), in order. Empty if
+    `GIT_DIR=`/`GIT_WORK_TREE=` in *cmd* (quotes visible, heredoc bodies
+    blanked — see `_GIT_REPO_OVERRIDE_TRIGGER_RE`'s docstring for why), in
+    order. Empty if
     *cmd* uses none of them, or a flag is present with no parseable value."""
     paths = []
     for m in _GIT_REPO_OVERRIDE_VALUE_RE.finditer(cmd):
@@ -382,9 +437,15 @@ def violations(cmd):
     #    the personal .aide/loop/loop.local.toml, never aide.toml. Two
     #    different repos in one command stay blocked even when both are
     #    declared — see `_git_repo_override_all_declared`.
+    #    The path VALUES are scanned on `data`, not the raw `cmd`: quotes must
+    #    stay visible there (see _GIT_REPO_OVERRIDE_TRIGGER_RE's docstring) but
+    #    heredoc bodies must not — `--git-dir=/junk` in a commit message's
+    #    prose is not a second repo, and reading it as one re-blocks the exact
+    #    `git -C <declared> commit -F - <<'EOF'` shape the body-blanking above
+    #    exists to allow.
     has_override = bool(_GIT_REPO_OVERRIDE_TRIGGER_RE.search(bare))
     if re.match(r"\s*cd\s", cmd) or (
-        has_override and not _git_repo_override_all_declared(cmd)
+        has_override and not _git_repo_override_all_declared(data)
     ):
         found.append(
             "Drop the `cd` prefix, and drop `-C`/`--git-dir`/`--work-tree`/"
