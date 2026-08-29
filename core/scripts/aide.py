@@ -1448,6 +1448,26 @@ def _malformed_gate_row_warnings(lines: List[str]) -> List[str]:
     return out
 
 
+def _reach_with_breadth(lines: List[str], g: HumanGate) -> str:
+    """*g*'s reach with the held items resolved and counted.
+
+    A ``stage N`` reach reads plausibly right while holding items its author
+    never meant to hold — the observed case gated the very deliberation that
+    was to produce the gate's evidence. ``aide claim`` already names what it
+    holds, but that surfaces only when a runner stalls; the check computes the
+    same breadth (``stage_item_numbers``) and used to throw it away, so the
+    contradiction was invisible at authoring time. Only the stage form needs
+    resolving: an item-list reach already names its items, and ``all`` is its
+    own answer.
+    """
+    if g.stage is not None:
+        items = stage_item_numbers(lines, g.stage)
+        if items:
+            return (f"stage {g.stage} — holding {len(items)} item(s): "
+                    + ", ".join(f"{i:03d}" for i in items))
+    return g.reach
+
+
 def gate_warnings(lines: List[str]) -> List[str]:
     """One warning per unresolved human gate, plus one per unreadable row.
 
@@ -1469,7 +1489,7 @@ def gate_warnings(lines: List[str]) -> List[str]:
         if g.kind == "declined":
             out.append(
                 f"progress.md:{g.lineno}: human gate {n} ({g.text}) was DECLINED "
-                f"and still blocks {g.reach} — a refusal does not release the "
+                f"and still blocks {_reach_with_breadth(lines, g)} — a refusal does not release the "
                 f"work it guards; drop those items or change what the gate asks")
             continue
         if g.stage is not None and not stage_item_numbers(lines, g.stage):
@@ -1491,7 +1511,7 @@ def gate_warnings(lines: List[str]) -> List[str]:
                          f"it holds nothing today and will block that stage's "
                          f"items as they are created")
         elif g.blocks or g.stage or g.blocks_all:
-            reach = g.reach
+            reach = _reach_with_breadth(lines, g)
         else:
             reach = ("nothing named — the Blocks cell names no item, no "
                      "'stage N', and is not 'all', so this gate holds nothing")
@@ -2018,14 +2038,23 @@ def header_blockquote_warnings(ddir: Path) -> List[str]:
     return out
 
 
-def item_spec_warnings(ddir: Path) -> List[str]:
+def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide") -> List[str]:
     """Item specs that break the shapes §1 and §5 fix.
 
-    Three rules, none previously checked: the `# Item NNN — Title` heading must
-    agree with the filename (the status report parses the title from it); the
-    header must carry NO status field (status lives only in progress.md, and a
-    duplicate has no owner and only drifts); and the **Assumptions** block is
-    mandatory, since it is what the validator surfaces for audit.
+    Four rules: the `# Item NNN — Title` heading must agree with the filename
+    (the status report parses the title from it); the header must carry NO
+    status field (status lives only in progress.md, and a duplicate has no
+    owner and only drifts); the **Assumptions** block is mandatory, since it
+    is what the validator surfaces for audit; and no always-authorised path
+    may sit under **Asserts against** — the loop itself edits those on every
+    item (the mandatory status flip alone touches progress.md), so the pin can
+    never hold and `aide scope` would fail the item on its routine
+    bookkeeping. Pinning progress.md is the natural way to write an AC that
+    reads a gate row, which is exactly why it needs a spec-time warning.
+
+    *ddir_rel* is the docs dir as specs spell it in their repo-relative paths;
+    `run_checks` passes the configured value, and the default matches the
+    scaffolded `aide.toml`.
 
     The missing-Assumptions finding is reported as ONE aggregated line. Specs
     predating the rule are common — 32 of 112 in the consumer this was measured
@@ -2035,6 +2064,7 @@ def item_spec_warnings(ddir: Path) -> List[str]:
     idir = ddir / "items"
     if not idir.is_dir():
         return []
+    always = tuple(f"{ddir_rel}/{name}" for name in _ALWAYS_AUTHORISED)
     out: List[str] = []
     missing_assumptions: List[str] = []
     for path in sorted(idir.glob("*.md")):
@@ -2060,6 +2090,16 @@ def item_spec_warnings(ddir: Path) -> List[str]:
                        f"and only drifts")
         if not re.search(r"^##\s+Assumptions", text, re.MULTILINE):
             missing_assumptions.append(f"{num:03d}")
+        parsed = parse_authorised_paths(text)
+        for pin in (parsed.asserts_against if parsed else []):
+            if any(patterns_overlap(pin, a) for a in always):
+                out.append(
+                    f"items/{path.name}: '{pin}' is pinned under Asserts "
+                    f"against, but every item is authorised to edit it — the "
+                    f"status flip and the insight append are loop bookkeeping "
+                    f"— so the pin can never hold and `aide scope` will report "
+                    f"a contradiction on every run; put the read-only content "
+                    f"check in an acceptance criterion's test instead")
     if missing_assumptions:
         shown = ", ".join(missing_assumptions[:8])
         more = (f" (+{len(missing_assumptions) - 8} more)"
@@ -2161,7 +2201,14 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(cli_subprocess_test_warnings(repo_root, config))
     warnings.extend(gitattributes_eol_pin_warnings(repo_root, config))
     warnings.extend(header_blockquote_warnings(ddir))
-    warnings.extend(item_spec_warnings(ddir))
+    try:
+        ddir_rel = ddir.relative_to(repo_root).as_posix()
+    except ValueError:
+        # A docs_dir configured outside the repo cannot appear in a spec's
+        # repo-relative paths, so the always-authorised pin lint has nothing
+        # to match; the other spec-shape lints still apply.
+        ddir_rel = ddir.as_posix()
+    warnings.extend(item_spec_warnings(ddir, ddir_rel))
     if ddir.exists() and not ddir.is_dir():
         # `docs_dir` pointing at something that is not a directory is a
         # misconfiguration, and a third case again: it is neither "no document
@@ -2513,7 +2560,14 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     ddir_rel = ddir.relative_to(repo_root).as_posix()
     bookkeeping = {f"{ddir_rel}/{name}" for name in _ALWAYS_AUTHORISED}
 
-    ordered = sorted(declared)
+    # Items already ✅ in progress.md are discounted from every cross-spec
+    # comparison, on both sides: a merged item's May-change claim is spent, so
+    # it can neither be harmed by a later writer nor harm one, and its spec is
+    # a record nobody may edit — so a finding against it is an error no later
+    # item can clear, reported for the rest of the queue's life. What remains
+    # is exactly the set of live conflicts the check exists to find.
+    item_status = _progress_item_status(repo_root, config)
+    ordered = sorted(n for n in declared if item_status.get(n) != "complete")
     for i, a in enumerate(ordered):
         for b in ordered[i + 1:]:
             # Row 1 — two items claim edit rights on the same file.
@@ -2551,7 +2605,14 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     # work rather than failing.
     graph = {num: _item_dependencies(repo_root, config, num)
              for num in numbers if num not in unspecced}
-    for cycle in _dependency_cycles(graph):
+    # ✅ nodes are dropped before cycle detection: a cycle every member of
+    # which merged has PROVED its order was satisfiable, and one with a merged
+    # member is broken at that member — only a cycle among live items can
+    # still deadlock `aide claim`. The full graph is kept for the
+    # unknown-dependency pass below, which is about typos, not ordering.
+    live_graph = {num: deps for num, deps in graph.items()
+                  if item_status.get(num) != "complete"}
+    for cycle in _dependency_cycles(live_graph):
         chain = " → ".join(f"{n:03d}" for n in cycle + [cycle[0]])
         findings.append(SpecFinding(
             "error", "dependency-cycle", tuple(cycle),
@@ -3219,6 +3280,15 @@ def _queue_titles(text: str) -> Dict[int, str]:
 #: parser (and a human skimming the section) can tell the two apart.
 _DEPENDENCIES_DOWNSTREAM_MARKER_RE = re.compile(r"\*\*Downstream\b", re.IGNORECASE)
 
+#: Marks a quoted human-gate reach ("waits on Gate 3 — `Blocks: 119, 120,
+#: 121`"). Transcribing the gate row's cell is the natural way to say which
+#: gate holds this item, and the numbers in the quote are the GATE's reach,
+#: not items this one depends on — reading them as blockers grew edges (and
+#: cycles) nobody authored. Only the line's remainder after the marker is
+#: excluded: unlike ``**Downstream`` the quote does not open a subsection, so
+#: a dependency bullet on the next line must still be read.
+_DEPENDENCIES_BLOCKS_QUOTE_RE = re.compile(r"\bblocks\s*:", re.IGNORECASE)
+
 
 def _item_dependencies(repo_root: Path, config, number: int) -> List[int]:
     """Item numbers named in the spec's Dependencies section (best effort).
@@ -3229,7 +3299,9 @@ def _item_dependencies(repo_root: Path, config, number: int) -> List[int]:
     the first in "Items 093, 094, 095" unrecognised as a blocker. Text at or
     after a "**Downstream" marker is excluded (see
     `_DEPENDENCIES_DOWNSTREAM_MARKER_RE`), so a forward-looking "item 099
-    depends on this" aside does not register as a backward blocker.
+    depends on this" aside does not register as a backward blocker; likewise
+    the rest of any line from a "Blocks:" marker on (see
+    `_DEPENDENCIES_BLOCKS_QUOTE_RE`), so a quoted gate reach does not either.
     """
     idir = docs_dir(repo_root, config) / "items"
     specs = item_spec_paths(idir, number)
@@ -3241,6 +3313,8 @@ def _item_dependencies(repo_root: Path, config, number: int) -> List[int]:
     downstream = _DEPENDENCIES_DOWNSTREAM_MARKER_RE.search(section)
     if downstream is not None:
         section = section[: downstream.start()]
+    section = "\n".join(_DEPENDENCIES_BLOCKS_QUOTE_RE.split(line, 1)[0]
+                        for line in section.splitlines())
     deps = set(_referenced_item_numbers(section))
     deps.discard(number)
     return sorted(deps)

@@ -64,13 +64,18 @@ def _spec_text(num: int, may=(), asserts=(), deps="None.") -> str:
     return "\n".join(lines)
 
 
-def _make_repo(tmp_path: Path, specs: dict, queue_items=(27, 28)) -> Path:
+#: Item 027 merged (✅ means merged, in every git.mode), 028 still open.
+PROGRESS_27_DONE = PROGRESS.replace("- 📋 A. *(Item 027)*", "- ✅ A. *(Item 027)*")
+
+
+def _make_repo(tmp_path: Path, specs: dict, queue_items=(27, 28),
+               progress: str = PROGRESS) -> Path:
     repo = tmp_path / "repo"
     d = repo / "docs" / "aide"
     (d / "queue").mkdir(parents=True)
     (d / "items").mkdir(parents=True)
     (repo / "aide.toml").write_text(AIDE_TOML, encoding="utf-8")
-    (d / "progress.md").write_text(PROGRESS, encoding="utf-8")
+    (d / "progress.md").write_text(progress, encoding="utf-8")
     body = "\n\n".join(f"### Item {n:03d}: Thing {n}\nDoes a thing."
                        for n in queue_items)
     (d / "queue" / "queue-003.md").write_text(f"# Demo — Work Queue 003\n\n{body}\n",
@@ -227,6 +232,120 @@ def test_dependency_on_a_real_earlier_item_is_not_flagged(tmp_path: Path):
     })
     findings, _ = _findings(repo)
     assert findings == []
+
+
+# --------------------------------------------------------------------------- #
+# the ✅ discount — a merged item's claims are spent
+# --------------------------------------------------------------------------- #
+def test_a_completed_items_may_change_claim_is_spent(tmp_path: Path):
+    """The recorded shape: item 118 (✅) claimed `spline.py`; item 119 exists to
+    rewrite it. The conflict was real while both were live — once 118 merged,
+    reporting it for the rest of the queue's life gives 119 an error it cannot
+    clear without editing a completed item's spec."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/spline.py"]),
+        28: _spec_text(28, may=["src/spline.py"]),
+    }, progress=PROGRESS_27_DONE)
+    findings, _ = _findings(repo)
+    assert findings == []
+
+
+def test_a_completed_items_pin_is_retired(tmp_path: Path):
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/other.py"], asserts=["src/cli.py"]),
+        28: _spec_text(28, may=["src/cli.py"]),
+    }, progress=PROGRESS_27_DONE)
+    findings, _ = _findings(repo)
+    assert findings == []
+
+
+def test_a_completed_item_cannot_break_a_live_pin(tmp_path: Path):
+    """The other side of the discount: what a merged item changed, it has
+    already changed — the live spec's pin was authored against the result."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, may=["src/other.py"], asserts=["src/cli.py"]),
+    }, progress=PROGRESS_27_DONE)
+    findings, _ = _findings(repo)
+    assert findings == []
+
+
+def test_conflicts_between_live_items_survive_the_discount(tmp_path: Path):
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/done.py"]),
+        28: _spec_text(28, may=["src/shared.py"]),
+        29: _spec_text(29, may=["src/shared.py"]),
+    }, queue_items=(27, 28, 29),
+       progress=PROGRESS_27_DONE.replace(
+           "- 📋 B. *(Item 028)*", "- 📋 B. *(Item 028)*\n- 📋 C. *(Item 029)*"))
+    findings, _ = _findings(repo)
+    hit = next(f for f in findings if f.kind == "may-change-overlap")
+    assert hit.items == (28, 29)
+
+
+def test_a_cycle_among_completed_items_is_inert(tmp_path: Path):
+    """A cycle every member of which merged has PROVED its order was
+    satisfiable; reporting it as an error for the rest of the queue's life is
+    exactly the unclearable-noise shape the discount removes."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/a.py"], deps="Item 028 provides the API."),
+        28: _spec_text(28, may=["src/b.py"], deps="Item 027 provides the schema."),
+    }, progress=PROGRESS_27_DONE.replace("- 📋 B. *(Item 028)*",
+                                         "- ✅ B. *(Item 028)*"))
+    findings, _ = _findings(repo)
+    assert not any(f.kind == "dependency-cycle" for f in findings)
+
+
+def test_a_cycle_with_a_merged_member_is_broken_at_that_member(tmp_path: Path):
+    """027 merged: 028's dependency on it is satisfied, and 027's own spec no
+    longer waits on anything — nothing deadlocks."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/a.py"], deps="Item 028 provides the API."),
+        28: _spec_text(28, may=["src/b.py"], deps="Item 027 provides the schema."),
+    }, progress=PROGRESS_27_DONE)
+    findings, _ = _findings(repo)
+    assert not any(f.kind == "dependency-cycle" for f in findings)
+
+
+def test_a_cycle_among_live_items_is_still_an_error(tmp_path: Path):
+    """The discount must remove only the inert reports — a live cycle is the
+    deadlock the check exists to find."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/a.py"], deps="Item 028 provides the API."),
+        28: _spec_text(28, may=["src/b.py"], deps="Item 027 provides the schema."),
+    })
+    findings, _ = _findings(repo)
+    assert any(f.kind == "dependency-cycle" for f in findings)
+
+
+# --------------------------------------------------------------------------- #
+# a quoted gate reach is not a dependency
+# --------------------------------------------------------------------------- #
+def test_a_quoted_gate_blocks_list_creates_no_edges(tmp_path: Path):
+    """Transcribing the gate row is the natural way to say which gate holds an
+    item; the numbers in the quote are the gate's reach, not blockers. Read as
+    edges they yielded cycles among items nobody ordered."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/a.py"],
+                       deps="None. Waits on Gate 3 — Blocks: items 028, 099."),
+        28: _spec_text(28, may=["src/b.py"], deps="Item 027 provides the schema."),
+    })
+    findings, _ = _findings(repo)
+    assert not any(f.kind in ("dependency-cycle", "unknown-dependency")
+                   for f in findings)
+
+
+def test_numbers_before_a_blocks_quote_still_block(tmp_path: Path):
+    """The exclusion is the line's remainder, not the line: a real dependency
+    sharing a line with a gate quote must survive."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/a.py"],
+                       deps="Item 028 provides the API. Blocks: item 999."),
+        28: _spec_text(28, may=["src/b.py"], deps="Item 027 provides the schema."),
+    })
+    findings, _ = _findings(repo)
+    assert any(f.kind == "dependency-cycle" for f in findings)
+    assert not any(f.kind == "unknown-dependency" for f in findings)
 
 
 # --------------------------------------------------------------------------- #

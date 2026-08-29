@@ -13,4 +13,6 @@
   `**Downstream` marker is excluded from that scan, so a forward-looking aside
   ("**Downstream:** item 099 depends on this item's CI job") does not register
   as a backward blocker — put such asides after the marker, never before it.
-  *(aide claim)*
+  The rest of any line from a `Blocks:` marker on is excluded too, so quoting
+  a human-gate row's reach ("waits on Gate 3 — `Blocks: 119, 120, 121`") does
+  not turn the gate's whole reach into dependency edges. *(aide claim)*

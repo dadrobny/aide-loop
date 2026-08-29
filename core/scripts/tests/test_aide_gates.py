@@ -194,6 +194,26 @@ def test_gate_naming_nothing_is_called_out():
     assert "nothing named" in aide.gate_warnings(_lines(rows))[0]
 
 
+def test_stage_warning_resolves_how_much_the_gate_holds():
+    """The reach is computed at check time either way; throwing it away made a
+    mis-scoped `stage N` gate invisible until a runner stalled on it — the
+    observed case held the very item meant to produce the gate's evidence."""
+    w = aide.gate_warnings(_lines(STAGE))[0]
+    assert "holding 2 item(s): 027, 028" in w
+
+
+def test_declined_stage_warning_also_resolves_the_reach():
+    rows = "| G | stage 1 | ❌ Declined (2026-08-18) | keep v0 |"
+    w = aide.gate_warnings(_lines(rows))[0]
+    assert "still blocks" in w and "holding 2 item(s): 027, 028" in w
+
+
+def test_item_list_warning_needs_no_resolution():
+    """An item-list reach already names its items; no breadth suffix is added."""
+    w = aide.gate_warnings(_lines(AWAITING))[0]
+    assert "items 028" in w and "holding" not in w
+
+
 # --------------------------------------------------------------------------- #
 # set_gate_status
 # --------------------------------------------------------------------------- #

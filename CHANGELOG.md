@@ -17,6 +17,53 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.23.0] — 2026-08-29
+
+Four `aide check`/`scope` findings that could never be cleared, all observed on
+one consumer queue (issues #89–#92). None changes what a passing repo sees.
+
+### Added
+
+- **`aide check` warns when a spec pins an always-authorised path (issue
+  #90).** `progress.md`, `insights.md` and the insight archives are edited by
+  the loop on every item — the mandatory status flip alone touches
+  `progress.md` — so a pin under *Asserts against* can never hold, and
+  `aide scope` failed such items on their routine bookkeeping. Pinning
+  progress.md is the natural way to write an AC that reads a gate row, which
+  is exactly why the warning fires at spec time, naming the remedy: put the
+  read-only content check in an acceptance criterion's test. Conventions
+  §1 → authorised-paths and the item template now say the same.
+
+### Changed
+
+- **Gate warnings say how much a gate holds (issue #89).** The `aide check`
+  warning for an awaiting or declined `stage N` gate resolves the reach the
+  way `aide claim` already does — "stage 28 — holding 8 item(s): 118, …" — so
+  a mis-scoped gate is visible where it is authored instead of when a runner
+  stalls on it. The breadth was computed at check time all along and thrown
+  away; item-list and `all` reaches already name what they hold and are
+  unchanged.
+
+### Fixed
+
+- **Cross-spec comparison and the cycle check discount ✅ items (issues #91,
+  #92).** `aide check --queue` compared every spec against every other for
+  the queue's whole life, so a merged item's spent May-change claim collided
+  forever with each later spec touching the same file, and a dependency cycle
+  whose members had all merged — proof the order was satisfiable — stayed an
+  error no later item could clear without editing a completed item's spec.
+  Items ✅ in `progress.md` now drop out of both sides of the authorised-path
+  comparison and out of the cycle graph; what remains is exactly the set of
+  live conflicts the check exists to find.
+
+- **A quoted gate reach is no longer read as dependency edges (issue #92).**
+  In `## Dependencies`, item numbers on a line at or after a `Blocks:` marker
+  are excluded from the blocker scan, so transcribing a human-gate row's
+  reach ("waits on Gate 3 — `Blocks: items 119, 120, 121`") no longer grows
+  edges nobody authored — edges that blocked `aide claim` and yielded cycles
+  in `aide check --queue`. Numbers before the marker on the same line still
+  block, and the `**Downstream` rule is unchanged.
+
 ## [1.22.0] — 2026-08-25
 
 ### Changed
