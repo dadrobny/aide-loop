@@ -724,3 +724,27 @@ def test_scope_authorises_the_archive_the_verb_just_wrote(aide, consumer: Path):
     assert aide.main(["--repo", str(consumer), "insights", "archive",
                       "--before", "2026-06-01", "--yes"]) == 0
     assert aide.main(["--repo", str(consumer), "scope", "--base", "main"]) == 0
+
+
+# --------------------------------------------------------------------------- #
+# the sibling shape — `--repo` beats a cwd inside a different consumer (#93)
+# --------------------------------------------------------------------------- #
+def test_repo_flag_wins_over_a_cwd_inside_another_consumer(
+        aide, consumer: Path, tmp_path: Path, monkeypatch):
+    """conventions.md §3's approved sibling shape is
+    `python <sibling>/.aide/scripts/aide.py --repo <sibling> <cmd>`, and it is
+    only safe if `--repo` really overrides the cwd walk: the shape is issued
+    from INSIDE another repo with its own `aide.toml`, and resolving from cwd
+    would judge that repo's documents instead of the sibling's."""
+    other = tmp_path / "other"
+    (other / "docs" / "aide").mkdir(parents=True)
+    (other / "aide.toml").write_text('[project]\nname = "Other"\n',
+                                     encoding="utf-8")
+    # cwd's repo carries a document set `check` must reject (a surviving
+    # template slot), so the two roots are distinguishable by exit code alone.
+    (other / "docs" / "aide" / "progress.md").write_text(
+        "# Other — Progress\n\n> {{one_line}}\n", encoding="utf-8")
+    monkeypatch.chdir(other)
+    assert aide.main(["check"]) != 0
+    # The same cwd with --repo judges the sibling, whose documents are sound.
+    assert aide.main(["--repo", str(consumer), "check"]) == 0

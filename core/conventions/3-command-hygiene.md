@@ -45,3 +45,16 @@ The rules (runtime-general):
 The `aide` CLI always runs as `python .aide/scripts/aide.py <cmd>` — stdlib-only
 and venv-independent, so it works before any project venv exists and identically
 across runtimes.
+
+**Against a declared sibling repo** (§8), the CLI needs no `cd` and no git-style
+wrapper either — run the *sibling's own install* with an explicit root:
+
+```
+python <sibling>/.aide/scripts/aide.py --repo <sibling> <cmd>
+```
+
+Both halves matter. The sibling's install, because two consumers may sit on
+different engine versions and each repo's documents should be judged by the
+engine that shipped with them. And `--repo`, because without it the CLI resolves
+its root by walking up from **cwd** — which is the current repo, so the
+sibling's engine would silently operate on the wrong project's documents.
