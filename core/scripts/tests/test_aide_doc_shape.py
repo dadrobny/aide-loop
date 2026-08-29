@@ -215,6 +215,72 @@ def test_the_lint_follows_a_configured_docs_dir(tmp_path: Path):
     assert aide.item_spec_warnings(repo / "docs" / "aide", "docs/aide") == []
 
 
+def test_double_listing_a_path_is_reported(tmp_path: Path):
+    """The recorded shape (issue #94): a spec authored pyproject.toml under May
+    change, then re-listed it under Asserts against to say the tests pin the
+    file's FINAL state. Asserts against means pinned-not-changed, so the
+    moment the item used its own authorisation `aide scope` failed it, with no
+    spec-side fix visible. The warning fires at spec time instead."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md", _with_paths("src/a.py", may="src/a.py"))
+    w = aide.item_spec_warnings(repo / "docs" / "aide")
+    assert len(w) == 1 and "both May change and Asserts against" in w[0]
+    assert "src/a.py" in w[0]
+
+
+def test_double_listing_matches_through_dot_slash_spelling(tmp_path: Path):
+    """`./src/a.py` and `src/a.py` are one path; the exact-listing rule uses
+    the same normalisation `patterns_overlap` does."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md", _with_paths("src/a.py", may="./src/a.py"))
+    w = aide.item_spec_warnings(repo / "docs" / "aide")
+    assert len(w) == 1 and "both May change and Asserts against" in w[0]
+
+
+def test_a_literal_pin_under_a_may_change_glob_is_silent(tmp_path: Path):
+    """`May change: docs/**` with `Asserts against: docs/api.md` is the
+    deliberate carve-out — "I may edit the tree but not this file" — and only
+    a diff can say whether it held. `aide scope` stays the judge; flagging
+    mere overlap would make the carve-out shape unwritable."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md", _with_paths("docs/api.md", may="docs/**"))
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
+# --------------------------------------------------------------------------- #
+# unattributed item references on a deliverable bullet
+# --------------------------------------------------------------------------- #
+def test_a_bullet_whose_references_all_sit_midprose_is_reported():
+    """Only the trailing *(Item NNN)* marker attributes (issue #99), so a
+    bullet with mid-prose references only tracks nothing — its items stay
+    planned and `aide progress set` cannot find it. That gap must be loud."""
+    w = aide.unattributed_reference_warnings(
+        _stage("- 📋 Fold *(Item 095)*'s parser into the shared module"))
+    assert len(w) == 1 and "ends with no *(Item NNN)* marker" in w[0]
+    assert "095" in w[0]
+
+
+def test_a_trailing_marker_keeps_prose_references_free():
+    """The motivating bullet: a trailing marker owns the bullet, and the
+    mid-prose mention of a sibling is free text by design — not a warning."""
+    assert aide.unattributed_reference_warnings(
+        _stage("- ✅ Consolidate parsers, absorbing *(Item 095)*'s scope. "
+               "*(Item 094)*")) == []
+
+
+def test_a_bullet_naming_no_item_is_not_flagged_here():
+    """A bullet with no reference at all is a different (untracked) shape;
+    this lint speaks only when references exist and attribute nothing."""
+    assert aide.unattributed_reference_warnings(
+        _stage("- 📋 Write the migration notes")) == []
+
+
+def test_a_wrapped_bullet_with_the_marker_on_its_last_line_is_silent():
+    assert aide.unattributed_reference_warnings(
+        _stage("- 📋 A long deliverable that wraps onto a\n"
+               "  second line. *(Item 042)*")) == []
+
+
 # --------------------------------------------------------------------------- #
 # test hygiene lints
 # --------------------------------------------------------------------------- #

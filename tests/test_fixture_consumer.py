@@ -352,6 +352,24 @@ def test_claim_skips_an_item_already_marked_done(aide, consumer: Path):
     assert _branch(consumer) == "aide/002-the-farewell"
 
 
+def test_a_prose_mention_on_a_done_bullet_leaves_the_sibling_claimable(
+        aide, consumer: Path):
+    """Issue #99 at verb level. Item 001's bullet mentions live item 002 in
+    its prose; when 001 goes done, only the trailing marker attributes, so 002
+    must stay planned — the queue stays open and `claim` takes 002 — instead
+    of the ✅ sentence silently marking the sibling complete and closing the
+    queue over unbuilt work."""
+    ppath = consumer / "docs" / "aide" / "progress.md"
+    ppath.write_text(ppath.read_text(encoding="utf-8").replace(
+        "- 📋 The greeter. *(Item 001)*",
+        "- 📋 The greeter, absorbing *(Item 002)*'s parser. *(Item 001)*"),
+        encoding="utf-8")
+    _commit(consumer, "docs: mention the sibling in prose")
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1", "done"]) == 0
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "aide/002-the-farewell"
+
+
 def test_an_exhausted_queue_is_no_longer_open_to_claim_from(aide, consumer: Path, capsys):
     """Every item ✅ makes the queue closed, not empty — so `claim` exits 1 and
     says there is no open queue. That non-zero exit is what stops

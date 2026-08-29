@@ -79,7 +79,11 @@ _Files or derived artifacts this item's tests read and pin without changing —
 including anything recomputed live from committed state. Write "None." if the
 item pins nothing outside what it changes. Never pin `progress.md` or another
 always-authorised path: the loop edits those on every item, so the pin cannot
-hold — a read-only check of their content belongs in an AC's test._
+hold — a read-only check of their content belongs in an AC's test. And never
+re-list a path already under May change: a pin means pinned-NOT-changed, so
+`aide scope` reports the item's own authorised edit as a contradiction — tests
+that assert against the final state of a file this item writes need only the
+May change entry, with the assertion behaviour stated in prose._
 
 - `{{path}}` — {{which AC pins it, and how}}
 

@@ -17,6 +17,42 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.24.0] — 2026-08-29
+
+Two mis-attributions the loop could author into itself, both observed on real
+consumer queues (issues #94, #99).
+
+### Changed
+
+- **Only a bullet's trailing `*(Item NNN)*` marker attributes status (issue
+  #99).** §1 always called the marker "the suffix [that] ties an item to the
+  bullet", but the parser attributed a bullet's status to every reference form
+  anywhere in its prose — so a ✅ bullet mentioning a live sibling
+  ("absorbing *(Item 095)*'s scope") marked that sibling complete, overriding
+  its own 📋 bullet. Since 1.23.0 discounted spent items from the cross-spec
+  checks, the mis-attribution went further and silently dropped the live item
+  out of the authorised-path comparison, the cycle graph, and the
+  undeclared-scope/unknown-dependency warnings. Read and write now share one
+  ownership rule: `check`/`status`/`claim` attribute from the trailing marker
+  alone, `aide progress set` flips only the bullet whose marker names the
+  item (and self-heals or errors, loudly, when none does), and a new
+  `aide check` warning names any bullet whose references all sit mid-prose —
+  such a bullet tracks nothing. Prose references stay free text by design.
+
+### Added
+
+- **`aide check` warns when a spec lists the same path under both May change
+  and Asserts against (issue #94).** Asserts against means pinned-not-changed
+  — `aide scope` prints exactly that — so the double-listing guarantees a
+  contradiction the moment the item uses its own authorisation, with no
+  spec-side fix visible at validation time. The warning fires at spec time,
+  where the author can act: a file the item writes and then asserts against
+  belongs only under May change, with the assertion behaviour in prose. The
+  exact listing alone is flagged; a literal pin under a May-change glob is the
+  deliberate carve-out shape and stays for `aide scope` to judge. `aide scope`
+  itself is unchanged — the check stays strict. Conventions §1 →
+  authorised-paths and the item template now state the rule.
+
 ## [1.23.0] — 2026-08-29
 
 Four `aide check`/`scope` findings that could never be cleared, all observed on

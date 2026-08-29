@@ -298,6 +298,61 @@ def test_parse_item_status_wrapped_bullet_still_attributes():
     assert status[42] == "planned"
 
 
+def test_parse_item_status_prose_reference_never_overrides_own_bullet():
+    """The issue #99 shape: a ✅ bullet whose prose mentions a live sibling
+    ("absorbing *(Item 095)*'s scope") marked that sibling complete, and the
+    spent-item discount then silently dropped it out of every cross-spec
+    check. Only the trailing marker attributes; the prose mention is free."""
+    lines = (
+        "## Stage 5 — X — 🚧\n"
+        "**Deliverables.**\n"
+        "- ✅ Consolidate parsers, absorbing *(Item 095)*'s scope. *(Item 094)*\n"
+        "- 📋 Extract the shared lexer. *(Item 095)*\n"
+    ).splitlines()
+    _, _, status = aide._parse_item_status(lines)
+    assert status[94] == "complete"
+    assert status[95] == "planned"
+
+
+def test_parse_item_status_midprose_reference_alone_attributes_nothing():
+    """With no bullet of its own, an item referenced only mid-prose is
+    untracked — reported by `aide check`, never silently attributed."""
+    lines = (
+        "## Stage 5 — X — 🚧\n"
+        "**Deliverables.**\n"
+        "- ✅ Consolidate parsers, absorbing *(Item 095)*'s scope. *(Item 094)*\n"
+    ).splitlines()
+    _, _, status = aide._parse_item_status(lines)
+    assert status == {94: "complete"}
+
+
+def test_parse_item_status_adjacent_trailing_markers_all_attribute():
+    """Several markers closing one bullet all own it, and a trailing period
+    after the last is tolerated — both shapes appear in hand-edited files."""
+    lines = (
+        "## Stage 5 — X — 🚧\n"
+        "**Deliverables.**\n"
+        "- 🚧 One deliverable, two specs. *(Item 006)* *(Item 007)*.\n"
+    ).splitlines()
+    _, _, status = aide._parse_item_status(lines)
+    assert status == {6: "in-progress", 7: "in-progress"}
+
+
+def test_set_item_status_leaves_a_prose_mention_untouched():
+    """`aide progress set` flips only the bullet whose trailing marker names
+    the item — the write-side half of the issue #99 rule. A foreign bullet
+    that mentions the item mid-prose keeps its own icon."""
+    text = (
+        "## Stage 5 — X — 🚧\n"
+        "**Deliverables.**\n"
+        "- 📋 Consolidate parsers, absorbing *(Item 095)*'s work. *(Item 094)*\n"
+        "- 📋 Extract the shared lexer. *(Item 095)*\n"
+    )
+    out = aide.set_item_status(text, 95, "in-progress")
+    assert "- 📋 Consolidate parsers, absorbing *(Item 095)*'s work. *(Item 094)*" in out
+    assert "- 🚧 Extract the shared lexer. *(Item 095)*" in out
+
+
 def test_parse_item_status_reads_every_number_in_a_multi_item_reference():
     """``*(Items A, B)*`` must credit B as well as A.
 
