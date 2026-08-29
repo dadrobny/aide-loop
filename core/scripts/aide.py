@@ -2940,6 +2940,7 @@ def cmd_progress(args: argparse.Namespace) -> int:
     # self-heal deterministically from the item spec's own Stage/title header;
     # only when that context is missing too does this stay a loud, blocking
     # error.
+    healed_note: Optional[str] = None
     if args.number not in _parse_item_status(text.splitlines())[2]:
         stage, title = _spec_stage_and_title(repo_root, config, args.number)
         healed = insert_item_reference(text, args.number, stage, title) if stage and title else None
@@ -2955,8 +2956,12 @@ def cmd_progress(args: argparse.Namespace) -> int:
             )
             return 1
         text = healed
-        print(f"item {args.number:03d}: back-filled missing deliverable reference "
-              f"under Stage {stage} (from the item spec)")
+        # Announced only after the guard below confirms the back-fill took —
+        # a success-flavoured line right before "NOT changed" reads as a
+        # contradiction in an unattended log.
+        healed_note = (f"item {args.number:03d}: back-filled missing "
+                       f"deliverable reference under Stage {stage} "
+                       f"(from the item spec)")
     updated = set_item_status(text, args.number, status_map[args.status])
     if args.number not in _parse_item_status(updated.splitlines())[2]:
         # Belt to the heal's braces: if the back-fill (or anything else) left
@@ -2972,6 +2977,8 @@ def cmd_progress(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+    if healed_note:
+        print(healed_note)
     if updated == original:
         print(f"item {args.number:03d}: no change (already >= {args.status})")
     else:
