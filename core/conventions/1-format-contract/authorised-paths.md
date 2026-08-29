@@ -123,11 +123,16 @@ python .aide/scripts/aide.py check --queue NNN [--report <path>]
 
 It reports two items claiming the same path under **May change** (warning), one
 item changing what another pins under **Asserts against** (error), and a
-dependency cycle or a dependency on an item that exists nowhere. Items already
-✅ in `progress.md` are discounted, on both sides of every comparison and from
-the cycle check: a merged item's claim is spent — it can neither be harmed by a
-later writer nor harm one — and a cycle whose members all merged proved its
-order satisfiable, so what remains is exactly the set of live conflicts. `--report`
+dependency cycle or a dependency on an item that exists nowhere. Spent items —
+✅ merged or ❌ excluded in `progress.md` — are discounted on both sides of
+every comparison: a merged item's claim can neither be harmed by a later
+writer nor harm one, an excluded item is never offered, and a finding against
+either is an error no later item can clear. The cycle check goes further and
+keeps only items whose status still blocks a claim (⏸️ deferred drops out too,
+since a deferred dependency does not block), because a cycle whose members all
+merged proved its order satisfiable. Deferred items stay in the path
+comparisons: their claims are dormant, not dead, and a conflict with one is
+worth surfacing while re-planning is cheap. `--report`
 writes the findings as JSON for a reviewer pass to pick up. The invariant is
 worth stating plainly, because a spec-by-spec reading does not give it:
 *predicting the one collision a spec happens to name is not the same as proving

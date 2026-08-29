@@ -214,6 +214,22 @@ def test_item_list_warning_needs_no_resolution():
     assert "items 028" in w and "holding" not in w
 
 
+def test_breadth_counts_only_items_the_gate_still_holds():
+    """A ✅ item has merged and a ❌ one is out — 'holding' either would
+    overstate the reach against the enforcement the message mirrors (claim
+    blocks neither)."""
+    lines = _progress(STAGE).replace("- 📋 A. *(Item 027)*",
+                                     "- ✅ A. *(Item 027)*").splitlines()
+    w = aide.gate_warnings(lines)[0]
+    assert "holding 1 item(s): 028" in w and "027" not in w
+
+
+def test_breadth_of_an_all_merged_stage_falls_back_to_the_bare_reach():
+    lines = _progress(STAGE).replace("📋", "✅").splitlines()
+    w = next(x for x in aide.gate_warnings(lines) if "awaiting" in x)
+    assert "stage 1" in w and "holding" not in w
+
+
 # --------------------------------------------------------------------------- #
 # set_gate_status
 # --------------------------------------------------------------------------- #

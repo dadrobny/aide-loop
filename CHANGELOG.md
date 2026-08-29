@@ -41,28 +41,37 @@ one consumer queue (issues #89–#92). None changes what a passing repo sees.
   way `aide claim` already does — "stage 28 — holding 8 item(s): 118, …" — so
   a mis-scoped gate is visible where it is authored instead of when a runner
   stalls on it. The breadth was computed at check time all along and thrown
-  away; item-list and `all` reaches already name what they hold and are
-  unchanged.
+  away. The count covers only items the gate still sits in front of — ✅ and
+  ❌ ones are not "held", and a stage whose every item merged falls back to
+  the bare reach; item-list and `all` reaches already name what they hold and
+  are unchanged.
 
 ### Fixed
 
-- **Cross-spec comparison and the cycle check discount ✅ items (issues #91,
-  #92).** `aide check --queue` compared every spec against every other for
-  the queue's whole life, so a merged item's spent May-change claim collided
-  forever with each later spec touching the same file, and a dependency cycle
-  whose members had all merged — proof the order was satisfiable — stayed an
-  error no later item could clear without editing a completed item's spec.
-  Items ✅ in `progress.md` now drop out of both sides of the authorised-path
-  comparison and out of the cycle graph; what remains is exactly the set of
-  live conflicts the check exists to find.
+- **Cross-spec comparison and the cycle check discount spent items (issues
+  #91, #92).** `aide check --queue` compared every spec against every other
+  for the queue's whole life, so a merged item's spent May-change claim
+  collided forever with each later spec touching the same file, and a
+  dependency cycle whose members had all merged — proof the order was
+  satisfiable — stayed an error no later item could clear without editing a
+  completed item's spec. Spent items — ✅ merged or ❌ excluded — now drop out
+  of both sides of the authorised-path comparison, and out of the
+  `undeclared-scope` and `unknown-dependency` warnings, whose remedies are
+  likewise unavailable once an item merged. The cycle graph keeps only items
+  whose status still blocks a claim (the same set `aide claim` enforces, so
+  ⏸️ deferred drops out of it too); deferred items stay in the path
+  comparisons, since their claims are dormant, not dead. What remains is
+  exactly the set of live conflicts the check exists to find.
 
 - **A quoted gate reach is no longer read as dependency edges (issue #92).**
-  In `## Dependencies`, item numbers on a line at or after a `Blocks:` marker
-  are excluded from the blocker scan, so transcribing a human-gate row's
-  reach ("waits on Gate 3 — `Blocks: items 119, 120, 121`") no longer grows
-  edges nobody authored — edges that blocked `aide claim` and yielded cycles
-  in `aide check --queue`. Numbers before the marker on the same line still
-  block, and the `**Downstream` rule is unchanged.
+  In `## Dependencies`, item numbers on a line at or after a backticked or
+  bold `Blocks:` label are excluded from the blocker scan, so transcribing a
+  human-gate row's reach ("waits on Gate 3 — `Blocks: items 119, 120, 121`")
+  no longer grows edges nobody authored — edges that blocked `aide claim`
+  and yielded cycles in `aide check --queue`. The markup is what makes it a
+  marker: plain-prose "blocks:" excludes nothing, so an English sentence
+  naming real blockers is never silently dropped. Numbers before the marker
+  on the same line still block, and the `**Downstream` rule is unchanged.
 
 ## [1.22.0] — 2026-08-25
 

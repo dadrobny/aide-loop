@@ -307,6 +307,64 @@ def test_a_cycle_with_a_merged_member_is_broken_at_that_member(tmp_path: Path):
     assert not any(f.kind == "dependency-cycle" for f in findings)
 
 
+def test_an_excluded_item_is_spent_too(tmp_path: Path):
+    """❌ means dropped: claim never offers the item and an excluded dependency
+    does not block, so its spec's claims and pins are as unclearable as a
+    merged item's."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/shared.py"], asserts=["src/cli.py"]),
+        28: _spec_text(28, may=["src/shared.py", "src/cli.py"]),
+    }, progress=PROGRESS.replace("- 📋 A. *(Item 027)*", "- ❌ A. *(Item 027)*"))
+    findings, _ = _findings(repo)
+    assert findings == []
+
+
+def test_a_deferred_item_stays_in_the_path_comparison(tmp_path: Path):
+    """⏸️ is dormant, not dead — the deferred work returns, so a conflict with
+    its claims is exactly what to surface while re-planning is still cheap."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/shared.py"]),
+        28: _spec_text(28, may=["src/shared.py"]),
+    }, progress=PROGRESS.replace("- 📋 A. *(Item 027)*", "- ⏸️ A. *(Item 027)*"))
+    findings, _ = _findings(repo)
+    assert any(f.kind == "may-change-overlap" for f in findings)
+
+
+def test_a_deferred_item_drops_out_of_the_cycle_graph(tmp_path: Path):
+    """A deferred dependency does not block `aide claim` (same status set as
+    `_pick_item`), so a cycle through a deferred item cannot deadlock."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/a.py"], deps="Item 028 provides the API."),
+        28: _spec_text(28, may=["src/b.py"], deps="Item 027 provides the schema."),
+    }, progress=PROGRESS.replace("- 📋 A. *(Item 027)*", "- ⏸️ A. *(Item 027)*"))
+    findings, _ = _findings(repo)
+    assert not any(f.kind == "dependency-cycle" for f in findings)
+
+
+def test_a_spent_items_undeclared_scope_is_not_reported(tmp_path: Path):
+    """The warning's remedy — add the section, get a human scope review — is
+    unavailable once the item merged; reporting it forever is the unclearable
+    noise this discount exists to remove. A LIVE undeclared spec still warns
+    (pinned elsewhere in this file)."""
+    repo = _make_repo(tmp_path, {
+        27: "# Item 027 — Demo\n\n## Description\n\nNo authorised paths here.\n",
+        28: _spec_text(28, may=["src/b.py"]),
+    }, progress=PROGRESS_27_DONE)
+    findings, _ = _findings(repo)
+    assert not any(f.kind == "undeclared-scope" for f in findings)
+
+
+def test_a_spent_items_unknown_dependency_is_not_reported(tmp_path: Path):
+    """'A typo here blocks the item forever' is false for an item that already
+    merged — nothing is blocked, and the warning could never be cleared."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/a.py"], deps="Item 999 provides it."),
+        28: _spec_text(28, may=["src/b.py"]),
+    }, progress=PROGRESS_27_DONE)
+    findings, _ = _findings(repo)
+    assert not any(f.kind == "unknown-dependency" for f in findings)
+
+
 def test_a_cycle_among_live_items_is_still_an_error(tmp_path: Path):
     """The discount must remove only the inert reports — a live cycle is the
     deadlock the check exists to find."""
@@ -327,7 +385,7 @@ def test_a_quoted_gate_blocks_list_creates_no_edges(tmp_path: Path):
     edges they yielded cycles among items nobody ordered."""
     repo = _make_repo(tmp_path, {
         27: _spec_text(27, may=["src/a.py"],
-                       deps="None. Waits on Gate 3 — Blocks: items 028, 099."),
+                       deps="None. Waits on Gate 3 — `Blocks: items 028, 099.`"),
         28: _spec_text(28, may=["src/b.py"], deps="Item 027 provides the schema."),
     })
     findings, _ = _findings(repo)
@@ -337,15 +395,29 @@ def test_a_quoted_gate_blocks_list_creates_no_edges(tmp_path: Path):
 
 def test_numbers_before_a_blocks_quote_still_block(tmp_path: Path):
     """The exclusion is the line's remainder, not the line: a real dependency
-    sharing a line with a gate quote must survive."""
+    sharing a line with a gate quote must survive. The bold label is the other
+    marked form a transcribed cell takes."""
     repo = _make_repo(tmp_path, {
         27: _spec_text(27, may=["src/a.py"],
-                       deps="Item 028 provides the API. Blocks: item 999."),
+                       deps="Item 028 provides the API. **Blocks**: item 999."),
         28: _spec_text(28, may=["src/b.py"], deps="Item 027 provides the schema."),
     })
     findings, _ = _findings(repo)
     assert any(f.kind == "dependency-cycle" for f in findings)
     assert not any(f.kind == "unknown-dependency" for f in findings)
+
+
+def test_plain_prose_blocks_is_not_a_marker(tmp_path: Path):
+    """Only a backticked or bold `Blocks:` label excludes. An English sentence
+    carrying the word states real blockers, and an exclusion plain prose could
+    trip would silently drop them — claim would then offer the item early."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/a.py"],
+                       deps="Hard blocks: Item 028 must land first."),
+        28: _spec_text(28, may=["src/b.py"], deps="Item 027 provides the schema."),
+    })
+    findings, _ = _findings(repo)
+    assert any(f.kind == "dependency-cycle" for f in findings)
 
 
 # --------------------------------------------------------------------------- #
