@@ -71,32 +71,6 @@ _HEREDOC_OPEN_RE = re.compile(
 )
 
 
-def _quoted_at(cmd, pos, skip_spans):
-    """True when *pos* sits inside a single- or double-quoted span, scanning
-    from the start with already-collected heredoc bodies skipped (a body is
-    data — an apostrophe in its prose opens no quote)."""
-    quote = None
-    i = 0
-    while i < pos:
-        if any(s <= i < e for s, e, _ in skip_spans):
-            i += 1
-            continue
-        ch = cmd[i]
-        if quote:
-            if quote == '"' and ch == "\\":
-                i += 2
-                continue
-            if ch == quote:
-                quote = None
-        elif ch == "\\":
-            i += 2
-            continue
-        elif ch in "'\"":
-            quote = ch
-        i += 1
-    return quote is not None
-
-
 def _heredoc_body_spans(cmd):
     """Every heredoc body in *cmd*, as ``(start, end, interpolates)`` character
     spans over the raw command.
@@ -123,24 +97,70 @@ def _heredoc_body_spans(cmd):
     inside an already-collected body (prose quoting a heredoc); one not in
     redirection position (must follow start-of-line, whitespace, ``|``,
     ``&``, ``;`` or ``(`` — so ``a<<b`` never fires, which forgoes bash's
-    mid-word redirection and the ``3<<EOF`` fd form in exchange for never
+    mid-word redirection — including the spaceless ``-<<'EOF'`` spelling of
+    ``git commit -F -`` — and the ``3<<EOF`` fd form, in exchange for never
     misreading a shift or prose, the pre-existing posture for those); one
-    inside ``((…))`` arithmetic, where ``<<`` shifts; and one inside quotes,
-    where it is a string. A rejected candidate's body text stays visible to
-    the lints, which is exactly the pre-#88 behaviour for that command.
+    under an unclosed ``((`` seen outside quotes, where ``<<`` shifts; and
+    one inside quotes, where it is a string. A rejected candidate's body
+    text stays visible to the lints, which is exactly the pre-#88 behaviour
+    for that command. Known residual: `#` comments are not parsed, so a
+    ``<<WORD`` in a trailing comment still passes the gauntlet and blanks
+    the rest of the call.
+
+    Quote and arithmetic state come from ONE forward scan shared by every
+    candidate (``_advance``), never a per-candidate rescan from the start —
+    the hook runs on every Bash call, and rescanning made it quadratic in
+    the candidate count. The scan skips collected bodies (a body is data: an
+    apostrophe or ``((`` in its prose opens nothing), and only a ``((`` seen
+    outside quotes counts as arithmetic, so a quoted ``"(("`` — a grep
+    pattern, say — suppresses no later heredoc.
     """
     spans = []
+    # (quote char | None, unclosed-(( depth, scan position, spans consumed)
+    state = [None, 0, 0, 0]
+
+    def _advance(pos):
+        """Fold cmd[state-position:pos) into the quote/arithmetic state."""
+        quote, arith, i, skip = state
+        while i < pos:
+            if skip < len(spans) and i >= spans[skip][0]:
+                i = max(i, spans[skip][1])
+                skip += 1
+                continue
+            ch = cmd[i]
+            if quote:
+                if quote == '"' and ch == "\\":
+                    i += 2
+                    continue
+                if ch == quote:
+                    quote = None
+            elif ch == "\\":
+                i += 2
+                continue
+            elif ch in "'\"":
+                quote = ch
+            elif ch == "(" and cmd[i:i + 2] == "((":
+                arith += 1
+                i += 2
+                continue
+            elif ch == ")" and cmd[i:i + 2] == "))" and arith:
+                arith -= 1
+                i += 2
+                continue
+            i += 1
+        state[:] = [quote, arith, i, skip]
+
+    mem = 0  # membership pointer — spans and candidates both ascend
     for m in _HEREDOC_OPEN_RE.finditer(cmd):
-        if any(s <= m.start() < e for s, e, _ in spans):
+        while mem < len(spans) and spans[mem][1] <= m.start():
+            mem += 1
+        if mem < len(spans) and spans[mem][0] <= m.start():
             continue
         prev = cmd[m.start() - 1] if m.start() else ""
         if prev and prev not in " \t\n|&;(":
             continue
-        floor = spans[-1][1] if spans else 0
-        arith = cmd.rfind("((", floor, m.start())
-        if arith != -1 and cmd.find("))", arith, m.start()) == -1:
-            continue
-        if _quoted_at(cmd, m.start(), spans):
+        _advance(m.start())
+        if state[0] is not None or state[1]:
             continue
         delim = m.group("sq") or m.group("dq") or m.group("bs") or m.group("bare")
         interpolates = m.group("bare") is not None

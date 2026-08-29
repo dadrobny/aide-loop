@@ -477,3 +477,34 @@ def test_heredoc_prose_naming_git_flags_does_not_break_the_carve_out(
         "\nThey pointed the hook at the wrong repo.\nEOF"
     )
     assert guard.violations(cmd) == []
+
+
+# --------------------------------------------------------------------------- #
+# review round 2 — the rejection gauntlet's own edges
+# --------------------------------------------------------------------------- #
+def test_unbalanced_double_paren_inside_quotes_does_not_suppress_a_heredoc():
+    """The arithmetic rejection must be quote-aware: a quoted "((" is a
+    pattern argument, not arithmetic, and treating it as an unclosed shift
+    context pushed the next heredoc's body back into the lints — the exact
+    false positive this PR exists to remove."""
+    cmd = 'grep -c "((" f.txt\ncat <<\'EOF\'\nfix; the lexer\nEOF'
+    assert guard.violations(cmd) == []
+
+
+def test_real_unclosed_arithmetic_still_rejects_the_candidate():
+    # The quote-awareness must not blunt the rejection it exists to refine.
+    cmd = "echo $((1 << 2\ngit add -A; git push"
+    assert "one command per Bash call" in _titles(cmd)
+
+
+def test_opener_directly_after_connector_chars_is_still_an_opener():
+    """Redirection position includes `|`, `&`, `;`, `(` with no space —
+    `<<'EOF' cat` is bash's redirection-first spelling. Each body must be
+    blanked (no rule fires on its prose) while the connector itself keeps
+    exactly its own consequence."""
+    for prefix, chained in (("true &&", True), ("true ;", True),
+                            ("echo x |", False), ("(", False)):
+        cmd = f"{prefix}<<'EOF' cat\nprose with ; and && inside\nEOF"
+        titles = _titles(cmd)
+        assert ("one command per Bash call" in titles) is chained, prefix
+        assert "stderr" not in titles, prefix
