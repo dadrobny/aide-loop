@@ -336,3 +336,85 @@ def test_multi_line_array_still_works_when_properly_closed(tmp_path, monkeypatch
     monkeypatch.chdir(tmp_path)
     assert guard._hygiene_extra_repos() == ["../one", "../two"]
     assert guard.violations("git -C ../two status") == []
+
+
+# --------------------------------------------------------------------------- #
+# heredoc bodies are data, not commands (issue #88)
+# --------------------------------------------------------------------------- #
+def test_heredoc_commit_message_with_semicolon_in_prose_is_allowed():
+    """The motivating repro: the multi-paragraph commit message the framework
+    itself asks for, piped via `-F -`, blocked for a semicolon in its prose."""
+    cmd = (
+        "git commit -F - <<'EOF'\nfix the parser\n\n"
+        "It broke on nested quotes; the lexer was greedy.\nEOF"
+    )
+    assert guard.violations(cmd) == []
+
+
+def test_heredoc_double_ampersand_in_prose_is_allowed():
+    cmd = "cat > notes.txt <<'EOF'\nCompare foo && bar as a design option.\nEOF"
+    assert guard.violations(cmd) == []
+
+
+def test_heredoc_stderr_redirection_in_prose_is_allowed():
+    cmd = (
+        "cat > notes.txt <<'EOF'\n"
+        "The old script redirected with 2>&1 which we removed.\nEOF"
+    )
+    assert guard.violations(cmd) == []
+
+
+def test_heredoc_git_dir_prose_does_not_trip_rule_1(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # nothing declared — rule 1 must still not fire
+    cmd = (
+        "cat > notes.txt <<'EOF'\n"
+        "Set GIT_DIR= or use --work-tree only in the declared clone.\nEOF"
+    )
+    assert guard.violations(cmd) == []
+
+
+def test_operators_on_the_opener_line_still_fire():
+    """Only the BODY is data — chaining around the heredoc stays a violation."""
+    cmd = "git commit -F - <<'EOF' && git push\nfix: it's the lexer; truly\nEOF"
+    assert "one command per Bash call" in _titles(cmd)
+
+
+def test_apostrophe_in_body_does_not_swallow_later_syntax():
+    """Bodies are blanked before quote-blanking: a prose apostrophe must not
+    open a phantom quote that hides real chaining after the terminator."""
+    cmd = "cat <<'EOF'\nit's fine\nEOF\ngit add -A; git push"
+    assert "one command per Bash call" in _titles(cmd)
+
+
+def test_unquoted_heredoc_substitution_in_commit_still_flagged():
+    # <<EOF interpolates: $(...) in the body really runs, so rule 4 keeps it.
+    cmd = "git commit -F - <<EOF\nbuilt at $(date)\nEOF"
+    assert "substitution" in _titles(cmd)
+
+
+def test_quoted_heredoc_substitution_is_prose():
+    # <<'EOF' keeps the body literal: the same $(date) is inert prose.
+    cmd = "git commit -F - <<'EOF'\ndocument the $(date) probe\nEOF"
+    assert guard.violations(cmd) == []
+
+
+def test_double_quoted_and_backslashed_delimiters_also_quench_substitution():
+    for opener in ('<<"EOF"', "<<\\EOF"):
+        cmd = f"git commit -F - {opener}\ndocument the $(date) probe\nEOF"
+        assert guard.violations(cmd) == [], opener
+
+
+def test_dash_heredoc_tab_indented_terminator_is_found():
+    cmd = "git commit -F - <<-'EOF'\n\tfix; the lexer\n\tEOF"
+    assert guard.violations(cmd) == []
+
+
+def test_unterminated_heredoc_body_extends_to_the_end():
+    # The shell would consume the rest of stdin as body too.
+    cmd = "git commit -F - <<'EOF'\nfix the parser; it broke\n"
+    assert guard.violations(cmd) == []
+
+
+def test_here_string_is_not_a_heredoc():
+    # <<<word has no body: the `;` after it is real chaining, not data.
+    assert "one command per Bash call" in _titles("wc -l <<< word; git push")
