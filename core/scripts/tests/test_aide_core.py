@@ -1047,6 +1047,70 @@ def test_cli_progress_set_backfills_reference_from_spec(tmp_path: Path, capsys):
     assert "## Stage 1 — Rule Engine — 🚧" in text
 
 
+def test_insert_item_reference_lands_after_a_wrapped_bullets_last_line():
+    """The back-fill used to insert at icon line + 1, splitting a wrapped
+    bullet in two — cosmetic while any line's reference attributed, but under
+    the trailing-marker rule (issue #99) the split stranded the healed marker
+    mid-span and handed the wrapped bullet's marker to the wrong owner, so
+    `progress set` printed success while recording nothing (PR #100 review)."""
+    text = (
+        "## Stage 1 — Rule Engine — 🚧\n"
+        "**Deliverables.**\n"
+        "- 📋 A long deliverable that wraps onto a\n"
+        "  second line. *(Item 042)*\n"
+    )
+    healed = aide.insert_item_reference(text, 50, "1", "The new thing")
+    assert ("  second line. *(Item 042)*\n"
+            "- 📋 The new thing. *(Item 050)*\n") in healed
+    _, _, status = aide._parse_item_status(healed.splitlines())
+    assert status == {42: "planned", 50: "planned"}
+
+
+def test_cli_progress_set_backfill_survives_a_wrapped_last_bullet(
+        tmp_path: Path, capsys):
+    """The verb-level half of the case above: healing into a stage whose last
+    deliverable bullet wraps must record the status, not mangle the file."""
+    wrapped = PROGRESS.replace(
+        "- 📋 Bounds. *(Item 003)*",
+        "- 📋 Bounds checking that wraps onto a\n  second line. *(Item 003)*")
+    root = _docs(tmp_path, progress=wrapped)
+    (root / "docs" / "aide" / "items" / "004-extra-thing.md").write_text(
+        "# Item 004 — Extra thing\n\n"
+        "> **Created:** 2026-07-18 · status tracked in progress.md\n"
+        "> **Stage:** 1 — Rule Engine\n",
+        encoding="utf-8",
+    )
+    rc = aide.main(["--repo", str(root), "progress", "set", "4", "in-progress",
+                    "--no-commit"])
+    assert rc == 0
+    text = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    assert ("  second line. *(Item 003)*\n"
+            "- 🚧 Extra thing. *(Item 004)*\n") in text
+    _, _, status = aide._parse_item_status(text.splitlines())
+    assert status[3] == "planned" and status[4] == "in-progress"
+
+
+def test_cli_progress_set_errors_when_the_backfill_recorded_nothing(
+        tmp_path: Path, capsys, monkeypatch):
+    """If a heal claims success but leaves the item unattributed, the verb must
+    error and write nothing — never print 'set to …' over a silent no-op."""
+    root = _docs(tmp_path)
+    (root / "docs" / "aide" / "items" / "777-ghost.md").write_text(
+        "# Item 777 — Ghost\n\n"
+        "> **Created:** 2026-07-18 · status tracked in progress.md\n"
+        "> **Stage:** 1 — Rule Engine\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(aide, "insert_item_reference",
+                        lambda text, *a, **k: text)  # a heal that adds nothing
+    rc = aide.main(["--repo", str(root), "progress", "set", "777", "done",
+                    "--no-commit"])
+    assert rc == 1
+    assert "could not be recorded" in capsys.readouterr().err
+    assert (root / "docs" / "aide" / "progress.md").read_text(
+        encoding="utf-8") == PROGRESS
+
+
 def test_cli_status_reports_queues_and_claims(tmp_path: Path, capsys):
     root = _docs(tmp_path)
     rc = aide.main(["--repo", str(root), "status", "--no-fetch"])

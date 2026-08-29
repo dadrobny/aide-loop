@@ -38,6 +38,12 @@ consumer queues (issues #94, #99).
   item (and self-heals or errors, loudly, when none does), and a new
   `aide check` warning names any bullet whose references all sit mid-prose —
   such a bullet tracks nothing. Prose references stay free text by design.
+  Two hardenings from review: the self-heal back-fill now inserts after a
+  wrapped bullet's whole span instead of splitting it at the icon line —
+  under the marker rule that split stranded the healed marker mid-span and
+  re-owned the wrapped bullet's — and `progress set` verifies the item
+  actually attributes before writing, erroring instead of printing success
+  over a recording that did not happen.
 
 ### Added
 

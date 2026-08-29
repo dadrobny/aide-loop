@@ -840,12 +840,16 @@ def insert_item_reference(text: str, number: int, stage: str, title: str) -> Opt
     for start, end, snum in stage_sections(lines):
         if snum != str(stage):
             continue
-        insert_at = None
-        for i in range(start, end):
-            if _BULLET_RE.match(lines[i]):
-                insert_at = i + 1
-            elif insert_at is None and lines[i].strip().startswith("**Deliverables"):
-                insert_at = i + 1
+        insert_at = next((i + 1 for i in range(start, end)
+                          if lines[i].strip().startswith("**Deliverables")), None)
+        # After the last bullet's WHOLE span, continuations included. Icon
+        # line + 1 used to split a wrapped bullet in two — cosmetic while any
+        # reference on any line attributed, but under the trailing-marker rule
+        # (issue #99) the split strands the new bullet's marker mid-span and
+        # hands the wrapped bullet's marker to the wrong owner.
+        spans = _deliverable_bullet_spans(lines[start:end])
+        if spans:
+            insert_at = start + spans[-1][1] + 1
         if insert_at is None:
             return None
         lines.insert(insert_at, f"- 📋 {title}. *(Item {number:03d})*")
@@ -2954,6 +2958,20 @@ def cmd_progress(args: argparse.Namespace) -> int:
         print(f"item {args.number:03d}: back-filled missing deliverable reference "
               f"under Stage {stage} (from the item spec)")
     updated = set_item_status(text, args.number, status_map[args.status])
+    if args.number not in _parse_item_status(updated.splitlines())[2]:
+        # Belt to the heal's braces: if the back-fill (or anything else) left
+        # no bullet whose trailing marker names this item, the set recorded
+        # nothing — say so and write nothing, instead of printing success over
+        # a silent no-op (the failure shape a review of issue #99 found).
+        print(
+            f"item {args.number:03d}: ERROR — after the back-fill, no "
+            f"deliverable bullet's trailing *(Item {args.number:03d})* marker "
+            f"names this item, so the status could not be recorded; progress.md "
+            f"NOT changed. Add the marker to the owning bullet's last line, "
+            f"then re-run.",
+            file=sys.stderr,
+        )
+        return 1
     if updated == original:
         print(f"item {args.number:03d}: no change (already >= {args.status})")
     else:
