@@ -18,8 +18,14 @@ Mandatory, in order (consumer in brackets):
 **Item references on a deliverable bullet.** The `*(Item NNN)*` suffix is what
 ties an item to the bullet whose status it moves — `aide progress set NNN` finds
 the bullet by it, and `check`/`status`/`claim` derive queue state from it, so an
-item no bullet references is untracked. Four forms are accepted, and all four
-mean the same thing to every command:
+item no bullet references is untracked. **Suffix means suffix**: only the
+trailing marker that ends the bullet (its last wrapped line) attributes. A
+reference form earlier in the bullet's prose — "- ✅ Consolidate parsers,
+absorbing *(Item 095)*'s scope *(Item 094)*" — is free text: here 094 is the
+bullet's item and the mention of 095 moves nothing, so a ✅ bullet cannot mark a
+live sibling complete just by naming it. A bullet whose references all sit
+mid-prose tracks nothing, and `aide check` warns about it. Four forms are
+accepted for the marker, and all four mean the same thing to every command:
 
 | Form | Reads as |
 |---|---|

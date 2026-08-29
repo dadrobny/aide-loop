@@ -81,6 +81,17 @@ A read-only content check against one of them (a human-gate row's `Blocks`
 cell, say) belongs in an acceptance criterion's test, not in the path lists.
 `aide check` warns when a spec writes one.
 
+**Asserts against means pinned-not-changed**, so never list the same path under
+both **May change** and **Asserts against**. The moment the item uses its
+authorisation, `aide scope` reports the change as a contradiction — correctly,
+by the pin's meaning — and no spec-side fix is visible at validation time.
+An item whose tests assert against the *final* state of a file the item itself
+writes lists the path only under **May change** and states the assertion
+behaviour in prose. `aide check` warns on the exact double-listing at spec
+time, where the author can still act; a literal pin under a May-change glob is
+different — that is the deliberate carve-out "I may edit this tree but not this
+file" — and stays for `aide scope` to judge.
+
 A test that hashes some
 *other* file's bytes against a hardcoded literal to prove this item did not
 touch it — a **scope fence** — is a fallback for cases with no diff to check

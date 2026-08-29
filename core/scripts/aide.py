@@ -134,6 +134,46 @@ def _references_item(text: str, num: int) -> bool:
     return num in _referenced_item_numbers(text)
 
 
+#: The item-reference MARKER that closes a deliverable bullet —
+#: `- 📋 <text>. *(Item 006)*` — the `*(…)*` suffix the templates prescribe
+#: (§1 → progress.md calls it "the *(Item NNN)* suffix"). Only this trailing
+#: marker ties items to the bullet: a reference elsewhere in the bullet's prose
+#: ("absorbing *(Item 095)*'s scope") is free text and attributes nothing
+#: (issue #99). Several adjacent markers at the end all count, and a trailing
+#: period after the last one is tolerated.
+_BULLET_MARKER_RE = re.compile(
+    r"(?:\*\(\s*[Ii]tems?\s+[^)\n]*\)\*[ \t.]*)+$")
+
+
+def _bullet_marker_item_numbers(last_line: str) -> List[int]:
+    """Item numbers in the trailing marker of a bullet's final line, if any."""
+    m = _BULLET_MARKER_RE.search(last_line)
+    return _referenced_item_numbers(m.group(0)) if m else []
+
+
+def _deliverable_bullet_spans(lines: List[str]) -> List[Tuple[int, int]]:
+    """``(first, last)`` line indices of each deliverable bullet.
+
+    A deliverable bullet is a ``_BULLET_RE`` line plus its wrapped continuation
+    lines — indented text carrying no bullet marker of its own. A blank line, a
+    non-deliverable bullet, or an unindented new block ends the span. This is
+    the ONE definition of a bullet's extent; ``_parse_item_status`` (read) and
+    ``set_item_status`` (write) both build on it, so "which bullet owns item
+    NNN" cannot differ between the two directions.
+    """
+    spans: List[Tuple[int, int]] = []
+    open_span = False
+    for i, line in enumerate(lines):
+        if _BULLET_RE.match(line):
+            spans.append((i, i))
+            open_span = True
+        elif not line.strip() or re.match(r"^\s*[-*]\s", line) or not re.match(r"^\s+\S", line):
+            open_span = False
+        elif open_span:
+            spans[-1] = (spans[-1][0], i)
+    return spans
+
+
 # --------------------------------------------------------------------------- #
 # TOML config (tomllib on 3.11+, tiny fallback for the aide.toml subset on 3.9)
 # --------------------------------------------------------------------------- #
@@ -800,12 +840,16 @@ def insert_item_reference(text: str, number: int, stage: str, title: str) -> Opt
     for start, end, snum in stage_sections(lines):
         if snum != str(stage):
             continue
-        insert_at = None
-        for i in range(start, end):
-            if _BULLET_RE.match(lines[i]):
-                insert_at = i + 1
-            elif insert_at is None and lines[i].strip().startswith("**Deliverables"):
-                insert_at = i + 1
+        insert_at = next((i + 1 for i in range(start, end)
+                          if lines[i].strip().startswith("**Deliverables")), None)
+        # After the last bullet's WHOLE span, continuations included. Icon
+        # line + 1 used to split a wrapped bullet in two — cosmetic while any
+        # reference on any line attributed, but under the trailing-marker rule
+        # (issue #99) the split strands the new bullet's marker mid-span and
+        # hands the wrapped bullet's marker to the wrong owner.
+        spans = _deliverable_bullet_spans(lines[start:end])
+        if spans:
+            insert_at = start + spans[-1][1] + 1
         if insert_at is None:
             return None
         lines.insert(insert_at, f"- 📋 {title}. *(Item {number:03d})*")
@@ -822,19 +866,15 @@ def set_item_status(text: str, num: int, status: str) -> str:
     those are human attestations, ticked only by ``aide progress accept``.
     """
     lines = text.splitlines()
-    # Flip the owning bullet's icon for every line that references this item.
-    bullet_line: Optional[int] = None
-    for i, line in enumerate(lines):
-        if _BULLET_RE.match(line) or re.match(r"^\s*[-*]\s", line):
-            if _BULLET_RE.match(line):
-                bullet_line = i
-        if _references_item(line, num):
-            target = bullet_line if bullet_line is not None and _BULLET_RE.match(lines[bullet_line]) else i
-            tm = _BULLET_RE.match(lines[target])
-            if tm:
-                current = ICON_TO_STATUS[tm.group("icon")]
-                if current and RANK[status] > RANK[current]:
-                    lines[target] = _replace_first_icon(lines[target], status)
+    # Flip the icon of every bullet whose trailing marker names this item —
+    # the same ownership rule `_parse_item_status` reads by (issue #99), so a
+    # bullet that merely mentions the item in prose is never flipped.
+    for start, last in _deliverable_bullet_spans(lines):
+        if num not in _bullet_marker_item_numbers(lines[last]):
+            continue
+        current = ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
+        if current and RANK[status] > RANK[current]:
+            lines[start] = _replace_first_icon(lines[start], status)
 
     # Recompute rollups for every stage (never downgrading).
     stage_status: Dict[str, str] = {}
@@ -1993,6 +2033,34 @@ def nested_deliverable_warnings(lines: List[str]) -> List[str]:
     return out
 
 
+def unattributed_reference_warnings(lines: List[str]) -> List[str]:
+    """Deliverable bullets that reference items but attribute none of them.
+
+    Only a bullet's trailing ``*(Item NNN)*`` marker ties items to it (§1,
+    issue #99). A bullet whose references all sit mid-prose therefore tracks
+    nothing: the items it names stay planned, hold their queue open, and
+    `aide progress set` cannot find the bullet — a silent gap unless it is
+    reported where the author can fix it. A bullet that has a trailing marker
+    is fine, whatever else its prose mentions: the prose is free text by
+    design, not a mistake.
+    """
+    out: List[str] = []
+    for start, last in _deliverable_bullet_spans(lines):
+        if _bullet_marker_item_numbers(lines[last]):
+            continue
+        span_text = "\n".join(lines[start:last + 1])
+        nums = sorted(set(_referenced_item_numbers(span_text)))
+        if nums:
+            listed = ", ".join(f"{n:03d}" for n in nums)
+            out.append(
+                f"progress.md:{start + 1}: deliverable bullet references "
+                f"item(s) {listed} but ends with no *(Item NNN)* marker — only "
+                f"the trailing marker ties an item to a bullet, so this bullet "
+                f"tracks nothing and those items read as untracked. End it "
+                f"with the marker (e.g. '. *(Item {nums[0]:03d})*').")
+    return out
+
+
 def _line_after_title(lines: List[str]) -> str:
     """The first content line after the `#` title, or "" if there is none.
 
@@ -2110,6 +2178,24 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide") -> List[str]:
                     f"— so the pin can never hold and `aide scope` will report "
                     f"a contradiction on every run; put the read-only content "
                     f"check in an acceptance criterion's test instead")
+        # Asserts against means pinned-NOT-changed — `aide scope` prints
+        # exactly that — so a path the spec also authorises itself to change
+        # is a contradiction authored into the spec: the moment the item uses
+        # the authorisation, scope fails it with no spec-side fix visible
+        # (issue #94). Exact double-listing only: a literal pin under a May
+        # change glob is the legitimate carve-out shape ("I may edit docs/**
+        # but not docs/api.md") and scope stays the judge of whether it held.
+        may_normalised = {_strip_dot_slash(p.strip())
+                         for p in (parsed.may_change if parsed else [])}
+        for pin in (parsed.asserts_against if parsed else []):
+            if _strip_dot_slash(pin.strip()) in may_normalised:
+                out.append(
+                    f"items/{path.name}: '{pin}' is listed under both May "
+                    f"change and Asserts against — Asserts against means "
+                    f"pinned-not-changed, so `aide scope` will report every "
+                    f"change to it as a contradiction. If the item writes the "
+                    f"file and its tests assert against the final state, list "
+                    f"it only under May change and say so in prose")
     if missing_assumptions:
         shown = ", ".join(missing_assumptions[:8])
         more = (f" (+{len(missing_assumptions) - 8} more)"
@@ -2245,6 +2331,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     lines = text.splitlines()
     warnings.extend(gate_warnings(lines))
     warnings.extend(nested_deliverable_warnings(lines))
+    warnings.extend(unattributed_reference_warnings(lines))
 
     # Mandatory sections.
     has_stage_table = any(
@@ -2397,18 +2484,20 @@ def _parse_item_status(lines: List[str]) -> Tuple[List[str], List[str], Dict[int
     table's Notes column narrating what went wrong with several items, or a
     checkbox that merely cites the item that satisfies it, must not pull that
     item's tracked status backwards.
+
+    Within a bullet, only the trailing ``*(Item NNN)*`` marker attributes — §1
+    already calls it "the suffix [that] ties an item to the bullet". A
+    reference form elsewhere in the bullet's prose is as free as one in a
+    table cell: a ✅ bullet whose text mentions a live sibling ("absorbing
+    *(Item 095)*'s scope") used to mark that sibling complete, overriding its
+    own 📋 bullet — and once spent items were discounted from the cross-spec
+    checks, the mis-attribution silenced exactly the pre-build errors the
+    checks exist to raise (issue #99).
     """
     item_status: Dict[int, str] = {}
-    bullet_status: Optional[str] = None
-    for line in lines:
-        m = _BULLET_RE.match(line)
-        if m:
-            bullet_status = ICON_TO_STATUS[m.group("icon")]
-        elif not line.strip() or re.match(r"^\s*[-*]\s", line) or not re.match(r"^\s+\S", line):
-            bullet_status = None  # blank line, a non-deliverable bullet, or an unindented new block
-        if bullet_status is None:
-            continue
-        for num in _referenced_item_numbers(line):
+    for start, last in _deliverable_bullet_spans(lines):
+        bullet_status = ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
+        for num in _bullet_marker_item_numbers(lines[last]):
             if num not in item_status or RANK[bullet_status] > RANK[item_status[num]]:
                 item_status[num] = bullet_status
     return [], [], item_status
@@ -2844,12 +2933,15 @@ def cmd_progress(args: argparse.Namespace) -> int:
         return 1
     text = progress_path.read_text(encoding=_ENCODING)
     original = text
-    # An item is only trackable if some deliverable bullet references it (a
-    # missing "*(Item NNN)*" would make set_item_status a silent no-op). When
-    # the queue back-fill was missed, self-heal deterministically from the item
-    # spec's own Stage/title header; only when that context is missing too does
-    # this stay a loud, blocking error.
-    if not _references_item(text, args.number):
+    # An item is only trackable if some deliverable bullet's trailing marker
+    # names it — the ownership rule set_item_status flips by — otherwise the
+    # set would be a silent no-op. A prose mention on someone else's bullet
+    # does not count (issue #99). When the queue back-fill was missed,
+    # self-heal deterministically from the item spec's own Stage/title header;
+    # only when that context is missing too does this stay a loud, blocking
+    # error.
+    healed_note: Optional[str] = None
+    if args.number not in _parse_item_status(text.splitlines())[2]:
         stage, title = _spec_stage_and_title(repo_root, config, args.number)
         healed = insert_item_reference(text, args.number, stage, title) if stage and title else None
         if healed is None:
@@ -2864,9 +2956,29 @@ def cmd_progress(args: argparse.Namespace) -> int:
             )
             return 1
         text = healed
-        print(f"item {args.number:03d}: back-filled missing deliverable reference "
-              f"under Stage {stage} (from the item spec)")
+        # Announced only after the guard below confirms the back-fill took —
+        # a success-flavoured line right before "NOT changed" reads as a
+        # contradiction in an unattended log.
+        healed_note = (f"item {args.number:03d}: back-filled missing "
+                       f"deliverable reference under Stage {stage} "
+                       f"(from the item spec)")
     updated = set_item_status(text, args.number, status_map[args.status])
+    if args.number not in _parse_item_status(updated.splitlines())[2]:
+        # Belt to the heal's braces: if the back-fill (or anything else) left
+        # no bullet whose trailing marker names this item, the set recorded
+        # nothing — say so and write nothing, instead of printing success over
+        # a silent no-op (the failure shape a review of issue #99 found).
+        print(
+            f"item {args.number:03d}: ERROR — after the back-fill, no "
+            f"deliverable bullet's trailing *(Item {args.number:03d})* marker "
+            f"names this item, so the status could not be recorded; progress.md "
+            f"NOT changed. Add the marker to the owning bullet's last line, "
+            f"then re-run.",
+            file=sys.stderr,
+        )
+        return 1
+    if healed_note:
+        print(healed_note)
     if updated == original:
         print(f"item {args.number:03d}: no change (already >= {args.status})")
     else:
