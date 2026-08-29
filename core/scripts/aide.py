@@ -1448,6 +1448,36 @@ def _malformed_gate_row_warnings(lines: List[str]) -> List[str]:
     return out
 
 
+def _reach_with_breadth(lines: List[str], g: HumanGate) -> str:
+    """*g*'s reach with the held items resolved and counted.
+
+    A ``stage N`` reach reads plausibly right while holding items its author
+    never meant to hold — the observed case gated the very deliberation that
+    was to produce the gate's evidence. ``aide claim`` already names what it
+    holds, but that surfaces only when a runner stalls; the check computes the
+    same breadth (``stage_item_numbers``) and used to throw it away, so the
+    contradiction was invisible at authoring time. Only the stage form needs
+    resolving: an item-list reach already names its items, and ``all`` is its
+    own answer.
+
+    The count covers the items the gate still sits in front of: a ✅ item has
+    merged and a ❌ one is out, so "holding" either would overstate the reach
+    against the very enforcement this message mirrors. (``claim``'s stall
+    report narrows further, to the claimable subset of one queue — that is
+    the runtime view; this is the authoring-time view of the same fact, and a
+    stage whose every item merged falls back to the bare reach.)
+    """
+    if g.stage is None:
+        return g.reach
+    _, _, item_status = _parse_item_status(lines)
+    items = [i for i in stage_item_numbers(lines, g.stage)
+             if item_status.get(i, "planned") not in ("complete", "excluded")]
+    if not items:
+        return g.reach
+    return (f"stage {g.stage} — holding {len(items)} item(s): "
+            + ", ".join(f"{i:03d}" for i in items))
+
+
 def gate_warnings(lines: List[str]) -> List[str]:
     """One warning per unresolved human gate, plus one per unreadable row.
 
@@ -1469,7 +1499,7 @@ def gate_warnings(lines: List[str]) -> List[str]:
         if g.kind == "declined":
             out.append(
                 f"progress.md:{g.lineno}: human gate {n} ({g.text}) was DECLINED "
-                f"and still blocks {g.reach} — a refusal does not release the "
+                f"and still blocks {_reach_with_breadth(lines, g)} — a refusal does not release the "
                 f"work it guards; drop those items or change what the gate asks")
             continue
         if g.stage is not None and not stage_item_numbers(lines, g.stage):
@@ -1491,7 +1521,7 @@ def gate_warnings(lines: List[str]) -> List[str]:
                          f"it holds nothing today and will block that stage's "
                          f"items as they are created")
         elif g.blocks or g.stage or g.blocks_all:
-            reach = g.reach
+            reach = _reach_with_breadth(lines, g)
         else:
             reach = ("nothing named — the Blocks cell names no item, no "
                      "'stage N', and is not 'all', so this gate holds nothing")
@@ -2018,14 +2048,23 @@ def header_blockquote_warnings(ddir: Path) -> List[str]:
     return out
 
 
-def item_spec_warnings(ddir: Path) -> List[str]:
+def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide") -> List[str]:
     """Item specs that break the shapes §1 and §5 fix.
 
-    Three rules, none previously checked: the `# Item NNN — Title` heading must
-    agree with the filename (the status report parses the title from it); the
-    header must carry NO status field (status lives only in progress.md, and a
-    duplicate has no owner and only drifts); and the **Assumptions** block is
-    mandatory, since it is what the validator surfaces for audit.
+    Four rules: the `# Item NNN — Title` heading must agree with the filename
+    (the status report parses the title from it); the header must carry NO
+    status field (status lives only in progress.md, and a duplicate has no
+    owner and only drifts); the **Assumptions** block is mandatory, since it
+    is what the validator surfaces for audit; and no always-authorised path
+    may sit under **Asserts against** — the loop itself edits those on every
+    item (the mandatory status flip alone touches progress.md), so the pin can
+    never hold and `aide scope` would fail the item on its routine
+    bookkeeping. Pinning progress.md is the natural way to write an AC that
+    reads a gate row, which is exactly why it needs a spec-time warning.
+
+    *ddir_rel* is the docs dir as specs spell it in their repo-relative paths;
+    `run_checks` passes the configured value, and the default matches the
+    scaffolded `aide.toml`.
 
     The missing-Assumptions finding is reported as ONE aggregated line. Specs
     predating the rule are common — 32 of 112 in the consumer this was measured
@@ -2035,6 +2074,7 @@ def item_spec_warnings(ddir: Path) -> List[str]:
     idir = ddir / "items"
     if not idir.is_dir():
         return []
+    always = _always_authorised_paths(ddir_rel)
     out: List[str] = []
     missing_assumptions: List[str] = []
     for path in sorted(idir.glob("*.md")):
@@ -2060,6 +2100,16 @@ def item_spec_warnings(ddir: Path) -> List[str]:
                        f"and only drifts")
         if not re.search(r"^##\s+Assumptions", text, re.MULTILINE):
             missing_assumptions.append(f"{num:03d}")
+        parsed = parse_authorised_paths(text)
+        for pin in (parsed.asserts_against if parsed else []):
+            if any(patterns_overlap(pin, a) for a in always):
+                out.append(
+                    f"items/{path.name}: '{pin}' is pinned under Asserts "
+                    f"against, but every item is authorised to edit it — the "
+                    f"status flip and the insight append are loop bookkeeping "
+                    f"— so the pin can never hold and `aide scope` will report "
+                    f"a contradiction on every run; put the read-only content "
+                    f"check in an acceptance criterion's test instead")
     if missing_assumptions:
         shown = ", ".join(missing_assumptions[:8])
         more = (f" (+{len(missing_assumptions) - 8} more)"
@@ -2161,7 +2211,11 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(cli_subprocess_test_warnings(repo_root, config))
     warnings.extend(gitattributes_eol_pin_warnings(repo_root, config))
     warnings.extend(header_blockquote_warnings(ddir))
-    warnings.extend(item_spec_warnings(ddir))
+    # A docs_dir outside the repo falls back to its absolute spelling, which
+    # cannot appear in a spec's repo-relative paths — the always-authorised
+    # pin lint then has nothing to match; the other spec-shape lints still
+    # apply.
+    warnings.extend(item_spec_warnings(ddir, _rel_display(ddir, repo_root)))
     if ddir.exists() and not ddir.is_dir():
         # `docs_dir` pointing at something that is not a directory is a
         # misconfiguration, and a third case again: it is neither "no document
@@ -2477,7 +2531,7 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     if qpath is None:
         return ([SpecFinding("error", "missing-queue", (),
                              f"no {queue_name(number)} file under "
-                             f"{qdir.relative_to(repo_root).as_posix()}")],
+                             f"{_rel_display(qdir, repo_root)}")],
                 [])
 
     numbers = queue_item_numbers(qpath.read_text(encoding=_ENCODING))
@@ -2485,6 +2539,19 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     findings: List[SpecFinding] = []
     unspecced: List[int] = []
     declared: Dict[int, AuthorisedPaths] = {}
+
+    # A finding against a SPENT item — merged (✅) or excluded (❌) — is an
+    # error no later item can clear: the spec is a record nobody may edit, a
+    # merged May-change claim can neither be harmed by a later writer nor harm
+    # one, and an excluded item is never offered. Such findings are reported
+    # for the rest of the queue's life, which teaches a reader to skim the run
+    # where one is real — so spent items are discounted below, on both sides
+    # of every comparison. Deferred (⏸️) items are NOT spent: their claims are
+    # dormant, not dead, and a conflict with one is worth surfacing while
+    # re-planning is still cheap.
+    item_status = _progress_item_status(repo_root, config)
+    spent = {n for n in numbers
+             if item_status.get(n, "planned") in ("complete", "excluded")}
 
     for num in numbers:
         specs = item_spec_paths(idir, num)
@@ -2494,14 +2561,18 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
             unspecced.append(num)
             continue
         parsed = parse_authorised_paths(specs[0].read_text(encoding=_ENCODING))
-        rel = specs[0].relative_to(repo_root).as_posix()
+        rel = _rel_display(specs[0], repo_root)
         if declares_nothing(parsed):
-            findings.append(SpecFinding(
-                "warning", "undeclared-scope", (num,),
-                f"item {num:03d} ({rel}) declares no '## Authorised paths' — its "
-                f"scope cannot be compared with its siblings'. Add the section "
-                f"(conventions.md §1); until then this item needs a human scope "
-                f"review, and `aide scope` cannot check it either"))
+            if num not in spent:
+                # A spent spec with no scope section merged (or was dropped)
+                # regardless; the remedy the message names is no longer
+                # available, so the warning would be pure unclearable noise.
+                findings.append(SpecFinding(
+                    "warning", "undeclared-scope", (num,),
+                    f"item {num:03d} ({rel}) declares no '## Authorised paths' — its "
+                    f"scope cannot be compared with its siblings'. Add the section "
+                    f"(conventions.md §1); until then this item needs a human scope "
+                    f"review, and `aide scope` cannot check it either"))
             continue
         declared[num] = parsed
 
@@ -2510,10 +2581,10 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     # two items "conflicting" over progress.md is not a conflict — it is the
     # claim protocol working. Excluded from the overlap check, never from the
     # pinned-state check: pinning progress.md would be a real assertion.
-    ddir_rel = ddir.relative_to(repo_root).as_posix()
-    bookkeeping = {f"{ddir_rel}/{name}" for name in _ALWAYS_AUTHORISED}
+    ddir_rel = _rel_display(ddir, repo_root)
+    bookkeeping = set(_always_authorised_paths(ddir_rel))
 
-    ordered = sorted(declared)
+    ordered = sorted(n for n in declared if n not in spent)
     for i, a in enumerate(ordered):
         for b in ordered[i + 1:]:
             # Row 1 — two items claim edit rights on the same file.
@@ -2548,9 +2619,19 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
 
     # Row 5 — the dependency graph. A cycle deadlocks `aide claim`: every item
     # in it is blocked by another in it, so the queue silently stops producing
-    # work rather than failing.
+    # work rather than failing. The graph holds only items that can still
+    # block a claim — the same status set `_pick_item` treats as blocking: a
+    # complete, excluded or deferred dependency does not block, and such an
+    # item is never offered, so no cycle through one can deadlock (a cycle
+    # whose members all merged has PROVED its order was satisfiable). The typo
+    # pass below shares the filter: a mistyped dependency in a spent or
+    # deferred item's spec blocks nothing today, and the warning about it
+    # would be unclearable.
     graph = {num: _item_dependencies(repo_root, config, num)
-             for num in numbers if num not in unspecced}
+             for num in numbers
+             if num not in unspecced
+             and item_status.get(num, "planned") in ("planned", "in-progress",
+                                                     "in-review")}
     for cycle in _dependency_cycles(graph):
         chain = " → ".join(f"{n:03d}" for n in cycle + [cycle[0]])
         findings.append(SpecFinding(
@@ -3219,6 +3300,21 @@ def _queue_titles(text: str) -> Dict[int, str]:
 #: parser (and a human skimming the section) can tell the two apart.
 _DEPENDENCIES_DOWNSTREAM_MARKER_RE = re.compile(r"\*\*Downstream\b", re.IGNORECASE)
 
+#: Marks a quoted human-gate reach ("waits on Gate 3 — `Blocks: items 119,
+#: 120, 121`"). Transcribing the gate row's cell is the natural way to say
+#: which gate holds this item, and the numbers in the quote are the GATE's
+#: reach, not items this one depends on — read as blockers they grew edges
+#: (and cycles) nobody authored. Like ``**Downstream``, the marker must be
+#: DELIBERATE markup — a backticked or bold ``Blocks:`` label, the forms a
+#: quoted table cell actually takes — never bare prose: "hard blocks: Items
+#: 027 and 028 must land first" states real blockers, and an exclusion plain
+#: English could trip would silently drop them. The pattern consumes to the
+#: end of the line and no further: the quote opens no subsection, so a
+#: dependency bullet on the next line must still be read (which also means a
+#: reach quote must not wrap — keep it on one line, as the template says).
+_DEPENDENCIES_BLOCKS_QUOTE_RE = re.compile(
+    r"(?:`|\*\*)blocks\*{0,2}\s*:[^\n]*", re.IGNORECASE)
+
 
 def _item_dependencies(repo_root: Path, config, number: int) -> List[int]:
     """Item numbers named in the spec's Dependencies section (best effort).
@@ -3229,7 +3325,9 @@ def _item_dependencies(repo_root: Path, config, number: int) -> List[int]:
     the first in "Items 093, 094, 095" unrecognised as a blocker. Text at or
     after a "**Downstream" marker is excluded (see
     `_DEPENDENCIES_DOWNSTREAM_MARKER_RE`), so a forward-looking "item 099
-    depends on this" aside does not register as a backward blocker.
+    depends on this" aside does not register as a backward blocker; likewise
+    the rest of any line from a backticked or bold "Blocks:" marker on (see
+    `_DEPENDENCIES_BLOCKS_QUOTE_RE`), so a quoted gate reach does not either.
     """
     idir = docs_dir(repo_root, config) / "items"
     specs = item_spec_paths(idir, number)
@@ -3241,6 +3339,7 @@ def _item_dependencies(repo_root: Path, config, number: int) -> List[int]:
     downstream = _DEPENDENCIES_DOWNSTREAM_MARKER_RE.search(section)
     if downstream is not None:
         section = section[: downstream.start()]
+    section = _DEPENDENCIES_BLOCKS_QUOTE_RE.sub("", section)
     deps = set(_referenced_item_numbers(section))
     deps.discard(number)
     return sorted(deps)
@@ -3738,6 +3837,15 @@ _ASSERTS_LABEL = "asserts against"
 _ALWAYS_AUTHORISED = ("progress.md", "insights.md", "insights/archive-*.md")
 
 
+def _always_authorised_paths(ddir_rel: str) -> Tuple[str, ...]:
+    """The always-authorised names as repo-relative patterns, the spelling item
+    specs use. One joiner for the three enforcement sites — the pin lint in
+    `item_spec_warnings`, the overlap exclusion in `queue_spec_findings`, and
+    `cmd_scope` — so what counts as loop bookkeeping cannot drift between
+    them."""
+    return tuple(f"{ddir_rel}/{name}" for name in _ALWAYS_AUTHORISED)
+
+
 class AuthorisedPaths(NamedTuple):
     """The two lists of an item spec's ``## Authorised paths`` section."""
 
@@ -3979,7 +4087,7 @@ def cmd_scope(args: argparse.Namespace) -> int:
 
     changed = [ln.strip() for ln in diff.stdout.splitlines() if ln.strip()]
     ddir_rel = docs_dir(repo_root, config).relative_to(repo_root).as_posix()
-    always = tuple(f"{ddir_rel}/{name}" for name in _ALWAYS_AUTHORISED) + (rel_spec,)
+    always = _always_authorised_paths(ddir_rel) + (rel_spec,)
     unauthorised, contradictions = scope_findings(changed, authorised, always)
 
     for path in contradictions:

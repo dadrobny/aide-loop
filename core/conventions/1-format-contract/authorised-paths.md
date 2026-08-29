@@ -73,6 +73,14 @@ declared under **Asserts against** and then changed is reported separately from
 an unauthorised one: it means an assertion in this very item now pins state the
 item moved.
 
+For the same reason, never list an always-authorised path under **Asserts
+against**: the loop itself edits those files on every item — the mandatory
+status flip alone touches `progress.md` — so the pin can never hold, and
+`aide scope` reports the routine bookkeeping as a contradiction on every run.
+A read-only content check against one of them (a human-gate row's `Blocks`
+cell, say) belongs in an acceptance criterion's test, not in the path lists.
+`aide check` warns when a spec writes one.
+
 A test that hashes some
 *other* file's bytes against a hardcoded literal to prove this item did not
 touch it — a **scope fence** — is a fallback for cases with no diff to check
@@ -115,7 +123,16 @@ python .aide/scripts/aide.py check --queue NNN [--report <path>]
 
 It reports two items claiming the same path under **May change** (warning), one
 item changing what another pins under **Asserts against** (error), and a
-dependency cycle or a dependency on an item that exists nowhere. `--report`
+dependency cycle or a dependency on an item that exists nowhere. Spent items —
+✅ merged or ❌ excluded in `progress.md` — are discounted on both sides of
+every comparison: a merged item's claim can neither be harmed by a later
+writer nor harm one, an excluded item is never offered, and a finding against
+either is an error no later item can clear. The cycle check goes further and
+keeps only items whose status still blocks a claim (⏸️ deferred drops out too,
+since a deferred dependency does not block), because a cycle whose members all
+merged proved its order satisfiable. Deferred items stay in the path
+comparisons: their claims are dormant, not dead, and a conflict with one is
+worth surfacing while re-planning is cheap. `--report`
 writes the findings as JSON for a reviewer pass to pick up. The invariant is
 worth stating plainly, because a spec-by-spec reading does not give it:
 *predicting the one collision a spec happens to name is not the same as proving

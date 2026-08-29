@@ -77,7 +77,9 @@ list, not by hashing another file's bytes._
 
 _Files or derived artifacts this item's tests read and pin without changing —
 including anything recomputed live from committed state. Write "None." if the
-item pins nothing outside what it changes._
+item pins nothing outside what it changes. Never pin `progress.md` or another
+always-authorised path: the loop edits those on every item, so the pin cannot
+hold — a read-only check of their content belongs in an AC's test._
 
 - `{{path}}` — {{which AC pins it, and how}}
 
@@ -111,7 +113,13 @@ it after that marker, e.g.:_
 
 _Item numbers before the marker are blockers; item numbers after it are not
 — never write a forward reference before the marker, or it will incorrectly
-block this item on something that hasn't happened yet._
+block this item on something that hasn't happened yet. A quoted human-gate
+reach is also safe when the `Blocks:` label keeps its markup: item numbers
+after a backticked or bold `Blocks:` on the same line are not read as
+blockers, so "waits on Gate 3 — `Blocks: items 119, 120, 121`" names the
+gate's reach without creating three dependency edges. Keep the quote on one
+line, and never let plain prose carry the word — unmarked "blocks:" excludes
+nothing._
 
 ## Environment / Hardware Dependencies  <!-- OPTIONAL: delete if not applicable -->
 

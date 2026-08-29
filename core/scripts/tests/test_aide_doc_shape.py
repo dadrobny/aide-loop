@@ -164,6 +164,57 @@ def test_missing_assumptions_is_aggregated_into_one_warning(tmp_path: Path):
     assert "12 item spec(s)" in assumption_warnings[0] and "+4 more" in assumption_warnings[0]
 
 
+def _with_paths(asserts: str, may: str = "src/a.py") -> str:
+    return (GOOD_SPEC + "\n## Authorised paths\n\n**May change:**\n\n"
+            f"- `{may}` — work\n\n**Asserts against:**\n\n"
+            f"- `{asserts}` — pinned\n")
+
+
+def test_pinning_an_always_authorised_path_is_reported(tmp_path: Path):
+    """The recorded shape: a spec pinned progress.md to protect a gate row, and
+    `aide scope` then failed the item on the mandatory status flip — the one
+    edit the loop itself makes on every item. The pin can never hold, so the
+    warning belongs at spec time, where the author can still act on it."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md", _with_paths("docs/aide/progress.md"))
+    w = aide.item_spec_warnings(repo / "docs" / "aide")
+    assert len(w) == 1 and "can never hold" in w[0] and "progress.md" in w[0]
+
+
+def test_pinning_an_insight_archive_matches_through_the_glob(tmp_path: Path):
+    """`_ALWAYS_AUTHORISED` carries a glob for the archives; a literal archive
+    path must be caught through it, not only the exact spellings."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md",
+               _with_paths("docs/aide/insights/archive-2026-Q3.md"))
+    w = aide.item_spec_warnings(repo / "docs" / "aide")
+    assert len(w) == 1 and "can never hold" in w[0]
+
+
+def test_an_ordinary_pin_is_silent(tmp_path: Path):
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md", _with_paths("src/untouched.py"))
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
+def test_bookkeeping_under_may_change_is_not_flagged(tmp_path: Path):
+    """Listing progress.md under May change is merely redundant — `aide scope`
+    authorises it anyway. Only the pin is a contradiction-in-waiting."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md",
+               _with_paths("src/untouched.py", may="docs/aide/progress.md"))
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
+def test_the_lint_follows_a_configured_docs_dir(tmp_path: Path):
+    """The always-authorised names are docs_dir-relative; a consumer that
+    configured `d/` writes `d/progress.md` in its specs."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md", _with_paths("d/progress.md"))
+    assert aide.item_spec_warnings(repo / "docs" / "aide", "d") != []
+    assert aide.item_spec_warnings(repo / "docs" / "aide", "docs/aide") == []
+
+
 # --------------------------------------------------------------------------- #
 # test hygiene lints
 # --------------------------------------------------------------------------- #
