@@ -69,6 +69,18 @@ floor (`AGENT-CONTEXT.md` plus every unscoped rule) byte-for-byte — it fails i
 both directions on purpose, and moving it means bumping `VERSION` and editing
 the pin deliberately.
 
+And each rule **quotes the statements it delivers**, in `<!-- pins: <section
+file> … -->` blocks — one block per section, each `- ` line a sentence lifted
+from it.
+[`adapters/claude/tests/test_rule_pins.py`](adapters/claude/tests/test_rule_pins.py)
+asserts every pin still appears in the rule *and* in the section it names, after
+a normalisation that absorbs reflow, emphasis and case but nothing else. **Both
+directions**: a rule reworded away from its section fails, and so does a section
+rewritten under a rule that still quotes the old wording — edit both copies, in
+one commit. Every rule must pin at least one statement; a rule that delivers no
+normative engine statement is a question, not an exemption. Curate the pins —
+the load-bearing sentences, not every line.
+
 Do not re-inline a contract restatement into an agent spec. Six of them carried
 the command-hygiene block verbatim, one had already drifted, and a test now
 fails if the heading comes back.

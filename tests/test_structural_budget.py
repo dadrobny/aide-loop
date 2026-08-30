@@ -69,10 +69,10 @@ import install  # noqa: E402  (path shim above)
 # change reaches consumers, so it has to arrive with a version that says so.
 # --------------------------------------------------------------------------- #
 FLOOR_PIN = {
-    "version": "1.25.1",
+    "version": "1.25.2",
     "files": {
         ".aide/AGENT-CONTEXT.md": 4169,
-        ".claude/rules/aide-command-hygiene.md": 2155,
+        ".claude/rules/aide-command-hygiene.md": 3099,
     },
 }
 

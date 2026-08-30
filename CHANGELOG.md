@@ -34,6 +34,53 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.25.2] — 2026-08-30
+
+### Fixed
+
+- **A delivered rule now quotes its section, and a test holds the two copies
+  in step (issue #81).** `.claude/rules/` restates `conventions/` by design, and
+  a restatement drifts — the PR that forbade adapter-invented rules shipped two
+  of them and a human caught both by reading two files side by side. Each rule
+  file now carries `<!-- pins: <section file> … -->` blocks quoting the
+  normative statements it delivers, and
+  `adapters/claude/tests/test_rule_pins.py` asserts each quoted statement
+  appears in the rule *and* in the section it names, after a normalisation that
+  absorbs reflow, emphasis and case and nothing else. It fails in both
+  directions and every rule must pin at least one statement, so a new rule
+  cannot ship unguarded. Thirty-five pins across the three rules.
+- **`aide-living-documents.md` listed three status icons the engine does not
+  have, and mis-stated where icons are read.** It gave the six as `✅ Done`,
+  `⏸️ Blocked` and `❓ Unverified` where `§1 → status-icons.md` defines
+  `✅ Complete`, `⏸️ Deferred` and `❌ Excluded` — `❓ Unverified` is
+  table-local vocabulary for Outcome targets and env-gated capabilities, never
+  a stage or deliverable status, and `❌ Excluded` was missing entirely. It then
+  named the three structural positions as "an objective heading, a stage
+  heading, and the leading character of a deliverable bullet" and added that a
+  table cell is prose — contradicting the engine, where a table row's Status
+  (last) cell *is* one of the three. A role writing `progress.md` from the rule
+  alone would have produced a document `aide check` rejects. Both now quote
+  `status-icons.md`.
+- **Two rules the Claude adapter enforced were missing from `conventions.md`
+  §3.** The hook and the rule blocked `||` as a chaining operator and allowed a
+  single `|` pipe; §3 named only `&&` and `;` and said nothing about pipes. The
+  rule also required Python and pytest to run from the project venv by relative
+  path (`.venv/Scripts/python -m pytest` / `.venv/bin/python -m pytest`), which
+  appeared nowhere under `core/`. Both are runtime-general, so both are now
+  stated in §3 and delivered from there, per ADAPTER-SPEC §7's "carries no rule
+  the engine does not have". No behaviour changed; the engine caught up with
+  what was already enforced.
+
+### Changed
+
+- The always-on floor moves from 6,324 to 7,268 content bytes: the pin block in
+  the unscoped `aide-command-hygiene.md` is paid on every spawn, like the rest
+  of that file. Recorded rather than absorbed — it is the price of the drift
+  check, and `tests/test_structural_budget.py` carries the new number.
+- `ADAPTER-SPEC.md` §7 states how the last two of the three delivery
+  obligations are made checkable, so another runtime knows what the guarantee
+  is rather than how this adapter spells it.
+
 ## [1.25.1] — 2026-08-30
 
 ### Added
