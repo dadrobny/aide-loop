@@ -412,7 +412,8 @@ def test_archive_requires_a_well_formed_date(tmp_path: Path):
 def test_a_missing_inbox_is_reported_not_crashed(tmp_path: Path):
     repo = _repo(tmp_path)
     (repo / "docs" / "aide" / "insights.md").unlink()
-    assert aide.main(["--repo", str(repo), "insights", "list"]) == 2
+    assert aide.main(["--repo", str(repo), "insights", "tick", "1",
+                      "--pointer", "x"]) == 2
 
 
 # --------------------------------------------------------------------------- #
@@ -752,3 +753,151 @@ def test_the_date_stays_strict_with_a_version_after_it(tmp_path: Path):
         "- [ ] gap — an empty trailer says nothing *(item 1, 2026-08-29,  )*\n",
         encoding="utf-8")
     assert len(aide.insight_warnings(d)) == 3
+
+
+# --------------------------------------------------------------------------- #
+# the engine guarantees the inbox exists (issue #85)
+# --------------------------------------------------------------------------- #
+_TEMPLATE = Path(__file__).resolve().parents[2] / "templates" / "insights.md"
+
+#: The least progress.md `check` passes on, so the verb reaches its exit code
+#: for the document set's own reasons and not for a fixture's.
+_PROGRESS = "# P\n\n| 1 | S | G | 📋 |\n\n| G1 | O | 📋 |\n\n## Stage 1 — S — 📋\n"
+
+
+def _loop_repo_without_inbox(tmp_path: Path) -> Path:
+    repo = _repo(tmp_path)
+    (repo / "docs" / "aide" / "progress.md").write_text(_PROGRESS, encoding="utf-8")
+    (repo / "docs" / "aide" / "insights.md").unlink()
+    _run(["git", "add", "-A"], repo)
+    _run(["git", "commit", "-m", "a document set with no inbox yet"], repo)
+    return repo
+
+
+def _cli_only_repo(tmp_path: Path) -> Path:
+    """A repo that adopted the CLI and not the loop: aide.toml, no docs_dir."""
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    (repo / "aide.toml").write_text(AIDE_TOML, encoding="utf-8")
+    return repo
+
+
+def _clean(repo: Path) -> bool:
+    return _run(["git", "status", "--porcelain"], repo).stdout.strip() == ""
+
+
+def test_the_template_is_where_the_engine_looks_for_it():
+    """Every test below compares against this file; if the layout moves, this
+    is the one that fails with a reason instead of the rest with a mystery."""
+    assert _TEMPLATE.is_file()
+    assert aide._TEMPLATES_DIR == _TEMPLATE.parent
+    assert b"insight" in _TEMPLATE.read_bytes().lower()
+
+
+def test_check_creates_a_missing_inbox_byte_for_byte(tmp_path: Path):
+    repo = _loop_repo_without_inbox(tmp_path)
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    assert (repo / "docs" / "aide" / "insights.md").read_bytes() == _TEMPLATE.read_bytes()
+
+
+def test_check_commits_the_inbox_it_created(tmp_path: Path):
+    """`aide sync` refuses a dirty tree; a creation left untracked would stall
+    the next preflight of the loop it exists to serve."""
+    repo = _loop_repo_without_inbox(tmp_path)
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    assert _clean(repo)
+    subject = _run(["git", "log", "-1", "--format=%s"], repo).stdout.strip()
+    assert subject.startswith("docs(aide):")
+
+
+def test_check_says_it_created_the_inbox(tmp_path: Path, capsys):
+    repo = _loop_repo_without_inbox(tmp_path)
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    out = capsys.readouterr().out
+    notice = [l for l in out.splitlines() if l.startswith("notice:")]
+    assert len(notice) == 1 and "docs/aide/insights.md" in notice[0]
+    assert "aide check: OK" in out
+
+
+def test_check_is_silent_about_the_inbox_once_it_exists(tmp_path: Path, capsys):
+    repo = _loop_repo_without_inbox(tmp_path)
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    assert "notice:" not in capsys.readouterr().out
+
+
+def test_check_never_overwrites_an_existing_inbox_even_a_malformed_one(tmp_path: Path):
+    repo = _loop_repo_without_inbox(tmp_path)
+    inbox = repo / "docs" / "aide" / "insights.md"
+    inbox.write_bytes(b"- [ ] not a shape the parser knows\n")
+    assert aide.main(["--repo", str(repo), "check"]) == 0  # a shape *warning*
+    assert inbox.read_bytes() == b"- [ ] not a shape the parser knows\n"
+
+
+def test_check_creates_nothing_in_a_repo_with_no_document_set(tmp_path: Path):
+    repo = _cli_only_repo(tmp_path)
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    assert not (repo / "docs").exists()
+
+
+def test_the_helper_reports_what_it_did(tmp_path: Path):
+    repo = _loop_repo_without_inbox(tmp_path)
+    config = aide.load_config(repo)
+    created = aide.ensure_insights_inbox(repo, config, verb="test")
+    assert created == repo / "docs" / "aide" / "insights.md"
+    assert aide.ensure_insights_inbox(repo, config, verb="test") is None
+    assert aide.ensure_insights_inbox(_cli_only_repo(tmp_path / "other"),
+                                      config, verb="test") is None
+
+
+def test_a_missing_template_is_reported_not_crashed(tmp_path: Path, monkeypatch, capsys):
+    """An install that lost `.aide/templates/` is incomplete, not broken here:
+    the gate still runs, still exits on the document set's merits, and says
+    which file it could not create and why."""
+    repo = _loop_repo_without_inbox(tmp_path)
+    monkeypatch.setattr(aide, "_TEMPLATES_DIR", tmp_path / "nowhere")
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    assert not (repo / "docs" / "aide" / "insights.md").exists()
+    err = capsys.readouterr().err
+    assert "insights.md" in err and "install" in err
+
+
+def test_list_on_a_missing_inbox_creates_it_and_reports_an_empty_backlog(
+        tmp_path: Path, capsys):
+    repo = _repo(tmp_path)
+    inbox = repo / "docs" / "aide" / "insights.md"
+    inbox.unlink()
+    _run(["git", "commit", "-am", "drop the inbox"], repo)
+    assert aide.main(["--repo", str(repo), "insights", "list"]) == 0
+    assert inbox.read_bytes() == _TEMPLATE.read_bytes()
+    assert _clean(repo)
+    out = capsys.readouterr().out
+    assert "notice:" in out and "0 entries, 0 open" in out
+
+
+def test_list_no_commit_leaves_the_created_inbox_uncommitted(tmp_path: Path):
+    repo = _repo(tmp_path)
+    inbox = repo / "docs" / "aide" / "insights.md"
+    inbox.unlink()
+    _run(["git", "commit", "-am", "drop the inbox"], repo)
+    assert aide.main(["--repo", str(repo), "insights", "list", "--no-commit"]) == 0
+    assert inbox.is_file() and not _clean(repo)
+
+
+def test_list_with_no_document_set_creates_nothing(tmp_path: Path):
+    repo = _cli_only_repo(tmp_path)
+    assert aide.main(["--repo", str(repo), "insights", "list"]) == 2
+    assert not (repo / "docs").exists()
+
+
+def test_tick_and_archive_on_a_missing_inbox_point_at_check(tmp_path: Path, capsys):
+    """Neither can act on a file that is not there, and the way to get one is
+    a verb now — not the hand copy the old message prescribed."""
+    repo = _repo(tmp_path)
+    (repo / "docs" / "aide" / "insights.md").unlink()
+    for verb in (["tick", "1", "--pointer", "x"], ["archive", "--before", "2026-01-01"]):
+        assert aide.main(["--repo", str(repo), "insights", *verb]) == 2
+        err = capsys.readouterr().err
+        assert "aide check" in err and "templates" not in err
+    assert not (repo / "docs" / "aide" / "insights.md").exists()

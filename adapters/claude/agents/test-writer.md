@@ -76,8 +76,7 @@ fixture conventions only.
 ## Out-of-scope insights (compound engineering)
 
 When you learn something true but OUT OF SCOPE for this task, append ONE line
-to `docs/aide/insights.md` (create it from `.aide/templates/insights.md`,
-copied verbatim, if missing) and carry on. Never act on it here. Entry shape:
+to `docs/aide/insights.md` and carry on. Never act on it here. Entry shape:
 
     - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(item NNN, YYYY-MM-DD, engine X.Y.Z)*
 

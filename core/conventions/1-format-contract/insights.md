@@ -9,8 +9,15 @@ of scope. Any role, at any time, appends **one line** and returns to its task:
 
 with `<type>` one of **knowledge** (document it), **defect** (fix it), **gap**
 (plan it), **automation** (a recurring manual/agent action deterministic code
-could replace — script it), **framework** (belongs to AIDE itself). Template:
-`.aide/templates/insights.md` (copy verbatim).
+could replace — script it), **framework** (belongs to AIDE itself).
+
+**The file exists before any role can need it — the engine guarantees it.**
+`aide check`, `aide claim` and `aide queue start` each create a missing
+`insights.md` as a byte-exact copy of `.aide/templates/insights.md` and commit
+it, so every loop entry point reaches its first role with the inbox in place,
+and a capture is a plain append to a file that is already there. No role copies
+the template by hand, and an existing file — malformed or not — is never
+touched.
 
 **Name where it came from, in whatever form is honest.** The provenance before
 the date is free-form and optional — write `item NNN` from inside an item,

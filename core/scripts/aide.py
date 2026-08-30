@@ -2876,6 +2876,16 @@ def _write_findings_report(path: Path, number: int,
 
 
 def cmd_check(args: argparse.Namespace) -> int:
+    """The consistency gate over the document set — and one write.
+
+    Everything here reads, except ``ensure_insights_inbox``: a ``docs_dir``
+    that exists but has no ``insights.md`` gets one, byte-exact from the
+    template, and the run says so in a ``notice:``. It is the engine keeping
+    §1's promise that capture is a plain append to a file that exists, placed
+    in the verb every consumer is told to run before its first unattended run.
+    The exit code never depends on it: the creation cannot fail a run, and a
+    document set whose inbox already exists is reported exactly as before.
+    """
     queue = getattr(args, "queue", None)
     if getattr(args, "report", None) and queue is None:
         # Silently ignoring it would be worse than refusing: the caller asked
@@ -2888,6 +2898,10 @@ def cmd_check(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
     ddir = docs_dir(repo_root, config)
+    # Before the checks, so the file they then shape-check is the one that
+    # exists — a run that created the inbox and warned about its absence in
+    # the same breath would be reporting on two different repositories.
+    ensure_insights_inbox(repo_root, config, verb="check")
     errors, warnings = run_checks(repo_root, config)
 
     if not ddir.exists() and queue is None:
@@ -3146,24 +3160,86 @@ def _commit_progress_file(repo_root: Path, config, message: str) -> None:
 
 
 def _commit_docs_files(repo_root: Path, config, message: str,
-                       rels: List[str]) -> None:
+                       rels: List[str], pull: bool = True) -> bool:
     """Commit exactly *rels* — repo-relative paths — with *message*.
+
+    Returns whether a commit was made, so a caller that announces one can
+    announce what happened rather than what it intended.
 
     Named paths, never ``git add -A``: these verbs run mid-item, alongside a
     builder's uncommitted work, and a broad add would sweep that into a
     bookkeeping commit.
+
+    *pull* rebases onto the upstream first, which is right for an edit to a
+    file other machines also edit (a tick, an archive) and wrong for a file
+    that did not exist a moment ago — ``ensure_insights_inbox`` passes
+    ``False`` so that ``check``, a gate, never fetches on the caller's behalf.
     """
-    git(["pull", "--rebase"], repo_root, check=False)
+    if pull:
+        git(["pull", "--rebase"], repo_root, check=False)
     for rel in rels:
         git(["add", rel], repo_root, check=False)
     res = git(["commit", "-m", message], repo_root, check=False)
     if res.returncode != 0 and "nothing to commit" not in (res.stdout + res.stderr):
         print(res.stderr.strip(), file=sys.stderr)
+    return res.returncode == 0
 
 
 def insights_path(ddir: Path) -> Path:
     """The live inbox. One name, one place — see ``queue_name``/``item_spec_paths``."""
     return ddir / "insights.md"
+
+
+#: The engine's own templates — installed as ``.aide/templates/`` beside
+#: ``.aide/scripts/``, and laid out the same way in the framework's source tree,
+#: so one relative step serves both. Module-level so a test can point it at a
+#: directory with no template in it.
+_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+
+
+def ensure_insights_inbox(repo_root: Path, config: Dict[str, Dict[str, object]],
+                          verb: str, commit: bool = True) -> Optional[Path]:
+    """Create ``insights.md`` from the template when the document set has none.
+
+    Returns the path when a file was created, ``None`` otherwise. Idempotent
+    and deliberately narrow: an existing file is never touched (not even a
+    malformed one — the immutability rule, conventions.md §1), and a repo with
+    no ``docs_dir`` gets nothing, since a project may adopt the CLI without
+    the loop and the directory itself is project-owned.
+
+    This is the engine's side of the §1 guarantee that capture is a plain
+    append to a file that exists. Before it, every agent spec told the role to
+    copy the template by hand the first time an insight needed a home — six
+    restatements of one step, and the one that made every spec name
+    ``templates/`` (issue #85). The copy is byte-exact: ``read_bytes`` /
+    ``write_bytes`` carries a BOM or CRLF the installer may have written
+    through unchanged.
+
+    The file is committed (named path, no pull) when *commit* is set and the
+    repo is one: ``aide sync`` refuses a dirty tree, so a creation left
+    untracked would stall the next preflight of the very loop it serves.
+    """
+    ddir = docs_dir(repo_root, config)
+    if not ddir.is_dir():
+        return None
+    path = insights_path(ddir)
+    if path.exists():
+        return None
+    template = _TEMPLATES_DIR / "insights.md"
+    rel = _rel_display(path, repo_root)
+    if not template.is_file():
+        print(f"aide {verb}: {rel} is missing and could not be created — "
+              f"{_rel_display(template, repo_root)} is not there, so the install "
+              f"is incomplete (`python install.py --into . --check` from a "
+              f"framework checkout says how)", file=sys.stderr)
+        return None
+    path.write_bytes(template.read_bytes())
+    committed = commit and (repo_root / ".git").exists() and _commit_docs_files(
+        repo_root, config, "docs(aide): create the insight inbox", [rel], pull=False)
+    print(f"notice: created {rel} from .aide/templates/insights.md"
+          f"{' and committed it' if committed else ''} — the insight inbox, so a "
+          f"capture is a plain append (conventions.md §1)")
+    return path
 
 
 def insight_archive_path(ddir: Path, quarter: str) -> Path:
@@ -3199,9 +3275,22 @@ def cmd_insights(args: argparse.Namespace) -> int:
     config = load_config(repo_root)
     ddir = docs_dir(repo_root, config)
     path = insights_path(ddir)
+    if args.action == "list":
+        # An empty backlog is an answer, not an error: `list` on a repo whose
+        # document set has no inbox yet creates the inbox — the same way
+        # `check` does — and reports it empty. The other two verbs edit an
+        # entry, and there is no entry to edit in a file that does not exist.
+        if not ddir.is_dir():
+            print(f"aide insights: no {_rel_display(ddir, repo_root)}/ — this "
+                  f"repo has no AIDE document set, so there is no inbox to list",
+                  file=sys.stderr)
+            return 2
+        ensure_insights_inbox(repo_root, config, verb="insights",
+                              commit=not args.no_commit)
     if not path.is_file():
-        print(f"aide insights: no {path} — capture creates it from "
-              ".aide/templates/insights.md (conventions.md §1)", file=sys.stderr)
+        print(f"aide insights {args.action}: no {_rel_display(path, repo_root)} "
+              f"— nothing to {args.action}; `aide check` creates the inbox "
+              f"(conventions.md §1)", file=sys.stderr)
         return 2
     text = path.read_text(encoding=_ENCODING)
     ddir_rel = ddir.relative_to(repo_root).as_posix()
@@ -3412,6 +3501,10 @@ def _queue_start(args: argparse.Namespace) -> int:
     # disagree with the base it records.
     git(["switch", "-c", branch, base], repo_root)
     _record_branch_base(repo_root, branch, base)
+    # `/aide-run-roadmap` (queue-planner) and `/aide-spec-queue` (spec-author,
+    # spec-reviewer) start here and reach a role before any `check` runs, so
+    # the inbox is guaranteed at the same point `claim` guarantees it.
+    ensure_insights_inbox(repo_root, config, verb="queue start")
     if mode != "local":
         git(["push", "-u", "origin", branch], repo_root)
     note = "" if base == str(config["git"].get("main_branch", "main")) else f" (base {base})"
@@ -3738,6 +3831,11 @@ def cmd_claim(args: argparse.Namespace) -> int:
     # it into main. Naming the start point makes the two agree by construction.
     git(["switch", "-c", branch, base], repo_root)
     _record_branch_base(repo_root, branch, base)
+    # `/aide-run-queue` reaches its roles through `sync` and this verb, never
+    # through `check`, so the §1 guarantee is kept here too: on the new branch,
+    # before the push, so the inbox lands with the item and the claim's own
+    # base is left exactly as it was.
+    ensure_insights_inbox(repo_root, config, verb="claim")
     if mode != "local":
         git(["push", "-u", "origin", branch], repo_root)
     note = "" if base == str(config["git"].get("main_branch", "main")) else f" (base {base})"
@@ -4852,7 +4950,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo", type=Path, default=None, help="repo root (default: search up for aide.toml)")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_check = sub.add_parser("check", help="consistency gate over docs/aide")
+    p_check = sub.add_parser("check", help="consistency gate over docs/aide "
+                             "(its one write: a missing insights.md is created "
+                             "from the template)")
     p_check.add_argument("--queue", type=int, default=None,
                          help="also check this queue's specs against each other "
                               "(scope overlaps, pinned state, dependency graph)")

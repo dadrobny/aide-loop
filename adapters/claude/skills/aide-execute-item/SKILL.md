@@ -61,8 +61,7 @@ or, resuming an existing claim, `python .aide/scripts/aide.py sync --item NNN`
 6. **Capture out-of-scope insights** — anything true but beyond this item (a
    doc gap, a latent defect, a missing capability, a recurring manual step
    deterministic code could replace, an AIDE-framework issue) gets ONE
-   appended line in `docs/aide/insights.md` (create from
-   `.aide/templates/insights.md` verbatim if missing), then carry on:
+   appended line in `docs/aide/insights.md`, then carry on:
 
        - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(item NNN, YYYY-MM-DD, engine X.Y.Z)*
 

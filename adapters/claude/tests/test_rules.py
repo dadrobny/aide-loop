@@ -155,3 +155,28 @@ def test_no_agent_re_inlines_the_command_hygiene_block(path: Path):
     assert "## Command hygiene" not in body, (
         f"{path.name}: command hygiene is delivered by "
         f"rules/aide-command-hygiene.md, not restated per agent")
+
+
+_SKILL_FILES = sorted((_ADAPTER / "skills").glob("*/SKILL.md"))
+_INBOX_TEMPLATE_RE = re.compile(r"templates/insights\.md")
+
+
+@pytest.mark.parametrize(
+    "path", sorted(_AGENTS_DIR.glob("*.md")) + _SKILL_FILES,
+    ids=lambda p: p.parent.name if p.name == "SKILL.md" else p.name)
+def test_no_agent_or_skill_tells_a_role_to_copy_the_inbox_template(path: Path):
+    """The create-if-missing clause, retired in 1.26.0 (issue #85).
+
+    All six specs and `aide-execute-item` carried "create it from
+    `.aide/templates/insights.md`, copied verbatim, if missing". The engine now
+    guarantees the file (`ensure_insights_inbox`, run by `check`, `claim` and
+    `queue start`), so a role has nothing to copy — and the mention itself was
+    the cost: it made every spec name `templates/`, which is what stops a
+    template-scoped delivery from discriminating by role. Guarded on the
+    template's path, not the clause's wording, because a reworded restatement
+    of the same step would re-open both.
+    """
+    body = path.read_text(encoding="utf-8")
+    assert not _INBOX_TEMPLATE_RE.search(body), (
+        f"{path.name}: names templates/insights.md — the engine creates the "
+        f"inbox (conventions.md §1); a role only appends to it")

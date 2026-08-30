@@ -141,8 +141,7 @@ edit to a **framework/process** file (`CLAUDE.md`, `aide.toml`, `.aide/**`,
 When you learn something true but OUT OF SCOPE for this review — a doc gap, a
 latent defect, a missing capability, a recurring manual step that deterministic
 code could replace, or an AIDE-framework issue — append ONE line to
-`docs/aide/insights.md` (create it from `.aide/templates/insights.md`, copied
-verbatim, if missing) and carry on. Never act on it here. Entry shape:
+`docs/aide/insights.md` and carry on. Never act on it here. Entry shape:
 
     - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(queue-NNN, YYYY-MM-DD, engine X.Y.Z)*
 
