@@ -20,7 +20,10 @@ time is what keeps a long run moving.
 - **Python and pytest through the relative venv path** —
   `.venv/Scripts/python -m pytest` on Windows, `.venv/bin/python -m pytest` on
   macOS/Linux. The `aide` CLI always as `python .aide/scripts/aide.py …`, which
-  is stdlib-only and works before any venv exists.
+  is stdlib-only and works before any venv exists. Against a declared sibling
+  repo, run the sibling's own install with an explicit root —
+  `python <sibling>/.aide/scripts/aide.py --repo <sibling> …` (§3) — never a
+  `cd` or a cwd-resolved root.
 - **If an `aide` verb covers it, the raw git form is wrong** — `aide sync`,
   `claim`, `queue start`, `merge`, `gc`, `scope`. Do not improvise the
   equivalent `git fetch` / `switch -c` / `diff --name-only` sequence.

@@ -17,6 +17,51 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+## [1.24.1] — 2026-08-29
+
+Two frictions hit by real sessions working across or committing from a
+consumer (issues #88, #93).
+
+### Fixed
+
+- **The command-hygiene guard no longer reads heredoc body prose as shell
+  operators (issue #88).** The guard blanks quoted spans precisely so a `;` or
+  `&&` inside a commit message never false-positives — but a heredoc body got
+  no such treatment, so `git commit -F - <<'EOF'` with a multi-paragraph
+  message (the exact artifact the framework asks agents to write) was blocked
+  for a semicolon in its prose, with advice pointing at the wrong thing.
+  Heredoc bodies are now blanked before the operator lints, and blanked
+  *before* quote-blanking so a prose apostrophe cannot open a phantom quote
+  that hides real syntax after the terminator. Rule 4 keeps watching the one
+  thing that IS live in a body: `$(…)`/backtick substitution under an unquoted
+  delimiter (`<<EOF`); under a quoted one (`<<'EOF'`, `<<"EOF"`, `<<\EOF`) the
+  body is fully literal and stays invisible. Here-strings (`<<<`) have no body
+  and are untouched. Because a phantom opener's "body" would run to the end of
+  the input and exempt everything after it from every rule, a `<<` is only an
+  opener in redirection position, outside quotes and outside `((…))`
+  arithmetic — a shift, a quoted mention, or prose never silences the guard —
+  and a CRLF command's `\r`-suffixed terminator still ends its body. Rule 1's
+  path-value scan reads bodies as blanks too, so a commit message *naming*
+  `--git-dir` is not read as a second repo blocking the declared-sibling
+  commit shape.
+
+### Changed
+
+- **The aide CLI's sibling-repo shape is now stated, delivered, and pinned
+  (issue #93).** The hygiene carve-out for a declared sibling covered git's
+  repo-override flags but no aide-CLI equivalent was documented anywhere — a
+  session validating a declared sibling's documents had no shape to reach for
+  (one resorted to a `runpy` + `os.chdir` workaround). The CLI has had a
+  global `--repo <root>` flag all along; what was missing was the contract. §3
+  now names the approved shape —
+  `python <sibling>/.aide/scripts/aide.py --repo <sibling> <cmd>`, the
+  sibling's *own* install so its documents are judged by the engine that ships
+  with them, with `--repo` mandatory because the cwd walk would resolve to the
+  wrong repo — §8 points at it, the Claude adapter's command-hygiene rule
+  delivers it, and the guard's rule-1 bounce message offers it as the
+  self-correction when a `cd <sibling>` is blocked. The fixture-consumer suite
+  pins that `--repo` beats a cwd sitting inside a different consumer.
+
 ## [1.24.0] — 2026-08-29
 
 Two mis-attributions the loop could author into itself, both observed on real

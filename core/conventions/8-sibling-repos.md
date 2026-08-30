@@ -6,6 +6,12 @@ never records where those live; `[framework] local_path` and `[hygiene] extra_re
 in the personal, gitignored `.aide/loop/loop.local.toml` do (§3, and the file's own
 comments).
 
+Acting on a declared sibling has approved command shapes and needs no `cd`:
+git via a repo-override flag on the declared path (§3's carve-out), and the
+`aide` CLI via the sibling's own install with an explicit root —
+`python <sibling>/.aide/scripts/aide.py --repo <sibling> <cmd>` (§3, which
+also says why it is the sibling's install and why `--repo` is not optional).
+
 **A repository's own instructions bind for work inside it.** Before editing,
 committing to, or otherwise acting on a repo that is not the working directory's,
 read that repo's instruction file first. Where two repos' rules disagree about a

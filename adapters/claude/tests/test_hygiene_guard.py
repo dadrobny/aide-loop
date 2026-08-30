@@ -336,3 +336,175 @@ def test_multi_line_array_still_works_when_properly_closed(tmp_path, monkeypatch
     monkeypatch.chdir(tmp_path)
     assert guard._hygiene_extra_repos() == ["../one", "../two"]
     assert guard.violations("git -C ../two status") == []
+
+
+# --------------------------------------------------------------------------- #
+# heredoc bodies are data, not commands (issue #88)
+# --------------------------------------------------------------------------- #
+def test_heredoc_commit_message_with_semicolon_in_prose_is_allowed():
+    """The motivating repro: the multi-paragraph commit message the framework
+    itself asks for, piped via `-F -`, blocked for a semicolon in its prose."""
+    cmd = (
+        "git commit -F - <<'EOF'\nfix the parser\n\n"
+        "It broke on nested quotes; the lexer was greedy.\nEOF"
+    )
+    assert guard.violations(cmd) == []
+
+
+def test_heredoc_double_ampersand_in_prose_is_allowed():
+    cmd = "cat > notes.txt <<'EOF'\nCompare foo && bar as a design option.\nEOF"
+    assert guard.violations(cmd) == []
+
+
+def test_heredoc_stderr_redirection_in_prose_is_allowed():
+    cmd = (
+        "cat > notes.txt <<'EOF'\n"
+        "The old script redirected with 2>&1 which we removed.\nEOF"
+    )
+    assert guard.violations(cmd) == []
+
+
+def test_heredoc_git_dir_prose_does_not_trip_rule_1(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # nothing declared — rule 1 must still not fire
+    cmd = (
+        "cat > notes.txt <<'EOF'\n"
+        "Set GIT_DIR= or use --work-tree only in the declared clone.\nEOF"
+    )
+    assert guard.violations(cmd) == []
+
+
+def test_operators_on_the_opener_line_still_fire():
+    """Only the BODY is data — chaining around the heredoc stays a violation."""
+    cmd = "git commit -F - <<'EOF' && git push\nfix: it's the lexer; truly\nEOF"
+    assert "one command per Bash call" in _titles(cmd)
+
+
+def test_apostrophe_in_body_does_not_swallow_later_syntax():
+    """Bodies are blanked before quote-blanking: a prose apostrophe must not
+    open a phantom quote that hides real chaining after the terminator."""
+    cmd = "cat <<'EOF'\nit's fine\nEOF\ngit add -A; git push"
+    assert "one command per Bash call" in _titles(cmd)
+
+
+def test_unquoted_heredoc_substitution_in_commit_still_flagged():
+    # <<EOF interpolates: $(...) in the body really runs, so rule 4 keeps it.
+    cmd = "git commit -F - <<EOF\nbuilt at $(date)\nEOF"
+    assert "substitution" in _titles(cmd)
+
+
+def test_quoted_heredoc_substitution_is_prose():
+    # <<'EOF' keeps the body literal: the same $(date) is inert prose.
+    cmd = "git commit -F - <<'EOF'\ndocument the $(date) probe\nEOF"
+    assert guard.violations(cmd) == []
+
+
+def test_double_quoted_and_backslashed_delimiters_also_quench_substitution():
+    for opener in ('<<"EOF"', "<<\\EOF"):
+        cmd = f"git commit -F - {opener}\ndocument the $(date) probe\nEOF"
+        assert guard.violations(cmd) == [], opener
+
+
+def test_dash_heredoc_tab_indented_terminator_is_found():
+    cmd = "git commit -F - <<-'EOF'\n\tfix; the lexer\n\tEOF"
+    assert guard.violations(cmd) == []
+
+
+def test_unterminated_heredoc_body_extends_to_the_end():
+    # The shell would consume the rest of stdin as body too.
+    cmd = "git commit -F - <<'EOF'\nfix the parser; it broke\n"
+    assert guard.violations(cmd) == []
+
+
+def test_here_string_is_not_a_heredoc():
+    # <<<word has no body: the `;` after it is real chaining, not data.
+    assert "one command per Bash call" in _titles("wc -l <<< word; git push")
+
+
+# --------------------------------------------------------------------------- #
+# phantom openers must not become a kill-switch (review round 1 on #88)
+# --------------------------------------------------------------------------- #
+def test_double_less_inside_double_quotes_is_not_an_opener():
+    """A `<<` in a quoted argument has no body: if it were read as an opener,
+    everything after it would be blanked and EVERY rule silenced."""
+    cmd = 'git commit -m "see <<EOF style"\ngit add -A; git push'
+    assert "one command per Bash call" in _titles(cmd)
+
+
+def test_double_less_inside_single_quotes_is_not_an_opener():
+    cmd = "python -c 'print(1 << 2)'\ngit add -A; git push"
+    assert "one command per Bash call" in _titles(cmd)
+
+
+def test_arithmetic_shift_is_not_an_opener():
+    cmd = "echo $((1 << 2))\ngit add -A; git push"
+    assert "one command per Bash call" in _titles(cmd)
+
+
+def test_word_adjacent_double_less_is_not_an_opener():
+    # Not in redirection position — bash's mid-word `a<<b` heredoc is forgone
+    # so a stray shift or prose token can never blank the rest of the command.
+    cmd = "awk BEGIN{x=a<<b}\ngit add -A; git push"
+    assert "one command per Bash call" in _titles(cmd)
+
+
+def test_real_openers_after_pipe_and_chain_still_blank_their_bodies():
+    # Redirection position includes `|`, `&`, `;`, `(` — a real heredoc there
+    # keeps its body invisible even while the chaining itself is flagged.
+    cmd = "true &&cat <<'EOF'\nprose with ; and && inside\nEOF"
+    assert _titles(cmd).count("one command per Bash call") == 1
+    assert "stderr" not in _titles(cmd)
+
+
+def test_crlf_terminator_is_found():
+    """A CRLF command's terminator line carries `\\r`; missing it would blank
+    the rest of the input — rules silenced — instead of ending the body."""
+    cmd = "cat <<'EOF'\r\nprose; with && operators\r\nEOF\r\ngit add -A; git push"
+    titles = _titles(cmd)
+    assert "one command per Bash call" in titles
+    assert "stderr" not in titles
+
+
+def test_heredoc_prose_naming_git_flags_does_not_break_the_carve_out(
+        tmp_path, monkeypatch):
+    """Rule 1's path-value scan must read heredoc bodies as blanks: a commit
+    message that MENTIONS --git-dir is not a second repo, and treating it as
+    one re-blocks the exact declared-sibling commit shape #88 unblocks."""
+    _declare_extra_repos(tmp_path, ["../sibling"])
+    monkeypatch.chdir(tmp_path)
+    cmd = (
+        "git -C ../sibling commit -F - <<'EOF'\n"
+        "guard: drop the --git-dir=/junk and GIT_DIR=/junk forms\n"
+        "\nThey pointed the hook at the wrong repo.\nEOF"
+    )
+    assert guard.violations(cmd) == []
+
+
+# --------------------------------------------------------------------------- #
+# review round 2 — the rejection gauntlet's own edges
+# --------------------------------------------------------------------------- #
+def test_unbalanced_double_paren_inside_quotes_does_not_suppress_a_heredoc():
+    """The arithmetic rejection must be quote-aware: a quoted "((" is a
+    pattern argument, not arithmetic, and treating it as an unclosed shift
+    context pushed the next heredoc's body back into the lints — the exact
+    false positive this PR exists to remove."""
+    cmd = 'grep -c "((" f.txt\ncat <<\'EOF\'\nfix; the lexer\nEOF'
+    assert guard.violations(cmd) == []
+
+
+def test_real_unclosed_arithmetic_still_rejects_the_candidate():
+    # The quote-awareness must not blunt the rejection it exists to refine.
+    cmd = "echo $((1 << 2\ngit add -A; git push"
+    assert "one command per Bash call" in _titles(cmd)
+
+
+def test_opener_directly_after_connector_chars_is_still_an_opener():
+    """Redirection position includes `|`, `&`, `;`, `(` with no space —
+    `<<'EOF' cat` is bash's redirection-first spelling. Each body must be
+    blanked (no rule fires on its prose) while the connector itself keeps
+    exactly its own consequence."""
+    for prefix, chained in (("true &&", True), ("true ;", True),
+                            ("echo x |", False), ("(", False)):
+        cmd = f"{prefix}<<'EOF' cat\nprose with ; and && inside\nEOF"
+        titles = _titles(cmd)
+        assert ("one command per Bash call" in titles) is chained, prefix
+        assert "stderr" not in titles, prefix
