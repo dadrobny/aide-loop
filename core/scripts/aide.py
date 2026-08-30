@@ -2116,6 +2116,85 @@ def header_blockquote_warnings(ddir: Path) -> List[str]:
     return out
 
 
+#: The vision sections `templates/vision.md` marks `MANDATORY`, minus Goals &
+#: objectives, whose mandatory substance is the G-code table checked separately
+#: — a heading over an empty section would satisfy a heading check while giving
+#: the roadmap nothing to trace. Each entry: (heading text, why it is needed).
+_VISION_MANDATORY_SECTIONS = (
+    ("Guiding principles", "the validator checks implementation against these"),
+    ("Out of scope", "the validator flags work that contradicts this"),
+    ("Success criteria", "they define when the project is done"),
+)
+
+
+def _has_g_code_row(lines: List[str]) -> bool:
+    """True when any table row's first cell names a vision G-code (`G1 …`).
+
+    The shape both mandatory tables share: vision's objectives table and the
+    roadmap's objective → stage coverage table each open every row with the
+    G-code. Cell counts differ (3 and 2), so the first cell is the invariant.
+    """
+    for line in lines:
+        if not line.strip().startswith("|"):
+            continue
+        cells = _split_row(line)
+        if cells and re.match(r"G\d+\b", cells[0]):
+            return True
+    return False
+
+
+def root_document_warnings(ddir: Path) -> List[str]:
+    """Root documents missing the sections their templates mark MANDATORY.
+
+    `templates/vision.md` annotates four sections `MANDATORY: validator
+    checks…` and `templates/roadmap.md` two, and until issue #86 nothing
+    verified any of them: a hand-written vision with none of the sections
+    passed `aide check`, so the promise the annotations make was kept by no
+    code. The observed failure is exactly that — a vision authored free-hand
+    in a consumer, structurally plausible, checked by nobody.
+
+    Headings are matched tolerantly (any level, the template's `2.` numbering
+    optional, case-insensitive): the lint is for a *dropped* section, and a
+    renumbered heading is not a dropped section.
+
+    Warnings, not errors, matching the item specs' mandatory-Assumptions lint:
+    root documents predating this check exist in real consumers, and an
+    unattended run must not start failing over a document none of its items
+    touch — the queue-boundary human reads warnings. A missing file is silent:
+    a repo may adopt the CLI without the root documents (issue #57), and
+    `create-progress` onward is where `progress.md` becomes a hard error.
+    """
+    out: List[str] = []
+    vpath = ddir / "vision.md"
+    if vpath.is_file():
+        vtext = vpath.read_text(encoding=_ENCODING)
+        for title, why in _VISION_MANDATORY_SECTIONS:
+            if not re.search(rf"^#{{1,6}}\s*(?:\d+\.\s*)?{title}\b", vtext,
+                             re.MULTILINE | re.IGNORECASE):
+                out.append(f"vision.md: no '{title}' section — the template "
+                           f"marks it MANDATORY: {why}")
+        if not _has_g_code_row(vtext.splitlines()):
+            out.append("vision.md: no G-code objectives table (rows opening "
+                       "'| G1 |…') — the template marks it MANDATORY: the "
+                       "roadmap and progress.md trace every stage back to "
+                       "these codes")
+    rpath = ddir / "roadmap.md"
+    if rpath.is_file():
+        rtext = rpath.read_text(encoding=_ENCODING)
+        if not _has_g_code_row(rtext.splitlines()):
+            out.append("roadmap.md: no objective → stage coverage rows "
+                       "(opening '| G1 …|') — the template marks the table "
+                       "MANDATORY: it is what shows every vision G-code "
+                       "mapped to a stage")
+        if not re.search(r"^#{1,6}\s*Stage\s+\d+", rtext,
+                         re.MULTILINE | re.IGNORECASE):
+            out.append("roadmap.md: no '## Stage N — Title' sections — the "
+                       "template marks the shape MANDATORY: queues are scoped "
+                       "to a stage and progress.md is generated from these "
+                       "sections")
+    return out
+
+
 def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide") -> List[str]:
     """Item specs that break the shapes §1 and §5 fix.
 
@@ -2268,12 +2347,12 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                branches: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
     """Return ``(errors, warnings)``. Empty errors == pass.
 
-    The first nine checks all run before, and survive, the two early returns
+    The first ten checks all run before, and survive, the two early returns
     below, but for two different reasons. Four of them —
     `absolute_path_test_warnings`, `separator_dependent_test_warnings`,
     `cli_subprocess_test_warnings`, `gitattributes_eol_pin_warnings` — read
     `tests_dir` and never touch `docs_dir`, so they are the ones that make this
-    function worth calling in a repo with no document set. The other five *are* document checks; they
+    function worth calling in a repo with no document set. The other six *are* document checks; they
     simply find nothing to say when `docs_dir` is absent, so keeping them costs
     nothing and they still report on a `docs_dir` that exists but has no
     `progress.md`.
@@ -2297,6 +2376,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(cli_subprocess_test_warnings(repo_root, config))
     warnings.extend(gitattributes_eol_pin_warnings(repo_root, config))
     warnings.extend(header_blockquote_warnings(ddir))
+    warnings.extend(root_document_warnings(ddir))
     # A docs_dir outside the repo falls back to its absolute spelling, which
     # cannot appear in a spec's repo-relative paths — the always-authorised
     # pin lint then has nothing to match; the other spec-shape lints still

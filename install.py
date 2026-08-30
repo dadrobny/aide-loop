@@ -164,6 +164,9 @@ branch_prefix = "aide/"
 
 [loop]
 queue_cap = 10
+# Queue-execution scoped: how spec-author resolves an ambiguous queued item
+# (.aide/conventions.md §5). Not a global posture — root documents (vision,
+# roadmap) are authored interactively whatever this says.
 clarify = "assume"
 
 [framework]

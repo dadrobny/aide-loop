@@ -34,6 +34,39 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.25.0] — 2026-08-30
+
+Root-document authoring gets its missing gate and its missing posture
+(issues #86, #87) — filed together from one consumer session that wrote a
+`vision.md` free-hand, on assumptions, and was caught by nothing.
+
+### Added
+
+- **`aide check` now warns on a root document missing the sections its
+  template marks MANDATORY (issue #86).** `templates/vision.md` has promised
+  for its whole life that a validator checks *Guiding principles*, the G-code
+  objectives table, *Out of scope* and *Success criteria*; `templates/roadmap.md`
+  the same for the objective → stage coverage table and the `## Stage N`
+  sections. No code kept the promise — a vision with none of them passed. One
+  warning per dropped piece, tolerant of renumbered or re-cased headings.
+  Warnings, not errors, matching the mandatory-Assumptions lint: existing
+  root documents must not start failing unattended runs, and the
+  queue-boundary human reads warnings. Absent files stay silent (partial
+  adoption is a choice, not a defect).
+- **§5 now states what `loop.clarify` does *not* govern (issues #86, #87).**
+  The setting reads as a global asking-versus-assuming posture and is not one:
+  it scopes to `spec-author` on queued items, whose assumptions land in an
+  audited block. Root documents are authored through their loop entry point,
+  interactively, whatever the setting says — a wrong assumption at the root
+  has no audit surface and propagates into everything derived from it. Stated
+  in `conventions/5-clarify-mode.md`; delivered always-on via
+  `AGENT-CONTEXT.md` (the channel that reaches the general chat session where
+  the observed failure happened) and to anyone opening a root document via the
+  living-documents rule; restated as an *Asking posture* section in the
+  create-vision and create-roadmap skills; and the scaffolded `aide.toml` now
+  comments `clarify` as queue-execution-scoped so it cannot be read as a
+  global posture.
+
 ## [1.24.1] — 2026-08-29
 
 Two frictions hit by real sessions working across or committing from a

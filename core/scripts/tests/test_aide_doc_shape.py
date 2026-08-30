@@ -486,3 +486,116 @@ def test_all_three_dash_styles_are_accepted(tmp_path: Path):
         _spec_file(repo, f"{n:03d}-x.md",
                    GOOD_SPEC.replace("# Item 027 — Bounds", f"# Item {n:03d} {dash} X"))
     assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
+# --------------------------------------------------------------------------- #
+# root documents — the sections their templates mark MANDATORY (issue #86)
+# --------------------------------------------------------------------------- #
+GOOD_VISION = """\
+# D — Project Vision
+
+> **Status:** Draft v1
+
+## 2. Guiding principles  <!-- MANDATORY: validator checks implementation against these -->
+
+- **Determinism.** Same input, same output.
+
+## 3. Goals & objectives
+
+| # | Objective | Measurable outcome |
+|---|-----------|--------------------|
+| G1 | Ship it | It shipped |
+
+## 9. Out of scope  <!-- MANDATORY -->
+
+- A GUI — out of reach.
+
+## 10. Success criteria  <!-- MANDATORY -->
+
+1. The suite passes.
+"""
+
+GOOD_ROADMAP = """\
+# D — Development Roadmap
+
+> **Status:** Draft v1
+
+### Objective → stage coverage
+
+| Objective | Delivered by |
+|-----------|--------------|
+| G1 Ship it | Stage 0 |
+
+## Stage 0 — Foundations
+
+**Goal.** A walking skeleton.
+"""
+
+
+def test_a_complete_vision_and_roadmap_are_silent(tmp_path: Path):
+    repo = _repo(tmp_path)
+    d = repo / "docs" / "aide"
+    (d / "vision.md").write_text(GOOD_VISION, encoding="utf-8")
+    (d / "roadmap.md").write_text(GOOD_ROADMAP, encoding="utf-8")
+    assert aide.root_document_warnings(d) == []
+
+
+def test_a_vision_missing_every_mandatory_section_gets_four_warnings(tmp_path: Path):
+    """The observed failure (issue #86): a hand-written vision, structurally
+    plausible, missing what the template promises a validator checks — and
+    `aide check` said OK. One warning per dropped piece: the three sections
+    plus the G-code table."""
+    repo = _repo(tmp_path)
+    d = repo / "docs" / "aide"
+    (d / "vision.md").write_text(
+        "# D — Project Vision\n\n> **Status:** Draft\n\n## Overview\n\nProse.\n",
+        encoding="utf-8")
+    w = aide.root_document_warnings(d)
+    assert len(w) == 4
+    assert all(x.startswith("vision.md:") and "MANDATORY" in x for x in w)
+
+
+def test_unnumbered_and_differently_cased_headings_still_count(tmp_path: Path):
+    """The lint is for a DROPPED section; a renumbered or re-cased heading is
+    not a dropped section."""
+    repo = _repo(tmp_path)
+    d = repo / "docs" / "aide"
+    (d / "vision.md").write_text(
+        GOOD_VISION.replace("## 2. Guiding principles", "## Guiding Principles")
+                   .replace("## 9. Out of scope", "### Out Of Scope")
+                   .replace("## 10. Success criteria", "## Success criteria"),
+        encoding="utf-8")
+    assert aide.root_document_warnings(d) == []
+
+
+def test_a_roadmap_missing_coverage_and_stages_gets_both_warnings(tmp_path: Path):
+    repo = _repo(tmp_path)
+    d = repo / "docs" / "aide"
+    (d / "roadmap.md").write_text(
+        "# D — Development Roadmap\n\n> **Status:** Draft\n\n## Strategy\n\nProse.\n",
+        encoding="utf-8")
+    w = aide.root_document_warnings(d)
+    assert len(w) == 2
+    assert all(x.startswith("roadmap.md:") for x in w)
+    assert any("coverage" in x for x in w)
+    assert any("Stage N" in x for x in w)
+
+
+def test_absent_root_documents_are_silent(tmp_path: Path):
+    """Partial adoption (issue #57): a repo may run the CLI with no root
+    documents at all; that is a choice, not a defect."""
+    repo = _repo(tmp_path)
+    assert aide.root_document_warnings(repo / "docs" / "aide") == []
+
+
+def test_a_g_code_in_prose_does_not_satisfy_the_table(tmp_path: Path):
+    """The mandatory thing is the TABLE — rows opening with the G-code. A
+    sentence mentioning G1 gives roadmap and progress nothing to trace."""
+    repo = _repo(tmp_path)
+    d = repo / "docs" / "aide"
+    (d / "vision.md").write_text(
+        GOOD_VISION.replace("| G1 | Ship it | It shipped |",
+                            "G1 is shipping it."),
+        encoding="utf-8")
+    w = aide.root_document_warnings(d)
+    assert len(w) == 1 and "G-code" in w[0]

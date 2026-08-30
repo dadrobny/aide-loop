@@ -15,7 +15,7 @@ Read the section you were pointed at; nothing here expects a top-to-bottom read.
 | 2 | [Claim protocol](conventions/2-claim-protocol.md) | How "this item is taken" is signalled between concurrent runs — the pushed claim branch, not a `🚧` on a feature branch |
 | 3 | [Command hygiene](conventions/3-command-hygiene.md) | The canonical shell-command rules. Runtime-general; an adapter enforces them, it does not restate them |
 | 4 | [Git modes](conventions/4-git-modes.md) | What `git.mode` changes inside `aide claim` / `aide merge`. Agent instructions are identical across modes |
-| 5 | [Clarify mode](conventions/5-clarify-mode.md) | How `spec-author` resolves an ambiguous queued item under `loop.clarify` |
+| 5 | [Clarify mode](conventions/5-clarify-mode.md) | How `spec-author` resolves an ambiguous queued item under `loop.clarify` — and why the root documents sit outside it: authored via their entry point, interactively |
 | 6 | [Test hygiene](conventions/6-test-hygiene.md) | Portability, and tests that can actually fail. Runtime-general, like §3 |
 | 7 | [Off-platform verification](conventions/7-off-platform-verification.md) | No role in this loop sees a non-Linux checkout or real CI status; this is how to look at the gate that does |
 | 8 | [Reaching into another repository](conventions/8-sibling-repos.md) | A repository's own instructions bind for work inside it |
