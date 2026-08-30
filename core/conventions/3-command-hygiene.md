@@ -22,8 +22,10 @@ The rules (runtime-general):
   authorised paths is `aide scope`. Do not improvise the equivalent `git
   fetch`/`git status`/`git switch -c`/`git diff --name-only` sequences — the verbs
   exist so every run does these steps identically and no step is forgotten.
-- **One command per call.** Never chain with `&&` or `;` — separate calls localise
-  failures and keep each invocation legible.
+- **One command per call.** Never chain with `&&`, `||` or `;` — separate calls
+  localise failures and keep each invocation legible. A single `|` pipe
+  (`git branch -r | grep aide/`) is fine: a pipeline is one command, and the
+  failure it can hide is its own exit status, not a second command's.
 - **No `cd` prefix and no directory-changing wrapper** — `git -C "<path>"`,
   `git --git-dir=<path>`, `git --work-tree=<path>`, or a `GIT_DIR=<path>`/
   `GIT_WORK_TREE=<path>` prefix all point git at a repo other than cwd, and
@@ -45,6 +47,15 @@ The rules (runtime-general):
 The `aide` CLI always runs as `python .aide/scripts/aide.py <cmd>` — stdlib-only
 and venv-independent, so it works before any project venv exists and identically
 across runtimes.
+
+**Python and pytest run from the project venv by relative path** —
+`.venv/Scripts/python -m pytest` on Windows, `.venv/bin/python -m pytest` on
+macOS and Linux. Relative, because the working directory is already the repo
+root (above), so the same command holds in any checkout and needs no absolute
+path that only resolves on the machine that wrote it. The venv's interpreter
+rather than a bare `python`/`pytest`, because a bare name runs whatever the PATH
+reaches first — which is how a suite passes against a dependency set the project
+never pinned.
 
 **Against a declared sibling repo** (§8), the CLI needs no `cd` and no git-style
 wrapper either — run the *sibling's own install* with an explicit root:

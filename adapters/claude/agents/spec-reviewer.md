@@ -144,7 +144,7 @@ code could replace, or an AIDE-framework issue — append ONE line to
 `docs/aide/insights.md` (create it from `.aide/templates/insights.md`, copied
 verbatim, if missing) and carry on. Never act on it here. Entry shape:
 
-    - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(queue-NNN, YYYY-MM-DD)*
+    - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(queue-NNN, YYYY-MM-DD, engine X.Y.Z)*
 
 The provenance names where the insight came from; `queue-NNN` is yours,
 because you work a queue and there may be no item to name yet.

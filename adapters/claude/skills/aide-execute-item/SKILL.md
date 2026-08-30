@@ -64,7 +64,7 @@ or, resuming an existing claim, `python .aide/scripts/aide.py sync --item NNN`
    appended line in `docs/aide/insights.md` (create from
    `.aide/templates/insights.md` verbatim if missing), then carry on:
 
-       - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(item NNN, YYYY-MM-DD)*
+       - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(item NNN, YYYY-MM-DD, engine X.Y.Z)*
 
    The feedback loop triages the inbox at the queue boundary; never act on an
    insight out of scope here.

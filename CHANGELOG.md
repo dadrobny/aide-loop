@@ -34,6 +34,178 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.25.5] — 2026-08-30
+
+The consumer-visible half of the review of the #83/#84/#81/#97/#95 batch. All
+three are wording; no verb, flag, output or grammar changed. The rest of that
+review lands in this repo's own tests and adapter docs, which no consumer
+receives.
+
+### Fixed
+
+- **The CLI line in `AGENT-CONTEXT.md` no longer ends two lines with a
+  trailing `|`.** Inside a fenced block that is what a shell line continuation
+  looks like, so the verb list read as one long pipeline rather than as a
+  choice of twelve. The separators now lead the wrapped lines instead of
+  trailing them — a leading `|` cannot be shell. Byte-neutral: the always-on
+  floor stays at 7,532 content bytes and `FLOOR_PIN` in
+  `tests/test_structural_budget.py` is unmoved, bytes and version both.
+- **The ticked-entry example in `templates/insights.md` carries the engine
+  version.** 1.25.3 added `, engine X.Y.Z` to the entry shape at the top of the
+  file and left the triage example below it spelling the marker the old way, so
+  the convention appeared and then vanished within one comment — and the
+  example is the copy a role writing a tick actually looks at.
+- **`aide.py` documents the one character an insight's trailing note cannot
+  hold.** The note is free-form up to `)`, which closes the marker, so
+  `engine 1.2.3 (rc1)` fails to parse — a permanent shape warning on an
+  immutable line, and a lost date. The grammar is unchanged (widening it would
+  swallow the marker); the constant now says so where the next author will
+  read it.
+
+## [1.25.4] — 2026-08-30
+
+### Changed
+
+- **`AGENT-CONTEXT.md`'s CLI line now names every verb the engine ships (issue
+  #95, shape 1 of two).** It listed six of twelve; `insights`, `env` and
+  `status` appeared nowhere in delivered context at all. `gate`, `queue` and
+  `gc` did appear, but only in passing inside a `.claude/rules/` file — `queue
+  start` and `gc` among the verbs `aide-command-hygiene.md` names to say the
+  raw git form is wrong, `gate` and `queue tidy` among those
+  `aide-living-documents.md` names to say prefer the verb to a hand edit — and
+  never in the one place a role reads to learn what the CLI *is*, which is what
+  makes an unnamed verb unreachable. Issue #78 measured a pointer to
+  `conventions.md` as followed about 3% of the time — a verb no always-loaded
+  file names effectively does not exist. On 2026-08-29 in
+  consumer `spine-failure-lab` a role asked to triage the insight inbox read
+  `docs/aide/insights.md` raw, unaware of `aide insights list --open`; closing
+  an entry would have been a hand-edit of the checkboxes that
+  `aide insights tick N --pointer` owns. The line now reads
+  `check | status | env | sync | claim | scope | merge | gc |
+  progress set/accept | gate list/approve/decline | insights list/tick/archive
+  | queue start/tidy`, with a subcommand hint only where the subcommands are
+  the whole interface. Naming alone: no verb, flag or output changed. Issue #95
+  stays open for shape 2 — naming the owning verb in each document's delivered
+  rule — which belongs with the #85 delivery restructure.
+- The always-on floor moves from 7,421 to 7,532 content bytes, all of it that
+  line. `tests/test_structural_budget.py` carries the new number.
+
+## [1.25.3] — 2026-08-30
+
+### Added
+
+- **An insight entry may now name the engine version it was observed under
+  (issue #97).** The marker recorded where a finding came from and when, never
+  which engine was running — a value sitting on disk as `.aide/VERSION` at the
+  moment of capture. The date cannot stand in for it: a project runs an engine
+  for as long as it likes after a release, so two entries captured the same
+  week may sit either side of a restructure. On 2026-08-29 eight `framework`
+  issues landed upstream across the 1.21.0 → 1.22.0 restructure and no entry
+  said which side it came from, so every older-engine claim was re-verified by
+  hand. The conventional spelling is now
+  `*(item NNN, YYYY-MM-DD, engine X.Y.Z)*`, documented in `conventions.md`
+  §1 → `insights.md`, the `insights.md` template header and `AGENT-CONTEXT.md`,
+  and carried by the capture shape the six agent specs and
+  `aide-execute-item` print at the point of capture — a shape line that
+  disagreed with the always-loaded one would be followed instead of it.
+  Guidance, not grammar: optional, unenforced, and never retrofitted onto an
+  entry captured without one, since the claim line is immutable.
+- **`/aide-feedback-loop` §0 carries the version into the issue it files.** A
+  `framework` entry becomes a GitHub issue in a repo that cannot see this one,
+  so the body now names the engine the observation was made under — from the
+  entry, or from `.aide/VERSION` at triage time *explicitly marked as the
+  fallback it is*, because an unmarked guess reads there as an observed fact.
+  Stated in `conventions.md` §1 → `insights.md`, delivered by the skill.
+
+### Changed
+
+- **`aide check`, `insights list`, `tick` and `archive` accept the trailing
+  component.** Without this the new spelling was not merely undocumented but
+  actively rejected: the entry pattern required `)*` immediately after the
+  date, so a versioned capture drew a permanent shape warning *and* failed to
+  parse — losing its date, which is what `archive` cuts on, and what `tick`
+  refuses to guess at. What follows the date is now parsed as
+  `InsightEntry.note` and reprinted verbatim by `insights list`, which is where
+  triage reads the backlog from. Free-form, for the reason issue #76 widened
+  the provenance and sharper here: entries predate the convention, and a
+  rejected spelling is a warning the immutability rule leaves no way to clear.
+  The date itself did not relax on either side.
+- The always-on floor moves from 7,268 to 7,421 content bytes: two sentences in
+  `AGENT-CONTEXT.md`, which is the copy a role actually reads at capture time —
+  a convention absent from it is a convention nobody follows.
+  `tests/test_structural_budget.py` carries the new number.
+
+## [1.25.2] — 2026-08-30
+
+### Fixed
+
+- **A delivered rule now quotes its section, and a test holds the two copies
+  in step (issue #81).** `.claude/rules/` restates `conventions/` by design, and
+  a restatement drifts — the PR that forbade adapter-invented rules shipped two
+  of them and a human caught both by reading two files side by side. Each rule
+  file now carries `<!-- pins: <section file> … -->` blocks quoting the
+  normative statements it delivers, and
+  `adapters/claude/tests/test_rule_pins.py` asserts each quoted statement
+  appears in the rule *and* in the section it names, after a normalisation that
+  absorbs reflow, emphasis and case and nothing else. It fails in both
+  directions and every rule must pin at least one statement, so a new rule
+  cannot ship unguarded. Thirty-five pins across the three rules.
+- **`aide-living-documents.md` listed three status icons the engine does not
+  have, and mis-stated where icons are read.** It gave the six as `✅ Done`,
+  `⏸️ Blocked` and `❓ Unverified` where `§1 → status-icons.md` defines
+  `✅ Complete`, `⏸️ Deferred` and `❌ Excluded` — `❓ Unverified` is
+  table-local vocabulary for Outcome targets and env-gated capabilities, never
+  a stage or deliverable status, and `❌ Excluded` was missing entirely. It then
+  named the three structural positions as "an objective heading, a stage
+  heading, and the leading character of a deliverable bullet" and added that a
+  table cell is prose — contradicting the engine, where a table row's Status
+  (last) cell *is* one of the three. A role writing `progress.md` from the rule
+  alone would have produced a document `aide check` rejects. Both now quote
+  `status-icons.md`.
+- **Two rules the Claude adapter enforced were missing from `conventions.md`
+  §3.** The hook and the rule blocked `||` as a chaining operator and allowed a
+  single `|` pipe; §3 named only `&&` and `;` and said nothing about pipes. The
+  rule also required Python and pytest to run from the project venv by relative
+  path (`.venv/Scripts/python -m pytest` / `.venv/bin/python -m pytest`), which
+  appeared nowhere under `core/`. Both are runtime-general, so both are now
+  stated in §3 and delivered from there, per ADAPTER-SPEC §7's "carries no rule
+  the engine does not have". No behaviour changed; the engine caught up with
+  what was already enforced.
+
+### Changed
+
+- The always-on floor moves from 6,324 to 7,268 content bytes: the pin block in
+  the unscoped `aide-command-hygiene.md` is paid on every spawn, like the rest
+  of that file. Recorded rather than absorbed — it is the price of the drift
+  check, and `tests/test_structural_budget.py` carries the new number.
+- `ADAPTER-SPEC.md` §7 states how the last two of the three delivery
+  obligations are made checkable, so another runtime knows what the guarantee
+  is rather than how this adapter spells it.
+
+## [1.25.1] — 2026-08-30
+
+### Added
+
+- **Every `.claude/rules/*.md` now declares the reach it expects, and a test
+  checks it (issue #84).** A one-line `<!-- reach: … -->` comment names the
+  agent roles a rule expects to arm for; `tests/test_structural_budget.py`
+  installs into a temp directory, extracts each role's read-set from the
+  delivered agent specs, evaluates the rule's `paths:` globs against it, and
+  fails on a mismatch. The first measurement confirms what 1.22.0 noted in
+  prose and nothing enforced: `aide-living-documents.md` is scoped to document
+  names all six roles read, so its `paths:` block scopes it to nobody and
+  every spawn pays for it. That is now recorded in the rule itself and checked
+  on every run, instead of resting on a human doing the arithmetic. The
+  always-on floor (`AGENT-CONTEXT.md` plus every
+  unscoped rule) is pinned per file, failing in both directions, so it cannot
+  move without a deliberate edit; totals are printed as diagnostics rather
+  than asserted against a threshold. Rule bodies gained the comments; no rule
+  changed scope, wording or behaviour.
+- The always-on floor moves from 5,996 to 6,324 content bytes: the declaration
+  this release adds to the unscoped `aide-command-hygiene.md` is itself paid on
+  every spawn. The instrument costs something, and the first number it records
+  is its own — so it is stated here like every later move of it.
+
 ## [1.25.0] — 2026-08-30
 
 Root-document authoring gets its missing gate and its missing posture

@@ -45,8 +45,16 @@ For each **unchecked** entry, by type:
 - **framework** → belongs to AIDE itself, not this project. If
   `[framework] repo` is set in `aide.toml` and `gh` is available, hand it
   over: `gh issue create --repo <owner/repo>` with a body naming the project,
-  the observation, and a proposal (this stays `ask`-gated — a human confirms).
+  the observation, a proposal, and **the engine version the observation was
+  made under** (this stays `ask`-gated — a human confirms).
   Otherwise leave the entry unchecked with a `(pending handover)` note.
+
+  The version comes from the entry's own marker (`*(item 042, 2026-08-29,
+  engine 1.22.0)*`, `.aide/conventions.md` §1). If the entry carries none, read
+  `.aide/VERSION` and write it as *the version at triage time, not at capture* —
+  say so in the body. The framework repo cannot see this one, so an unmarked
+  guess reads there as an observed fact, and every claim about an older engine
+  is then re-verified by hand.
 
 Tick each routed entry with the verb, naming where it landed — never by
 editing the line by hand, which is how a claim gets silently reworded:

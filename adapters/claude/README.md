@@ -237,6 +237,52 @@ rule that invents a rule of its own binds Claude and no other runtime.
 [`tests/test_rules.py`](tests/test_rules.py) pins all three obligations, and
 that the six agent specs never re-inline the block this replaced.
 
+**Every rule declares its reach**, on one line, near the top of the body:
+
+```
+<!-- reach: all -->
+<!-- reach: test-writer -->
+```
+
+`all`, or a comma-separated list of agent names; a note explaining the choice
+goes on the lines below it inside the same comment.
+[`tests/test_structural_budget.py`](../../tests/test_structural_budget.py)
+installs the adapter, derives each role's read-set from the delivered agent
+specs, evaluates the rule's `paths:` globs against it, and fails when the
+declaration and the measurement disagree — the paragraph above about scoped
+not meaning rare used to be prose nothing checked. The same module pins the
+**always-on floor** (`AGENT-CONTEXT.md` plus every unscoped rule) per file, so
+the constant term every spawn pays cannot move without a deliberate edit, and
+prints the per-role byte table as diagnostics. The declaration is a comment
+rather than a frontmatter key on purpose: it carries no runtime meaning, and it
+survives the content moving to a skill.
+
+**Every rule quotes the statements it delivers**, in one `<!-- pins: … -->`
+block per section it draws from — and this one is *not* a one-liner:
+
+```
+<!-- pins: .aide/conventions/6-test-hygiene.md
+     A prose note may sit here; anything before the first `- ` is ignored.
+     - A test must be deterministic and pass on Windows, macOS and Linux,
+       with no network access
+     - Never write the repo's own working-directory path literally into a
+       test
+-->
+```
+
+The section path goes on the opener line in **consumer** form
+(`.aide/conventions/…`, like every other path under `adapters/`), each `- ` line
+is one sentence lifted from that section, and a pin may wrap onto the lines
+below it. A rule delivering four sections declares four blocks.
+[`tests/test_rule_pins.py`](tests/test_rule_pins.py) asserts every pinned
+statement still appears in the rule *and* in the section it names, after a
+normalisation that absorbs reflow, emphasis and case and nothing else — so it
+fails in **both** directions, and the fix is to edit both copies in one commit.
+Every rule must pin at least one statement; a block that quotes none, and a
+`<!-- pins:` comment the grammar does not recognise (the one-line spelling
+`reach:` uses, notably), are both failures rather than silent no-ops. Curate
+them: the load-bearing sentences, not every line.
+
 ## Usage probe → **`usage_probe.py`** (`anthropic-oauth`)
 
 This is [spec §6](../ADAPTER-SPEC.md) — the one core/adapter seam in the loop. The

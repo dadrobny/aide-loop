@@ -108,7 +108,7 @@ When you learn something true but OUT OF SCOPE for this task, append ONE line
 to `docs/aide/insights.md` (create it from `.aide/templates/insights.md`,
 copied verbatim, if missing) and carry on. Never act on it here. Entry shape:
 
-    - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(item NNN, YYYY-MM-DD)*
+    - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(item NNN, YYYY-MM-DD, engine X.Y.Z)*
 
 The feedback loop triages the inbox at the queue boundary. This append is the
 one write allowed outside your edit scope.

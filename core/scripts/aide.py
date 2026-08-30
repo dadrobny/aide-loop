@@ -1105,15 +1105,37 @@ _INSIGHT_TYPES = ("knowledge", "defect", "gap", "automation", "framework")
 #: 2026-01-01)*`` — is a shape warning rather than a silently accepted
 #: provenance that says nothing. Free-form is not the same as empty.
 _INSIGHT_SOURCE = r"[^)\n]*[^\s)\n]"
+#: What may stand **after** the date, in the same marker: the conditions the
+#: observation was made under, conventionally ``engine X.Y.Z`` — one read of
+#: ``.aide/VERSION`` at capture time (conventions.md §1).
+#:
+#: The date cannot proxy for it: a project runs an engine for as long as it
+#: likes after a release, so two entries captured the same week may sit either
+#: side of a restructure. It matters most on a ``framework`` entry, which is
+#: triaged in another repo, months later, by someone with no other way to know.
+#:
+#: Free-form for the same reason the provenance is, and the reason is sharper
+#: here: this component arrived after entries already existed, so a grammar
+#: (``engine`` plus a SemVer triple, say) would reject a consumer's own honest
+#: spelling permanently — the claim line is immutable, and the warning could
+#: never be cleared. Conventional, not grammatical.
+#:
+#: Free-form everywhere except one character: ``)`` closes the marker, so a note
+#: containing one — ``engine 1.2.3 (rc1)`` — does not parse, drawing a permanent
+#: shape warning and losing the date that ``archive`` and ``tick`` read. Write
+#: the note without parentheses.
+_INSIGHT_NOTE = r"[^)\n]*[^\s)\n]"
 #: A provenance naming exactly one item — the only form that yields an item
 #: *number*. A range, a queue, or anything else leaves ``item`` ``None``, as a
 #: bare date always has.
 _INSIGHT_ONE_ITEM_RE = re.compile(r"^[Ii]tems? (\d+)$")
-# "- [ ] <type> — <one line> *(item NNN, YYYY-MM-DD)*"; the provenance is
-# free-form and optional, and ticked entries append " → <where it landed>".
+# "- [ ] <type> — <one line> *(item NNN, YYYY-MM-DD, engine X.Y.Z)*"; the
+# provenance and the trailing note are both free-form and optional, and ticked
+# entries append " → <where it landed>".
 _INSIGHT_RE = re.compile(
     r"^- \[[ xX]\] (?:" + "|".join(_INSIGHT_TYPES) + r") [—–-] .+"
-    r"\*\((?:" + _INSIGHT_SOURCE + r", )?\d{4}-\d{2}-\d{2}\)\*"
+    r"\*\((?:" + _INSIGHT_SOURCE + r", )?\d{4}-\d{2}-\d{2}"
+    r"(?:, " + _INSIGHT_NOTE + r")?\)\*"
 )
 
 
@@ -1142,8 +1164,9 @@ def insight_warnings(ddir: Path) -> List[str]:
             out.append(
                 f"insights.md:{lineno}: entry does not match "
                 f"'- [ ] <{'|'.join(_INSIGHT_TYPES)}> — <one line> "
-                f"*(<where it came from>, YYYY-MM-DD)*' — the provenance is "
-                f"free-form and may be omitted; the ISO date may not"
+                f"*(<where it came from>, YYYY-MM-DD, engine X.Y.Z)*' — the "
+                f"provenance and the trailing engine version are free-form "
+                f"and may be omitted; the ISO date may not"
             )
     return out
 
@@ -1159,7 +1182,7 @@ _INSIGHT_POINTER = " → "
 _INSIGHT_ENTRY_HEAD = (
     r"^- \[(?P<mark>[ xX])\] (?P<type>" + "|".join(_INSIGHT_TYPES) + r") [—–-] "
     r"(?P<text>.+?)\*\((?:(?P<source>" + _INSIGHT_SOURCE + r"), )?"
-    r"(?P<date>\d{4}-\d{2}-\d{2})\)\*"
+    r"(?P<date>\d{4}-\d{2}-\d{2})(?:, (?P<note>" + _INSIGHT_NOTE + r"))?\)\*"
 )
 #: Which marker is the provenance, when a line carries more than one.
 #:
@@ -1214,6 +1237,8 @@ class InsightEntry(NamedTuple):
     text: str                   # the claim, without provenance or pointer
     date: Optional[str]
     source: Optional[str]       # the provenance verbatim; None for a bare date
+    note: Optional[str]         # what follows the date, verbatim — by
+                                # convention "engine X.Y.Z"; None when absent
     item: Optional[int]         # only when `source` names exactly one item
     pointer: Optional[str]      # what follows " → ", when ticked in place
     trail: List[str]            # raw status-trail lines, in file order
@@ -1243,7 +1268,8 @@ def parse_insights(text: str) -> List[InsightEntry]:
                 ordinal=len(entries) + 1, lineno=lineno, raw=line,
                 ticked=line.startswith("- [x]") or line.startswith("- [X]"),
                 type=None, text=line[2:].strip(), date=None, source=None,
-                item=None, pointer=None, trail=[], end_lineno=lineno))
+                note=None, item=None, pointer=None, trail=[],
+                end_lineno=lineno))
             continue
         tail = m.group("tail")
         pointer = (tail.split(_INSIGHT_POINTER, 1)[1].strip()
@@ -1254,7 +1280,7 @@ def parse_insights(text: str) -> List[InsightEntry]:
             ordinal=len(entries) + 1, lineno=lineno, raw=line,
             ticked=m.group("mark") in ("x", "X"),
             type=m.group("type"), text=m.group("text").strip(),
-            date=m.group("date"), source=source,
+            date=m.group("date"), source=source, note=m.group("note"),
             item=int(one_item.group(1)) if one_item else None,
             pointer=pointer, trail=[], end_lineno=lineno))
     return entries
@@ -3202,11 +3228,15 @@ def _cmd_insights_list(entries: List[InsightEntry], args: argparse.Namespace) ->
             # dressing it in fields this listing only guessed at.
             print(f"  {e.ordinal:>3}. ?? {e.raw}")
             continue
-        # The provenance is reprinted whole and verbatim: "where did this come
-        # from" is half of what triage routes on, and a listing that drops it —
-        # or re-derives it from the item number, which can only print back the
+        # The whole marker is reprinted verbatim: "where did this come from"
+        # is half of what triage routes on, and a listing that drops it — or
+        # re-derives it from the item number, which can only print back the
         # single-item form — sends the reader to the file it exists to replace.
-        prov = f" *({e.source + ', ' if e.source else ''}{e.date})*" if e.date else ""
+        # The trailing note is reprinted for the same reason: it carries the
+        # engine version a `framework` entry is triaged against, and triage
+        # reads this listing rather than the file.
+        prov = (f" *({e.source + ', ' if e.source else ''}{e.date}"
+                f"{', ' + e.note if e.note else ''})*") if e.date else ""
         mark = "x" if e.ticked else " "
         print(f"  {e.ordinal:>3}. [{mark}] {e.type:<10} — {e.text}{prov}"
               f"{_INSIGHT_POINTER + e.pointer if e.pointer else ''}")

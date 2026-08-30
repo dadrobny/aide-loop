@@ -22,6 +22,7 @@ rule the engine's own `cli_subprocess_test_warnings` enforces on consumers.
 """
 from __future__ import annotations
 
+import codecs
 import importlib.util
 import shutil
 import subprocess
@@ -33,6 +34,36 @@ import pytest
 FRAMEWORK_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FRAMEWORK_ROOT))
 import install  # noqa: E402  (path shim above)
+
+
+# --------------------------------------------------------------------------- #
+# the adapter's rules, at their source — the delivery mechanism ADAPTER-SPEC §7
+# makes conformant. `adapters/claude/tests/test_rules.py` reads this repo's tree
+# and asserts the string "rules" is in `install.ADAPTER_CONTROL`; that is a check
+# on a tuple literal, not on an install (issue #83). Derived, never hard-coded,
+# so a rule added or renamed is covered the moment it lands.
+# --------------------------------------------------------------------------- #
+SOURCE_RULES = sorted((FRAMEWORK_ROOT / "adapters" / "claude" / "rules").glob("*.md"))
+
+
+def _frontmatter(path: Path):
+    """The rule's YAML block, read the way a runtime reads it — or ``None``.
+
+    Bytes first, then `utf-8-sig` and CRLF normalisation: an install that
+    rewrote the file — a BOM prepended, native line endings — leaves the
+    delimiter unrecognised, and a scoped rule silently becomes an unscoped one
+    loaded into every context. Nothing errors; the cost is paid on every spawn.
+    """
+    text = path.read_bytes().decode("utf-8-sig").replace("\r\n", "\n")
+    if not text.startswith("---\n"):
+        return None
+    end = text.find("\n---\n", 4)
+    return None if end == -1 else text[4:end]
+
+
+#: The rules that carry `paths:` in the source tree, so the check below is on
+#: whatever is scoped today rather than on a list that goes stale.
+SCOPED_RULES = [p.name for p in SOURCE_RULES if "paths:" in (_frontmatter(p) or "")]
 
 
 # --------------------------------------------------------------------------- #
@@ -271,6 +302,77 @@ def test_an_overlay_is_regenerated_into_settings_on_update(consumer: Path):
         encoding=install.CONSUMER_ENCODING)
     assert "FIXTURE_MARKER" in merged
     assert "permissions" in merged  # the framework base survived the merge
+
+
+# --------------------------------------------------------------------------- #
+# .claude/rules/ — the contract's delivery mechanism, at the path that loads it
+# --------------------------------------------------------------------------- #
+def test_the_source_tree_has_a_scoped_rule_to_check():
+    """Fails closed. Both lists below are derived from the source tree, so an
+    empty one makes its parametrised test vanish with a green suite rather than
+    fail — the exact silence the rest of this block exists to break."""
+    assert SOURCE_RULES, "no adapters/claude/rules/*.md — the layout moved"
+    assert SCOPED_RULES, "no rule carries `paths:` at source"
+
+
+def test_the_install_delivers_every_rule_and_no_others(prototype: Path):
+    """The directory reaches a consumer whole. A `copy_tree` that skipped it
+    under some condition, a `_skip()` predicate that grew a rule, or a rename
+    that updated `ADAPTER_CONTROL` and nothing else all ship a consumer with no
+    contract in context, and every check in the suite still passes."""
+    installed = sorted(p.name for p in (prototype / ".claude" / "rules").glob("*.md"))
+    assert installed == sorted(p.name for p in SOURCE_RULES)
+
+
+@pytest.mark.parametrize("source", SOURCE_RULES, ids=lambda p: p.name)
+def test_a_rule_reaches_the_consumer_byte_for_byte(prototype: Path, source: Path):
+    installed = prototype / ".claude" / "rules" / source.name
+    assert installed.is_file(), f"{source.name} never reached .claude/rules/"
+    assert installed.read_bytes() == source.read_bytes()
+
+
+@pytest.mark.parametrize("name", SCOPED_RULES)
+def test_a_scoped_rule_is_still_scoped_after_the_copy(prototype: Path, name: str):
+    """`paths:` is what keeps a rule out of every unrelated context, and the
+    copy is the one place a re-encode would show up — `test_rules.py` only ever
+    reads the source tree, where the frontmatter is trivially intact."""
+    path = prototype / ".claude" / "rules" / name
+    raw = path.read_bytes()
+    assert not raw.startswith(codecs.BOM_UTF8), f"{name}: the install added a BOM"
+    assert raw.startswith(b"---"), f"{name}: no frontmatter delimiter at byte 0"
+    block = _frontmatter(path)
+    assert block is not None and "paths:" in block, f"{name}: lost its `paths:`"
+
+
+def test_update_adds_the_rules_directory_to_a_consumer_that_never_had_one(
+        consumer: Path):
+    """The actual upgrade path: `rules/` post-dates every install made before
+    it, so for most consumers `--update` is the only thing that can create it."""
+    shutil.rmtree(consumer / ".claude" / "rules")
+    assert install.main(["--into", str(consumer), "--update"]) == 0
+    for source in SOURCE_RULES:
+        installed = consumer / ".claude" / "rules" / source.name
+        assert installed.is_file(), f"{source.name} missing after --update"
+        assert installed.read_bytes() == source.read_bytes()
+
+
+def test_the_prune_reaches_the_engine_and_stops_before_the_rules(consumer: Path):
+    """`.aide/` is framework-owned and pruned; `.claude/` is a tree a project
+    adds to, so it is deliberately not. That asymmetry is the kind a later
+    refactor collapses by accident, taking the rules with it — so the same
+    `--update` has to be seen pruning, or "the rules survived" says nothing."""
+    stale = consumer / ".aide" / "conventions" / "99-not-in-the-engine.md"
+    stale.write_text("dropped from a later engine\n", encoding="utf-8")
+    own = consumer / ".claude" / "rules" / "project-own.md"
+    own.write_text("# A rule this consumer wrote\n", encoding="utf-8")
+
+    assert install.main(["--into", str(consumer), "--update"]) == 0
+
+    assert not stale.exists(), "the prune did not run; the rest proves nothing"
+    assert own.is_file(), "the prune crossed into .claude/ and ate a project's rule"
+    for source in SOURCE_RULES:
+        assert (consumer / ".claude" / "rules" / source.name).read_bytes() == \
+            source.read_bytes()
 
 
 # --------------------------------------------------------------------------- #
