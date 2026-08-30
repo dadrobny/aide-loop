@@ -34,6 +34,28 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.25.4] — 2026-08-30
+
+### Changed
+
+- **`AGENT-CONTEXT.md`'s CLI line now names every verb the engine ships (issue
+  #95, shape 1 of two).** It listed six of twelve; `insights`, `env`, `status`,
+  `gate`, `queue` and `gc` appeared nowhere in delivered context, and issue #78
+  measured a pointer to `conventions.md` as followed about 3% of the time — a
+  verb no always-loaded file names effectively does not exist. On 2026-08-29 in
+  consumer `spine-failure-lab` a role asked to triage the insight inbox read
+  `docs/aide/insights.md` raw, unaware of `aide insights list --open`; closing
+  an entry would have been a hand-edit of the checkboxes that
+  `aide insights tick N --pointer` owns. The line now reads
+  `check | status | env | sync | claim | scope | merge | gc |
+  progress set/accept | gate list/approve/decline | insights list/tick/archive
+  | queue start/tidy`, with a subcommand hint only where the subcommands are
+  the whole interface. Naming alone: no verb, flag or output changed. Issue #95
+  stays open for shape 2 — naming the owning verb in each document's delivered
+  rule — which belongs with the #85 delivery restructure.
+- The always-on floor moves from 7,421 to 7,532 content bytes, all of it that
+  line. `tests/test_structural_budget.py` carries the new number.
+
 ## [1.25.3] — 2026-08-30
 
 ### Added

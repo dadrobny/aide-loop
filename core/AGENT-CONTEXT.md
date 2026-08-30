@@ -63,7 +63,9 @@ the root propagates into every queue and item derived from it.
 ## Mechanical actions go through the CLI — §2, §4, [`README.md`](README.md)
 
 ```
-python .aide/scripts/aide.py check | claim | scope | progress set | merge | sync
+python .aide/scripts/aide.py check | status | env | sync | claim | scope |
+    merge | gc | progress set/accept | gate list/approve/decline |
+    insights list/tick/archive | queue start/tidy
 ```
 
 Prefer the verb to hand-editing a document or improvising git: it is what keeps
