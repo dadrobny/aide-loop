@@ -111,3 +111,42 @@ def test_even_the_last_pre_version_step_precedes_the_write(
 
     assert (tmp_path / ".aide").is_dir()
     assert not (tmp_path / ".aide" / "VERSION").exists()
+
+
+def test_the_adapter_manifest_is_written_before_version(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Step 8b (the manifest, issue #85) is the last write before VERSION and
+    must stay on the near side of it: a consumer marked current with no
+    record of what its adapter files are has nothing to retire next time."""
+    def boom(aide_dir, adapter, paths, log):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(install, "write_adapter_manifest", boom)
+    with pytest.raises(OSError):
+        install.main(["--into", str(tmp_path), "--yes"])
+
+    assert (tmp_path / ".claude" / "rules").is_dir()  # step 2 ran
+    assert not (tmp_path / ".aide" / install.ADAPTER_MANIFEST).exists()
+    assert not (tmp_path / ".aide" / "VERSION").exists()
+
+
+def test_a_failed_update_keeps_the_old_manifest_too(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The manifest is the OLD tree's account of itself, and it is what the
+    repairing re-run reads. Rewritten right after the copy, a failure in any
+    later step would leave a manifest describing the new tree beside the old
+    VERSION — and the files the new tree dropped would never be retired."""
+    assert install.main(["--into", str(tmp_path), "--yes"]) == 0
+    manifest = tmp_path / ".aide" / install.ADAPTER_MANIFEST
+    old = manifest.read_bytes() + b".claude/rules/aide-from-the-previous-release.md\n"
+    manifest.write_bytes(old)
+
+    def boom(target, log):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(install, "append_gitignore", boom)
+    with pytest.raises(OSError):
+        install.main(["--into", str(tmp_path), "--update"])
+
+    assert manifest.read_bytes() == old, (
+        "an update that failed before step 8b must not have rewritten the manifest")

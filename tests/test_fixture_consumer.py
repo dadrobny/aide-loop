@@ -250,6 +250,7 @@ def _land_by_squash(repo: Path, branch: str) -> None:
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("rel", [
     ".aide/VERSION",
+    ".aide/adapter-manifest.txt",
     ".aide/scripts/aide.py",
     ".aide/conventions.md",
     ".aide/AGENT-CONTEXT.md",
@@ -357,10 +358,12 @@ def test_update_adds_the_rules_directory_to_a_consumer_that_never_had_one(
 
 
 def test_the_prune_reaches_the_engine_and_stops_before_the_rules(consumer: Path):
-    """`.aide/` is framework-owned and pruned; `.claude/` is a tree a project
-    adds to, so it is deliberately not. That asymmetry is the kind a later
-    refactor collapses by accident, taking the rules with it — so the same
-    `--update` has to be seen pruning, or "the rules survived" says nothing."""
+    """`.aide/` is framework-owned and pruned by comparison with the source;
+    `.claude/` is a tree a project adds to, so it deliberately is not — a
+    file there goes only when the manifest says the installer wrote it (the
+    test below). That asymmetry is the kind a later refactor collapses by
+    accident, taking the rules with it — so the same `--update` has to be
+    seen pruning, or "the rules survived" says nothing."""
     stale = consumer / ".aide" / "conventions" / "99-not-in-the-engine.md"
     stale.write_text("dropped from a later engine\n", encoding="utf-8")
     own = consumer / ".claude" / "rules" / "project-own.md"
@@ -373,6 +376,40 @@ def test_the_prune_reaches_the_engine_and_stops_before_the_rules(consumer: Path)
     for source in SOURCE_RULES:
         assert (consumer / ".claude" / "rules" / source.name).read_bytes() == \
             source.read_bytes()
+
+
+def test_update_retires_a_rule_the_adapter_dropped_and_keeps_the_projects_own(
+        consumer: Path, capsys):
+    """Issue #85, step 1, at the path a consumer runs. A rule the installer
+    once wrote — recorded in `.aide/adapter-manifest.txt` — and the adapter
+    no longer ships must go on `--update`, after `--check` has named it; a
+    rule the project wrote into the same directory, which no manifest
+    records, must not. Before the manifest, `copy_tree` never deleting meant
+    the dropped rule stayed armed in every consumer and `--check` said "up
+    to date"."""
+    manifest = consumer / ".aide" / install.ADAPTER_MANIFEST
+    assert manifest.is_file(), "the install wrote no manifest; the rest proves nothing"
+    dropped = consumer / ".claude" / "rules" / "aide-dropped-by-a-later-release.md"
+    dropped.write_text("---\npaths: ['**/*.md']\n---\n# retired\n", encoding="utf-8")
+    manifest.write_bytes(manifest.read_bytes()
+                         + b".claude/rules/aide-dropped-by-a-later-release.md\n")
+    own = consumer / ".claude" / "rules" / "project-own.md"
+    own.write_text("# A rule this consumer wrote\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert install.main(["--into", str(consumer), "--check"]) == 1
+    assert dropped.name in capsys.readouterr().out
+    assert dropped.is_file(), "--check must never write"
+
+    assert install.main(["--into", str(consumer), "--update"]) == 0
+
+    assert not dropped.exists(), "the retired rule is still armed in the consumer"
+    assert own.is_file(), "the retirement ate a project's own rule"
+    assert b"aide-dropped-by-a-later-release" not in manifest.read_bytes()
+    for source in SOURCE_RULES:
+        assert (consumer / ".claude" / "rules" / source.name).read_bytes() == \
+            source.read_bytes()
+    assert install.main(["--into", str(consumer), "--check"]) == 0
 
 
 # --------------------------------------------------------------------------- #

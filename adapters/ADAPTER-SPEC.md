@@ -137,6 +137,14 @@ installed file is regenerated as a deep-merge of the framework base and that ove
 scripts) are framework-owned wholesale — projects extend them through their own
 config, not by editing the installed copies.
 
+`install.py` keeps that ownership honest in both directions. It records every
+adapter control file it writes in `.aide/adapter-manifest.txt`, and an `--update`
+removes any recorded file the adapter has since dropped (`--check` names it first,
+without writing). A file a project adds to the same directory is never recorded,
+so it is never removed. A file retired before a consumer had a manifest is listed
+in `install.py`'s `RETIRED_ADAPTER_PATHS` and removed on the same grounds: at that
+path, the file is the framework's old copy, not the project's.
+
 ## 6. Optional: usage probe (unattended long runs)
 
 The engine's supervisor (`loop/loop.py`) gates unattended relaunches on real usage
