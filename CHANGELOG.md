@@ -17,6 +17,23 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`install.py` now writes `.aide/VERSION` last, not first (issue #80).** It
+  used to land in step 1 as part of the engine copy, so every later step — the
+  adapter control files, `settings.json`, the usage probe, the context import,
+  `.gitignore`, the prune — ran after the consumer was already marked as the
+  new version. Any failure in between (a permission error, a malformed
+  `settings.overlay.json`, a full disk, an interrupt) left a half-applied
+  install that `--check` reported as up to date; the #79 review reproduced
+  exactly that. The engine copy now defers `VERSION` and a final step writes
+  it after everything else has succeeded, so a failed first install leaves no
+  `VERSION` (`--check` exits 2 and says the install did not finish, rather
+  than "no install found" over a directory full of engine files) and a failed
+  update leaves the old one (`--check` says behind; `--update` remains the
+  repair). Installer-only: nothing a consumer's `--update` copies changed, so
+  `core/VERSION` is unmoved.
+
 ## [1.24.1] — 2026-08-29
 
 Two frictions hit by real sessions working across or committing from a

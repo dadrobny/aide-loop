@@ -92,6 +92,19 @@ def test_missing_install_is_distinct_from_outdated(tmp_path, capsys):
     assert "no install found" in capsys.readouterr().err
 
 
+def test_partial_install_is_distinct_from_no_install(tmp_path, capsys):
+    """VERSION is written last, so `.aide/` full of files with no VERSION is a
+    first install that failed partway — not "no install found"."""
+    (tmp_path / ".aide").mkdir()
+    (tmp_path / ".aide" / "conventions.md").write_text("x", encoding="utf-8")
+
+    assert install.report_version("1.2.0", tmp_path / ".aide" / "VERSION", tmp_path) == 2
+
+    err = capsys.readouterr().err
+    assert "did not finish" in err
+    assert "no install found" not in err
+
+
 def test_bom_in_the_consumers_version_file_does_not_fake_a_mismatch(tmp_path, capsys):
     path = _installed(tmp_path, "1.2.0", bom=True)
     assert install.report_version("1.2.0", path, tmp_path) == 0
