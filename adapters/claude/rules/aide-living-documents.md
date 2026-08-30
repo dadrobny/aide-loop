@@ -8,6 +8,13 @@ paths:
   - "**/items/*.md"
 ---
 
+<!-- reach: all
+     Measured, not aspired to: every one of the six agent specs names a
+     living document, so the `paths:` block above scopes this to nobody and
+     the cost is paid on every spawn. That is issue #79's regression, still
+     live; #85 is where it gets re-shaped. #84's job was only to stop it
+     being invisible. See `tests/test_structural_budget.py`. -->
+
 # Living-document shapes
 
 `.aide/scripts/aide.py` parses these files by exact shape. `.aide/conventions.md`

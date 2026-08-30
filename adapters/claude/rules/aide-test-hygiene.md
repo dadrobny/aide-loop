@@ -6,6 +6,12 @@ paths:
   - "**/tests/**/*.py"
 ---
 
+<!-- reach: test-writer
+     The only agent spec that names a file these globs match (`conftest.py`).
+     The others point at `project.tests_dir` without naming a file in it, so
+     they arm this rule only if they open one — a possibility, not a named
+     read. See `tests/test_structural_budget.py`. -->
+
 # Test hygiene
 
 `.aide/conventions.md` §6 is the source of truth, including the defect each rule

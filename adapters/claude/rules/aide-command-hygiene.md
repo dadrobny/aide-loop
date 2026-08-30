@@ -1,3 +1,9 @@
+<!-- reach: all
+     No `paths:` block, so this loads in every session and every sub-agent —
+     it is part of the always-on floor every spawn pays for. Deliberate: the
+     hygiene rules bind any Bash call, and there is no file whose opening
+     predicts one. See `tests/test_structural_budget.py` for the convention. -->
+
 # Command hygiene
 
 The rules and the reasoning behind them are `.aide/conventions.md` §3. This file

@@ -237,6 +237,26 @@ rule that invents a rule of its own binds Claude and no other runtime.
 [`tests/test_rules.py`](tests/test_rules.py) pins all three obligations, and
 that the six agent specs never re-inline the block this replaced.
 
+**Every rule declares its reach**, on one line, near the top of the body:
+
+```
+<!-- reach: all -->
+<!-- reach: test-writer -->
+```
+
+`all`, or a comma-separated list of agent names; a note explaining the choice
+goes on the lines below it inside the same comment.
+[`tests/test_structural_budget.py`](../../tests/test_structural_budget.py)
+installs the adapter, derives each role's read-set from the delivered agent
+specs, evaluates the rule's `paths:` globs against it, and fails when the
+declaration and the measurement disagree — the paragraph above about scoped
+not meaning rare used to be prose nothing checked. The same module pins the
+**always-on floor** (`AGENT-CONTEXT.md` plus every unscoped rule) per file, so
+the constant term every spawn pays cannot move without a deliberate edit, and
+prints the per-role byte table as diagnostics. The declaration is a comment
+rather than a frontmatter key on purpose: it carries no runtime meaning, and it
+survives the content moving to a skill.
+
 ## Usage probe → **`usage_probe.py`** (`anthropic-oauth`)
 
 This is [spec §6](../ADAPTER-SPEC.md) — the one core/adapter seam in the loop. The

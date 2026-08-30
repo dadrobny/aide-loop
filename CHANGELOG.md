@@ -34,6 +34,26 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.25.1] — 2026-08-30
+
+### Added
+
+- **Every `.claude/rules/*.md` now declares the reach it expects, and a test
+  checks it (issue #84).** A one-line `<!-- reach: … -->` comment names the
+  agent roles a rule expects to arm for; `tests/test_structural_budget.py`
+  installs into a temp directory, extracts each role's read-set from the
+  delivered agent specs, evaluates the rule's `paths:` globs against it, and
+  fails on a mismatch. The first measurement confirms what 1.22.0 noted in
+  prose and nothing enforced: `aide-living-documents.md` is scoped to document
+  names all six roles read, so its `paths:` block scopes it to nobody and
+  every spawn pays for it. That is now recorded in the rule itself and checked
+  on every run, instead of resting on a human doing the arithmetic. The
+  always-on floor (`AGENT-CONTEXT.md` plus every
+  unscoped rule) is pinned per file, failing in both directions, so it cannot
+  move without a deliberate edit; totals are printed as diagnostics rather
+  than asserted against a threshold. Rule bodies gained the comments; no rule
+  changed scope, wording or behaviour.
+
 ## [1.25.0] — 2026-08-30
 
 Root-document authoring gets its missing gate and its missing posture

@@ -58,6 +58,17 @@ names the section it delivers, and **adds no rule the engine does not have**. A
 rule invented in the adapter binds one runtime and is invisible to every other;
 put it in `conventions/` first.
 
+Each rule also declares, in a `<!-- reach: … -->` comment near the top of its
+body, the agent roles it expects to arm for — `all`, or a comma-separated list.
+[`tests/test_structural_budget.py`](tests/test_structural_budget.py) installs
+the adapter, derives each role's read-set from the delivered agent specs,
+evaluates the rule's `paths:` globs against it, and fails when the declaration
+and the measurement disagree. **Changing a rule's globs changes its reach**, so
+update the declaration in the same commit. That module also pins the always-on
+floor (`AGENT-CONTEXT.md` plus every unscoped rule) byte-for-byte — it fails in
+both directions on purpose, and moving it means bumping `VERSION` and editing
+the pin deliberately.
+
 Do not re-inline a contract restatement into an agent spec. Six of them carried
 the command-hygiene block verbatim, one had already drifted, and a test now
 fails if the heading comes back.
