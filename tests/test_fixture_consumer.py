@@ -396,12 +396,18 @@ def _drop_the_inbox(consumer: Path) -> Path:
     return inbox
 
 
+def _files_in_head(repo: Path) -> list:
+    """What HEAD's commit touches — posix paths, as git prints them."""
+    return _git(["show", "--name-only", "--format=", "HEAD"], repo).stdout.split()
+
+
 def test_check_creates_a_missing_inbox_from_the_installed_template(
         aide, consumer: Path):
     inbox = _drop_the_inbox(consumer)
     assert aide.main(["--repo", str(consumer), "check"]) == 0
     assert inbox.read_bytes() == _installed_template(consumer)
     assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    assert _files_in_head(consumer) == ["docs/aide/insights.md"]
 
 
 def test_check_leaves_an_existing_inbox_byte_for_byte(aide, consumer: Path):
@@ -475,6 +481,7 @@ def test_queue_start_creates_a_missing_inbox_on_the_queue_branch(aide, consumer:
     assert _branch(consumer) == "aide/queue-002"
     assert inbox.read_bytes() == _installed_template(consumer)
     assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    assert _files_in_head(consumer) == ["docs/aide/insights.md"]
     on_main = _git(["ls-tree", "-r", "--name-only", "main"], consumer).stdout
     assert "docs/aide/progress.md" in on_main  # the listing is real ...
     assert "docs/aide/insights.md" not in on_main  # ... and the base untouched
@@ -508,6 +515,7 @@ def test_claim_creates_a_missing_inbox_on_the_claim_branch(aide, consumer: Path)
     assert _branch(consumer).startswith("aide/001-")
     assert inbox.read_bytes() == _installed_template(consumer)
     assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    assert _files_in_head(consumer) == ["docs/aide/insights.md"]
     assert aide.main(["--repo", str(consumer), "sync", "--item", "1"]) == 0
 
 

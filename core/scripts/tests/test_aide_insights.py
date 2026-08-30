@@ -786,6 +786,32 @@ def _clean(repo: Path) -> bool:
     return _run(["git", "status", "--porcelain"], repo).stdout.strip() == ""
 
 
+def _status(repo: Path) -> list:
+    return _run(["git", "status", "--porcelain"], repo).stdout.splitlines()
+
+
+def _files_in_head(repo: Path) -> list:
+    """What HEAD's commit touches — posix paths, the way git prints them."""
+    return _run(["git", "show", "--name-only", "--format=", "HEAD"], repo).stdout.split()
+
+
+def _head(repo: Path) -> str:
+    return _run(["git", "rev-parse", "HEAD"], repo).stdout.strip()
+
+
+def _without_git_identity(repo: Path, monkeypatch, tmp_path: Path) -> None:
+    """A fresh clone before `git config user.name`: the commit is refused."""
+    for key in ("user.name", "user.email"):
+        _run(["git", "config", "--unset", key], repo)
+    nowhere = tmp_path / "no-such-gitconfig"
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(nowhere))
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(nowhere))
+    monkeypatch.setenv("HOME", str(tmp_path / "no-such-home"))
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME",
+                "GIT_COMMITTER_EMAIL", "EMAIL"):
+        monkeypatch.delenv(var, raising=False)
+
+
 def test_the_template_is_where_the_engine_looks_for_it():
     """Every test below compares against this file; if the layout moves, this
     is the one that fails with a reason instead of the rest with a mystery."""
@@ -800,14 +826,70 @@ def test_check_creates_a_missing_inbox_byte_for_byte(tmp_path: Path):
     assert (repo / "docs" / "aide" / "insights.md").read_bytes() == _TEMPLATE.read_bytes()
 
 
-def test_check_commits_the_inbox_it_created(tmp_path: Path):
+def test_check_commits_the_inbox_it_created_and_nothing_else(tmp_path: Path):
     """`aide sync` refuses a dirty tree; a creation left untracked would stall
-    the next preflight of the loop it exists to serve."""
+    the next preflight of the loop it exists to serve. The commit's CONTENTS
+    are the assertion — "a commit happened" and "tree clean" were both true
+    of a commit that had swept a builder's staged work in with the inbox."""
     repo = _loop_repo_without_inbox(tmp_path)
     assert aide.main(["--repo", str(repo), "check"]) == 0
     assert _clean(repo)
     subject = _run(["git", "log", "-1", "--format=%s"], repo).stdout.strip()
     assert subject.startswith("docs(aide):")
+    assert _files_in_head(repo) == ["docs/aide/insights.md"]
+
+
+def test_the_inbox_commit_leaves_staged_work_staged_and_out_of_it(tmp_path: Path):
+    repo = _loop_repo_without_inbox(tmp_path)
+    (repo / "feature.py").write_text("x = 1\n", encoding="utf-8")
+    _run(["git", "add", "feature.py"], repo)
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    assert _files_in_head(repo) == ["docs/aide/insights.md"]
+    assert _status(repo) == ["A  feature.py"]
+
+
+def test_a_commit_git_refuses_leaves_the_inbox_untracked_not_staged(
+        tmp_path: Path, monkeypatch, capsys):
+    """A staged-but-uncommitted inbox stalls `aide sync` exactly as an
+    untracked one does, with no message saying why. Untracked, plus a notice
+    that names the refusal, is the honest degradation."""
+    repo = _loop_repo_without_inbox(tmp_path)
+    before = _head(repo)
+    _without_git_identity(repo, monkeypatch, tmp_path)
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    assert _head(repo) == before
+    assert _status(repo) == ["?? docs/aide/insights.md"]
+    out = capsys.readouterr().out
+    notice = [l for l in out.splitlines() if l.startswith("notice:")]
+    assert len(notice) == 1 and "NOT committed" in notice[0]
+
+
+def test_git_off_path_degrades_to_created_not_committed(
+        tmp_path: Path, monkeypatch, capsys):
+    """`check` ran in a repo with no usable `git` before 1.26.0 and must still:
+    the creation happens, the commit is a reason in the notice, no traceback."""
+    repo = _loop_repo_without_inbox(tmp_path)
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    assert (repo / "docs" / "aide" / "insights.md").read_bytes() == _TEMPLATE.read_bytes()
+    notice = [l for l in capsys.readouterr().out.splitlines() if l.startswith("notice:")]
+    assert len(notice) == 1 and "NOT committed" in notice[0]
+    monkeypatch.undo()
+    assert _status(repo) == ["?? docs/aide/insights.md"]
+
+
+def test_a_detached_head_gets_the_file_and_no_dangling_commit(
+        tmp_path: Path, monkeypatch, capsys):
+    repo = _loop_repo_without_inbox(tmp_path)
+    before = _head(repo)
+    _run(["git", "checkout", "--quiet", "--detach"], repo)
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    assert _head(repo) == before
+    assert _status(repo) == ["?? docs/aide/insights.md"]
+    notice = [l for l in capsys.readouterr().out.splitlines() if l.startswith("notice:")]
+    assert len(notice) == 1 and "detached" in notice[0]
 
 
 def test_check_says_it_created_the_inbox(tmp_path: Path, capsys):

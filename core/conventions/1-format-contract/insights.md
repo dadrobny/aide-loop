@@ -11,10 +11,13 @@ with `<type>` one of **knowledge** (document it), **defect** (fix it), **gap**
 (plan it), **automation** (a recurring manual/agent action deterministic code
 could replace — script it), **framework** (belongs to AIDE itself).
 
-**The file exists before any role can need it — the engine guarantees it.**
-`aide check`, `aide claim` and `aide queue start` each create a missing
-`insights.md` as a byte-exact copy of `.aide/templates/insights.md` and commit
-it, so every loop entry point reaches its first role with the inbox in place,
+**The file exists before a role needs it — the engine puts it there.**
+`aide check`, `aide claim`, `aide queue start` and `aide insights list` each
+create a missing `insights.md` as a byte-exact copy of
+`.aide/templates/insights.md`, and commit it when git can — on a branch, with an
+identity to commit as; otherwise the file is left untracked and the notice says
+why, for the next commit to carry. A role spawned by `/aide-run-queue`,
+`/aide-run-roadmap` or `/aide-spec-queue` therefore finds the inbox in place,
 and a capture is a plain append to a file that is already there. No role copies
 the template by hand, and an existing file — malformed or not — is never
 touched.

@@ -2876,14 +2876,17 @@ def _write_findings_report(path: Path, number: int,
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    """The consistency gate over the document set — and one write.
+    """The consistency gate over the document set — and two writes.
 
-    Everything here reads, except ``ensure_insights_inbox``: a ``docs_dir``
-    that exists but has no ``insights.md`` gets one, byte-exact from the
-    template, and the run says so in a ``notice:``. It is the engine keeping
-    §1's promise that capture is a plain append to a file that exists, placed
-    in the verb every consumer is told to run before its first unattended run.
-    The exit code never depends on it: the creation cannot fail a run, and a
+    One is asked for by flag: ``--report PATH`` writes the cross-spec findings
+    file for `spec-reviewer`. The other is ``ensure_insights_inbox``: a
+    ``docs_dir`` that exists but has no ``insights.md`` gets one, byte-exact
+    from the template, committed where git allows, and the run says so in a
+    ``notice:``. It is the engine keeping §1's promise that capture is a plain
+    append to a file that exists, placed in the verb every consumer is told to
+    run before its first unattended run. The exit code never depends on it:
+    the creation cannot fail a run — a commit that git refuses, or a ``git``
+    that cannot be run, is a sentence in the notice, not an error — and a
     document set whose inbox already exists is reported exactly as before.
     """
     queue = getattr(args, "queue", None)
@@ -3160,29 +3163,56 @@ def _commit_progress_file(repo_root: Path, config, message: str) -> None:
 
 
 def _commit_docs_files(repo_root: Path, config, message: str,
-                       rels: List[str], pull: bool = True) -> bool:
+                       rels: List[str], pull: bool = True) -> Optional[str]:
     """Commit exactly *rels* — repo-relative paths — with *message*.
 
-    Returns whether a commit was made, so a caller that announces one can
-    announce what happened rather than what it intended.
+    Returns ``None`` when every named path is in the new commit, otherwise a
+    one-line reason it is not — so a caller that announces a commit announces
+    what happened, not what it intended. "Exactly" is enforced by pathspec:
+    ``git commit -- <rels>`` commits the named paths and nothing else, so a
+    builder's staged work sitting in the index stays staged and out of the
+    bookkeeping commit; a bare ``git commit`` would have swept it in, which is
+    why ``git add <rel>`` alone was never enough.
 
-    Named paths, never ``git add -A``: these verbs run mid-item, alongside a
-    builder's uncommitted work, and a broad add would sweep that into a
-    bookkeeping commit.
+    A commit that fails — no ``user.name`` on a fresh clone, a hook, a path
+    ``.gitignore`` reaches — leaves *rels* unstaged again, so the tree degrades
+    to "modified" or "untracked" rather than "staged": ``aide sync`` refuses
+    either, but a caller can say which and why. A ``git`` that cannot be run
+    at all is a reason, not a traceback; ``check`` in particular must keep
+    passing in a repo whose ``git`` is off PATH, as it did before 1.26.0.
 
     *pull* rebases onto the upstream first, which is right for an edit to a
     file other machines also edit (a tick, an archive) and wrong for a file
     that did not exist a moment ago — ``ensure_insights_inbox`` passes
     ``False`` so that ``check``, a gate, never fetches on the caller's behalf.
     """
-    if pull:
-        git(["pull", "--rebase"], repo_root, check=False)
-    for rel in rels:
-        git(["add", rel], repo_root, check=False)
-    res = git(["commit", "-m", message], repo_root, check=False)
-    if res.returncode != 0 and "nothing to commit" not in (res.stdout + res.stderr):
-        print(res.stderr.strip(), file=sys.stderr)
-    return res.returncode == 0
+    try:
+        if pull:
+            git(["pull", "--rebase"], repo_root, check=False)
+        for rel in rels:
+            git(["add", "--", rel], repo_root, check=False)
+        res = git(["commit", "-m", message, "--", *rels], repo_root, check=False)
+        if res.returncode != 0:
+            git(["reset", "-q", "--", *rels], repo_root, check=False)
+            text = (res.stdout + res.stderr).strip()
+            if "nothing to commit" in text or "no changes added" in text:
+                return "nothing to commit"
+            first = next((l.strip() for l in text.splitlines() if l.strip()),
+                         "git commit failed")
+            print(f"aide: could not commit {', '.join(rels)} — {first}",
+                  file=sys.stderr)
+            return first
+        shown = git(["show", "--name-only", "--format=", "HEAD"],
+                    repo_root, check=False).stdout.split()
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"git could not be run ({exc.__class__.__name__}: {exc})"
+    missing = [r for r in rels if r not in shown]
+    if missing:
+        # `add` was refused (an ignored path, say) and `commit -- <path>` then
+        # committed the rest of the list: a commit happened, the file is not in
+        # it, and "committed" would be a lie about the one path that matters.
+        return f"{', '.join(missing)} is not in the commit (ignored by .gitignore?)"
+    return None
 
 
 def insights_path(ddir: Path) -> Path:
@@ -3218,6 +3248,14 @@ def ensure_insights_inbox(repo_root: Path, config: Dict[str, Dict[str, object]],
     The file is committed (named path, no pull) when *commit* is set and the
     repo is one: ``aide sync`` refuses a dirty tree, so a creation left
     untracked would stall the next preflight of the very loop it serves.
+    Two cases decline the commit and say so in the notice rather than
+    pretend: a detached ``HEAD``, where the commit would dangle and the file
+    vanish on the next checkout; and a commit git refuses or cannot run (no
+    identity on a fresh clone, ``git`` off PATH) — the file then stays
+    untracked and the reason is printed, for the next write verb to carry.
+    In a repository with no commits yet the inbox becomes the root commit;
+    that is the scaffold-time ``check`` the quickstart mandates, and a root
+    commit is a fine place for a file the loop owns.
     """
     ddir = docs_dir(repo_root, config)
     if not ddir.is_dir():
@@ -3234,12 +3272,36 @@ def ensure_insights_inbox(repo_root: Path, config: Dict[str, Dict[str, object]],
               f"framework checkout says how)", file=sys.stderr)
         return None
     path.write_bytes(template.read_bytes())
-    committed = commit and (repo_root / ".git").exists() and _commit_docs_files(
-        repo_root, config, "docs(aide): create the insight inbox", [rel], pull=False)
-    print(f"notice: created {rel} from .aide/templates/insights.md"
-          f"{' and committed it' if committed else ''} — the insight inbox, so a "
-          f"capture is a plain append (conventions.md §1)")
+    fate = ""
+    if not commit:
+        fate = ", left uncommitted (--no-commit)"
+    elif (repo_root / ".git").exists():
+        why = _commit_created_file(repo_root, config, rel)
+        fate = (" and committed it" if why is None
+                else f" but NOT committed — {why}; commit it with the next work")
+    print(f"notice: created {rel} from .aide/templates/insights.md{fate} — the "
+          f"insight inbox, so a capture is a plain append (conventions.md §1)")
     return path
+
+
+def _commit_created_file(repo_root: Path, config, rel: str) -> Optional[str]:
+    """Commit the inbox `ensure_insights_inbox` just wrote — or say why not.
+
+    ``None`` on success, else the reason, in the same shape
+    ``_commit_docs_files`` returns. The detached-``HEAD`` check lives here and
+    not in the shared committer because it is a policy for a *new* file: a
+    commit would succeed, dangle, and take the file with it on the next
+    checkout while every message reported success.
+    """
+    try:
+        on_branch = git(["symbolic-ref", "-q", "HEAD"], repo_root,
+                        check=False).returncode == 0
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"git could not be run ({exc.__class__.__name__}: {exc})"
+    if not on_branch:
+        return "HEAD is detached, so the commit would dangle"
+    return _commit_docs_files(repo_root, config, "docs(aide): create the insight inbox",
+                              [rel], pull=False)
 
 
 def insight_archive_path(ddir: Path, quarter: str) -> Path:
@@ -4951,8 +5013,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_check = sub.add_parser("check", help="consistency gate over docs/aide "
-                             "(its one write: a missing insights.md is created "
-                             "from the template)")
+                             "(writes only a missing insights.md, from the "
+                             "template, and the file --report names)")
     p_check.add_argument("--queue", type=int, default=None,
                          help="also check this queue's specs against each other "
                               "(scope overlaps, pinned state, dependency graph)")
