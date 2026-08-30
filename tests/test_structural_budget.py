@@ -65,8 +65,12 @@ import install  # noqa: E402  (path shim above)
 # plainly as a JSON file would, with nothing extra to keep in step.
 #
 # Per-file, so a failure names which half moved. `version` is the release the
-# floor last moved in, and is asserted against CHANGELOG.md below — a floor
-# change reaches consumers, so it has to arrive with a version that says so.
+# floor last moved in — not the current one — and
+# `test_the_pinned_floor_names_the_release_that_last_moved_it` holds it to that
+# by requiring the release's own CHANGELOG entry to record the total below. A
+# floor change reaches consumers, so it has to arrive with a version that says
+# so; a release that leaves the floor alone leaves both halves of this dict
+# alone too.
 # --------------------------------------------------------------------------- #
 FLOOR_PIN = {
     "version": "1.25.4",
@@ -420,24 +424,90 @@ def test_the_always_on_floor_matches_its_recorded_pin(consumer: Path, rules: lis
         "commit.")
 
 
-def test_the_pinned_floor_names_a_version_the_changelog_records():
+#: A released section heading, `## [1.25.4] — 2026-08-30`. Anchored, so
+#: `[Unreleased]` and a prose mention of a version both fail to match.
+_RELEASE_HEADING = re.compile(r"^## \[(?P<version>\d+\.\d+\.\d+)\][^\n]*$", re.M)
+#: How this repo records a floor move, established across 1.25.1 → 1.25.4:
+#: "the always-on floor moves from X to Y content bytes". Only the *new* total
+#: is read — the old one is the previous release's number.
+_FLOOR_TOTAL = re.compile(r"to ([\d,]+)\s+content bytes")
+
+
+def _changelog_sections() -> dict:
+    """`{version: that release's entry text}` from CHANGELOG.md."""
+    text = (FRAMEWORK_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    marks = list(_RELEASE_HEADING.finditer(text))
+    return {m.group("version"): text[m.end():(marks[i + 1].start()
+                                              if i + 1 < len(marks) else len(text))]
+            for i, m in enumerate(marks)}
+
+
+def _semver(version: str) -> tuple:
+    parts = version.split(".")
+    assert len(parts) == 3 and all(p.isdigit() for p in parts), (
+        f"{version!r} is not a SemVer triple")
+    return tuple(int(p) for p in parts)
+
+
+def test_the_pinned_floor_names_the_release_that_last_moved_it():
     """The pin's version is what makes it an audit trail rather than a number.
 
-    Updating the bytes without moving the version is the shape this catches:
-    the floor changed, a consumer will receive it, and nothing anywhere says
-    so.
+    **The contract, in three clauses.** `FLOOR_PIN["version"]` names the
+    release in which the pinned bytes were last measured, so:
+
+    1. CHANGELOG.md carries a `## [<that version>]` heading of its own —
+       exact heading match, not a substring, so a typo'd or never-released
+       version cannot borrow another release's mention of it;
+    2. that version is at or behind `core/VERSION`, since a floor cannot have
+       moved in a release this tree has not reached;
+    3. **that release's entry states the total the pin sums to**, in the form
+       this repo has used since 1.25.1 — "the always-on floor moves from X to
+       N content bytes".
+
+    Clause 3 is the one that binds. Clauses 1 and 2 hold for every version ever
+    released, so a pin left at a stale release passes them both; only "the
+    release you named is the one that recorded *these* bytes" catches the
+    shape actually worth catching — the bytes moved, the pin followed, and the
+    version stayed behind, leaving the audit trail pointing at a release that
+    describes a different floor.
+
+    It also stays quiet when it should: a release that does not touch the floor
+    leaves the pin — bytes *and* version — exactly as it was, so this asserts
+    nothing about `core/VERSION` beyond clause 2 and forces no churn.
     """
-    changelog = (FRAMEWORK_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     version = FLOOR_PIN["version"]
-    assert f"[{version}]" in changelog or f" {version}" in changelog, (
-        f"FLOOR_PIN records version {version}, which CHANGELOG.md does not "
-        f"mention — a floor change that no release describes")
+    total = sum(FLOOR_PIN["files"].values())
+    sections = _changelog_sections()
+
+    assert version in sections, (
+        f"FLOOR_PIN records version {version}, for which CHANGELOG.md has no "
+        f"`## [{version}]` heading — a floor change no release describes. "
+        f"Released headings found: {sorted(sections)}")
+
+    current = (FRAMEWORK_ROOT / "core" / "VERSION").read_text(
+        encoding="utf-8-sig").strip()
+    assert _semver(version) <= _semver(current), (
+        f"FLOOR_PIN records version {version}, which is ahead of core/VERSION "
+        f"({current}) — the floor cannot have moved in a release this tree "
+        f"has not reached")
+
+    recorded = {m.group(1).replace(",", "") for m in _FLOOR_TOTAL.finditer(
+        sections[version])}
+    assert str(total) in recorded, (
+        f"FLOOR_PIN sums to {total:,} content bytes and names release "
+        f"{version}, whose CHANGELOG entry records {sorted(recorded) or 'no'} "
+        f"floor total.\n"
+        f"The version is the release the floor last moved in, not the release "
+        f"that happens to be current: either this entry should say "
+        f"'the always-on floor moves from … to {total:,} content bytes', or "
+        f"FLOOR_PIN['version'] still belongs to an earlier release and the "
+        f"bytes were changed without one.")
 
 
 # --------------------------------------------------------------------------- #
 # the diagnostic — printed, never asserted on
 # --------------------------------------------------------------------------- #
-def test_the_arming_table_accounts_for_every_rule_and_role(
+def test_the_arming_table_is_printed(
         consumer: Path, rules: list, read_sets: dict, capsys):
     """Prints the table #78 built by hand from eleven session transcripts.
 
@@ -451,8 +521,16 @@ def test_the_arming_table_accounts_for_every_rule_and_role(
     not ship, and quoting a token count would invite exactly the threshold
     assertion the module docstring refuses.
 
-    The assertion is only coverage — every rule placed, every role costed —
-    so the numbers can move freely and the shape cannot go missing.
+    **This one is honestly a printer**, and says so rather than dressing up.
+    It once carried two assertions — that every rule appeared in the arming
+    table, and that a rule arming nobody was a scoped one — and both were
+    tautologies: the table is *built* by iterating the rules, and "arms nobody"
+    is what having globs means. An assertion that cannot fail is worse than
+    none, because it reads as coverage. What is actually checked here is what
+    printing cannot do for itself: that nothing summed to zero, which is how a
+    truncated read or an emptied file would show up as a quiet table of noughts
+    rather than a failure. The properties worth asserting are the three above,
+    and they are asserted there.
     """
     floor = _floor(consumer, rules)
     floor_total = sum(floor.values())
@@ -468,16 +546,19 @@ def test_the_arming_table_accounts_for_every_rule_and_role(
         roles = sorted(armed[name]) or ["(nobody)"]
         lines.append(f"  scoped  {size:>6}  {name} -> {', '.join(roles)}")
     lines.append("")
+    specs = {}
     for role in sorted(read_sets):
-        spec = _size(consumer / ".claude" / "agents" / f"{role}.md")
+        specs[role] = _size(consumer / ".claude" / "agents" / f"{role}.md")
         extra = sum(size for name, size in scoped_size.items() if role in armed[name])
-        lines.append(f"  spawn   {floor_total + spec + extra:>6}  {role} "
-                     f"(floor {floor_total} + spec {spec} + rules {extra})")
+        lines.append(f"  spawn   {floor_total + specs[role] + extra:>6}  {role} "
+                     f"(floor {floor_total} + spec {specs[role]} + rules {extra})")
     lines.append("")
     with capsys.disabled():
         print("\n".join(lines))
 
-    assert set(armed) == {r.name for r in rules}, "a rule went uncosted"
-    for name, roles in armed.items():
-        assert roles or name in scoped_size, f"{name}: unscoped and armed nobody"
-    assert floor_total > 0 and all(v > 0 for v in floor.values())
+    empty = ([path for path, size in floor.items() if size <= 0]
+             + [name for name, size in scoped_size.items() if size <= 0]
+             + [f"{role}.md" for role, size in specs.items() if size <= 0])
+    assert floor_total > 0 and not empty, (
+        f"the table above costed {empty} at zero bytes — a delivered file that "
+        f"measures empty is a broken read or a broken install, not a saving")

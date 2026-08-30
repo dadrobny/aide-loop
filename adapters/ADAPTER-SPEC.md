@@ -261,6 +261,15 @@ statement still appears in both the rule *and* the section it names, so editing
 either copy alone fails. Another runtime may express the guarantee however it
 likes; what is contractual is that the two copies cannot drift unobserved.
 
+The **first** obligation has a measurable half too, wherever the channel is
+file-scoped: which roles a given scope actually arms is a fact about the
+delivered tree, and a scope believed to be narrow while arming everyone is a
+cost paid on every spawn that nothing reports. The Claude adapter states the
+expectation in the rule itself (`<!-- reach: … -->`) and
+`tests/test_structural_budget.py` measures it against the agent specs' own
+read-sets; a runtime whose channel is unconditional has nothing to measure and
+owes nothing here.
+
 The Claude adapter uses `.claude/rules/`: one unscoped file for §3 (loaded into
 every session and every sub-agent) and `paths:`-scoped files for §6 and the §1
 document shapes, which load only when a matching file is read. A runtime with

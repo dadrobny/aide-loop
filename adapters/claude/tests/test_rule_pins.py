@@ -70,6 +70,13 @@ _CONSUMER_ENGINE_PREFIX = ".aide/"
 _PINS = re.compile(r"<!--[ \t]*pins:[ \t]*(?P<section>[^\s]+)[ \t]*\n"
                    r"(?P<body>.*?)-->", re.S)
 
+#: Every `<!-- pins:` opener, whatever follows it. `_PINS` above is the
+#: *grammar*; this is the count of things claiming to be written in it, and the
+#: two disagreeing is how a block that silently failed to parse — a one-line
+#: `<!-- pins: … -->`, a missing newline, a mangled section path — is caught
+#: instead of vanishing.
+_PINS_OPENER = re.compile(r"<!--[ \t]*pins:", re.I)
+
 #: Any HTML comment, stripped from a rule body before the rule side is searched
 #: — otherwise every pin would match its own declaration and the rule half of
 #: the check would assert nothing at all.
@@ -197,8 +204,45 @@ def test_every_delivered_rule_pins_at_least_one_statement(rule: Path):
         f"{rule.name}: no `<!-- pins: … -->` block. Every delivered rule quotes "
         f"the statements it carries from the section they live in; see this "
         f"module's docstring for the format.")
-    assert any(pins for _, pins in blocks), (
-        f"{rule.name}: a pins block with no `- ` line pins nothing")
+    empty = [section for section, pins in blocks if not pins]
+    assert not empty, (
+        f"{rule.name}: pins block for {empty} has no `- ` line, so it quotes "
+        f"nothing and every assertion below skips it. Name the statements the "
+        f"rule delivers from that section, or drop the block — a section "
+        f"declared and not quoted is the unguarded restatement this module "
+        f"exists to prevent, wearing the guard's clothes.")
+
+
+@pytest.mark.parametrize("rule", _RULE_FILES, ids=lambda p: p.name)
+def test_every_pins_comment_in_a_rule_actually_parses(rule: Path):
+    """A block the grammar does not recognise must be loud, not absent.
+
+    `_PINS` requires the section path to be followed by a newline, so the
+    one-line spelling the sibling declaration uses —
+
+        <!-- pins: .aide/conventions/6-test-hygiene.md -->
+
+    — matches nothing at all. It is a plausible thing to write: `README.md`
+    documents `<!-- reach: … -->` as a one-liner two paragraphs away, and a
+    rule that carried exactly one pin would read better on one line. Written
+    that way it does not fail; it *disappears*, taking its statements out of
+    `_PINNED` and leaving a rule that looks pinned and is not — the same silent
+    under-checking the module's docstring accepts for a statement nobody
+    pinned, except that here the author believes they did.
+
+    So the openers are counted independently of the grammar and the two must
+    agree. Any `<!-- pins:` the parser did not yield a block for is a failure,
+    whatever went wrong with it.
+    """
+    text = _read(rule)
+    openers = len(_PINS_OPENER.findall(text))
+    parsed = len(_pin_blocks(rule))
+    assert openers == parsed, (
+        f"{rule.name}: {openers} `<!-- pins:` comment(s), {parsed} parsed. "
+        f"A pins block is `<!-- pins: <section path>` on its own line, then "
+        f"one `- ` line per quoted statement, then `-->` — the one-line form "
+        f"borrowed from `<!-- reach: … -->` does not parse, and an unparsed "
+        f"block asserts nothing while looking like it does.")
 
 
 @pytest.mark.parametrize("case", _PINNED, ids=_id)

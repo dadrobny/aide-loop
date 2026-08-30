@@ -34,15 +34,49 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.25.5] — 2026-08-30
+
+The consumer-visible half of the review of the #83/#84/#81/#97/#95 batch. All
+three are wording; no verb, flag, output or grammar changed. The rest of that
+review lands in this repo's own tests and adapter docs, which no consumer
+receives.
+
+### Fixed
+
+- **The CLI line in `AGENT-CONTEXT.md` no longer ends two lines with a
+  trailing `|`.** Inside a fenced block that is what a shell line continuation
+  looks like, so the verb list read as one long pipeline rather than as a
+  choice of twelve. The separators now lead the wrapped lines instead of
+  trailing them — a leading `|` cannot be shell. Byte-neutral: the always-on
+  floor stays at 7,532 content bytes and `FLOOR_PIN` in
+  `tests/test_structural_budget.py` is unmoved, bytes and version both.
+- **The ticked-entry example in `templates/insights.md` carries the engine
+  version.** 1.25.3 added `, engine X.Y.Z` to the entry shape at the top of the
+  file and left the triage example below it spelling the marker the old way, so
+  the convention appeared and then vanished within one comment — and the
+  example is the copy a role writing a tick actually looks at.
+- **`aide.py` documents the one character an insight's trailing note cannot
+  hold.** The note is free-form up to `)`, which closes the marker, so
+  `engine 1.2.3 (rc1)` fails to parse — a permanent shape warning on an
+  immutable line, and a lost date. The grammar is unchanged (widening it would
+  swallow the marker); the constant now says so where the next author will
+  read it.
+
 ## [1.25.4] — 2026-08-30
 
 ### Changed
 
 - **`AGENT-CONTEXT.md`'s CLI line now names every verb the engine ships (issue
-  #95, shape 1 of two).** It listed six of twelve; `insights`, `env`, `status`,
-  `gate`, `queue` and `gc` appeared nowhere in delivered context, and issue #78
-  measured a pointer to `conventions.md` as followed about 3% of the time — a
-  verb no always-loaded file names effectively does not exist. On 2026-08-29 in
+  #95, shape 1 of two).** It listed six of twelve; `insights`, `env` and
+  `status` appeared nowhere in delivered context at all. `gate`, `queue` and
+  `gc` did appear, but only in passing inside a `.claude/rules/` file — `queue
+  start` and `gc` among the verbs `aide-command-hygiene.md` names to say the
+  raw git form is wrong, `gate` and `queue tidy` among those
+  `aide-living-documents.md` names to say prefer the verb to a hand edit — and
+  never in the one place a role reads to learn what the CLI *is*, which is what
+  makes an unnamed verb unreachable. Issue #78 measured a pointer to
+  `conventions.md` as followed about 3% of the time — a verb no always-loaded
+  file names effectively does not exist. On 2026-08-29 in
   consumer `spine-failure-lab` a role asked to triage the insight inbox read
   `docs/aide/insights.md` raw, unaware of `aide insights list --open`; closing
   an entry would have been a hand-edit of the checkboxes that
@@ -167,6 +201,10 @@ keys, and the adapter's agents/skills/commands.
   move without a deliberate edit; totals are printed as diagnostics rather
   than asserted against a threshold. Rule bodies gained the comments; no rule
   changed scope, wording or behaviour.
+- The always-on floor moves from 5,996 to 6,324 content bytes: the declaration
+  this release adds to the unscoped `aide-command-hygiene.md` is itself paid on
+  every spawn. The instrument costs something, and the first number it records
+  is its own — so it is stated here like every later move of it.
 
 ## [1.25.0] — 2026-08-30
 

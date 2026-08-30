@@ -38,7 +38,7 @@
 
   Triage routes each entry to its destination, then ticks it in place with a
   pointer:
-    - [x] <type> — <one line> *(item NNN, YYYY-MM-DD)* → <where it landed>
+    - [x] <type> — <one line> *(item NNN, YYYY-MM-DD, engine X.Y.Z)* → <where it landed>
   Triage happens at the queue boundary (feedback loop) for every type that
   lands in this project; a `framework` entry leaves for another repo's issue
   tracker and may be triaged on capture or on demand.

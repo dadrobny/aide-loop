@@ -1119,6 +1119,11 @@ _INSIGHT_SOURCE = r"[^)\n]*[^\s)\n]"
 #: (``engine`` plus a SemVer triple, say) would reject a consumer's own honest
 #: spelling permanently — the claim line is immutable, and the warning could
 #: never be cleared. Conventional, not grammatical.
+#:
+#: Free-form everywhere except one character: ``)`` closes the marker, so a note
+#: containing one — ``engine 1.2.3 (rc1)`` — does not parse, drawing a permanent
+#: shape warning and losing the date that ``archive`` and ``tick`` read. Write
+#: the note without parentheses.
 _INSIGHT_NOTE = r"[^)\n]*[^\s)\n]"
 #: A provenance naming exactly one item — the only form that yields an item
 #: *number*. A range, a queue, or anything else leaves ``item`` ``None``, as a
