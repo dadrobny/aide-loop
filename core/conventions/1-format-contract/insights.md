@@ -4,7 +4,7 @@ Where out-of-scope learning goes so it is never lost *and* never acted on out
 of scope. Any role, at any time, appends **one line** and returns to its task:
 
 ```
-- [ ] <type> — <one line> *(item NNN, YYYY-MM-DD)*
+- [ ] <type> — <one line> *(item NNN, YYYY-MM-DD, engine X.Y.Z)*
 ```
 
 with `<type>` one of **knowledge** (document it), **defect** (fix it), **gap**
@@ -23,8 +23,19 @@ CLI enforces: **the ISO date is the only part that is load-bearing**, since
 `items 099-101` to `item 099` is a rewording the immutability rule below
 forbids, and it destroys the very thing the marker records.
 
+**Name the engine you were running, after the date** — `engine X.Y.Z`, which is
+one read of `.aide/VERSION` and no more work than that. The date cannot stand in
+for it: a project runs an engine for as long as it likes after a release, so two
+entries captured the same week may sit either side of a restructure, and a
+reader who has only the date must re-derive which. It earns the most on a
+`framework` entry, which leaves for another repo and is triaged there months
+later by someone with no other way to know; it costs the same nothing on the
+rest. Optional and unenforced like the provenance — and **never retrofitted**,
+since the claim line below is immutable: an entry captured without one stays as
+captured.
+
 `aide check` shape-checks entries (warning, never error — capture must stay
-cheap). It is deliberately loose about the provenance and strict about the
+cheap). It is deliberately loose either side of the date and strict about the
 date, for the reason immutability makes sharp: a warning on a captured line can
 never be cleared, so a check that rejects an honest capture produces permanent
 noise, and permanent noise is what teaches a reader to skim the one run where a
@@ -79,6 +90,13 @@ queue PR reviews them); `automation` → a candidate item that adds a CLI
 verb/script *and* the skill/agent edit mandating it; `framework` → a GitHub
 issue on `[framework] repo` from `aide.toml` (via `gh`; if unset/offline the
 entry stays pending).
+
+**A `framework` issue body names the engine version the observation was made
+under.** Take it from the entry; if the entry has none, read the consumer's
+current `.aide/VERSION` and say in the body that it is *the version at triage
+time, not at capture* — an unmarked fallback is worse than none, because it
+reads as an observed fact. The issue is triaged in a repo that cannot see this
+one, and "which engine was this?" is otherwise answered by hand, per issue.
 
 **When triage happens depends on the destination.** `knowledge`, `defect`,
 `gap` and `automation` all land in this project — a document it owns, or a

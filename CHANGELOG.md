@@ -34,6 +34,51 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.25.3] — 2026-08-30
+
+### Added
+
+- **An insight entry may now name the engine version it was observed under
+  (issue #97).** The marker recorded where a finding came from and when, never
+  which engine was running — a value sitting on disk as `.aide/VERSION` at the
+  moment of capture. The date cannot stand in for it: a project runs an engine
+  for as long as it likes after a release, so two entries captured the same
+  week may sit either side of a restructure. On 2026-08-29 eight `framework`
+  issues landed upstream across the 1.21.0 → 1.22.0 restructure and no entry
+  said which side it came from, so every older-engine claim was re-verified by
+  hand. The conventional spelling is now
+  `*(item NNN, YYYY-MM-DD, engine X.Y.Z)*`, documented in `conventions.md`
+  §1 → `insights.md`, the `insights.md` template header and `AGENT-CONTEXT.md`,
+  and carried by the capture shape the six agent specs and
+  `aide-execute-item` print at the point of capture — a shape line that
+  disagreed with the always-loaded one would be followed instead of it.
+  Guidance, not grammar: optional, unenforced, and never retrofitted onto an
+  entry captured without one, since the claim line is immutable.
+- **`/aide-feedback-loop` §0 carries the version into the issue it files.** A
+  `framework` entry becomes a GitHub issue in a repo that cannot see this one,
+  so the body now names the engine the observation was made under — from the
+  entry, or from `.aide/VERSION` at triage time *explicitly marked as the
+  fallback it is*, because an unmarked guess reads there as an observed fact.
+  Stated in `conventions.md` §1 → `insights.md`, delivered by the skill.
+
+### Changed
+
+- **`aide check`, `insights list`, `tick` and `archive` accept the trailing
+  component.** Without this the new spelling was not merely undocumented but
+  actively rejected: the entry pattern required `)*` immediately after the
+  date, so a versioned capture drew a permanent shape warning *and* failed to
+  parse — losing its date, which is what `archive` cuts on, and what `tick`
+  refuses to guess at. What follows the date is now parsed as
+  `InsightEntry.note` and reprinted verbatim by `insights list`, which is where
+  triage reads the backlog from. Free-form, for the reason issue #76 widened
+  the provenance and sharper here: entries predate the convention, and a
+  rejected spelling is a warning the immutability rule leaves no way to clear.
+  The date itself did not relax on either side.
+- The always-on floor moves from 7,268 to 7,421 content bytes: two sentences in
+  `AGENT-CONTEXT.md`, which is the copy a role actually reads at capture time —
+  a convention absent from it is a convention nobody follows.
+  `tests/test_structural_budget.py` carries the new number.
+
 ## [1.25.2] — 2026-08-30
 
 ### Fixed

@@ -31,13 +31,14 @@ to `docs/aide/insights.md` and returning to the task. Capturing is always
 allowed; acting on it out of scope is not.
 
 ```
-- [ ] <knowledge|defect|gap|automation|framework> — <one line> *(item NNN, YYYY-MM-DD)*
+- [ ] <knowledge|defect|gap|automation|framework> — <one line> *(item NNN, YYYY-MM-DD, engine X.Y.Z)*
 ```
 
 The date is required. What precedes it is free-form provenance and says where
 the insight came from: `item NNN` from inside an item, `queue-NNN` from planning
 done before any item exists, `items NNN-NNN` for a finding spanning several, or
-nothing at all.
+nothing at all. What follows it is the engine version the observation was made
+under — one read of `.aide/VERSION`, and the date cannot stand in for it.
 
 A captured claim is **immutable**: never reworded, reordered or deleted, not even
 when it turns out to be wrong. Ticking its checkbox is the one in-place edit;

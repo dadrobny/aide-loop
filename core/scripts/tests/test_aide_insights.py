@@ -656,3 +656,99 @@ def test_the_patterns_do_not_backtrack_catastrophically():
     start = time.time()
     aide.parse_insights(evil)
     assert time.time() - start < 1.0
+
+
+# --------------------------------------------------------------------------- #
+# the engine version an insight was observed under (issue #97)
+#
+# The reported failure: an entry records where a finding came from and when,
+# never *which engine it was seen on* — and the value is sitting on disk as
+# `.aide/VERSION` at capture time. The date cannot proxy for it, so eight
+# framework issues that landed upstream across an engine restructure could not
+# be placed on either side of it, and every older-engine claim was re-verified
+# by hand. The version is conventional, not grammatical: what the CLI must do
+# is accept it, parse it, and print it back — never warn about it.
+# --------------------------------------------------------------------------- #
+VERSIONED = """\
+# Insight Inbox
+
+_Entries below, newest last._
+
+- [ ] framework — the reach check has no engine version *(item 042, 2026-08-29, engine 1.22.0)*
+- [x] defect — captured before the convention existed *(item 041, 2026-08-01)*
+- [ ] knowledge — a bare date takes one too *(2026-08-29, engine 1.22.0)*
+"""
+
+
+def test_a_versioned_entry_passes_the_shape_check_clean(tmp_path: Path):
+    """A warning on a captured line can never be cleared, so this is the
+    load-bearing assertion of the pair: the new component must not produce
+    permanent noise on a well-formed entry."""
+    d = tmp_path / "docs" / "aide"
+    d.mkdir(parents=True)
+    (d / "insights.md").write_text(VERSIONED, encoding="utf-8")
+    assert aide.insight_warnings(d) == []
+
+
+def test_the_version_is_parsed_out_and_does_not_disturb_the_other_fields():
+    """`note` is a field of its own; the date, provenance and item number are
+    read exactly as they were before it existed."""
+    entries = aide.parse_insights(VERSIONED)
+    assert [e.note for e in entries] == ["engine 1.22.0", None, "engine 1.22.0"]
+    assert [e.date for e in entries] == ["2026-08-29", "2026-08-01", "2026-08-29"]
+    assert [e.source for e in entries] == ["item 042", "item 041", None]
+    assert [e.item for e in entries] == [42, 41, None]
+    assert entries[0].text == "the reach check has no engine version"
+
+
+def test_the_version_is_free_form_not_a_grammar():
+    """Enumerating the accepted spelling would reject an honest capture
+    permanently — the claim line is immutable. Same argument as the provenance
+    (issue #76), and sharper here, since entries predate the convention."""
+    e = aide.parse_insights(
+        "- [ ] gap — a *(item 1, 2026-01-01, engine 1.22.0-rc1 on windows)*\n")[0]
+    assert (e.date, e.note) == ("2026-01-01", "engine 1.22.0-rc1 on windows")
+
+
+def test_an_entry_captured_without_a_version_is_untouched():
+    """The convention is never retrofitted, so the un-versioned entry must keep
+    parsing exactly as it did — `note` is None, not an invented value."""
+    entries = aide.parse_insights(INBOX)
+    assert [e.note for e in entries] == [None, None, None, None]
+
+
+def test_list_reprints_the_engine_version(tmp_path: Path, capsys):
+    """Triage reads the listing, not the file (the feedback-loop skill says so),
+    so a version the listing drops is a version triage cannot carry into the
+    issue it files."""
+    repo = _repo(tmp_path, VERSIONED)
+    assert aide.main(["--repo", str(repo), "insights", "list"]) == 0
+    out = capsys.readouterr().out
+    assert "*(item 042, 2026-08-29, engine 1.22.0)*" in out
+    assert "*(2026-08-29, engine 1.22.0)*" in out
+    assert "*(item 041, 2026-08-01)*" in out
+
+
+def test_tick_and_archive_reach_a_versioned_entry(tmp_path: Path):
+    """The date is still what `archive` cuts on, and `tick` still refuses only
+    what does not parse — widening the marker must cost neither verb its entry."""
+    repo = _repo(tmp_path, VERSIONED)
+    assert aide.main(["--repo", str(repo), "insights", "tick", "1",
+                      "--pointer", "aide-loop #97"]) == 0
+    assert ("*(item 042, 2026-08-29, engine 1.22.0)* → aide-loop #97"
+            in _inbox(repo))
+    _, moved, undatable = aide.archive_insight_text(VERSIONED, "2026-08-15")
+    assert list(moved) == ["2026-Q3"] and undatable == []
+
+
+def test_the_date_stays_strict_with_a_version_after_it(tmp_path: Path):
+    """The one field every verb depends on did not relax on its right either."""
+    d = tmp_path / "docs" / "aide"
+    d.mkdir(parents=True)
+    (d / "insights.md").write_text(
+        "# I\n\n"
+        "- [ ] gap — no date, only a version *(item 1, engine 1.22.0)*\n"
+        "- [ ] gap — not ISO *(item 1, 26-08-29, engine 1.22.0)*\n"
+        "- [ ] gap — an empty trailer says nothing *(item 1, 2026-08-29,  )*\n",
+        encoding="utf-8")
+    assert len(aide.insight_warnings(d)) == 3
