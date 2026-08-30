@@ -288,7 +288,14 @@ def report_version(available: str, installed_path: Path, target: Path,
         # "no install found" over a directory full of engine files would send
         # the reader hunting for a different problem than the one they have.
         aide_dir = installed_path.parent
-        if aide_dir.is_dir() and any(aide_dir.iterdir()):
+        try:
+            partial = aide_dir.is_dir() and any(aide_dir.iterdir())
+        except OSError:
+            # An unreadable .aide/ must not turn a report-only command into a
+            # traceback; with nothing listable, "no install found" is the most
+            # that can honestly be said.
+            partial = False
+        if partial:
             print(f"aide {target}: {aide_dir} exists but {installed_path} is "
                   f"missing — a previous install did not finish; re-run "
                   f"install.py --into {target}", file=sys.stderr)
