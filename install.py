@@ -33,7 +33,10 @@ into a target repo:
   4. copy  adapters/<adapter>/usage_probe.py  -> <target>/.aide/loop/   (plan §4.4 seam)
   5. append the framework .gitignore block if absent
   6. record the installed VERSION (from core/VERSION) — in the scaffolded aide.toml
-     and, authoritatively, as the copied-in <target>/.aide/VERSION
+     and, authoritatively, as <target>/.aide/VERSION. That file is written LAST,
+     after every other step has succeeded: it is what --check compares, so a
+     failure anywhere above leaves the old version (or none) in place and the
+     partial install stays visibly behind instead of claiming to be complete.
 
     python install.py --into <target-repo> --update
 
@@ -280,8 +283,25 @@ def report_version(available: str, installed_path: Path, target: Path,
     is one a consumer only learns about from the aftermath.
     """
     if not installed_path.is_file():
-        print(f"aide {target}: no install found ({installed_path} missing) — "
-              f"run install.py --into {target}", file=sys.stderr)
+        # VERSION is written last, so ".aide/ exists but VERSION does not" is
+        # not "no install" — it is a first install that failed partway. Saying
+        # "no install found" over a directory full of engine files would send
+        # the reader hunting for a different problem than the one they have.
+        aide_dir = installed_path.parent
+        try:
+            partial = aide_dir.is_dir() and any(aide_dir.iterdir())
+        except OSError:
+            # An unreadable .aide/ must not turn a report-only command into a
+            # traceback; with nothing listable, "no install found" is the most
+            # that can honestly be said.
+            partial = False
+        if partial:
+            print(f"aide {target}: {aide_dir} exists but {installed_path} is "
+                  f"missing — a previous install did not finish; re-run "
+                  f"install.py --into {target}", file=sys.stderr)
+        else:
+            print(f"aide {target}: no install found ({installed_path} missing) — "
+                  f"run install.py --into {target}", file=sys.stderr)
         return 2
 
     installed = installed_path.read_text(encoding=CONSUMER_ENCODING).strip()
@@ -489,12 +509,19 @@ def _skip(path: Path) -> bool:
     return path.name in SKIP_NAMES or path.suffix in SKIP_SUFFIXES
 
 
-def copy_tree(src: Path, dst: Path, log: List[str]) -> None:
+def copy_tree(src: Path, dst: Path, log: List[str],
+              defer_names: Iterable[str] = ()) -> None:
     """Recursively copy ``src`` into ``dst``, merging into an existing ``dst`` and
-    skipping junk / private files. Existing files are overwritten (framework-owned)."""
+    skipping junk / private files. Existing files are overwritten (framework-owned).
+
+    ``defer_names`` holds back direct children of ``src`` by name — this level
+    only, not recursive. It exists for exactly one caller: ``run`` defers
+    ``core/VERSION`` so the install's completion mark is written after every
+    other step, not as an accident of alphabetical order inside the first one.
+    """
     dst.mkdir(parents=True, exist_ok=True)
     for child in sorted(src.iterdir()):
-        if _skip(child):
+        if _skip(child) or child.name in defer_names:
             continue
         target = dst / child.name
         if child.is_dir():
@@ -526,12 +553,14 @@ def prune_stale(src: Path, dst: Path, log: List[str],
     personal `loop.local.toml` is never a prune candidate, and removes a
     directory only once this prune has emptied it.
 
-    **Never raises.** A prune runs after the engine has already been copied and
-    the VERSION file rewritten, so aborting here would leave a consumer marked
-    as the new version with the rest of the install unfinished — and
-    ``--check`` would then report it up to date. A removal that cannot happen
-    (a read-only file, a Windows file held open by a running supervisor) is
-    logged and stepped over instead.
+    **Never raises.** A leftover file the engine no longer ships is the least
+    consequential part of an install, so it must not be able to abort one: by
+    the time the prune runs everything else has landed, and the only thing an
+    exception here would prevent is the VERSION write that follows — leaving a
+    complete install reporting itself behind over a file that was going to be
+    stepped around anyway. A removal that cannot happen (a read-only file, a
+    Windows file held open by a running supervisor) is logged and stepped over
+    instead.
 
     ``dry_run`` computes the same list without touching anything, which is what
     ``--check`` reports so a deletion is previewable before it happens.
@@ -1142,8 +1171,12 @@ def run(args: argparse.Namespace) -> int:
     # wrong in the first place, and the log line is where a person would notice.
     print(f"AIDE {mode}: {adapter} v{version} -> {target}")
 
-    # 1. engine -> .aide/
-    copy_tree(core_dir, aide_dir, log)
+    # 1. engine -> .aide/ — minus VERSION, which is deferred to the end (§9).
+    #    VERSION is what --check compares, i.e. the mark that an install
+    #    finished; written here, any failure in the steps below would leave a
+    #    half-applied consumer that claims to be complete (issue #80 — a prune
+    #    crash left a 1.22.0 engine with a 1.21.0 adapter and a clean --check).
+    copy_tree(core_dir, aide_dir, log, defer_names=("VERSION",))
 
     # 2. adapter control files -> .claude/
     for name in ADAPTER_CONTROL:
@@ -1185,11 +1218,18 @@ def run(args: argparse.Namespace) -> int:
     # 7. .gitignore block — added on install, reconciled on update.
     append_gitignore(target, log)
 
-    # 8. Prune .aide/ of files the engine no longer ships. LAST, deliberately:
-    #    everything above has landed by now, so a prune that cannot finish
-    #    leaves a complete install with one leftover file rather than a
-    #    half-applied one carrying the new VERSION.
+    # 8. Prune .aide/ of files the engine no longer ships. After every copy,
+    #    deliberately: everything the new engine wants is in place before
+    #    anything the old one had is removed. (core/VERSION still exists in the
+    #    source, so the deferred .aide/VERSION is never a prune candidate.)
     stale = prune_stale(core_dir, aide_dir, log, keep=AIDE_FOREIGN_PATHS)
+
+    # 9. VERSION — LAST of all, the one write that flips --check to "up to
+    #    date". Every failure mode above (a permission error, a malformed
+    #    overlay, a full disk, an interrupt) now leaves the old version — or,
+    #    on a first install, none — in place, so the partial install reports
+    #    itself behind and the ordinary --update / re-run is the repair.
+    copy_file(core_dir / "VERSION", aide_dir / "VERSION", log)
 
     print("\n".join(log))
     if stale:
