@@ -8,6 +8,8 @@ description: >-
   code or tests.
 model: opus
 effort: high
+skills:
+  - aide-living-documents
 ---
 
 You are **spec-author**, the work-item specification author. The spec you write

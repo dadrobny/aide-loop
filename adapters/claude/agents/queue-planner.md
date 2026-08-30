@@ -9,6 +9,8 @@ description: >-
   open PRs, write item specs, code, or tests.
 model: opus
 effort: xhigh
+skills:
+  - aide-living-documents
 ---
 
 You are **queue-planner**, the work-queue author. You run on **Opus** at **xhigh**

@@ -1,4 +1,7 @@
 ---
+name: aide-test-hygiene
+description: Load before creating or editing a test file — portability rules and tests that can actually fail (conventions §6).
+user-invocable: false
 paths:
   - "**/test_*.py"
   - "**/*_test.py"
@@ -7,10 +10,15 @@ paths:
 ---
 
 <!-- reach: test-writer
-     The only agent spec that names a file these globs match (`conftest.py`).
-     The others point at `project.tests_dir` without naming a file in it, so
-     they arm this rule only if they open one — a possibility, not a named
-     read. See `tests/test_structural_budget.py`. -->
+     Literal, not measured: this body is preloaded into exactly the agent
+     specs whose `skills:` frontmatter names `aide-test-hygiene`, at spawn,
+     before the role has opened anything — so a repo with no test to read
+     still delivers it. The `paths:` above inject nothing on a read (issue
+     #85, measured); they only surface the description to an interactive
+     session working on a matching file. `builder` and `validator` open test
+     files but write none, and are deliberately not listed.
+     `tests/test_structural_budget.py` compares this line to the `skills:`
+     lists. -->
 
 <!-- pins: .aide/conventions/6-test-hygiene.md
      Quoted from that section; `test_rule_pins.py` fails if either copy moves
@@ -34,13 +42,16 @@ paths:
 # Test hygiene
 
 `.aide/conventions.md` §6 is the source of truth, including the defect each rule
-was earned by. This file is how §6 reaches a session that is about to touch a
-test; it is **delivery, not a second source of truth**.
+was earned by. This file is how §6 reaches a role about to write a test: it is
+preloaded into `test-writer` at spawn, so it is in that context before the
+first test is opened or created, and it is listed by name to an interactive
+session working on a test file. It is **delivery, not a second source of
+truth**.
 
-Scoped by filename rather than by `project.tests_dir`, so it holds whatever a
-consumer configured: the default pytest naming plus any directory named `tests`.
-A project that overrides pytest's `python_files`, or keeps tests in `spec/`,
-needs the globs widened to match.
+The listing is matched by filename rather than by `project.tests_dir`, so it
+holds whatever a consumer configured: the default pytest naming plus any
+directory named `tests`. A project that overrides pytest's `python_files`, or
+keeps tests in `spec/`, needs the globs widened to match.
 
 **The gap these close.** Every gate in this loop runs in one place, on one
 platform, against one checkout, so a defect invisible under those conditions is

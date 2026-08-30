@@ -1,4 +1,7 @@
 ---
+name: aide-living-documents
+description: Load before writing a living AIDE document (item spec, queue, progress, roadmap, vision, insights) — the shapes aide.py parses (conventions §1).
+user-invocable: false
 paths:
   - "**/progress.md"
   - "**/roadmap.md"
@@ -8,12 +11,17 @@ paths:
   - "**/items/*.md"
 ---
 
-<!-- reach: all
-     Measured, not aspired to: every one of the six agent specs names a
-     living document, so the `paths:` block above scopes this to nobody and
-     the cost is paid on every spawn. That is issue #79's regression, still
-     live; #85 is where it gets re-shaped. #84's job was only to stop it
-     being invisible. See `tests/test_structural_budget.py`. -->
+<!-- reach: spec-author, queue-planner
+     Literal, not measured: this body is preloaded into exactly the agent
+     specs whose `skills:` frontmatter names `aide-living-documents` — the two
+     roles that write a living document. As a `paths:` rule it armed on
+     every spawn (29 and 24 arms in two measured sessions, issue #85),
+     because reading an item spec matches the same globs as writing one; the
+     `paths:` above inject nothing on a read and only surface the description
+     to an interactive session working on a matching file. The four roles
+     that read these documents without writing one are deliberately not
+     listed. `tests/test_structural_budget.py` compares this line to the
+     `skills:` lists. -->
 
 <!-- pins: .aide/conventions/1-format-contract/status-icons.md
      Quoted from that section; `test_rule_pins.py` fails if either copy moves
@@ -62,9 +70,11 @@ not a second source of truth**, and carries only the shape rules — the durable
 artifact, insight-immutability and human-gate rules are in `AGENT-CONTEXT.md`,
 already in this context.
 
-Scoped by document name rather than by `project.docs_dir`, so it holds whatever
-a consumer configured. Every role reaches at least one of these files, so treat
-this rule as one you will always see, not one that fires rarely.
+It is preloaded into the two roles that write a living document —
+`spec-author` and `queue-planner` — so it is in context before the first
+write, and it is listed by name to an interactive session working on one of
+these files. The listing is matched by document name rather than by
+`project.docs_dir`, so it holds whatever a consumer configured.
 
 **The six status icons, and nothing else:** 📋 Planned · 🚧 In Progress ·
 🔍 In Review · ✅ Complete · ⏸️ Deferred · ❌ Excluded. They are read at

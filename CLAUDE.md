@@ -48,38 +48,52 @@ is used in a hundred places, it survives a file being renamed, and the index
 resolves it.
 
 **Sections are runtime-general; an adapter delivers them, it does not restate
-them.** The Claude adapter does this with
-[`adapters/claude/rules/`](adapters/claude/rules/): one unscoped file (loads in
-every session and every sub-agent) and `paths:`-scoped files (load only when a
-matching file is read). Three obligations, pinned by
-[`adapters/claude/tests/test_rules.py`](adapters/claude/tests/test_rules.py) and
-stated in `ADAPTER-SPEC.md` §7 — a rule loads without the role choosing to,
-names the section it delivers, and **adds no rule the engine does not have**. A
-rule invented in the adapter binds one runtime and is invisible to every other;
-put it in `conventions/` first.
+them.** The Claude adapter's **delivered files** are the one unscoped rule in
+[`adapters/claude/rules/`](adapters/claude/rules/) (§3; loads in every session
+and every sub-agent) and the **section skills** in `adapters/claude/skills/`
+(`aide-living-documents`, `aide-test-hygiene`): `user-invocable: false`, never
+a command, preloaded at spawn into exactly the agent specs whose `skills:`
+frontmatter names them. A `paths:` block on a skill injects nothing on a read —
+it only surfaces the skill's description to an interactive session — so the
+loop's delivery is the preload alone, and there is deliberately no
+`paths:`-scoped rule left (one fires inside sub-agents too; issue #85 has the
+numbers). Three obligations, pinned by
+[`adapters/claude/tests/test_rules.py`](adapters/claude/tests/test_rules.py)
+over rules and section skills alike and stated in `ADAPTER-SPEC.md` §7 — a
+delivered file loads without the role choosing to, names the section it
+delivers, and **adds no rule the engine does not have**. A rule invented in the
+adapter binds one runtime and is invisible to every other; put it in
+`conventions/` first. A new section skill is recognised structurally
+(`user-invocable: false`, or a `<!-- pins:` block), must be preloaded by at
+least one agent, and must not set `disable-model-invocation` — the runtime
+silently refuses to preload such a skill.
 
-Each rule also declares, in a `<!-- reach: … -->` comment near the top of its
-body, the agent roles it expects to arm for — `all`, or a comma-separated list.
+Each delivered file also declares, in a `<!-- reach: … -->` comment near the
+top of its body, the agent roles it expects to reach — `all`, or a
+comma-separated list.
 [`tests/test_structural_budget.py`](tests/test_structural_budget.py) installs
-the adapter, derives each role's read-set from the delivered agent specs,
-evaluates the rule's `paths:` globs against it, and fails when the declaration
-and the measurement disagree. **Changing a rule's globs changes its reach**, so
-update the declaration in the same commit. That module also pins the always-on
-floor (`AGENT-CONTEXT.md` plus every unscoped rule) byte-for-byte — it fails in
-both directions on purpose, and moving it means bumping `VERSION` and editing
-the pin deliberately.
+the adapter and fails when the declaration and the carrier disagree: for a
+rule, its `paths:` globs evaluated against each role's read-set derived from
+the agent specs; for a section skill, **literally** the set of specs whose
+`skills:` list it. **Changing a rule's globs or a spec's `skills:` changes a
+reach**, so update the declaration in the same commit. That module also pins
+the always-on floor (`AGENT-CONTEXT.md` plus every unscoped rule; a section
+skill is not part of it) byte-for-byte — it fails in both directions on
+purpose, and moving it means bumping `VERSION` and editing the pin
+deliberately.
 
-And each rule **quotes the statements it delivers**, in `<!-- pins: <section
-file> … -->` blocks — one block per section, each `- ` line a sentence lifted
-from it.
+And each delivered file **quotes the statements it delivers**, in `<!-- pins:
+<section file> … -->` blocks — one block per section, each `- ` line a sentence
+lifted from it.
 [`adapters/claude/tests/test_rule_pins.py`](adapters/claude/tests/test_rule_pins.py)
-asserts every pin still appears in the rule *and* in the section it names, after
-a normalisation that absorbs reflow, emphasis and case but nothing else. **Both
-directions**: a rule reworded away from its section fails, and so does a section
-rewritten under a rule that still quotes the old wording — edit both copies, in
-one commit. Every rule must pin at least one statement; a rule that delivers no
-normative engine statement is a question, not an exemption. Curate the pins —
-the load-bearing sentences, not every line.
+asserts every pin still appears in the delivered file *and* in the section it
+names, after a normalisation that absorbs reflow, emphasis and case but nothing
+else. **Both directions**: a file reworded away from its section fails, and so
+does a section rewritten under a file that still quotes the old wording — edit
+both copies, in one commit. Every delivered file must pin at least one
+statement; one that delivers no normative engine statement is a question, not
+an exemption. Curate the pins — the load-bearing sentences, not every line. The
+comments cost the loop nothing: a preload strips them.
 
 Do not re-inline a contract restatement into an agent spec. Six of them carried
 the command-hygiene block verbatim, one had already drifted, and a test now

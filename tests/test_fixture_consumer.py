@@ -37,22 +37,26 @@ import install  # noqa: E402  (path shim above)
 
 
 # --------------------------------------------------------------------------- #
-# the adapter's rules, at their source — the delivery mechanism ADAPTER-SPEC §7
-# makes conformant. `adapters/claude/tests/test_rules.py` reads this repo's tree
-# and asserts the string "rules" is in `install.ADAPTER_CONTROL`; that is a check
-# on a tuple literal, not on an install (issue #83). Derived, never hard-coded,
-# so a rule added or renamed is covered the moment it lands.
+# the adapter's delivered files, at their source — the delivery mechanism
+# ADAPTER-SPEC §7 makes conformant: the rules, and the section skills (a
+# `SKILL.md` with `user-invocable: false`, preloaded by role — issue #85).
+# `adapters/claude/tests/test_rules.py` reads this repo's tree and asserts the
+# strings "rules" and "skills" are in `install.ADAPTER_CONTROL`; that is a
+# check on a tuple literal, not on an install (issue #83). Derived, never
+# hard-coded, so a file added or renamed is covered the moment it lands.
 # --------------------------------------------------------------------------- #
 SOURCE_RULES = sorted((FRAMEWORK_ROOT / "adapters" / "claude" / "rules").glob("*.md"))
 
 
 def _frontmatter(path: Path):
-    """The rule's YAML block, read the way a runtime reads it — or ``None``.
+    """The file's YAML block, read the way a runtime reads it — or ``None``.
 
     Bytes first, then `utf-8-sig` and CRLF normalisation: an install that
     rewrote the file — a BOM prepended, native line endings — leaves the
-    delimiter unrecognised, and a scoped rule silently becomes an unscoped one
-    loaded into every context. Nothing errors; the cost is paid on every spawn.
+    delimiter unrecognised. For a rule that silently makes a scoped one
+    unscoped, loaded into every context; for a section skill it loses the
+    `name:` a preload resolves, so the skill reaches nobody. Nothing errors
+    either way.
     """
     text = path.read_bytes().decode("utf-8-sig").replace("\r\n", "\n")
     if not text.startswith("---\n"):
@@ -61,9 +65,19 @@ def _frontmatter(path: Path):
     return None if end == -1 else text[4:end]
 
 
-#: The rules that carry `paths:` in the source tree, so the check below is on
-#: whatever is scoped today rather than on a list that goes stale.
-SCOPED_RULES = [p.name for p in SOURCE_RULES if "paths:" in (_frontmatter(p) or "")]
+#: The skills that deliver a contract section — `user-invocable: false` in
+#: the source tree — so the checks below are on whatever is a section skill
+#: today rather than on a list that goes stale.
+SOURCE_SECTION_SKILLS = [
+    p for p in sorted((FRAMEWORK_ROOT / "adapters" / "claude" / "skills").glob("*/SKILL.md"))
+    if "user-invocable: false" in (_frontmatter(p) or "")]
+
+#: The two `paths:`-scoped rules 1.22.0–1.26.0 shipped and 1.27.0 retired in
+#: favour of the section skills above (issue #85). Every consumer installed
+#: before the manifest existed still has them, and nothing but
+#: `RETIRED_ADAPTER_PATHS` can remove them.
+RETIRED_RULES = (".claude/rules/aide-living-documents.md",
+                 ".claude/rules/aide-test-hygiene.md")
 
 
 # --------------------------------------------------------------------------- #
@@ -306,14 +320,16 @@ def test_an_overlay_is_regenerated_into_settings_on_update(consumer: Path):
 
 
 # --------------------------------------------------------------------------- #
-# .claude/rules/ — the contract's delivery mechanism, at the path that loads it
+# .claude/rules/ and the section skills — the contract's delivery mechanism,
+# at the paths that load it
 # --------------------------------------------------------------------------- #
-def test_the_source_tree_has_a_scoped_rule_to_check():
+def test_the_source_tree_has_delivered_files_to_check():
     """Fails closed. Both lists below are derived from the source tree, so an
     empty one makes its parametrised test vanish with a green suite rather than
     fail — the exact silence the rest of this block exists to break."""
     assert SOURCE_RULES, "no adapters/claude/rules/*.md — the layout moved"
-    assert SCOPED_RULES, "no rule carries `paths:` at source"
+    assert SOURCE_SECTION_SKILLS, ("no adapters/claude/skills/*/SKILL.md carries "
+                                   "`user-invocable: false` — no section skill at source")
 
 
 def test_the_install_delivers_every_rule_and_no_others(prototype: Path):
@@ -332,17 +348,37 @@ def test_a_rule_reaches_the_consumer_byte_for_byte(prototype: Path, source: Path
     assert installed.read_bytes() == source.read_bytes()
 
 
-@pytest.mark.parametrize("name", SCOPED_RULES)
-def test_a_scoped_rule_is_still_scoped_after_the_copy(prototype: Path, name: str):
-    """`paths:` is what keeps a rule out of every unrelated context, and the
-    copy is the one place a re-encode would show up — `test_rules.py` only ever
-    reads the source tree, where the frontmatter is trivially intact."""
-    path = prototype / ".claude" / "rules" / name
+@pytest.mark.parametrize("source", SOURCE_SECTION_SKILLS, ids=lambda p: p.parent.name)
+def test_a_section_skill_is_still_preloadable_after_the_copy(prototype: Path, source: Path):
+    """A preload resolves `name:` from the frontmatter, and the copy is the one
+    place a re-encode would show up — `test_rules.py` only ever reads the
+    source tree, where the frontmatter is trivially intact. A BOM in front of
+    `---` leaves no readable name, so the skill is skipped at spawn and absent
+    from the listing: the section reaches nobody, silently."""
+    name = source.parent.name
+    path = prototype / ".claude" / "skills" / name / "SKILL.md"
+    assert path.is_file(), f"{name}: never reached .claude/skills/"
+    assert path.read_bytes() == source.read_bytes()
     raw = path.read_bytes()
     assert not raw.startswith(codecs.BOM_UTF8), f"{name}: the install added a BOM"
     assert raw.startswith(b"---"), f"{name}: no frontmatter delimiter at byte 0"
     block = _frontmatter(path)
-    assert block is not None and "paths:" in block, f"{name}: lost its `paths:`"
+    assert block is not None, f"{name}: frontmatter does not parse after the copy"
+    assert f"name: {name}" in block, f"{name}: lost the `name:` a preload resolves"
+    assert "user-invocable: false" in block, f"{name}: lost `user-invocable: false`"
+    assert "paths:" in block, f"{name}: lost its `paths:`"
+
+
+def test_the_retired_rules_are_not_installed_and_are_listed_for_retirement(prototype: Path):
+    """Both halves of the 1.27.0 swap, at the install: neither retired rule
+    reaches a fresh consumer, and each is in the bootstrap list that removes
+    it from an old one. One half without the other is either double delivery
+    (the rule still ships) or a consumer that keeps it forever (the list
+    forgot it)."""
+    for rel in RETIRED_RULES:
+        assert not (prototype / rel).exists(), f"{rel}: a retired rule still ships"
+        assert rel in install.RETIRED_ADAPTER_PATHS["claude"], (
+            f"{rel}: not in RETIRED_ADAPTER_PATHS — a pre-manifest consumer keeps it")
 
 
 def test_update_adds_the_rules_directory_to_a_consumer_that_never_had_one(
@@ -376,6 +412,43 @@ def test_the_prune_reaches_the_engine_and_stops_before_the_rules(consumer: Path)
     for source in SOURCE_RULES:
         assert (consumer / ".claude" / "rules" / source.name).read_bytes() == \
             source.read_bytes()
+
+
+def test_update_retires_the_two_paths_scoped_rules_from_a_pre_swap_consumer(
+        consumer: Path, capsys):
+    """Issue #85, scope item 3, at the path a consumer runs: the two rules
+    every 1.22.0–1.26.0 install carries, on a consumer installed **before the
+    manifest existed** (no `.aide/adapter-manifest.txt` at all), so nothing
+    but `RETIRED_ADAPTER_PATHS` can name them. `--check` must name both and
+    exit 1; `--update` must remove both, keep `aide-command-hygiene.md`
+    byte-identical, and leave the two section skills in place — otherwise the
+    consumer is delivered §6 and the §1 shapes twice, once as a rule that
+    still arms on every read and once as the preload that replaced it."""
+    manifest = consumer / ".aide" / install.ADAPTER_MANIFEST
+    manifest.unlink()                     # what a pre-manifest consumer looks like
+    retired = [consumer / Path(rel) for rel in RETIRED_RULES]
+    for path in retired:
+        path.write_text("---\npaths:\n  - '**/*.md'\n---\n# shipped by 1.22.0\n",
+                        encoding="utf-8")
+    kept = consumer / ".claude" / "rules" / "aide-command-hygiene.md"
+    kept_bytes = kept.read_bytes()
+    capsys.readouterr()
+
+    assert install.main(["--into", str(consumer), "--check"]) == 1
+    out = capsys.readouterr().out
+    for path in retired:
+        assert path.name in out, f"--check did not name {path.name}"
+        assert path.is_file(), "--check must never write"
+
+    assert install.main(["--into", str(consumer), "--update"]) == 0
+
+    for path in retired:
+        assert not path.exists(), f"{path.name} is still armed in the consumer"
+    assert kept.read_bytes() == kept_bytes, "the retirement touched the unscoped rule"
+    for source in SOURCE_SECTION_SKILLS:
+        assert (consumer / ".claude" / "skills" / source.parent.name / "SKILL.md").is_file()
+    assert manifest.is_file(), "the update left the consumer without a manifest"
+    assert install.main(["--into", str(consumer), "--check"]) == 0
 
 
 def test_update_retires_a_rule_the_adapter_dropped_and_keeps_the_projects_own(

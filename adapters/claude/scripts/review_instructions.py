@@ -25,6 +25,15 @@ necessarily unread. Nothing loads on a `Read`, so an agent that opened a
 conventions section by hand leaves no trace here. This measures delivery, not
 reading.
 
+Nor does it see a **preloaded section skill** (`.claude/skills/aide-*/SKILL.md`
+named in an agent's `skills:` frontmatter). A preload is not an instruction
+file to the runtime, so it never appears in this log — and it needs no
+measuring: it is unconditional per spawn, so its cost is an exact structural
+sum, printed by `tests/test_structural_budget.py` in the framework repo. Only
+files actually in `.claude/rules/` are ever reported silent here; a rule the
+framework has retired is removed from that directory by `install.py --update`
+and is not a fault.
+
 Everything below the ``main`` boundary is a pure function so it can be unit
 tested (see ``.claude/tests/test_instructions_loaded.py`` in this repo's
 source tree).

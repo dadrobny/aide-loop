@@ -62,12 +62,12 @@ def test_a_documented_payload_is_recorded_in_full(monkeypatch, tmp_path):
         "hook_event_name": "InstructionsLoaded",
         "cwd": "/repo",
         "reason": "path_glob_match",
-        "file_path": ".claude/rules/aide-test-hygiene.md",
+        "file_path": ".claude/rules/some-scoped-rule.md",
     })
     assert len(records) == 1
     assert records[0]["session_id"] == "s1"
     assert records[0]["reason"] == "path_glob_match"
-    assert records[0]["paths"] == [".claude/rules/aide-test-hygiene.md"]
+    assert records[0]["paths"] == [".claude/rules/some-scoped-rule.md"]
 
 
 def test_an_undocumented_field_spelling_still_yields_a_path(monkeypatch, tmp_path):

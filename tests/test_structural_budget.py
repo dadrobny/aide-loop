@@ -1,4 +1,4 @@
-"""What a rule *reaches*, asserted; what it *costs*, printed.
+"""What a delivered file *reaches*, asserted; what it *costs*, printed.
 
 The gap this closes (issue #84). Issue #78 asked a token-budget question and
 answered it by grepping eleven stored session transcripts of a consumer. Issue
@@ -9,10 +9,23 @@ until a reviewer did the arithmetic by hand. Nothing in the suite knew what a
 token was, and nothing knew which contexts a rule loads into.
 
 **The half that is measurable is structural**, and it is a pure function of the
-installed tree: a rule's `paths:` globs, evaluated against the files each agent
-spec names. **The half that is not is behavioural** — whether an agent follows a
-pointer once the file is in front of it. This module stays entirely on the first
-side of that line.
+installed tree. **The half that is not is behavioural** — whether an agent
+follows a pointer once the file is in front of it. This module stays entirely
+on the first side of that line.
+
+Two carriers deliver a contract section here, and their reach is measured
+differently because it *is* different (issue #85):
+
+- A **rule** (`.claude/rules/*.md`) loads by the runtime's own decision: an
+  unscoped one into every context, a `paths:`-scoped one on a matching read —
+  inside sub-agent contexts too. Its reach is *inferred*: the globs, evaluated
+  against the files each agent spec names.
+- A **section skill** (`.claude/skills/<name>/SKILL.md`, `user-invocable:
+  false`) is preloaded at spawn into exactly the agent specs whose `skills:`
+  frontmatter names it. Its reach is *literal*: the set of specs that list it.
+  Its `paths:` inject nothing on a read — measured, #85 — and only surface its
+  description to an interactive session, so the glob evaluation is *printed*
+  for a skill as its interactive trigger, and never asserted.
 
 **It asserts on structure and prints the cost.** `assert budget < 150_000` would
 be a spreadsheet wearing a test's clothes: it bakes in a spawn model and a
@@ -21,27 +34,27 @@ upward instead of investigated. So the byte totals below are diagnostic output
 (`pytest -s`, or the failure text), and the assertions are three properties a
 commit can silently break:
 
-1. **A rule declares the reach it expects** (`<!-- reach: … -->`), and the
-   declaration matches what its globs actually arm. `aide-living-documents.md`
-   shipped in #79 scoped to names every role reads — an unscoped rule wearing a
-   `paths:` block, invisible because nothing compared the two.
-2. **A rule that loses its frontmatter arms everywhere.** A BOM from a Windows
-   editor makes the `---` delimiter unrecognisable, and the runtime reads a
-   scoped rule as an unscoped one. The evaluator has to report that as "0 globs,
-   arms every role" rather than skipping the file.
+1. **A delivered file declares the reach it expects** (`<!-- reach: … -->`),
+   and the declaration matches what the carrier actually does — the globs for
+   a rule, the `skills:` lists for a section skill. `aide-living-documents.md`
+   shipped in #79 scoped to names every role reads — an unscoped rule wearing
+   a `paths:` block, invisible because nothing compared the two.
+2. **Frontmatter that stopped parsing fails loudly, in the direction the
+   carrier fails.** A BOM from a Windows editor makes the `---` delimiter
+   unrecognisable. For a rule the runtime then loads it into every context, so
+   the evaluator has to report "0 globs, arms every role" rather than skip the
+   file. For a skill the runtime can no longer read its `name:`, so it is
+   neither preloadable nor listed — it reaches *nobody* — and the evaluator has
+   to report that too.
 3. **The always-on floor does not move without a deliberate edit.**
    `AGENT-CONTEXT.md` plus every unscoped rule is paid on every single spawn, so
-   that number moving is as consumer-visible as any other change.
+   that number moving is as consumer-visible as any other change. A section
+   skill is not part of it: it is paid only by the roles that preload it.
 
-**Mechanism-agnostic on purpose.** Issue #85 may move this content out of
-`paths:`-scoped rules and into skills. Everything here is expressed as "a
-delivered file, its globs, and the roles that reach it", so a change of carrier
-should move the declarations, not rewrite the tests.
-
-Measured against a **real install** — `.claude/rules/`, `.claude/agents/` and
-`.aide/AGENT-CONTEXT.md` at the paths a consumer's runtime actually loads them
-from — rather than against this repo's source layout, which is not what anybody
-pays for.
+Measured against a **real install** — `.claude/rules/`, `.claude/skills/`,
+`.claude/agents/` and `.aide/AGENT-CONTEXT.md` at the paths a consumer's
+runtime actually loads them from — rather than against this repo's source
+layout, which is not what anybody pays for.
 """
 from __future__ import annotations
 
@@ -104,20 +117,22 @@ def _size(path: Path) -> int:
 
 
 def _frontmatter(path: Path):
-    """The rule's YAML block, or ``None`` — which is the *loud* answer here.
+    """The file's YAML block, or ``None`` — which is the *loud* answer here.
 
     A rule with no frontmatter is unscoped and loads into every context. That
     is a legitimate state (`aide-command-hygiene.md`) and also the failure mode
     a BOM produces, so callers must treat ``None`` as "arms everywhere" rather
-    than as "nothing to check". The whole point of assertion 2.
+    than as "nothing to check". For a skill ``None`` means the opposite — no
+    `name:` to preload by — and callers treat it as "reaches nobody". Either
+    way: the whole point of assertion 2.
 
     Read from bytes and **not** with `utf-8-sig`, unlike `_text` above: the
     other readers in this suite strip a BOM so they can report on the file
     behind it, but this one has to see what the runtime sees. With `\\ufeff` in
-    front, `---` is not at byte 0, the block does not parse, and the rule loads
-    everywhere — so stripping it here would hide the one thing worth catching.
-    CRLF is still folded, because that is a checkout artefact the runtime
-    handles and this repo has no `.gitattributes` pin against.
+    front, `---` is not at byte 0, the block does not parse, and the file's
+    carrier fails — so stripping it here would hide the one thing worth
+    catching. CRLF is still folded, because that is a checkout artefact the
+    runtime handles and this repo has no `.gitattributes` pin against.
     """
     raw = path.read_bytes()
     if raw.startswith(codecs.BOM_UTF8):
@@ -130,12 +145,75 @@ def _frontmatter(path: Path):
 
 
 def _globs(path: Path) -> list:
-    """The `paths:` globs of a delivered rule; empty for an unscoped one."""
+    """The `paths:` globs of a delivered file; empty for an unscoped one."""
     block = _frontmatter(path)
     if block is None:
         return []
     return [line.strip().lstrip("- ").strip('"\'')
             for line in block.splitlines() if line.strip().startswith("- ")]
+
+
+def _scalar(block, key: str):
+    """The value of a one-line ``key: value`` frontmatter entry, or ``None``."""
+    if block is None:
+        return None
+    match = re.search(rf"^{re.escape(key)}:[ \t]*(?P<value>[^\n]*)$", block, re.M)
+    return match.group("value").strip() if match else None
+
+
+def _skill_name(path: Path):
+    """The name a `skills:` preload resolves this skill by, or ``None``.
+
+    ``None`` is the loud answer for a skill: with no readable `name:` the
+    runtime cannot preload it and does not list it.
+    """
+    return _scalar(_frontmatter(path), "name")
+
+
+def _is_section_skill(path: Path) -> bool:
+    """A `SKILL.md` that delivers a contract section rather than a workflow —
+    the same two signals `adapters/claude/tests/test_rules.py` recognises:
+    `user-invocable: false`, or a `<!-- pins:` block."""
+    hidden = (_scalar(_frontmatter(path), "user-invocable") or "").lower() == "false"
+    return hidden or "<!-- pins:" in _text(path)
+
+
+_COMMENT = re.compile(r"<!--.*?-->", re.S)
+
+
+def _preload_size(path: Path) -> int:
+    """Content bytes a preload injects: the body, HTML comments stripped.
+
+    The runtime injects a preloaded skill without its frontmatter and with
+    its comments removed, so the `<!-- reach -->` and `<!-- pins -->` blocks
+    cost the loop nothing. This is the number a role actually pays.
+    """
+    text = _text(path)
+    if text.startswith("---\n"):
+        end = text.find("\n---\n", 4)
+        text = text[end + 5:] if end != -1 else text
+    return len(_COMMENT.sub("", text).encode("utf-8"))
+
+
+def _preloads(agent: Path) -> list:
+    """The skill names an agent spec's `skills:` frontmatter preloads."""
+    block = _frontmatter(agent)
+    if block is None:
+        return []
+    match = re.search(r"^skills:[ \t]*(?P<inline>[^\n]*)\n(?P<items>(?:[ \t]+-[^\n]*\n?)*)",
+                      block + "\n", re.M)
+    if not match:
+        return []
+    inline = match.group("inline").strip()
+    if inline.startswith("[") and inline.endswith("]"):
+        return [x.strip().strip("\"'") for x in inline[1:-1].split(",") if x.strip()]
+    return [line.strip().lstrip("- ").strip("\"'")
+            for line in match.group("items").splitlines() if line.strip().startswith("-")]
+
+
+def _label(path: Path) -> str:
+    """`aide-test-hygiene` for a skill, the filename for a rule."""
+    return path.parent.name if path.name == "SKILL.md" else path.name
 
 
 #: `<!-- reach: … -->`, the whole rest of that line. A prose note goes on the
@@ -145,24 +223,24 @@ _REACH = re.compile(r"<!--\s*reach:[ \t]*(?P<roles>[^\n]*)")
 
 
 def _declared_reach(path: Path, roles) -> set:
-    """The roles a rule says it expects to arm for, as a set.
+    """The roles a delivered file says it expects to reach, as a set.
 
     ``all`` is the shorthand for every role — spelling six names out in a file
     that means "everyone" invites one of them to go stale on a rename.
     """
     match = _REACH.search(_text(path))
     assert match, (
-        f"{path.name}: no `<!-- reach: … -->` declaration. Every delivered rule "
-        f"states the roles it expects to arm for, so that a change of scope has "
-        f"something to contradict; see this module's docstring.")
+        f"{_label(path)}: no `<!-- reach: … -->` declaration. Every delivered "
+        f"file states the roles it expects to reach, so that a change of scope "
+        f"has something to contradict; see this module's docstring.")
     raw = match.group("roles").strip()
     raw = raw[:-3].strip() if raw.endswith("-->") else raw
-    assert raw, f"{path.name}: empty reach declaration"
+    assert raw, f"{_label(path)}: empty reach declaration"
     if raw == "all":
         return set(roles)
     declared = {part.strip() for part in raw.split(",") if part.strip()}
     unknown = declared - set(roles)
-    assert not unknown, f"{path.name}: reach names no such role: {sorted(unknown)}"
+    assert not unknown, f"{_label(path)}: reach names no such role: {sorted(unknown)}"
     return declared
 
 
@@ -206,6 +284,14 @@ def _arming_roles(rule: Path, read_sets: dict) -> set:
     patterns = [_glob_to_regex(g) for g in globs]
     return {role for role, files in read_sets.items()
             if any(p.match(f) for f in files for p in patterns)}
+
+
+def _preload_reach(skill: Path, preloads: dict) -> set:
+    """Which roles this skill is preloaded into. No readable name ⇒ nobody."""
+    name = _skill_name(skill)
+    if name is None:
+        return set()
+    return {role for role, names in preloads.items() if name in names}
 
 
 # --------------------------------------------------------------------------- #
@@ -286,28 +372,44 @@ def rules(consumer: Path) -> list:
 
 
 @pytest.fixture(scope="session")
+def section_skills(consumer: Path) -> list:
+    return [p for p in sorted((consumer / ".claude" / "skills").glob("*/SKILL.md"))
+            if _is_section_skill(p)]
+
+
+@pytest.fixture(scope="session")
 def read_sets(consumer: Path) -> dict:
     return _read_sets(consumer / ".claude" / "agents")
+
+
+@pytest.fixture(scope="session")
+def preloads(consumer: Path) -> dict:
+    """`{role: [skill name, …]}` — the literal reach of every section skill."""
+    return {p.stem: _preloads(p)
+            for p in sorted((consumer / ".claude" / "agents").glob("*.md"))}
 
 
 # --------------------------------------------------------------------------- #
 # fail closed — every derived collection below is recognisable first
 # --------------------------------------------------------------------------- #
-def test_the_install_delivers_something_to_measure(consumer: Path, rules: list):
+def test_the_install_delivers_something_to_measure(
+        consumer: Path, rules: list, section_skills: list):
     """conventions.md §6: assert the derived value is recognisable *before*
-    asserting anything about it. An empty rules glob or a missing
-    AGENT-CONTEXT.md would make most of this module pass while measuring
-    nothing at all."""
+    asserting anything about it. An empty rules glob, no section skill
+    recognised, or a missing AGENT-CONTEXT.md would make most of this module
+    pass while measuring nothing at all."""
     assert rules, "no .claude/rules/*.md in a real install — the layout moved"
+    assert section_skills, ("no section skill in a real install — the layout "
+                            "moved, or nothing carries `user-invocable: false`")
     assert (consumer / ".aide" / "AGENT-CONTEXT.md").is_file()
     assert sorted((consumer / ".claude" / "agents").glob("*.md")), "no agent specs"
 
 
 def test_every_role_names_files_the_globs_can_be_evaluated_against(read_sets: dict):
-    """The extractor is the load-bearing part of the reach comparison, and it
-    is a regex over prose. If it silently stops matching, every scoped rule
-    arms nobody and a declaration of `test-writer` fails — but a declaration
-    of nothing would pass, so pin the input too."""
+    """The extractor is the load-bearing part of the rule-reach comparison,
+    and it is a regex over prose. If it silently stops matching, every scoped
+    rule arms nobody and a declaration of `test-writer` fails — but a
+    declaration of nothing would pass, so pin the input too."""
     assert read_sets, "no agent specs were read"
     for role, files in read_sets.items():
         assert files, f"{role}: the spec names no file path — the extractor broke"
@@ -315,19 +417,34 @@ def test_every_role_names_files_the_globs_can_be_evaluated_against(read_sets: di
             assert "\\" not in path, f"{role}: {path!r} carries a native separator"
 
 
+def test_some_role_preloads_a_section_skill(preloads: dict, section_skills: list):
+    """The `skills:` parser is the load-bearing part of the skill-reach
+    comparison. If it silently stops matching, every section skill reaches
+    nobody and its declaration fails — but a declaration of nothing would
+    pass, so pin the input too."""
+    assert preloads, "no agent specs were read"
+    assert any(preloads.values()), (
+        "no agent spec preloads a skill — the channel is gone, or the "
+        "`skills:` parser here stopped seeing it")
+    named = {name for names in preloads.values() for name in names}
+    assert named & {_skill_name(s) for s in section_skills}, (
+        "no preloaded name is a section skill — the two sets do not meet, so "
+        "the reach comparison below would compare nothing")
+
+
 # --------------------------------------------------------------------------- #
-# 1. a rule declares its reach, and the declaration is true
+# 1. a delivered file declares its reach, and the declaration is true
 # --------------------------------------------------------------------------- #
-def test_a_rule_declares_the_reach_it_expects(consumer: Path, rules: list,
-                                              read_sets: dict):
+def test_a_delivered_file_declares_the_reach_it_expects(
+        rules: list, section_skills: list, read_sets: dict):
     """The declaration is the thing a scope change has to contradict.
 
     Parametrising over the installed files would need them at collection time,
     before the install exists, so the loop is inside — and each failure names
-    its own rule.
+    its own file.
     """
-    for rule in rules:
-        _declared_reach(rule, read_sets)  # asserts presence and well-formedness
+    for path in rules + section_skills:
+        _declared_reach(path, read_sets)  # asserts presence and well-formedness
 
 
 def test_a_rules_declared_reach_matches_the_roles_its_globs_arm(
@@ -354,27 +471,55 @@ def test_a_rules_declared_reach_matches_the_roles_its_globs_arm(
         for name, (declared, actual) in sorted(wrong.items()))
 
 
+def test_a_section_skills_declared_reach_is_the_set_of_roles_that_preload_it(
+        section_skills: list, read_sets: dict, preloads: dict):
+    """Reach is literal for a skill: the specs whose `skills:` name it.
+
+    Nothing is inferred and nothing is evaluated — the globs on a skill inject
+    nothing on a read (issue #85, measured), so the read-set model that
+    decides a rule's reach has no bearing here. What can go wrong is exactly
+    what this compares: a spec adds or drops a preload and the declaration is
+    not updated, or a skill is renamed and a `skills:` entry still says the
+    old name — which resolves to nothing, silently, at spawn.
+    """
+    wrong = {}
+    for skill in section_skills:
+        declared = _declared_reach(skill, read_sets)
+        actual = _preload_reach(skill, preloads)
+        if declared != actual:
+            wrong[_label(skill)] = (sorted(declared), sorted(actual))
+    assert not wrong, "\n".join(
+        f"{name}: declares {declared}, preloaded by {actual}"
+        for name, (declared, actual) in sorted(wrong.items()))
+
+
 # --------------------------------------------------------------------------- #
-# 2. frontmatter that stopped parsing arms everywhere, loudly
+# 2. frontmatter that stopped parsing fails loudly, the way its carrier fails
 # --------------------------------------------------------------------------- #
 def test_a_scoped_rule_that_lost_its_delimiter_is_read_as_arming_every_role(
-        rules: list, read_sets: dict, tmp_path: Path):
-    """The BOM case, exercised rather than described.
+        rules: list, section_skills: list, read_sets: dict, tmp_path: Path):
+    """The BOM case for a rule, exercised rather than described.
 
     A Windows editor prepends `\\ufeff`, `---` is no longer at byte 0, and the
     runtime loads a scoped rule into every context — no error, no diff worth
     reading, a cost on every spawn. `_frontmatter` must report that as "no
-    globs" and `_arming_roles` must turn no globs into every role, or the two
-    checks above would sail past the exact regression they exist for.
+    globs" and `_arming_roles` must turn no globs into every role, or the
+    check above would sail past the exact regression it exists for.
+
+    No shipped rule carries `paths:` today (1.27.0 moved both scoped rules
+    into section skills), so the block under a BOM is taken from whichever
+    delivered file has one — a rule first, else a section skill's, which is
+    the same `paths:` grammar. What is under test is the evaluator's reading
+    of a scoped block behind a BOM, not which file it came from.
     """
-    scoped = [r for r in rules if _globs(r)]
-    assert scoped, "no scoped rule to corrupt — the premise is gone"
+    scoped = [p for p in rules + section_skills if _globs(p)]
+    assert scoped, "no delivered file with `paths:` to corrupt — the premise is gone"
 
     victim = scoped[0]
-    mangled = tmp_path / victim.name
+    mangled = tmp_path / "mangled-rule.md"
     mangled.write_bytes(b"\xef\xbb\xbf" + victim.read_bytes())
     assert _globs(victim), "the original parses as scoped"
-    assert _globs(mangled) == [], f"{victim.name}: a BOM left the globs readable"
+    assert _globs(mangled) == [], f"{_label(victim)}: a BOM left the globs readable"
     assert _arming_roles(mangled, read_sets) == set(read_sets)
 
 
@@ -388,6 +533,36 @@ def test_a_rule_with_no_paths_block_is_counted_as_arming_every_role(
         assert _arming_roles(rule, read_sets) == set(read_sets)
 
 
+def test_a_section_skill_that_lost_its_delimiter_reaches_nobody(
+        section_skills: list, preloads: dict, tmp_path: Path):
+    """The BOM case for a skill, which fails the other way round.
+
+    A rule with unreadable frontmatter arms everywhere; a skill with
+    unreadable frontmatter has no `name:` the runtime can resolve, so it is
+    skipped at preload and absent from the listing — the section reaches
+    nobody, and nothing says so. Two things are pinned: that every *installed*
+    section skill is readable from byte 0 (the install itself must not have
+    added a BOM — `install.py` reads with `utf-8-sig` and could write one back)
+    with a `name:` that equals its directory; and that the evaluator reports a
+    BOM'd copy as reaching nobody, so a declared reach of `test-writer` would
+    fail loudly against it rather than pass by default.
+    """
+    for skill in section_skills:
+        raw = skill.read_bytes()
+        assert not raw.startswith(codecs.BOM_UTF8), f"{_label(skill)}: the install added a BOM"
+        assert _skill_name(skill) == skill.parent.name, (
+            f"{_label(skill)}: `name:` does not resolve to its directory — a "
+            f"`skills:` entry naming it preloads nothing")
+        assert _preload_reach(skill, preloads), (
+            f"{_label(skill)}: no spec preloads it — the premise is gone")
+
+        mangled = tmp_path / skill.parent.name / "SKILL.md"
+        mangled.parent.mkdir()
+        mangled.write_bytes(b"\xef\xbb\xbf" + raw)
+        assert _skill_name(mangled) is None, f"{_label(skill)}: a BOM left the name readable"
+        assert _preload_reach(mangled, preloads) == set()
+
+
 # --------------------------------------------------------------------------- #
 # 3. the always-on floor
 # --------------------------------------------------------------------------- #
@@ -396,7 +571,9 @@ def _floor(consumer: Path, rules: list) -> dict:
 
     `AGENT-CONTEXT.md` is linked into the runtime's default context and every
     unscoped rule loads unconditionally; together they are the constant term of
-    the budget, multiplied by the number of spawns a queue makes.
+    the budget, multiplied by the number of spawns a queue makes. A section
+    skill is deliberately not here: it is paid per preloading role, and its
+    description in the listing is the only unconditional part of it.
     """
     floor = {".aide/AGENT-CONTEXT.md": _size(consumer / ".aide" / "AGENT-CONTEXT.md")}
     for rule in rules:
@@ -508,7 +685,8 @@ def test_the_pinned_floor_names_the_release_that_last_moved_it():
 # the diagnostic — printed, never asserted on
 # --------------------------------------------------------------------------- #
 def test_the_arming_table_is_printed(
-        consumer: Path, rules: list, read_sets: dict, capsys):
+        consumer: Path, rules: list, section_skills: list, read_sets: dict,
+        preloads: dict, capsys):
     """Prints the table #78 built by hand from eleven session transcripts.
 
     Printed through `capsys.disabled()`, so it lands on every run rather than
@@ -519,7 +697,11 @@ def test_the_arming_table_is_printed(
 
     Bytes, not tokens: the ratio is a property of a tokeniser this repo does
     not ship, and quoting a token count would invite exactly the threshold
-    assertion the module docstring refuses.
+    assertion the module docstring refuses. A section skill is costed at what
+    a preload injects — body only, comments stripped — and its glob
+    evaluation is printed beside it as the *interactive trigger*: the roles
+    whose named reads would match if this were a rule, which is what the
+    listing keys on in a human's session and what the loop never pays.
 
     **This one is honestly a printer**, and says so rather than dressing up.
     It once carried two assertions — that every rule appeared in the arming
@@ -536,6 +718,9 @@ def test_the_arming_table_is_printed(
     floor_total = sum(floor.values())
     armed = {rule.name: _arming_roles(rule, read_sets) for rule in rules}
     scoped_size = {rule.name: _size(rule) for rule in rules if _globs(rule)}
+    skill_size = {_label(s): _preload_size(s) for s in section_skills}
+    preloaded = {_label(s): _preload_reach(s, preloads) for s in section_skills}
+    triggered = {_label(s): _arming_roles(s, read_sets) for s in section_skills}
 
     lines = ["", "structural budget — content bytes of the delivered tree", ""]
     for path, size in sorted(floor.items()):
@@ -545,19 +730,27 @@ def test_the_arming_table_is_printed(
     for name, size in sorted(scoped_size.items()):
         roles = sorted(armed[name]) or ["(nobody)"]
         lines.append(f"  scoped  {size:>6}  {name} -> {', '.join(roles)}")
+    for name, size in sorted(skill_size.items()):
+        roles = sorted(preloaded[name]) or ["(nobody)"]
+        trigger = sorted(triggered[name]) or ["(nobody)"]
+        lines.append(f"  skill   {size:>6}  {name} -> preloaded by {', '.join(roles)}"
+                     f"  [interactive trigger: {', '.join(trigger)}]")
     lines.append("")
     specs = {}
     for role in sorted(read_sets):
         specs[role] = _size(consumer / ".claude" / "agents" / f"{role}.md")
         extra = sum(size for name, size in scoped_size.items() if role in armed[name])
-        lines.append(f"  spawn   {floor_total + specs[role] + extra:>6}  {role} "
-                     f"(floor {floor_total} + spec {specs[role]} + rules {extra})")
+        skills = sum(size for name, size in skill_size.items() if role in preloaded[name])
+        lines.append(f"  spawn   {floor_total + specs[role] + extra + skills:>6}  {role} "
+                     f"(floor {floor_total} + spec {specs[role]} + rules {extra} "
+                     f"+ skills {skills})")
     lines.append("")
     with capsys.disabled():
         print("\n".join(lines))
 
     empty = ([path for path, size in floor.items() if size <= 0]
              + [name for name, size in scoped_size.items() if size <= 0]
+             + [name for name, size in skill_size.items() if size <= 0]
              + [f"{role}.md" for role, size in specs.items() if size <= 0])
     assert floor_total > 0 and not empty, (
         f"the table above costed {empty} at zero bytes — a delivered file that "
