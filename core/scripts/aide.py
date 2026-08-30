@@ -3202,10 +3202,19 @@ def _commit_docs_files(repo_root: Path, config, message: str,
             print(f"aide: could not commit {', '.join(rels)} — {first}",
                   file=sys.stderr)
             return first
-        shown = git(["show", "--name-only", "--format=", "HEAD"],
-                    repo_root, check=False).stdout.split()
+        # One path per line, never whitespace-split: a `docs_dir` with a space
+        # in it must match its own entry. `core.quotepath=false` keeps a
+        # non-ASCII path literal rather than octal-escaped and quoted.
+        out = git(["-c", "core.quotepath=false", "show", "--name-only",
+                   "--format=", "HEAD"], repo_root, check=False).stdout
+        shown = [line.strip() for line in out.splitlines() if line.strip()]
     except (OSError, subprocess.SubprocessError) as exc:
-        return f"git could not be run ({exc.__class__.__name__}: {exc})"
+        # Loud here, not only in the return: three callers (`progress set`,
+        # `tick`, `archive`) discard the reason, and a verb that prints its
+        # success line over an uncommitted edit is the failure this names.
+        why = f"git could not be run ({exc.__class__.__name__}: {exc})"
+        print(f"aide: could not commit {', '.join(rels)} — {why}", file=sys.stderr)
+        return why
     missing = [r for r in rels if r not in shown]
     if missing:
         # `add` was refused (an ignored path, say) and `commit -- <path>` then

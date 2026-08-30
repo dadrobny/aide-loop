@@ -77,6 +77,20 @@ now makes that literally true.
   the message now points at `aide check` instead of telling a role to copy
   the template by hand.
 
+### Fixed
+
+- **`progress set`, `insights tick` and `insights archive` committed
+  everything staged, not the path they named.** The shared committer staged
+  its path and then ran a bare `git commit`, so a builder's staged-but-
+  uncommitted work was swept into the bookkeeping commit mid-item — the
+  docstring said "named paths, never `git add -A`" and the code did the
+  equivalent. The commit now carries a pathspec (`git commit -- <path>`):
+  only the named path lands, other staged content stays staged, a refused
+  commit unstages the path again rather than leaving it staged for
+  `aide sync` to stall on, and a `git` that cannot be run is one framed
+  stderr line instead of a silent success message. Found reviewing the inbox
+  creation above, which uses the same committer.
+
 ### Changed
 
 - **The six agent specs and `aide-execute-item` drop the create-if-missing

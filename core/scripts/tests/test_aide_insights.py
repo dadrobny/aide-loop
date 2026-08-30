@@ -791,8 +791,11 @@ def _status(repo: Path) -> list:
 
 
 def _files_in_head(repo: Path) -> list:
-    """What HEAD's commit touches — posix paths, the way git prints them."""
-    return _run(["git", "show", "--name-only", "--format=", "HEAD"], repo).stdout.split()
+    """What HEAD's commit touches — posix paths, one per line as git prints
+    them (never whitespace-split: a path may carry a space)."""
+    out = _run(["git", "-c", "core.quotepath=false", "show", "--name-only",
+                "--format=", "HEAD"], repo).stdout
+    return [line.strip() for line in out.splitlines() if line.strip()]
 
 
 def _head(repo: Path) -> str:
@@ -983,3 +986,47 @@ def test_tick_and_archive_on_a_missing_inbox_point_at_check(tmp_path: Path, caps
         err = capsys.readouterr().err
         assert "aide check" in err and "templates" not in err
     assert not (repo / "docs" / "aide" / "insights.md").exists()
+
+
+def test_a_docs_dir_with_a_space_is_recognised_in_its_own_commit(
+        tmp_path: Path, capsys):
+    """The committed-path check tokenised `git show` output on whitespace, so
+    `my docs/aide/insights.md` never matched itself and the notice said "NOT
+    committed" about a file that was in the commit."""
+    repo = _repo(tmp_path)
+    ddir = repo / "my docs" / "aide"
+    ddir.mkdir(parents=True)
+    (ddir / "progress.md").write_text(_PROGRESS, encoding="utf-8")
+    toml = AIDE_TOML.replace('docs_dir = "docs/aide"', 'docs_dir = "my docs/aide"')
+    assert "my docs" in toml  # the substitution took
+    (repo / "aide.toml").write_text(toml, encoding="utf-8")
+    _run(["git", "add", "-A"], repo)
+    _run(["git", "commit", "-m", "a docs_dir with a space"], repo)
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    inbox = ddir / "insights.md"
+    assert inbox.read_bytes() == _TEMPLATE.read_bytes()
+    assert _files_in_head(repo) == [inbox.relative_to(repo).as_posix()]
+    notice = [l for l in capsys.readouterr().out.splitlines() if l.startswith("notice:")]
+    assert len(notice) == 1 and "and committed it" in notice[0]
+
+
+def test_the_shared_committer_is_loud_when_git_cannot_run(
+        tmp_path: Path, monkeypatch, capsys):
+    """`progress set`, `tick` and `archive` discard the committer's return, so
+    the reason must reach stderr from the committer itself — or `tick` prints
+    its success line over an edit that was never committed."""
+    repo = _repo(tmp_path)
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    why = aide._commit_docs_files(repo, aide.load_config(repo), "m",
+                                  ["docs/aide/insights.md"])
+    assert why and "git could not be run" in why
+    assert "could not commit docs/aide/insights.md" in capsys.readouterr().err
+    assert aide.main(["--repo", str(repo), "insights", "tick", "2",
+                      "--pointer", "item 003"]) == 0
+    err = capsys.readouterr().err
+    assert "could not commit docs/aide/insights.md" in err and "Traceback" not in err
+    monkeypatch.undo()
+    assert "- [x] defect" in _inbox(repo)  # the edit landed ...
+    assert _status(repo) == [" M docs/aide/insights.md"]  # ... and is uncommitted
