@@ -50,6 +50,15 @@ only place the CLI reads. A status claim written anywhere else — a checklist i
 spec, a "current focus" heading, a summary in a README — is a second truth that
 will disagree with the first. Move it, do not copy it.
 
+## Root documents go through their entry point — §5
+
+`vision.md` and `roadmap.md` are authored via the loop's create-vision /
+create-roadmap entry points, never written free-hand — the entry point carries
+the safeguards a direct file write skips. Authoring them is interactive
+regardless of `loop.clarify`: ask until the mandatory sections are grounded in
+the human's answers, and present the result as a draft. A wrong assumption at
+the root propagates into every queue and item derived from it.
+
 ## Mechanical actions go through the CLI — §2, §4, [`README.md`](README.md)
 
 ```

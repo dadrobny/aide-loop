@@ -37,3 +37,8 @@ slot.
 are written *only* by a verb — the one hand edit anyone makes there is adding a
 row to the `## Human gates` table, which has no verb (`aide gate` only lists,
 approves and declines).
+
+**Creating or rewriting `vision.md` / `roadmap.md` is `/aide-create-vision` /
+`/aide-create-roadmap`'s job (`.aide/conventions.md` §5)** — the entry point
+carries the existing-document check and asks the human before assuming; a root
+document is never authored free-hand, however well the template shape is known.

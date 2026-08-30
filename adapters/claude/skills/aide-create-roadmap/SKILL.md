@@ -18,6 +18,15 @@ Read `docs/aide/vision.md`. If `docs/aide/roadmap.md` already exists, **update i
 incrementally** — do not regenerate from scratch. If it does not exist, create it
 from the template **`.aide/templates/roadmap.md`**.
 
+### Asking posture
+
+Roadmap authoring is **interactive regardless of `loop.clarify`** — that
+setting governs `spec-author` on queued items, nothing else
+(`.aide/conventions.md` §5). The staging derives from the written vision; where
+the vision leaves a sequencing decision open — what to build first, where a
+phase boundary falls, which objective a stage prioritises — ask the human
+rather than assuming, and present the result as a draft for review.
+
 ### Updating an existing roadmap
 
 1. **Read `docs/aide/progress.md` first** to see which stages are completed or in

@@ -286,6 +286,21 @@ def test_check_fails_when_the_document_set_lost_its_progress(aide, consumer: Pat
     assert aide.main(["--repo", str(consumer), "check"]) == 1
 
 
+def test_check_warns_on_a_root_document_missing_its_mandatory_sections(
+        aide, consumer: Path, capsys):
+    """Issue #86: a vision written free-hand, missing every section its
+    template marks MANDATORY, used to pass `check` without a word. It must
+    still pass — a warning, not an error, so an unattended run does not start
+    failing over a document none of its items touch — but no longer silently."""
+    (consumer / "docs" / "aide" / "vision.md").write_text(
+        "# Fixture — Project Vision\n\n> **Status:** Draft\n\nProse only.\n",
+        encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "vision.md" in out
+    assert "0 warning(s)" not in out
+
+
 def test_check_queue_passes_and_names_the_unspecced_item(aide, consumer: Path, capsys):
     """Item 002 is queued with no spec — a normal mid-queue state, counted and
     reported, never a failure."""
