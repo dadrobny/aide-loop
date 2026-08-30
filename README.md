@@ -61,7 +61,10 @@ Stdlib-only, cross-OS. It:
 
 **`python install.py --into <target> --update`** re-copies the
 engine and adapter (engine is framework-owned) but **never** touches `aide.toml` or
-`docs/aide/` (project-owned). Pin a consumer to a `VERSION` and `--update` to move it
+`docs/aide/` (project-owned). It also removes what the framework has dropped:
+engine files no longer in `core/`, and adapter files it once wrote — recorded in
+`.aide/adapter-manifest.txt` — that the adapter no longer ships; a file it did not
+write is never removed. Pin a consumer to a `VERSION` and `--update` to move it
 forward. See [`docs/quickstart.md`](docs/quickstart.md) to go from install to first
 merged item.
 

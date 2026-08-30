@@ -143,6 +143,13 @@ python install.py --into <consumer-repo> --check     # writes nothing, non-zero 
 non-clobbering by default; a consumer that has adopted
 `.claude/settings.overlay.json` gets it deterministically regenerated from
 framework-base + overlay instead, so it never needs manual reconciliation.
+Files the framework has dropped are removed: `.aide/` by comparison with
+`core/`, and the adapter's control directories (`.claude/agents/`, `skills/`,
+`rules/`, …) only by the manifest of what the installer itself wrote,
+`.aide/adapter-manifest.txt` — a consumer's own files there are never recorded,
+so never touched. A file retired from `adapters/claude/` therefore also goes
+into `RETIRED_ADAPTER_PATHS` in `install.py`, for consumers installed before
+the manifest existed.
 
 Then review the `git diff` in the consumer — it should be exactly the intended
 change, since most copied files are byte-identical no-ops.

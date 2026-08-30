@@ -123,6 +123,38 @@ def test_the_keep_list_names_a_path_the_installer_actually_writes(tmp_path: Path
     assert not (FRAMEWORK_ROOT / "core" / "loop" / "usage_probe.py").exists()
 
 
+def test_the_adapter_manifest_is_kept_by_the_prune(tmp_path: Path):
+    """The manifest lives under `.aide/` and comes from no source file at all.
+
+    Pruned, it would be gone on the update that wrote it, so the NEXT update
+    would find nothing to retire — the retirement (issue #85) would work
+    exactly once per consumer, on a fresh install, where there is nothing to
+    retire.
+    """
+    assert install.ADAPTER_MANIFEST in install.AIDE_FOREIGN_PATHS
+    assert not (FRAMEWORK_ROOT / "core" / install.ADAPTER_MANIFEST).exists()
+    src = _tree(tmp_path / "src", "loop/loop.py")
+    dst = _tree(tmp_path / "dst", "loop/loop.py", install.ADAPTER_MANIFEST)
+
+    install.prune_stale(src, dst, [], keep=install.AIDE_FOREIGN_PATHS)
+
+    assert (dst / install.ADAPTER_MANIFEST).is_file()
+
+
+def test_update_keeps_the_manifest_it_wrote_end_to_end(tmp_path: Path):
+    """Two updates in a row: the second must still find the first's manifest."""
+    target = tmp_path / "consumer"
+    target.mkdir()
+    assert install.main(["--into", str(target), "--yes"]) == 0
+    manifest = target / ".aide" / install.ADAPTER_MANIFEST
+    assert manifest.is_file(), "the install wrote no manifest; the rest proves nothing"
+
+    assert install.main(["--into", str(target), "--update"]) == 0
+    assert manifest.is_file()
+    assert install.main(["--into", str(target), "--update"]) == 0
+    assert manifest.is_file()
+
+
 def test_a_missing_destination_is_not_an_error(tmp_path: Path):
     """A fresh install prunes before anything has ever been written there."""
     install.prune_stale(tmp_path / "src", tmp_path / "never-installed", [])
