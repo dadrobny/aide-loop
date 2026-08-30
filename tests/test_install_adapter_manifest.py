@@ -111,6 +111,7 @@ def test_a_fresh_install_records_exactly_the_control_files_it_wrote(tmp_path: Pa
     assert listed, "an install wrote no manifest"
     assert listed == _control_files(target)
     assert ".claude/settings.json" not in listed
+    assert install.ADAPTER_INSTALL_DIR == ".claude"   # the consumer path, literally
     assert all(line.startswith(".claude/") for line in listed)
     assert (target / ".claude" / "rules" / "aide-command-hygiene.md").is_file()
     assert ".claude/rules/aide-command-hygiene.md" in listed
@@ -268,6 +269,9 @@ def test_check_names_a_dropped_file_exits_nonzero_and_writes_nothing(
     for rel in DROPPED:
         assert Path(rel).name in out, f"{rel} not named by --check"
     assert "--update" in out
+    assert "installed from the adapter" in out
+    assert "part of the engine" not in out, (
+        "the per-file line says adapter; the closing line must not say engine")
     assert _snapshot(target) == before, "--check wrote something"
 
 
@@ -350,6 +354,130 @@ def test_every_bootstrap_entry_is_a_control_path_the_adapter_no_longer_ships():
 
 
 # --------------------------------------------------------------------------- #
+# a control directory retired whole — still retired, file by file
+# --------------------------------------------------------------------------- #
+def test_the_historic_control_set_contains_the_live_one():
+    """A name that leaves `ADAPTER_CONTROL` without entering the historic
+    set makes every recorded path under it unparseable — see the test below
+    for what that costs."""
+    assert set(install.ADAPTER_CONTROL) <= set(install.HISTORIC_CONTROL_DIRS)
+
+
+def _release_that_dropped_rules_whole(tmp_path: Path, monkeypatch) -> None:
+    """Point `install` at a tree where `rules/` is gone — from the adapter
+    directory AND from `ADAPTER_CONTROL`, the way a release retiring the whole
+    channel would do it — with the name kept in the historic set."""
+    root = _framework_that_also_ships(tmp_path, monkeypatch, {})
+    shutil.rmtree(root / "adapters" / "claude" / "rules")
+    shrunk = tuple(n for n in install.ADAPTER_CONTROL if n != "rules")
+    monkeypatch.setattr(install, "ADAPTER_CONTROL", shrunk)
+    monkeypatch.setattr(install, "HISTORIC_CONTROL_DIRS", shrunk + ("rules",))
+
+
+def test_a_control_directory_retired_whole_is_still_retired_file_by_file(
+        tmp_path: Path, monkeypatch, capsys):
+    """The reviewer's repro. Validating manifest lines against the CURRENT
+    `ADAPTER_CONTROL` meant that once `rules/` left the tuple every line under
+    it failed to parse: `--check` exited 0 "up to date" over three rules still
+    armed in every session, `--update` left them in place, and the manifest
+    rebuilt at step 8b no longer listed them — so re-adding the name later
+    recovered nothing. The historic set is what keeps them parseable."""
+    target = tmp_path / "consumer"
+    _install(target)                                   # this release ships rules/
+    rules = sorted((target / ".claude" / "rules").glob("*.md"))
+    assert len(rules) >= 2, "nothing installed under rules/; the rest proves nothing"
+    _release_that_dropped_rules_whole(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    assert install.main(["--into", str(target), "--check"]) == 1
+    out = capsys.readouterr().out
+    for rule in rules:
+        assert rule.name in out, f"{rule.name}: --check said nothing"
+        assert rule.is_file(), "--check must never write"
+
+    assert install.main(["--into", str(target), "--update"]) == 0
+
+    for rule in rules:
+        assert not rule.exists(), f"{rule.name} survived the retirement of rules/"
+    assert not (target / ".claude" / "rules").exists(), (
+        "emptied, and the adapter ships no rules/ — the directory goes too")
+    assert not any(line.startswith(".claude/rules/") for line in _manifest_lines(target))
+    assert install.main(["--into", str(target), "--check"]) == 0
+
+
+def test_a_retired_directorys_files_stay_recorded_until_they_are_gone(
+        tmp_path: Path, monkeypatch, capsys):
+    """The manifest must carry a path under a retired directory for as long
+    as the file exists — a removal that failed included — or the next
+    `--update` has nothing to retry and `--check` nothing to name."""
+    target = tmp_path / "consumer"
+    _install(target)
+    stuck = target / ".claude" / "rules" / "aide-command-hygiene.md"
+    assert stuck.is_file()
+    _release_that_dropped_rules_whole(tmp_path, monkeypatch)
+    real_unlink = Path.unlink
+
+    def refuse_one(self, *args, **kwargs):
+        if self.name == stuck.name:
+            raise PermissionError(13, "Permission denied")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse_one)
+    capsys.readouterr()
+
+    assert install.main(["--into", str(target), "--update"]) == 0
+
+    assert stuck.is_file(), "injection did not take"
+    assert "could not be removed" in capsys.readouterr().out
+    assert ".claude/rules/aide-command-hygiene.md" in _manifest_lines(target)
+    assert (target / ".claude" / "rules").is_dir()   # not empty, so not removed
+    monkeypatch.setattr(Path, "unlink", real_unlink)
+    assert install.main(["--into", str(target), "--check"]) == 1
+    assert install.main(["--into", str(target), "--update"]) == 0
+    assert not stuck.exists()
+    assert ".claude/rules/aide-command-hygiene.md" not in _manifest_lines(target)
+
+
+def test_a_bootstrap_entry_under_a_retired_directory_is_accepted():
+    """The escape hatch for pre-manifest consumers has to open for a retired
+    directory too, or the guard that refuses everything else refuses it."""
+    assert install._adapter_control_path(".claude/rules/x.md") is not None
+    for name in install.HISTORIC_CONTROL_DIRS:
+        assert install._adapter_control_path(f".claude/{name}/x.md") is not None, name
+
+
+# --------------------------------------------------------------------------- #
+# a control directory the adapter still ships survives being emptied
+# --------------------------------------------------------------------------- #
+def test_a_control_directory_the_adapter_ships_empty_survives_the_same_run(
+        tmp_path: Path, monkeypatch):
+    """The guard in `retire_adapter_files` — do not remove a directory the
+    adapter still ships — was untested: `.claude/rules/` always held shipped
+    rules, so the emptiness check broke the loop before the guard was asked.
+    Here the old release shipped `commands/only-in-the-old-release.md` and the
+    new one ships `commands/` EMPTY: step 2 creates `.claude/commands/`, step
+    8a empties it, and without the guard the same run would then delete the
+    directory it had just installed."""
+    _framework_that_also_ships(tmp_path / "old", monkeypatch, {
+        ".claude/commands/only-in-the-old-release.md": "# gone next release\n"})
+    target = tmp_path / "consumer"
+    _install(target)
+    commands = target / ".claude" / "commands"
+    assert (commands / "only-in-the-old-release.md").is_file()
+
+    new = _framework_that_also_ships(tmp_path / "new", monkeypatch, {})
+    for path in (new / "adapters" / "claude" / "commands").iterdir():
+        path.unlink()                                   # ships the directory, empty
+    assert install.main(["--into", str(target), "--update"]) == 0
+
+    assert not (commands / "only-in-the-old-release.md").exists()
+    assert not any(commands.iterdir()), "every command retired: the directory is empty"
+    assert commands.is_dir(), (
+        "the adapter still ships commands/; the update must not delete what "
+        "its own step 2 created")
+
+
+# --------------------------------------------------------------------------- #
 # safety — the retirement never leaves the control directories
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("rel", [
@@ -374,6 +502,7 @@ def test_a_path_outside_the_control_directories_is_never_a_candidate(rel: str):
     ".claude/rules/x.md",
     ".claude/skills/aide-x/SKILL.md",
     ".claude\\agents\\x.md",          # a Windows writer's separators
+    ".claude/./rules/x.md",           # `.` normalises away; still inside
 ])
 def test_a_path_inside_a_control_directory_is_a_candidate(rel: str):
     assert install._adapter_control_path(rel) is not None

@@ -74,7 +74,26 @@ FRAMEWORK_ROOT = Path(__file__).resolve().parent
 
 # Adapter control files copied into <target>/.claude/. Everything else under
 # adapters/<name>/ (README.md, usage_probe.py) is handled out of band.
+#
+# A name may only LEAVE this tuple by moving into the retired half of
+# HISTORIC_CONTROL_DIRS below. The adapter manifest and RETIRED_ADAPTER_PATHS
+# are validated against the historic set, not this one: a name simply dropped
+# here would make every recorded path under it unparseable, so the installed
+# files would stay armed in every consumer, --check would say "up to date"
+# over them, and the manifest rebuilt on the next --update would no longer
+# list them — nothing could ever retire them, not even re-adding the name.
 ADAPTER_CONTROL = ("agents", "skills", "commands", "hooks", "rules", "scripts")
+
+# Every control directory the installer has EVER written: the live tuple plus
+# the names retired from it, which never leave. What a manifest line or a
+# RETIRED_ADAPTER_PATHS entry is validated against, so a directory retired
+# whole is still retired file by file.
+HISTORIC_CONTROL_DIRS = ADAPTER_CONTROL + ()
+
+# Where the control directories are installed — for every adapter: `run`
+# copies them all here, whichever adapter they came from, so a manifest line
+# and a RETIRED_ADAPTER_PATHS entry start with it regardless of the key.
+ADAPTER_INSTALL_DIR = ".claude"
 
 # The record of what the installer wrote under .claude/ from the adapter's
 # control directories (ADAPTER_CONTROL) — one consumer-relative POSIX path per
@@ -95,11 +114,13 @@ AIDE_FOREIGN_PATHS = ("loop/usage_probe.py", ADAPTER_MANIFEST)
 ADAPTER_SETTINGS = "settings.json"
 
 # Bootstrap for consumers installed before the manifest existed: per adapter,
-# consumer-relative paths (under .claude/<control dir>/) that earlier releases
-# shipped and the adapter has since dropped. Consulted on every --update and
-# --check IN ADDITION to the manifest, so it is harmless where the two agree
-# and decisive where there is no manifest to read. An entry is removed even
-# from a consumer with no manifest, because the adapter's control files are
+# consumer-relative paths (ADAPTER_INSTALL_DIR/<historic control dir>/…) that
+# earlier releases shipped and the adapter has since dropped. Keyed by adapter
+# because the files differ per adapter, not the directory — every adapter
+# installs into ADAPTER_INSTALL_DIR. Consulted on every --update and --check
+# IN ADDITION to the manifest, so it is harmless where the two agree and
+# decisive where there is no manifest to read. An entry is removed even from a
+# consumer with no manifest, because the adapter's control files are
 # framework-owned wholesale (ADAPTER-SPEC §5): a file at one of these paths is
 # the framework's old copy, not the project's. Populate it when a release
 # retires an adapter file; entries can go once no pre-manifest consumer is
@@ -329,7 +350,8 @@ def report_version(available: str, installed_path: Path, target: Path,
     wrote from the adapter (the manifest, or the bootstrap list) that the
     adapter no longer ships. Same repair, same exit code, its own line because
     a consumer reading ``.claude/`` as their own directory needs to hear that
-    this file was not.
+    this file was not — and a closing line worded for both, so the summary
+    does not undo the distinction the per-file lines drew.
     """
     if not installed_path.is_file():
         # VERSION is written last, so ".aide/ exists but VERSION does not" is
@@ -365,7 +387,7 @@ def report_version(available: str, installed_path: Path, target: Path,
     for path in retired or ():
         print(f"aide {target}: {path} was installed from the adapter, which no "
               f"longer ships it — --update will DELETE it")
-    stale = list(stale or ()) + list(retired or ())
+    pending = bool(stale or retired)
     if state == "behind":
         print(f"aide {target}: v{installed} is BEHIND v{available} — "
               f"run install.py --into {target} --update (see CHANGELOG.md)")
@@ -380,7 +402,7 @@ def report_version(available: str, installed_path: Path, target: Path,
             # does not, has to say what to do instead.
             print(f"aide {target}: add the import by hand, or --update from the "
                   f"newer framework checkout this install came from")
-        return 1 if (drift or orphans or stale) else 0
+        return 1 if (drift or orphans or pending) else 0
     if drift:
         print(f"aide {target}: v{installed} — run install.py --into {target} --update")
         return 1
@@ -391,12 +413,14 @@ def report_version(available: str, installed_path: Path, target: Path,
         print(f"aide {target}: v{installed} — engine up to date, but the "
               f"instruction files above need a decision")
         return 1
-    if stale:
+    if pending:
         # Same shape as orphans: --update is what deletes them, so naming it as
         # the repair would be pointing at the thing the reader is being warned
-        # about. Exiting non-zero is the whole message.
-        print(f"aide {target}: v{installed} — engine up to date, but the "
-              f"file(s) above are no longer part of it and --update removes them")
+        # about. Exiting non-zero is the whole message. "Shipped", not "part
+        # of the engine": the line closes for engine files and adapter files
+        # alike, and the per-file lines above already said which is which.
+        print(f"aide {target}: v{installed} is current, but the file(s) above "
+              f"are no longer shipped and --update removes them")
         return 1
     print(f"aide {target}: v{installed} — up to date")
     return 0
@@ -703,9 +727,10 @@ def write_adapter_manifest(aide_dir: Path, adapter: str, paths: Iterable[str],
     which need not be the one that wrote it.
     """
     path = aide_dir / ADAPTER_MANIFEST
-    body = (f"# AIDE adapter manifest — files install.py wrote under .claude/ "
-            f"from the '{adapter}' adapter. Managed by install.py; an --update "
-            f"removes any listed file the adapter no longer ships.\n")
+    body = (f"# AIDE adapter manifest — files install.py wrote under "
+            f"{ADAPTER_INSTALL_DIR}/ from the '{adapter}' adapter. Managed by "
+            f"install.py; an --update removes any listed file the adapter no "
+            f"longer ships.\n")
     body += "".join(f"{rel}\n" for rel in sorted(set(paths)))
     existed = path.exists()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -713,22 +738,38 @@ def write_adapter_manifest(aide_dir: Path, adapter: str, paths: Iterable[str],
     log.append(f"  {'~' if existed else '+'} {path}")
 
 
+def _relative_posix(name: str) -> Optional[PurePosixPath]:
+    """``name`` as a relative, non-climbing POSIX path, or None.
+
+    Shared by the §7 declaration and the adapter manifest: both are paths read
+    from a file and joined onto someone else's repo, so an absolute or a
+    climbing one would have the installer act outside the target. Only ``..``
+    needs an arm — ``PurePosixPath`` normalises ``.`` away before ``.parts``.
+    """
+    posix = PurePosixPath(name.replace("\\", "/"))
+    if (posix.is_absolute() or PureWindowsPath(name).is_absolute()
+            or ".." in posix.parts):
+        return None
+    return posix
+
+
 def _adapter_control_path(rel: str) -> Optional[PurePosixPath]:
-    """``rel`` as a path under ``.claude/<control dir>/``, or None.
+    """``rel`` as a path under ``ADAPTER_INSTALL_DIR/<control dir>/``, or None.
 
     The manifest is a file in someone else's repo and the bootstrap list is a
     hand-typed constant; both feed a delete. Anything not strictly inside a
     control directory — absolute, climbing, a bare ``.claude/settings.json``,
     the control directory itself — is refused here rather than reasoned about
     downstream, so the retirement can never reach a file the installer does
-    not own.
+    not own. Against HISTORIC_CONTROL_DIRS, not ADAPTER_CONTROL: a directory
+    a release retires whole has to stay parseable long enough to be emptied.
     """
-    posix = PurePosixPath(rel.replace("\\", "/"))
+    posix = _relative_posix(rel)
+    if posix is None:
+        return None
     parts = posix.parts
-    if (posix.is_absolute() or PureWindowsPath(rel).is_absolute()
-            or len(parts) < 3 or parts[0] != ".claude"
-            or parts[1] not in ADAPTER_CONTROL
-            or any(part in ("..", ".") for part in parts)):
+    if (len(parts) < 3 or parts[0] != ADAPTER_INSTALL_DIR
+            or parts[1] not in HISTORIC_CONTROL_DIRS):
         return None
     return posix
 
@@ -750,10 +791,10 @@ def stale_adapter_files(adapter_dir: Path, target: Path,
         if posix is None or posix in seen:
             continue
         seen.add(posix)
-        inside = posix.parts[1:]                      # drop the leading .claude
+        inside = posix.parts[1:]                      # drop the install dir
         if adapter_dir.joinpath(*inside).exists():
             continue
-        path = target.joinpath(".claude", *inside)
+        path = target.joinpath(ADAPTER_INSTALL_DIR, *inside)
         # A symlink is a file here whatever it points at; a directory at a
         # path the manifest listed as a file is not ours to remove.
         if path.is_symlink() or (path.exists() and not path.is_dir()):
@@ -780,7 +821,7 @@ def retire_adapter_files(adapter_dir: Path, target: Path, candidates: Iterable[s
     manifest it writes next and the following ``--update`` tries again.
     """
     removed: List[Path] = []
-    claude_dir = target / ".claude"
+    claude_dir = target / ADAPTER_INSTALL_DIR
     for path in stale_adapter_files(adapter_dir, target, candidates):
         try:
             path.unlink()
@@ -1199,8 +1240,7 @@ def default_context_declaration(adapter_dir: Path) -> Optional[Tuple[str, str]]:
     # nested (`.github/…`) — but it is joined onto someone else's repo, and an
     # absolute or climbing path would have the installer create directories and
     # write files outside the target. Degrade like any other malformed field.
-    posix = PurePosixPath(name.replace("\\", "/"))
-    if posix.is_absolute() or PureWindowsPath(name).is_absolute() or ".." in posix.parts:
+    if _relative_posix(name) is None:
         return None
     return name, syntax.replace("{path}", AGENT_CONTEXT_REL)
 
@@ -1349,7 +1389,7 @@ def run(args: argparse.Namespace) -> int:
 
     version = (core_dir / "VERSION").read_text(encoding="utf-8").strip()
     aide_dir = target / ".aide"
-    claude_dir = target / ".claude"
+    claude_dir = target / ADAPTER_INSTALL_DIR
     log: List[str] = []
 
     # Every path the previous install wrote under .claude/, plus the paths a

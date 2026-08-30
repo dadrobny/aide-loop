@@ -38,7 +38,10 @@ keys, and the adapter's agents/skills/commands.
   releases shipped and later dropped, and is consulted alongside the manifest
   so those consumers catch up on their first `--update`. It is empty in this
   release; the carrier swap that retires the two `paths:`-scoped rules
-  populates it. The manifest is written after the retirement and before
+  populates it. Manifest lines are validated against `HISTORIC_CONTROL_DIRS`
+  — every control directory the installer has ever written — so a
+  directory retired whole is still emptied file by file rather than left
+  armed because its name is no longer in `ADAPTER_CONTROL`. The manifest is written after the retirement and before
   `.aide/VERSION`, so a failed update keeps the old manifest and the dropped
   files stay retirable on the re-run. Installer-only: nothing a consumer's
   `--update` copies changed, so `core/VERSION` is unmoved.

@@ -163,7 +163,8 @@ Files the framework has dropped are removed: `.aide/` by comparison with
 `.aide/adapter-manifest.txt` — a consumer's own files there are never recorded,
 so never touched. A file retired from `adapters/claude/` therefore also goes
 into `RETIRED_ADAPTER_PATHS` in `install.py`, for consumers installed before
-the manifest existed.
+the manifest existed; a control directory retired whole leaves `ADAPTER_CONTROL`
+only by moving into `HISTORIC_CONTROL_DIRS`, never by deletion.
 
 Then review the `git diff` in the consumer — it should be exactly the intended
 change, since most copied files are byte-identical no-ops.
