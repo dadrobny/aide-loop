@@ -21,9 +21,10 @@ the root documents.
 **Root documents are authored through their loop entry point, interactively —
 whatever `loop.clarify` says.** `vision.md` and `roadmap.md` are Steps 1 and 2
 of the loop; the adapter's create-vision / create-roadmap entry points carry the
-safeguards a free-hand file write skips — the existing-document check, the
-confirm-before-overwrite, the hand-off that presents the result as a draft for
-review. Do not write a root document directly, however well the template shape
+safeguards a free-hand file write skips — the existing-document check (a vision
+is overwritten only after explicit confirmation; a roadmap is updated
+incrementally, never regenerated), and the hand-off that presents the result as
+a draft for review. Do not write a root document directly, however well the template shape
 is known. And root-document authoring is the one part of the loop where a human
 is present by construction — the step exists to capture what only they know —
 so ask until the mandatory sections are grounded in their answers, and never

@@ -60,5 +60,5 @@ never a direct merge.
 
 Close your turn by telling the user, in chat:
 
-> Review `docs/aide/roadmap.md`, then start a **fresh chat session** and run
-> `/aide-create-progress`.
+> Review `docs/aide/roadmap.md` — it is a draft until you have read it — then
+> start a **fresh chat session** and run `/aide-create-progress`.
