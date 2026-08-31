@@ -59,6 +59,14 @@ ICON_TO_STATUS = {v: k for k, v in STATUS_TO_ICON.items()}
 #: every mode**, and is set by `aide merge` when the merge actually happens.
 RANK = {"planned": 0, "excluded": 1, "deferred": 2, "in-progress": 3,
         "in-review": 4, "complete": 5}
+#: The statuses that still hold a dependent back. A dependency leaves the way
+#: only by being merged (✅) or by leaving the queue's path (❌ excluded,
+#: ⏸️ deferred) — 🚧 and 🔍 both block, because work in progress and work whose
+#: PR is still open are alike missing from the base a dependent would branch
+#: from. Named once because two separate decisions turn on it being the same
+#: set: which item `aide claim` may offer, and whether a declared dependency
+#: actually orders two specs (`queue_spec_findings`).
+BLOCKING_STATUSES = ("planned", "in-progress", "in-review")
 
 # Icons may be multi-codepoint (⏸️ = U+23F8 U+FE0F), so match by alternation
 # (longest first), never a character class.
@@ -2805,8 +2813,17 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     deps_by_item = {num: _item_dependencies(repo_root, config, num)
                     for num in numbers if num not in unspecced}
     # An item is built after everything it declares a dependency on, and after
-    # what those declare in turn.
-    built_after = _built_after(deps_by_item)
+    # what those declare in turn — but only along edges that still ORDER the
+    # two items. A dependency `aide claim` no longer waits for does not hold
+    # its dependent back: a ⏸️ deferred blocker is skipped by `_pick_item`, so
+    # the dependent is claimable today and would pin a tree the deferred item
+    # has not touched yet. Filtering the edges rather than the pairs also
+    # settles the transitive case, where the link that fails to hold is an
+    # intermediate: `b → c (⏸️) → a` leaves b free to build before a.
+    ordering_edges = {num: [d for d in deps
+                            if item_status.get(d, "planned") in BLOCKING_STATUSES]
+                      for num, deps in deps_by_item.items()}
+    built_after = _built_after(ordering_edges)
 
     # The loop bookkeeping every item writes anyway (`aide scope` authorises
     # these without them being listed). Specs often list them redundantly, and
@@ -2840,10 +2857,11 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
             if a == b:
                 continue
             if a in built_after.get(b, ()):
-                # Item b declares a dependency on item a (directly, or through
-                # a chain of them), so b is authored and built against a tree
-                # that already holds a's edit: a landing cannot break a pin b
-                # writes afterwards, by construction. This is the whole shape
+                # Item a still holds item b back — b declares a dependency on
+                # it, directly or through a chain, along links that all still
+                # order (`ordering_edges`). So b is authored and built against
+                # a tree that already holds a's edit: a landing cannot break a
+                # pin b writes afterwards, by construction. This is the whole shape
                 # of a `Validate stage N` item — it exists to pin the artifacts
                 # its stage's items produce, and it names them as dependencies
                 # — which made the error fire against every such item, with
@@ -2878,8 +2896,7 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     # deferred item's spec blocks nothing today, and the warning about it
     # would be unclearable.
     graph = {num: deps for num, deps in deps_by_item.items()
-             if item_status.get(num, "planned") in ("planned", "in-progress",
-                                                    "in-review")}
+             if item_status.get(num, "planned") in BLOCKING_STATUSES}
     for cycle in _dependency_cycles(graph):
         chain = " → ".join(f"{n:03d}" for n in cycle + [cycle[0]])
         findings.append(SpecFinding(
@@ -3823,8 +3840,7 @@ def _pick_item(repo_root: Path, config, queue_text: str,
         # from a tree missing the very thing the dependency provides. Under
         # `auto-merge` this window is milliseconds; under `pr` it is however
         # long the human takes, which is exactly when it matters.
-        if any(item_status.get(d, "planned") in ("planned", "in-progress", "in-review")
-               for d in deps):
+        if any(item_status.get(d, "planned") in BLOCKING_STATUSES for d in deps):
             continue
         return num, titles.get(num, f"item {num}")
     return None

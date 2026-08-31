@@ -140,9 +140,12 @@ every comparison: a merged item's claim can neither be harmed by a later
 writer nor harm one, an excluded item is never offered, and a finding against
 either is an error no later item can clear. A declared
 dependency is discounted too, in one direction: when the pinning item names the
-changing one under `## Dependencies` — directly or through a chain of them — it
-is built against a tree that already holds that edit, so the edit landing cannot
-break its pin. That is the whole shape of a stage-validation item, which exists
+changing one under `## Dependencies` — directly, or through a chain of items on
+the same queue — it is built against a tree that already holds that edit, so the
+edit landing cannot break its pin. Only links that still order count: a
+dependency `aide claim` no longer waits for (✅ merged, ❌ excluded, ⏸️
+deferred) leaves the dependent claimable today, so it earns no exemption — a
+deferred blocker's edit is dormant, not spent, and it is still ahead of the pin. That is the whole shape of a stage-validation item, which exists
 to pin what its stage produced; a pair with **no** declared dependency keeps the
 error, since an undeclared ordering is exactly what the check is for, and saying
 so under `## Dependencies` is the third remedy the message offers.

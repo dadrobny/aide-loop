@@ -67,6 +67,10 @@ def _spec_text(num: int, may=(), asserts=(), deps="None.") -> str:
 #: Item 027 merged (✅ means merged, in every git.mode), 028 still open.
 PROGRESS_27_DONE = PROGRESS.replace("- 📋 A. *(Item 027)*", "- ✅ A. *(Item 027)*")
 
+#: Item 027 deferred — recorded and deliberately not scheduled. It is NOT spent:
+#: its edit is dormant, and `aide claim` steps over it rather than waiting.
+PROGRESS_27_DEFERRED = PROGRESS.replace("- 📋 A. *(Item 027)*", "- ⏸️ A. *(Item 027)*")
+
 
 def _make_repo(tmp_path: Path, specs: dict, queue_items=(27, 28),
                progress: str = PROGRESS) -> Path:
@@ -233,6 +237,49 @@ def test_an_undeclared_ordering_still_errors_next_to_a_declared_one(tmp_path: Pa
     findings, _ = _findings(repo)
     hits = [f for f in findings if f.kind == "changes-pinned-state"]
     assert [f.items for f in hits] == [(27, 29)]
+
+
+def test_a_deferred_dependency_earns_no_exemption(tmp_path: Path):
+    """The exemption rests on the dependency actually holding the dependent
+    back. `aide claim` steps over a ⏸️ blocker, so 028 is claimable today and
+    would pin a tree 027 has not touched — then 027 is undeferred and lands on
+    top of the pin. Declaring the dependency does not make that safe."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, asserts=["src/cli.py"],
+                       deps="Item 027 produces the artifacts this item pins."),
+    }, progress=PROGRESS_27_DEFERRED)
+    findings, _ = _findings(repo)
+    assert any(f.kind == "changes-pinned-state" and f.items == (27, 28)
+               for f in findings)
+
+
+def test_a_chain_through_a_deferred_link_earns_no_exemption(tmp_path: Path):
+    """029 → 028 → 027 orders nothing if the middle link does not hold: 028 is
+    ⏸️, so 029 is claimable before 027 lands. The filter is on the edges, which
+    is what makes the transitive case come out right."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, may=["src/b.py"], deps="Item 027 lands first."),
+        29: _spec_text(29, asserts=["src/cli.py"], deps="Item 028 lands first."),
+    }, queue_items=(27, 28, 29),
+       progress=PROGRESS.replace("- 📋 B. *(Item 028)*", "- ⏸️ B. *(Item 028)*"))
+    findings, _ = _findings(repo)
+    assert any(f.kind == "changes-pinned-state" and f.items == (27, 29)
+               for f in findings)
+
+
+def test_an_in_progress_dependency_still_exempts_the_pair(tmp_path: Path):
+    """🚧 and 🔍 hold a dependent back exactly as 📋 does — the item is not in
+    the base a dependent would branch from — so the ordering stands and the
+    pair stays exempt. The filter is 'does this still block', not 'is this
+    untouched'."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, asserts=["src/cli.py"], deps="Item 027 lands first."),
+    }, progress=PROGRESS.replace("- 📋 A. *(Item 027)*", "- 🚧 A. *(Item 027)*"))
+    findings, _ = _findings(repo)
+    assert [f for f in findings if f.kind == "changes-pinned-state"] == []
 
 
 def test_the_pinned_state_message_names_the_dependency_remedy(tmp_path: Path):

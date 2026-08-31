@@ -77,7 +77,11 @@ keys, and the adapter's agents/skills/commands.
   item names the changing one under `## Dependencies`, directly or through a
   chain of them, it is authored and built against a tree that already holds
   that edit, so the edit landing cannot break its pin; that pair is now
-  skipped. The exemption is per pair and directional — an item that depends on
+  skipped. Only links that still **order** the two items count: a dependency
+  `aide claim` no longer waits for — ✅ merged, ❌ excluded, ⏸️ deferred —
+  leaves the dependent claimable today, so a deferred blocker earns no
+  exemption (its edit is dormant, not spent, and still lands ahead of the
+  pin), and neither does a chain whose middle link is one. The exemption is per pair and directional — an item that depends on
   the pinning item builds *last*, so its edit does land after the pin and is
   still reported — and a pair with no declared dependency keeps the error,
   since an undeclared ordering is exactly what the check exists to find. The
