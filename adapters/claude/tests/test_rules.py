@@ -1,14 +1,30 @@
-"""`.claude/rules/` — the adapter's delivery mechanism for the shared contract.
+"""The adapter's delivery mechanism for the shared contract: the **delivered
+files** — `.claude/rules/*.md` and the **section skills** under
+`.claude/skills/<name>/SKILL.md`.
 
 ADAPTER-SPEC §7 makes three properties conformant rather than decorative: a
 delivered section loads without the role choosing to, names the section it
-delivers, and adds no rule the engine does not have. The first is structural
-(an unscoped rule loads everywhere; a `paths:` one loads on a match), and these
-tests pin the parts a commit can silently break: that the files ship at all,
-that their frontmatter is well-formed, that each still names its section, and
-that the restatements this mechanism replaced stay retired.
+delivers, and adds no rule the engine does not have. The first is structural,
+and it has two carriers here. An unscoped **rule** loads into every context.
+A **section skill** (`user-invocable: false`, carrying `<!-- pins: … -->`) is
+preloaded into exactly the agent specs whose `skills:` frontmatter names it —
+at spawn, before the role has opened anything. Its `paths:` do not inject
+anything on a read (issue #85, measured): the one-line description is in an
+interactive session's listing regardless, and the globs only narrow when the
+runtime auto-invokes the skill on its own — which is why the description is
+written as a trigger.
 
-Nothing else in the suite reads these files. Stdlib + pytest only.
+These tests pin the parts a commit can silently break: that the files ship at
+all, that their frontmatter is well-formed — a skill that loses `name:` cannot
+be preloaded and is not listed, and one that sets
+`disable-model-invocation: true` is skipped at preload with a debug-log
+warning only — that each still names its section, that every preload names a
+skill that exists and every section skill is preloaded by someone, and that
+the restatements this mechanism replaced stay retired.
+
+A section skill is recognised **structurally** (either signal is enough, and
+the tests below then require the other), never by a name list, so the next one
+is covered the moment it lands. Stdlib + pytest only.
 """
 from __future__ import annotations
 
@@ -24,18 +40,12 @@ _AGENTS_DIR = _ADAPTER / "agents"
 _CORE = _ADAPTER.parents[1] / "core"
 
 _RULE_FILES = sorted(_RULES_DIR.glob("*.md"))
+_SKILL_FILES = sorted((_ADAPTER / "skills").glob("*/SKILL.md"))
+_AGENT_FILES = sorted(_AGENTS_DIR.glob("*.md"))
 
 FRAMEWORK_ROOT = _ADAPTER.parents[1]
 sys.path.insert(0, str(FRAMEWORK_ROOT))
 import install  # noqa: E402  (path shim above)
-
-
-#: Rules that MUST carry `paths:`. Named, because the frontmatter check below
-#: can only verify the keys of a block that parses — a file whose delimiter
-#: stopped being recognised has no keys to be wrong, and the runtime reads it
-#: as an unscoped rule loaded into every context. That is the failure this
-#: whole file exists to catch, and it cannot be caught by inspection alone.
-_MUST_BE_SCOPED = ("aide-test-hygiene.md", "aide-living-documents.md")
 
 
 def _split(path: Path) -> tuple:
@@ -43,7 +53,7 @@ def _split(path: Path) -> tuple:
 
     Reads with `utf-8-sig` and normalises CRLF before looking for the
     delimiter. A BOM from a Windows editor, or CRLF line endings, would
-    otherwise make `startswith("---\n")` false — and this helper would report a
+    otherwise make `startswith("---\\n")` false — and this helper would report a
     scoped rule as an unscoped one with a clean bill of health.
     """
     text = path.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
@@ -54,97 +64,287 @@ def _split(path: Path) -> tuple:
     return text[4:end], text[end + 5:]
 
 
-@pytest.mark.parametrize("name", _MUST_BE_SCOPED)
-def test_a_rule_that_must_be_scoped_still_parses_as_scoped(name: str):
-    """Fails closed. `test_frontmatter_...` returns early on a block it cannot
-    read, so without this an unparseable delimiter is indistinguishable from a
-    deliberate unscoped rule — and costs ~560 tokens on every spawn, silently.
+def _keys(block: str) -> list:
+    """Top-level frontmatter keys, in order. A tiny hand parser, not PyYAML."""
+    return [line.split(":", 1)[0] for line in block.splitlines()
+            if line and not line[0].isspace() and ":" in line]
+
+
+def _scalar(block, key: str):
+    """The value of a one-line ``key: value`` frontmatter entry, or ``None``."""
+    if block is None:
+        return None
+    match = re.search(rf"^{re.escape(key)}:[ \t]*(?P<value>[^\n]*)$", block, re.M)
+    return match.group("value").strip() if match else None
+
+
+def _list(block, key: str) -> list:
+    """The items of a ``key:`` block list (or a ``[a, b]`` flow list)."""
+    if block is None:
+        return []
+    match = re.search(rf"^{re.escape(key)}:[ \t]*(?P<inline>[^\n]*)\n"
+                      rf"(?P<items>(?:[ \t]+-[^\n]*\n?)*)", block + "\n", re.M)
+    if not match:
+        return []
+    inline = match.group("inline").strip()
+    if inline.startswith("[") and inline.endswith("]"):
+        return [x.strip().strip("\"'") for x in inline[1:-1].split(",") if x.strip()]
+    return [line.strip().lstrip("- ").strip("\"'")
+            for line in match.group("items").splitlines() if line.strip().startswith("-")]
+
+
+def _is_section_skill(path: Path) -> bool:
+    """A `SKILL.md` that delivers a contract section rather than a workflow.
+
+    Two signals, either sufficient: it quotes the section it delivers
+    (`<!-- pins:`), or it hides itself from the `/` menu
+    (`user-invocable: false`). Structural, so the next section skill is
+    covered without anyone editing a list here; and the tests below require
+    the *other* signal of anything recognised by one, so the two cannot drift
+    apart in silence.
     """
-    path = _RULES_DIR / name
-    assert path.is_file(), f"{name} is gone; the scoping guarantee went with it"
-    raw = path.read_bytes()
-    assert raw.startswith(b"---"), f"{name}: no frontmatter delimiter at byte 0"
-    block, _ = _split(path)
-    assert block is not None and "paths:" in block, f"{name}: lost its `paths:`"
+    block, body = _split(path)
+    return ("<!-- pins:" in body
+            or (_scalar(block, "user-invocable") or "").lower() == "false")
 
 
+_SECTION_SKILLS = [p for p in _SKILL_FILES if _is_section_skill(p)]
+_WORKFLOW_SKILLS = [p for p in _SKILL_FILES if p not in _SECTION_SKILLS]
+
+#: Every file that delivers a contract section: the rules, and the section
+#: skills. The tests that pin "delivered files" range over this list.
+_DELIVERED = _RULE_FILES + _SECTION_SKILLS
+
+
+def _label(path: Path) -> str:
+    """A test id and a failure name: `aide-test-hygiene` for a skill, the
+    filename for a rule — `SKILL.md` alone would name every skill the same."""
+    return path.parent.name if path.name == "SKILL.md" else path.name
+
+
+def _preloads(agent: Path) -> list:
+    """The skill names an agent spec's `skills:` frontmatter preloads."""
+    block, _ = _split(agent)
+    return _list(block, "skills")
+
+
+# --------------------------------------------------------------------------- #
+# fail closed — the derived sets are recognisable before anything is asserted
+# --------------------------------------------------------------------------- #
 def test_the_adapter_ships_rules():
     assert _RULE_FILES, "no rules/*.md found — the glob or the layout moved"
 
 
-def test_the_installer_copies_the_rules_directory():
-    """A rule that never reaches `.claude/` is a rule that binds nobody.
+def test_the_adapter_ships_section_skills():
+    """conventions.md §6: the derived set must be recognisable first. An empty
+    one makes every parametrised test below vanish with a green suite."""
+    assert _SKILL_FILES, "no skills/*/SKILL.md found — the glob or the layout moved"
+    assert _SECTION_SKILLS, ("no section skill recognised — none carries "
+                             "`<!-- pins:` or `user-invocable: false`")
+    assert _WORKFLOW_SKILLS, "every skill reads as a section skill — the signal broke"
+
+
+def test_the_installer_copies_the_delivering_directories():
+    """A delivered file that never reaches `.claude/` binds nobody.
 
     `ADAPTER_CONTROL` is the whole list the installer walks, so omitting
-    `rules` ships the files in this repo and nothing to a consumer.
+    `rules` or `skills` ships the files in this repo and nothing to a consumer.
     """
     assert "rules" in install.ADAPTER_CONTROL
+    assert "skills" in install.ADAPTER_CONTROL
 
 
-@pytest.mark.parametrize("path", _RULE_FILES, ids=lambda p: p.name)
+# --------------------------------------------------------------------------- #
+# the envelope — frontmatter and body of every delivered file
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("path", _SECTION_SKILLS, ids=_label)
+def test_a_section_skill_still_parses_as_a_scoped_skill(path: Path):
+    """Fails closed. `test_a_section_skills_frontmatter_...` can only check
+    the keys of a block that parses, so without this an unparseable delimiter
+    is indistinguishable from a file that never had one. For a skill that is
+    not "arms everywhere" — it is worse in the other direction: with no
+    readable `name:` the runtime cannot preload it and does not list it, so
+    the section reaches nobody at all.
+    """
+    raw = path.read_bytes()
+    assert raw.startswith(b"---"), f"{_label(path)}: no frontmatter delimiter at byte 0"
+    block, _ = _split(path)
+    assert block is not None, f"{_label(path)}: frontmatter does not parse"
+    assert "paths:" in block, (
+        f"{_label(path)}: lost its `paths:` — without them the runtime may "
+        f"auto-invoke this section for any work at all; the globs keep it to "
+        f"matching files (the listing shows the description regardless)")
+
+
+@pytest.mark.parametrize("path", _DELIVERED, ids=_label)
 def test_body_is_not_empty(path: Path):
     _, body = _split(path)
-    assert body.strip(), f"{path.name}: frontmatter but no rule"
+    assert body.strip(), f"{_label(path)}: frontmatter but no rule"
 
 
-@pytest.mark.parametrize("path", _RULE_FILES, ids=lambda p: p.name)
-def test_frontmatter_declares_only_paths_and_declares_it_well(path: Path):
+def _assert_globs_are_well_formed(path: Path, block: str) -> None:
+    globs = [line.strip().lstrip("- ").strip('"\'')
+             for line in block.splitlines() if line.strip().startswith("- ")]
+    assert globs, f"{_label(path)}: `paths:` with no glob matches nothing"
+    for glob in globs:
+        assert not glob.startswith("/"), f"{_label(path)}: {glob!r} is not repo-relative"
+
+
+@pytest.mark.parametrize("path", _RULE_FILES, ids=_label)
+def test_a_rules_frontmatter_declares_only_paths_and_declares_it_well(path: Path):
     """`paths:` is the one key that changes WHEN a rule loads.
 
     An unrecognised key is not an error to the runtime — it is ignored — so a
     typo'd `path:` silently turns a scoped rule into one that loads in every
     context, which is the opposite of the intent and costs on every spawn.
     """
-    block, _ = _split(path)
+    block, body = _split(path)
     if block is None:
+        # The unscoped case — today the only shipped rule. Nothing about
+        # `paths:` to check, so assert what an unscoped rule must be instead:
+        # it opens with its reach declaration, the one thing that says it is
+        # unscoped on purpose rather than a scoped rule that lost its block.
+        assert body.lstrip().startswith("<!-- reach:"), (
+            f"{path.name}: no frontmatter and no leading `<!-- reach:` — an "
+            f"unscoped rule declares it is unscoped on purpose")
         return
-    keys = [line.split(":", 1)[0] for line in block.splitlines()
-            if line and not line[0].isspace() and ":" in line]
+    keys = _keys(block)
     assert keys == ["paths"], f"{path.name}: unexpected frontmatter keys {keys}"
-
-    globs = [line.strip().lstrip("- ").strip('"\'')
-             for line in block.splitlines() if line.strip().startswith("- ")]
-    assert globs, f"{path.name}: `paths:` with no glob matches nothing"
-    for glob in globs:
-        assert not glob.startswith("/"), f"{path.name}: {glob!r} is not repo-relative"
+    _assert_globs_are_well_formed(path, block)
 
 
-@pytest.mark.parametrize("path", _RULE_FILES, ids=lambda p: p.name)
-def test_each_rule_names_the_section_it_delivers(path: Path):
-    """The engine section is the source of truth; the rule is a restatement.
+#: The frontmatter a section skill carries — exactly these, no more. `name` is
+#: what a `skills:` preload resolves; `description` is the whole interactive
+#: delivery; `user-invocable: false` keeps it out of the `/` menu while
+#: leaving it preloadable; `paths` is the interactive trigger.
+_SECTION_SKILL_KEYS = ["name", "description", "user-invocable", "paths"]
+
+#: The runtime caps a description at 1,536 characters and the whole listing
+#: at 1% of the context window, shared by every skill a consumer has. A
+#: trigger is one sentence; well under that keeps the listing cheap.
+_DESCRIPTION_CAP = 300
+
+
+@pytest.mark.parametrize("path", _SECTION_SKILLS, ids=_label)
+def test_a_section_skills_frontmatter_is_exactly_what_a_preload_needs(path: Path):
+    """The keys that make a section skill preloadable, hidden, and listed.
+
+    `disable-model-invocation: true` is the one that would look right and be
+    fatal: the runtime skips such a skill at preload with a debug-log warning
+    only, so the section would silently reach nobody. `user-invocable: false`
+    is the key that hides it from the `/` menu and keeps it preloadable.
+    """
+    block, _ = _split(path)
+    assert block is not None, f"{_label(path)}: no frontmatter"
+    keys = _keys(block)
+    assert sorted(keys) == sorted(_SECTION_SKILL_KEYS), (
+        f"{_label(path)}: frontmatter keys {keys}, expected exactly "
+        f"{_SECTION_SKILL_KEYS}")
+    assert _scalar(block, "name") == path.parent.name, (
+        f"{_label(path)}: `name:` must equal the directory — a preload resolves "
+        f"the name, discovery the directory")
+    assert (_scalar(block, "user-invocable") or "").lower() == "false", (
+        f"{_label(path)}: a section skill is `user-invocable: false` — hidden "
+        f"from the `/` menu, still preloadable")
+    description = _scalar(block, "description") or ""
+    assert len(description) > 40, f"{_label(path)}: description too thin to trigger on"
+    assert len(description) <= _DESCRIPTION_CAP, (
+        f"{_label(path)}: description is {len(description)} characters; the "
+        f"listing is the whole interactive delivery and is budgeted")
+    assert re.search(r"§\d", description), (
+        f"{_label(path)}: the description names no section — it is the only "
+        f"thing an interactive session sees, so it says what it delivers")
+    _assert_globs_are_well_formed(path, block)
+
+
+@pytest.mark.parametrize("path", _DELIVERED, ids=_label)
+def test_each_delivered_file_names_the_section_it_delivers(path: Path):
+    """The engine section is the source of truth; the delivered copy is a
+    restatement.
 
     A reader who cannot tell which copy wins has to guess, and the copy in
     front of them is the one they will guess.
     """
     _, body = _split(path)
-    assert "conventions.md" in body, f"{path.name}: names no source section"
-    assert re.search(r"§\d", body), f"{path.name}: names no section number"
+    assert "conventions.md" in body, f"{_label(path)}: names no source section"
+    assert re.search(r"§\d", body), f"{_label(path)}: names no section number"
 
 
 @pytest.mark.parametrize("section", ["3", "6"])
 def test_the_two_contract_sections_are_delivered(section: str):
     """ADAPTER-SPEC §7 names §3 and §6 specifically, and both sections say so.
 
-    Losing one is not a syntax error anywhere: the rule file simply stops
+    Losing one is not a syntax error anywhere: the delivered file simply stops
     existing and every role carries on with no hygiene contract in context.
     """
-    delivering = [p for p in _RULE_FILES if f"§{section}" in p.read_text(encoding="utf-8")]
-    assert delivering, f"no rule delivers conventions.md §{section}"
+    delivering = [p for p in _DELIVERED if f"§{section}" in _split(p)[1]]
+    assert delivering, f"no delivered file carries conventions.md §{section}"
 
 
 @pytest.mark.parametrize("section", ["3", "6"])
 def test_the_engine_section_still_asks_to_be_delivered(section: str):
     """The other half of the contract, in the engine, where it is runtime-general.
 
-    If the section stops requiring delivery, the rule above is an adapter
-    inventing its own obligation — the coupling `core/` exists to prevent.
+    If the section stops requiring delivery, the delivered file above is an
+    adapter inventing its own obligation — the coupling `core/` exists to
+    prevent.
     """
     matches = list((_CORE / "conventions").glob(f"{section}-*.md"))
     assert len(matches) == 1, f"expected one §{section} file, got {matches}"
     assert "**delivers**" in matches[0].read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("path", sorted(_AGENTS_DIR.glob("*.md")), ids=lambda p: p.name)
+# --------------------------------------------------------------------------- #
+# the preload — the channel that makes a section skill a delivery
+# --------------------------------------------------------------------------- #
+def test_some_agent_preloads_a_skill():
+    """Fails closed for the two tests below, which range over the preloads."""
+    assert _AGENT_FILES, "no agents/*.md found — the glob or the layout moved"
+    assert any(_preloads(agent) for agent in _AGENT_FILES), (
+        "no agent spec carries `skills:` — the preload channel is gone, or the "
+        "frontmatter parser here stopped seeing it")
+
+
+@pytest.mark.parametrize("agent", _AGENT_FILES, ids=lambda p: p.stem)
+def test_every_skill_an_agent_preloads_exists_and_can_be_preloaded(agent: Path):
+    """A `skills:` entry is resolved by name at spawn, and a name that resolves
+    to nothing — or to a skill the runtime refuses to preload — is not an
+    error anywhere: the role starts without it, and nothing says so.
+    """
+    for name in _preloads(agent):
+        skill = _ADAPTER / "skills" / name / "SKILL.md"
+        assert skill.is_file(), (
+            f"{agent.name}: preloads `{name}`, and skills/{name}/SKILL.md does "
+            f"not exist — the role spawns without it, silently")
+        block, _ = _split(skill)
+        assert block is not None, f"{name}: no frontmatter, so no `name:` to resolve"
+        assert _scalar(block, "name") == name, (
+            f"{name}: SKILL.md declares name {_scalar(block, 'name')!r}")
+        assert (_scalar(block, "disable-model-invocation") or "").lower() != "true", (
+            f"{agent.name}: preloads `{name}`, which sets "
+            f"`disable-model-invocation: true` — the runtime skips it at "
+            f"preload with a debug-log warning only")
+
+
+@pytest.mark.parametrize("path", _SECTION_SKILLS, ids=_label)
+def test_every_section_skill_is_preloaded_by_at_least_one_agent(path: Path):
+    """A section skill nobody preloads is a pointer wearing a skill's name.
+
+    Its `paths:` inject nothing on a read (issue #85) and a sub-agent's
+    startup context has no skill catalogue, so without a `skills:` entry the
+    section reaches no role at all — the 3% pointer, at a new address.
+    """
+    name = path.parent.name
+    preloaded_by = [agent.stem for agent in _AGENT_FILES if name in _preloads(agent)]
+    assert preloaded_by, (
+        f"{name}: no agent spec names it in `skills:` — a section skill nobody "
+        f"preloads delivers nothing to the loop")
+
+
+# --------------------------------------------------------------------------- #
+# the restatements this mechanism replaced stay retired
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("path", _AGENT_FILES, ids=lambda p: p.name)
 def test_no_agent_re_inlines_the_command_hygiene_block(path: Path):
     """The restatement this mechanism replaced, in the six specs that carried it.
 
@@ -157,13 +357,10 @@ def test_no_agent_re_inlines_the_command_hygiene_block(path: Path):
         f"rules/aide-command-hygiene.md, not restated per agent")
 
 
-_SKILL_FILES = sorted((_ADAPTER / "skills").glob("*/SKILL.md"))
 _INBOX_TEMPLATE_RE = re.compile(r"templates/insights\.md")
 
 
-@pytest.mark.parametrize(
-    "path", sorted(_AGENTS_DIR.glob("*.md")) + _SKILL_FILES,
-    ids=lambda p: p.parent.name if p.name == "SKILL.md" else p.name)
+@pytest.mark.parametrize("path", _AGENT_FILES + _SKILL_FILES, ids=_label)
 def test_no_agent_or_skill_tells_a_role_to_copy_the_inbox_template(path: Path):
     """The create-if-missing clause, retired in 1.26.0 (issue #85).
 

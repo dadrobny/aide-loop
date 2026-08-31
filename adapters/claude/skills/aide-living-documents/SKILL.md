@@ -1,4 +1,7 @@
 ---
+name: aide-living-documents
+description: Load before writing a living AIDE document (item spec, queue, progress, roadmap, vision, insights) — the shapes aide.py parses (conventions §1).
+user-invocable: false
 paths:
   - "**/progress.md"
   - "**/roadmap.md"
@@ -8,12 +11,25 @@ paths:
   - "**/items/*.md"
 ---
 
-<!-- reach: all
-     Measured, not aspired to: every one of the six agent specs names a
-     living document, so the `paths:` block above scopes this to nobody and
-     the cost is paid on every spawn. That is issue #79's regression, still
-     live; #85 is where it gets re-shaped. #84's job was only to stop it
-     being invisible. See `tests/test_structural_budget.py`. -->
+<!-- reach: spec-author, queue-planner
+     Literal, not measured: this body is preloaded into exactly the agent
+     specs whose `skills:` frontmatter names `aide-living-documents` — the two
+     roles that write a living document. As a `paths:` rule it armed on
+     every spawn (29 and 24 arms in two measured sessions, issue #85),
+     because reading an item spec matches the same globs as writing one; the
+     `paths:` above inject nothing on a read (issue #85, measured): the
+     description sits in every interactive session's skill listing regardless,
+     and the globs only narrow when the runtime auto-invokes the skill on its
+     own. The four roles that write none of the shape-parsed documents are
+     deliberately not listed — the one line they do append, the insight entry,
+     has its shape on the floor in `AGENT-CONTEXT.md`. `tests/test_structural_budget.py` compares this line to the `skills:`
+     lists. -->
+
+<!-- triggers: all
+     The interactive half, declared so the glob evaluator stays on an
+     assertion path: the roles whose named reads match the `paths:` above —
+     what a rule with these globs would arm, and what the loop no longer
+     pays. Every role names an item spec or `insights.md`, so: all. -->
 
 <!-- pins: .aide/conventions/1-format-contract/status-icons.md
      Quoted from that section; `test_rule_pins.py` fails if either copy moves
@@ -62,9 +78,13 @@ not a second source of truth**, and carries only the shape rules — the durable
 artifact, insight-immutability and human-gate rules are in `AGENT-CONTEXT.md`,
 already in this context.
 
-Scoped by document name rather than by `project.docs_dir`, so it holds whatever
-a consumer configured. Every role reaches at least one of these files, so treat
-this rule as one you will always see, not one that fires rarely.
+It is preloaded into the two roles that write a living document —
+`spec-author` and `queue-planner` — so it is in context before the first
+write, and an interactive session
+sees its description in the skill listing, with the `paths:` above keeping the
+runtime's own invocation of it to work on one of these files. The globs match
+by document name rather than by `project.docs_dir`, so they hold whatever a
+consumer configured.
 
 **The six status icons, and nothing else:** 📋 Planned · 🚧 In Progress ·
 🔍 In Review · ✅ Complete · ⏸️ Deferred · ❌ Excluded. They are read at

@@ -129,7 +129,14 @@ ADAPTER_SETTINGS = "settings.json"
 # retires an adapter file; entries can go once no pre-manifest consumer is
 # left to bootstrap.
 RETIRED_ADAPTER_PATHS = {
-    "claude": (),
+    "claude": (
+        # 1.22.0–1.26.0 delivered §6 and the §1 document shapes as
+        # `paths:`-scoped rules; 1.27.0 moved both into section skills
+        # preloaded by role (issue #85). A consumer that keeps the rule
+        # beside the skill is delivered the same text twice.
+        ".claude/rules/aide-living-documents.md",
+        ".claude/rules/aide-test-hygiene.md",
+    ),
 }
 
 # ADAPTER-SPEC §7. An adapter whose runtime loads a project instruction file by

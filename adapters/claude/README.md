@@ -189,76 +189,103 @@ These shaping rules are Claude-adapter-specific (they exist because of the permi
 allow-list); the underlying hygiene they build on is runtime-general and lives in the
 engine's `conventions.md` §3.
 
-## Contract delivery → **`rules/`** (`paths:`-scoped where it helps)
+## Contract delivery → **`rules/`** and the **section skills**
 
 This is [spec §7](../ADAPTER-SPEC.md)'s §-level half. `conventions.md` is an
 index over one file per section, and a section that is only *pointed at* is
 read about 3% of the time — measured over 164 sub-agent spawns in a real
-consumer. `.claude/rules/` closes that: a rule file loads because the runtime
-loads it, not because a role decided to follow a link.
+consumer. Delivery closes that: a section is in a context because the runtime
+put it there, not because a role decided to follow a link. Three layers, and
+no restatement is carried twice:
 
-| File | Scope | Delivers |
+| Layer | Carrier | Reaches |
 |---|---|---|
-| `rules/aide-command-hygiene.md` | unscoped — every session and every sub-agent | `conventions.md` §3, in positive form |
-| `rules/aide-test-hygiene.md` | `paths:` — any file pytest would collect | §6 |
-| `rules/aide-living-documents.md` | `paths:` — `progress.md`, `roadmap.md`, `vision.md`, `insights.md`, `queue/*.md`, `items/*.md` | the §1 document shapes |
+| **Floor** | `CLAUDE.md` → `@.aide/AGENT-CONTEXT.md`, plus the one unscoped rule `rules/aide-command-hygiene.md` (`conventions.md` §3, in positive form) | every context — the human's session and every sub-agent |
+| **Role sections** | `skills/aide-living-documents/SKILL.md` (the §1 document shapes) and `skills/aide-test-hygiene/SKILL.md` (§6): `user-invocable: false`, named in an agent spec's `skills:` frontmatter | exactly the roles that list them — `aide-living-documents` → `spec-author`, `queue-planner`; `aide-test-hygiene` → `test-writer` |
+| **Interactive** | the same skill files carry `paths:` (the globs the rules had) | the human's session: the description is in the skill listing regardless, the globs narrow when the runtime auto-invokes it on its own — surfaced, not delivered |
 
-**Scoped is not the same as rare.** `aide-living-documents.md` matches
-`items/*.md` and `insights.md`, which all six roles reach, so it loads on
-effectively every spawn — it is scoped for *correctness* (it is always
-relevant), not for economy. It carries only the shapes; the durable-artifact,
-insight-immutability and human-gate rules live in `AGENT-CONTEXT.md`, already
-in every context. `aide-test-hygiene.md` is the one that genuinely fires only
-where it matters.
+**Why skills and not `paths:` rules — measured, issue #85.** A `paths:` *rule*
+injects its body on a matching read, and does so inside sub-agent contexts too:
+over two loop sessions of a real consumer on 1.22.0, `aide-living-documents.md`
+armed 29 and 24 times and `aide-test-hygiene.md` 21 and 13 — roughly 201 KB and
+150 KB of scoped-rule text on top of the floor, most of it into roles that read
+a document without writing one, and into `builder` and `validator`, which open
+tests they never write. A `paths:` *skill* injects nothing on a read: its
+`paths:` only narrow when the runtime considers auto-invoking it, and what a
+session receives unconditionally is the one-line description in the listing. A
+sub-agent's startup context has no skill listing at all — it has its prompt,
+the task, the `CLAUDE.md` hierarchy including project rules, git status, and its
+**preloaded skills** — so for the six roles `skills:` preload is the only skill
+channel there is, and it is unconditional: the body is injected at spawn, with
+the frontmatter dropped and HTML comments stripped, whether or not the repo has
+a file to open. That closes the hole the rules shipped with — a `test-writer`
+in a repo with no tests yet — and costs exactly the roles that list it. The
+interactive layer is deliberately **not** backed by a thin `paths:` rule: such
+a rule would fire inside sub-agent contexts on a matching read and re-pay
+exactly the cost the swap removes.
 
-The two scoped rules are matched **by filename, not by `project.tests_dir` /
-`project.docs_dir`**, so they hold whatever a consumer configured — a rule that
-silently stops matching is the failure this mechanism exists to remove, and
-templating the globs at install time would reintroduce it as a config error.
+**Two kinds of skill share `skills/`.** The nine **workflow skills**
+(`aide-create-item`, `aide-execute-item`, …) are entry points a person invokes
+and the orchestrators run. The **section skills** are `user-invocable: false` —
+hidden from the `/` menu, never a command — and preloaded by role.
+`disable-model-invocation: true` would look similar and is fatal: the runtime
+refuses to preload such a skill, with a debug-log warning and nothing else.
+A section skill's `description` is the whole of its interactive delivery, so
+it is written as a **trigger** — *load before creating or editing a test file …*
+— and kept short; the listing is budgeted at 1% of the context window across
+every skill a consumer has.
 
-**A `paths:` rule is armed by a read, not by a write.** `Edit` requires the file
-to have been read first, so editing an existing document always arms the rule;
-creating a *new* file that matches does not, on its own. The globs therefore
-cover the files each role reads on the way to writing — `test-writer` is
-*instructed* to read existing tests for style, `spec-author` reads
-`queue/queue-NNN.md` before writing `items/NNN-*.md`.
+The globs match **by filename, not by `project.tests_dir` /
+`project.docs_dir`**, so they hold whatever a consumer configured — templating
+them at install time would turn a silent mismatch into a config error.
 
-That leaves one real hole: **a repo with no tests yet**. `test-writer` has
-nothing to open, `Write` to a new file does not arm the rule, and it is exactly
-when the fixture conventions are being set. Its spec therefore still carries an
-explicit instruction to go read §6 itself. If that proves insufficient, the
-mechanism that closes it completely is `skills:` frontmatter, which preloads
-content at agent startup with no read involved — per-role, and cheaper than an
-always-on rule. `review_instructions.py` is what would show the gap: a
-`path_glob_match` count far below the number of runs.
+**How the two rules leave a consumer.** `install.py --update` removes
+`.claude/rules/aide-test-hygiene.md` and `.claude/rules/aide-living-documents.md`
+because `.aide/adapter-manifest.txt` records that the installer wrote them, and
+`RETIRED_ADAPTER_PATHS` in `install.py` names both for consumers installed
+before the manifest existed; `--check` names them first and writes nothing. A
+consumer that kept a rule beside its skill would be delivered the section twice.
 
-A rule **defers to its section**: the engine copy is the source of truth, and a
-rule that invents a rule of its own binds Claude and no other runtime.
-[`tests/test_rules.py`](tests/test_rules.py) pins all three obligations, and
-that the six agent specs never re-inline the block this replaced.
+A delivered file **defers to its section**: the engine copy is the source of
+truth, and a file that invents a rule of its own binds Claude and no other
+runtime. [`tests/test_rules.py`](tests/test_rules.py) pins the three
+obligations over rules and section skills alike — a section skill is recognised
+structurally, by `user-invocable: false` or a `<!-- pins:` block, never by a
+name list — and adds the preload's own guards: every `skills:` entry names a
+skill that exists and does not set `disable-model-invocation`, every section
+skill is preloaded by at least one agent, and the six agent specs never
+re-inline the block this replaced.
 
-**Every rule declares its reach**, on one line, near the top of the body:
+**Every delivered file declares its reach**, on one line, near the top of the
+body:
 
 ```
 <!-- reach: all -->
-<!-- reach: test-writer -->
+<!-- reach: spec-author, queue-planner -->
 ```
 
 `all`, or a comma-separated list of agent names; a note explaining the choice
 goes on the lines below it inside the same comment.
 [`tests/test_structural_budget.py`](../../tests/test_structural_budget.py)
-installs the adapter, derives each role's read-set from the delivered agent
-specs, evaluates the rule's `paths:` globs against it, and fails when the
-declaration and the measurement disagree — the paragraph above about scoped
-not meaning rare used to be prose nothing checked. The same module pins the
-**always-on floor** (`AGENT-CONTEXT.md` plus every unscoped rule) per file, so
-the constant term every spawn pays cannot move without a deliberate edit, and
-prints the per-role byte table as diagnostics. The declaration is a comment
-rather than a frontmatter key on purpose: it carries no runtime meaning, and it
-survives the content moving to a skill.
+installs the adapter and fails when the declaration and the carrier disagree.
+For a rule, the carrier is its globs, evaluated against each role's read-set
+derived from the delivered agent specs. For a section skill reach is
+**literal** — the specs whose `skills:` list it — and its globs are
+compared against a second declaration, `<!-- triggers: … -->` — the roles
+whose named reads match them, which is what a rule would have armed and what
+the listing keys on in a human's session. The same module
+pins the **always-on floor** (`AGENT-CONTEXT.md` plus every unscoped rule) per
+file, so the constant term every spawn pays cannot move without a deliberate
+edit — a section skill is not part of it — and prints the per-role byte table
+(floor + spec + preloaded skills) as diagnostics. The declaration is a comment
+rather than a frontmatter key on purpose: it carries no runtime meaning, and a
+preload strips it, so it costs the loop nothing (measured, with its caveats,
+in issue #85's comment "Measurement — what a skill body carries into
+context"; an *invoked* skill keeps its comments, a preloaded one does not).
 
-**Every rule quotes the statements it delivers**, in one `<!-- pins: … -->`
-block per section it draws from — and this one is *not* a one-liner:
+**Every delivered file quotes the statements it delivers**, in one
+`<!-- pins: … -->` block per section it draws from — and this one is *not* a
+one-liner:
 
 ```
 <!-- pins: .aide/conventions/6-test-hygiene.md
@@ -273,15 +300,20 @@ block per section it draws from — and this one is *not* a one-liner:
 The section path goes on the opener line in **consumer** form
 (`.aide/conventions/…`, like every other path under `adapters/`), each `- ` line
 is one sentence lifted from that section, and a pin may wrap onto the lines
-below it. A rule delivering four sections declares four blocks.
+below it. A file delivering four sections declares four blocks.
 [`tests/test_rule_pins.py`](tests/test_rule_pins.py) asserts every pinned
-statement still appears in the rule *and* in the section it names, after a
-normalisation that absorbs reflow, emphasis and case and nothing else — so it
-fails in **both** directions, and the fix is to edit both copies in one commit.
-Every rule must pin at least one statement; a block that quotes none, and a
-`<!-- pins:` comment the grammar does not recognise (the one-line spelling
-`reach:` uses, notably), are both failures rather than silent no-ops. Curate
-them: the load-bearing sentences, not every line.
+statement still appears in the delivered file *and* in the section it names,
+after a normalisation that absorbs reflow, emphasis and case and nothing else —
+so it fails in **both** directions, and the fix is to edit both copies in one
+commit. Every delivered file must pin at least one statement; a block that
+quotes none, and a `<!-- pins:` comment the grammar does not recognise (the
+one-line spelling `reach:` uses, notably), are both failures rather than silent
+no-ops. Curate them: the load-bearing sentences, not every line.
+
+`scripts/review_instructions.py` reports on `.claude/rules/` only. A preload is
+not an instruction file to the runtime, so it never appears in the
+`InstructionsLoaded` log — and it needs no measuring: it is unconditional per
+spawn, and the budget test prints the exact per-role sum.
 
 ## Usage probe → **`usage_probe.py`** (`anthropic-oauth`)
 
@@ -335,16 +367,20 @@ no drift detection to invent and no third ownership pattern.
 adapters/claude/
 ├── agents/        builder · queue-planner · spec-author · test-writer · validator
 │                  spec-reviewer (queue boundary, not an item role)
-├── skills/        aide-{create-vision,-roadmap,-progress,-queue,-item} ·
-│                  aide-execute-item · aide-feedback-loop ·
-│                  aide-spec-queue · aide-status-report
+├── skills/        workflow: aide-{create-vision,-roadmap,-progress,-queue,-item} ·
+│                  aide-execute-item · aide-feedback-loop · aide-spec-queue ·
+│                  aide-status-report
+│                  section (user-invocable: false, preloaded by role):
+│                  aide-living-documents (§1 shapes) · aide-test-hygiene (§6)
 ├── commands/      aide-run-{item,queue,roadmap} · aide-review-permissions
-├── hooks/         command_hygiene_guard.py · log_permission_event.py
-├── scripts/       review_permissions.py
+├── rules/         aide-command-hygiene.md — the one unscoped rule (§3), every context
+├── hooks/         command_hygiene_guard.py · log_permission_event.py ·
+│                  log_instructions_loaded.py · sibling_instructions.py
+├── scripts/       review_permissions.py · review_instructions.py
 ├── settings.json  permission allow/ask-list + hook registration
 ├── usage_probe.py the anthropic-oauth usage probe (installed into .aide/loop/)
 ├── default-context.json   CLAUDE.md + @path — how .aide/AGENT-CONTEXT.md gets linked
-└── tests/         test_usage_probe.py  (adapter/installer conformance)
+└── tests/         adapter/installer conformance — rules, pins, agents, hooks, probe
 ```
 
 For the *why* behind each obligation — and the conformance checklist a new adapter

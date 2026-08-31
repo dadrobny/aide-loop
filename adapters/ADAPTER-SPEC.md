@@ -240,9 +240,19 @@ needs more than about two thirds of the contract and most need a third.
 
 Two sections say so themselves: **§3** (command hygiene) is delivered in
 positive form through whatever always-loaded channel the runtime has, and
-**§6** (test hygiene) is delivered to a role about to write a test. An adapter
-that can scope its channel by the file being touched should prefer that: a
-section delivered when it is relevant costs nothing when it is not.
+**§6** (test hygiene) is delivered to a role about to write a test.
+
+Which channel carries a section follows from who needs it, in terms no runtime
+owns: an **always-loaded** channel for what binds every action of every role
+(§3); a **role-declared** channel — one the role's own definition names, loaded
+when the role starts — for what a role always needs and other roles do not (§6
+for a test author; the §1 document shapes for a document writer); and a
+**file-scoped** channel, armed by a matching file, only where it cannot fire
+inside a spawned role — otherwise it is an unconditional channel wearing a
+scope, paid on every spawn that reads a matching file whether or not the role
+writes one. That last clause is measured, not presumed: the Claude adapter's
+two file-scoped rules armed in most spawns of most roles (issue #85), because
+reading an item spec matches the same globs as writing one.
 
 Three properties make a delivery mechanism conformant rather than decorative:
 
@@ -262,27 +272,43 @@ Three properties make a delivery mechanism conformant rather than decorative:
 
 The last two are the ones a commit breaks in silence, since a restatement that
 has drifted still reads as authoritative. The Claude adapter therefore makes
-them checkable rather than reviewable: each rule file carries
-`<!-- pins: <section file> … -->` blocks quoting the normative statements it
-delivers, and `adapters/claude/tests/test_rule_pins.py` asserts every quoted
-statement still appears in both the rule *and* the section it names, so editing
-either copy alone fails. Another runtime may express the guarantee however it
-likes; what is contractual is that the two copies cannot drift unobserved.
+them checkable rather than reviewable: each delivered file — rule or section
+skill — carries `<!-- pins: <section file> … -->` blocks quoting the normative
+statements it delivers, and `adapters/claude/tests/test_rule_pins.py` asserts
+every quoted statement still appears in both the delivered copy *and* the
+section it names, so editing either copy alone fails. Another runtime may
+express the guarantee however it likes; what is contractual is that the two
+copies cannot drift unobserved.
 
 The **first** obligation has a measurable half too, wherever the channel is
 file-scoped: which roles a given scope actually arms is a fact about the
 delivered tree, and a scope believed to be narrow while arming everyone is a
 cost paid on every spawn that nothing reports. The Claude adapter states the
-expectation in the rule itself (`<!-- reach: … -->`) and
-`tests/test_structural_budget.py` measures it against the agent specs' own
-read-sets; a runtime whose channel is unconditional has nothing to measure and
-owes nothing here.
+expectation in the delivered file itself (`<!-- reach: … -->`) and
+`tests/test_structural_budget.py` compares it — against the agent specs' own
+read-sets for a file-scoped rule, against the roles' `skills:` declarations for
+a role-declared skill. A role-declared channel satisfies the first property
+fully — it loads because the role was spawned — and has nothing to measure
+behaviourally, only structurally: that every declaration names a section file
+that exists and can be loaded, and that every section file is declared by at
+least one role. Its reach is the set of roles that declare it, a fact of the
+delivered tree; a runtime whose channel is unconditional has nothing to measure
+and owes nothing here.
 
-The Claude adapter uses `.claude/rules/`: one unscoped file for §3 (loaded into
-every session and every sub-agent) and `paths:`-scoped files for §6 and the §1
-document shapes, which load only when a matching file is read. A runtime with
-no such channel keeps pointing at the section — the same graceful degradation
-as above, now with an honest account of what it costs.
+The Claude adapter uses `.claude/rules/` for the always-loaded channel — one
+unscoped file for §3, loaded into every session and every sub-agent — and
+`.claude/skills/aide-<section>/SKILL.md` for the role-declared one: a skill
+with `user-invocable: false`, preloaded at spawn into exactly the agent specs
+whose `skills:` frontmatter names it (§6 into `test-writer`; the §1 document
+shapes into `spec-author` and `queue-planner`). The same skill files carry
+`paths:`, which on a skill injects nothing on a read: the skill's one-line
+description is in every interactive session's listing regardless, and the
+globs only narrow when the runtime auto-invokes the skill on its own — so that
+description is written as a trigger and is the whole of what a human's session
+receives beyond the floor. No file-scoped rule remains — one
+would fire inside sub-agent contexts too and re-pay what the preload saves.
+A runtime with no such channel keeps pointing at the section — the same
+graceful degradation as above, now with an honest account of what it costs.
 
 ---
 
@@ -364,9 +390,12 @@ the `conventions.md` §8 rule being read, the same graceful degradation §5, §6
 - [ ] *(if the runtime loads an instruction file by default)* a `default-context.json`
       declaring that file and the runtime's import syntax.
 - [ ] *(if the runtime has any always-loaded instruction channel)* §3 delivered,
-      not pointed at. *(if it can additionally scope context to the files in
-      play)* §6 too. Either way: loaded without the role choosing to, naming
-      the section it delivers, and adding no rule the engine does not have.
+      not pointed at. *(if a role definition can additionally name what it
+      starts with)* §6 to the test author and the §1 shapes to the document
+      writers, by that declaration — not by a file-scoped channel, which fires
+      inside spawned roles too. Either way: loaded without the role choosing
+      to, naming the section it delivers, and adding no rule the engine does
+      not have.
 - [ ] *(if the runtime can inject context mid-session)* a lazy, non-blocking
       mechanism surfacing a declared sibling repo's instruction file, once, on
       first reach.

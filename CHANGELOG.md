@@ -36,9 +36,8 @@ keys, and the adapter's agents/skills/commands.
   never a candidate. Consumers installed before this release have no manifest;
   `RETIRED_ADAPTER_PATHS` in `install.py` lists, per adapter, the paths earlier
   releases shipped and later dropped, and is consulted alongside the manifest
-  so those consumers catch up on their first `--update`. It is empty in this
-  release; the carrier swap that retires the two `paths:`-scoped rules
-  populates it. Manifest lines are validated against `HISTORIC_CONTROL_DIRS`
+  so those consumers catch up on their first `--update`. 1.27.0 populates it with the two
+  `paths:`-scoped rules the carrier swap retired. Manifest lines are validated against `HISTORIC_CONTROL_DIRS`
   — every control directory the installer has ever written — so a
   directory retired whole is still emptied file by file rather than left
   armed because its name is no longer in `ADAPTER_CONTROL`. The manifest is written after the retirement and before
@@ -62,6 +61,82 @@ keys, and the adapter's agents/skills/commands.
   update leaves the old one (`--check` says behind; `--update` remains the
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
+
+## [1.27.0] — 2026-08-30
+
+The carrier swap (issue #85, scope item 3): §6 and the §1 document shapes are
+delivered **to roles by `skills:` preload**, not to files by `paths:`-scoped
+rules. The rules were measured against a real consumer on 1.22.0, over two
+loop sessions: `aide-living-documents.md` armed **29 and 24** times,
+`aide-test-hygiene.md` **21 and 13** — roughly 201 KB and 150 KB of scoped-rule
+text on top of the floor — because a `paths:` rule fires inside sub-agent
+contexts on any matching *read*, and reading an item spec matches the same
+globs as writing one. Six roles read the living documents; two write them.
+Builder and validator open tests they never write. And the one role that
+always needs §6, `test-writer`, could miss it entirely: a repo with no tests
+yet gives a read-armed rule nothing to fire on, exactly when the fixture
+conventions are being set.
+
+### Added
+
+- **Two section skills**, `.claude/skills/aide-living-documents/SKILL.md`
+  (the §1 shapes) and `.claude/skills/aide-test-hygiene/SKILL.md` (§6): the
+  bodies of the two rules, `user-invocable: false` (hidden from the `/` menu,
+  never a command, still preloadable — `disable-model-invocation: true` would
+  be silently refused at preload), carrying the same `paths:` the rules had.
+  On a skill, `paths:` injects nothing on a read (measured, #85): the skill's
+  one-line description is in an interactive session's listing regardless, and
+  the globs only narrow when the runtime auto-invokes the skill on its own —
+  so each description is written as a trigger and is the whole of the
+  interactive delivery. The `<!-- reach -->` and `<!-- pins -->`
+  blocks stay in the skill bodies; a preload strips HTML comments, so they
+  cost the loop nothing.
+
+### Changed
+
+- **Three agent specs preload their section.** `spec-author` and
+  `queue-planner` list `aide-living-documents` in `skills:`; `test-writer`
+  lists `aide-test-hygiene`. The body is injected at spawn, before the role
+  has opened anything, so `test-writer`'s "read §6 yourself, because a repo
+  with no tests gives the rule nothing to fire on" clause is gone — the
+  section is in its context from the first token. The other three roles get
+  neither: they read the documents and tests without writing them, and
+  `validator` keeps the one line about §6 it needs. Per spawn, structurally
+  (content bytes, `tests/test_structural_budget.py`): builder 16,563 → 12,304,
+  queue-planner 18,762 → 17,080, spec-author 18,143 → 16,461, spec-reviewer
+  20,051 → 15,792, test-writer 19,961 → 14,511, validator 20,325 → 16,066.
+  **The always-on floor is unmoved** at 7,532 content bytes; `FLOOR_PIN` stays
+  at 1.25.4.
+- **`ADAPTER-SPEC.md` §7 gains the channel guidance**, in runtime-general
+  terms: an always-loaded channel for what binds every action (§3); a
+  role-declared channel for what a role always needs (§6 for a test author,
+  the §1 shapes for a document writer); a file-scoped channel only where it
+  cannot fire inside a spawned role, otherwise it is an unconditional channel
+  wearing a scope. A role-declared channel satisfies "loads without being
+  chosen" fully and has nothing to measure behaviourally, only structurally.
+  The three test modules generalise from "rule files" to "delivered files"
+  (rules plus section skills, recognised structurally): reach is literal for a
+  skill — the specs whose `skills:` list it — and the glob evaluation is
+  printed as its interactive trigger, never asserted. New guards: every
+  `skills:` entry names a skill that exists and is preloadable, and every
+  section skill is preloaded by at least one agent.
+
+### Removed
+
+- **`.claude/rules/aide-test-hygiene.md` and
+  `.claude/rules/aide-living-documents.md`.** `install.py --update` deletes
+  both from a consumer — by the manifest where one exists, and by
+  `RETIRED_ADAPTER_PATHS` for every consumer installed before 1.27.0 —
+  and `--check` names them first. No replacement `paths:` rule for the
+  interactive session: it would fire inside sub-agent contexts and re-pay
+  exactly the cost this removes. `aide-command-hygiene.md` stays, unscoped.
+
+What a consumer sees: after `--update`, two rules are gone from
+`.claude/rules/` and two skill directories appear under `.claude/skills/`;
+three agent specs gain a `skills:` line; the `/` menu is unchanged; an
+interactive session working on a test or a living document sees the section
+skill listed by its trigger; and every sub-agent spawn is cheaper except the
+three that now carry their section unconditionally.
 
 ## [1.26.0] — 2026-08-30
 
