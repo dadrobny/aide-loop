@@ -34,6 +34,19 @@ files actually in `.claude/rules/` are ever reported silent here; a rule the
 framework has retired is removed from that directory by `install.py --update`
 and is not a fault.
 
+``--strict`` stays a human-invoked check, never a CI gate. The log has no
+notion of which sessions *should* have armed a rule: a consumer's own
+``paths:``-scoped rule beside the framework's is legitimately silent over
+sessions that read nothing it matches, and a gate that fails on that teaches
+the reader to ignore it. Reach is asserted structurally instead, in the
+framework repo's ``tests/test_structural_budget.py``.
+
+``--rotate`` archives the current log into ``log.reviewed.jsonl`` beside it
+and truncates the live one, the way ``review_permissions.py --rotate`` does. A
+log that only grows makes "never loaded" progressively less meaningful — it
+averages over sessions from before a glob was last changed — so a review ends
+with a rotation, and the next one starts from the sessions since.
+
 Everything below the ``main`` boundary is a pure function so it can be unit
 tested (see ``.claude/tests/test_instructions_loaded.py`` in this repo's
 source tree).
@@ -48,14 +61,17 @@ from pathlib import Path
 # .claude/scripts/review_instructions.py -> parents[2] is the project root.
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_LOG = _PROJECT_ROOT / "docs" / "aide" / "instructions" / "log.jsonl"
+DEFAULT_REVIEWED = _PROJECT_ROOT / "docs" / "aide" / "instructions" / "log.reviewed.jsonl"
 RULES_DIR = _PROJECT_ROOT / ".claude" / "rules"
 
 EMPTY_HINT = (
-    "The log is empty. Before reading that as 'nothing loads', check the two\n"
+    "The log is empty. Before reading that as 'nothing loads', check the three\n"
     "causes that produce an empty log with a perfectly healthy setup:\n"
     "  1. The project folder is not trusted, which silently disables every hook\n"
     "     in .claude/settings.json -- including the one that writes this log.\n"
     "  2. No session has run since the hook was installed.\n"
+    "  3. The log was rotated by a review (--rotate) and no session has run\n"
+    "     since; the reviewed records are in log.reviewed.jsonl beside it.\n"
 )
 
 
@@ -184,6 +200,29 @@ def render(records, rules_dir=None):
     return lines
 
 
+def rotate_log(log_path, reviewed_path):
+    """Move every line of ``log_path`` into ``reviewed_path`` and truncate the log.
+
+    Returns the number of non-blank lines rotated. Lines are moved verbatim —
+    a malformed one is archived, not dropped, since the archive is the record
+    of what the hook wrote. Both files stay gitignored (per-machine). A
+    missing log is a no-op returning 0; an empty one is normalised to empty.
+    """
+    log = Path(log_path)
+    if not log.exists():
+        return 0
+    lines = [ln for ln in log.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    if not lines:
+        log.write_text("", encoding="utf-8")
+        return 0
+    reviewed = Path(reviewed_path)
+    reviewed.parent.mkdir(parents=True, exist_ok=True)
+    with reviewed.open("a", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    log.write_text("", encoding="utf-8")
+    return len(lines)
+
+
 def _median(values):
     if not values:
         return 0
@@ -198,8 +237,20 @@ def main(argv=None):
     parser.add_argument("log", nargs="?", default=str(DEFAULT_LOG),
                         help=f"path to the JSONL log (default: {DEFAULT_LOG})")
     parser.add_argument("--strict", action="store_true",
-                        help="exit 1 if any shipped rule never loaded")
+                        help="exit 1 if any shipped rule never loaded (a human-invoked "
+                             "check over a log known to cover the rule's work; never "
+                             "a CI gate)")
+    parser.add_argument("--reviewed", default=str(DEFAULT_REVIEWED),
+                        help=f"where --rotate archives the log (default: {DEFAULT_REVIEWED})")
+    parser.add_argument("--rotate", action="store_true",
+                        help="archive the current log to the reviewed file and truncate "
+                             "it, so the next review starts from the sessions since")
     args = parser.parse_args(argv)
+
+    if args.rotate:
+        moved = rotate_log(args.log, args.reviewed)
+        print(f"Rotated {moved} record(s) from {args.log} to {args.reviewed}.")
+        return 0
 
     records = load_records(args.log)
     if not records:

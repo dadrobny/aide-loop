@@ -93,8 +93,9 @@ session, so the nesting is real, not a manual runbook.
   checkpoint, one review per ~10 items. This is also the loop supervisor's default
   command (see the usage probe below).
 
-A fourth command, **`aide-review-permissions`**, is not an orchestrator — it belongs
-to the permission model below.
+Two more commands are not orchestrators: **`aide-review-permissions`** belongs to
+the permission model below, and **`aide-review-instructions`** to the delivery
+instrumentation beside it.
 
 The `/aide-*` entry-points can be launched from the IDE extension, the
 interactive CLI, or the loop supervisor's top-level `claude -p` — these surfaces
@@ -157,11 +158,14 @@ in `core/conventions.md`; only the **enforcement mechanism** and the
   prompt-eligible calls (`Bash`/`Edit`/`Write`/`Web…`) to
   `docs/aide/permissions/log.jsonl`; the request/completion pair lets a reviewer infer
   grant vs deny. It never replicates the allow-list.
-- **`hooks/log_instructions_loaded.py`** + **`scripts/review_instructions.py`** —
-  `InstructionsLoaded` logging to `docs/aide/instructions/log.jsonl`, and the
-  report over it. This is how the §7 delivery contract stays checkable: a
-  `paths:`-scoped rule whose globs stop matching is silently inert, and
-  `review_instructions.py --strict` is the thing that says so.
+- **`hooks/log_instructions_loaded.py`** + **`scripts/review_instructions.py`** +
+  the **`aide-review-instructions`** command — `InstructionsLoaded` logging to
+  `docs/aide/instructions/log.jsonl`, the report over it, and the command that
+  runs the report, judges each silent rule and rotates the log. This is how the
+  §7 delivery contract stays checkable: a `paths:`-scoped rule whose globs stop
+  matching is silently inert, and `review_instructions.py --strict` is the thing
+  that says so — by hand, over a log known to cover the rule's work, never as a
+  CI gate, since the log cannot know which sessions *should* have armed a rule.
 - **`scripts/review_permissions.py`** + the **`aide-review-permissions`** command —
   aggregate that log into recurring bottlenecks and propose safe, recurring prompts to
   promote into the allow-list. The human makes the final allow/ask/leave call and the
@@ -372,7 +376,8 @@ adapters/claude/
 │                  aide-status-report
 │                  section (user-invocable: false, preloaded by role):
 │                  aide-living-documents (§1 shapes) · aide-test-hygiene (§6)
-├── commands/      aide-run-{item,queue,roadmap} · aide-review-permissions
+├── commands/      aide-run-{item,queue,roadmap} · aide-review-permissions ·
+│                  aide-review-instructions
 ├── rules/         aide-command-hygiene.md — the one unscoped rule (§3), every context
 ├── hooks/         command_hygiene_guard.py · log_permission_event.py ·
 │                  log_instructions_loaded.py · sibling_instructions.py

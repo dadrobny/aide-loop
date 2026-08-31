@@ -228,6 +228,95 @@ def test_the_shipped_rules_are_the_ones_the_report_looks_for():
 
 
 # --------------------------------------------------------------------------- #
+# rotation — a log that only grows makes "never loaded" mean less each session
+# --------------------------------------------------------------------------- #
+def test_rotate_moves_every_line_to_the_reviewed_file_and_empties_the_log(tmp_path):
+    log = tmp_path / "log.jsonl"
+    reviewed = tmp_path / "archive" / "log.reviewed.jsonl"   # parent absent
+    log.write_text('{"session_id": "s1", "paths": ["a.md"]}\n'
+                   '\n'
+                   '{"session_id": "s2", "pa\n', encoding="utf-8")  # malformed, kept
+
+    assert review.rotate_log(log, reviewed) == 2
+    assert log.read_text(encoding="utf-8") == ""
+    assert reviewed.read_text(encoding="utf-8") == (
+        '{"session_id": "s1", "paths": ["a.md"]}\n{"session_id": "s2", "pa\n')
+
+
+def test_rotate_appends_to_an_existing_reviewed_file(tmp_path):
+    log = tmp_path / "log.jsonl"
+    reviewed = tmp_path / "log.reviewed.jsonl"
+    reviewed.write_text("old\n", encoding="utf-8")
+    log.write_text("new\n", encoding="utf-8")
+
+    assert review.rotate_log(log, reviewed) == 1
+    assert reviewed.read_text(encoding="utf-8") == "old\nnew\n"
+
+
+def test_rotate_of_a_missing_or_empty_log_is_a_no_op(tmp_path):
+    reviewed = tmp_path / "log.reviewed.jsonl"
+    assert review.rotate_log(tmp_path / "absent.jsonl", reviewed) == 0
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("\n\n", encoding="utf-8")
+    assert review.rotate_log(empty, reviewed) == 0
+    assert empty.read_text(encoding="utf-8") == ""
+    assert not reviewed.exists()
+
+
+def test_the_rotate_flag_rotates_reports_nothing_else_and_exits_zero(tmp_path, capsys):
+    log = tmp_path / "log.jsonl"
+    reviewed = tmp_path / "log.reviewed.jsonl"
+    log.write_text('{"session_id": "s1", "paths": ["a.md"]}\n', encoding="utf-8")
+
+    assert review.main([str(log), "--rotate", "--reviewed", str(reviewed)]) == 0
+    out = capsys.readouterr().out
+    assert "Rotated 1 record(s)" in out
+    assert "Loads per file" not in out
+    assert log.read_text(encoding="utf-8") == ""
+    assert reviewed.is_file()
+
+
+def test_the_reviewed_file_sits_beside_the_log_under_the_same_ignore_glob():
+    """`docs/aide/instructions/*.jsonl` is what the managed .gitignore block
+    covers; a reviewed file elsewhere, or with another suffix, would be the
+    per-machine log committed by accident."""
+    assert review.DEFAULT_REVIEWED.parent == review.DEFAULT_LOG.parent
+    assert review.DEFAULT_REVIEWED.suffix == ".jsonl"
+
+
+def test_the_empty_hint_names_rotation_as_a_cause(tmp_path, capsys):
+    """After a rotation an empty log is the expected state, and the hint must
+    not steer the reader to the trust flag as the only explanation."""
+    assert review.main([str(tmp_path / "absent.jsonl")]) == 0
+    out = capsys.readouterr().out
+    assert "rotate" in out and "not trusted" in out
+
+
+# --------------------------------------------------------------------------- #
+# the entry point — an instrument nobody runs measures nothing (issue #82)
+# --------------------------------------------------------------------------- #
+def test_the_report_has_a_command_that_runs_it_and_rotates_the_log():
+    """`review_permissions.py` reaches a person as `/aide-review-permissions`;
+    this report must reach one the same way, or it is a Python file nobody is
+    told about. The command must name the script, the rotation, and the
+    posture of `--strict` (a human check, never a CI gate)."""
+    command = _ADAPTER / "commands" / "aide-review-instructions.md"
+    assert command.is_file(), "no command reaches review_instructions.py"
+    text = command.read_text(encoding="utf-8")
+    assert "review_instructions.py" in text
+    assert "--rotate" in text
+    assert "--strict" in text and "CI" in text
+
+
+def test_the_feedback_loop_routes_the_instruction_log_at_the_queue_boundary():
+    """The permission log is reviewed at the queue boundary; "which rules
+    reached which agents this queue" is the same kind of question."""
+    skill = (_ADAPTER / "skills" / "aide-feedback-loop" / "SKILL.md").read_text(
+        encoding="utf-8")
+    assert "/aide-review-instructions" in skill
+
+
+# --------------------------------------------------------------------------- #
 # registration — a hook that ships unregistered does nothing at all
 # --------------------------------------------------------------------------- #
 def test_every_shipped_hook_is_registered_in_the_framework_settings():

@@ -117,7 +117,9 @@ the next move (do **not** generate the next queue yourself):
 
 Permission prompts hit during the batch are auto-logged (`docs/aide/permissions/`);
 suggest the user run **`/aide-review-permissions`** to promote recurring safe
-prompts (it also **rotates** the log).
+prompts (it also **rotates** the log). Instruction loads are logged the same way
+(`docs/aide/instructions/`); **`/aide-review-instructions`** says which rules
+reached the batch's sessions, and rotates that log.
 
 ## When the orchestrator must stop and ask the user
 

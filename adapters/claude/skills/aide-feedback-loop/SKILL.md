@@ -113,7 +113,7 @@ The framework surface is: `.aide/` (conventions, templates, `aide.py`, loop),
 
 Framework/process changes land via a **reviewed PR**, never a direct merge.
 
-### 4. Consistency & permission bottlenecks
+### 4. Consistency, permission bottlenecks & instruction delivery
 
 - Run `python .aide/scripts/aide.py check` — fix any format-contract errors it
   reports (they break the scripts the loop depends on).
@@ -122,6 +122,14 @@ Framework/process changes land via a **reviewed PR**, never a direct merge.
   `python .claude/scripts/review_permissions.py`) for a ranked table, promote the
   safe recurring ones into `permissions.allow` in `.claude/settings.json` (via
   PR), and rotate the log.
+- Which rules reached which sessions this queue is a queue-boundary question
+  too. Every instruction file the runtime loads is auto-logged (see
+  `docs/aide/instructions/`): run `/aide-review-instructions` (or
+  `python .claude/scripts/review_instructions.py`), act on a rule that never
+  loaded — a framework rule silent over a non-empty log means the hook or the
+  trust flag; a project rule means its globs — and rotate that log too. It
+  measures delivery, not reading, and a preloaded section skill never appears
+  in it by design.
 
 ### 5. Recommendations
 
