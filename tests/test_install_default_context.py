@@ -337,18 +337,22 @@ def test_an_ahead_consumer_that_is_linked_still_passes(tmp_path: Path, capsys):
 
 def test_the_created_file_matches_what_the_spec_says_it_holds(tmp_path: Path):
     """ADAPTER-SPEC §7 describes the created file as the import line plus a
-    short note about which line an update rewrites. A spec that describes
+    short note: which line an update rewrites, and that the rest of the file
+    points at the contract instead of copying it (#96). A spec that describes
     content the installer does not write is the drift this test exists to
     catch — it went unnoticed once already."""
     spec = (FRAMEWORK_ROOT / "adapters" / "ADAPTER-SPEC.md").read_text(encoding="utf-8")
-    assert "holding the import line plus a two-sentence note" in spec
+    assert "holding the import line plus a short note" in spec
+    assert "point\n  at the contract rather than carry a copy of it" in spec
 
     target = _consumer(tmp_path)
     assert _install(target) == 0
-    lines = [ln for ln in (target / "CLAUDE.md").read_text(encoding="utf-8").splitlines()
-             if ln.strip()]
+    body = (target / "CLAUDE.md").read_text(encoding="utf-8")
+    lines = [ln for ln in body.splitlines() if ln.strip()]
     assert lines[0] == IMPORT_LINE
     assert len(lines) > 1, "the note the spec promises is missing"
+    assert "rather than restating it here" in body, \
+        "the spec promises the pointer-not-copy half of the note too"
 
 
 def test_check_still_writes_nothing_when_it_reports_drift(tmp_path: Path):

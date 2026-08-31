@@ -68,7 +68,7 @@ import re
 import shutil
 import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 FRAMEWORK_ROOT = Path(__file__).resolve().parent
 
@@ -175,7 +175,9 @@ INSTRUCTION_FILE_TEMPLATE = """\
 
 Project instructions — yours to write. The one line the AIDE installer
 maintains is the `{import_line}` import; everything else in this
-file is yours and is never touched by an update.
+file is yours and is never touched by an update. Point at the contract
+rather than restating it here: that import already carries it, and a copy
+in this file is one nothing can update when the contract moves.
 """
 
 # Encoding for reading files that live in the CONSUMER repo (settings.json, the
@@ -323,7 +325,8 @@ def report_version(available: str, installed_path: Path, target: Path,
                    drift: Optional[str] = None,
                    orphans: Optional[List[str]] = None,
                    stale: Optional[List[Path]] = None,
-                   retired: Optional[List[Path]] = None) -> int:
+                   retired: Optional[List[Path]] = None,
+                   restated: Optional[List[str]] = None) -> int:
     """``--check``: report whether the target's install is current.
 
     Writes nothing. Exit 2 when the target has no install to compare, 1 when
@@ -355,6 +358,12 @@ def report_version(available: str, installed_path: Path, target: Path,
     a consumer reading ``.claude/`` as their own directory needs to hear that
     this file was not — and a closing line worded for both, so the summary
     does not undo the distinction the per-file lines drew.
+
+    *restated* is the one report class that **does not reach the exit code**:
+    passages of the instruction file that repeat contract text the engine
+    ships. Everything above is framework-owned state gone wrong, and a project
+    can gate on it; this is prose the project wrote in its own file, where the
+    framework's standing ends at saying so.
     """
     if not installed_path.is_file():
         # VERSION is written last, so ".aide/ exists but VERSION does not" is
@@ -390,6 +399,16 @@ def report_version(available: str, installed_path: Path, target: Path,
     for path in retired or ():
         print(f"aide {target}: {path} was installed from the adapter, which no "
               f"longer ships it — --update will DELETE it")
+    # Last of the per-item lines and ahead of the version verdict, so the
+    # advisory does not sit between a reader and the answer they ran this for.
+    for line in restated or ():
+        print(f"aide {target}: {line}")
+    if restated:
+        print(f"aide {target}: those passages are the project's and no update "
+              f"touches them, which is why they drift — prune what the shipped "
+              f"contract already says, and move upstream anything it turns out "
+              f"to lack, rather than keeping it local (README, \"What belongs "
+              f"in the instruction file\"). Advisory: not part of the exit code.")
     pending = bool(stale or retired)
     if state == "behind":
         print(f"aide {target}: v{installed} is BEHIND v{available} — "
@@ -1291,6 +1310,192 @@ def default_context_drift(target: Path, adapter_dir: Path) -> Optional[str]:
             f"rules never reach an interactive session in this repo")
 
 
+# --------------------------------------------------------------------------- #
+# the instruction file's OTHER half: what a project wrote there itself
+# --------------------------------------------------------------------------- #
+# `install_default_context` maintains one line in the consumer's instruction
+# file and reads it for nothing else. That is the right ownership and it leaves
+# every other line unmaintainable by anything here — which is only a problem
+# when those lines are a *copy* of contract text the engine ships. One consumer
+# whose instruction file predates the import carries the insight protocol, the
+# durable-artifacts rules and the §4 mode table by hand, with three engine
+# releases narrated into the prose after the fact, because no update pass owned
+# it and nothing could see it. Seeding contract text into a project-owned file
+# is the wrong repair (seeded once is drift forever, which is this paragraph);
+# reporting the duplicate is the right one.
+#
+# Ten consecutive words, normalised, is the signal. A run that long is not
+# coincidence: over three real instruction files, the legacy restatement above
+# shared 37 distinct runs with the shipped contract, a file that merely
+# *describes* the framework at length (this repo's own CLAUDE.md) shared none,
+# and a freshly seeded one shared none.
+CONTRACT_ECHO_WORDS = 10
+
+# How many restated sections a report names before it summarises the rest. A
+# warning nobody scrolls to the end of is a warning nobody reads.
+CONTRACT_ECHO_LIMIT = 6
+
+
+def contract_files(core_dir: Path) -> List[Path]:
+    """The engine files a consumer must not carry a second copy of.
+
+    The page the import delivers, plus the index and the sections it resolves
+    to. All of it lands in `.aide/`, so a passage matching any of it is a
+    passage duplicating a file the consumer already has.
+    """
+    files = [core_dir / "AGENT-CONTEXT.md", core_dir / "conventions.md"]
+    files += sorted((core_dir / "conventions").rglob("*.md"))
+    return [path for path in files if path.is_file()]
+
+
+def _contract_prose(text: str) -> str:
+    """*text* with fenced code blocks removed.
+
+    A consumer that copies the `python .aide/scripts/aide.py …` invocation out
+    of `AGENT-CONTEXT.md` has copied a command, and copying a command is what
+    one is for. Only prose can restate a rule, so only prose is compared.
+    """
+    return re.sub(r"^```.*?(^```|\Z)", "\n", text, flags=re.S | re.M)
+
+
+def _contract_words(text: str) -> List[str]:
+    """*text* as lowercase words, with markdown and punctuation dropped.
+
+    The same absorb-the-reflow normalisation the other restatement channel uses
+    (`adapters/claude/tests/test_rule_pins.py`): emphasis, links, case and line
+    breaks are noise, and a copy that survived a hand-rewrap is still a copy.
+    """
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).split()
+
+
+def _contract_runs(words: List[str]) -> Iterable[str]:
+    """Every `CONTRACT_ECHO_WORDS`-long run of *words*."""
+    return (" ".join(words[i:i + CONTRACT_ECHO_WORDS])
+            for i in range(len(words) - CONTRACT_ECHO_WORDS + 1))
+
+
+def _heading_text(line: str) -> Optional[str]:
+    """A markdown heading's title minus its `— §N` pointer, or None.
+
+    The pointer is dropped so that a consumer heading copied off a contract
+    heading still matches the original, which is exactly the case worth
+    catching: the copy never carries the `§` back-reference.
+    """
+    match = re.match(r"\s{0,3}#{1,6}\s+(.*\S)\s*$", line)
+    if match is None:
+        return None
+    return re.split(r"\s+[-–—]\s+§", match.group(1))[0].strip()
+
+
+def contract_echoes(core_dir: Path) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """`(word run -> shipped file, heading -> shipped file)` for the contract.
+
+    Keyed by the text rather than by the file, because the question asked of
+    this is "does this passage already exist in the contract" — and the first
+    shipped file carrying a run is the one worth naming in an answer.
+    """
+    runs: Dict[str, str] = {}
+    headings: Dict[str, str] = {}
+    for path in contract_files(core_dir):
+        rel = ".aide/" + path.relative_to(core_dir).as_posix()
+        body = path.read_text(encoding="utf-8")
+        for line in body.splitlines():
+            title = _heading_text(line)
+            words = _contract_words(title) if title else []
+            # A two-word heading ("Install", "Test hygiene") is a phrase every
+            # project is entitled to use over a section of its own.
+            if len(words) >= 3:
+                headings.setdefault(" ".join(words), rel)
+        for run in _contract_runs(_contract_words(_contract_prose(body))):
+            runs.setdefault(run, rel)
+    return runs, headings
+
+
+def _instruction_passages(text: str) -> List[Tuple[int, str, str]]:
+    """`(1-based line, heading in force, passage)` for each block of prose.
+
+    Blocks are blank-line separated and fenced code is dropped. A heading both
+    is a passage and labels the ones after it, so a report can name the
+    *section* that echoes the contract — which is the unit a consumer prunes.
+    """
+    passages: List[Tuple[int, str, str]] = []
+    heading = ""
+    fenced = False
+    start = 0
+    buf: List[str] = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        fence = line.lstrip().startswith("```")
+        title = None if (fenced or fence) else _heading_text(line)
+        if buf and (fence or title is not None or not line.strip()):
+            passages.append((start, heading, "\n".join(buf)))
+            buf = []
+        if fence:
+            fenced = not fenced
+            continue
+        if fenced or not line.strip():
+            continue
+        if title is not None:
+            heading = title
+            passages.append((number, title, line))
+            continue
+        if not buf:
+            start = number
+        buf.append(line)
+    if buf:
+        passages.append((start, heading, "\n".join(buf)))
+    return passages
+
+
+def instruction_restatements(target: Path, adapter_dir: Path,
+                             core_dir: Path) -> List[str]:
+    """`--check` lines for instruction-file passages the contract already says.
+
+    **Advisory, and deliberately outside every exit code.** The file is the
+    project's; the framework has no standing to fail a build over what a
+    project wrote in it, and rewriting it would trade a visible duplicate for
+    a silent one. What this adds is the seeing — the one thing no mechanism did
+    before — and the name of the shipped file each passage duplicates, so the
+    repair is available: prune what the contract already covers, and move
+    upstream anything it turns out to lack.
+
+    One line per section of the instruction file rather than per matching
+    paragraph: a restated section matches several times over, and a warning
+    that fills a screen is one that gets scrolled past.
+    """
+    ctx_path, _ = default_context_state(target, adapter_dir)
+    if ctx_path is None or not ctx_path.is_file():
+        return []
+    runs, headings = contract_echoes(core_dir)
+    if not runs:
+        return []
+    rel = ctx_path.relative_to(target).as_posix()
+    # heading in force -> (line it starts at, shipped files it echoes)
+    found: Dict[str, Tuple[int, List[str]]] = {}
+    body = ctx_path.read_text(encoding=CONSUMER_ENCODING)
+    for number, heading, passage in _instruction_passages(body):
+        words = _contract_words(passage)
+        echoed = [runs[run] for run in _contract_runs(words) if run in runs]
+        # A heading copied whole is a restatement whose body has been reworded
+        # past the run threshold — the drift this exists to catch, at the one
+        # spot where the original wording is most likely to have survived.
+        if " ".join(words) in headings:
+            echoed.insert(0, headings[" ".join(words)])
+        if not echoed:
+            continue
+        _, sources = found.setdefault(heading, (number, []))
+        for source in echoed:
+            if source not in sources:
+                sources.append(source)
+    lines = [f"{rel}:{number}" + (f' "{heading}"' if heading else "")
+             + f" repeats contract text the engine ships in {', '.join(sources)}"
+             for heading, (number, sources) in
+             sorted(found.items(), key=lambda item: item[1][0])]
+    if len(lines) > CONTRACT_ECHO_LIMIT:
+        rest = len(lines) - CONTRACT_ECHO_LIMIT
+        lines = lines[:CONTRACT_ECHO_LIMIT] + [
+            f"{rel}: and {rest} further passage(s) repeating shipped contract text"]
+    return lines
+
 def install_default_context(target: Path, adapter_dir: Path, log: List[str]) -> None:
     """Ensure the consumer's instruction file imports ``.aide/AGENT-CONTEXT.md``.
 
@@ -1413,7 +1618,8 @@ def run(args: argparse.Namespace) -> int:
                               foreign_context_drift(target, adapter),
                               prune_stale(core_dir, aide_dir, [],
                                           keep=AIDE_FOREIGN_PATHS, dry_run=True),
-                              stale_adapter_files(adapter_dir, target, retirable))
+                              stale_adapter_files(adapter_dir, target, retirable),
+                              instruction_restatements(target, adapter_dir, core_dir))
 
     mode = "update" if args.update else "install"
     # The resolved adapter, not args.adapter — the latter is the value that was
