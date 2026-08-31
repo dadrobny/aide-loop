@@ -407,8 +407,11 @@ def report_version(available: str, installed_path: Path, target: Path,
         print(f"aide {target}: those passages are the project's and no update "
               f"touches them, which is why they drift — prune what the shipped "
               f"contract already says, and move upstream anything it turns out "
-              f"to lack, rather than keeping it local (README, \"What belongs "
-              f"in the instruction file\"). Advisory: not part of the exit code.")
+              f"to lack, rather than keeping it local. The repair is written "
+              f"out under \"What belongs in the instruction file\" in the README "
+              f"of the framework checkout this ran from ({FRAMEWORK_ROOT}) — not "
+              f"in the consumer's own .aide/README.md. "
+              f"Advisory: not part of the exit code.")
     pending = bool(stale or retired)
     if state == "behind":
         print(f"aide {target}: v{installed} is BEHIND v{available} — "
@@ -1335,15 +1338,24 @@ CONTRACT_ECHO_WORDS = 10
 # warning nobody scrolls to the end of is a warning nobody reads.
 CONTRACT_ECHO_LIMIT = 6
 
+# A fenced block opens and closes on either marker, indented up to three spaces
+# (CommonMark). Used on both sides of the comparison, deliberately: a fence one
+# side strips and the other keeps is a difference that reads as a restatement.
+_FENCE = r"^ {0,3}(?:```|~~~)"
+
 
 def contract_files(core_dir: Path) -> List[Path]:
     """The engine files a consumer must not carry a second copy of.
 
-    The page the import delivers, plus the index and the sections it resolves
-    to. All of it lands in `.aide/`, so a passage matching any of it is a
-    passage duplicating a file the consumer already has.
+    The page the import delivers, the index and the sections it resolves to,
+    and the engine's own README. All of it lands in `.aide/`, so a passage
+    matching any of it duplicates a file the consumer already has — and the
+    README is not an afterthought here: `#96` lists a consumer's hand-written
+    shared-vs-personal ownership rules among its evidence, and that is
+    `core/README.md`'s section, not a `conventions/` one.
     """
-    files = [core_dir / "AGENT-CONTEXT.md", core_dir / "conventions.md"]
+    files = [core_dir / "AGENT-CONTEXT.md", core_dir / "conventions.md",
+             core_dir / "README.md"]
     files += sorted((core_dir / "conventions").rglob("*.md"))
     return [path for path in files if path.is_file()]
 
@@ -1354,8 +1366,16 @@ def _contract_prose(text: str) -> str:
     A consumer that copies the `python .aide/scripts/aide.py …` invocation out
     of `AGENT-CONTEXT.md` has copied a command, and copying a command is what
     one is for. Only prose can restate a rule, so only prose is compared.
+
+    Both fence markers, and CommonMark's three-space indent: the contract
+    already contains an indented fence (`§1 → human-gates.md`), whose contents
+    leaked into the comparison while the consumer side stripped them — a
+    disagreement between the two sides is the one bug a symmetric comparison
+    cannot survive. An unclosed fence running to end-of-file is CommonMark's
+    own reading of it, not a guess.
     """
-    return re.sub(r"^```.*?(^```|\Z)", "\n", text, flags=re.S | re.M)
+    return re.sub(_FENCE + r".*?(" + _FENCE + r"|\Z)", "\n", text,
+                  flags=re.S | re.M)
 
 
 def _contract_words(text: str) -> List[str]:
@@ -1398,7 +1418,10 @@ def contract_echoes(core_dir: Path) -> Tuple[Dict[str, str], Dict[str, str]]:
     headings: Dict[str, str] = {}
     for path in contract_files(core_dir):
         rel = ".aide/" + path.relative_to(core_dir).as_posix()
-        body = path.read_text(encoding="utf-8")
+        body = _contract_prose(path.read_text(encoding="utf-8"))
+        # Prose, not the raw file: a `#` line inside a fenced *template* is a
+        # line of an example document, and the contract ships several. One of
+        # them is two words long and stays out only by the floor below.
         for line in body.splitlines():
             title = _heading_text(line)
             words = _contract_words(title) if title else []
@@ -1406,28 +1429,34 @@ def contract_echoes(core_dir: Path) -> Tuple[Dict[str, str], Dict[str, str]]:
             # project is entitled to use over a section of its own.
             if len(words) >= 3:
                 headings.setdefault(" ".join(words), rel)
-        for run in _contract_runs(_contract_words(_contract_prose(body))):
+        for run in _contract_runs(_contract_words(body)):
             runs.setdefault(run, rel)
     return runs, headings
 
 
-def _instruction_passages(text: str) -> List[Tuple[int, str, str]]:
-    """`(1-based line, heading in force, passage)` for each block of prose.
+def _instruction_passages(text: str) -> List[Tuple[int, int, str, str]]:
+    """`(1-based line, section ordinal, heading in force, passage)` per block.
 
     Blocks are blank-line separated and fenced code is dropped. A heading both
     is a passage and labels the ones after it, so a report can name the
     *section* that echoes the contract — which is the unit a consumer prunes.
+
+    The ordinal is what identifies a section, not the heading text. Two
+    sections may share a title, and a file written with setext headings (or
+    none at all) has every block under the same empty one — keying on the words
+    would fold those together and lose every location but the first.
     """
-    passages: List[Tuple[int, str, str]] = []
+    passages: List[Tuple[int, int, str, str]] = []
     heading = ""
+    section = 0
     fenced = False
     start = 0
     buf: List[str] = []
     for number, line in enumerate(text.splitlines(), start=1):
-        fence = line.lstrip().startswith("```")
+        fence = re.match(_FENCE, line) is not None
         title = None if (fenced or fence) else _heading_text(line)
         if buf and (fence or title is not None or not line.strip()):
-            passages.append((start, heading, "\n".join(buf)))
+            passages.append((start, section, heading, "\n".join(buf)))
             buf = []
         if fence:
             fenced = not fenced
@@ -1435,14 +1464,14 @@ def _instruction_passages(text: str) -> List[Tuple[int, str, str]]:
         if fenced or not line.strip():
             continue
         if title is not None:
-            heading = title
-            passages.append((number, title, line))
+            heading, section = title, section + 1
+            passages.append((number, section, title, line))
             continue
         if not buf:
             start = number
         buf.append(line)
     if buf:
-        passages.append((start, heading, "\n".join(buf)))
+        passages.append((start, section, heading, "\n".join(buf)))
     return passages
 
 
@@ -1469,10 +1498,10 @@ def instruction_restatements(target: Path, adapter_dir: Path,
     if not runs:
         return []
     rel = ctx_path.relative_to(target).as_posix()
-    # heading in force -> (line it starts at, shipped files it echoes)
-    found: Dict[str, Tuple[int, List[str]]] = {}
+    # section ordinal -> (line it starts at, heading, shipped files it echoes)
+    found: Dict[int, Tuple[int, str, List[str]]] = {}
     body = ctx_path.read_text(encoding=CONSUMER_ENCODING)
-    for number, heading, passage in _instruction_passages(body):
+    for number, section, heading, passage in _instruction_passages(body):
         words = _contract_words(passage)
         echoed = [runs[run] for run in _contract_runs(words) if run in runs]
         # A heading copied whole is a restatement whose body has been reworded
@@ -1482,19 +1511,22 @@ def instruction_restatements(target: Path, adapter_dir: Path,
             echoed.insert(0, headings[" ".join(words)])
         if not echoed:
             continue
-        _, sources = found.setdefault(heading, (number, []))
+        _, _, sources = found.setdefault(section, (number, heading, []))
         for source in echoed:
             if source not in sources:
                 sources.append(source)
     lines = [f"{rel}:{number}" + (f' "{heading}"' if heading else "")
              + f" repeats contract text the engine ships in {', '.join(sources)}"
-             for heading, (number, sources) in
-             sorted(found.items(), key=lambda item: item[1][0])]
-    if len(lines) > CONTRACT_ECHO_LIMIT:
+             for number, heading, sources in
+             sorted(found.values(), key=lambda entry: entry[0])]
+    # Truncating at the limit exactly would trade one location for a line
+    # saying it was withheld, which saves the reader nothing.
+    if len(lines) > CONTRACT_ECHO_LIMIT + 1:
         rest = len(lines) - CONTRACT_ECHO_LIMIT
         lines = lines[:CONTRACT_ECHO_LIMIT] + [
             f"{rel}: and {rest} further passage(s) repeating shipped contract text"]
     return lines
+
 
 def install_default_context(target: Path, adapter_dir: Path, log: List[str]) -> None:
     """Ensure the consumer's instruction file imports ``.aide/AGENT-CONTEXT.md``.

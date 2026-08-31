@@ -342,8 +342,11 @@ def test_the_created_file_matches_what_the_spec_says_it_holds(tmp_path: Path):
     content the installer does not write is the drift this test exists to
     catch — it went unnoticed once already."""
     spec = (FRAMEWORK_ROOT / "adapters" / "ADAPTER-SPEC.md").read_text(encoding="utf-8")
-    assert "holding the import line plus a short note" in spec
-    assert "point\n  at the contract rather than carry a copy of it" in spec
+    # Whitespace-normalised: the spec is prose that gets rewrapped, and a
+    # test that fails on a reflow is a test that gets deleted.
+    flowed = " ".join(spec.split())
+    assert "holding the import line plus a short note" in flowed
+    assert "point at the contract rather than carry a copy of it" in flowed
 
     target = _consumer(tmp_path)
     assert _install(target) == 0
