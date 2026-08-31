@@ -74,6 +74,23 @@ ahead, without writing anything. It exits non-zero when the consumer is behind �
 or when the instruction file has lost its `.aide/AGENT-CONTEXT.md` import, which
 no version number can express — so a project can gate on it.
 
+### What belongs in the instruction file
+
+Everything below the import line is the project's, and the installer reads the
+file for exactly one thing: whether that line is there. So a *copy* of contract
+text in it is unmaintainable by construction — no update pass owns it, and it
+drifts until it contradicts the contract it was copied from. Point at the
+contract instead: the import already delivers `AGENT-CONTEXT.md`, and a `§N`
+pointer resolves into `.aide/conventions/`.
+
+Adopting the import in a repo that predates it is therefore two steps. Run
+`--update`, then **prune the restatements it makes redundant**. If one of them
+says something the shipped contract does not, that is a gap in the contract —
+[open an issue](https://github.com/dadrobny/aide-loop/issues) rather than keep
+the local copy, which is the one way an unguarded duplicate earns its keep and
+then outlives its usefulness. `--check` names such passages, one line per
+section of the file, and **does not fail on them**: the file is yours.
+
 ## Versioning
 
 `core/VERSION` is the single version of a working install; `install.py` copies it

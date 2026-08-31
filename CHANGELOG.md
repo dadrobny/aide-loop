@@ -19,6 +19,39 @@ keys, and the adapter's agents/skills/commands.
 
 ### Added
 
+- **`install.py --check` names contract text a consumer restates in its own
+  instruction file (issue #96).** The installer maintains one line in that file
+  — the `@.aide/AGENT-CONTEXT.md` import — and reads it for nothing else, which
+  leaves every other line project-owned and unmaintainable by any framework
+  pass. That is the right ownership and the wrong outcome when those lines are
+  a *copy* of contract text the engine ships: one consumer's `CLAUDE.md`
+  carries the insight protocol, the durable-artifacts rules and the §4 mode
+  table by hand, with three engine releases narrated into the prose after the
+  fact, because nothing could see it. `--check` now compares the declared
+  instruction file against the shipped contract — `AGENT-CONTEXT.md`,
+  `conventions.md` and its sections, and `README.md`, which is where the
+  shared-vs-personal ownership rules #96 cites as evidence actually live — and
+  names each passage that repeats it: one line per *section* of the file, with
+  the line number and the shipped file it duplicates, ordered as the file
+  reads, capped at six once there are more than seven. A section is identified
+  by where it is rather than by its title, so two sections sharing a heading
+  stay two findings. The signal is a ten-word run of normalised prose, or a
+  contract heading of three words or more lifted whole (the drift case, where
+  the body has been reworded past any shared run); fenced code — both markers,
+  indented up to three spaces — is compared on neither side, since copying a
+  command is what a command is for. **Advisory, and deliberately outside every
+  exit code** — the file is the project's, so the framework's standing ends at
+  saying what it found; seeding contract text into a project-owned file would
+  be the same trade with the drift hidden. The two repairs are in the report:
+  prune what the shipped contract already covers, and move upstream anything
+  it turns out to lack. A newly created instruction file now says so in its
+  note; README gains "What belongs in the instruction file" for repos adopting
+  the import after the fact, which the report points at by naming the framework
+  checkout it ran from, since a consumer's own `.aide/README.md` has no such
+  section; and ADAPTER-SPEC §7 states the check and its advisory status.
+  Installer-only: nothing a consumer's `--update` copies changed, so
+  `core/VERSION` is unmoved.
+
 - **`install.py` retires adapter files the framework has dropped (issue #85,
   step 1).** `copy_tree` overwrites and adds but never deletes, and the prune
   covers `.aide/` only, so a file removed from `adapters/claude/` stayed live

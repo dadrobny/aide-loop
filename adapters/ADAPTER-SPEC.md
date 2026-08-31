@@ -210,15 +210,28 @@ Given the declaration, `install.py`:
   and nothing else when it is missing (idempotent — the project keeps full
   control of everything it wrote);
 - creates the file — and any parent directory it names — when it does not
-  exist, holding the import line plus a two-sentence note saying that the line
-  is the only thing an update will rewrite. A new file cannot clobber anything,
-  and a silently absent channel is the failure mode worth avoiding; the note is
-  there because a consumer opening a file it did not write needs to know which
-  part is theirs. It is markdown, as every instruction file a runtime loads by
-  default is today — an adapter whose runtime wants some other format is the
-  point at which that assumption should be revisited;
+  exist, holding the import line plus a short note saying that the line is the
+  only thing an update will rewrite, and that the rest of the file should point
+  at the contract rather than carry a copy of it. A new file cannot clobber
+  anything, and a silently absent channel is the failure mode worth avoiding;
+  the note is there because a consumer opening a file it did not write needs to
+  know which part is theirs. It is markdown, as every instruction file a runtime
+  loads by default is today — an adapter whose runtime wants some other format
+  is the point at which that assumption should be revisited;
 - reports a missing import line under `--check` as drift, the same way it
-  reports a stale `VERSION`.
+  reports a stale `VERSION`;
+- reports, under `--check`, passages of the declared file that repeat contract
+  text the engine ships — **advisory, and never part of an exit code.** The
+  file is the project's, so nothing here may fail a build over what a project
+  wrote in it; what the installer can do is *see* the duplicate, which no
+  mechanism did before. A copy in this file is unmaintainable by construction —
+  the installer writes one line into it and reads it for that one line — so it
+  drifts until it contradicts the contract it came from, and one consumer's
+  instruction file had three engine releases narrated into its prose by hand
+  before anything noticed. Seeding contract text into a project-owned file is
+  the wrong repair, being the same trade with the drift hidden; the two right
+  ones are pruning the copy, and moving upstream whatever it says that the
+  shipped contract does not.
 
 The imported file is **framework-owned wholesale** — the ownership pattern §5
 already establishes for non-JSON adapter files. There is no delimited region
