@@ -50,6 +50,10 @@ def _repo(tmp_path: Path, inbox: str = INBOX) -> Path:
     _run(["git", "init", "-b", "main"], repo)
     _run(["git", "config", "user.email", "t@e.com"], repo)
     _run(["git", "config", "user.name", "T"], repo)
+    # Local, before the first commit: the index holds the bytes the files
+    # have, whatever the runner's global `core.autocrlf` says (§6 — a test
+    # that lost the global config mid-run saw every tracked file "modified").
+    _run(["git", "config", "core.autocrlf", "false"], repo)
     _run(["git", "add", "-A"], repo)
     _run(["git", "commit", "-m", "init"], repo)
     return repo
@@ -790,6 +794,19 @@ def _status(repo: Path) -> list:
     return _run(["git", "status", "--porcelain"], repo).stdout.splitlines()
 
 
+def _staged(repo: Path) -> list:
+    return _run(["git", "diff", "--cached", "--name-only"], repo).stdout.split()
+
+
+def _assert_untracked_only(repo: Path, rel: str = "docs/aide/insights.md") -> None:
+    """*rel* is untracked and nothing at all is staged — asserted on the file's
+    own status line, not on the whole porcelain list, which may carry lines
+    that are the runner's business (line endings) and not this test's."""
+    status = _status(repo)
+    assert f"?? {rel}" in status, status
+    assert _staged(repo) == [], _staged(repo)
+
+
 def _files_in_head(repo: Path) -> list:
     """What HEAD's commit touches — posix paths, one per line as git prints
     them (never whitespace-split: a path may carry a space)."""
@@ -848,7 +865,8 @@ def test_the_inbox_commit_leaves_staged_work_staged_and_out_of_it(tmp_path: Path
     _run(["git", "add", "feature.py"], repo)
     assert aide.main(["--repo", str(repo), "check"]) == 0
     assert _files_in_head(repo) == ["docs/aide/insights.md"]
-    assert _status(repo) == ["A  feature.py"]
+    assert _staged(repo) == ["feature.py"]
+    assert not any("insights.md" in line for line in _status(repo))
 
 
 def test_a_commit_git_refuses_leaves_the_inbox_untracked_not_staged(
@@ -861,7 +879,7 @@ def test_a_commit_git_refuses_leaves_the_inbox_untracked_not_staged(
     _without_git_identity(repo, monkeypatch, tmp_path)
     assert aide.main(["--repo", str(repo), "check"]) == 0
     assert _head(repo) == before
-    assert _status(repo) == ["?? docs/aide/insights.md"]
+    _assert_untracked_only(repo)
     out = capsys.readouterr().out
     notice = [l for l in out.splitlines() if l.startswith("notice:")]
     assert len(notice) == 1 and "NOT committed" in notice[0]
@@ -880,7 +898,7 @@ def test_git_off_path_degrades_to_created_not_committed(
     notice = [l for l in capsys.readouterr().out.splitlines() if l.startswith("notice:")]
     assert len(notice) == 1 and "NOT committed" in notice[0]
     monkeypatch.undo()
-    assert _status(repo) == ["?? docs/aide/insights.md"]
+    _assert_untracked_only(repo)
 
 
 def test_a_detached_head_gets_the_file_and_no_dangling_commit(
@@ -890,7 +908,7 @@ def test_a_detached_head_gets_the_file_and_no_dangling_commit(
     _run(["git", "checkout", "--quiet", "--detach"], repo)
     assert aide.main(["--repo", str(repo), "check"]) == 0
     assert _head(repo) == before
-    assert _status(repo) == ["?? docs/aide/insights.md"]
+    _assert_untracked_only(repo)
     notice = [l for l in capsys.readouterr().out.splitlines() if l.startswith("notice:")]
     assert len(notice) == 1 and "detached" in notice[0]
 
@@ -1029,4 +1047,5 @@ def test_the_shared_committer_is_loud_when_git_cannot_run(
     assert "could not commit docs/aide/insights.md" in err and "Traceback" not in err
     monkeypatch.undo()
     assert "- [x] defect" in _inbox(repo)  # the edit landed ...
-    assert _status(repo) == [" M docs/aide/insights.md"]  # ... and is uncommitted
+    assert " M docs/aide/insights.md" in _status(repo)  # ... and is uncommitted
+    assert _staged(repo) == []
