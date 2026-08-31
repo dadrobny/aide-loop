@@ -63,6 +63,81 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.26.0] — 2026-08-30
+
+The engine guarantees the insight inbox exists (issue #85, scope item 4).
+Every one of the six agent specs carried the same clause — *"create it from
+`.aide/templates/insights.md`, copied verbatim, if missing"* — and so did
+`aide-execute-item`, §1 → `insights.md` and the template's own header: one
+mechanical step restated eight times, and the one restatement that made every
+spec name `templates/`, which is what stops a template-scoped delivery from
+discriminating by role. Capture was meant to be a plain append; the engine
+now makes that literally true.
+
+### Added
+
+- **`aide check` creates a missing `insights.md`** — a byte-exact copy of
+  `.aide/templates/insights.md`, committed where git can (on a branch, with
+  an identity to commit as; otherwise left untracked with the reason in the
+  notice), announced in one `notice:` line. It is the verb's only write
+  besides the file `--report` names, and its docstring and `--help` say so;
+  the exit code never depends on it. Nothing happens when `docs_dir` is absent (a repo
+  may adopt the CLI without the loop, and the directory itself is
+  project-owned), and an existing inbox — malformed or not — is never
+  touched. A missing template is reported as an incomplete install, not a
+  traceback.
+- **`aide claim` and `aide queue start` do the same**, through the one
+  shared helper (`ensure_insights_inbox`), on the branch they just created
+  and before the push. `check` alone was not enough: `/aide-run-queue`
+  reaches its roles through `sync` → `claim`, and `/aide-run-roadmap`
+  (queue-planner) and `/aide-spec-queue` (spec-author, spec-reviewer) through
+  `queue start`, none of which runs `check` first. Both verbs already write —
+  a branch and its recorded base — so the file arrives where the item or
+  queue lands and the base branch is left as it was. The creation is
+  committed because `aide sync` refuses a dirty tree, and an untracked new
+  file would stall the next preflight of the loop it exists to serve. The
+  commit names its path (`git commit -- <path>`), so a builder's staged work
+  stays staged and out of it; a commit git refuses leaves the file untracked
+  rather than staged; a detached `HEAD` gets the file and no dangling commit;
+  a `git` that cannot be run is a sentence in the notice, not a traceback.
+- **`aide insights list` on a missing inbox creates it** the same way and
+  reports an empty backlog, since an empty backlog is an answer. `tick` and
+  `archive` still exit 2 on a missing file — there is no entry to edit — but
+  the message now points at `aide check` instead of telling a role to copy
+  the template by hand.
+
+### Fixed
+
+- **`progress set`, `insights tick` and `insights archive` committed
+  everything staged, not the path they named.** The shared committer staged
+  its path and then ran a bare `git commit`, so a builder's staged-but-
+  uncommitted work was swept into the bookkeeping commit mid-item — the
+  docstring said "named paths, never `git add -A`" and the code did the
+  equivalent. The commit now carries a pathspec (`git commit -- <path>`):
+  only the named path lands, other staged content stays staged, a refused
+  commit unstages the path again rather than leaving it staged for
+  `aide sync` to stall on, and a `git` that cannot be run is one framed
+  stderr line instead of a silent success message. Found reviewing the inbox
+  creation above, which uses the same committer.
+
+### Changed
+
+- **The six agent specs and `aide-execute-item` drop the create-if-missing
+  clause.** Each "Out-of-scope insights" section now says only: append ONE
+  line to `docs/aide/insights.md` and carry on. §1 → `insights.md` states
+  the guarantee in the engine's terms (which verbs, byte-exact, committed),
+  and the template header no longer instructs a copy. A test in
+  `adapters/claude/tests/test_rules.py` fails if any agent or skill names
+  `templates/insights.md` again — guarded on the path, not the wording, since
+  a reworded restatement re-opens the same cost. The always-on floor is
+  unmoved: `AGENT-CONTEXT.md` already described capture as an append and
+  gains nothing; `FLOOR_PIN` stays at 1.25.4's number.
+
+What a consumer sees: after `--update`, the next `check`, `claim` or
+`queue start` in a document set without an inbox creates and commits one, and
+prints the notice; six agent specs each shrink by a line; nothing else
+changes. Item 1 of the #85 scope (the installer manifest) lands separately.
+
 ## [1.25.5] — 2026-08-30
 
 The consumer-visible half of the review of the #83/#84/#81/#97/#95 batch. All

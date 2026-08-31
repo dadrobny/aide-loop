@@ -420,6 +420,41 @@ def test_check_passes_clean_on_the_scaffold(aide, consumer: Path, capsys):
     assert "OK (0 warning(s))" in capsys.readouterr().out
 
 
+def _installed_template(consumer: Path) -> bytes:
+    template = (consumer / ".aide" / "templates" / "insights.md").read_bytes()
+    assert b"insight" in template.lower()  # recognisable before it is compared
+    return template
+
+
+def _drop_the_inbox(consumer: Path) -> Path:
+    inbox = consumer / "docs" / "aide" / "insights.md"
+    inbox.unlink()
+    _commit(consumer, "a document set with no inbox")
+    return inbox
+
+
+def _files_in_head(repo: Path) -> list:
+    """What HEAD's commit touches — posix paths, as git prints them."""
+    return _git(["show", "--name-only", "--format=", "HEAD"], repo).stdout.split()
+
+
+def test_check_creates_a_missing_inbox_from_the_installed_template(
+        aide, consumer: Path):
+    inbox = _drop_the_inbox(consumer)
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert inbox.read_bytes() == _installed_template(consumer)
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    assert _files_in_head(consumer) == ["docs/aide/insights.md"]
+
+
+def test_check_leaves_an_existing_inbox_byte_for_byte(aide, consumer: Path):
+    inbox = consumer / "docs" / "aide" / "insights.md"
+    before = inbox.read_bytes()
+    assert before != _installed_template(consumer)  # the fixture's own entries
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert inbox.read_bytes() == before
+
+
 def test_check_fails_when_the_document_set_lost_its_progress(aide, consumer: Path):
     (consumer / "docs" / "aide" / "progress.md").unlink()
     assert aide.main(["--repo", str(consumer), "check"]) == 1
@@ -475,6 +510,20 @@ def test_a_claim_off_a_started_queue_branch_merges_back_into_it(aide, consumer: 
     assert recorded == "aide/queue-001"
 
 
+def test_queue_start_creates_a_missing_inbox_on_the_queue_branch(aide, consumer: Path):
+    """`/aide-run-roadmap` and `/aide-spec-queue` reach a role from here with
+    no `check` in between; the inbox must already be on the branch they use."""
+    inbox = _drop_the_inbox(consumer)
+    assert aide.main(["--repo", str(consumer), "queue", "start", "2"]) == 0
+    assert _branch(consumer) == "aide/queue-002"
+    assert inbox.read_bytes() == _installed_template(consumer)
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    assert _files_in_head(consumer) == ["docs/aide/insights.md"]
+    on_main = _git(["ls-tree", "-r", "--name-only", "main"], consumer).stdout
+    assert "docs/aide/progress.md" in on_main  # the listing is real ...
+    assert "docs/aide/insights.md" not in on_main  # ... and the base untouched
+
+
 def test_queue_start_refuses_to_recreate_an_existing_branch(aide, consumer: Path):
     assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
     _git(["switch", "main"], consumer)
@@ -492,6 +541,19 @@ def test_claim_creates_switches_to_and_records_the_branch(aide, consumer: Path):
     recorded = _git(["config", "--get", f"branch.{branch}.{aide._BASE_CONFIG_KEY}"],
                     consumer).stdout.strip()
     assert recorded == "main"
+
+
+def test_claim_creates_a_missing_inbox_on_the_claim_branch(aide, consumer: Path):
+    """`/aide-run-queue` reaches its roles through `sync` and `claim`, never
+    `check` — and `sync` refuses a dirty tree, so the file must arrive
+    committed, on the item's branch, before any role is spawned."""
+    inbox = _drop_the_inbox(consumer)
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer).startswith("aide/001-")
+    assert inbox.read_bytes() == _installed_template(consumer)
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    assert _files_in_head(consumer) == ["docs/aide/insights.md"]
+    assert aide.main(["--repo", str(consumer), "sync", "--item", "1"]) == 0
 
 
 def test_dry_run_claims_nothing(aide, consumer: Path):

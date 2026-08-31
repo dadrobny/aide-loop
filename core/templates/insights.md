@@ -1,7 +1,9 @@
 <!--
-  AIDE insight inbox — the compound-engineering capture point. Copy this file
-  VERBATIM (comment included, no slots to fill) to docs/aide/insights.md the
-  first time an insight needs a home.
+  AIDE insight inbox — the compound-engineering capture point. The engine
+  creates docs/aide/insights.md from this file, byte for byte (comment
+  included, no slots to fill), the first time `aide check`, `aide claim`,
+  `aide queue start` or `aide insights list` finds it missing — no role copies
+  it by hand.
 
   Any role, at any time: when you learn something true but OUT OF SCOPE for
   your current task, append ONE line here and return to your task. Capturing
