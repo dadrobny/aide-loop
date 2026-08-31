@@ -29,9 +29,17 @@ def _testpaths() -> set:
 
 def _matrix() -> list:
     """The (os, tests) pairs of the workflow's matrix include entries."""
-    pairs = re.findall(r'-\s*os:\s*(\S+)\s*\n\s*tests:\s*"([^"]*)"',
-                       WORKFLOW.read_text(encoding="utf-8"))
-    assert pairs, "tests.yml no longer pairs `os:` with a quoted `tests:`"
+    text = WORKFLOW.read_text(encoding="utf-8")
+    # Comment lines may sit between os: and tests:. If an entry parses as
+    # neither, say so — a dropped pair must read as a parse failure here,
+    # never as a coverage failure pointing the editor at the workflow.
+    pairs = re.findall(
+        r'-\s*os:\s*(\S+)(?:\s*\n\s*#[^\n]*)*\s*\n\s*tests:\s*"([^"]*)"', text)
+    entries = len(re.findall(r"^\s*-\s*(?:os|tests):", text, flags=re.MULTILINE))
+    assert pairs and len(pairs) == entries, (
+        "an os: entry in tests.yml did not parse as an (os, tests) pair; "
+        "fix the entry or this module's regex before trusting the pin"
+    )
     return pairs
 
 

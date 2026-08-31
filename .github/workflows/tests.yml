@@ -25,25 +25,33 @@ jobs:
     runs-on: ${{ matrix.os }}
     name: pytest (${{ matrix.os }}) ${{ matrix.tests }}
     steps:
-      # Defender's real-time scanning inspects every process image and every
-      # small file the git fixtures write on NTFS; it is most of the Windows
-      # leg's ~13x per-spawn cost (issue #74). The runner is ephemeral and
-      # admin. Tamper protection can silently ignore the Set-MpPreference, so
-      # the step reports what actually took and falls back to exclusions,
-      # which tamper protection does not cover; if all of it is refused the
-      # job just runs slower.
-      - name: Disable Defender real-time scanning
+      # The windows-latest image already ships Defender with real-time
+      # scanning disabled and C:\ + D:\ excluded (runner-images'
+      # Configure-WindowsDefender.ps1), and PR #117's runs measured exactly
+      # that: RealTimeProtectionEnabled False, yet still ~55ms per subprocess
+      # spawn — the cost is CreateProcess plus the MSYS2 loader, not scanning
+      # (issue #74). This step only guards against an image update regressing
+      # the disable: it says what it found, re-asserts only when needed, and
+      # try/catches so a refused cmdlet reads as a slower job, never a red one.
+      - name: Keep Defender real-time scanning off
         if: runner.os == 'Windows'
         continue-on-error: true
         shell: powershell
         run: |
-          Set-MpPreference -DisableRealtimeMonitoring $true
-          $rt = (Get-MpComputerStatus).RealTimeProtectionEnabled
-          Write-Host "RealTimeProtectionEnabled after disable: $rt"
-          if ($rt) {
-            Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP
-            Add-MpPreference -ExclusionProcess "git.exe", "python.exe", "pytest.exe"
-            Write-Host "fell back to path + process exclusions"
+          try {
+            $before = (Get-MpComputerStatus -ErrorAction Stop).RealTimeProtectionEnabled
+            Write-Host "RealTimeProtectionEnabled on the image: $before"
+            if ($before) {
+              Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop
+              $after = (Get-MpComputerStatus).RealTimeProtectionEnabled
+              Write-Host "RealTimeProtectionEnabled after disable: $after"
+              if ($after) {
+                Add-MpPreference -ExclusionProcess "git.exe", "python.exe", "pytest.exe" -ErrorAction Stop
+                Write-Host "disable refused; added process exclusions"
+              }
+            }
+          } catch {
+            Write-Host "Defender query/config refused: $_"
           }
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
