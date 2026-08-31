@@ -310,6 +310,21 @@ def test_the_rotate_flag_rotates_reports_nothing_else_and_exits_zero(tmp_path, c
     assert reviewed.is_file()
 
 
+def test_rotate_archives_beside_the_log_it_rotated_not_the_default_one(tmp_path, capsys):
+    """The command passes its argument into the rotation; the archive must
+    follow the same argument, or a log from another checkout is mixed into
+    this project's archive and the hint sends the reader to a file that is
+    not there."""
+    other = tmp_path / "elsewhere" / "custom.jsonl"
+    other.parent.mkdir()
+    other.write_text('{"session_id": "s1", "paths": ["a.md"]}\n', encoding="utf-8")
+
+    assert review.main([str(other), "--rotate"]) == 0
+    beside = other.with_name("log.reviewed.jsonl")
+    assert beside.is_file() and str(beside) in capsys.readouterr().out
+    assert not review.DEFAULT_REVIEWED.exists()
+
+
 def test_the_reviewed_file_sits_beside_the_log_under_the_same_ignore_glob():
     """`docs/aide/instructions/*.jsonl` is what the managed .gitignore block
     covers; a reviewed file elsewhere, or with another suffix, would be the

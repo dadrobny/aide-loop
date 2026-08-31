@@ -85,8 +85,10 @@ closes it).
   boundary beside the permission review, and `/aide-run-queue`'s hand-off
   names it.
 - **`review_instructions.py --rotate [--reviewed PATH]`** archives the current
-  log into `docs/aide/instructions/log.reviewed.jsonl` (the same managed
-  `.gitignore` glob) and truncates the live one, the way the permissions
+  log into `log.reviewed.jsonl` beside it — `docs/aide/instructions/` for the
+  default log, under the same managed `.gitignore` glob; beside whichever log
+  was named otherwise, so another checkout's records never land in this
+  project's archive — and truncates the live one, the way the permissions
   reviewer does. A log that only grows makes "never loaded" mean less each
   session, since it averages over sessions from before a glob was last
   changed. The empty-log hint names rotation as a third cause beside the trust

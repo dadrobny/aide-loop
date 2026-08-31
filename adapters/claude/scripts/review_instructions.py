@@ -11,7 +11,8 @@ Three things it reports, in order of what they cost to get wrong:
    matching is silently inert — the file is still there, still correct, and
    reaches nobody. This is the failure the whole mechanism exists to avoid, so
    it is reported first and it is the only one that sets a non-zero exit under
-   ``--strict``. ``--strict`` is for a log you know covers work the rule should
+   ``--strict`` — an empty or missing log included, since nothing loaded there
+   either. ``--strict`` is for a log you know covers work the rule should
    have matched; over a log of sessions that touched nothing relevant, a silent
    rule is the correct outcome, not a fault.
 2. **Load reason per file**, since `session_start` and `path_glob_match` mean
@@ -42,7 +43,10 @@ the reader to ignore it. Reach is asserted structurally instead, in the
 framework repo's ``tests/test_structural_budget.py``.
 
 ``--rotate`` archives the current log into ``log.reviewed.jsonl`` beside it
-and truncates the live one, the way ``review_permissions.py --rotate`` does. A
+(``--reviewed`` to put it elsewhere) and truncates the live one, the way
+``review_permissions.py --rotate`` does. Beside the *reviewed* log, not the
+default one: rotating a log from another checkout must not mix its records
+into this project's archive. A
 log that only grows makes "never loaded" progressively less meaningful — it
 averages over sessions from before a glob was last changed — so a review ends
 with a rotation, and the next one starts from the sessions since.
@@ -242,19 +246,22 @@ def main(argv=None):
     parser.add_argument("log", nargs="?", default=str(DEFAULT_LOG),
                         help=f"path to the JSONL log (default: {DEFAULT_LOG})")
     parser.add_argument("--strict", action="store_true",
-                        help="exit 1 if any shipped rule never loaded (a human-invoked "
-                             "check over a log known to cover the rule's work; never "
-                             "a CI gate)")
-    parser.add_argument("--reviewed", default=str(DEFAULT_REVIEWED),
-                        help=f"where --rotate archives the log (default: {DEFAULT_REVIEWED})")
+                        help="exit 1 if any shipped rule never loaded, an empty or "
+                             "missing log included (a human-invoked check over a log "
+                             "known to cover the rule's work; never a CI gate)")
+    parser.add_argument("--reviewed", default=None,
+                        help="where --rotate archives the log (default: "
+                             "log.reviewed.jsonl beside the log being rotated, i.e. "
+                             f"{DEFAULT_REVIEWED} for the default log)")
     parser.add_argument("--rotate", action="store_true",
                         help="archive the current log to the reviewed file and truncate "
                              "it, so the next review starts from the sessions since")
     args = parser.parse_args(argv)
 
     if args.rotate:
-        moved = rotate_log(args.log, args.reviewed)
-        print(f"Rotated {moved} record(s) from {args.log} to {args.reviewed}.")
+        reviewed = args.reviewed or Path(args.log).with_name(DEFAULT_REVIEWED.name)
+        moved = rotate_log(args.log, reviewed)
+        print(f"Rotated {moved} record(s) from {args.log} to {reviewed}.")
         return 0
 
     if not Path(args.log).is_file():
