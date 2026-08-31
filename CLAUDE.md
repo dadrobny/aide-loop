@@ -130,8 +130,11 @@ pytest adapters/claude/tests/            # hygiene guard, settings overlay, prob
 
 CI ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs `pytest`
 on ubuntu **and** windows — the installer and the CLI both do path work, so a
-POSIX-only assumption fails there and not locally. There is no linter or
-formatter; `pytest` is the only gate.
+POSIX-only assumption fails there and not locally. The windows leg is split
+into one job per group of `pytest.ini` testpaths roots (subprocess spawns cost
+~13x there; issue #74), and `tests/test_ci_shards.py` pins the shards to
+exactly cover testpaths. There is no linter or formatter; `pytest` is the only
+gate.
 
 Most of the suite exercises this repo's **source** layout.
 [`tests/test_fixture_consumer.py`](tests/test_fixture_consumer.py) is the one

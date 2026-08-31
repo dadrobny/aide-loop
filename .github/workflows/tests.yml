@@ -10,12 +10,33 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Ubuntu runs the whole suite in one job (a bare `pytest`, ~20s).
+        # Windows pays ~70ms per subprocess spawn (issue #74), so its leg is
+        # split into one job per group of pytest.ini testpaths roots.
+        # tests/test_ci_shards.py pins the shards to exactly cover testpaths —
+        # a new test root added there must be added to a shard here too.
+        include:
+          - os: ubuntu-latest
+            tests: ""
+          - os: windows-latest
+            tests: "core"
+          - os: windows-latest
+            tests: "adapters tests"
     runs-on: ${{ matrix.os }}
+    name: pytest (${{ matrix.os }}) ${{ matrix.tests }}
     steps:
+      # Defender's real-time scanning inspects every process image and every
+      # small file the git fixtures write on NTFS; it is most of the Windows
+      # leg's ~13x per-spawn cost (issue #74). The runner is ephemeral and
+      # admin; if the cmdlet is ever refused the job just runs slower.
+      - name: Disable Defender real-time scanning
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: powershell
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
       - run: pip install pytest
-      - run: pytest
+      - run: pytest ${{ matrix.tests }}
