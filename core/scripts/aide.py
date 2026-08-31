@@ -36,7 +36,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, NamedTuple, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Set, Tuple
 
 # --------------------------------------------------------------------------- #
 # Status icons (the format contract — see .aide/conventions.md)
@@ -2677,6 +2677,34 @@ def patterns_overlap(a: str, b: str) -> bool:
     return False
 
 
+def _built_after(graph: Dict[int, List[int]]) -> Dict[int, Set[int]]:
+    """For each item, every item it is built *after* — its declared
+    dependencies and theirs, transitively.
+
+    The ordering `## Dependencies` actually promises. Direct listing is not
+    enough on its own: an item that names one sibling which in turn names
+    another is built after both, and the pair the caller is about to judge may
+    be the far end of that chain.
+
+    Cycle-safe by the `in out` guard rather than by trusting the graph — a
+    mutual pair is a real shape here (`_dependency_cycles` reports it as the
+    error it is) and must not hang the check that discovers it.
+    """
+    closure: Dict[int, Set[int]] = {}
+    for node in graph:
+        out: Set[int] = set()
+        stack = list(graph.get(node, []))
+        while stack:
+            dep = stack.pop()
+            if dep in out:
+                continue
+            out.add(dep)
+            stack.extend(graph.get(dep, []))
+        out.discard(node)
+        closure[node] = out
+    return closure
+
+
 def _dependency_cycles(graph: Dict[int, List[int]]) -> List[List[int]]:
     """Every dependency cycle in *graph*, each reported once.
 
@@ -2771,6 +2799,15 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
             continue
         declared[num] = parsed
 
+    # Read once, used twice: the declared ordering exempts pinned-state pairs
+    # below, and the same edges are the cycle graph further down. Reading each
+    # spec's Dependencies section twice would be the only alternative.
+    deps_by_item = {num: _item_dependencies(repo_root, config, num)
+                    for num in numbers if num not in unspecced}
+    # An item is built after everything it declares a dependency on, and after
+    # what those declare in turn.
+    built_after = _built_after(deps_by_item)
+
     # The loop bookkeeping every item writes anyway (`aide scope` authorises
     # these without them being listed). Specs often list them redundantly, and
     # two items "conflicting" over progress.md is not a conflict — it is the
@@ -2802,6 +2839,20 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
         for b in ordered:
             if a == b:
                 continue
+            if a in built_after.get(b, ()):
+                # Item b declares a dependency on item a (directly, or through
+                # a chain of them), so b is authored and built against a tree
+                # that already holds a's edit: a landing cannot break a pin b
+                # writes afterwards, by construction. This is the whole shape
+                # of a `Validate stage N` item — it exists to pin the artifacts
+                # its stage's items produce, and it names them as dependencies
+                # — which made the error fire against every such item, with
+                # neither remedy the message offers available: widening the pin
+                # drops what the item exists to observe, and narrowing the
+                # earlier edits removes the stage's whole point. A pair with no
+                # declared dependency keeps the error: an undeclared ordering
+                # is exactly what this check exists to find.
+                continue
             for pa in declared[a].may_change:
                 for pb in declared[b].asserts_against:
                     if patterns_overlap(pa, pb):
@@ -2810,7 +2861,11 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
                             f"item {a:03d} may change '{pa}', which item {b:03d} "
                             f"pins as '{pb}' under Asserts against — item {b:03d}'s "
                             f"assertion breaks when item {a:03d} lands. Decide now "
-                            f"which side is wrong: widen the pin, or narrow the edit"))
+                            f"which side is wrong: widen the pin, narrow the edit, "
+                            f"or — if item {b:03d} is meant to be built after item "
+                            f"{a:03d} and to pin what it produced — say so under "
+                            f"item {b:03d}'s '## Dependencies', which both orders "
+                            f"the queue and retires this finding"))
 
     # Row 5 — the dependency graph. A cycle deadlocks `aide claim`: every item
     # in it is blocked by another in it, so the queue silently stops producing
@@ -2822,11 +2877,9 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     # pass below shares the filter: a mistyped dependency in a spent or
     # deferred item's spec blocks nothing today, and the warning about it
     # would be unclearable.
-    graph = {num: _item_dependencies(repo_root, config, num)
-             for num in numbers
-             if num not in unspecced
-             and item_status.get(num, "planned") in ("planned", "in-progress",
-                                                     "in-review")}
+    graph = {num: deps for num, deps in deps_by_item.items()
+             if item_status.get(num, "planned") in ("planned", "in-progress",
+                                                    "in-review")}
     for cycle in _dependency_cycles(graph):
         chain = " → ".join(f"{n:03d}" for n in cycle + [cycle[0]])
         findings.append(SpecFinding(

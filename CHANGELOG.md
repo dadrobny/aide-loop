@@ -62,6 +62,39 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.28.1] — 2026-08-31
+
+### Fixed
+
+- **A declared dependency retires the `changes-pinned-state` error it makes
+  inert (issue #106).** `aide check --queue NNN` reported one item's **May
+  change** against another's **Asserts against** without consulting the
+  ordering the specs themselves declare, so a `Validate stage N` item drew the
+  error against every sibling it exists to observe — 14 of them on one consumer
+  queue — and both remedies the message named were wrong for that shape:
+  widening the pin drops the artifacts the item was written to pin, and
+  narrowing the earlier edits removes the stage's whole point. When the pinning
+  item names the changing one under `## Dependencies`, directly or through a
+  chain of them, it is authored and built against a tree that already holds
+  that edit, so the edit landing cannot break its pin; that pair is now
+  skipped. The exemption is per pair and directional — an item that depends on
+  the pinning item builds *last*, so its edit does land after the pin and is
+  still reported — and a pair with no declared dependency keeps the error,
+  since an undeclared ordering is exactly what the check exists to find. The
+  1.23.0 spent-item discount covered this only once the siblings merged, which
+  is after the window the check is for. Deriving the order walks the same edges
+  the cycle check condemns, so it is cycle-safe: a mutual pair still reports
+  `dependency-cycle` rather than hanging the run that would have found it.
+- **The error message names the third remedy.** Alongside widening the pin and
+  narrowing the edit, it now says to declare the dependency when the pinning
+  item is genuinely built after the changing one — the fix that both orders the
+  queue and clears the finding. The item template, `spec-author` and
+  `/aide-create-item` said dependencies "must be ✅/🚧", which reads as
+  forbidding exactly that on a specs queue where every sibling is still 📋;
+  they now say a 📋 queue-mate is a legitimate entry (`aide claim` holds the
+  item until it lands) and that declaring one is how an item records that it
+  pins what a sibling produces.
+
 ## [1.28.0] — 2026-08-31
 
 The instruction-load report gets an entry point (issue #82), and the delivered
