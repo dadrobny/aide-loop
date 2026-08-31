@@ -85,6 +85,14 @@ keys, and the adapter's agents/skills/commands.
   is after the window the check is for. Deriving the order walks the same edges
   the cycle check condemns, so it is cycle-safe: a mutual pair still reports
   `dependency-cycle` rather than hanging the run that would have found it.
+- **§1 said a dependency stops blocking at ✅/🚧; it stops at ✅.** `aide claim`
+  and every other blocking call site treat 🚧 in-progress and 🔍 in-review as
+  open — an item still being built, or one whose PR is still awaiting a human,
+  is not in the base a dependent would branch from — so only ✅ merged, ❌
+  excluded or ⏸️ deferred clears the way. Found while correcting the sibling
+  "must be ✅/🚧" guidance below, and wrong in the same direction: a reader
+  who believed it would expect a dependent to be claimable the moment its
+  blocker started.
 - **The error message names the third remedy.** Alongside widening the pin and
   narrowing the edit, it now says to declare the dependency when the pinning
   item is genuinely built after the changing one — the fix that both orders the
