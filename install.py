@@ -82,6 +82,9 @@ FRAMEWORK_ROOT = Path(__file__).resolve().parent
 # files would stay armed in every consumer, --check would say "up to date"
 # over them, and the manifest rebuilt on the next --update would no longer
 # list them — nothing could ever retire them, not even re-adding the name.
+# Retiring a name means the directory leaves adapters/<adapter>/ too: a name
+# gone from here is retired whatever the source tree still holds, so a
+# directory left behind would be copied by nothing and retired file by file.
 ADAPTER_CONTROL = ("agents", "skills", "commands", "hooks", "rules", "scripts")
 
 # Every control directory the installer has EVER written: the live tuple plus
@@ -792,7 +795,12 @@ def stale_adapter_files(adapter_dir: Path, target: Path,
             continue
         seen.add(posix)
         inside = posix.parts[1:]                      # drop the install dir
-        if adapter_dir.joinpath(*inside).exists():
+        # Still shipped means both: the directory is one the installer copies
+        # AND the source holds the file. A name that left ADAPTER_CONTROL with
+        # its directory still in the source tree is half-retired — copied by
+        # nothing, so the file in the consumer is stale whatever the source
+        # says, and asking the source alone would keep it forever.
+        if posix.parts[1] in ADAPTER_CONTROL and adapter_dir.joinpath(*inside).exists():
             continue
         path = target.joinpath(ADAPTER_INSTALL_DIR, *inside)
         # A symlink is a file here whatever it points at; a directory at a
