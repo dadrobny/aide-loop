@@ -282,6 +282,23 @@ def test_an_in_progress_dependency_still_exempts_the_pair(tmp_path: Path):
     assert [f for f in findings if f.kind == "changes-pinned-state"] == []
 
 
+def test_an_in_flight_pinning_item_keeps_its_exemption(tmp_path: Path):
+    """The asymmetry is deliberate — do not "complete" it. Gating on the
+    PINNING item's status would fire only outside this check's window (spec
+    authoring, where nothing is built yet), and only in a state that already
+    took an out-of-band claim. Meanwhile one deliverable bullet attributes its
+    icon to every item in its trailing marker, so two items sharing a 🚧
+    bullet would lose a legitimate exemption — errors invented on a normal
+    in-flight queue, in exchange for a case `progress.md` cannot distinguish
+    from that artifact."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, asserts=["src/cli.py"], deps="Item 027 lands first."),
+    }, progress=PROGRESS.replace("- 📋 B. *(Item 028)*", "- 🚧 B. *(Item 028)*"))
+    findings, _ = _findings(repo)
+    assert [f for f in findings if f.kind == "changes-pinned-state"] == []
+
+
 def test_the_pinned_state_message_names_the_dependency_remedy(tmp_path: Path):
     """A reader who hits the error needs the third way out — the two the
     message used to offer are both wrong for a validate item."""

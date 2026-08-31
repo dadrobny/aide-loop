@@ -145,7 +145,9 @@ the same queue — it is built against a tree that already holds that edit, so t
 edit landing cannot break its pin. Only links that still order count: a
 dependency `aide claim` no longer waits for (✅ merged, ❌ excluded, ⏸️
 deferred) leaves the dependent claimable today, so it earns no exemption — a
-deferred blocker's edit is dormant, not spent, and it is still ahead of the pin. That is the whole shape of a stage-validation item, which exists
+deferred blocker's edit is dormant, not spent, and it is still ahead of the
+pin. That applies wherever the failing link sits: a chain whose middle item no
+longer blocks orders nothing either. That is the whole shape of a stage-validation item, which exists
 to pin what its stage produced; a pair with **no** declared dependency keeps the
 error, since an undeclared ordering is exactly what the check is for, and saying
 so under `## Dependencies` is the third remedy the message offers.
