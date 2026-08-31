@@ -17,6 +17,35 @@ keys, and the adapter's agents/skills/commands.
 
 ## [Unreleased]
 
+### Added
+
+- **`install.py` retires adapter files the framework has dropped (issue #85,
+  step 1).** `copy_tree` overwrites and adds but never deletes, and the prune
+  covers `.aide/` only, so a file removed from `adapters/claude/` stayed live
+  in every consumer after `--update` — still armed, still delivered — while
+  `--check` reported "up to date". The control directories cannot simply be
+  pruned against the source: `.claude/agents/`, `skills/` and `rules/` are
+  directories a project legitimately adds its own files to. The installer
+  now records what it wrote there in `.aide/adapter-manifest.txt` (one
+  consumer-relative POSIX path per line, sorted, LF, no BOM), reads it back
+  before the next copy, and removes every recorded file the adapter no longer
+  ships — reported the way the engine prune is, tolerated the same way when a
+  file cannot be removed, and previewed by `--check`, which names each such
+  file, exits 1 and writes nothing. A file the installer never wrote is never
+  in the manifest, so a consumer's own skill or rule beside the framework's is
+  never a candidate. Consumers installed before this release have no manifest;
+  `RETIRED_ADAPTER_PATHS` in `install.py` lists, per adapter, the paths earlier
+  releases shipped and later dropped, and is consulted alongside the manifest
+  so those consumers catch up on their first `--update`. It is empty in this
+  release; the carrier swap that retires the two `paths:`-scoped rules
+  populates it. Manifest lines are validated against `HISTORIC_CONTROL_DIRS`
+  — every control directory the installer has ever written — so a
+  directory retired whole is still emptied file by file rather than left
+  armed because its name is no longer in `ADAPTER_CONTROL`. The manifest is written after the retirement and before
+  `.aide/VERSION`, so a failed update keeps the old manifest and the dropped
+  files stay retirable on the re-run. Installer-only: nothing a consumer's
+  `--update` copies changed, so `core/VERSION` is unmoved.
+
 ### Fixed
 
 - **`install.py` now writes `.aide/VERSION` last, not first (issue #80).** It

@@ -32,6 +32,10 @@ into a target repo:
      so the settings write-scope can read it.
   4. copy  adapters/<adapter>/usage_probe.py  -> <target>/.aide/loop/   (plan §4.4 seam)
   5. append the framework .gitignore block if absent
+  5b. record which files (2) wrote, as <target>/.aide/adapter-manifest.txt — the
+     list an --update reads back to retire adapter files the framework has
+     since dropped (`retire_adapter_files`); a consumer's own files under
+     .claude/ are never in it, so they are never candidates.
   6. record the installed VERSION (from core/VERSION) — in the scaffolded aide.toml
      and, authoritatively, as <target>/.aide/VERSION. That file is written LAST,
      after every other step has succeeded: it is what --check compares, so a
@@ -41,8 +45,10 @@ into a target repo:
     python install.py --into <target-repo> --update
 
   re-copies core/ (+ the adapter control files, + usage_probe.py) so the engine
-  tracks the framework, but NEVER touches <target>/aide.toml or <target>/docs/aide/
-  (owned by the project). settings.json stays non-clobbering on --update too.
+  tracks the framework, removes engine files core/ no longer ships and adapter
+  files the previous manifest lists that the adapter no longer ships, but NEVER
+  touches <target>/aide.toml or <target>/docs/aide/ (owned by the project).
+  settings.json stays non-clobbering on --update too.
 
   No --adapter: the target's aide.toml records the adapter under [aide], and an
   update reads it back (`resolve_adapter`). Passing one that contradicts the
@@ -68,13 +74,63 @@ FRAMEWORK_ROOT = Path(__file__).resolve().parent
 
 # Adapter control files copied into <target>/.claude/. Everything else under
 # adapters/<name>/ (README.md, usage_probe.py) is handled out of band.
+#
+# A name may only LEAVE this tuple by moving into the retired half of
+# HISTORIC_CONTROL_DIRS below. The adapter manifest and RETIRED_ADAPTER_PATHS
+# are validated against the historic set, not this one: a name simply dropped
+# here would make every recorded path under it unparseable, so the installed
+# files would stay armed in every consumer, --check would say "up to date"
+# over them, and the manifest rebuilt on the next --update would no longer
+# list them — nothing could ever retire them, not even re-adding the name.
+# Retiring a name means the directory leaves adapters/<adapter>/ too: a name
+# gone from here is retired whatever the source tree still holds, so a
+# directory left behind would be copied by nothing and retired file by file.
 ADAPTER_CONTROL = ("agents", "skills", "commands", "hooks", "rules", "scripts")
+
+# Every control directory the installer has EVER written: the live tuple plus
+# the names retired from it, which never leave. What a manifest line or a
+# RETIRED_ADAPTER_PATHS entry is validated against, so a directory retired
+# whole is still retired file by file.
+HISTORIC_CONTROL_DIRS = ADAPTER_CONTROL + ()
+
+# Where the control directories are installed — for every adapter: `run`
+# copies them all here, whichever adapter they came from, so a manifest line
+# and a RETIRED_ADAPTER_PATHS entry start with it regardless of the key.
+ADAPTER_INSTALL_DIR = ".claude"
+
+# The record of what the installer wrote under .claude/ from the adapter's
+# control directories (ADAPTER_CONTROL) — one consumer-relative POSIX path per
+# line, sorted, LF-terminated, UTF-8 without BOM, `#` lines comments. It lives
+# under .aide/ because that tree is framework-owned in full, and an --update
+# reads it back before copying: every path it lists that the adapter no longer
+# ships is removed (`retire_adapter_files`). `copy_tree` never deletes, so
+# without it a file dropped from the adapter stayed live in every consumer and
+# `--check` reported "up to date". A manifest rather than a prune of .claude/:
+# those directories are ones a project legitimately adds its own files to, and
+# a file the installer never wrote is never in the list.
+ADAPTER_MANIFEST = "adapter-manifest.txt"
 
 # Paths under .aide/ that the installer writes from somewhere OTHER than core/.
 # `prune_stale` compares the installed tree against core/, so without this a
 # file the installer itself put there would be deleted on the next update.
-AIDE_FOREIGN_PATHS = ("loop/usage_probe.py",)
+AIDE_FOREIGN_PATHS = ("loop/usage_probe.py", ADAPTER_MANIFEST)
 ADAPTER_SETTINGS = "settings.json"
+
+# Bootstrap for consumers installed before the manifest existed: per adapter,
+# consumer-relative paths (ADAPTER_INSTALL_DIR/<historic control dir>/…) that
+# earlier releases shipped and the adapter has since dropped. Keyed by adapter
+# because the files differ per adapter, not the directory — every adapter
+# installs into ADAPTER_INSTALL_DIR. Consulted on every --update and --check
+# IN ADDITION to the manifest, so it is harmless where the two agree and
+# decisive where there is no manifest to read. An entry is removed even from a
+# consumer with no manifest, because the adapter's control files are
+# framework-owned wholesale (ADAPTER-SPEC §5): a file at one of these paths is
+# the framework's old copy, not the project's. Populate it when a release
+# retires an adapter file; entries can go once no pre-manifest consumer is
+# left to bootstrap.
+RETIRED_ADAPTER_PATHS = {
+    "claude": (),
+}
 
 # ADAPTER-SPEC §7. An adapter whose runtime loads a project instruction file by
 # default declares that file and the runtime's import syntax here; the installer
@@ -259,7 +315,8 @@ def compare_versions(installed: str, available: str) -> str:
 def report_version(available: str, installed_path: Path, target: Path,
                    drift: Optional[str] = None,
                    orphans: Optional[List[str]] = None,
-                   stale: Optional[List[Path]] = None) -> int:
+                   stale: Optional[List[Path]] = None,
+                   retired: Optional[List[Path]] = None) -> int:
     """``--check``: report whether the target's install is current.
 
     Writes nothing. Exit 2 when the target has no install to compare, 1 when
@@ -284,6 +341,13 @@ def report_version(available: str, installed_path: Path, target: Path,
     next ``--update`` will delete. Reported here because ``--check`` writing
     nothing is what makes it safe to run, and a deletion nobody could preview
     is one a consumer only learns about from the aftermath.
+
+    *retired* are the same thing under ``.claude/``: files the installer once
+    wrote from the adapter (the manifest, or the bootstrap list) that the
+    adapter no longer ships. Same repair, same exit code, its own line because
+    a consumer reading ``.claude/`` as their own directory needs to hear that
+    this file was not — and a closing line worded for both, so the summary
+    does not undo the distinction the per-file lines drew.
     """
     if not installed_path.is_file():
         # VERSION is written last, so ".aide/ exists but VERSION does not" is
@@ -316,6 +380,10 @@ def report_version(available: str, installed_path: Path, target: Path,
     for path in stale or ():
         print(f"aide {target}: {path} is no longer part of the engine and "
               f"--update will DELETE it — move it first if it is yours")
+    for path in retired or ():
+        print(f"aide {target}: {path} was installed from the adapter, which no "
+              f"longer ships it — --update will DELETE it")
+    pending = bool(stale or retired)
     if state == "behind":
         print(f"aide {target}: v{installed} is BEHIND v{available} — "
               f"run install.py --into {target} --update (see CHANGELOG.md)")
@@ -330,7 +398,7 @@ def report_version(available: str, installed_path: Path, target: Path,
             # does not, has to say what to do instead.
             print(f"aide {target}: add the import by hand, or --update from the "
                   f"newer framework checkout this install came from")
-        return 1 if (drift or orphans or stale) else 0
+        return 1 if (drift or orphans or pending) else 0
     if drift:
         print(f"aide {target}: v{installed} — run install.py --into {target} --update")
         return 1
@@ -341,12 +409,14 @@ def report_version(available: str, installed_path: Path, target: Path,
         print(f"aide {target}: v{installed} — engine up to date, but the "
               f"instruction files above need a decision")
         return 1
-    if stale:
+    if pending:
         # Same shape as orphans: --update is what deletes them, so naming it as
         # the repair would be pointing at the thing the reader is being warned
-        # about. Exiting non-zero is the whole message.
-        print(f"aide {target}: v{installed} — engine up to date, but the "
-              f"file(s) above are no longer part of it and --update removes them")
+        # about. Exiting non-zero is the whole message. "Shipped", not "part
+        # of the engine": the line closes for engine files and adapter files
+        # alike, and the per-file lines above already said which is which.
+        print(f"aide {target}: v{installed} is current, but the file(s) above "
+              f"are no longer shipped and --update removes them")
         return 1
     print(f"aide {target}: v{installed} — up to date")
     return 0
@@ -513,7 +583,8 @@ def _skip(path: Path) -> bool:
 
 
 def copy_tree(src: Path, dst: Path, log: List[str],
-              defer_names: Iterable[str] = ()) -> None:
+              defer_names: Iterable[str] = (),
+              written: Optional[List[Path]] = None) -> None:
     """Recursively copy ``src`` into ``dst``, merging into an existing ``dst`` and
     skipping junk / private files. Existing files are overwritten (framework-owned).
 
@@ -521,6 +592,11 @@ def copy_tree(src: Path, dst: Path, log: List[str],
     only, not recursive. It exists for exactly one caller: ``run`` defers
     ``core/VERSION`` so the install's completion mark is written after every
     other step, not as an accident of alphabetical order inside the first one.
+
+    ``written``, when given, collects the destination path of every file this
+    call copied. It is what the adapter manifest is built from — the files the
+    installer actually wrote, rather than a second walk of the source that
+    would have to agree with this one about what gets skipped.
     """
     dst.mkdir(parents=True, exist_ok=True)
     for child in sorted(src.iterdir()):
@@ -528,11 +604,13 @@ def copy_tree(src: Path, dst: Path, log: List[str],
             continue
         target = dst / child.name
         if child.is_dir():
-            copy_tree(child, target, log)
+            copy_tree(child, target, log, written=written)
         else:
             existed = target.exists()
             shutil.copy2(child, target)
             log.append(f"  {'~' if existed else '+'} {target}")
+            if written is not None:
+                written.append(target)
 
 
 def prune_stale(src: Path, dst: Path, log: List[str],
@@ -613,6 +691,160 @@ def copy_file(src: Path, dst: Path, log: List[str]) -> None:
     existed = dst.exists()
     shutil.copy2(src, dst)
     log.append(f"  {'~' if existed else '+'} {dst}")
+
+
+# --------------------------------------------------------------------------- #
+# adapter manifest — retiring .claude/ files the adapter no longer ships
+# --------------------------------------------------------------------------- #
+def read_adapter_manifest(aide_dir: Path) -> List[str]:
+    """The consumer-relative paths the previous install wrote, or ``[]``.
+
+    Absent (a consumer installed before the manifest existed) is not an error:
+    it means nothing but ``RETIRED_ADAPTER_PATHS`` can be retired this time,
+    and the manifest this run writes covers the next one.
+    """
+    path = aide_dir / ADAPTER_MANIFEST
+    if not path.is_file():
+        return []
+    out: List[str] = []
+    for line in path.read_text(encoding=CONSUMER_ENCODING).splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            out.append(line)
+    return out
+
+
+def write_adapter_manifest(aide_dir: Path, adapter: str, paths: Iterable[str],
+                           log: List[str]) -> None:
+    """Write the manifest: header comment, then one path per line, sorted.
+
+    Bytes, not text: ``write_text`` would translate the newlines on Windows,
+    and the file has to read identically on the machine that reads it next,
+    which need not be the one that wrote it.
+    """
+    path = aide_dir / ADAPTER_MANIFEST
+    body = (f"# AIDE adapter manifest — files install.py wrote under "
+            f"{ADAPTER_INSTALL_DIR}/ from the '{adapter}' adapter. Managed by "
+            f"install.py; an --update removes any listed file the adapter no "
+            f"longer ships.\n")
+    body += "".join(f"{rel}\n" for rel in sorted(set(paths)))
+    existed = path.exists()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body.encode("utf-8"))
+    log.append(f"  {'~' if existed else '+'} {path}")
+
+
+def _relative_posix(name: str) -> Optional[PurePosixPath]:
+    """``name`` as a relative, non-climbing POSIX path, or None.
+
+    Shared by the §7 declaration and the adapter manifest: both are paths read
+    from a file and joined onto someone else's repo, so an absolute or a
+    climbing one would have the installer act outside the target. Only ``..``
+    needs an arm — ``PurePosixPath`` normalises ``.`` away before ``.parts``.
+    """
+    posix = PurePosixPath(name.replace("\\", "/"))
+    if (posix.is_absolute() or PureWindowsPath(name).is_absolute()
+            or ".." in posix.parts):
+        return None
+    return posix
+
+
+def _adapter_control_path(rel: str) -> Optional[PurePosixPath]:
+    """``rel`` as a path under ``ADAPTER_INSTALL_DIR/<control dir>/``, or None.
+
+    The manifest is a file in someone else's repo and the bootstrap list is a
+    hand-typed constant; both feed a delete. Anything not strictly inside a
+    control directory — absolute, climbing, a bare ``.claude/settings.json``,
+    the control directory itself — is refused here rather than reasoned about
+    downstream, so the retirement can never reach a file the installer does
+    not own. Against HISTORIC_CONTROL_DIRS, not ADAPTER_CONTROL: a directory
+    a release retires whole has to stay parseable long enough to be emptied.
+    """
+    posix = _relative_posix(rel)
+    if posix is None:
+        return None
+    parts = posix.parts
+    if (len(parts) < 3 or parts[0] != ADAPTER_INSTALL_DIR
+            or parts[1] not in HISTORIC_CONTROL_DIRS):
+        return None
+    return posix
+
+
+def stale_adapter_files(adapter_dir: Path, target: Path,
+                        candidates: Iterable[str]) -> List[Path]:
+    """Which of ``candidates`` exist in the consumer but not in the adapter.
+
+    Pure — reads only. ``candidates`` are consumer-relative paths from the
+    previous manifest and the bootstrap list; a path outside the control
+    directories is ignored, and one the consumer no longer has is not stale,
+    it is done. The result is what ``--check`` reports and exactly what
+    ``retire_adapter_files`` removes, so the preview equals the act.
+    """
+    out: List[Path] = []
+    seen = set()
+    for rel in candidates:
+        posix = _adapter_control_path(rel)
+        if posix is None or posix in seen:
+            continue
+        seen.add(posix)
+        inside = posix.parts[1:]                      # drop the install dir
+        # Still shipped means both: the directory is one the installer copies
+        # AND the source holds the file. A name that left ADAPTER_CONTROL with
+        # its directory still in the source tree is half-retired — copied by
+        # nothing, so the file in the consumer is stale whatever the source
+        # says, and asking the source alone would keep it forever.
+        if posix.parts[1] in ADAPTER_CONTROL and adapter_dir.joinpath(*inside).exists():
+            continue
+        path = target.joinpath(ADAPTER_INSTALL_DIR, *inside)
+        # A symlink is a file here whatever it points at; a directory at a
+        # path the manifest listed as a file is not ours to remove.
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            out.append(path)
+    return sorted(out)
+
+
+def retire_adapter_files(adapter_dir: Path, target: Path, candidates: Iterable[str],
+                         log: List[str]) -> List[Path]:
+    """Delete the stale adapter files; return what went.
+
+    The `.claude/` counterpart of ``prune_stale``, with one difference that is
+    the whole point: a file is a candidate only because the installer wrote it
+    (the manifest) or a release retired it (the bootstrap list), never because
+    it is absent from the source — so a consumer's own agent, skill or rule in
+    the same directory is never touched. A parent directory emptied by a
+    removal goes too, but only below ``.claude/`` and only where the adapter
+    has no directory of that name either, so a skill directory the adapter
+    dropped disappears whole while ``.claude/rules/`` itself stays.
+
+    **Never raises**, for the reason ``prune_stale`` never does: a removal that
+    fails (a Windows file held open, a read-only copy) is logged and stepped
+    over. The failed file is still stale, so the caller carries it into the
+    manifest it writes next and the following ``--update`` tries again.
+    """
+    removed: List[Path] = []
+    claude_dir = target / ADAPTER_INSTALL_DIR
+    for path in stale_adapter_files(adapter_dir, target, candidates):
+        try:
+            path.unlink()
+        except OSError as exc:
+            log.append(f"  ! {path} could not be removed ({exc.strerror}) — "
+                       f"remove it by hand; it is no longer part of the adapter")
+            continue
+        removed.append(path)
+        log.append(f"  - {path}")
+        parent = path.parent
+        while parent != claude_dir and claude_dir in parent.parents:
+            if adapter_dir.joinpath(*parent.relative_to(claude_dir).parts).exists():
+                break
+            try:
+                if any(parent.iterdir()):
+                    break
+                parent.rmdir()
+            except OSError:
+                break
+            log.append(f"  - {parent}/")
+            parent = parent.parent
+    return removed
 
 
 # --------------------------------------------------------------------------- #
@@ -1009,8 +1241,7 @@ def default_context_declaration(adapter_dir: Path) -> Optional[Tuple[str, str]]:
     # nested (`.github/…`) — but it is joined onto someone else's repo, and an
     # absolute or climbing path would have the installer create directories and
     # write files outside the target. Degrade like any other malformed field.
-    posix = PurePosixPath(name.replace("\\", "/"))
-    if posix.is_absolute() or PureWindowsPath(name).is_absolute() or ".." in posix.parts:
+    if _relative_posix(name) is None:
         return None
     return name, syntax.replace("{path}", AGENT_CONTEXT_REL)
 
@@ -1159,15 +1390,23 @@ def run(args: argparse.Namespace) -> int:
 
     version = (core_dir / "VERSION").read_text(encoding="utf-8").strip()
     aide_dir = target / ".aide"
-    claude_dir = target / ".claude"
+    claude_dir = target / ADAPTER_INSTALL_DIR
     log: List[str] = []
+
+    # Every path the previous install wrote under .claude/, plus the paths a
+    # release retired before the manifest existed. Read BEFORE anything is
+    # copied: it is the old tree's account of itself, and the copy below is
+    # what makes it history.
+    retirable = read_adapter_manifest(aide_dir) + list(
+        RETIRED_ADAPTER_PATHS.get(adapter, ()))
 
     if args.check:
         return report_version(version, aide_dir / "VERSION", target,
                               default_context_drift(target, adapter_dir),
                               foreign_context_drift(target, adapter),
                               prune_stale(core_dir, aide_dir, [],
-                                          keep=AIDE_FOREIGN_PATHS, dry_run=True))
+                                          keep=AIDE_FOREIGN_PATHS, dry_run=True),
+                              stale_adapter_files(adapter_dir, target, retirable))
 
     mode = "update" if args.update else "install"
     # The resolved adapter, not args.adapter — the latter is the value that was
@@ -1181,11 +1420,13 @@ def run(args: argparse.Namespace) -> int:
     #    crash left a 1.22.0 engine with a 1.21.0 adapter and a clean --check).
     copy_tree(core_dir, aide_dir, log, defer_names=("VERSION",))
 
-    # 2. adapter control files -> .claude/
+    # 2. adapter control files -> .claude/ — recording what lands, for the
+    #    manifest written in step 8b.
+    written: List[Path] = []
     for name in ADAPTER_CONTROL:
         src = adapter_dir / name
         if src.is_dir():
-            copy_tree(src, claude_dir / name, log)
+            copy_tree(src, claude_dir / name, log, written=written)
 
     # 2b. The adapter's §7 declaration travels with the adapter. It is read here
     #     at install time from the source tree, but the §8 sibling-instruction
@@ -1227,6 +1468,22 @@ def run(args: argparse.Namespace) -> int:
     #    source, so the deferred .aide/VERSION is never a prune candidate.)
     stale = prune_stale(core_dir, aide_dir, log, keep=AIDE_FOREIGN_PATHS)
 
+    # 8a. Retire .claude/ files the previous manifest (or the bootstrap list)
+    #     names and the adapter no longer ships. Same placement as the prune,
+    #     for the same reason: the new adapter is wholly in place first.
+    retired = retire_adapter_files(adapter_dir, target, retirable, log)
+
+    # 8b. The manifest — what step 2 wrote, plus any retirement that failed
+    #     above so the next --update tries it again and --check keeps naming
+    #     it. Written here rather than right after step 2 so a failure in
+    #     steps 3–8 leaves the OLD manifest in place: a manifest describing
+    #     the new tree beside the old VERSION would make the dropped files
+    #     unretirable on the re-run that repairs the install.
+    manifest = [p.relative_to(target).as_posix() for p in written]
+    manifest += [p.relative_to(target).as_posix()
+                 for p in stale_adapter_files(adapter_dir, target, retirable)]
+    write_adapter_manifest(aide_dir, adapter, manifest, log)
+
     # 9. VERSION — LAST of all, the one write that flips --check to "up to
     #    date". Every failure mode above (a permission error, a malformed
     #    overlay, a full disk, an interrupt) now leaves the old version — or,
@@ -1246,6 +1503,13 @@ def run(args: argparse.Namespace) -> int:
             print(f"  - {path}")
         print("If any of those were yours, `.aide/` is framework-owned and "
               "overwritten on every update — keep project files outside it.")
+    if retired:
+        # Not "if any were yours": these paths came from the manifest the
+        # installer wrote or the list a release retired, so none of them was.
+        print(f"\nRemoved {len(retired)} file(s) under {claude_dir} that the "
+              f"'{adapter}' adapter no longer ships:")
+        for path in retired:
+            print(f"  - {path}")
     print(f"\nDone. Installed engine version recorded at {aide_dir / 'VERSION'}.")
     # The engine's own suite ships with every install and no default `pytest`
     # run collects it (.aide/ is a dot-directory; norecursedirs skips `.*`),
