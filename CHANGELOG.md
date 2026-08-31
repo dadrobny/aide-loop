@@ -84,10 +84,11 @@ conventions are being set.
   bodies of the two rules, `user-invocable: false` (hidden from the `/` menu,
   never a command, still preloadable — `disable-model-invocation: true` would
   be silently refused at preload), carrying the same `paths:` the rules had.
-  On a skill, `paths:` injects nothing on a read (measured, #85): it only
-  surfaces the skill's one-line description to an interactive session working
-  on a matching file, so each description is written as a trigger and is the
-  whole of the interactive delivery. The `<!-- reach -->` and `<!-- pins -->`
+  On a skill, `paths:` injects nothing on a read (measured, #85): the skill's
+  one-line description is in an interactive session's listing regardless, and
+  the globs only narrow when the runtime auto-invokes the skill on its own —
+  so each description is written as a trigger and is the whole of the
+  interactive delivery. The `<!-- reach -->` and `<!-- pins -->`
   blocks stay in the skill bodies; a preload strips HTML comments, so they
   cost the loop nothing.
 

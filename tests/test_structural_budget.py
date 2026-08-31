@@ -24,9 +24,10 @@ differently because it *is* different (issue #85):
   false`) is preloaded at spawn into exactly the agent specs whose `skills:`
   frontmatter names it. Its reach is *literal*: the set of specs that list it.
   Its `paths:` inject nothing on a read — measured, #85 — and only surface its
-  description to an interactive session, so the glob evaluation is *printed*
-  for a skill as its interactive trigger, compared against the skill's own
-`<!-- triggers: … -->` line so the evaluator stays under test.
+  description to an interactive session's listing regardless, so the glob
+  evaluation is *printed* for a skill as its interactive trigger and compared
+  against the skill's own `<!-- triggers: … -->` line, which keeps the
+  evaluator under test.
 
 **It asserts on structure and prints the cost.** `assert budget < 150_000` would
 be a spreadsheet wearing a test's clothes: it bakes in a spawn model and a
@@ -550,7 +551,6 @@ def test_the_glob_compiler_reads_a_paths_glob_the_way_the_runtime_does(
     """`_glob_to_regex` is hand-rolled (see its docstring for why), so it is
     pinned directly: `**` spans directories, `*` and `?` never cross `/`."""
     assert bool(_glob_to_regex(glob).match(path)) is matches, (glob, path)
-
 
 
 # --------------------------------------------------------------------------- #
