@@ -105,7 +105,11 @@ Delete the section if the tests alone genuinely demonstrate the behaviour._
 
 ## Dependencies
 
-_Other item numbers this relies on (must be ✅/🚧), and what each provides.
+_Other item numbers this relies on, and what each provides. A queue-mate
+still 📋 is a legitimate entry — `aide claim` simply holds this item until it
+lands — and declaring one is how an item that pins what a sibling produces
+records that order: the cross-spec check reads the declaration and stops
+reporting that sibling's authorised edit as a break of this item's pin.
 Write "None." if there are none. `aide claim` reads this section to decide
 whether the item is blocked, so every "Item NNN" mentioned here (in any of
 the accepted forms — see conventions.md §1) is read as a blocker UNLESS it

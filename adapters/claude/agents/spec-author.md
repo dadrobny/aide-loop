@@ -52,7 +52,9 @@ in **Assumptions** (the builder/validator hand back if reality diverged).
    Acceptance Criteria (one test per AC, no compound and/or); the mandatory
    **Assumptions** block; Implementation Steps (the code path in `source_dir`);
    **Authorised paths**; Testing Strategy (incl. adversarial/edge cases);
-   Dependencies (item numbers, must be ✅/🚧); and a Decisions & Trade-offs
+   Dependencies (item numbers this relies on — a queue-mate still 📋
+   included, which is how an item that pins what a sibling produces records
+   that order); and a Decisions & Trade-offs
    section initialised to "To be updated during implementation." Add the
    optional **Validation** section
    whenever meaningful observation goes beyond the unit suite: the command to

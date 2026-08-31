@@ -67,6 +67,10 @@ def _spec_text(num: int, may=(), asserts=(), deps="None.") -> str:
 #: Item 027 merged (✅ means merged, in every git.mode), 028 still open.
 PROGRESS_27_DONE = PROGRESS.replace("- 📋 A. *(Item 027)*", "- ✅ A. *(Item 027)*")
 
+#: Item 027 deferred — recorded and deliberately not scheduled. It is NOT spent:
+#: its edit is dormant, and `aide claim` steps over it rather than waiting.
+PROGRESS_27_DEFERRED = PROGRESS.replace("- 📋 A. *(Item 027)*", "- ⏸️ A. *(Item 027)*")
+
 
 def _make_repo(tmp_path: Path, specs: dict, queue_items=(27, 28),
                progress: str = PROGRESS) -> Path:
@@ -178,6 +182,151 @@ def test_a_live_recomputed_pin_is_caught_like_a_byte_hash(tmp_path: Path):
     })
     findings, _ = _findings(repo)
     assert any(f.kind == "changes-pinned-state" for f in findings)
+
+
+def test_a_declared_dependency_exempts_the_pinned_state_pair(tmp_path: Path):
+    """The `Validate stage N` shape, reported inert 14 times on one consumer
+    queue: item 028 exists to pin what item 027 produces, and says so under
+    `## Dependencies`. It is built against a tree that already holds 027's
+    edit, so 027 landing cannot break its pin."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, asserts=["src/cli.py"],
+                       deps="Item 027 produces the artifacts this item pins."),
+    })
+    findings, _ = _findings(repo)
+    assert findings == []
+
+
+def test_the_dependency_exemption_is_directional(tmp_path: Path):
+    """027 depending on 028 says 027 is built *last* — so its edit does land
+    after 028's pin, which is the break the check exists to report."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"],
+                       deps="Item 028 provides the schema."),
+        28: _spec_text(28, asserts=["src/cli.py"]),
+    })
+    findings, _ = _findings(repo)
+    assert any(f.kind == "changes-pinned-state" and f.items == (27, 28)
+               for f in findings)
+
+
+def test_a_transitive_dependency_exempts_the_pair(tmp_path: Path):
+    """029 → 028 → 027 orders 027 before 029 just as firmly as a direct edge.
+    Only the far end of the chain is the pair being judged, and a validate item
+    naming one sibling that names the rest is the ordinary way to write it."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, may=["src/b.py"], deps="Item 027 lands first."),
+        29: _spec_text(29, asserts=["src/cli.py"], deps="Item 028 lands first."),
+    }, queue_items=(27, 28, 29))
+    findings, _ = _findings(repo)
+    assert [f.kind for f in findings if f.kind == "changes-pinned-state"] == []
+
+
+def test_an_undeclared_ordering_still_errors_next_to_a_declared_one(tmp_path: Path):
+    """The exemption is per pair, not per item: 029 declares 028 and pins what
+    both it and 027 change, and only the undeclared half is reported. That
+    undeclared ordering is precisely what the check is for."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, may=["src/b.py"]),
+        29: _spec_text(29, asserts=["src/cli.py", "src/b.py"],
+                       deps="Item 028 lands first."),
+    }, queue_items=(27, 28, 29))
+    findings, _ = _findings(repo)
+    hits = [f for f in findings if f.kind == "changes-pinned-state"]
+    assert [f.items for f in hits] == [(27, 29)]
+
+
+def test_a_deferred_dependency_earns_no_exemption(tmp_path: Path):
+    """The exemption rests on the dependency actually holding the dependent
+    back. `aide claim` steps over a ⏸️ blocker, so 028 is claimable today and
+    would pin a tree 027 has not touched — then 027 is undeferred and lands on
+    top of the pin. Declaring the dependency does not make that safe."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, asserts=["src/cli.py"],
+                       deps="Item 027 produces the artifacts this item pins."),
+    }, progress=PROGRESS_27_DEFERRED)
+    findings, _ = _findings(repo)
+    assert any(f.kind == "changes-pinned-state" and f.items == (27, 28)
+               for f in findings)
+
+
+def test_a_chain_through_a_deferred_link_earns_no_exemption(tmp_path: Path):
+    """029 → 028 → 027 orders nothing if the middle link does not hold: 028 is
+    ⏸️, so 029 is claimable before 027 lands. The filter is on the edges, which
+    is what makes the transitive case come out right."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, may=["src/b.py"], deps="Item 027 lands first."),
+        29: _spec_text(29, asserts=["src/cli.py"], deps="Item 028 lands first."),
+    }, queue_items=(27, 28, 29),
+       progress=PROGRESS.replace("- 📋 B. *(Item 028)*", "- ⏸️ B. *(Item 028)*"))
+    findings, _ = _findings(repo)
+    assert any(f.kind == "changes-pinned-state" and f.items == (27, 29)
+               for f in findings)
+
+
+def test_an_in_progress_dependency_still_exempts_the_pair(tmp_path: Path):
+    """🚧 and 🔍 hold a dependent back exactly as 📋 does — the item is not in
+    the base a dependent would branch from — so the ordering stands and the
+    pair stays exempt. The filter is 'does this still block', not 'is this
+    untouched'."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, asserts=["src/cli.py"], deps="Item 027 lands first."),
+    }, progress=PROGRESS.replace("- 📋 A. *(Item 027)*", "- 🚧 A. *(Item 027)*"))
+    findings, _ = _findings(repo)
+    assert [f for f in findings if f.kind == "changes-pinned-state"] == []
+
+
+def test_an_in_flight_pinning_item_keeps_its_exemption(tmp_path: Path):
+    """The asymmetry is deliberate — do not "complete" it. Gating on the
+    PINNING item's status would fire only outside this check's window (spec
+    authoring, where nothing is built yet), and only in a state that already
+    took an out-of-band claim. Meanwhile one deliverable bullet attributes its
+    icon to every item in its trailing marker, so two items sharing a 🚧
+    bullet would lose a legitimate exemption — errors invented on a normal
+    in-flight queue, in exchange for a case `progress.md` cannot distinguish
+    from that artifact."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, asserts=["src/cli.py"], deps="Item 027 lands first."),
+    }, progress=PROGRESS.replace("- 📋 B. *(Item 028)*", "- 🚧 B. *(Item 028)*"))
+    findings, _ = _findings(repo)
+    assert [f for f in findings if f.kind == "changes-pinned-state"] == []
+
+
+def test_the_pinned_state_message_names_the_dependency_remedy(tmp_path: Path):
+    """A reader who hits the error needs the third way out — the two the
+    message used to offer are both wrong for a validate item."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"]),
+        28: _spec_text(28, asserts=["src/cli.py"]),
+    })
+    findings, _ = _findings(repo)
+    hit = next(f for f in findings if f.kind == "changes-pinned-state")
+    assert "## Dependencies" in hit.message
+
+
+def test_a_mutual_dependency_reports_the_cycle_without_hanging(tmp_path: Path):
+    """The exemption walks the same edges the cycle check condemns, so it must
+    survive a graph that has one — deriving the ordering must not hang on the
+    very shape being reported."""
+    repo = _make_repo(tmp_path, {
+        27: _spec_text(27, may=["src/cli.py"], deps="Item 028 lands first."),
+        28: _spec_text(28, asserts=["src/cli.py"], deps="Item 027 lands first."),
+    })
+    findings, _ = _findings(repo)
+    assert any(f.kind == "dependency-cycle" for f in findings)
+
+
+def test_built_after_closes_over_a_chain_and_over_a_cycle():
+    assert aide._built_after({1: [2], 2: [3], 3: []}) == {1: {2, 3}, 2: {3}, 3: set()}
+    # A cycle terminates, and no item is recorded as built after itself.
+    assert aide._built_after({1: [2], 2: [1]}) == {1: {2}, 2: {1}}
 
 
 def test_pinning_a_path_nobody_changes_is_fine(tmp_path: Path):
