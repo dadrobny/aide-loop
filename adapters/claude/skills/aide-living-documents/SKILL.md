@@ -17,11 +17,19 @@ paths:
      roles that write a living document. As a `paths:` rule it armed on
      every spawn (29 and 24 arms in two measured sessions, issue #85),
      because reading an item spec matches the same globs as writing one; the
-     `paths:` above inject nothing on a read and only surface the description
-     to an interactive session working on a matching file. The four roles
-     that read these documents without writing one are deliberately not
-     listed. `tests/test_structural_budget.py` compares this line to the
-     `skills:` lists. -->
+     `paths:` above inject nothing on a read (issue #85, measured): the
+     description sits in every interactive session's skill listing regardless,
+     and the globs only narrow when the runtime auto-invokes the skill on its
+     own. The four roles that write none of the shape-parsed documents are
+     deliberately not listed — the one line they do append, the insight entry,
+     has its shape on the floor in `AGENT-CONTEXT.md`. `tests/test_structural_budget.py` compares this line to the `skills:`
+     lists. -->
+
+<!-- triggers: all
+     The interactive half, declared so the glob evaluator stays on an
+     assertion path: the roles whose named reads match the `paths:` above —
+     what a rule with these globs would arm, and what the loop no longer
+     pays. Every role names an item spec or `insights.md`, so: all. -->
 
 <!-- pins: .aide/conventions/1-format-contract/status-icons.md
      Quoted from that section; `test_rule_pins.py` fails if either copy moves
@@ -72,9 +80,11 @@ already in this context.
 
 It is preloaded into the two roles that write a living document —
 `spec-author` and `queue-planner` — so it is in context before the first
-write, and it is listed by name to an interactive session working on one of
-these files. The listing is matched by document name rather than by
-`project.docs_dir`, so it holds whatever a consumer configured.
+write, and an interactive session
+sees its description in the skill listing, with the `paths:` above keeping the
+runtime's own invocation of it to work on one of these files. The globs match
+by document name rather than by `project.docs_dir`, so they hold whatever a
+consumer configured.
 
 **The six status icons, and nothing else:** 📋 Planned · 🚧 In Progress ·
 🔍 In Review · ✅ Complete · ⏸️ Deferred · ❌ Excluded. They are read at

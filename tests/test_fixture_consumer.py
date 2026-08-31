@@ -65,12 +65,21 @@ def _frontmatter(path: Path):
     return None if end == -1 else text[4:end]
 
 
-#: The skills that deliver a contract section — `user-invocable: false` in
-#: the source tree — so the checks below are on whatever is a section skill
-#: today rather than on a list that goes stale.
+def _is_section_skill(path: Path) -> bool:
+    """The same two signals `adapters/claude/tests/test_rules.py` and
+    `tests/test_structural_budget.py` recognise — `user-invocable: false`, or
+    a `<!-- pins:` block; either is enough. One signal here and two there
+    would let a skill that lost one key drop out of these checks silently."""
+    hidden = "user-invocable: false" in (_frontmatter(path) or "")
+    return hidden or "<!-- pins:" in path.read_bytes().decode("utf-8-sig")
+
+
+#: The skills that deliver a contract section, recognised structurally so the
+#: checks below are on whatever is a section skill today rather than on a
+#: list that goes stale.
 SOURCE_SECTION_SKILLS = [
     p for p in sorted((FRAMEWORK_ROOT / "adapters" / "claude" / "skills").glob("*/SKILL.md"))
-    if "user-invocable: false" in (_frontmatter(p) or "")]
+    if _is_section_skill(p)]
 
 #: The two `paths:`-scoped rules 1.22.0–1.26.0 shipped and 1.27.0 retired in
 #: favour of the section skills above (issue #85). Every consumer installed

@@ -36,9 +36,8 @@ keys, and the adapter's agents/skills/commands.
   never a candidate. Consumers installed before this release have no manifest;
   `RETIRED_ADAPTER_PATHS` in `install.py` lists, per adapter, the paths earlier
   releases shipped and later dropped, and is consulted alongside the manifest
-  so those consumers catch up on their first `--update`. It is empty in this
-  release; the carrier swap that retires the two `paths:`-scoped rules
-  populates it. Manifest lines are validated against `HISTORIC_CONTROL_DIRS`
+  so those consumers catch up on their first `--update`. 1.27.0 populates it with the two
+  `paths:`-scoped rules the carrier swap retired. Manifest lines are validated against `HISTORIC_CONTROL_DIRS`
   — every control directory the installer has ever written — so a
   directory retired whole is still emptied file by file rather than left
   armed because its name is no longer in `ADAPTER_CONTROL`. The manifest is written after the retirement and before

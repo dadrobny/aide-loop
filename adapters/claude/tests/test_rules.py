@@ -9,9 +9,10 @@ and it has two carriers here. An unscoped **rule** loads into every context.
 A **section skill** (`user-invocable: false`, carrying `<!-- pins: … -->`) is
 preloaded into exactly the agent specs whose `skills:` frontmatter names it —
 at spawn, before the role has opened anything. Its `paths:` do not inject
-anything on a read (issue #85, measured); they only surface its one-line
-description to an interactive session working on a matching file, which is
-why the description is written as a trigger.
+anything on a read (issue #85, measured): the one-line description is in an
+interactive session's listing regardless, and the globs only narrow when the
+runtime auto-invokes the skill on its own — which is why the description is
+written as a trigger.
 
 These tests pin the parts a commit can silently break: that the files ship at
 all, that their frontmatter is well-formed — a skill that loses `name:` cannot
@@ -170,8 +171,9 @@ def test_a_section_skill_still_parses_as_a_scoped_skill(path: Path):
     block, _ = _split(path)
     assert block is not None, f"{_label(path)}: frontmatter does not parse"
     assert "paths:" in block, (
-        f"{_label(path)}: lost its `paths:` — the interactive trigger, and the "
-        f"only channel by which a human's session ever sees this section")
+        f"{_label(path)}: lost its `paths:` — without them the runtime may "
+        f"auto-invoke this section for any work at all; the globs keep it to "
+        f"matching files (the listing shows the description regardless)")
 
 
 @pytest.mark.parametrize("path", _DELIVERED, ids=_label)
@@ -196,8 +198,15 @@ def test_a_rules_frontmatter_declares_only_paths_and_declares_it_well(path: Path
     typo'd `path:` silently turns a scoped rule into one that loads in every
     context, which is the opposite of the intent and costs on every spawn.
     """
-    block, _ = _split(path)
+    block, body = _split(path)
     if block is None:
+        # The unscoped case — today the only shipped rule. Nothing about
+        # `paths:` to check, so assert what an unscoped rule must be instead:
+        # it opens with its reach declaration, the one thing that says it is
+        # unscoped on purpose rather than a scoped rule that lost its block.
+        assert body.lstrip().startswith("<!-- reach:"), (
+            f"{path.name}: no frontmatter and no leading `<!-- reach:` — an "
+            f"unscoped rule declares it is unscoped on purpose")
         return
     keys = _keys(block)
     assert keys == ["paths"], f"{path.name}: unexpected frontmatter keys {keys}"

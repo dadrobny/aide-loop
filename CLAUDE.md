@@ -54,8 +54,9 @@ and every sub-agent) and the **section skills** in `adapters/claude/skills/`
 (`aide-living-documents`, `aide-test-hygiene`): `user-invocable: false`, never
 a command, preloaded at spawn into exactly the agent specs whose `skills:`
 frontmatter names them. A `paths:` block on a skill injects nothing on a read —
-it only surfaces the skill's description to an interactive session — so the
-loop's delivery is the preload alone, and there is deliberately no
+the description is in an interactive session's listing regardless, and the
+globs only narrow when the runtime auto-invokes it — so the loop's delivery is
+the preload alone, and there is deliberately no
 `paths:`-scoped rule left (one fires inside sub-agents too; issue #85 has the
 numbers). Three obligations, pinned by
 [`adapters/claude/tests/test_rules.py`](adapters/claude/tests/test_rules.py)
@@ -75,7 +76,8 @@ comma-separated list.
 the adapter and fails when the declaration and the carrier disagree: for a
 rule, its `paths:` globs evaluated against each role's read-set derived from
 the agent specs; for a section skill, **literally** the set of specs whose
-`skills:` list it. **Changing a rule's globs or a spec's `skills:` changes a
+`skills:` list it, plus a `<!-- triggers: … -->` line naming the roles whose
+reads match its `paths:` (the interactive half, kept under test). **Changing a rule's globs or a spec's `skills:` changes a
 reach**, so update the declaration in the same commit. That module also pins
 the always-on floor (`AGENT-CONTEXT.md` plus every unscoped rule; a section
 skill is not part of it) byte-for-byte — it fails in both directions on

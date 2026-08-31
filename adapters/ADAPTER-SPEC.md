@@ -301,10 +301,11 @@ unscoped file for §3, loaded into every session and every sub-agent — and
 with `user-invocable: false`, preloaded at spawn into exactly the agent specs
 whose `skills:` frontmatter names it (§6 into `test-writer`; the §1 document
 shapes into `spec-author` and `queue-planner`). The same skill files carry
-`paths:`, which on a skill injects nothing on a read: it only surfaces the
-skill's one-line description to an interactive session working on a matching
-file, so that description is written as a trigger and is the whole of what a
-human's session receives beyond the floor. No file-scoped rule remains — one
+`paths:`, which on a skill injects nothing on a read: the skill's one-line
+description is in every interactive session's listing regardless, and the
+globs only narrow when the runtime auto-invokes the skill on its own — so that
+description is written as a trigger and is the whole of what a human's session
+receives beyond the floor. No file-scoped rule remains — one
 would fire inside sub-agent contexts too and re-pay what the preload saves.
 A runtime with no such channel keeps pointing at the section — the same
 graceful degradation as above, now with an honest account of what it costs.

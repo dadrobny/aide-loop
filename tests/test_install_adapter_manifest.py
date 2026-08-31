@@ -381,9 +381,18 @@ def test_a_control_directory_retired_whole_is_still_retired_file_by_file(
     it failed to parse: `--check` exited 0 "up to date" over three rules still
     armed in every session, `--update` left them in place, and the manifest
     rebuilt at step 8b no longer listed them — so re-adding the name later
-    recovered nothing. The historic set is what keeps them parseable."""
+    recovered nothing. The historic set is what keeps them parseable.
+
+    "File by file" needs more than one file. Since 1.27.0 the adapter ships
+    a single rule (the two scoped ones became section skills), so a second
+    one is planted the way an earlier release would have left it: on disk
+    and in the manifest."""
     target = tmp_path / "consumer"
     _install(target)                                   # this release ships rules/
+    planted = target / ".claude" / "rules" / "aide-second-rule-by-test.md"
+    planted.write_text("# a rule an earlier release shipped\n", encoding="utf-8")
+    _manifest(target).write_bytes(_manifest(target).read_bytes()
+                                  + b".claude/rules/aide-second-rule-by-test.md\n")
     rules = sorted((target / ".claude" / "rules").glob("*.md"))
     assert len(rules) >= 2, "nothing installed under rules/; the rest proves nothing"
     _release_that_dropped_rules_whole(tmp_path, monkeypatch)

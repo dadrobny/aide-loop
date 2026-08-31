@@ -202,7 +202,7 @@ no restatement is carried twice:
 |---|---|---|
 | **Floor** | `CLAUDE.md` → `@.aide/AGENT-CONTEXT.md`, plus the one unscoped rule `rules/aide-command-hygiene.md` (`conventions.md` §3, in positive form) | every context — the human's session and every sub-agent |
 | **Role sections** | `skills/aide-living-documents/SKILL.md` (the §1 document shapes) and `skills/aide-test-hygiene/SKILL.md` (§6): `user-invocable: false`, named in an agent spec's `skills:` frontmatter | exactly the roles that list them — `aide-living-documents` → `spec-author`, `queue-planner`; `aide-test-hygiene` → `test-writer` |
-| **Interactive** | the same skill files carry `paths:` (the globs the rules had) | the human's session: *surfaced* in the skill listing on a matching file and invoked by the runtime's own judgement — not delivered |
+| **Interactive** | the same skill files carry `paths:` (the globs the rules had) | the human's session: the description is in the skill listing regardless, the globs narrow when the runtime auto-invokes it on its own — surfaced, not delivered |
 
 **Why skills and not `paths:` rules — measured, issue #85.** A `paths:` *rule*
 injects its body on a matching read, and does so inside sub-agent contexts too:
@@ -270,14 +270,18 @@ goes on the lines below it inside the same comment.
 installs the adapter and fails when the declaration and the carrier disagree.
 For a rule, the carrier is its globs, evaluated against each role's read-set
 derived from the delivered agent specs. For a section skill reach is
-**literal** — the specs whose `skills:` list it — and the glob evaluation is
-printed beside it as the *interactive trigger*, never asserted. The same module
+**literal** — the specs whose `skills:` list it — and its globs are
+compared against a second declaration, `<!-- triggers: … -->` — the roles
+whose named reads match them, which is what a rule would have armed and what
+the listing keys on in a human's session. The same module
 pins the **always-on floor** (`AGENT-CONTEXT.md` plus every unscoped rule) per
 file, so the constant term every spawn pays cannot move without a deliberate
 edit — a section skill is not part of it — and prints the per-role byte table
 (floor + spec + preloaded skills) as diagnostics. The declaration is a comment
 rather than a frontmatter key on purpose: it carries no runtime meaning, and a
-preload strips it, so it costs the loop nothing.
+preload strips it, so it costs the loop nothing (measured, with its caveats,
+in issue #85's comment "Measurement — what a skill body carries into
+context"; an *invoked* skill keeps its comments, a preloaded one does not).
 
 **Every delivered file quotes the statements it delivers**, in one
 `<!-- pins: … -->` block per section it draws from — and this one is *not* a

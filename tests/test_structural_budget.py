@@ -25,7 +25,8 @@ differently because it *is* different (issue #85):
   frontmatter names it. Its reach is *literal*: the set of specs that list it.
   Its `paths:` inject nothing on a read — measured, #85 — and only surface its
   description to an interactive session, so the glob evaluation is *printed*
-  for a skill as its interactive trigger, and never asserted.
+  for a skill as its interactive trigger, compared against the skill's own
+`<!-- triggers: … -->` line so the evaluator stays under test.
 
 **It asserts on structure and prints the cost.** `assert budget < 150_000` would
 be a spreadsheet wearing a test's clothes: it bakes in a spawn model and a
@@ -186,7 +187,12 @@ def _preload_size(path: Path) -> int:
 
     The runtime injects a preloaded skill without its frontmatter and with
     its comments removed, so the `<!-- reach -->` and `<!-- pins -->` blocks
-    cost the loop nothing. This is the number a role actually pays.
+    cost the loop nothing. This is the number a role actually pays. Measured,
+    not assumed — one run per path, model self-report, recorded with its
+    caveats in issue #85's comment "Measurement — what a skill body carries
+    into context"; an invoked skill keeps its comments, a preloaded one does
+    not. If that ever proves wrong, the comments move to frontmatter
+    `metadata:` and this function measures the whole body.
     """
     text = _text(path)
     if text.startswith("---\n"):
@@ -220,17 +226,23 @@ def _label(path: Path) -> str:
 #: lines below it inside the same comment and is ignored — the declaration is
 #: meant to be one glanceable line, and the reasoning is meant to be long.
 _REACH = re.compile(r"<!--\s*reach:[ \t]*(?P<roles>[^\n]*)")
+#: `<!-- triggers: … -->` — a section skill's second declaration: the roles
+#: whose named reads match its `paths:`. What the listing keys on in a human's
+#: session, and what a rule with those globs would have armed. Declared so
+#: the glob evaluator below is compared against something, not only printed.
+_TRIGGERS = re.compile(r"<!--\s*triggers:[ \t]*(?P<roles>[^\n]*)")
 
 
-def _declared_reach(path: Path, roles) -> set:
+def _declared_reach(path: Path, roles, pattern=_REACH, what: str = "reach") -> set:
     """The roles a delivered file says it expects to reach, as a set.
 
     ``all`` is the shorthand for every role — spelling six names out in a file
-    that means "everyone" invites one of them to go stale on a rename.
+    that means "everyone" invites one of them to go stale on a rename. The
+    same grammar reads a skill's `<!-- triggers: … -->` line when asked.
     """
-    match = _REACH.search(_text(path))
+    match = pattern.search(_text(path))
     assert match, (
-        f"{_label(path)}: no `<!-- reach: … -->` declaration. Every delivered "
+        f"{_label(path)}: no `<!-- {what}: … -->` declaration. Every delivered "
         f"file states the roles it expects to reach, so that a change of scope "
         f"has something to contradict; see this module's docstring.")
     raw = match.group("roles").strip()
@@ -493,6 +505,54 @@ def test_a_section_skills_declared_reach_is_the_set_of_roles_that_preload_it(
         for name, (declared, actual) in sorted(wrong.items()))
 
 
+def test_a_section_skills_declared_triggers_match_the_roles_its_globs_would_arm(
+        section_skills: list, read_sets: dict):
+    """The interactive half, asserted rather than only printed.
+
+    With no scoped rule left, the glob evaluator would otherwise be reached
+    only by the printed table — the #112 review mutated `_glob_to_regex` into
+    a pattern that matches nothing and the module stayed green. A skill's
+    `<!-- triggers: … -->` line declares which roles' named reads match its
+    `paths:` (what a rule with those globs would have armed, and what the
+    listing keys on in a human's session); this compares it to the evaluator
+    so a widened glob, a narrowed one, or a broken evaluator has something to
+    contradict.
+    """
+    wrong = {}
+    for skill in section_skills:
+        declared = _declared_reach(skill, read_sets, _TRIGGERS, "triggers")
+        actual = _arming_roles(skill, read_sets)
+        if declared != actual:
+            wrong[_label(skill)] = (sorted(declared), sorted(actual))
+    assert not wrong, "\n".join(
+        f"{name}: triggers declare {declared}, globs match {actual}"
+        for name, (declared, actual) in sorted(wrong.items()))
+
+
+@pytest.mark.parametrize("glob, path, matches", [
+    ("**/tests/**/*.py", "a/tests/b/c.py", True),
+    ("**/tests/**/*.py", "tests/c.py", True),
+    ("**/tests/**/*.py", "a/b.py", False),
+    ("**/test_*.py", "tests/test_x.py", True),
+    ("**/test_*.py", "tests/sub/test_x.py", True),
+    ("**/test_*.py", "tests/x_test.py", False),
+    ("**/x.md", "x.md", True),
+    ("**/x.md", "d/e/x.md", True),
+    ("**/items/*.md", "docs/aide/items/001-x.md", True),
+    ("**/items/*.md", "docs/aide/items/sub/001-x.md", False),   # `*` never crosses `/`
+    ("src/*.py", "src/a/b.py", False),
+    ("src/*.py", "src/b.py", True),
+    ("a?c.md", "abc.md", True),
+    ("a?c.md", "a/c.md", False),
+])
+def test_the_glob_compiler_reads_a_paths_glob_the_way_the_runtime_does(
+        glob: str, path: str, matches: bool):
+    """`_glob_to_regex` is hand-rolled (see its docstring for why), so it is
+    pinned directly: `**` spans directories, `*` and `?` never cross `/`."""
+    assert bool(_glob_to_regex(glob).match(path)) is matches, (glob, path)
+
+
+
 # --------------------------------------------------------------------------- #
 # 2. frontmatter that stopped parsing fails loudly, the way its carrier fails
 # --------------------------------------------------------------------------- #
@@ -701,7 +761,9 @@ def test_the_arming_table_is_printed(
     a preload injects — body only, comments stripped — and its glob
     evaluation is printed beside it as the *interactive trigger*: the roles
     whose named reads would match if this were a rule, which is what the
-    listing keys on in a human's session and what the loop never pays.
+    listing keys on in a human's session and what the loop never pays
+    (asserted against the skill's `<!-- triggers -->` line above; printed
+    here so the two halves sit side by side).
 
     **This one is honestly a printer**, and says so rather than dressing up.
     It once carried two assertions — that every rule appeared in the arming
