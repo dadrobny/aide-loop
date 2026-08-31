@@ -469,6 +469,13 @@ def test_a_directory_gone_from_the_tuple_but_not_the_source_is_still_retired(
     whatever the source tree still holds."""
     target = tmp_path / "consumer"
     _install(target)
+    # Since 1.27.0 the adapter ships one rule; a second is planted the way an
+    # earlier release would have left it — on disk and in the manifest — so
+    # "file by file" has two files to prove itself on.
+    planted = target / ".claude" / "rules" / "aide-second-rule-by-test.md"
+    planted.write_text("# a rule an earlier release shipped\n", encoding="utf-8")
+    _manifest(target).write_bytes(_manifest(target).read_bytes()
+                                  + b".claude/rules/aide-second-rule-by-test.md\n")
     rules = sorted((target / ".claude" / "rules").glob("*.md"))
     assert len(rules) >= 2, "nothing installed under rules/; the rest proves nothing"
     root = _framework_that_also_ships(tmp_path, monkeypatch, {})

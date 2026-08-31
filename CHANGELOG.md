@@ -102,8 +102,8 @@ conventions are being set.
   neither: they read the documents and tests without writing them, and
   `validator` keeps the one line about §6 it needs. Per spawn, structurally
   (content bytes, `tests/test_structural_budget.py`): builder 16,563 → 12,304,
-  queue-planner 18,762 → 16,998, spec-author 18,143 → 16,379, spec-reviewer
-  20,051 → 15,792, test-writer 19,961 → 14,429, validator 20,325 → 16,066.
+  queue-planner 18,762 → 17,080, spec-author 18,143 → 16,461, spec-reviewer
+  20,051 → 15,792, test-writer 19,961 → 14,511, validator 20,325 → 16,066.
   **The always-on floor is unmoved** at 7,532 content bytes; `FLOOR_PIN` stays
   at 1.25.4.
 - **`ADAPTER-SPEC.md` §7 gains the channel guidance**, in runtime-general
