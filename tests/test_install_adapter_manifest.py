@@ -356,10 +356,22 @@ def test_every_bootstrap_entry_is_a_control_path_the_adapter_no_longer_ships():
 # --------------------------------------------------------------------------- #
 # a control directory retired whole — still retired, file by file
 # --------------------------------------------------------------------------- #
-def test_the_historic_control_set_contains_the_live_one():
+#: Every control directory name the installer has EVER shipped. Append-only
+#: history, frozen here rather than derived: it grows only when a name is
+#: retired, and never shrinks — a name deleted from `ADAPTER_CONTROL` without
+#: entering the retired half of `HISTORIC_CONTROL_DIRS` is caught by it,
+#: where `set(ADAPTER_CONTROL) <= set(HISTORIC_CONTROL_DIRS)` alone would
+#: stay true (the historic set is built from the live tuple).
+EVER_SHIPPED_CONTROL_DIRS = frozenset(
+    {"agents", "commands", "hooks", "rules", "scripts", "skills"})
+
+
+def test_the_historic_control_set_holds_every_name_ever_shipped():
     """A name that leaves `ADAPTER_CONTROL` without entering the historic
-    set makes every recorded path under it unparseable — see the test below
-    for what that costs."""
+    set makes every recorded path under it unparseable — see the tests below
+    for what that costs. The literal is what makes this fail: it is the one
+    record of the names that does not move when the tuple does."""
+    assert set(install.HISTORIC_CONTROL_DIRS) >= EVER_SHIPPED_CONTROL_DIRS
     assert set(install.ADAPTER_CONTROL) <= set(install.HISTORIC_CONTROL_DIRS)
 
 
@@ -436,6 +448,39 @@ def test_a_retired_directorys_files_stay_recorded_until_they_are_gone(
     assert install.main(["--into", str(target), "--update"]) == 0
     assert not stuck.exists()
     assert ".claude/rules/aide-command-hygiene.md" not in _manifest_lines(target)
+
+
+def test_a_directory_gone_from_the_tuple_but_not_the_source_is_still_retired(
+        tmp_path: Path, monkeypatch, capsys):
+    """Half-retired: the name left `ADAPTER_CONTROL` while
+    `adapters/claude/rules/` still sat in the source tree. Asking the source
+    alone — "does the adapter still hold this path?" — said yes to every
+    file, so `--check` exited 0, `--update` kept the files, and the manifest
+    lines were dropped while the files existed. Copied by nothing is retired,
+    whatever the source tree still holds."""
+    target = tmp_path / "consumer"
+    _install(target)
+    rules = sorted((target / ".claude" / "rules").glob("*.md"))
+    assert len(rules) >= 2, "nothing installed under rules/; the rest proves nothing"
+    root = _framework_that_also_ships(tmp_path, monkeypatch, {})
+    assert (root / "adapters" / "claude" / "rules").is_dir()   # left behind
+    shrunk = tuple(n for n in install.ADAPTER_CONTROL if n != "rules")
+    monkeypatch.setattr(install, "ADAPTER_CONTROL", shrunk)
+    monkeypatch.setattr(install, "HISTORIC_CONTROL_DIRS", shrunk + ("rules",))
+    capsys.readouterr()
+
+    assert install.main(["--into", str(target), "--check"]) == 1
+    out = capsys.readouterr().out
+    for rule in rules:
+        assert rule.name in out, f"{rule.name}: --check said nothing"
+        assert rule.is_file(), "--check must never write"
+
+    assert install.main(["--into", str(target), "--update"]) == 0
+
+    for rule in rules:
+        assert not rule.exists(), f"{rule.name} survived a half-retired rules/"
+    assert not any(line.startswith(".claude/rules/") for line in _manifest_lines(target))
+    assert install.main(["--into", str(target), "--check"]) == 0
 
 
 def test_a_bootstrap_entry_under_a_retired_directory_is_accepted():
