@@ -11,7 +11,8 @@ Three things it reports, in order of what they cost to get wrong:
    matching is silently inert — the file is still there, still correct, and
    reaches nobody. This is the failure the whole mechanism exists to avoid, so
    it is reported first and it is the only one that sets a non-zero exit under
-   ``--strict``. ``--strict`` is for a log you know covers work the rule should
+   ``--strict`` — an empty or missing log included, since nothing loaded there
+   either. ``--strict`` is for a log you know covers work the rule should
    have matched; over a log of sessions that touched nothing relevant, a silent
    rule is the correct outcome, not a fault.
 2. **Load reason per file**, since `session_start` and `path_glob_match` mean
@@ -21,9 +22,9 @@ Three things it reports, in order of what they cost to get wrong:
    expected — an over-broad glob — shows up.
 
 What it deliberately does **not** claim: a file absent from the log was not
-necessarily unread. Nothing loads on a `Read`, so an agent that opened a
-conventions section by hand leaves no trace here. This measures delivery, not
-reading.
+necessarily unread. A `Read` is never logged as a load, so an agent that
+opened a conventions section by hand leaves no trace here. This measures
+delivery, not reading.
 
 Nor does it see a **preloaded section skill** (`.claude/skills/aide-*/SKILL.md`
 named in an agent's `skills:` frontmatter). A preload is not an instruction
@@ -33,6 +34,22 @@ sum, printed by `tests/test_structural_budget.py` in the framework repo. Only
 files actually in `.claude/rules/` are ever reported silent here; a rule the
 framework has retired is removed from that directory by `install.py --update`
 and is not a fault.
+
+``--strict`` stays a human-invoked check, never a CI gate. The log has no
+notion of which sessions *should* have armed a rule: a consumer's own
+``paths:``-scoped rule beside the framework's is legitimately silent over
+sessions that read nothing it matches, and a gate that fails on that teaches
+the reader to ignore it. Reach is asserted structurally instead, in the
+framework repo's ``tests/test_structural_budget.py``.
+
+``--rotate`` archives the current log into ``log.reviewed.jsonl`` beside it
+(``--reviewed`` to put it elsewhere) and truncates the live one, the way
+``review_permissions.py --rotate`` does. Beside the *reviewed* log, not the
+default one: rotating a log from another checkout must not mix its records
+into this project's archive. A
+log that only grows makes "never loaded" progressively less meaningful — it
+averages over sessions from before a glob was last changed — so a review ends
+with a rotation, and the next one starts from the sessions since.
 
 Everything below the ``main`` boundary is a pure function so it can be unit
 tested (see ``.claude/tests/test_instructions_loaded.py`` in this repo's
@@ -45,17 +62,25 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+# The log and its archive live in a consumer repo and may be opened in a
+# Windows editor, which prepends a BOM; `utf-8-sig` reads one transparently
+# and reads plain UTF-8 unchanged (the same choice review_permissions.py makes).
+_ENCODING = "utf-8-sig"
+
 # .claude/scripts/review_instructions.py -> parents[2] is the project root.
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_LOG = _PROJECT_ROOT / "docs" / "aide" / "instructions" / "log.jsonl"
+DEFAULT_REVIEWED = _PROJECT_ROOT / "docs" / "aide" / "instructions" / "log.reviewed.jsonl"
 RULES_DIR = _PROJECT_ROOT / ".claude" / "rules"
 
 EMPTY_HINT = (
-    "The log is empty. Before reading that as 'nothing loads', check the two\n"
+    "The log is empty. Before reading that as 'nothing loads', check the three\n"
     "causes that produce an empty log with a perfectly healthy setup:\n"
     "  1. The project folder is not trusted, which silently disables every hook\n"
     "     in .claude/settings.json -- including the one that writes this log.\n"
     "  2. No session has run since the hook was installed.\n"
+    "  3. The log was rotated by a review (--rotate) and no session has run\n"
+    "     since; the reviewed records are in log.reviewed.jsonl beside it.\n"
 )
 
 
@@ -70,7 +95,7 @@ def load_records(log_path):
     if not path.is_file():
         return []
     records = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding=_ENCODING).splitlines():
         line = line.strip()
         if not line:
             continue
@@ -184,6 +209,29 @@ def render(records, rules_dir=None):
     return lines
 
 
+def rotate_log(log_path, reviewed_path):
+    """Move every line of ``log_path`` into ``reviewed_path`` and truncate the log.
+
+    Returns the number of non-blank lines rotated. Lines are moved verbatim —
+    a malformed one is archived, not dropped, since the archive is the record
+    of what the hook wrote. Both files stay gitignored (per-machine). A
+    missing log is a no-op returning 0; an empty one is normalised to empty.
+    """
+    log = Path(log_path)
+    if not log.exists():
+        return 0
+    lines = [ln for ln in log.read_text(encoding=_ENCODING).splitlines() if ln.strip()]
+    if not lines:
+        log.write_text("", encoding="utf-8")
+        return 0
+    reviewed = Path(reviewed_path)
+    reviewed.parent.mkdir(parents=True, exist_ok=True)
+    with reviewed.open("a", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    log.write_text("", encoding="utf-8")
+    return len(lines)
+
+
 def _median(values):
     if not values:
         return 0
@@ -198,13 +246,34 @@ def main(argv=None):
     parser.add_argument("log", nargs="?", default=str(DEFAULT_LOG),
                         help=f"path to the JSONL log (default: {DEFAULT_LOG})")
     parser.add_argument("--strict", action="store_true",
-                        help="exit 1 if any shipped rule never loaded")
+                        help="exit 1 if any shipped rule never loaded, an empty or "
+                             "missing log included (a human-invoked check over a log "
+                             "known to cover the rule's work; never a CI gate)")
+    parser.add_argument("--reviewed", default=None,
+                        help="where --rotate archives the log (default: "
+                             "log.reviewed.jsonl beside the log being rotated, i.e. "
+                             f"{DEFAULT_REVIEWED} for the default log)")
+    parser.add_argument("--rotate", action="store_true",
+                        help="archive the current log to the reviewed file and truncate "
+                             "it, so the next review starts from the sessions since")
     args = parser.parse_args(argv)
 
+    if args.rotate:
+        reviewed = args.reviewed or Path(args.log).with_name(DEFAULT_REVIEWED.name)
+        moved = rotate_log(args.log, reviewed)
+        print(f"Rotated {moved} record(s) from {args.log} to {reviewed}.")
+        return 0
+
+    if not Path(args.log).is_file():
+        # A mistyped path must not read as a clean, empty log: the hint below
+        # explains an empty file, and a missing one is a different fact.
+        print(f"{args.log}: no such file.\n")
     records = load_records(args.log)
     if not records:
         print(EMPTY_HINT)
-        return 0
+        # Nothing loaded, so every shipped rule is silent: --strict says so
+        # rather than passing the one log it can say nothing about.
+        return 1 if args.strict and shipped_rules() else 0
 
     print("\n".join(render(records)))
     if args.strict and silent_rules(records):

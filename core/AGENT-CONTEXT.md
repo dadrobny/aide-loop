@@ -41,8 +41,9 @@ nothing at all. What follows it is the engine version the observation was made
 under — one read of `.aide/VERSION`, and the date cannot stand in for it.
 
 A captured claim is **immutable**: never reworded, reordered or deleted, not even
-when it turns out to be wrong. Ticking its checkbox is the one in-place edit;
-anything that happens to it afterwards goes in dated lines indented beneath it.
+when it turns out to be wrong. Ticking its checkbox is the one in-place edit, and
+`aide insights tick N --pointer` owns it; anything that happens to it afterwards
+goes in dated lines indented beneath it.
 
 ## Status lives in one place — §1 → `progress.md`
 

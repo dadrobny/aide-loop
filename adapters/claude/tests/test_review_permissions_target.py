@@ -170,3 +170,15 @@ def test_json_output_falls_back_to_settings_json(tmp_path, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["promotion_target"]["location"] == "permissions.allow"
     assert payload["promotion_target"]["path"] == str(settings)
+
+
+def test_the_command_rotates_the_log_it_reviewed():
+    """Step 5 of `/aide-review-permissions` once ran `--rotate` with no log
+    argument, so a review of a log named by argument truncated the DEFAULT
+    log — records nobody had read. The rotate step must say the same `--log`
+    goes with it; the sibling `/aide-review-instructions` pins the same rule."""
+    command = (FRAMEWORK_ROOT / "adapters" / "claude" / "commands"
+               / "aide-review-permissions.md").read_text(encoding="utf-8")
+    rotate_at = command.index("--rotate")
+    after = command[rotate_at:rotate_at + 400]
+    assert "--log" in after, "the rotate step names no --log for a reviewed argument"

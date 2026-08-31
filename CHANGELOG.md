@@ -62,6 +62,83 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.28.0] — 2026-08-31
+
+The instruction-load report gets an entry point (issue #82), and the delivered
+context names the verbs that own the insight inbox (issue #95, shape 2 —
+closes it).
+
+### Added
+
+- **`/aide-review-instructions`** (`.claude/commands/aide-review-instructions.md`),
+  mirroring `/aide-review-permissions`: run
+  `.claude/scripts/review_instructions.py`, judge each silent rule on what it
+  is — a framework rule is unscoped and loads in every context, so silent over
+  a non-empty log means the hook or the trust flag; a project's own `paths:`
+  rule is silent whenever no logged session read a matching file, so confirm
+  its globs; a retired rule is not a fault — say what the report cannot say
+  (it measures delivery, not reading, and never sees a preloaded section
+  skill, whose reach is structural), and rotate the log. #79 shipped the
+  instrument with no way to invoke it: a Python file in `.claude/scripts/`
+  nobody was told about, which left a silently inert rule exactly as
+  invisible as before. `/aide-feedback-loop` step 4 now runs it at the queue
+  boundary beside the permission review, and `/aide-run-queue`'s hand-off
+  names it.
+- **`review_instructions.py --rotate [--reviewed PATH]`** archives the current
+  log into `log.reviewed.jsonl` beside it — `docs/aide/instructions/` for the
+  default log, under the same managed `.gitignore` glob; beside whichever log
+  was named otherwise, so another checkout's records never land in this
+  project's archive — and truncates the live one, the way the permissions
+  reviewer does. A log that only grows makes "never loaded" mean less each
+  session, since it averages over sessions from before a glob was last
+  changed. The empty-log hint names rotation as a third cause beside the trust
+  flag and a fresh install, so a just-rotated log does not read as a broken
+  hook. **`--strict` stays a human-invoked check and now says so** in its
+  `--help`, the module docstring and the command: the log has no notion of
+  which sessions *should* have armed a rule, so over an arbitrary log a scoped
+  rule false-alarms by construction; reach is asserted structurally in
+  `tests/test_structural_budget.py` instead. It is never wired into CI. Over
+  an empty or missing log `--strict` now exits 1 — nothing loaded there
+  either, and it used to pass the one log it could say nothing about — and a
+  log path that does not exist is named as such before the hint, since a
+  mistyped path must not read as a clean, empty log.
+
+### Changed
+
+- **The delivered context names the insight verbs where the edit happens
+  (issue #95, shape 2).** Shape 1 (1.25.4) put every verb on the floor's CLI
+  line, so the verbs were *listed* in every context; nothing delivered said
+  which edit they own. The floor's inbox section still said "ticking its
+  checkbox is the one in-place edit" without naming what performs it, and the
+  `aide-living-documents` skill named the owning verb for `progress.md`,
+  `queue` and gates but not for `insights.md` — the pairing of verb to edit
+  lived only in `/aide-feedback-loop`, which no loop role preloads. Now
+  `AGENT-CONTEXT.md` says the edit is `aide insights tick N --pointer`'s, and
+  the skill carries the section's own rule — *capture is a plain append;
+  everything after it has a verb* — with `list`, `tick` and `archive` and the
+  observed failure's shape named: a hand-flipped `[x]` is the improvised form
+  of `tick`. Two new pins on §1 → `insights.md`.
+- The always-on floor moves from 7,532 to 7,578 content bytes, all of it the
+  verb's name; `FLOOR_PIN` follows. Per spawn, structurally: builder 12,304 →
+  12,350, queue-planner 17,080 → 17,762, spec-author 16,461 → 17,143,
+  spec-reviewer 15,792 → 15,838, test-writer 14,511 → 14,557, validator
+  16,066 → 16,112 — the two document writers pay the skill's new paragraph,
+  everyone pays the floor's 46 bytes.
+
+### Fixed
+
+- **Both review commands rotate the log they reviewed.** Step 5 of
+  `/aide-review-permissions` ran `--rotate` with no log argument, so a review
+  of a log named by argument archived and truncated the *default* log —
+  records nobody had read — and left the reviewed one un-rotated. The new
+  `/aide-review-instructions` inherited the shape; both now carry the same
+  argument into the rotation and say why.
+- **`review_instructions.py` reads a BOM-prefixed log.** It read the log as
+  strict `utf-8` where `review_permissions.py` reads `utf-8-sig`; a log
+  re-saved by a Windows editor lost its first record from the report — on a
+  one-session log, the whole report — and `--rotate` would have archived the
+  BOM inline. Both reads now use `utf-8-sig`.
+
 ## [1.27.0] — 2026-08-30
 
 The carrier swap (issue #85, scope item 3): §6 and the §1 document shapes are

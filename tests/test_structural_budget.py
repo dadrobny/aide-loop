@@ -88,9 +88,9 @@ import install  # noqa: E402  (path shim above)
 # alone too.
 # --------------------------------------------------------------------------- #
 FLOOR_PIN = {
-    "version": "1.25.4",
+    "version": "1.28.0",
     "files": {
-        ".aide/AGENT-CONTEXT.md": 4433,
+        ".aide/AGENT-CONTEXT.md": 4479,
         ".claude/rules/aide-command-hygiene.md": 3099,
     },
 }

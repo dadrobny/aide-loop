@@ -33,7 +33,7 @@ paths:
 
 <!-- pins: .aide/conventions/1-format-contract/status-icons.md
      Quoted from that section; `test_rule_pins.py` fails if either copy moves
-     alone. One block per section file, so five blocks follow.
+     alone. One block per section file, so six blocks follow.
      - 📋 Planned
      - 🚧 In Progress
      - 🔍 In Review
@@ -57,6 +57,11 @@ paths:
 
 <!-- pins: .aide/conventions/1-format-contract/human-gates.md
      - Resolving is a CLI operation, never a hand edit
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/insights.md
+     - Capture is a plain append; everything after it has a verb
+     - Ticking the checkbox is the one in-place edit
 -->
 
 <!-- pins: .aide/conventions/5-clarify-mode.md
@@ -104,6 +109,16 @@ slot.
 `progress.md` is adding a row to the `## Human gates` table, which has no verb —
 **resolving is a CLI operation, never a hand edit** (`aide gate` only lists,
 approves and declines).
+
+**Capture is a plain append; everything after it has a verb** (§1 →
+`insights.md`): `aide insights list --open` reads the backlog without the
+closed history around it, `aide insights tick N --pointer "<where it landed>"`
+closes an entry — **ticking the checkbox is the one in-place edit**, and the
+verb owns it, so a hand-flipped `[x]` is the improvised form of `tick` — and
+`aide insights archive --before <date> --yes` moves closed entries out (a dry
+run without `--yes`). Reading the file raw costs the whole closed history to
+see a working set of a dozen lines; editing it by hand is the failure `tick`
+exists to prevent.
 
 **Root documents are authored through their loop entry point, interactively —
 whatever `loop.clarify` says** (`.aide/conventions.md` §5); here that entry point
