@@ -115,8 +115,10 @@ approves and declines).
 closed history around it, `aide insights tick N --pointer "<where it landed>"`
 closes an entry — **ticking the checkbox is the one in-place edit**, and the
 verb owns it, so a hand-flipped `[x]` is the improvised form of `tick` — and
-`aide insights archive --before <date>` moves closed entries out. Reading the
-file raw is harmless; editing it by hand is not.
+`aide insights archive --before <date> --yes` moves closed entries out (a dry
+run without `--yes`). Reading the file raw costs the whole closed history to
+see a working set of a dozen lines; editing it by hand is the failure `tick`
+exists to prevent.
 
 **Root documents are authored through their loop entry point, interactively —
 whatever `loop.clarify` says** (`.aide/conventions.md` §5); here that entry point

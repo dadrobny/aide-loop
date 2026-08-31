@@ -19,20 +19,23 @@ Target log: **$ARGUMENTS** (if empty, the default
 
 1. **Report.** Run the reviewer and show the user its output:
    ```
-   python .claude/scripts/review_instructions.py
+   python .claude/scripts/review_instructions.py $ARGUMENTS
    ```
-   (pass the log path first if an argument was given). Three sections, in the
+   (the argument is the log path; empty means the default). Three sections, in the
    order they cost to get wrong:
    - **Rules that never loaded** — every `.claude/rules/*.md` absent from the log;
    - **Loads per file, by reason** — `session_start` is a cost paid in every
-     context, `path_glob_match` only where a scoped rule matched a read;
+     context, `path_glob_match` only where a scoped rule's globs matched a file
+     a session read;
    - **Per-session totals** — an over-broad glob shows up as an outlier.
 
 2. **Judge each silent rule on what it is.**
    - **A framework rule** (`aide-command-hygiene.md`) is unscoped and loads in
      every context, so silent over a non-empty log means the hook or the trust
      flag, not the rule: check the *Notes* below before anything else, then
-     that `.claude/rules/` still holds the file `install.py --check` expects.
+     that `.claude/rules/aide-command-hygiene.md` is actually on disk —
+     `install.py --check` will not tell you, it compares versions and retired
+     files, not whether a shipped file went missing.
    - **A project's own `paths:`-scoped rule** is silent whenever no logged
      session read a matching file — the correct outcome over sessions that
      touched nothing relevant. Confirm its globs still match the files it is
@@ -43,8 +46,9 @@ Target log: **$ARGUMENTS** (if empty, the default
      install is behind (`install.py --check`).
 
 3. **Say what the report cannot say.** It measures **delivery, not reading**:
-   nothing loads on a `Read`, so a role that opened `.aide/conventions.md` by
-   hand leaves no trace here. Nor does it see a **preloaded section skill**
+   a `Read` is never logged as a load, so a role that opened
+   `.aide/conventions.md` by hand leaves no trace here. Nor does it see a
+   **preloaded section skill**
    (`.claude/skills/aide-*` named in an agent's `skills:` frontmatter) — a
    preload is not an instruction file to the runtime, and needs no measuring:
    it is unconditional per spawn, so its reach is the set of agent specs that
@@ -53,7 +57,8 @@ Target log: **$ARGUMENTS** (if empty, the default
    as "never loaded".
 
 4. **`--strict` is a human check, not a gate.** `--strict` exits 1 when any
-   shipped rule never loaded. It is only meaningful over a log known to cover
+   shipped rule never loaded — an empty or missing log included, since nothing
+   loaded there either. It is only meaningful over a log known to cover
    work the rule should have matched — the log has no notion of which sessions
    *should* have armed a rule — so never wire it into CI; over an arbitrary log
    a scoped rule false-alarms by construction. Run it here, by hand, when the
@@ -63,11 +68,13 @@ Target log: **$ARGUMENTS** (if empty, the default
    only the sessions since and "never loaded" stops averaging over sessions
    from before a glob was last changed:
    ```
-   python .claude/scripts/review_instructions.py --rotate
+   python .claude/scripts/review_instructions.py $ARGUMENTS --rotate
    ```
-   This appends every current record to `docs/aide/instructions/log.reviewed.jsonl`
-   and truncates `docs/aide/instructions/log.jsonl` (both stay gitignored).
-   Always rotate at the end of a review.
+   This appends every current record to `log.reviewed.jsonl` beside the log
+   (`docs/aide/instructions/` by default; both stay gitignored) and truncates the
+   log. The same argument as step 1, always: rotating a different log than the
+   one reviewed truncates records nobody read. Always rotate at the end of a
+   review.
 
 ## Notes
 

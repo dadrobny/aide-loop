@@ -21,9 +21,9 @@ Three things it reports, in order of what they cost to get wrong:
    expected — an over-broad glob — shows up.
 
 What it deliberately does **not** claim: a file absent from the log was not
-necessarily unread. Nothing loads on a `Read`, so an agent that opened a
-conventions section by hand leaves no trace here. This measures delivery, not
-reading.
+necessarily unread. A `Read` is never logged as a load, so an agent that
+opened a conventions section by hand leaves no trace here. This measures
+delivery, not reading.
 
 Nor does it see a **preloaded section skill** (`.claude/skills/aide-*/SKILL.md`
 named in an agent's `skills:` frontmatter). A preload is not an instruction
@@ -58,6 +58,11 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+# The log and its archive live in a consumer repo and may be opened in a
+# Windows editor, which prepends a BOM; `utf-8-sig` reads one transparently
+# and reads plain UTF-8 unchanged (the same choice review_permissions.py makes).
+_ENCODING = "utf-8-sig"
+
 # .claude/scripts/review_instructions.py -> parents[2] is the project root.
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_LOG = _PROJECT_ROOT / "docs" / "aide" / "instructions" / "log.jsonl"
@@ -86,7 +91,7 @@ def load_records(log_path):
     if not path.is_file():
         return []
     records = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding=_ENCODING).splitlines():
         line = line.strip()
         if not line:
             continue
@@ -211,7 +216,7 @@ def rotate_log(log_path, reviewed_path):
     log = Path(log_path)
     if not log.exists():
         return 0
-    lines = [ln for ln in log.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    lines = [ln for ln in log.read_text(encoding=_ENCODING).splitlines() if ln.strip()]
     if not lines:
         log.write_text("", encoding="utf-8")
         return 0
@@ -252,10 +257,16 @@ def main(argv=None):
         print(f"Rotated {moved} record(s) from {args.log} to {args.reviewed}.")
         return 0
 
+    if not Path(args.log).is_file():
+        # A mistyped path must not read as a clean, empty log: the hint below
+        # explains an empty file, and a missing one is a different fact.
+        print(f"{args.log}: no such file.\n")
     records = load_records(args.log)
     if not records:
         print(EMPTY_HINT)
-        return 0
+        # Nothing loaded, so every shipped rule is silent: --strict says so
+        # rather than passing the one log it can say nothing about.
+        return 1 if args.strict and shipped_rules() else 0
 
     print("\n".join(render(records)))
     if args.strict and silent_rules(records):

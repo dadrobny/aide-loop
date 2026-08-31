@@ -21,6 +21,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -220,6 +221,39 @@ def test_an_empty_log_reports_the_trust_hint_rather_than_a_clean_bill(tmp_path, 
     assert "not trusted" in capsys.readouterr().out
 
 
+def test_strict_fails_an_empty_log_since_nothing_loaded_there_either(tmp_path, monkeypatch):
+    """A review ends with a rotation, so the next `--strict` sees an empty log;
+    passing it would make the check pass exactly when it can say nothing."""
+    monkeypatch.setattr(review, "RULES_DIR", _rules(tmp_path, "shipped.md"))
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("", encoding="utf-8")
+    assert review.main([str(empty), "--strict"]) == 1
+    assert review.main([str(empty)]) == 0
+
+
+def test_a_missing_log_path_is_named_rather_than_read_as_empty(tmp_path, capsys):
+    """The command invites a path argument; a typo there must not read as a
+    clean, empty log with the three benign causes."""
+    missing = tmp_path / "typo.jsonl"
+    assert review.main([str(missing)]) == 0
+    out = capsys.readouterr().out
+    assert "no such file" in out and str(missing) in out
+
+
+def test_a_bom_prefixed_log_still_yields_every_record_and_rotates_clean(tmp_path):
+    """A consumer's log may be re-saved by a Windows editor, which prepends a
+    BOM; strict utf-8 then loses the first record (on a one-session log, the
+    whole report) and a rotation would archive the BOM inline."""
+    log = tmp_path / "log.jsonl"
+    log.write_bytes(b'\xef\xbb\xbf{"session_id": "s1", "paths": ["a.md"]}\n'
+                    b'{"session_id": "s2", "paths": ["b.md"]}\n')
+    assert [r["session_id"] for r in review.load_records(log)] == ["s1", "s2"]
+
+    reviewed = tmp_path / "log.reviewed.jsonl"
+    assert review.rotate_log(log, reviewed) == 2
+    assert not reviewed.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
 def test_the_shipped_rules_are_the_ones_the_report_looks_for():
     """The report's default directory must be where the adapter puts rules."""
     assert review.RULES_DIR.name == "rules"
@@ -306,6 +340,9 @@ def test_the_report_has_a_command_that_runs_it_and_rotates_the_log():
     assert "review_instructions.py" in text
     assert "--rotate" in text
     assert "--strict" in text and "CI" in text
+    # The rotation must act on the log the review read: a rotate step that
+    # drops the argument truncates the default log, whose records nobody read.
+    assert re.search(r"review_instructions\.py \$ARGUMENTS --rotate", text)
 
 
 def test_the_feedback_loop_routes_the_instruction_log_at_the_queue_boundary():

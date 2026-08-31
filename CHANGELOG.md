@@ -95,17 +95,22 @@ closes it).
   `--help`, the module docstring and the command: the log has no notion of
   which sessions *should* have armed a rule, so over an arbitrary log a scoped
   rule false-alarms by construction; reach is asserted structurally in
-  `tests/test_structural_budget.py` instead. It is never wired into CI.
+  `tests/test_structural_budget.py` instead. It is never wired into CI. Over
+  an empty or missing log `--strict` now exits 1 — nothing loaded there
+  either, and it used to pass the one log it could say nothing about — and a
+  log path that does not exist is named as such before the hint, since a
+  mistyped path must not read as a clean, empty log.
 
 ### Changed
 
 - **The delivered context names the insight verbs where the edit happens
   (issue #95, shape 2).** Shape 1 (1.25.4) put every verb on the floor's CLI
-  line; the section that describes the inbox still said "ticking its checkbox
-  is the one in-place edit" without naming what performs it, and the
+  line, so the verbs were *listed* in every context; nothing delivered said
+  which edit they own. The floor's inbox section still said "ticking its
+  checkbox is the one in-place edit" without naming what performs it, and the
   `aide-living-documents` skill named the owning verb for `progress.md`,
-  `queue`, and gates but not for `insights.md` — the insights verbs were named
-  only in `/aide-feedback-loop`, which no loop role preloads. Now
+  `queue` and gates but not for `insights.md` — the pairing of verb to edit
+  lived only in `/aide-feedback-loop`, which no loop role preloads. Now
   `AGENT-CONTEXT.md` says the edit is `aide insights tick N --pointer`'s, and
   the skill carries the section's own rule — *capture is a plain append;
   everything after it has a verb* — with `list`, `tick` and `archive` and the
@@ -113,10 +118,24 @@ closes it).
   of `tick`. Two new pins on §1 → `insights.md`.
 - The always-on floor moves from 7,532 to 7,578 content bytes, all of it the
   verb's name; `FLOOR_PIN` follows. Per spawn, structurally: builder 12,304 →
-  12,350, queue-planner 17,080 → 17,638, spec-author 16,461 → 17,019,
+  12,350, queue-planner 17,080 → 17,762, spec-author 16,461 → 17,143,
   spec-reviewer 15,792 → 15,838, test-writer 14,511 → 14,557, validator
   16,066 → 16,112 — the two document writers pay the skill's new paragraph,
   everyone pays the floor's 46 bytes.
+
+### Fixed
+
+- **Both review commands rotate the log they reviewed.** Step 5 of
+  `/aide-review-permissions` ran `--rotate` with no log argument, so a review
+  of a log named by argument archived and truncated the *default* log —
+  records nobody had read — and left the reviewed one un-rotated. The new
+  `/aide-review-instructions` inherited the shape; both now carry the same
+  argument into the rotation and say why.
+- **`review_instructions.py` reads a BOM-prefixed log.** It read the log as
+  strict `utf-8` where `review_permissions.py` reads `utf-8-sig`; a log
+  re-saved by a Windows editor lost its first record from the report — on a
+  one-session log, the whole report — and `--rotate` would have archived the
+  BOM inline. Both reads now use `utf-8-sig`.
 
 ## [1.27.0] — 2026-08-30
 
