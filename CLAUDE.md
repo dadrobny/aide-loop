@@ -121,7 +121,7 @@ consumer must edit its own files to update.
 Stdlib + pytest only — **no venv, no dependencies, no editable install**:
 
 ```
-pytest                                   # whole suite (this is what CI runs)
+pytest                                   # whole suite (the ubuntu CI leg runs exactly this)
 pytest tests/test_repo_versioning.py     # the version gate alone
 pytest tests/test_fixture_consumer.py    # the loop verbs against a real install
 pytest core/scripts/tests/               # the aide CLI

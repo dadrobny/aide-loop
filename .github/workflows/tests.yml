@@ -28,12 +28,23 @@ jobs:
       # Defender's real-time scanning inspects every process image and every
       # small file the git fixtures write on NTFS; it is most of the Windows
       # leg's ~13x per-spawn cost (issue #74). The runner is ephemeral and
-      # admin; if the cmdlet is ever refused the job just runs slower.
+      # admin. Tamper protection can silently ignore the Set-MpPreference, so
+      # the step reports what actually took and falls back to exclusions,
+      # which tamper protection does not cover; if all of it is refused the
+      # job just runs slower.
       - name: Disable Defender real-time scanning
         if: runner.os == 'Windows'
         continue-on-error: true
         shell: powershell
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true
+          $rt = (Get-MpComputerStatus).RealTimeProtectionEnabled
+          Write-Host "RealTimeProtectionEnabled after disable: $rt"
+          if ($rt) {
+            Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP
+            Add-MpPreference -ExclusionProcess "git.exe", "python.exe", "pytest.exe"
+            Write-Host "fell back to path + process exclusions"
+          }
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
