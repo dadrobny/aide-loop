@@ -10,13 +10,14 @@ would encode an ordering nothing else can read.
     python .claude/skills/triage-issues/reorder_project.py --dry-run
     python .claude/skills/triage-issues/reorder_project.py
 
-    # retire Done items closed more than 30 days ago, then reorder what remains
-    python .claude/skills/triage-issues/reorder_project.py --archive-done --dry-run
-    python .claude/skills/triage-issues/reorder_project.py --archive-done
+    # keep every Done item on the board
+    python .claude/skills/triage-issues/reorder_project.py --archive-after-days never
 
-Archiving is **off by default** and reversible (`unarchiveProjectV2Item`); it
-hides the item from every view without touching the issue. Always run it once
-with --dry-run and show the list before applying.
+Retiring long-Done items is part of the default pass, governed by the one
+`--archive-after-days` argument (a day count, or `never`). It is reversible
+(`unarchiveProjectV2Item`) and hides the item from every view without touching
+the issue — but it decides what the *next* triage can see, so run --dry-run
+first and show the list.
 
 Idempotent: when the board already matches, it issues no mutations.
 """
@@ -37,8 +38,9 @@ FALLBACK_GH = "/mnt/data/ddrobny/.local/bin/gh"
 
 #: A Done item stays on the board for roughly the last few PR cycles, so the
 #: un-defer sweep and the "did we just fix this?" check in triage step 2 can
-#: still see it. A week would retire items still inside the current triage
-#: window; a month has cleared it.
+#: still see it. Measured on 2026-09-01: at 7 days this retires 13 items,
+#: among them #46, whose lint two still-open issues are about; at 30 it
+#: retires none. A week is inside the window triage is still reading.
 DEFAULT_ARCHIVE_AFTER_DAYS = 30
 
 MOVE = """
@@ -123,6 +125,20 @@ def label(item: dict) -> str:
     return f"{head} {(item.get('title') or '')[:58]}"
 
 
+def archive_after(value: str) -> int | None:
+    """A day count, or `never` to keep every Done item on the board."""
+    if value.strip().lower() == "never":
+        return None
+    try:
+        days = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"expected a number of days or 'never', got {value!r}") from None
+    if days < 0:
+        raise argparse.ArgumentTypeError("day count cannot be negative")
+    return days
+
+
 def retire(gh: str, items: list[dict], days: int, dry_run: bool) -> list[dict]:
     """Archive Done items closed longer than `days` ago; return what remains."""
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
@@ -162,11 +178,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true",
                         help="print the plan, mutate nothing")
-    parser.add_argument("--archive-done", action="store_true",
-                        help="also retire long-Done items off the board")
-    parser.add_argument("--archive-after-days", type=int,
-                        default=DEFAULT_ARCHIVE_AFTER_DAYS, metavar="N",
-                        help="age threshold for --archive-done "
+    parser.add_argument("--archive-after-days", type=archive_after,
+                        default=DEFAULT_ARCHIVE_AFTER_DAYS, metavar="N|never",
+                        help="retire Done items closed more than N days ago; "
+                             "'never' keeps them all "
                              f"(default {DEFAULT_ARCHIVE_AFTER_DAYS})")
     parser.add_argument("--gh", default=find_gh(), help="path to the gh binary")
     args = parser.parse_args()
@@ -182,7 +197,9 @@ def main() -> int:
     print(f"{len(current)} items: "
           + ", ".join(f"{n} {c}" for n, c in zip(names, counts)))
 
-    if args.archive_done:
+    if args.archive_after_days is None:
+        print("--archive-after-days never: keeping every Done item")
+    else:
         current = retire(args.gh, current, args.archive_after_days, args.dry_run)
 
     # Stable partition: sorted() is stable, so equal keys keep their order.

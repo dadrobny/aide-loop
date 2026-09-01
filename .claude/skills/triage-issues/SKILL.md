@@ -163,26 +163,26 @@ running it twice costs one read. Ordering only takes effect on views with no
 explicit sort — view 4 (Board) and **view 5 (Table)** qualify today; a view that
 grows a sort ignores position entirely.
 
-### Retire long-Done items (propose first)
+### Retiring long-Done items is part of the same pass
 
-The board grows monotonically — Done items are never removed, and ordering only
-keeps them last. `--archive-done` retires the ones closed longer than
-`--archive-after-days` (**default 30**) ago:
+The board would otherwise grow monotonically — ordering only keeps Done last, it
+never removes it. One argument governs this, **`--archive-after-days`, defaulting
+to 30**: Done items closed longer ago than that are archived before the reorder.
 
 ```bash
-python .claude/skills/triage-issues/reorder_project.py --archive-done --dry-run
-python .claude/skills/triage-issues/reorder_project.py --archive-done
+python .claude/skills/triage-issues/reorder_project.py --archive-after-days never
 ```
 
 Thirty days keeps the last few PR cycles visible, which is what step 2's "did we
-just fix this?" check and step 4's sweep both read. A week would retire items
-still inside the current triage window.
+just fix this?" check and step 4's sweep both read. Measured on 2026-09-01, a
+week would have retired 13 items — among them #46, whose lint two *still-open*
+issues are about — and thirty days retired none.
 
-Archiving is **off by default and proposed, not applied** — it is reversible
-(`unarchiveProjectV2Item`) and touches no issue, but it decides what the next
-triage can see. Show the `--dry-run` list and get a go-ahead. An item whose
-Status was set to Done by hand has no close timestamp and is never a candidate;
-the script says how many it skipped for that reason.
+Archiving is reversible (`unarchiveProjectV2Item`) and touches no issue, but it
+decides what the next triage can see, which is why the `--dry-run` above is not
+optional: it prints the retirement list and the reorder plan together, and that
+printout is the review. An item whose Status was set to Done by hand has no close
+timestamp and is never a candidate; the script says how many it skipped for that.
 
 ## Step 4 — The un-defer sweep
 

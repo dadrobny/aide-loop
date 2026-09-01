@@ -18,15 +18,27 @@ unknown-id error, re-run the derivation rather than guessing.
 
 `Theme` options:
 
-| Theme | Option id |
-|---|---|
-| Reaching the reader | `2cdefa2e` |
-| The insight inbox | `2da4ce9d` |
-| Naming | `d1401531` |
-| Testing the framework itself | `d6eb1372` |
-| Correctness | `65b8c907` |
-| Unattended runs | `9f48758c` |
-| Beyond the reference adapter | `162e28eb` |
+| Theme | Option id | What it holds |
+|---|---|---|
+| Reaching the reader | `2cdefa2e` | whether the contract arrives at the role that needs it |
+| What the checks decide | `eabc9686` | `aide check` / `aide scope` judging wrongly, or not judging at all |
+| Testing the framework itself | `d6eb1372` | **this repo's own suite** — fixture consumer, structural budget, rule pins |
+| Correctness | `65b8c907` | the engine does the wrong thing at runtime: crashes, parsing, the installer |
+| Naming | `d1401531` | |
+| Unattended runs | `9f48758c` | |
+| The insight inbox | `2da4ce9d` | |
+| Beyond the reference adapter | `162e28eb` | |
+
+The first four are the ones that get confused. **`Testing the framework itself`
+means this repo's suite and nothing else** — a lint that polices a *consumer's*
+test hygiene is `What the checks decide`, which is why #46 moved there.
+`Correctness` is what remains once the checker cluster leaves it, not a
+catch-all: an issue that fits nowhere is a sign the option list is short one
+entry, not a reason to park it here.
+
+One watch item: `Reaching the reader` is about whether the contract *arrives*.
+An issue about what the contract *says* (#121) currently has no better home. One
+issue is not a theme; if a second lands, that is the split to make.
 
 Re-derive all of the above:
 
@@ -84,7 +96,7 @@ mutation($p:ID!,$i:ID!,$a:ID){ updateProjectV2ItemPosition(
 ```
 
 Archive an item off the board (reversible with `unarchiveProjectV2Item`;
-`reorder_project.py --archive-done` drives this):
+`reorder_project.py` drives this in its default pass):
 
 ```bash
 $GH api graphql -f query='
@@ -98,12 +110,12 @@ it, an option sent without an `id` is created, and an option left out is
 **deleted — clearing the field on every item that used it**. Always send the
 full list.
 
+`gh api graphql -F` sends only scalars — `-F o=@options.json` passes the file as
+a *string* and the mutation rejects it. Post the whole body instead, as
+`{"query": …, "variables": {"f": …, "o": [ … ]}}`:
+
 ```bash
-$GH api graphql -f query='
-mutation($f:ID!,$o:[ProjectV2SingleSelectFieldOptionInput!]){
-  updateProjectV2Field(input:{fieldId:$f, singleSelectOptions:$o}){
-    projectV2Field{ ... on ProjectV2SingleSelectField{ options{ id name } } } } }' \
-  -f f=PVTSSF_lAHOByffxc4Bg9iMzhf7FlI -F o=@options.json
+$GH api /graphql --method POST --input body.json
 ```
 
 Add an issue:
