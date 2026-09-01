@@ -95,6 +95,58 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.32.0] — 2026-09-01
+
+### Added
+
+- **`aide check` warns when a diff-time scope claim is written as a suite
+  assertion (issue #132).** "This item did not touch X" is decided on the branch
+  by `aide scope`, against the item's declared paths — that is the whole reason
+  the verb exists, and §1 → authorised paths already said the claim belongs
+  under **Asserts against** and is retired when its item merges. Neither
+  statement reached the spec-author writing the criterion or the test-writer
+  implementing it: two independent items in one consumer wrote
+  `git diff main...HEAD` in a test, which is the signature of a missing check
+  rather than a careless author. On a stacked queue the item's base is the
+  *queue branch*, so `main` is stale by the whole queue and every sibling item's
+  legitimate change is reported as this item's violation. The obvious repair is
+  wrong too — deriving the base from `aide scope` holds only while the suite
+  runs on the item's own claim branch, and `aide merge` re-runs it from the
+  merge target — and a skip guard leaves the test permanently skipped once the
+  claim branch is deleted, which §6 forbids.
+
+  Two **literal** shapes are reported: a hardcoded `<base>...HEAD` range (the
+  configured `main_branch` plus the conventional `main`/`master`, either
+  direction, two dots or three, `origin/` optional) and a shell-out to
+  `aide scope`. A test that *computes* its base — `git merge-base HEAD
+  origin/main`, then a diff — is a claim about the branch rather than about an
+  item's scope and is deliberately **not** reported; this framework's own
+  version gate is that shape. Nothing in the source separates the two, so the
+  lint decides only what is literal and the rule binds where it cannot look —
+  the sixth decidable §6 lint, and the same "authoritative warning, partial
+  silence" contract as the other five.
+
+### Changed
+
+- **An acceptance criterion is an invariant over the resulting content (issue
+  #121).** Stated in §1 → `items.md`, where AC shape is contracted, and
+  delivered to `spec-author` through the `aide-living-documents` skill. A
+  criterion outlives its item — its test is in the suite long after the branch
+  is gone — so two recorded shapes are ruled out: a **bounded diff against a
+  pre-item baseline**, which goes vacuous or red the moment the item merges into
+  the branch its baseline came from (and under a stacked queue that is the very
+  next claim), and a **premise about a sibling item's schedule**, which is
+  guaranteed to become false and breaks in a file the later item's Authorised
+  paths do not cover, so the repair needs a spec amendment before it can be made
+  at all. Where an earlier item's test must change when a later one lands, the
+  later item's spec lists that test file under **May change** from the start.
+  The general principle #132 is one mechanically-detectable instance of.
+- **§1 → authorised paths says what not to write**, not only where the claim
+  belongs, and §6 carries the rule to the role that writes the test through the
+  `aide-test-hygiene` skill. The paragraph that named the right home for a
+  diff-time claim was already there; what was missing is that the wrong homes
+  are named too.
+
 ## [1.31.1] — 2026-09-01
 
 ### Fixed

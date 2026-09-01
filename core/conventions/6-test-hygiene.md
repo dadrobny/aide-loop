@@ -102,6 +102,21 @@ reviewer outside the loop — never by a gate inside it.
   Assumptions held 3 warnings, the base commit already carrying the checking
   module reported 4, and the 4th was that module. Assert on the warning you mean
   by matching it, not on how many there are.
+- **A scope claim about a diff belongs on the branch, not in the suite.**
+  "This item did not touch X" is decided by `aide scope` against the item's
+  declared paths (§1 → authorised paths); written as a test it asserts
+  something that stops being true the moment the item merges. Recorded: two
+  independent items in one consumer wrote `git diff main...HEAD` in a test, and
+  on a stacked queue — where the item's base is the queue branch, not `main` —
+  each reported every sibling item's legitimate change as this item's
+  violation. **Deriving the base from `aide scope` is not the repair**: the
+  verb reads the *current* branch's recorded base, and `aide merge` re-runs the
+  suite from the merge target, so the test then fails by construction inside
+  the loop's own post-merge run. Nor is a skip guard, which leaves the test
+  permanently skipped once the claim branch is deleted. `aide check` warns on
+  both literal shapes; a test that computes its base (`git merge-base HEAD
+  origin/main`) is a claim about the branch rather than about an item and is
+  deliberately not reported.
 - **Assert a derived value is recognisable *before* asserting anything about
   it.** A glob that matched nothing, a capture that came back empty, a slice
   taken from a failed `find()` — each yields a value that flows into the
@@ -109,10 +124,11 @@ reviewer outside the loop — never by a gate inside it.
   returned `""` rather than `None`, the loop over its lines would have iterated
   zero times and the test would have reported PASS having verified nothing.
 
-`aide check` decides the ones a script can, five of them: the repository's own
+`aide check` decides the ones a script can, six of them: the repository's own
 absolute path written into a test file, a `str()` around a `relative_to(...)`,
 a shell-out to the CLI whose function was importable, a text capture that names
-no codec, and a byte-compared fixture no `eol=lf` pattern covers. Each was added
+no codec, a byte-compared fixture no `eol=lf` pattern covers, and a diff-time
+scope claim written as a suite assertion. Each was added
 after the class it names had already reached `main`. The rest of this section
 binds identically and is checked by nobody, so read a warning as authoritative
 and silence as partial throughout — not only on the pin.

@@ -33,7 +33,7 @@ paths:
 
 <!-- pins: .aide/conventions/1-format-contract/status-icons.md
      Quoted from that section; `test_rule_pins.py` fails if either copy moves
-     alone. One block per section file, so six blocks follow.
+     alone. One block per section file, so seven blocks follow.
      - 📋 Planned
      - 🚧 In Progress
      - 🔍 In Review
@@ -53,6 +53,11 @@ paths:
 
 <!-- pins: .aide/conventions/1-format-contract/progress.md
      - ticked only by `aide progress accept` — never derived
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/items.md
+     - An acceptance criterion is an invariant over the resulting content
+     - never a bound on the diff that produced it
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/human-gates.md
@@ -109,6 +114,15 @@ slot.
 `progress.md` is adding a row to the `## Human gates` table, which has no verb —
 **resolving is a CLI operation, never a hand edit** (`aide gate` only lists,
 approves and declines).
+
+**An acceptance criterion is an invariant over the resulting content** (§1 →
+`items.md`) — never a bound on the diff that produced it, and never a premise
+about a sibling item's schedule. Its test outlives the branch it was written on:
+a criterion that cannot be re-checked once the item has merged is not one the
+suite can keep. The diff-time half of such a claim ("this item did not touch X")
+is `aide scope`'s, declared under `## Asserts against`; a premise that a sibling
+has not landed yet is guaranteed to become false, so the later item's spec lists
+that test file under **May change** from the start.
 
 **Capture is a plain append; everything after it has a verb** (§1 →
 `insights.md`): `aide insights list --open` reads the backlog without the

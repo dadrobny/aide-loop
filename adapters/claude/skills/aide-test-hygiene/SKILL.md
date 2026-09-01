@@ -59,6 +59,8 @@ paths:
      - a measurement that includes the measurer
      - Assert a derived value is recognisable *before* asserting anything about
        it
+     - A scope claim about a diff belongs on the branch, not in the suite
+     - Deriving the base from `aide scope` is not the repair
 -->
 
 # Test hygiene
@@ -122,6 +124,16 @@ regardless.
   the lint being counted.** The module raises the count by one the moment it is
   committed — a measurement that includes the measurer. Assert on the warning
   you mean by matching it, not on how many there are.
+- **A scope claim about a diff belongs on the branch, not in the suite.** "This
+  item did not touch X" is decided by `aide scope` against the item's declared
+  paths (§1 → authorised paths); written as a test it asserts something that
+  stops being true the moment the item merges — and on a stacked queue, where
+  the item's base is the queue branch and not `main`, it reports every sibling
+  item's legitimate change as this item's violation. **Deriving the base from
+  `aide scope` is not the repair**: the verb reads the *current* branch's
+  recorded base, and `aide merge` re-runs the suite from the merge target. Nor
+  is a skip guard, which leaves the test permanently skipped once the claim
+  branch is deleted. `aide check` warns on both literal shapes.
 - **Assert a derived value is recognisable *before* asserting anything about
   it.** A glob that matched nothing, a capture that came back empty, a slice
   taken from a failed `find()` — each yields a value that flows into the

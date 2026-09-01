@@ -1869,6 +1869,109 @@ def cli_subprocess_test_warnings(repo_root: Path,
     return out
 
 
+#: Branch names a hardcoded diff range is written against. The configured
+#: `main_branch` is the honest one; `main` and `master` ride along because this
+#: shape is copied between projects — a consumer whose base is `develop` and
+#: whose test says `main...HEAD` has written the same wrong assertion, and the
+#: lint that only knew its own config would stay silent on it.
+_CONVENTIONAL_BASES = ("main", "master")
+
+
+def _scope_range_re(config: Dict[str, Dict[str, object]]) -> "re.Pattern":
+    names = {str(config["git"].get("main_branch", "main")), *_CONVENTIONAL_BASES}
+    alt = "|".join(re.escape(n) for n in sorted(names))
+    return re.compile(rf"\b(?:origin/)?(?:{alt})\.{{2,3}}HEAD\b"
+                      rf"|\bHEAD\.{{2,3}}(?:origin/)?(?:{alt})\b")
+
+
+def scope_claim_test_warnings(repo_root: Path,
+                              config: Dict[str, Dict[str, object]]) -> List[str]:
+    """Diff-time scope claims written as suite assertions.
+
+    §1 → authorised-paths says a *diff-time scope claim* — "item N did not touch
+    X" — belongs under **Asserts against** and is retired when its item merges,
+    and `cmd_scope` exists precisely so the claim is not "enshrined as a suite
+    assertion that outlives its truth". Both statements were already written
+    down, and reached neither the spec-author writing the criterion nor the
+    test-writer implementing it: two independent items in one consumer wrote the
+    same `git diff main...HEAD` guard (issue #132), which is the signature of a
+    missing check rather than a careless author.
+
+    The shape fails in the direction that wastes the most time. Under a stacked
+    queue the item's base is the **queue branch**, so `main` is stale by the
+    whole queue and every sibling item's legitimate change is reported as this
+    item's scope violation. The obvious repair is wrong too: deriving the base
+    from `aide scope` makes the assertion pass only while the suite runs on the
+    item's own claim branch, and `aide merge` re-runs that suite from the merge
+    target — so it fails by construction inside the loop's own post-merge run.
+    Skip-guarding is not an escape either: once the claim branch is deleted the
+    test is skipped forever, which §6 ("tests that can actually fail") forbids.
+
+    **Two literal shapes, deliberately, and no attempt at the general one.** A
+    hardcoded `<base>...HEAD` range, and a shell-out to `aide scope`. A test
+    that diffs the branch against a base it computes — `git merge-base HEAD
+    origin/main`, then `diff` — is NOT reported, and this framework's own
+    `tests/test_repo_versioning.py` is why: it is that shape, it is legitimate,
+    and it is a claim about the branch rather than about an item's scope. No
+    lint can tell those apart from the source, so this one decides only what is
+    literal, and §6's rule holds where it cannot look. An interpolated range
+    (`f"{base}...HEAD"`) is missed for the same reason.
+
+    The `aide scope` half also trips `cli_subprocess_test_warnings`, which says
+    "call the function instead". That advice is right about the boundary and
+    wrong about the fix — the assertion should not be in the suite at all — so
+    this warning is worth its line beside it.
+    """
+    out: List[str] = []
+    rng = _scope_range_re(config)
+    for path in _test_files(repo_root, config):
+        try:
+            tree = ast.parse(path.read_text(encoding=_ENCODING))
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        rel = _rel_display(path, repo_root)
+        hit = next((n for n in ast.walk(tree)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                    and rng.search(n.value)), None)
+        if hit is not None:
+            out.append(
+                f"{rel}:{hit.lineno}: a hardcoded '{rng.search(hit.value).group(0)}' "
+                f"range makes this test a diff-time scope claim — it asserts "
+                f"what an item did NOT touch, which stops being true the moment "
+                f"that item merges into the base, and is red by construction on "
+                f"a stacked queue where the real base is the queue branch. "
+                f"Declare the pinned file under '## Asserts against' in the item "
+                f"spec and let 'aide scope' decide it on the claim branch "
+                f"(conventions.md §1 → authorised-paths, §6)")
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+            if name not in _SUBPROCESS_FUNCS:
+                continue
+            consts = [c.value for c in ast.walk(node)
+                      if isinstance(c, ast.Constant) and isinstance(c.value, str)]
+            if not any("aide.py" in c for c in consts):
+                continue
+            if not any(c == "scope" or c.endswith(" scope") or " scope " in c
+                       for c in consts):
+                continue
+            out.append(
+                f"{rel}:{node.lineno}: shells out to 'aide scope' from the "
+                f"suite — the verb resolves its base from the CURRENT branch's "
+                f"recorded base, so this passes only while the suite runs on "
+                f"the item's own claim branch and fails by construction in "
+                f"the post-merge run of 'aide merge', from the merge target. "
+                f"Scope is "
+                f"checked on the branch, not asserted in the suite: declare the "
+                f"pinned file under '## Asserts against' instead "
+                f"(conventions.md §1 → authorised-paths, §6)")
+            break
+    return out
+
+
 #: The subprocess entry points that can hand *decoded* text back to the caller.
 #: `call` and `check_call` return an exit status and never a capture, so a
 #: `text=` on one of those decodes nothing and flagging it would be exactly the
@@ -2751,11 +2854,11 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                branches: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
     """Return ``(errors, warnings)``. Empty errors == pass.
 
-    The first eleven checks all run before, and survive, the two early returns
-    below, but for two different reasons. Five of them —
+    The first twelve checks all run before, and survive, the two early returns
+    below, but for two different reasons. Six of them —
     `absolute_path_test_warnings`, `separator_dependent_test_warnings`,
     `cli_subprocess_test_warnings`, `subprocess_encoding_test_warnings`,
-    `gitattributes_eol_pin_warnings` — read
+    `gitattributes_eol_pin_warnings`, `scope_claim_test_warnings` — read
     `tests_dir` and never touch `docs_dir`, so they are the ones that make this
     function worth calling in a repo with no document set. The other six *are* document checks; they
     simply find nothing to say when `docs_dir` is absent, so keeping them costs
@@ -2781,6 +2884,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(cli_subprocess_test_warnings(repo_root, config))
     warnings.extend(subprocess_encoding_test_warnings(repo_root, config))
     warnings.extend(gitattributes_eol_pin_warnings(repo_root, config))
+    warnings.extend(scope_claim_test_warnings(repo_root, config))
     warnings.extend(header_blockquote_warnings(ddir))
     warnings.extend(root_document_warnings(ddir))
     # A docs_dir outside the repo falls back to its absolute spelling, which

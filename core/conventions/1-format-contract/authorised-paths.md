@@ -133,6 +133,28 @@ should be retired when its item merges, while an *artifact-integrity invariant*
 — but then it belongs in a test named for the artifact, living beside it, not
 inside an unrelated item's regression module under a `_PRE_NNN_` name.
 
+**A diff-time scope claim is never a suite assertion.** It is decided on the
+branch, by `aide scope`, against this declaration — that is the whole reason the
+verb exists. Two shapes get written instead, and `aide check` warns on both:
+
+- **A hardcoded range in a test**, `git diff main...HEAD`. On a stacked queue
+  the item's base is the *queue branch*, so `main` is stale by the whole queue
+  and every sibling item's legitimate change is reported as this item's
+  violation.
+- **A shell-out to `aide scope` from the suite.** The verb resolves its base
+  from the **current** branch's recorded base, not from the item number, and
+  `aide merge` re-runs the suite from the merge target — so the assertion holds
+  only on the item's own claim branch and fails by construction inside the
+  loop's own post-merge run.
+
+Skip-guarding rescues neither: a guard leaves the test permanently skipped once
+the claim branch is deleted, which §6 forbids. Both were written by two
+independent authors in one consumer, which is the signature of a missing rule
+rather than a careless author. A test that *computes* its base — `git merge-base
+HEAD origin/main`, then a diff — is a claim about the branch rather than about
+an item's scope, and is deliberately not reported; the rule still binds where
+the lint cannot look.
+
 **One queue's specs are checked against each other before any is built**, in the
 window `/aide-spec-queue` creates — N specs on one branch, every cross-item
 conflict still cheap to fix:
