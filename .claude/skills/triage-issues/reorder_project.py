@@ -183,7 +183,12 @@ def retire(gh: str, items: list[dict], days: int, dry_run: bool) -> list[dict]:
     for item in stale:
         try:
             graphql(gh, ARCHIVE, p=PROJECT_ID, i=item["id"])
-        except SystemExit:
+        except (SystemExit, KeyboardInterrupt):
+            # Flush first: stdout is block-buffered when piped, so an unflushed
+            # progress log would surface *after* this line and read as if
+            # nothing had been archived. Ctrl-C leaves the same partial state
+            # as a failed call, and is when a human most wants to be told.
+            sys.stdout.flush()
             print("\nboard partially retired — nothing is lost and a re-run "
                   "finishes it; archiving is a fixpoint", file=sys.stderr)
             raise
@@ -249,7 +254,8 @@ def main() -> int:
             argv += ["-f", f"a={after}"]
         try:
             run(argv)
-        except SystemExit:
+        except (SystemExit, KeyboardInterrupt):
+            sys.stdout.flush()
             print(f"\nboard partially reordered — {pos} of {len(desired)} "
                   "placed; re-run to finish, the pass is a fixpoint",
                   file=sys.stderr)
