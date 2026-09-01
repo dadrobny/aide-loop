@@ -45,6 +45,9 @@ paths:
        `encoding="utf-8"`
      - It sees only direct calls: a suite that wraps its subprocess calls in a
        helper shows this lint one call site and hides the rest
+     - The codec is the producing side's job too
+     - a script that writes non-ASCII to stdout or stderr inherits the console
+       codepage on Windows, so it must reconfigure its own streams
      - Prefer calling the function over shelling out to the command that calls
        it
      - a test asserting on `aide check`'s own output should call `run_checks`
@@ -98,7 +101,12 @@ regardless.
   platform's locale codec — UTF-8 on a Linux runner, cp1252 on a Windows one.
   `aide check` warns on this. It sees only direct calls: a suite that wraps its
   subprocess calls in a helper shows this lint one call site and hides the
-  rest.
+  rest. The codec is the producing side's job too: a script that writes
+  non-ASCII to stdout or stderr inherits the console codepage on Windows, so it
+  must reconfigure its own streams. When the reader and the writer disagree the
+  read comes back **`None`** rather than raising — the decode runs in
+  `subprocess.run`'s reader thread — so assert the value is there before
+  asserting anything about it.
 - **Prefer calling the function over shelling out to the command that calls
   it.** The CLI's logic is importable and returns structured data; a subprocess
   boundary adds stdout encoding, platform quirks, and a re-parse of what was

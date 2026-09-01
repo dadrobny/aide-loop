@@ -110,6 +110,17 @@ def test_selector_blocks_a_hygiene_violation_end_to_end():
         timeout=10,
     )
     assert result.returncode == 2, result.stderr
+    # conventions.md §6, both halves, and this is where CI taught them. The
+    # decode happens in `subprocess.run`'s reader thread, so a byte the codec
+    # rejects does not raise here — it leaves `stderr` as **None**, and `in
+    # None` then fails as a TypeError that names nothing. That is the recorded
+    # "stdout is None on a Windows runner" instance, reproduced: the guard was
+    # writing its em-dash as cp1252. Kept strict rather than softened with
+    # `errors="replace"`, so this line is the regression guard for the hook
+    # emitting UTF-8 — and recognisable first, so a future one reports.
+    assert result.stderr is not None, (
+        "the guard's stderr did not decode as UTF-8 — it must reconfigure its "
+        "stream, not inherit the console codepage")
     assert "git -C" in result.stderr or "cd" in result.stderr.lower()
 
 

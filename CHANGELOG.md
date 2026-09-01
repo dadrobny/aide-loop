@@ -95,6 +95,37 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.29.3] — 2026-09-01
+
+### Fixed
+
+- **The command-hygiene hook wrote its block message in the console codepage.**
+  Found by the windows CI leg on the branch that added the §6 encoding rule,
+  which is the rule catching its own author. The guard's stderr carries an
+  em-dash and a `§`; `sys.stderr` on a Windows console defaults to cp1252, so a
+  consumer there got byte `0x97` where every other platform got UTF-8 — and
+  what the runtime reads back must not depend on the platform's guess. It now
+  reconfigures its stream exactly as `aide.py`'s `main()` has all along.
+
+### Changed
+
+- **§6 says the codec is the producing side's job too, and explains the
+  `stdout is None` instance it already recorded.** That defect has sat in the
+  section as an unexplained Windows quirk — *"returned `stdout is None` on a
+  Windows runner, documented not to happen"*. It is not a quirk: the decode
+  runs in `subprocess.run`'s reader thread, so when the reader's codec rejects
+  a byte the writer produced, the `UnicodeDecodeError` never reaches the caller
+  and the stream arrives as `None`. A codec disagreement surfaces as a missing
+  value rather than as an error, which is why it pairs with the
+  assert-it-is-recognisable rule two bullets down. §6 now states the whole
+  shape — name the codec on the read, fix the writer if you own it, pass
+  `errors="replace"` when you do not, then check the value is there — and the
+  delivered §6 skill carries it.
+
+  The test that caught it is kept **strict** rather than softened with
+  `errors="replace"`, so it stands as the regression guard for the hook
+  emitting UTF-8, with the recognisability assertion in front of it.
+
 ## [1.29.2] — 2026-09-01
 
 ### Changed

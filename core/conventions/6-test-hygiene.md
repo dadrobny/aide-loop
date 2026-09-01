@@ -62,7 +62,19 @@ reviewer outside the loop — never by a gate inside it.
   `run`/`Popen`/`check_output` call carrying `text=` or `universal_newlines=`
   and no `encoding=`. It sees only direct calls: a suite that wraps its
   subprocess calls in a helper shows this lint one call site and hides the
-  rest.
+  rest. **The codec is the producing side's job too**, and both ends must
+  agree: a script that writes non-ASCII to stdout or stderr inherits the
+  console codepage on Windows, so it must reconfigure its own streams —
+  `aide.py`'s `main()` and the command-hygiene hook both do. Recorded, by the
+  windows CI leg on the very branch that added this rule: the hook wrote its
+  em-dash as cp1252, a strict UTF-8 reader rejected byte `0x97`, and the read
+  came back **`None`** — because the decode runs in `subprocess.run`'s reader
+  thread, where a `UnicodeDecodeError` never reaches the caller. That is the
+  `stdout is None` instance below, explained at last: it is not a Windows
+  quirk, it is a codec disagreement surfacing as a missing value rather than
+  as an error. So name the codec on the read, fix the writer if you own it,
+  and pass `errors="replace"` when you do not — then assert the value is
+  there before asserting anything about it.
 
 **Tests that can actually fail.**
 
