@@ -10,12 +10,52 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Ubuntu runs the whole suite in one job (a bare `pytest`, ~20s).
+        # Windows pays ~70ms per subprocess spawn (issue #74), so its leg is
+        # split into one job per group of pytest.ini testpaths roots.
+        # tests/test_ci_shards.py pins the shards to exactly cover testpaths —
+        # a new test root added there must be added to a shard here too.
+        include:
+          - os: ubuntu-latest
+            tests: ""
+          - os: windows-latest
+            tests: "core"
+          - os: windows-latest
+            tests: "adapters tests"
     runs-on: ${{ matrix.os }}
+    name: pytest (${{ matrix.os }}) ${{ matrix.tests }}
     steps:
+      # The windows-latest image already ships Defender with real-time
+      # scanning disabled and C:\ + D:\ excluded (runner-images'
+      # Configure-WindowsDefender.ps1), and PR #117's runs measured exactly
+      # that: RealTimeProtectionEnabled False, yet still ~55ms per subprocess
+      # spawn — the cost is CreateProcess plus the MSYS2 loader, not scanning
+      # (issue #74). This step only guards against an image update regressing
+      # the disable: it says what it found, re-asserts only when needed, and
+      # try/catches so a refused cmdlet reads as a slower job, never a red one.
+      - name: Keep Defender real-time scanning off
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: powershell
+        run: |
+          try {
+            $before = (Get-MpComputerStatus -ErrorAction Stop).RealTimeProtectionEnabled
+            Write-Host "RealTimeProtectionEnabled on the image: $before"
+            if ($before) {
+              Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop
+              $after = (Get-MpComputerStatus).RealTimeProtectionEnabled
+              Write-Host "RealTimeProtectionEnabled after disable: $after"
+              if ($after) {
+                Add-MpPreference -ExclusionProcess "git.exe", "python.exe", "pytest.exe" -ErrorAction Stop
+                Write-Host "disable refused; added process exclusions"
+              }
+            }
+          } catch {
+            Write-Host "Defender query/config refused: $_"
+          }
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
       - run: pip install pytest
-      - run: pytest
+      - run: pytest ${{ matrix.tests }}
