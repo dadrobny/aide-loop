@@ -108,9 +108,32 @@ _ENCODING = "utf-8-sig"
 #: and (since the live queue is the lowest-numbered open one) stranding
 #: `aide claim` on a finished queue, while `aide progress set` acted on them
 #: happily.
-_ITEM_REF_GROUP_RE = re.compile(r"[Ii]tems?\s+(0*\d+(?:\s*[,/–-]\s*0*\d+)*)")
+#: A number that opens a `YYYY-MM-DD` date is not an item number, and this is
+#: the guard that says so. Without it the provenance shape AGENT-CONTEXT.md
+#: itself prescribes — `*(item NNN, YYYY-MM-DD, engine X.Y.Z)*` — parsed as the
+#: list `NNN, 2026, -08, -30`, and the unguarded `int()` below raised. The blast
+#: radius was the whole verb, not the line: `aide progress set` reads every line
+#: of progress.md, so four evidence annotations written in the documented
+#: convention took `progress set` down for EVERY item repo-wide until a human
+#: approved rewording them (issue #120).
+#:
+#: Two alternatives on purpose. `-\d{1,2}-\d{1,2}` recognises the date tail;
+#: the bare `\d` forbids the backtrack that would otherwise let `\d+` give back
+#: digits ("2026" → "202") until the tail no longer starts at the cursor and
+#: the lookahead passed anyway. A range keeps working: "-092" carries one
+#: hyphen group, not two.
+_ITEM_REF_NOT_A_DATE = r"(?!\d|-\d{1,2}-\d{1,2})"
+_ITEM_REF_NUM = r"0*\d+" + _ITEM_REF_NOT_A_DATE
+_ITEM_REF_GROUP_RE = re.compile(
+    r"[Ii]tems?\s+(" + _ITEM_REF_NUM + r"(?:\s*[,/–-]\s*" + _ITEM_REF_NUM + r")*)")
 _ITEM_REF_SPLIT_RE = re.compile(r"\s*[,/]\s*")
 _ITEM_REF_RANGE_RE = re.compile(r"^0*(\d+)\s*[–-]\s*0*(\d+)$")
+#: The second, independent hardening: what the split hands back must LOOK like
+#: an item number before it is read as one. Either fix alone stops the crash;
+#: both are kept because the regex is a statement about one known prose shape
+#: while this is the invariant — a part that is not a number is provenance
+#: prose to skip, never a traceback out of an unrelated verb.
+_ITEM_REF_NUMBER_RE = re.compile(r"^0*\d+$")
 
 #: An inclusive range wider than this is treated as a typo and contributes only
 #: its endpoints, so a stray "Items 6-9999" cannot invent thousands of items.
@@ -127,7 +150,8 @@ def _referenced_item_numbers(text: str) -> List[int]:
                 continue
             rng = _ITEM_REF_RANGE_RE.match(part)
             if rng is None:
-                nums.append(int(part))
+                if _ITEM_REF_NUMBER_RE.match(part):
+                    nums.append(int(part))
                 continue
             lo, hi = int(rng.group(1)), int(rng.group(2))
             if lo <= hi <= lo + _ITEM_RANGE_MAX_SPAN:
@@ -2541,6 +2565,19 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide") -> List[str]:
         # (issue #94). Exact double-listing only: a literal pin under a May
         # change glob is the legitimate carve-out shape ("I may edit docs/**
         # but not docs/api.md") and scope stays the judge of whether it held.
+        # Silent narrowing, made loud where it is authored (issue #119): the
+        # spans after a bullet's first are dropped, and so is anything on a
+        # continuation line, so the item is authorised for less than its spec
+        # says and only an `aide scope` FAIL much later reveals it.
+        for declared, dropped in dropped_bullet_spans(text):
+            shown = ", ".join(f"'{d}'" for d in dropped)
+            out.append(
+                f"items/{path.name}: the Authorised paths bullet for "
+                f"'{declared}' also names {shown}, and `aide scope` reads none "
+                f"of them — a bullet declares ONE path, the first backtick "
+                f"span of its opening line, and a continuation line is not "
+                f"read at all. Give each path its own bullet, or the item is "
+                f"authorised for less than its spec says")
         may_normalised = {_strip_dot_slash(p.strip())
                          for p in (parsed.may_change if parsed else [])}
         for pin in (parsed.asserts_against if parsed else []):
@@ -4619,11 +4656,128 @@ def _bullet_path(line: str) -> Optional[str]:
     if m:
         candidate = m.group(1)
     else:
-        candidate = re.split(r"\s+[—–-]\s+|:", body, maxsplit=1)[0]
+        candidate = _BULLET_REASON_RE.split(body, maxsplit=1)[0]
     candidate = candidate.strip().strip("`").strip()
     if not candidate or candidate.rstrip(".").lower() == "none":
         return None
     return _strip_dot_slash(candidate)
+
+
+#: Every backtick span on a line, and where a bullet's reason starts. The two
+#: together locate the bullet's PATH POSITION — the run before the reason
+#: separator — which is the only place a span is a path claim. `_bullet_path`
+#: splits on the same separator for a bullet written without backticks, so the
+#: two readings of "where the path ends" cannot drift apart.
+_BACKTICK_SPAN_RE = re.compile(r"`([^`]+)`")
+#: The dash may END the line — `- `path` —` with the reason wrapped below is a
+#: common way to write a long one, and reading it as "no reason yet" would take
+#: the whole reason for more path position.
+_BULLET_REASON_RE = re.compile(r"\s+[—–-](?:\s+|$)|:")
+
+#: A Markdown list marker, which `_bullet_path` tests only by its first
+#: character. The lint needs the stricter form: a continuation line opening
+#: `**not** in the project group …` is emphasis, not a bullet, and reading it
+#: as one attributes the reason's own spans to a path it invented. The parser
+#: is left alone — its looser test yields a junk pattern that matches no file,
+#: while a lint that reports MORE than the parser reads is a lint nobody
+#: believes twice.
+_LIST_MARKER_RE = re.compile(r"[-*+]\s")
+
+
+def _authorised_section_lines(text: str) -> Optional[List[str]]:
+    """The lines under ``## Authorised paths``, or None when it is absent.
+
+    One slicer for the parser and the spec-time lint below, so the lint cannot
+    warn about a bullet the parser never looked at, or stay silent about one it
+    did — the whole point of the warning is to describe what `aide scope` will
+    actually do with the section.
+    """
+    lines = text.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip() == _AUTHORISED_HEADING:
+            start = i + 1
+            break
+    if start is None:
+        return None
+
+    end = len(lines)
+    for i in range(start, len(lines)):
+        if _ANY_HEADER_RE.match(lines[i]) and lines[i].strip() != _AUTHORISED_HEADING:
+            end = i
+            break
+    return lines[start:end]
+
+
+def _path_position(line: str) -> Tuple[str, bool]:
+    """The run of *line* before its reason separator, and whether one was seen.
+
+    Everything after the separator is the reason, and a bullet is required to
+    carry one — so a backticked name there is prose about the work, not a path
+    claim. Measured on two real consumers, treating it as a path claim produced
+    82 and 224 findings, almost all of them identifiers and TOML keys quoted in
+    reasons; the spec that *reported* issue #119 would have raised six.
+    """
+    m = _BULLET_REASON_RE.search(line)
+    return (line[: m.start()], True) if m else (line, False)
+
+
+def dropped_bullet_spans(text: str) -> List[Tuple[str, List[str]]]:
+    """``(path read, spans dropped)`` for each over-full Authorised-paths bullet.
+
+    The contract is one path per bullet (conventions.md §1 → authorised-paths),
+    and until issue #119 the two ways to break it were both silent: a bullet
+    listing several comma-separated `` `path` `` spans authorised only the
+    first, and a path list wrapped onto a continuation line lost everything
+    below the first line, since the parser only ever inspects bullet lines. The
+    narrowing surfaced much later as an `aide scope` FAIL naming paths the
+    spec's own prose plainly authorised — three of one item's four bullets had
+    that shape.
+
+    Only the **path position** is read: the bullet's opening line up to its
+    reason separator, plus the continuation lines while no separator has been
+    seen yet, which is exactly the wrapped-list shape. That limit is what makes
+    the lint worth reading rather than a source of noise to page past, and it
+    is a limit: a path named after the separator is not distinguishable from a
+    reason that mentions a file, so a second path written there stays silent.
+    The bullet is closed by a blank line, a sub-list label, or the next bullet
+    — the same shape a Markdown reader sees, so an author can predict what the
+    lint attributes where.
+
+    Silently narrowing an authorisation is the worst of the three behaviours
+    available, so what IS found is reported where it is authored. A *warning*,
+    not an error: the bullet is legible to a human, existing specs carry the
+    shape, and the remedy (split the bullet) is the author's to apply.
+    """
+    section = _authorised_section_lines(text)
+    if section is None:
+        return []
+    found: List[Tuple[str, List[str]]] = []
+    open_bullet: Optional[Tuple[str, List[str]]] = None
+    for line in section:
+        stripped = line.strip()
+        if not stripped or _sub_list_label(line) is not None:
+            open_bullet = None
+            continue
+        if _LIST_MARKER_RE.match(stripped):
+            open_bullet = None
+            path = _bullet_path(line)
+            # A bullet the parser declines — an unfilled `{{slot}}`, a literal
+            # "None." — is somebody else's finding (`aide check` errors on the
+            # slot), and nothing under it was going to be read anyway.
+            if path is None:
+                continue
+            head, reason = _path_position(stripped[1:].strip())
+            entry = (path, _BACKTICK_SPAN_RE.findall(head)[1:])
+            found.append(entry)
+            if not reason:
+                open_bullet = entry
+        elif open_bullet is not None:
+            head, reason = _path_position(line)
+            open_bullet[1].extend(_BACKTICK_SPAN_RE.findall(head))
+            if reason:
+                open_bullet = None
+    return [(path, dropped) for path, dropped in found if dropped]
 
 
 def declares_nothing(parsed: Optional[AuthorisedPaths]) -> bool:
@@ -4649,25 +4803,14 @@ def parse_authorised_paths(text: str) -> Optional[AuthorisedPaths]:
     which is what makes the flat single-list form — the shape consumers wrote
     before the labels existed — parse correctly rather than silently empty.
     """
-    lines = text.splitlines()
-    start = None
-    for i, line in enumerate(lines):
-        if line.strip() == _AUTHORISED_HEADING:
-            start = i + 1
-            break
-    if start is None:
+    section = _authorised_section_lines(text)
+    if section is None:
         return None
-
-    end = len(lines)
-    for i in range(start, len(lines)):
-        if _ANY_HEADER_RE.match(lines[i]) and lines[i].strip() != _AUTHORISED_HEADING:
-            end = i
-            break
 
     may_change: List[str] = []
     asserts_against: List[str] = []
     current = may_change
-    for line in lines[start:end]:
+    for line in section:
         label = _sub_list_label(line)
         if label is not None:
             current = may_change if label == _MAY_CHANGE_LABEL else asserts_against

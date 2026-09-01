@@ -121,10 +121,21 @@ def bucket(item: dict) -> int:
 
 
 def label(item: dict) -> str:
+    """How one item prints in the `--dry-run` review surface.
+
+    The title comes from the **content**, never the item. `gh project
+    item-list` caches an item-level `title` that a later `gh issue edit` does
+    not invalidate: #74 still printed the title it was filed under, months
+    after being renamed. Since the dry-run printout is what a human reads
+    before approving a reorder, a stale title there is a review of the wrong
+    board. The item-level value stays as the fallback for a draft item, which
+    has no issue behind it.
+    """
     content = item.get("content") or {}
     number = content.get("number")
     head = f"#{number}" if number else "(draft)"
-    return f"{head} {(item.get('title') or '')[:58]}"
+    title = content.get("title") or item.get("title") or ""
+    return f"{head} {title[:58]}"
 
 
 def archive_after(value: str) -> int | None:

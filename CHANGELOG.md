@@ -95,6 +95,70 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.30.0] — 2026-09-01
+
+### Added
+
+- **`aide check` warns when an Authorised-paths bullet declares more paths than
+  `aide scope` reads (issue #119).** The contract is one path per bullet — the
+  first backtick span of the opening line — and the two ways to break it were
+  both silent. A bullet listing several comma-separated `` `path` `` spans
+  authorised only the first; a path wrapped onto a continuation line was not
+  read at all, since the parser inspects bullet lines only. Three of one
+  consumer item's four bullets had that shape, and the narrowing surfaced much
+  later as an `aide scope` FAIL naming paths the spec's own prose plainly
+  authorised. Silently narrowing an authorisation is the worst of the three
+  behaviours available, so the violation is now reported where it is authored,
+  naming each dropped span. A **warning**, beside the other item-spec lints:
+  existing specs carry the shape, the remedy (split the bullet) is the author's,
+  and an unattended run must not start failing on a bullet a human reads fine.
+  The lint and the parser share one section slicer, so the warning cannot
+  describe a bullet `aide scope` never looked at — a test pins the dropped set
+  against the parsed set rather than checking either alone.
+
+  Only the **path position** is read — the opening line up to its reason
+  separator, plus continuation lines while no reason has started, which is
+  exactly the wrapped-list shape. Reading the reason too was measured against
+  two real consumers first and produced 82 and 224 findings, nearly all of them
+  identifiers and config keys legitimately quoted in reasons; the very spec that
+  reported #119, already split one path per bullet and saying so in its own
+  prose, drew six. With the limit it is 3 findings across 21 specs and 25 across
+  131, and they are the real thing. A lint nobody can afford to read is the
+  failure mode issue #13 was filed for, so the limit is stated rather than
+  hidden: a second path written *after* the reason separator is not
+  distinguishable from prose naming a file, and stays silent. §1 →
+  `authorised-paths` now states the rule and its remedy outright.
+
+### Fixed
+
+- **A bullet's reason could start with a line-final dash and be read as more
+  path.** `_bullet_path` split on ` — ` with whitespace required on *both*
+  sides, so `- `path` —` with the reason wrapped below did not register as
+  having a reason at all. Harmless for the parser, which stops at the first
+  backtick span either way, but the new lint reads exactly as far as the reason
+  and would have taken the whole thing for path position. The two now share one
+  definition of where a reason starts; as a side effect a non-backticked bullet
+  written `- src/a.py —` declares `src/a.py` rather than `src/a.py —`, which
+  matched no file git ever reports.
+
+- **The documented provenance shape crashed `aide progress set` repo-wide
+  (issue #120).** `AGENT-CONTEXT.md` prescribes `*(item NNN, YYYY-MM-DD, engine
+  X.Y.Z)*` for an insight's provenance, and `_referenced_item_numbers` read it
+  as the item list `NNN, 2026, -08, -30`, where an unguarded `int()` raised
+  `ValueError`. The blast radius was the verb, not the line: `progress set`
+  reads every line of `progress.md`, so four evidence annotations written in
+  the convention the framework itself documents took the verb down for *every*
+  item in the consumer until a human approved rewording all four — there being
+  no verb that amends evidence text. Both hardenings from the issue land, and
+  either alone stops the crash. The reference-group regex now refuses a number
+  that opens a `YYYY-MM-DD` date, with a lookahead that also forbids the
+  backtrack that would let `2026` shrink to `202` and pass anyway; ranges are
+  untouched, since `-092` carries one hyphen group and a date carries two. And
+  the split's parts are matched against an item-number shape before being read
+  as one — the invariant behind the known case: a part that is not a number is
+  provenance prose to skip, never a traceback out of an unrelated verb. Every
+  documented reference form parses exactly as before.
+
 ## [1.29.5] — 2026-09-01
 
 ### Fixed

@@ -558,6 +558,29 @@ def test_check_warns_on_a_root_document_missing_its_mandatory_sections(
     assert "0 warning(s)" not in out
 
 
+def test_check_warns_when_a_bullet_authorises_more_paths_than_scope_reads(
+        aide, consumer: Path, capsys):
+    """Issue #119: `aide scope` reads the FIRST backtick span of a bullet's
+    opening line and nothing on a continuation line, so a bullet listing two
+    paths authorised one and dropped the other in silence — surfacing much
+    later as a scope FAIL naming a path the spec's own prose authorised. The
+    warning names the dropped span, at spec time, where splitting the bullet
+    is still cheap. Still exit 0: existing specs carry the shape and an
+    unattended run must not start failing on one."""
+    spec = consumer / "docs" / "aide" / "items" / "001-the-greeter.md"
+    spec.write_text(
+        SPEC_001.replace(
+            "- `src/greeter.py` — the function itself",
+            "- `src/greeter.py`, `src/farewell.py` — the functions"),
+        encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "'src/farewell.py'" in out
+    assert "aide scope` reads none of them" in out
+    assert aide.parse_authorised_paths(spec.read_text(encoding="utf-8")).may_change == [
+        "src/greeter.py", "tests/test_greeter.py"]
+
+
 def test_check_queue_passes_and_names_the_unspecced_item(aide, consumer: Path, capsys):
     """Item 002 is queued with no spec — a normal mid-queue state, counted and
     reported, never a failure."""
