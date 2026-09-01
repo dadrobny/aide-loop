@@ -946,6 +946,12 @@ def _split_multi_item_bullets(lines: List[str], num: int, status: str) -> List[s
         # fiction into the tracked document is worse than the shared cell this
         # function exists to remove, so a malformed marker keeps the old
         # behaviour and this leaves it exactly as the author typed it.
+        #
+        # Whole-bullet, deliberately: in `*(Items 006, 044-999)*` the sound half
+        # keeps the shared cell too. Splitting the good elements while preserving
+        # the malformed one is a lot of machinery for a marker whose own author
+        # has already mistyped it, and the loud version — refusing the flip — is
+        # worse, since it would strand a real item behind a typo in prose.
         if _has_typo_range(marker.group(0)):
             continue
         current = ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
@@ -4401,7 +4407,38 @@ _INTERRUPTED_OPS: Tuple[Tuple[str, str], ...] = (
 )
 
 
-def _unsafe_tree_state(repo_root: Path, tick_rel: str = "") -> Optional[str]:
+def _dirty_paths(repo_root: Path) -> List[str]:
+    """Tracked paths carrying uncommitted changes, as git reports them.
+
+    `-z`, not plain `--porcelain`: without it git **quotes and escapes** a path
+    holding a space or a non-ASCII byte — `"docs/h\303\251llo/progress.md"` —
+    which is neither the path on disk nor anything a caller can compare one
+    against. NUL-terminated records never quote and never escape, so a consumer
+    whose docs directory has a space in it reads the same as everyone else.
+
+    Paths are relative to the git **worktree top level**, not to the cwd and not
+    to `repo_root` — git is consistent about that, and a caller resolving them
+    must be too.
+    """
+    out = git(["status", "--porcelain", "-z"], repo_root, check=False).stdout
+    fields = out.split("\0")
+    paths: List[str] = []
+    i = 0
+    while i < len(fields):
+        record, i = fields[i], i + 1
+        if len(record) < 4:                     # the empty tail after the last NUL
+            continue
+        code, path = record[:2], record[3:]
+        if code[0] in "RC":
+            i += 1                              # a rename/copy's SOURCE is its own field
+        if code == "??":                        # untracked — see _unsafe_tree_state
+            continue
+        paths.append(path)
+    return paths
+
+
+def _unsafe_tree_state(repo_root: Path,
+                       tick_path: Optional[Path] = None) -> Optional[str]:
     """Why this tree must not be switched/pulled/merged, or None if it may be.
 
     `aide merge` exists so that agents do not improvise git (§3), which means a
@@ -4420,21 +4457,29 @@ def _unsafe_tree_state(repo_root: Path, tick_rel: str = "") -> Optional[str]:
     for marker, what in _INTERRUPTED_OPS:
         if (gdir / marker).exists():
             return what
-    res = git(["status", "--porcelain"], repo_root, check=False)
-    dirty = [l for l in res.stdout.splitlines()
-             if l.strip() and not l.startswith("??")]
-    if not dirty:
+    paths = _dirty_paths(repo_root)
+    if not paths:
         return None
-    paths = [l[3:].strip() for l in dirty]
     # The one dirty tree this verb is likely to have caused itself: `--no-commit`
     # (on `merge` or on `progress set`) writes the tick and deliberately leaves
     # it uncommitted, and the NEXT merge — of any item — then meets this check.
-    # The state is genuinely unsafe (git refuses to rebase over unstaged
-    # changes), so it is still a refusal; what it must not be is a mystery.
-    if tick_rel and paths == [tick_rel]:
-        return (f"{tick_rel} carries an uncommitted status tick — a "
-                f"`--no-commit` run wrote it and left committing to you. It is "
-                f"the only change in the tree; commit or discard it")
+    # The state is genuinely unsafe (git refuses `pull --rebase` over ANY
+    # unstaged change, not merely a conflicting one), so it is still a refusal;
+    # what it must not be is a mystery.
+    #
+    # Compared as resolved paths against the worktree top, never as strings
+    # against `repo_root`: `aide.toml` may sit BELOW git's top level, and there
+    # git's `docs/aide/progress.md` is this repo's `sub/docs/aide/progress.md`.
+    if tick_path is not None and len(paths) == 1:
+        top = git(["rev-parse", "--show-toplevel"], repo_root, check=False).stdout.strip()
+        try:
+            is_tick = (Path(top or repo_root) / paths[0]).resolve() == tick_path.resolve()
+        except OSError:                          # an unresolvable path is not the tick
+            is_tick = False
+        if is_tick:
+            return (f"{paths[0]} carries an uncommitted status tick — a "
+                    f"`--no-commit` run wrote it and left committing to you. It "
+                    f"is the only change in the tree; commit or discard it")
     shown = ", ".join(paths[:3])
     more = f" (+{len(paths) - 3} more)" if len(paths) > 3 else ""
     return f"the working tree has uncommitted changes: {shown}{more}"
@@ -4524,12 +4569,7 @@ def cmd_merge(args: argparse.Namespace) -> int:
               f"then run 'aide progress set {args.number:03d} done'.")
         return 0
 
-    tick_path = docs_dir(repo_root, config) / "progress.md"
-    try:
-        tick_rel = tick_path.resolve().relative_to(repo_root.resolve()).as_posix()
-    except ValueError:                      # docs_dir outside the repo — no hint
-        tick_rel = ""
-    unsafe = _unsafe_tree_state(repo_root, tick_rel)
+    unsafe = _unsafe_tree_state(repo_root, docs_dir(repo_root, config) / "progress.md")
     if unsafe:
         print(f"aide merge: refusing to merge item {args.number:03d} — {unsafe}. "
               f"`git switch` and `git pull --rebase` from here rewrite or "

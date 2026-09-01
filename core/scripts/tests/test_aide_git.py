@@ -1068,6 +1068,48 @@ def test_merge_after_a_no_commit_run_names_the_tick_it_is_blocked_on(
     assert aide.main(["--repo", str(root), "merge", "28", "--no-test"]) == 0
 
 
+@pytest.mark.parametrize("docs_rel", ["docs/aide", "docs/a spacé dir"])
+def test_the_uncommitted_tick_is_recognised_whatever_the_layout(
+        tmp_path: Path, docs_rel: str):
+    """The diagnosis must not quietly fall back to the generic message.
+
+    Two layouts break a naive string compare, and neither is documented as
+    unsupported: `git status --porcelain` **quotes and escapes** a path with a
+    space or a non-ASCII byte, and it reports every path relative to the git
+    **top level** — which is not `repo_root` when `aide.toml` sits in a
+    subdirectory of the repository.
+    """
+    top = tmp_path / "outer"
+    top.mkdir()
+    _run(["git", "init", "-b", "main"], top)
+    _run(["git", "config", "user.email", "t@example.com"], top)
+    _run(["git", "config", "user.name", "Tester"], top)
+    root = top / "sub"                       # aide.toml BELOW the git top level
+    root.mkdir()
+    (root / "aide.toml").write_text(
+        AIDE_TOML.format(mode="local").replace(
+            'docs_dir = "docs/aide"', f'docs_dir = "{docs_rel}"'),
+        encoding="utf-8")
+    ddir = root / docs_rel
+    ddir.mkdir(parents=True)
+    (ddir / "progress.md").write_text(PROGRESS, encoding="utf-8")
+    _run(["git", "add", "-A"], top)
+    _run(["git", "commit", "-m", "init"], top)
+
+    config = aide.load_config(root)
+    tick = aide.docs_dir(root, config) / "progress.md"
+    assert aide._unsafe_tree_state(root, tick) is None
+    tick.write_text(PROGRESS.replace("📋 Bounds", "🔍 Bounds"), encoding="utf-8")
+    state = aide._unsafe_tree_state(root, tick)
+    assert state is not None and "uncommitted status tick" in state
+
+    # An unrelated dirty file is still the generic refusal, not the tick's.
+    (root / "stray.txt").write_text("x\n", encoding="utf-8")
+    _run(["git", "add", "stray.txt"], root)
+    other = aide._unsafe_tree_state(root, tick)
+    assert other is not None and "uncommitted status tick" not in other
+
+
 def test_merge_no_commit_leaves_the_tick_uncommitted(tmp_path: Path):
     root = _init_repo(tmp_path / "r", mode="local")
     _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
