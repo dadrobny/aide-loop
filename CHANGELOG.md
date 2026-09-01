@@ -149,7 +149,8 @@ keys, and the adapter's agents/skills/commands.
   `*(Items 044-999)*` would write a bullet for a phantom item 999 that
   `check`, `claim` and every queue rollup would thereafter count as real.
   Writing fiction into the tracked document is worse than the shared cell this
-  removes, so a malformed marker keeps the old behaviour. A flip that advances
+  removes, so a malformed marker keeps the old behaviour — whole-bullet, so in
+  `*(Items 006, 044-999)*` the sound half keeps the shared cell too. A flip that advances
   nothing splits nothing, so a no-op `progress set` still rewrites nothing. No consumer edits
   anything — hence a minor, not a major. §1 → `progress.md` and create-queue
   step 8 now say so, in the same commit as the code, because the defect existed
