@@ -75,7 +75,10 @@ Read vision, roadmap, and progress, then write the queue from the template
    - Append to an existing reference when a deliverable maps to several items
      (`… *(Items 006, NNN)*`); add the reference to the bullet that has none; or,
      if the item delivers something not yet listed, add a new
-     `- 📋 <deliverable>. *(Item NNN)*` bullet under the right stage.
+     `- 📋 <deliverable>. *(Item NNN)*` bullet under the right stage. A shared
+     marker is shorthand, not a shared status cell: the first status change to
+     any of its items splits the bullet into one per item, so the siblings keep
+     📋 rather than being completed alongside.
    - **Never change a deliverable's status icon** — leave it 📋. This step only
      makes the item *trackable*; status transitions (📋→🚧→✅) are
      `aide progress set`'s job during execution.

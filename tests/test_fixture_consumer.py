@@ -170,8 +170,8 @@ _Entries below, newest last._
 """
 
 
-def _git(args, cwd: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=str(cwd), check=True,
+def _git(args, cwd: Path, check: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], cwd=str(cwd), check=check,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           encoding="utf-8")
 
@@ -855,6 +855,175 @@ def test_merge_in_pr_mode_pushes_and_leaves_the_merge_to_a_human(
     # It got pushed, so a human has something to open a PR against.
     assert "aide/001-the-greeter" in _git(
         ["branch", "--format=%(refname:short)"], origin).stdout
+
+
+def _set_test_command(repo: Path, command: str) -> None:
+    """Point `python.test_command` at a deterministic, dependency-free command.
+
+    `git` rather than a python one-liner: the engine only rebinds a leading
+    `python` to the project venv, the fixture has no venv, and whether a bare
+    `python` resolves is the CI runner's business, not this test's. Both legs
+    of the matrix have git — the module under test shells out to it constantly.
+    """
+    toml = repo / "aide.toml"
+    text = toml.read_text(encoding="utf-8")
+    old = [l for l in text.splitlines() if l.startswith("test_command = ")]
+    assert len(old) == 1, "aide.toml lost its test_command line"
+    toml.write_text(text.replace(old[0], f'test_command = "{command}"'),
+                    encoding="utf-8")
+
+
+def test_merge_refuses_a_dirty_working_tree(aide, consumer: Path):
+    """#133: `switch` and `pull --rebase` are not run from an unsafe tree.
+
+    A consumer that obeys §3 never reaches for raw git, so whatever this verb
+    does unconditionally is what happens to their repository. It already
+    refuses a base that would detach HEAD; this is the same class.
+    """
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    (consumer / "src" / "greeter.py").write_text("half-written\n", encoding="utf-8")
+    main_before = _git(["rev-parse", "main"], consumer).stdout.strip()
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    assert _git(["rev-parse", "main"], consumer).stdout.strip() == main_before
+    assert _branch(consumer) == "aide/001-the-greeter"   # it did not even switch
+    assert (consumer / "src" / "greeter.py").read_text(
+        encoding="utf-8") == "half-written\n"           # nor touch the edit
+
+
+def test_merge_refuses_a_tree_left_mid_merge(aide, consumer: Path):
+    """A real conflicted merge, not a simulated one: the state a human is
+    standing in when they reach for `aide merge` again is exactly this."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    shared = consumer / "docs" / "aide" / "shared.md"
+    shared.write_text("branch side\n", encoding="utf-8")
+    _commit(consumer, "docs: branch side")
+    _git(["switch", "main"], consumer)
+    shared.write_text("main side\n", encoding="utf-8")
+    _commit(consumer, "docs: main side")
+    assert _git(["merge", "--no-edit", "aide/001-the-greeter"], consumer,
+                check=False).returncode != 0
+    assert (consumer / ".git" / "MERGE_HEAD").is_file()
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    # The half-merge is still the human's to finish — nothing resolved it, and
+    # nothing committed on top of it.
+    assert (consumer / ".git" / "MERGE_HEAD").is_file()
+    assert _item_status(aide, consumer, 1) != "complete"
+
+
+def test_merge_skips_a_branch_that_has_already_landed(aide, consumer: Path):
+    """#133: the merge is idempotent, so re-running the verb cannot churn.
+
+    This is the shape that cost a consumer a hand-made conflict resolution: the
+    branch was merged and only the push was missing, and the re-run reached for
+    `pull --rebase` over the unpushed merge commit.
+    """
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    _git(["switch", "main"], consumer)
+    _git(["merge", "--no-ff", "--no-edit", "aide/001-the-greeter"], consumer)
+    landed = _git(["rev-parse", "main"], consumer).stdout.strip()
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 0
+    # No second merge commit: everything after the hand-made one is the tick.
+    assert _git(["rev-list", "--merges", f"{landed}..main"],
+                consumer).stdout.strip() == ""
+    assert _item_status(aide, consumer, 1) == "complete"
+    assert "aide/001-the-greeter" not in _branches(consumer)
+
+
+def test_merge_will_not_rebase_over_an_unpushed_merge_commit(
+        aide, consumer: Path, tmp_path: Path):
+    """#133: `pull --rebase` drops a merge commit and replays both parents, so
+    a conflict resolved by hand inside it comes back. With origin diverged the
+    verb stops instead — the merge commit, and the resolution it carries, is
+    still exactly where the human left it."""
+    origin = tmp_path / "origin.git"
+    _git(["init", "--bare", "-b", "main", str(origin)], tmp_path)
+    _git(["remote", "add", "origin", str(origin)], consumer)
+    _git(["push", "-u", "origin", "main"], consumer)
+    toml = consumer / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        'mode = "local"', 'mode = "auto-merge"'), encoding="utf-8")
+    _commit(consumer, "chore: auto-merge mode")
+    _git(["push"], consumer)
+
+    # Give origin a commit this checkout does not have, so a rebase would have
+    # something to replay onto...
+    (consumer / "docs" / "aide" / "note.md").write_text(
+        "origin side\n", encoding="utf-8")
+    _commit(consumer, "docs: origin side")
+    _git(["push"], consumer)
+    _git(["reset", "--hard", "HEAD~1"], consumer)
+    # ...and leave main carrying an unpushed merge commit, the way a resolved
+    # conflict does. A previous item's landing, not this one's.
+    _git(["switch", "-c", "side"], consumer)
+    (consumer / "docs" / "aide" / "side.md").write_text("side\n", encoding="utf-8")
+    _commit(consumer, "docs: side")
+    _git(["switch", "main"], consumer)
+    _git(["merge", "--no-ff", "--no-edit", "side"], consumer)
+    merged = _git(["rev-parse", "main"], consumer).stdout.strip()
+
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    assert _git(["rev-parse", "main"], consumer).stdout.strip() == merged
+    assert _git(["rev-list", "--merges", "@{u}..HEAD"],
+                consumer).stdout.strip() != ""      # still a merge, not replayed
+    assert _item_status(aide, consumer, 1) != "complete"
+    assert "aide/001-the-greeter" in _branches(consumer)
+
+
+def test_the_post_merge_run_sees_the_refs_a_fresh_clone_would(
+        aide, consumer: Path):
+    """#125: the claim branch is deleted BEFORE the re-run, not after.
+
+    The test command here succeeds exactly while the claim branch exists, so
+    the merge's exit code reports what the run saw. It saw no claim branch —
+    which is why a consumer's `aide check` had reported the item's own branch
+    as stale against the item being merged, a failure class its acceptance
+    baseline had never seen and only this ordering could produce.
+    """
+    _set_test_command(
+        consumer, "git show-ref --verify --quiet refs/heads/aide/001-the-greeter")
+    _commit(consumer, "chore: a test command that sees the claim branch")
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    assert _git(["show-ref", "--verify", "--quiet",
+                 "refs/heads/aide/001-the-greeter"], consumer,
+                check=False).returncode == 0        # green while the branch is there
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 1
+
+
+def test_a_red_post_merge_run_blocks_the_tick_and_leaves_a_re_runnable_state(
+        aide, consumer: Path):
+    """#125: ✅ and the push are what a red run refuses.
+
+    A consumer landed a red queue branch with the item marked done, because the
+    run was advisory: the tick and the push had already happened by the time it
+    was consulted. It is a gate now — and the state it leaves is one the same
+    command can finish, which is what stops a human hand-editing the tick.
+    """
+    _set_test_command(consumer, "git rev-parse --verify no-such-ref")
+    _commit(consumer, "chore: a failing test command")
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 1
+    assert _item_status(aide, consumer, 1) != "complete"
+    assert (consumer / "src" / "greeter.py").is_file()     # the merge itself stands
+    assert "aide/001-the-greeter" in _branches(consumer)   # and the retry has a branch
+
+    _set_test_command(consumer, "git rev-parse --verify HEAD")
+    _commit(consumer, "chore: a passing test command")
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 0
+    assert _item_status(aide, consumer, 1) == "complete"
+    assert "aide/001-the-greeter" not in _branches(consumer)
 
 
 # --------------------------------------------------------------------------- #

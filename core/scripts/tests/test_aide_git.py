@@ -916,8 +916,11 @@ def test_merge_records_the_tick_itself_in_local_mode(tmp_path: Path):
     """✅ is set by the process that did the merge, so it cannot outrun it."""
     root = _init_repo(tmp_path / "r", mode="local")
     _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
-    assert aide.main(["--repo", str(root), "progress", "set", "27", "in-review",
-                      "--no-commit"]) == 0
+    # The 🔍 tick is committed, not left in the tree: `merge` refuses to
+    # `switch`/`pull`/`merge` from a dirty one (issue #133), so a run that
+    # means to land must hand it a clean tree first.
+    assert aide.main(["--repo", str(root), "progress", "set", "27",
+                      "in-review"]) == 0
     assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 0
     progress = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
     assert "✅ Bounds rules" in progress or "27" in progress
