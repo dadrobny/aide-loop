@@ -2017,6 +2017,18 @@ def _byte_exact_reads(tree: ast.AST) -> List[Tuple[str, int]]:
     it. A read stored in a local and compared later is missed on purpose: that
     indirection is the shape of a determinism check between two generated
     files, which needs no pin at all.
+
+    **What that costs, stated so it is not rediscovered** (issue #124). This
+    function decides a *read shape*, and a read shape is only a proxy for the
+    question that matters, which is whether the file needs a pin. A committed
+    text artifact whose tests `json.loads` it, or walk a Markdown table cell by
+    cell, matches nothing here and draws no warning **whether or not it is
+    pinned** — silent in both directions. Widening to cover it would be wrong,
+    not merely noisy: `read_text()` applies universal-newline translation, so a
+    CRLF-rewritten file parses to the identical object and a pin buys that
+    parse nothing. The file may still need one — for a byte-reproducibility
+    claim asserted somewhere this lint cannot see, a regenerate-and-diff or a
+    digest kept elsewhere — and that claim is the project's to assert directly.
     """
     out: List[Tuple[str, int]] = []
     for node in ast.walk(tree):
@@ -2075,6 +2087,17 @@ def gitattributes_eol_pin_warnings(repo_root: Path,
     A resolved path is only reported if it **exists** in the checkout, which is
     the cheap proxy for "committed": a path that resolves but is not there is a
     generated artifact, not a fixture.
+
+    **Two causes of silence, and only one of them is the one above.** The first
+    is resolution: a path this lint cannot follow is skipped. The second is
+    shape, in `_byte_exact_reads` — a committed artifact its tests *parse*
+    rather than byte-compare draws no warning whether or not it is pinned. The
+    second is the one that misleads, because such a file looks exactly like the
+    kind this lint exists for. Recorded (issue #124): a spec wrote "the eol-pin
+    lint passes" as an acceptance criterion for a committed generated JSON
+    artifact its tests `json.loads`; the criterion was vacuous by construction,
+    and the pin had to be asserted by a project-side test instead. Read a
+    warning here as authoritative and silence as *no reading taken*.
     """
     files = _test_files(repo_root, config)
     if not files:

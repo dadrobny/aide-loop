@@ -39,7 +39,15 @@ reviewer outside the loop — never by a gate inside it.
   majority of `read_bytes()` calls in a real suite compare two freshly
   generated files to each other and need no pin at all. Treat a warning as
   authoritative and its silence as partial: the pin is still your
-  responsibility on a path the check cannot see.
+  responsibility on a path the check cannot see. **Silence has a second cause,
+  and it is the one that misleads:** the lint decides a *read shape*, not
+  whether a file needs a pin. A committed artifact whose tests `json.loads` it,
+  or walk a Markdown table cell by cell, draws no warning whether or not it is
+  pinned — universal newlines make a parsed read immune to the rewrite, so
+  covering it would be wrong rather than merely noisy, yet the file may still
+  need the pin for a byte-reproducibility claim made where the lint cannot look.
+  So never write "the eol-pin lint passes" as an acceptance criterion: assert
+  the pin itself.
 - **A test that captures subprocess output as text must pass
   `encoding="utf-8"`.** `text=True` (and its older spelling
   `universal_newlines=True`) names no codec, so Python decodes with

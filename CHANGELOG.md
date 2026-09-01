@@ -95,6 +95,33 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.29.1] — 2026-09-01
+
+### Changed
+
+- **The `.gitattributes` eol-pin lint says what its silence does not mean
+  (issue #124).** It has two causes of silence and documented only one. The
+  first is resolution — a path built from a `tmp_path` or a function argument
+  is skipped — and §6 already said so. The second is *shape*: a committed text
+  artifact whose tests `json.loads` it, or walk a Markdown table cell by cell,
+  matches no byte-exact read and draws no warning **whether or not it is
+  pinned**. That is the silence that misleads, because such a file looks
+  exactly like the kind the lint exists for. Recorded: a spec wrote "the
+  eol-pin lint passes" as an acceptance criterion for a committed generated
+  JSON artifact, which was vacuous by construction, and the pin had to be
+  asserted by a project-side test instead.
+
+  **The lint is not widened, deliberately.** `read_text()` applies
+  universal-newline translation, so a CRLF-rewritten file parses to the
+  identical object — covering the shape would be wrong rather than merely
+  noisy. What the file may still need the pin for is a byte-reproducibility
+  claim made somewhere the lint cannot look, and that claim is the project's to
+  assert directly. §6, the two docstrings, and the delivered §6 skill now say
+  this; §6 adds the operative instruction — never write "the eol-pin lint
+  passes" as an acceptance criterion, assert the pin itself — and three tests
+  pin the behaviour as a decision rather than an accident, including the
+  boundary case where one `==` on the bytes makes the same artifact report.
+
 ## [1.29.0] — 2026-09-01
 
 ### Added

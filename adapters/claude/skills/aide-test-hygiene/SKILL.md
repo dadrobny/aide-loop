@@ -39,6 +39,8 @@ paths:
      - an identical tree hashes differently on Windows
      - A committed byte-exact fixture needs a `.gitattributes` `text eol=lf` pin
      - Treat a warning as authoritative and its silence as partial
+     - the lint decides a *read shape*, not whether a file needs a pin
+     - never write "the eol-pin lint passes" as an acceptance criterion
      - A test that captures subprocess output as text must pass
        `encoding="utf-8"`
      - It sees only direct calls: a suite that wraps its subprocess calls in a
@@ -82,7 +84,10 @@ regardless.
 - **A committed byte-exact fixture needs a `.gitattributes` `text eol=lf` pin**,
   or `core.autocrlf` rewrites it on checkout and every byte comparison fails on
   Windows only. `aide check` warns on the cases it can decide. Treat a warning
-  as authoritative and its silence as partial.
+  as authoritative and its silence as partial. The lint decides a *read shape*,
+  not whether a file needs a pin: an artifact whose tests parse it rather than
+  byte-compare it draws no warning whether or not it is pinned. So never write
+  "the eol-pin lint passes" as an acceptance criterion: assert the pin itself.
 - **A test that captures subprocess output as text must pass
   `encoding="utf-8"`.** `text=True` names no codec, so Python decodes with the
   platform's locale codec — UTF-8 on a Linux runner, cp1252 on a Windows one.
