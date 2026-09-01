@@ -65,7 +65,9 @@ Follow the `aide-create-queue` skill in full. In brief:
    **deliverable bullet** under that item's roadmap **stage section** in
    `docs/aide/progress.md` — append to an existing reference (`*(Items 006, NNN)*`),
    add it to a bullet that has none, or add a new `- 📋 <deliverable>. *(Item NNN)*`
-   bullet if the item delivers something not yet listed. **Never change a status
+   bullet if the item delivers something not yet listed. A shared marker is
+   shorthand, not a shared status cell: the first status change to any of its
+   items splits the bullet into one per item. **Never change a status
    icon** (leave deliverables 📋 — status transitions are `aide progress set`'s job
    during execution). Item numbers are born here, so their `progress.md` references
    must be recorded here: `aide progress set NNN` locates the bullet to flip by its

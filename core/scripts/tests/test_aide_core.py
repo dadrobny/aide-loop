@@ -271,6 +271,24 @@ def test_a_flip_that_advances_nothing_splits_nothing():
     assert aide.set_item_status(MULTI, 999, "complete") == MULTI
 
 
+def test_a_typo_range_is_never_materialised_into_the_file():
+    """The desugar writes item numbers back, so it may only write the ones the
+    author wrote.
+
+    A range wider than `_ITEM_RANGE_MAX_SPAN` is read as a typo and contributes
+    only its endpoints — safe while it stays in memory, and not safe at all for
+    a caller that writes them down: `*(Items 044-999)*` would grow a bullet for
+    a phantom item 999, thereafter indistinguishable from a real one and
+    counted by `check`, `claim` and every queue rollup. The malformed marker
+    keeps the old flip-in-place behaviour instead.
+    """
+    text = "## Stage 3 — X — 📋\n**Deliverables.**\n- 📋 Wide. *(Items 044-999)*\n"
+    out = aide.set_item_status(text, 44, "complete")
+    assert "- ✅ Wide. *(Items 044-999)*" in out
+    assert "999)*" in out and "*(Item 999)*" not in out
+    assert out.count("Wide.") == 1
+
+
 def test_a_single_item_bullet_is_left_alone():
     out = aide.set_item_status(MULTI, 18, "complete")
     assert "- ✅ Something else. *(Item 018)*" in out

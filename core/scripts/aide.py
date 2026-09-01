@@ -161,6 +161,26 @@ def _referenced_item_numbers(text: str) -> List[int]:
     return nums
 
 
+def _has_typo_range(text: str) -> bool:
+    """Does ``text`` carry a range so wide the reader treats it as a typo?
+
+    `_referenced_item_numbers` keeps only such a range's ENDPOINTS, so what it
+    hands back is deliberately not what the author wrote — `Items 044-999` reads
+    as {44, 999}, and 999 is an artifact of the typo, not an item. That is a
+    safe misreading while it stays in memory. It is not safe for a caller that
+    writes the numbers back into the document, which is why the desugar asks.
+    """
+    for group in _ITEM_REF_GROUP_RE.finditer(text):
+        for part in _ITEM_REF_SPLIT_RE.split(group.group(1)):
+            rng = _ITEM_REF_RANGE_RE.match(part.strip())
+            if rng is None:
+                continue
+            lo, hi = int(rng.group(1)), int(rng.group(2))
+            if not lo <= hi <= lo + _ITEM_RANGE_MAX_SPAN:
+                return True
+    return False
+
+
 def _references_item(text: str, num: int) -> bool:
     """Does ``text`` reference item ``num`` in any accepted form?"""
     return num in _referenced_item_numbers(text)
@@ -913,13 +933,24 @@ def _split_multi_item_bullets(lines: List[str], num: int, status: str) -> List[s
     the bullet already holds, is not a reason to reshape a consumer's file.
     """
     for start, last in reversed(_deliverable_bullet_spans(lines)):
-        nums = list(dict.fromkeys(_bullet_marker_item_numbers(lines[last])))
+        marker = _BULLET_MARKER_RE.search(lines[last])
+        if marker is None:
+            continue
+        nums = list(dict.fromkeys(_referenced_item_numbers(marker.group(0))))
         if num not in nums or len(nums) < 2:
+            continue
+        # A range wider than the typo limit contributes only its endpoints, so
+        # `nums` is not what the author wrote: `*(Items 044-999)*` would grow a
+        # bullet for a phantom item 999, indistinguishable from a real one and
+        # thereafter counted by `check`, `claim` and every queue rollup. Writing
+        # fiction into the tracked document is worse than the shared cell this
+        # function exists to remove, so a malformed marker keeps the old
+        # behaviour and this leaves it exactly as the author typed it.
+        if _has_typo_range(marker.group(0)):
             continue
         current = ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
         if not current or RANK[status] <= RANK[current]:
             continue
-        marker = _BULLET_MARKER_RE.search(lines[last])
         head = lines[last][:marker.start()]
         # Whatever followed the last `)*` — the sentence-ending period the
         # marker regex tolerates — belongs to every copy, not just the first.
@@ -4370,7 +4401,7 @@ _INTERRUPTED_OPS: Tuple[Tuple[str, str], ...] = (
 )
 
 
-def _unsafe_tree_state(repo_root: Path) -> Optional[str]:
+def _unsafe_tree_state(repo_root: Path, tick_rel: str = "") -> Optional[str]:
     """Why this tree must not be switched/pulled/merged, or None if it may be.
 
     `aide merge` exists so that agents do not improvise git (§3), which means a
@@ -4392,11 +4423,21 @@ def _unsafe_tree_state(repo_root: Path) -> Optional[str]:
     res = git(["status", "--porcelain"], repo_root, check=False)
     dirty = [l for l in res.stdout.splitlines()
              if l.strip() and not l.startswith("??")]
-    if dirty:
-        shown = ", ".join(l[3:].strip() for l in dirty[:3])
-        more = f" (+{len(dirty) - 3} more)" if len(dirty) > 3 else ""
-        return f"the working tree has uncommitted changes: {shown}{more}"
-    return None
+    if not dirty:
+        return None
+    paths = [l[3:].strip() for l in dirty]
+    # The one dirty tree this verb is likely to have caused itself: `--no-commit`
+    # (on `merge` or on `progress set`) writes the tick and deliberately leaves
+    # it uncommitted, and the NEXT merge — of any item — then meets this check.
+    # The state is genuinely unsafe (git refuses to rebase over unstaged
+    # changes), so it is still a refusal; what it must not be is a mystery.
+    if tick_rel and paths == [tick_rel]:
+        return (f"{tick_rel} carries an uncommitted status tick — a "
+                f"`--no-commit` run wrote it and left committing to you. It is "
+                f"the only change in the tree; commit or discard it")
+    shown = ", ".join(paths[:3])
+    more = f" (+{len(paths) - 3} more)" if len(paths) > 3 else ""
+    return f"the working tree has uncommitted changes: {shown}{more}"
 
 
 def _has_unpushed_merge(repo_root: Path) -> bool:
@@ -4483,7 +4524,12 @@ def cmd_merge(args: argparse.Namespace) -> int:
               f"then run 'aide progress set {args.number:03d} done'.")
         return 0
 
-    unsafe = _unsafe_tree_state(repo_root)
+    tick_path = docs_dir(repo_root, config) / "progress.md"
+    try:
+        tick_rel = tick_path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:                      # docs_dir outside the repo — no hint
+        tick_rel = ""
+    unsafe = _unsafe_tree_state(repo_root, tick_rel)
     if unsafe:
         print(f"aide merge: refusing to merge item {args.number:03d} — {unsafe}. "
               f"`git switch` and `git pull --rebase` from here rewrite or "

@@ -144,8 +144,13 @@ keys, and the adapter's agents/skills/commands.
   its queue's open count. The form stays legal and **desugars**: the first flip
   that would advance the bullet splits it into one bullet per item, same text,
   one `*(Item NNN)*` each, and moves only the item named. Ranges included
-  (`*(Items 071–075)*` is five cells). A flip that advances nothing splits
-  nothing, so a no-op `progress set` still rewrites nothing. No consumer edits
+  (`*(Items 071–075)*` is five cells) — but **not** a range wider than the
+  parser's 50-item typo limit, which contributes only its endpoints: splitting
+  `*(Items 044-999)*` would write a bullet for a phantom item 999 that
+  `check`, `claim` and every queue rollup would thereafter count as real.
+  Writing fiction into the tracked document is worse than the shared cell this
+  removes, so a malformed marker keeps the old behaviour. A flip that advances
+  nothing splits nothing, so a no-op `progress set` still rewrites nothing. No consumer edits
   anything — hence a minor, not a major. §1 → `progress.md` and create-queue
   step 8 now say so, in the same commit as the code, because the defect existed
   precisely where they already disagreed with the engine.
@@ -157,10 +162,15 @@ keys, and the adapter's agents/skills/commands.
   same class of lie as ticking an item whose tests fail. The remote claim
   branch is kept in that case, so the work still exists somewhere other than
   one checkout.
-- **`aide merge` after `aide progress set NNN --no-commit`** now refuses until
-  that tick is committed, as a consequence of the dirty-tree precondition
-  above. Committing the tick first is the fix; `aide merge --no-commit` is
-  unaffected.
+- **A `--no-commit` tick now blocks the next merge until it is committed.**
+  Both `aide progress set NNN --no-commit` and `aide merge NNN --no-commit`
+  leave the status tick written but uncommitted, which is what the flag is for
+  — and the dirty-tree precondition above then refuses the *next* `aide merge`,
+  of any item, not just a retry of that one. The refusal is correct (git will
+  not rebase over unstaged changes either), so what changes is that it names
+  the cause: a tree whose only change is that tick is reported as exactly that,
+  with "commit or discard it", rather than as an unexplained dirty file the
+  human never edited.
 
 ## [1.30.0] — 2026-09-01
 
