@@ -96,10 +96,10 @@ of it.
 
 **Triage** routes each unchecked entry by type — `knowledge` → the owning
 document; `defect`/`gap` → candidate items for the **next** queue (so the
-queue PR reviews them); `automation` → a candidate item that adds a CLI
-verb/script *and* the skill/agent edit mandating it; `framework` → a GitHub
-issue on `[framework] repo` from `aide.toml` (via `gh`; if unset/offline the
-entry stays pending).
+queue PR reviews them); `automation` → a candidate item for that same next
+queue, one that adds a CLI verb/script *and* the skill/agent edit mandating
+it; `framework` → a GitHub issue on `[framework] repo` from `aide.toml` (via
+`gh`; if unset/offline the entry stays pending).
 
 **A `framework` issue body opens with the engine version the observation was
 made under** — first line, before the observation:
