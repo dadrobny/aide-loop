@@ -84,21 +84,24 @@ Follow the `aide-create-queue` skill in full. In brief:
    must be recorded here: `aide progress set NNN` locates the bullet to flip by its
    reference and now **hard-errors** on an unreferenced item (engine ≥ 1.0.1)
    instead of silently no-op'ing.
-6. **Tick every inbox entry you queued**, naming the item it became — the verb
-   owns that edit and commits the file when git can:
-   ```
-   python .aide/scripts/aide.py insights tick N --pointer "item NNN"
-   ```
-   `N` is the entry number `insights list --open` printed. An entry you passed
-   over stays open and unticked — it is still a candidate for the next queue —
-   and step 8 says so out loud.
-7. **Commit** the new queue, the `progress.md` back-fill, **and** the tidy-up on
+6. **Commit** the new queue, the `progress.md` back-fill, **and** the tidy-up on
    the **current branch** (each a separate Bash call). Do **not** push and do
    **not** open a PR:
    ```
    git add docs/aide/queue/queue-NNN.md docs/aide/queue/queue-<NNN-1>.md docs/aide/progress.md
    git commit -m "docs(aide): add work queue NNN"
    ```
+7. **Tick every inbox entry you queued**, naming the item it became — the verb
+   owns that edit and commits the file when git can:
+   ```
+   python .aide/scripts/aide.py insights tick N --pointer "item NNN"
+   ```
+   `N` is the entry number `insights list --open` printed. **After the commit of
+   step 6, not before** — the verb rebases onto the upstream before committing,
+   and a working tree still holding the queue and the back-fill is exactly the
+   state that makes the rebase fail; `aide-create-queue` orders it the same way.
+   An entry you passed over stays open and unticked — it is still a candidate
+   for the next queue — and step 8 says so out loud.
 8. **Return** a tight summary: queue number, the item-number range and one-line
    titles, and confirmation the previous queue was tidied and every item wired
    into `progress.md`. Name the inbox entries you queued (with the item numbers
@@ -132,7 +135,7 @@ and resolving it destroys the only thing the gate protects.
   is permitted because raising a blocker is safe; **resolving** one is not
   yours, ever.
 - `docs/aide/insights.md` is the one file outside that scope you touch, and
-  only through the verb: an append (below) and the `insights tick` of step 6.
+  only through the verb: an append (below) and the `insights tick` of step 7.
   **Never edit a captured line by hand** — the claim is immutable and ticking
   the checkbox is the one in-place edit, which `tick` owns.
 
@@ -159,5 +162,5 @@ because you work a queue and there may be no item to name yet.
 The feedback loop triages the inbox at the queue boundary — which is why its
 open `defect`, `gap` and `automation` entries are an input to step 1 rather
 than a pile nobody reads. Capturing is cheap and always in scope; acting out of
-scope is forbidden. This append, and the `insights tick` of step 6, are the
+scope is forbidden. This append, and the `insights tick` of step 7, are the
 only writes allowed outside your edit scope.
