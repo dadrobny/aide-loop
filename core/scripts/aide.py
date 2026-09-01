@@ -1713,6 +1713,22 @@ def cli_subprocess_test_warnings(repo_root: Path,
     was structured a moment earlier. The recorded instance returned
     ``stdout is None`` on a Windows runner — and had it returned ``""`` the test
     would have passed while checking nothing.
+
+    **No exemption for the self-referential case**, asked for and declined
+    (issue #123). A test whose whole job is to replay `aide check`'s literal
+    stdout trips this rule, which reads like the verb flagging itself. It is
+    not: `cmd_check` calls `run_checks`, that function returns
+    ``(errors, warnings)`` as structured data, and asserting on it in-process
+    is both the fix and the better test — which is what the reporting consumer
+    did. Exempting the shape would license the worse test in the one place the
+    argument for it sounds strongest.
+
+    What the report actually found is a *measurement* defect, and it belongs to
+    the spec, not to this lint: a module that shells out to the CLI raises the
+    warning count by one the moment it is committed, so any baseline count
+    recorded before it existed is falsified by the act of adding it. Measured:
+    a spec recorded 3, the base commit already carrying the module reported 4,
+    and the 4th was the module. §6 now says never to pin a count that way.
     """
     out: List[str] = []
     for path in _test_files(repo_root, config):

@@ -47,6 +47,11 @@ paths:
        helper shows this lint one call site and hides the rest
      - Prefer calling the function over shelling out to the command that calls
        it
+     - a test asserting on `aide check`'s own output should call `run_checks`
+       in-process
+     - Never pin an exact warning or error count from a module that itself
+       trips the lint being counted
+     - a measurement that includes the measurer
      - Assert a derived value is recognisable *before* asserting anything about
        it
 -->
@@ -97,7 +102,13 @@ regardless.
 - **Prefer calling the function over shelling out to the command that calls
   it.** The CLI's logic is importable and returns structured data; a subprocess
   boundary adds stdout encoding, platform quirks, and a re-parse of what was
-  structured a moment earlier.
+  structured a moment earlier. A test asserting on `aide check`'s own output
+  should call `run_checks` in-process, which returns `(errors, warnings)` as
+  structured data.
+- **Never pin an exact warning or error count from a module that itself trips
+  the lint being counted.** The module raises the count by one the moment it is
+  committed — a measurement that includes the measurer. Assert on the warning
+  you mean by matching it, not on how many there are.
 - **Assert a derived value is recognisable *before* asserting anything about
   it.** A glob that matched nothing, a capture that came back empty, a slice
   taken from a failed `find()` — each yields a value that flows into the

@@ -71,7 +71,19 @@ reviewer outside the loop — never by a gate inside it.
   boundary adds stdout encoding, platform quirks, and a re-parse of what was
   structured a moment earlier. Recorded: `capture_output=True, text=True`
   returned `stdout is None` on a Windows runner — documented not to happen —
-  and the fix was to delete the boundary, not harden it.
+  and the fix was to delete the boundary, not harden it. This binds hardest
+  where it looks least applicable: **a test asserting on `aide check`'s own
+  output should call `run_checks` in-process**, which returns
+  `(errors, warnings)` as structured data, rather than replaying the CLI's
+  stdout. `aide check` flags such a module, and that is the rule working rather
+  than the verb flagging itself.
+- **Never pin an exact warning or error count from a module that itself trips
+  the lint being counted.** The module raises the count by one the moment it is
+  committed, so a baseline recorded before it existed is falsified by the act of
+  adding it — a measurement that includes the measurer. Recorded: a spec's
+  Assumptions held 3 warnings, the base commit already carrying the checking
+  module reported 4, and the 4th was that module. Assert on the warning you mean
+  by matching it, not on how many there are.
 - **Assert a derived value is recognisable *before* asserting anything about
   it.** A glob that matched nothing, a capture that came back empty, a slice
   taken from a failed `find()` — each yields a value that flows into the

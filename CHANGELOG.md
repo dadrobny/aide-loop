@@ -95,6 +95,31 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.29.2] — 2026-09-01
+
+### Changed
+
+- **§6 says how to test `aide check`, and how not to count its warnings
+  (issue #123).** `cli_subprocess_test_warnings` flags a test whose object
+  under test is `aide check`'s own stdout, which reads like the verb flagging
+  itself; an exemption for the self-referential replay was proposed and is
+  **declined**. `cmd_check` calls `run_checks`, that function returns
+  `(errors, warnings)` as structured data, and asserting on it in-process is
+  both the fix and the better test — which is what the reporting consumer did.
+  Exempting the shape would license the worse test in the one place the
+  argument for it sounds strongest, so §6 states the positive instruction
+  instead and a test pins the refusal.
+
+  The report's real finding is a measurement defect and it belongs to the spec:
+  a module that shells out to the CLI raises the warning count by one the
+  moment it is committed, so a baseline recorded before it existed is falsified
+  by the act of adding it. Measured: a spec's Assumptions held 3, the base
+  commit already carrying the checking module reported 4, and the 4th was that
+  module. §6 now carries the rule — never pin an exact warning or error count
+  from a module that itself trips the lint being counted; assert on the warning
+  you mean by matching it, not on how many there are — and the delivered §6
+  skill carries both.
+
 ## [1.29.1] — 2026-09-01
 
 ### Changed
