@@ -95,6 +95,28 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.30.0] — 2026-09-01
+
+### Fixed
+
+- **The documented provenance shape crashed `aide progress set` repo-wide
+  (issue #120).** `AGENT-CONTEXT.md` prescribes `*(item NNN, YYYY-MM-DD, engine
+  X.Y.Z)*` for an insight's provenance, and `_referenced_item_numbers` read it
+  as the item list `NNN, 2026, -08, -30`, where an unguarded `int()` raised
+  `ValueError`. The blast radius was the verb, not the line: `progress set`
+  reads every line of `progress.md`, so four evidence annotations written in
+  the convention the framework itself documents took the verb down for *every*
+  item in the consumer until a human approved rewording all four — there being
+  no verb that amends evidence text. Both hardenings from the issue land, and
+  either alone stops the crash. The reference-group regex now refuses a number
+  that opens a `YYYY-MM-DD` date, with a lookahead that also forbids the
+  backtrack that would let `2026` shrink to `202` and pass anyway; ranges are
+  untouched, since `-092` carries one hyphen group and a date carries two. And
+  the split's parts are matched against an item-number shape before being read
+  as one — the invariant behind the known case: a part that is not a number is
+  provenance prose to skip, never a traceback out of an unrelated verb. Every
+  documented reference form parses exactly as before.
+
 ## [1.29.5] — 2026-09-01
 
 ### Fixed

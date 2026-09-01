@@ -108,9 +108,32 @@ _ENCODING = "utf-8-sig"
 #: and (since the live queue is the lowest-numbered open one) stranding
 #: `aide claim` on a finished queue, while `aide progress set` acted on them
 #: happily.
-_ITEM_REF_GROUP_RE = re.compile(r"[Ii]tems?\s+(0*\d+(?:\s*[,/–-]\s*0*\d+)*)")
+#: A number that opens a `YYYY-MM-DD` date is not an item number, and this is
+#: the guard that says so. Without it the provenance shape AGENT-CONTEXT.md
+#: itself prescribes — `*(item NNN, YYYY-MM-DD, engine X.Y.Z)*` — parsed as the
+#: list `NNN, 2026, -08, -30`, and the unguarded `int()` below raised. The blast
+#: radius was the whole verb, not the line: `aide progress set` reads every line
+#: of progress.md, so four evidence annotations written in the documented
+#: convention took `progress set` down for EVERY item repo-wide until a human
+#: approved rewording them (issue #120).
+#:
+#: Two alternatives on purpose. `-\d{1,2}-\d{1,2}` recognises the date tail;
+#: the bare `\d` forbids the backtrack that would otherwise let `\d+` give back
+#: digits ("2026" → "202") until the tail no longer starts at the cursor and
+#: the lookahead passed anyway. A range keeps working: "-092" carries one
+#: hyphen group, not two.
+_ITEM_REF_NOT_A_DATE = r"(?!\d|-\d{1,2}-\d{1,2})"
+_ITEM_REF_NUM = r"0*\d+" + _ITEM_REF_NOT_A_DATE
+_ITEM_REF_GROUP_RE = re.compile(
+    r"[Ii]tems?\s+(" + _ITEM_REF_NUM + r"(?:\s*[,/–-]\s*" + _ITEM_REF_NUM + r")*)")
 _ITEM_REF_SPLIT_RE = re.compile(r"\s*[,/]\s*")
 _ITEM_REF_RANGE_RE = re.compile(r"^0*(\d+)\s*[–-]\s*0*(\d+)$")
+#: The second, independent hardening: what the split hands back must LOOK like
+#: an item number before it is read as one. Either fix alone stops the crash;
+#: both are kept because the regex is a statement about one known prose shape
+#: while this is the invariant — a part that is not a number is provenance
+#: prose to skip, never a traceback out of an unrelated verb.
+_ITEM_REF_NUMBER_RE = re.compile(r"^0*\d+$")
 
 #: An inclusive range wider than this is treated as a typo and contributes only
 #: its endpoints, so a stray "Items 6-9999" cannot invent thousands of items.
@@ -127,7 +150,8 @@ def _referenced_item_numbers(text: str) -> List[int]:
                 continue
             rng = _ITEM_REF_RANGE_RE.match(part)
             if rng is None:
-                nums.append(int(part))
+                if _ITEM_REF_NUMBER_RE.match(part):
+                    nums.append(int(part))
                 continue
             lo, hi = int(rng.group(1)), int(rng.group(2))
             if lo <= hi <= lo + _ITEM_RANGE_MAX_SPAN:

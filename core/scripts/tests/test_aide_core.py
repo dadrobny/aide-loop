@@ -417,6 +417,51 @@ def test_referenced_item_numbers_ignores_an_implausible_range():
     assert aide._referenced_item_numbers("*(Items 9-4)*") == [9, 4]
 
 
+def test_referenced_item_numbers_does_not_read_a_date_as_a_list():
+    """The provenance shape AGENT-CONTEXT.md prescribes is not an item list.
+
+    `*(item NNN, YYYY-MM-DD, engine X.Y.Z)*` parsed as `NNN, 2026, -08, -30`
+    and `int("2026-08-30")` raised, taking `aide progress set` down for every
+    item repo-wide while that text sat anywhere in progress.md (issue #120).
+    A date is documented provenance, so the reference is the item alone.
+    """
+    assert aide._referenced_item_numbers("- [ ] gap — x *(item 012, 2026-08-30)*") == [12]
+    assert aide._referenced_item_numbers(
+        "*(item 042, 2026-08-29, engine 1.22.0)*") == [42]
+    assert aide._referenced_item_numbers(
+        "- [x] defect — a *(item 099, 2026-07-26)* → aide-loop #52") == [99]
+
+
+def test_referenced_item_numbers_skips_a_part_that_is_not_a_number():
+    """The second hardening, reached independently of the date guard.
+
+    An en-dash chain survives the group regex (its lookahead recognises the
+    ASCII date tail only) and splits into one part no range matches. The
+    invariant, not the known shape: a part that is not an item number is
+    provenance prose to skip, never a traceback out of an unrelated verb.
+    """
+    assert aide._referenced_item_numbers("*(Items 071–075–080)*") == []
+
+
+def test_set_item_status_survives_a_dated_provenance_line():
+    """The reported failure at the caller, not just the parser.
+
+    The crash was repo-wide, not per-line: `set_item_status` reads every
+    deliverable line, so one dated annotation anywhere in progress.md took
+    `aide progress set` down for every item until a human approved rewording it.
+    """
+    progress = (
+        "# P — Progress Tracker\n\n"
+        "## Stage 1 — X — 📋\n\n"
+        "**Deliverables.**\n\n"
+        "- 📋 Thing. *(Item 012)*\n"
+        "- 📋 Noted while building it. *(item 013, 2026-08-30, engine 1.29.5)*\n"
+    )
+    out = aide.set_item_status(progress, 12, "in-progress")
+    assert "- 🚧 Thing. *(Item 012)*" in out
+    assert "*(item 013, 2026-08-30, engine 1.29.5)*" in out
+
+
 def test_status_parse_and_progress_set_agree_on_what_is_referenced():
     """One definition, so no caller can see a reference another cannot.
 
