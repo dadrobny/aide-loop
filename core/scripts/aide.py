@@ -161,6 +161,26 @@ def _referenced_item_numbers(text: str) -> List[int]:
     return nums
 
 
+def _has_typo_range(text: str) -> bool:
+    """Does ``text`` carry a range so wide the reader treats it as a typo?
+
+    `_referenced_item_numbers` keeps only such a range's ENDPOINTS, so what it
+    hands back is deliberately not what the author wrote — `Items 044-999` reads
+    as {44, 999}, and 999 is an artifact of the typo, not an item. That is a
+    safe misreading while it stays in memory. It is not safe for a caller that
+    writes the numbers back into the document, which is why the desugar asks.
+    """
+    for group in _ITEM_REF_GROUP_RE.finditer(text):
+        for part in _ITEM_REF_SPLIT_RE.split(group.group(1)):
+            rng = _ITEM_REF_RANGE_RE.match(part.strip())
+            if rng is None:
+                continue
+            lo, hi = int(rng.group(1)), int(rng.group(2))
+            if not lo <= hi <= lo + _ITEM_RANGE_MAX_SPAN:
+                return True
+    return False
+
+
 def _references_item(text: str, num: int) -> bool:
     """Does ``text`` reference item ``num`` in any accepted form?"""
     return num in _referenced_item_numbers(text)
@@ -889,6 +909,62 @@ def insert_item_reference(text: str, number: int, stage: str, title: str) -> Opt
     return None
 
 
+def _split_multi_item_bullets(lines: List[str], num: int, status: str) -> List[str]:
+    """One bullet, one item: desugar a bullet that owns ``num`` *and* siblings.
+
+    A trailing marker may name several items — ``*(Items 016, 017)*``, the form
+    §1 → progress.md blesses and `/aide-create-queue` step 8 recommends — but a
+    bullet carries ONE icon, and that icon is the status cell. So flipping the
+    bullet for 016 also completed 017: never specced, never built, thereafter
+    read as ✅ by everything that parses the file, and silently discounted from
+    its queue's open count (issue #131). The engine's own writer had already
+    modelled one item per bullet — `insert_item_reference` appends a singular
+    marker — so the shape it told authors to write was one its status machinery
+    could not represent.
+
+    The form stays legal and desugars here: the bullet becomes one bullet per
+    item, same text, one ``*(Item NNN)*`` each, in the marker's order. The item
+    being flipped then moves alone and its siblings keep the status they had —
+    the sibling protection issue #99 gave a prose mention, given to the list
+    form that actually attributes.
+
+    Only a flip that would ADVANCE the bullet splits it. A `progress set` that
+    changes nothing must rewrite nothing: re-running one, or setting a status
+    the bullet already holds, is not a reason to reshape a consumer's file.
+    """
+    for start, last in reversed(_deliverable_bullet_spans(lines)):
+        marker = _BULLET_MARKER_RE.search(lines[last])
+        if marker is None:
+            continue
+        nums = list(dict.fromkeys(_referenced_item_numbers(marker.group(0))))
+        if num not in nums or len(nums) < 2:
+            continue
+        # A range wider than the typo limit contributes only its endpoints, so
+        # `nums` is not what the author wrote: `*(Items 044-999)*` would grow a
+        # bullet for a phantom item 999, indistinguishable from a real one and
+        # thereafter counted by `check`, `claim` and every queue rollup. Writing
+        # fiction into the tracked document is worse than the shared cell this
+        # function exists to remove, so a malformed marker keeps the old
+        # behaviour and this leaves it exactly as the author typed it.
+        if _has_typo_range(marker.group(0)):
+            continue
+        current = ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
+        if not current or RANK[status] <= RANK[current]:
+            continue
+        head = lines[last][:marker.start()]
+        # Whatever followed the last `)*` — the sentence-ending period the
+        # marker regex tolerates — belongs to every copy, not just the first.
+        matched = marker.group(0)
+        tail = matched[len(matched.rstrip(" \t.")):]
+        block: List[str] = []
+        for n in nums:
+            copy = lines[start:last + 1]
+            copy[-1] = f"{head}*(Item {n:03d})*{tail}"
+            block.extend(copy)
+        lines[start:last + 1] = block
+    return lines
+
+
 def set_item_status(text: str, num: int, status: str) -> str:
     """Flip item NNN's deliverable bullet(s) to ``status`` and roll stages up.
 
@@ -896,8 +972,16 @@ def set_item_status(text: str, num: int, status: str) -> str:
     objective rows only for stages that fully complete. Never downgrades an
     existing status (additive log), and never touches an acceptance checkbox —
     those are human attestations, ticked only by ``aide progress accept``.
+
+    A bullet whose marker names several items is split into one bullet per item
+    first (see ``_split_multi_item_bullets``), so no sibling is carried along by
+    a flip it did not earn.
     """
     lines = text.splitlines()
+    # A marker naming several items is one status cell for all of them, so the
+    # bullet is desugared into one bullet per item BEFORE anything flips
+    # (issue #131). After this the flip below can only move `num`.
+    lines = _split_multi_item_bullets(lines, num, status)
     # Flip the icon of every bullet whose trailing marker names this item —
     # the same ownership rule `_parse_item_status` reads by (issue #99), so a
     # bullet that merely mentions the item in prose is never flipped.
@@ -4289,6 +4373,99 @@ def _find_claim_branch(repo_root: Path, prefix: str, number: int) -> Optional[st
     return None
 
 
+def _git_dir(repo_root: Path) -> Path:
+    """The repository's git directory, resolved.
+
+    Not ``repo_root / ".git"``: that is a *file* in a linked worktree or a
+    submodule, so probing `.git/MERGE_HEAD` there answers "no in-progress
+    merge" for every such consumer — the exact reading the caller below must
+    not get wrong.
+    """
+    out = git(["rev-parse", "--git-dir"], repo_root, check=False).stdout.strip()
+    if not out:
+        return repo_root / ".git"
+    path = Path(out)
+    return path if path.is_absolute() else repo_root / path
+
+
+#: In-progress git operations, and how git names each one's marker in the git
+#: directory. `switch` and `pull --rebase` on top of any of them either refuse
+#: (leaving a half-merge the loop cannot read) or rewrite commits the human is
+#: mid-way through authoring.
+_INTERRUPTED_OPS: Tuple[Tuple[str, str], ...] = (
+    ("rebase-merge", "a rebase is in progress"),
+    ("rebase-apply", "a rebase or 'git am' is in progress"),
+    ("MERGE_HEAD", "a merge is in progress with conflicts unresolved"),
+    ("CHERRY_PICK_HEAD", "a cherry-pick is in progress"),
+    ("REVERT_HEAD", "a revert is in progress"),
+)
+
+
+def _unsafe_tree_state(repo_root: Path, tick_rel: str = "") -> Optional[str]:
+    """Why this tree must not be switched/pulled/merged, or None if it may be.
+
+    `aide merge` exists so that agents do not improvise git (§3), which means a
+    consumer obeying §3 has no remaining place to be careful: whatever the verb
+    does unconditionally is what happens. It already refuses one adjacent
+    footgun with a precise diagnosis — a base that resolves but is not a local
+    branch — and this is the same class, an operation that silently produces a
+    wrong result while reporting success (issue #133).
+
+    Untracked files are deliberately NOT dirty here. They survive `switch` and
+    `pull` untouched, a loop leaves them around constantly, and a merge that
+    genuinely collides with one aborts with git's own message through the merge
+    path below. Refusing on them would block the common case to catch nothing.
+    """
+    gdir = _git_dir(repo_root)
+    for marker, what in _INTERRUPTED_OPS:
+        if (gdir / marker).exists():
+            return what
+    res = git(["status", "--porcelain"], repo_root, check=False)
+    dirty = [l for l in res.stdout.splitlines()
+             if l.strip() and not l.startswith("??")]
+    if not dirty:
+        return None
+    paths = [l[3:].strip() for l in dirty]
+    # The one dirty tree this verb is likely to have caused itself: `--no-commit`
+    # (on `merge` or on `progress set`) writes the tick and deliberately leaves
+    # it uncommitted, and the NEXT merge — of any item — then meets this check.
+    # The state is genuinely unsafe (git refuses to rebase over unstaged
+    # changes), so it is still a refusal; what it must not be is a mystery.
+    if tick_rel and paths == [tick_rel]:
+        return (f"{tick_rel} carries an uncommitted status tick — a "
+                f"`--no-commit` run wrote it and left committing to you. It is "
+                f"the only change in the tree; commit or discard it")
+    shown = ", ".join(paths[:3])
+    more = f" (+{len(paths) - 3} more)" if len(paths) > 3 else ""
+    return f"the working tree has uncommitted changes: {shown}{more}"
+
+
+def _has_unpushed_merge(repo_root: Path) -> bool:
+    """Does HEAD carry a merge commit its upstream has not seen?
+
+    The one shape `git pull --rebase` must not run over: rebasing DROPS the
+    merge and replays both parents' commits individually, so a conflict a human
+    resolved by hand inside that merge comes back (issue #133). No upstream
+    means nothing to rebase against, which is not this shape.
+    """
+    res = git(["rev-list", "--merges", "@{u}..HEAD"], repo_root, check=False)
+    return res.returncode == 0 and bool(res.stdout.strip())
+
+
+def _restore_claim_branch(repo_root: Path, branch: str, tip: str) -> None:
+    """Put back a claim branch deleted ahead of a step that then failed.
+
+    `merge` deletes the claim branch BEFORE the post-merge test run (so the run
+    sees the refs a fresh clone would). Every exit after that point must
+    therefore be re-runnable: without the ref, `_find_claim_branch` finds
+    nothing and the retry dies at "no claim branch found" — with the work
+    merged, un-ticked and unpushed, which is the state a human least wants to
+    meet a refusal in.
+    """
+    if tip and branch not in _local_branches(repo_root):
+        git(["branch", branch, tip], repo_root, check=False)
+
+
 def _promote_item_to_complete(repo_root: Path, config, number: int,
                               no_commit: bool = False) -> None:
     """Record item *number* as ✅ in progress.md — best effort, never fatal.
@@ -4347,13 +4524,88 @@ def cmd_merge(args: argparse.Namespace) -> int:
               f"then run 'aide progress set {args.number:03d} done'.")
         return 0
 
-    git(["switch", main], repo_root)
-    if mode != "local":
-        git(["pull", "--rebase"], repo_root, check=False)
-    merge_res = git(["merge", "--no-edit", branch], repo_root, check=False)
-    if merge_res.returncode != 0:
-        print(f"aide merge: merge of {branch} failed:\n{merge_res.stdout}{merge_res.stderr}", file=sys.stderr)
+    tick_path = docs_dir(repo_root, config) / "progress.md"
+    try:
+        tick_rel = tick_path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:                      # docs_dir outside the repo — no hint
+        tick_rel = ""
+    unsafe = _unsafe_tree_state(repo_root, tick_rel)
+    if unsafe:
+        print(f"aide merge: refusing to merge item {args.number:03d} — {unsafe}. "
+              f"`git switch` and `git pull --rebase` from here rewrite or "
+              f"discard work this process did not create. Finish or abort that "
+              f"state first (`git rebase --abort` / `git merge --abort`, or "
+              f"commit the changes), then re-run.", file=sys.stderr)
         return 1
+
+    git(["switch", main], repo_root)
+
+    # Already an ancestor? Then the merge is not the missing step, and doing it
+    # again can only churn. This is the case that bit a consumer: a conflict
+    # resolved by hand left a merge commit on the base that had not been
+    # pushed, and the re-run's `pull --rebase` linearised it — dropping the
+    # merge, replaying both parents, and reintroducing the very conflict the
+    # human had just resolved (issue #133). Asking git first costs one call and
+    # is what makes the verb re-runnable, which a loop needs it to be.
+    landed = git(["merge-base", "--is-ancestor", branch, main],
+                 repo_root, check=False).returncode == 0
+    if landed:
+        print(f"aide merge: {branch} is already merged into {main} — skipping "
+              f"the merge; the tick, the push and the cleanup still run.")
+    else:
+        if mode != "local":
+            # `--rebase` is right for a linear local divergence and WRONG over
+            # an unpushed merge commit (above). `--ff-only` integrates origin
+            # where it can and refuses instead of rewriting where it cannot.
+            if _has_unpushed_merge(repo_root):
+                ff = git(["pull", "--ff-only"], repo_root, check=False)
+                if ff.returncode != 0:
+                    print(f"aide merge: {main} carries a merge commit origin "
+                          f"has not seen, and origin has moved on. Rebasing "
+                          f"over it would linearise the merge and bring back "
+                          f"the conflicts it resolved, so this verb stops "
+                          f"rather than choosing for you: push that merge "
+                          f"('git push'), or integrate origin by hand, then "
+                          f"re-run.\n{ff.stdout}{ff.stderr}", file=sys.stderr)
+                    return 1
+            else:
+                git(["pull", "--rebase"], repo_root, check=False)
+        merge_res = git(["merge", "--no-edit", branch], repo_root, check=False)
+        if merge_res.returncode != 0:
+            print(f"aide merge: merge of {branch} failed:\n{merge_res.stdout}{merge_res.stderr}", file=sys.stderr)
+            return 1
+
+    # The claim branch goes BEFORE the test run, so the run sees the refs a
+    # fresh clone would (issue #125). With it still present, a consumer whose
+    # test command includes `aide check` got "stale claim branch … item NNN is
+    # already ✅" — a failure class the item's acceptance baseline had never
+    # seen, produced by nothing but this ordering. Its tip is remembered so any
+    # later exit can put the branch back exactly as it was.
+    branch_tip = git(["rev-parse", branch], repo_root, check=False).stdout.strip()
+    # `-d` can refuse even though the work landed (e.g. `pull --rebase` rewrote
+    # main so the branch tip is no longer an ancestor); this process just
+    # established that the branch is merged, so escalating to -D is safe. VERIFY
+    # the outcome, never assume it.
+    del_res = git(["branch", "-d", branch], repo_root, check=False)
+    if del_res.returncode != 0:
+        del_res = git(["branch", "-D", branch], repo_root, check=False)
+    local_gone = branch not in _local_branches(repo_root)
+
+    if not args.no_test:
+        cmd = resolve_test_command(repo_root, config)
+        test_res = subprocess.run(cmd, cwd=str(repo_root))
+        if test_res.returncode != 0:
+            _restore_claim_branch(repo_root, branch, branch_tip)
+            print(f"aide merge: the post-merge test run FAILED, so item "
+                  f"{args.number:03d} is NOT ✅ and nothing was pushed — the "
+                  f"tick and the push are what this run refuses, not the merge "
+                  f"itself. {branch} is merged into {main} in THIS repository "
+                  f"only, and the claim branch is back. Fix the failures on "
+                  f"{main}, commit, then re-run 'merge {args.number:03d}': the "
+                  f"merge is already an ancestor, so the retry only re-tests, "
+                  f"ticks and pushes.", file=sys.stderr)
+            return 1
+
     # ✅ is set HERE, by the process that just did the merge, so it always means
     # "merged" — not "an agent said so before attempting one". The validator
     # marks the item 🔍 before this call; whether it becomes ✅ is a fact about
@@ -4365,29 +4617,27 @@ def cmd_merge(args: argparse.Namespace) -> int:
     # under-reported — and on a queue's last item nothing would ever push it.
     _promote_item_to_complete(repo_root, config, args.number,
                               getattr(args, "no_commit", False))
-    if mode != "local":
-        git(["push"], repo_root, check=False)
-
-    if not args.no_test:
-        cmd = resolve_test_command(repo_root, config)
-        test_res = subprocess.run(cmd, cwd=str(repo_root))
-        if test_res.returncode != 0:
-            print(f"aide merge: merged {branch} but the post-merge test run FAILED — investigate", file=sys.stderr)
-            return 1
-
-    # Clean up the merged claim branch — and VERIFY it, never assume. `-d` can
-    # refuse even though the work landed (e.g. `pull --rebase` rewrote main so
-    # the branch tip is no longer an ancestor); this process just merged the
-    # branch, so escalating to -D is safe.
-    del_res = git(["branch", "-d", branch], repo_root, check=False)
-    if del_res.returncode != 0:
-        del_res = git(["branch", "-D", branch], repo_root, check=False)
-    local_gone = branch not in _local_branches(repo_root)
     remote_gone = True
     if mode != "local":
-        push_res = git(["push", "origin", "--delete", branch], repo_root, check=False)
-        remote_gone = (push_res.returncode == 0
-                       or "remote ref does not exist" in (push_res.stderr or ""))
+        push_res = git(["push"], repo_root, check=False)
+        if push_res.returncode != 0:
+            # Reported, not swallowed: a silent failure here leaves ✅ on a
+            # merge origin never received, which is the same class of lie as
+            # ticking an item whose tests fail. The remote claim branch is
+            # deliberately NOT deleted, so the work still exists somewhere
+            # other than this checkout.
+            _restore_claim_branch(repo_root, branch, branch_tip)
+            print(f"aide merge: item {args.number:03d} is merged and ✅ here, "
+                  f"but pushing {main} to origin FAILED, so neither the merge "
+                  f"nor the tick has left this repository and the claim branch "
+                  f"is kept. Resolve the push, then re-run "
+                  f"'merge {args.number:03d}'.\n"
+                  f"{push_res.stdout}{push_res.stderr}", file=sys.stderr)
+            return 1
+        del_remote = git(["push", "origin", "--delete", branch], repo_root, check=False)
+        remote_gone = (del_remote.returncode == 0
+                       or "remote ref does not exist" in (del_remote.stderr or ""))
+
     if local_gone and remote_gone:
         print(f"aide merge: item {args.number:03d} merged to {main} and claim branch {branch} deleted")
     else:

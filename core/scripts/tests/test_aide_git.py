@@ -916,8 +916,11 @@ def test_merge_records_the_tick_itself_in_local_mode(tmp_path: Path):
     """✅ is set by the process that did the merge, so it cannot outrun it."""
     root = _init_repo(tmp_path / "r", mode="local")
     _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
-    assert aide.main(["--repo", str(root), "progress", "set", "27", "in-review",
-                      "--no-commit"]) == 0
+    # The 🔍 tick is committed, not left in the tree: `merge` refuses to
+    # `switch`/`pull`/`merge` from a dirty one (issue #133), so a run that
+    # means to land must hand it a clean tree first.
+    assert aide.main(["--repo", str(root), "progress", "set", "27",
+                      "in-review"]) == 0
     assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 0
     progress = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
     assert "✅ Bounds rules" in progress or "27" in progress
@@ -1030,6 +1033,39 @@ def test_auto_merge_pushes_the_commit_that_records_the_tick(tmp_path: Path):
     _, _, status = aide._parse_item_status(
         _show_utf8(root, "origin/main:docs/aide/progress.md").splitlines())
     assert status[27] == "complete"
+
+
+def test_merge_after_a_no_commit_run_names_the_tick_it_is_blocked_on(
+        tmp_path: Path, capsys):
+    """`--no-commit` leaves the tick in the tree, and the NEXT merge — of any
+    item — meets the dirty-tree precondition (issue #133).
+
+    The refusal is right: git will not rebase over unstaged changes either. But
+    the block outlives the item that caused it, so the message has to name the
+    cause. A run that says only "uncommitted changes: docs/aide/progress.md"
+    sends a human hunting for an edit nobody made.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test",
+                      "--no-commit"]) == 0
+    assert "progress.md" in _run(["git", "status", "--porcelain"], root).stdout
+
+    # Item 028's own work, committed by path the way a careful consumer does —
+    # so the stray tick is NOT swept into that commit by a `git add -A`.
+    _run(["git", "switch", "-c", "aide/028-coverage-rules"], root)
+    (root / "feature2.txt").write_text("work\n", encoding="utf-8")
+    _run(["git", "add", "feature2.txt"], root)
+    _run(["git", "commit", "-m", "work on 028"], root)
+    _run(["git", "switch", "main"], root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "merge", "28", "--no-test"]) == 1
+    err = capsys.readouterr().err
+    assert "progress.md" in err and "--no-commit" in err
+    # ...and committing it is all that was needed.
+    _run(["git", "add", "-A"], root)
+    _run(["git", "commit", "-m", "chore: the tick"], root)
+    assert aide.main(["--repo", str(root), "merge", "28", "--no-test"]) == 0
 
 
 def test_merge_no_commit_leaves_the_tick_uncommitted(tmp_path: Path):

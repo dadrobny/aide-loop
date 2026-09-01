@@ -95,6 +95,83 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.31.0] — 2026-09-01
+
+### Fixed
+
+- **`aide merge` no longer walks into a tree it must not touch, and no longer
+  re-merges what already landed (issue #133).** A conflict resolved by hand
+  left a merge commit on the base that had not been pushed; the next
+  `aide merge` ran its unconditional `switch` → `pull --rebase` → `merge`, and
+  the rebase **linearised that merge** — dropping it, replaying both parents,
+  and reintroducing the exact conflict the human had just resolved. The work
+  survived; the resolution did not. A consumer that obeys §3 has no remaining
+  place to be careful, because the unsafe sequence *is* the verb. Three
+  preconditions, all before the first `switch`:
+  - a **dirty tree** (tracked changes) or an interrupted operation
+    (`rebase-merge`, `rebase-apply`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`,
+    `REVERT_HEAD`) is refused, with the recovery, the way the
+    base-is-not-a-local-branch case already was. Untracked files are
+    deliberately not dirty: they survive `switch` and `pull` untouched, a loop
+    leaves them around constantly, and a real collision aborts the merge with
+    git's own message.
+  - a branch that is **already an ancestor of the base** skips the merge — the
+    tick, the push and the cleanup still run. This is the case that bit: the
+    branch was merged, only the push was missing. It also makes the verb
+    **re-runnable**, which is what a loop needs of it.
+  - a base carrying a **merge commit origin has not seen** is never rebased
+    over: the verb tries `pull --ff-only` and, if origin has genuinely diverged,
+    stops and says so rather than choosing between a rewrite and a stale merge.
+
+- **A red post-merge test run blocks the ✅ and the push (issue #125).** The
+  order was `_promote_item_to_complete` → push → test, so a failing run printed
+  "investigate" and exited 1 with the tick already written and the merge already
+  on origin: a consumer's shared queue branch was left red with the item marked
+  done. The run is a **gate** now — green earns the ✅ and the push; red leaves
+  the merge local, the item 🔍, and the claim branch back where it was, and says
+  which. The claim branch is also deleted **before** the run rather than after,
+  so the run sees the refs a fresh clone would: with it present, a test command
+  including `aide check` reported the item's own branch as stale against the
+  item being merged — a failure class produced by nothing but the ordering.
+  Every exit after that deletion restores the branch, so the same command
+  finishes the job on a retry and nobody has to hand-edit a tick.
+
+- **A deliverable bullet whose marker names several items is no longer one
+  status cell (issue #131).** `*(Items 016, 017)*` is a form §1 blesses and
+  `/aide-create-queue` recommends, but a bullet carries one icon, so
+  `aide merge 016` completed 017 as well — never specced, never built,
+  thereafter read as ✅ by everything that parses the file and discounted from
+  its queue's open count. The form stays legal and **desugars**: the first flip
+  that would advance the bullet splits it into one bullet per item, same text,
+  one `*(Item NNN)*` each, and moves only the item named. Ranges included
+  (`*(Items 071–075)*` is five cells) — but **not** a range wider than the
+  parser's 50-item typo limit, which contributes only its endpoints: splitting
+  `*(Items 044-999)*` would write a bullet for a phantom item 999 that
+  `check`, `claim` and every queue rollup would thereafter count as real.
+  Writing fiction into the tracked document is worse than the shared cell this
+  removes, so a malformed marker keeps the old behaviour. A flip that advances
+  nothing splits nothing, so a no-op `progress set` still rewrites nothing. No consumer edits
+  anything — hence a minor, not a major. §1 → `progress.md` and create-queue
+  step 8 now say so, in the same commit as the code, because the defect existed
+  precisely where they already disagreed with the engine.
+
+### Changed
+
+- **A failed `git push` at the end of `aide merge` is reported and non-zero.**
+  It was swallowed, which leaves a ✅ on a merge origin never received — the
+  same class of lie as ticking an item whose tests fail. The remote claim
+  branch is kept in that case, so the work still exists somewhere other than
+  one checkout.
+- **A `--no-commit` tick now blocks the next merge until it is committed.**
+  Both `aide progress set NNN --no-commit` and `aide merge NNN --no-commit`
+  leave the status tick written but uncommitted, which is what the flag is for
+  — and the dirty-tree precondition above then refuses the *next* `aide merge`,
+  of any item, not just a retry of that one. The refusal is correct (git will
+  not rebase over unstaged changes either), so what changes is that it names
+  the cause: a tree whose only change is that tick is reported as exactly that,
+  with "commit or discard it", rather than as an unexplained dirty file the
+  human never edited.
+
 ## [1.30.0] — 2026-09-01
 
 ### Added

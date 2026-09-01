@@ -207,6 +207,95 @@ def test_set_item_unknown_number_no_change():
 
 
 # --------------------------------------------------------------------------- #
+# a multi-item marker is one status cell, and desugars (issue #131)
+# --------------------------------------------------------------------------- #
+MULTI = """\
+## Stage 2 — Adapters — 📋
+
+**Deliverables.**
+- 📋 Adapters for two datasets. *(Items 016, 017)*
+- 📋 Something else. *(Item 018)*
+
+**Acceptance.**
+- [ ] They load.
+"""
+
+
+def test_completing_one_item_does_not_complete_its_marker_siblings():
+    """The defect: one bullet, one icon, N owners.
+
+    A consumer's Stage 2 bullet named items 016 and 017. `aide merge 016`
+    flipped it, and 017 — never specced, never built, no branch — was read as
+    ✅ by everything that parses the file and dropped from its queue's open
+    count. The engine prescribed that marker form while its status machinery
+    could not represent it.
+    """
+    out = aide.set_item_status(MULTI, 16, "complete")
+    assert "- ✅ Adapters for two datasets. *(Item 016)*" in out
+    assert "- 📋 Adapters for two datasets. *(Item 017)*" in out
+    assert aide._parse_item_status(out.splitlines())[2] == {
+        16: "complete", 17: "planned", 18: "planned"}
+    # And the stage cannot close over the sibling that is still open.
+    assert "## Stage 2 — Adapters — 🚧" in out
+
+
+def test_the_split_keeps_every_item_of_the_marker():
+    """Including a range: `*(Items 006, 044–046)*` is four status cells, not
+    one, and the three the flip does not name keep what they had."""
+    text = "## Stage 3 — X — 📋\n**Deliverables.**\n- 📋 Four things. *(Items 006, 044–046)*\n"
+    out = aide.set_item_status(text, 44, "in-progress")
+    assert aide._parse_item_status(out.splitlines())[2] == {
+        6: "planned", 44: "in-progress", 45: "planned", 46: "planned"}
+
+
+def test_the_split_carries_a_wrapped_bullet_whole():
+    text = (
+        "## Stage 2 — X — 📋\n"
+        "**Deliverables.**\n"
+        "- 📋 A deliverable whose text wraps onto a\n"
+        "  second line. *(Items 016, 017)*\n"
+    )
+    out = aide.set_item_status(text, 17, "complete")
+    assert out.count("  second line.") == 2
+    assert "- ✅ A deliverable whose text wraps onto a\n  second line. *(Item 017)*" in out
+    assert "- 📋 A deliverable whose text wraps onto a\n  second line. *(Item 016)*" in out
+
+
+def test_a_flip_that_advances_nothing_splits_nothing():
+    """A no-op `progress set` must stay a no-op. Splitting on every call would
+    reshape a consumer's progress.md for a status change that never happened —
+    and `merge` calls this on a re-run, when the item is already ✅."""
+    done = aide.set_item_status(MULTI, 16, "complete")
+    assert aide.set_item_status(done, 16, "complete") == done
+    assert aide.set_item_status(MULTI, 16, "planned") == MULTI
+    assert aide.set_item_status(MULTI, 999, "complete") == MULTI
+
+
+def test_a_typo_range_is_never_materialised_into_the_file():
+    """The desugar writes item numbers back, so it may only write the ones the
+    author wrote.
+
+    A range wider than `_ITEM_RANGE_MAX_SPAN` is read as a typo and contributes
+    only its endpoints — safe while it stays in memory, and not safe at all for
+    a caller that writes them down: `*(Items 044-999)*` would grow a bullet for
+    a phantom item 999, thereafter indistinguishable from a real one and
+    counted by `check`, `claim` and every queue rollup. The malformed marker
+    keeps the old flip-in-place behaviour instead.
+    """
+    text = "## Stage 3 — X — 📋\n**Deliverables.**\n- 📋 Wide. *(Items 044-999)*\n"
+    out = aide.set_item_status(text, 44, "complete")
+    assert "- ✅ Wide. *(Items 044-999)*" in out
+    assert "999)*" in out and "*(Item 999)*" not in out
+    assert out.count("Wide.") == 1
+
+
+def test_a_single_item_bullet_is_left_alone():
+    out = aide.set_item_status(MULTI, 18, "complete")
+    assert "- ✅ Something else. *(Item 018)*" in out
+    assert "- 📋 Adapters for two datasets. *(Items 016, 017)*" in out
+
+
+# --------------------------------------------------------------------------- #
 # structural icon positions (WI-1: prose is free, parsers are positionally strict)
 # --------------------------------------------------------------------------- #
 def test_structural_status_positions():
@@ -480,7 +569,13 @@ def test_status_parse_and_progress_set_agree_on_what_is_referenced():
 
 
 def test_progress_set_flips_a_range_referenced_item(tmp_path: Path):
-    """`aide progress set` must find an item named only inside a range."""
+    """`aide progress set` must find an item named only inside a range.
+
+    And, since one bullet carries one icon, it splits the range rather than
+    completing the four siblings alongside the item it was asked for — the
+    range is shorthand for a list, and a list is not a shared status cell
+    (issue #131).
+    """
     progress = (
         "# P — Progress Tracker\n\n"
         "| Stage | Title | Objectives | Status |\n"
@@ -496,7 +591,10 @@ def test_progress_set_flips_a_range_referenced_item(tmp_path: Path):
         "- [ ] Backend works.\n"
     )
     out = aide.set_item_status(progress, 73, "complete")
-    assert "- ✅ Backend port. *(Items 071–075)*" in out
+    assert "- ✅ Backend port. *(Item 073)*" in out
+    assert aide._parse_item_status(out.splitlines())[2] == {
+        71: "planned", 72: "planned", 73: "complete",
+        74: "planned", 75: "planned"}
 
 
 def test_check_warns_on_stray_heading_icon(tmp_path: Path):
