@@ -44,7 +44,11 @@ def _read_version(path: Path) -> str:
 
 
 def _git(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=str(REPO_ROOT), text=True,
+    # conventions.md §6: name the codec. This reads changed *paths* out of a
+    # diff, and a path with a non-ASCII character decodes differently under the
+    # windows leg's locale — where a mis-decoded path silently misses the
+    # `core/`/`adapters/` prefixes this whole gate is built on.
+    return subprocess.run(["git", *args], cwd=str(REPO_ROOT), encoding="utf-8",
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 

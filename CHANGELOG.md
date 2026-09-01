@@ -95,6 +95,217 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.29.5] — 2026-09-01
+
+### Fixed
+
+- **Resolving imports made `from subprocess import *` invisible.** 1.29.4 fixed
+  a false positive (an unrelated `Runner().run(text=True)`) by matching only
+  through a binding the module actually makes — and a star import binds `run`
+  without naming it, so the resolver saw nothing and went quiet on a call the
+  name-only matching it replaced had reported. That trades a false positive for
+  a false negative, which is the wrong direction in a section whose whole
+  argument for this lint is that a false negative is the worst outcome
+  available. A star import from `subprocess` now binds exactly the names this
+  lint cares about. The re-export shape (`from helpers import subprocess`) is
+  still not followed, and is now stated in the docstring's limits rather than
+  left to be discovered.
+
+- **The chained-comparison exemption was judged per node, not per operand.**
+  `a == p.read_bytes() < b` is one `Compare` node meaning `a == p.read_bytes()
+  and p.read_bytes() < b`, so the read really is on one side of an `==`; the
+  membership/ordering carve-out added in 1.29.4 exempted every operand of any
+  node carrying a non-equality operator, this one included. An operand is now
+  exempt only when *neither* comparison it takes part in is an equality.
+
+### Changed
+
+- `_read_call_name` takes the readers it should match, and the comparison and
+  hash sites pass `("read_text",)`. `read_bytes()` is collected unconditionally
+  since 1.29.4, so letting those sites match it too appended every such read
+  twice — harmless, because the caller dedupes by resolved path, but the two
+  rules are disjoint by construction and the code now says so.
+
+**On the version levels in this series:** 1.29.4 and 1.29.5 change what an
+existing lint fires on, which is a stronger claim than the pure-prose 1.29.1 and
+1.29.2. They are numbered patch because the effect is corrective — closing false
+negatives and false positives in a check that already shipped — rather than new
+surface. What a consumer actually experiences is unaffected by the choice: the
+whole series lands as 1.28.1 → 1.29.5, a minor move, earned by 1.29.0's new lint.
+
+## [1.29.4] — 2026-09-01
+
+### Fixed
+
+- **The eol-pin lint was silent on `read_bytes()` parses, and 1.29.1 said that
+  was fine.** Review disproved the reasoning that release shipped. The claim —
+  a committed artifact its tests *parse* is immune to the CRLF rewrite — is a
+  property of **`read_text()`**, whose universal-newline translation delivers
+  `\n` either way, not a property of parsing. `read_bytes()` translates
+  nothing, and `_BYTE_EXACT_READS` covered both. Measured:
+  `p.read_bytes().decode()` on a CRLF checkout leaves `' value\r'` in the last
+  cell of a Markdown row where `read_text()` leaves `' value'` — so a chained
+  `read_bytes().decode().split()`, which never lands in a comparison, was as
+  exposed as a byte-compare and drew no warning.
+
+  So the split is redrawn where it actually holds: **any** `read_bytes()` on a
+  committed path is reported, `read_text()` still only where its result is
+  compared or hashed. Membership and ordering tests (`b"{" in p.read_bytes()`)
+  stay exempt — there the needle decides, and a literal one carrying no newline
+  is immune. Measured across four real suites before landing: the widening adds
+  **zero** new warnings and removes none, so the hole closes at no cost in
+  noise. §6, both docstrings and the delivered §6 skill are corrected; the
+  1.29.1 prose overstated and is replaced rather than extended.
+
+- **`binary` and `-text` now count as pins.** Both are git spellings that switch
+  the conversion off outright — `binary` is the macro for `-text -diff` — so a
+  file under either is exactly as safe as one under `eol=lf`. Demanding
+  `eol=lf` anyway made the lint tell a fixture's author to add a pin that would
+  **corrupt** the file. Not hypothetical: a consumer's `.gitattributes` carries
+  a comment explaining that `binary` is correct there and *"`text eol=lf` would
+  corrupt them on a Windows checkout"*, and the lint was warning about those two
+  files anyway. Both warnings are now correctly silent. A bare `text` still does
+  not count: it *enables* the conversion.
+
+- **The subprocess-encoding lint matched a method name with no provenance.**
+  `Runner().run(text=True)` — an unrelated object that happens to share the name
+  — was reported, while the docstring claimed every warning named a call that
+  really would decode. It now resolves how each module spells `subprocess`
+  (`import subprocess`, `import subprocess as sp`, `from subprocess import run`,
+  and `as` aliases of both) and matches only through a binding the module
+  actually makes; a module that never imports `subprocess` is skipped outright.
+  The test that meant to cover this passed `check=True` and so would have passed
+  against the broken lint too — it now uses a `Runner` carrying its own `text=`,
+  which is the shape that separates matching a name from resolving an import.
+
+## [1.29.3] — 2026-09-01
+
+### Fixed
+
+- **The command-hygiene hook wrote its block message in the console codepage.**
+  Found by the windows CI leg on the branch that added the §6 encoding rule,
+  which is the rule catching its own author. The guard's stderr carries an
+  em-dash and a `§`; `sys.stderr` on a Windows console defaults to cp1252, so a
+  consumer there got byte `0x97` where every other platform got UTF-8 — and
+  what the runtime reads back must not depend on the platform's guess. It now
+  reconfigures its stream exactly as `aide.py`'s `main()` has all along.
+
+### Changed
+
+- **§6 says the codec is the producing side's job too, and explains the
+  `stdout is None` instance it already recorded.** That defect has sat in the
+  section as an unexplained Windows quirk — *"returned `stdout is None` on a
+  Windows runner, documented not to happen"*. It is not a quirk: the decode
+  runs in `subprocess.run`'s reader thread, so when the reader's codec rejects
+  a byte the writer produced, the `UnicodeDecodeError` never reaches the caller
+  and the stream arrives as `None`. A codec disagreement surfaces as a missing
+  value rather than as an error, which is why it pairs with the
+  assert-it-is-recognisable rule two bullets down. §6 now states the whole
+  shape — name the codec on the read, fix the writer if you own it, pass
+  `errors="replace"` when you do not, then check the value is there — and the
+  delivered §6 skill carries it.
+
+  The test that caught it is kept **strict** rather than softened with
+  `errors="replace"`, so it stands as the regression guard for the hook
+  emitting UTF-8, with the recognisability assertion in front of it.
+
+## [1.29.2] — 2026-09-01
+
+### Changed
+
+- **§6 says how to test `aide check`, and how not to count its warnings
+  (issue #123).** `cli_subprocess_test_warnings` flags a test whose object
+  under test is `aide check`'s own stdout, which reads like the verb flagging
+  itself; an exemption for the self-referential replay was proposed and is
+  **declined**. `cmd_check` calls `run_checks`, that function returns
+  `(errors, warnings)` as structured data, and asserting on it in-process is
+  both the fix and the better test — which is what the reporting consumer did.
+  Exempting the shape would license the worse test in the one place the
+  argument for it sounds strongest, so §6 states the positive instruction
+  instead and a test pins the refusal.
+
+  The report's real finding is a measurement defect and it belongs to the spec:
+  a module that shells out to the CLI raises the warning count by one the
+  moment it is committed, so a baseline recorded before it existed is falsified
+  by the act of adding it. Measured: a spec's Assumptions held 3, the base
+  commit already carrying the checking module reported 4, and the 4th was that
+  module. §6 now carries the rule — never pin an exact warning or error count
+  from a module that itself trips the lint being counted; assert on the warning
+  you mean by matching it, not on how many there are — and the delivered §6
+  skill carries both.
+
+## [1.29.1] — 2026-09-01
+
+### Changed
+
+- **The `.gitattributes` eol-pin lint says what its silence does not mean
+  (issue #124).** It has two causes of silence and documented only one. The
+  first is resolution — a path built from a `tmp_path` or a function argument
+  is skipped — and §6 already said so. The second is *shape*: a committed text
+  artifact whose tests `json.loads` it, or walk a Markdown table cell by cell,
+  matches no byte-exact read and draws no warning **whether or not it is
+  pinned**. That is the silence that misleads, because such a file looks
+  exactly like the kind the lint exists for. Recorded: a spec wrote "the
+  eol-pin lint passes" as an acceptance criterion for a committed generated
+  JSON artifact, which was vacuous by construction, and the pin had to be
+  asserted by a project-side test instead.
+
+  **The lint is not widened, deliberately.** `read_text()` applies
+  universal-newline translation, so a CRLF-rewritten file parses to the
+  identical object — covering the shape would be wrong rather than merely
+  noisy. What the file may still need the pin for is a byte-reproducibility
+  claim made somewhere the lint cannot look, and that claim is the project's to
+  assert directly. §6, the two docstrings, and the delivered §6 skill now say
+  this; §6 adds the operative instruction — never write "the eol-pin lint
+  passes" as an acceptance criterion, assert the pin itself — and three tests
+  pin the behaviour as a decision rather than an accident, including the
+  boundary case where one `==` on the bytes makes the same artifact report.
+
+## [1.29.0] — 2026-09-01
+
+### Added
+
+- **§6 states the subprocess `encoding=` rule, and `aide check` lints it
+  (issue #126).** Six items in one consumer queue each independently wrote
+  `subprocess.run(..., capture_output=True, text=True)` with no `encoding=`.
+  All six passed the Linux-only validator — `locale.getpreferredencoding()` is
+  UTF-8 there — and `windows-latest` decoded the same bytes as cp1252: a
+  `KeyError` on a mangled em-dash heading in one test, and in another an
+  emoji-diff guard that **matched nothing and reported PASS**. The second is a
+  false negative, a gate green having verified nothing, and §7 says no gate
+  inside the loop ever sees the platform that produces it. Six authors
+  reproducing one shape in one queue is the signature of a missing rule, so §6
+  now carries it: *a test that captures subprocess output as text passes
+  `encoding="utf-8"`.* `subprocess_encoding_test_warnings` decides it by AST,
+  in the shape of the eol-pin lint beside it — a `run`/`Popen`/`check_output`
+  call carrying `text=` or `universal_newlines=` and no `encoding=`. Narrowed
+  twice so every warning names a call that really would decode: `call` and
+  `check_call` return an exit status and never a capture, and a literal
+  `text=False` asks for bytes. Its limit is stated rather than left to be
+  found — only direct calls are seen, so a suite that wraps its subprocess
+  calls in a helper shows the lint one call site and hides the rest.
+
+### Fixed
+
+- **The engine decoded git and `gh` output with the platform's locale codec.**
+  The rule above was already broken where it is written: `git()`,
+  `aide env`'s profile check and `aide status`'s open-PR listing all passed
+  `text=True` and named no codec, so on a Windows consumer a branch name, a
+  changed path, a traceback or a PR title came back as different characters
+  than here — and a prefix match against a mis-decoded branch name quietly
+  stopped matching. All three now decode UTF-8 explicitly, with
+  `errors="replace"` so a stray byte in one ref cannot raise out of
+  `aide claim`. This repo's own suite carried the same shape in nine helpers;
+  those are fixed too, strictly, because in a test a byte that will not decode
+  is a finding rather than something to paper over.
+
+### Changed
+
+- §6's closing paragraph claimed the absolute-path rule was "the one rule here
+  a script can decide". Three lints had already made that false and this
+  release makes five; it now names the five and says plainly that the rest of
+  the section binds identically and is checked by nobody.
+
 ## [1.28.1] — 2026-08-31
 
 ### Fixed
