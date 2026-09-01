@@ -95,6 +95,44 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.29.5] — 2026-09-01
+
+### Fixed
+
+- **Resolving imports made `from subprocess import *` invisible.** 1.29.4 fixed
+  a false positive (an unrelated `Runner().run(text=True)`) by matching only
+  through a binding the module actually makes — and a star import binds `run`
+  without naming it, so the resolver saw nothing and went quiet on a call the
+  name-only matching it replaced had reported. That trades a false positive for
+  a false negative, which is the wrong direction in a section whose whole
+  argument for this lint is that a false negative is the worst outcome
+  available. A star import from `subprocess` now binds exactly the names this
+  lint cares about. The re-export shape (`from helpers import subprocess`) is
+  still not followed, and is now stated in the docstring's limits rather than
+  left to be discovered.
+
+- **The chained-comparison exemption was judged per node, not per operand.**
+  `a == p.read_bytes() < b` is one `Compare` node meaning `a == p.read_bytes()
+  and p.read_bytes() < b`, so the read really is on one side of an `==`; the
+  membership/ordering carve-out added in 1.29.4 exempted every operand of any
+  node carrying a non-equality operator, this one included. An operand is now
+  exempt only when *neither* comparison it takes part in is an equality.
+
+### Changed
+
+- `_read_call_name` takes the readers it should match, and the comparison and
+  hash sites pass `("read_text",)`. `read_bytes()` is collected unconditionally
+  since 1.29.4, so letting those sites match it too appended every such read
+  twice — harmless, because the caller dedupes by resolved path, but the two
+  rules are disjoint by construction and the code now says so.
+
+**On the version levels in this series:** 1.29.4 and 1.29.5 change what an
+existing lint fires on, which is a stronger claim than the pure-prose 1.29.1 and
+1.29.2. They are numbered patch because the effect is corrective — closing false
+negatives and false positives in a check that already shipped — rather than new
+surface. What a consumer actually experiences is unaffected by the choice: the
+whole series lands as 1.28.1 → 1.29.5, a minor move, earned by 1.29.0's new lint.
+
 ## [1.29.4] — 2026-09-01
 
 ### Fixed

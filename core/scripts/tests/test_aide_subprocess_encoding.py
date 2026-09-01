@@ -181,6 +181,22 @@ def test_an_aliased_import_is_still_reported(tmp_path: Path):
     assert len(_warn(repo)) == 1
 
 
+def test_a_star_import_is_still_reported(tmp_path: Path):
+    """The false negative resolving imports introduced, caught in round two.
+
+    `from subprocess import *` binds `run` without naming it, so a resolver
+    keyed on the names in the statement saw nothing and went quiet on a call
+    the name-only matching it replaced had reported. Trading a false positive
+    for a false negative is the wrong direction — this section's whole argument
+    for the lint is that a false negative is the worst outcome available.
+    """
+    repo = _repo(tmp_path)
+    _write(repo,
+           "from subprocess import *\n"
+           "r = run(['x'], capture_output=True, text=True)\n")
+    assert len(_warn(repo)) == 1
+
+
 def test_an_aliased_from_import_is_still_reported(tmp_path: Path):
     repo = _repo(tmp_path)
     _write(repo,

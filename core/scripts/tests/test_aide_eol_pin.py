@@ -311,6 +311,24 @@ def test_a_read_bytes_stored_then_used_is_reported(tmp_path: Path):
     assert len(_warn(repo)) == 1
 
 
+def test_a_chained_comparison_still_sees_the_equality(tmp_path: Path):
+    """`a == p.read_bytes() < b` is one Compare node meaning `a == p.read_bytes()
+    and p.read_bytes() < b`, so the read really is on one side of an `==`.
+    Judging the node as a whole exempted it — caught in round two of review."""
+    repo = _repo(tmp_path, gitattributes="")
+    _fixture(repo, "tests/golden/report.json")
+    (repo / "tests" / "test_c.py").write_text(
+        'from pathlib import Path\n'
+        'ROOT = Path(__file__).resolve().parents[1]\n'
+        'GOLDEN = ROOT / "tests" / "golden" / "report.json"\n'
+        'def test_it(tmp_path):\n'
+        '    a = (tmp_path / "x").read_bytes()\n'
+        '    b = b"zzz"\n'
+        '    assert a == GOLDEN.read_bytes() < b\n',
+        encoding="utf-8")
+    assert len(_warn(repo)) == 1
+
+
 def test_a_binary_pin_counts_as_a_pin(tmp_path: Path):
     """`binary` is git's macro for `-text -diff`, which switches the conversion
     off outright — a file under it is exactly as safe as one under `eol=lf`.

@@ -1781,9 +1781,15 @@ def _subprocess_names(tree: ast.AST) -> Tuple[set, Dict[str, str]]:
         from subprocess import run     -> {"run": "run"}
         from subprocess import run as r-> {"r": "run"}
 
-    A binding made any other way — `run = subprocess.run`, a helper imported
-    from a sibling module — is not followed, and the lint stays quiet on it
-    rather than guessing.
+    A star import binds every name at once and is treated as binding exactly
+    the ones this lint cares about — caught in review, where resolving imports
+    had turned `from subprocess import *` from a reported call into a silent
+    one. Trading a false positive for a false negative is the wrong direction
+    here, and this section says why.
+
+    A binding made any other way — `run = subprocess.run`, or the module object
+    re-exported through a sibling (`from helpers import subprocess`) — is not
+    followed, and the lint stays quiet on it rather than guessing.
     """
     modules: set = set()
     funcs: Dict[str, str] = {}
@@ -1794,6 +1800,9 @@ def _subprocess_names(tree: ast.AST) -> Tuple[set, Dict[str, str]]:
                     modules.add(alias.asname or alias.name)
         elif isinstance(node, ast.ImportFrom) and node.module == "subprocess":
             for alias in node.names:
+                if alias.name == "*":
+                    funcs.update({f: f for f in _DECODING_SUBPROCESS_FUNCS})
+                    continue
                 funcs[alias.asname or alias.name] = alias.name
     return modules, funcs
 
@@ -2059,12 +2068,21 @@ class _LiteralPathResolver(ast.NodeVisitor):
 _BYTE_EXACT_READS = ("read_bytes", "read_text")
 
 
-def _read_call_name(node: ast.AST) -> Optional[Tuple[str, int]]:
-    """`(name, lineno)` if *node* is `NAME.read_bytes()` / `NAME.read_text()`."""
+def _read_call_name(node: ast.AST,
+                    readers: Tuple[str, ...] = _BYTE_EXACT_READS
+                    ) -> Optional[Tuple[str, int]]:
+    """`(name, lineno)` if *node* is `NAME.read_bytes()` / `NAME.read_text()`.
+
+    *readers* narrows which of the two counts. The comparison and hash sites
+    pass `("read_text",)`: `read_bytes()` is collected unconditionally a few
+    lines below, so letting them match it too appended every such read twice.
+    Harmless downstream — the caller dedupes by resolved path — but the two
+    rules are disjoint by construction and the code should say so.
+    """
     if not isinstance(node, ast.Call):
         return None
     func = node.func
-    if isinstance(func, ast.Attribute) and func.attr in _BYTE_EXACT_READS \
+    if isinstance(func, ast.Attribute) and func.attr in readers \
             and isinstance(func.value, ast.Name):
         return func.value.id, func.lineno
     return None
@@ -2116,12 +2134,19 @@ def _byte_exact_reads(tree: ast.AST) -> List[Tuple[str, int]]:
     # the needle is what decides there, and a literal one carrying no newline
     # is immune to the rewrite. Collected first because `ast.walk` reaches the
     # inner call without the Compare that gives it its meaning.
-    loose_operands = {
-        id(side)
-        for node in ast.walk(tree) if isinstance(node, ast.Compare)
-        and not all(isinstance(op, (ast.Eq, ast.NotEq)) for op in node.ops)
-        for side in [node.left, *node.comparators]
-    }
+    loose_operands: set = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        sides = [node.left, *node.comparators]
+        for i, side in enumerate(sides):
+            # `a == b < c` is one node meaning `a == b and b < c`, so an
+            # operand is exempt only when *neither* comparison it takes part
+            # in is an equality. Judging the node as a whole exempted `b` here,
+            # which really is on one side of an `==`.
+            adjacent = [op for j, op in enumerate(node.ops) if j in (i - 1, i)]
+            if not any(isinstance(op, (ast.Eq, ast.NotEq)) for op in adjacent):
+                loose_operands.add(id(side))
 
     out: List[Tuple[str, int]] = []
     for node in ast.walk(tree):
@@ -2140,7 +2165,7 @@ def _byte_exact_reads(tree: ast.AST) -> List[Tuple[str, int]]:
             if not all(isinstance(op, (ast.Eq, ast.NotEq)) for op in node.ops):
                 continue
             for side in [node.left, *node.comparators]:
-                found = _read_call_name(side)
+                found = _read_call_name(side, ("read_text",))
                 if found is not None:
                     out.append(found)
         elif isinstance(node, ast.Call):
@@ -2158,7 +2183,7 @@ def _byte_exact_reads(tree: ast.AST) -> List[Tuple[str, int]]:
             if not is_hash_sink:
                 continue
             for arg in node.args:
-                found = _read_call_name(arg)
+                found = _read_call_name(arg, ("read_text",))
                 if found is not None:
                     out.append(found)
     return out
