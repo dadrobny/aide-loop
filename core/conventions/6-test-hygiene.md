@@ -41,13 +41,19 @@ reviewer outside the loop — never by a gate inside it.
   authoritative and its silence as partial: the pin is still your
   responsibility on a path the check cannot see. **Silence has a second cause,
   and it is the one that misleads:** the lint decides a *read shape*, not
-  whether a file needs a pin. A committed artifact whose tests `json.loads` it,
-  or walk a Markdown table cell by cell, draws no warning whether or not it is
-  pinned — universal newlines make a parsed read immune to the rewrite, so
-  covering it would be wrong rather than merely noisy, yet the file may still
-  need the pin for a byte-reproducibility claim made where the lint cannot look.
-  So never write "the eol-pin lint passes" as an acceptance criterion: assert
-  the pin itself.
+  whether a file needs a pin. `read_text()` applies universal-newline
+  translation, so a committed artifact its tests read that way and then parse —
+  `json.loads`, a Markdown table walked cell by cell — is immune to the rewrite
+  and draws no warning whether or not it is pinned; covering it would be wrong
+  rather than merely noisy. `read_bytes()` has no such immunity, so **any** use
+  of it on a committed path is reported. The immunity is a property of the
+  reader, not of parsing: `p.read_bytes().decode()` on a CRLF checkout leaves a
+  `\r` in the last cell of a Markdown row where `read_text()` does not. And a
+  `read_text()` parse may still need the pin for a byte-reproducibility claim
+  made where the lint cannot look, so never write "the eol-pin lint passes" as
+  an acceptance criterion: assert the pin itself. `binary` and `-text` count as
+  pins alongside `eol=lf` — all three stop the conversion — while a bare `text`
+  enables it.
 - **A test that captures subprocess output as text must pass
   `encoding="utf-8"`.** `text=True` (and its older spelling
   `universal_newlines=True`) names no codec, so Python decodes with

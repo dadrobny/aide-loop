@@ -1768,6 +1768,36 @@ _DECODING_SUBPROCESS_FUNCS = frozenset({"run", "Popen", "check_output"})
 _TEXT_MODE_KWARGS = frozenset({"text", "universal_newlines"})
 
 
+def _subprocess_names(tree: ast.AST) -> Tuple[set, Dict[str, str]]:
+    """How this module spells `subprocess`: `(module aliases, name -> real)`.
+
+    Matching on the method name alone flags `Runner().run(text=True)`, which has
+    nothing to do with `subprocess` — caught in review, and the reason the
+    docstring below can claim precision it would otherwise only assert. Both
+    import forms are followed, aliases included:
+
+        import subprocess              -> {"subprocess"}
+        import subprocess as sp        -> {"sp"}
+        from subprocess import run     -> {"run": "run"}
+        from subprocess import run as r-> {"r": "run"}
+
+    A binding made any other way — `run = subprocess.run`, a helper imported
+    from a sibling module — is not followed, and the lint stays quiet on it
+    rather than guessing.
+    """
+    modules: set = set()
+    funcs: Dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "subprocess":
+                    modules.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module == "subprocess":
+            for alias in node.names:
+                funcs[alias.asname or alias.name] = alias.name
+    return modules, funcs
+
+
 def _asks_for_text(node: ast.Call) -> bool:
     """Does this call ask for decoded output, as far as the source can say?
 
@@ -1808,9 +1838,12 @@ def subprocess_encoding_test_warnings(repo_root: Path,
 
     Decidable by AST, in the same shape as the eol-pin lint next door: a call
     to `run` / `Popen` / `check_output` carrying a `text=` or
-    `universal_newlines=` keyword and no `encoding=` keyword. The two
-    narrowings — the function set above, and a literal-false `text=` — are
-    there so every warning this emits names a call that really would decode.
+    `universal_newlines=` keyword and no `encoding=` keyword. Three narrowings
+    put together mean every warning this emits names a call that really would
+    decode — the function set above, a literal-false `text=`, and the call
+    having to reach `subprocess` through an import this module actually makes
+    (`_subprocess_names`), without which `Runner().run(text=True)` is reported
+    for sharing a method name.
 
     **The limit, stated rather than left to be discovered:** only a direct
     call is seen. A project that has wrapped its subprocess calls in a helper
@@ -1825,11 +1858,23 @@ def subprocess_encoding_test_warnings(repo_root: Path,
             tree = ast.parse(path.read_text(encoding=_ENCODING))
         except (OSError, UnicodeDecodeError, SyntaxError):
             continue
+        modules, funcs = _subprocess_names(tree)
+        if not modules and not funcs:
+            continue                      # this module never imports subprocess
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
-            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+            if isinstance(func, ast.Attribute):
+                # `subprocess.run(...)`, or whatever this module called it.
+                if not (isinstance(func.value, ast.Name)
+                        and func.value.id in modules):
+                    continue
+                name = func.attr
+            elif isinstance(func, ast.Name):
+                name = funcs.get(func.id, "")
+            else:
+                continue
             if name not in _DECODING_SUBPROCESS_FUNCS:
                 continue
             if any(kw.arg == "encoding" for kw in node.keywords):
@@ -1847,11 +1892,19 @@ def subprocess_encoding_test_warnings(repo_root: Path,
     return out
 
 
-def _gitattributes_lf_patterns(repo_root: Path) -> Optional[List[str]]:
-    """Every pattern in `.gitattributes` carrying an `eol=lf` pin.
+def _gitattributes_no_rewrite_patterns(repo_root: Path) -> Optional[List[str]]:
+    """Every pattern in `.gitattributes` that stops the CRLF rewrite.
 
     ``None`` (not ``[]``) when the file is absent, so the caller can tell "no
     pins" from "no file" and say the more useful of the two.
+
+    **Three spellings, not one.** `eol=lf` is the one §6 names, but `binary`
+    (git's macro for `-text -diff`) and a bare `-text` both switch the
+    conversion off outright, and a file under either is exactly as safe. Only
+    accepting `eol=lf` made the lint warn about a `*.png binary` fixture and
+    tell its author to add a pin that would be wrong for it — a wolf-cry on
+    code that had already done the right thing, which is how a lint stops being
+    read.
     """
     path = repo_root / ".gitattributes"
     if not path.is_file():
@@ -1867,8 +1920,11 @@ def _gitattributes_lf_patterns(repo_root: Path) -> Optional[List[str]]:
             continue
         parts = line.split()
         # `eol=lf` alone is enough: `text eol=lf` and a bare `eol=lf` both stop
-        # core.autocrlf rewriting the file, which is the whole point here.
-        if len(parts) > 1 and any(a == "eol=lf" for a in parts[1:]):
+        # core.autocrlf rewriting the file, which is the whole point here — as
+        # do `binary` and an unsetting `-text`. A bare `text` is NOT in the
+        # list: it *enables* the conversion.
+        if len(parts) > 1 and any(a in ("eol=lf", "binary", "-text")
+                                  for a in parts[1:]):
             out.append(parts[0])
     return out
 
@@ -2034,20 +2090,50 @@ def _byte_exact_reads(tree: ast.AST) -> List[Tuple[str, int]]:
     indirection is the shape of a determinism check between two generated
     files, which needs no pin at all.
 
-    **What that costs, stated so it is not rediscovered** (issue #124). This
-    function decides a *read shape*, and a read shape is only a proxy for the
-    question that matters, which is whether the file needs a pin. A committed
-    text artifact whose tests `json.loads` it, or walk a Markdown table cell by
-    cell, matches nothing here and draws no warning **whether or not it is
-    pinned** — silent in both directions. Widening to cover it would be wrong,
-    not merely noisy: `read_text()` applies universal-newline translation, so a
-    CRLF-rewritten file parses to the identical object and a pin buys that
-    parse nothing. The file may still need one — for a byte-reproducibility
-    claim asserted somewhere this lint cannot see, a regenerate-and-diff or a
-    digest kept elsewhere — and that claim is the project's to assert directly.
+    **The two readers are not equally safe, and the split above is drawn on
+    exactly that** (issue #124). `read_text()` applies universal-newline
+    translation, so a CRLF-rewritten file arrives with `\n` either way: a
+    *parsed* text read — `json.loads`, a Markdown table walked cell by cell —
+    is immune to the rewrite, and covering it would be wrong rather than merely
+    noisy. `read_bytes()` translates nothing, so that immunity does not exist
+    for it and **any** use of it on a committed path is byte-sensitive; the
+    `\r` survives into whatever parses the result. Hence: `read_bytes()`
+    anywhere counts, `read_text()` only where its result is compared or hashed.
+
+    Review caught the earlier version of this docstring claiming the immunity
+    for the whole "parses rather than byte-compares" class. It is a property of
+    `read_text()`, not of parsing — measured: `p.read_bytes().decode()` on a
+    CRLF checkout leaves `' value\r'` in the last cell of a Markdown row where
+    `read_text()` leaves `' value'`.
+
+    What stays silent is a `read_text()` parse, and that silence is still not
+    coverage: the file may need a pin for a byte-reproducibility claim asserted
+    somewhere this lint cannot see — a regenerate-and-diff, a digest kept
+    elsewhere — and that claim is the project's to assert directly.
     """
+    # Reads sitting directly under a membership or ordering test — `b"{" in
+    # p.read_bytes()`. Kept exempt from the blanket `read_bytes()` rule below:
+    # the needle is what decides there, and a literal one carrying no newline
+    # is immune to the rewrite. Collected first because `ast.walk` reaches the
+    # inner call without the Compare that gives it its meaning.
+    loose_operands = {
+        id(side)
+        for node in ast.walk(tree) if isinstance(node, ast.Compare)
+        and not all(isinstance(op, (ast.Eq, ast.NotEq)) for op in node.ops)
+        for side in [node.left, *node.comparators]
+    }
+
     out: List[Tuple[str, int]] = []
     for node in ast.walk(tree):
+        # `read_bytes()` in any other position. It translates nothing, so there
+        # is no context in which the CRLF rewrite passes through it harmlessly
+        # — the `\r` survives into whatever parses the result.
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "read_bytes"
+                and isinstance(node.func.value, ast.Name)
+                and id(node) not in loose_operands):
+            out.append((node.func.value.id, node.func.lineno))
+            continue
         if isinstance(node, ast.Compare):
             # Only `==` / `!=`: an ordering or membership test on file contents
             # is not a byte-exactness claim.
@@ -2106,19 +2192,20 @@ def gitattributes_eol_pin_warnings(repo_root: Path,
 
     **Two causes of silence, and only one of them is the one above.** The first
     is resolution: a path this lint cannot follow is skipped. The second is
-    shape, in `_byte_exact_reads` — a committed artifact its tests *parse*
-    rather than byte-compare draws no warning whether or not it is pinned. The
-    second is the one that misleads, because such a file looks exactly like the
-    kind this lint exists for. Recorded (issue #124): a spec wrote "the eol-pin
-    lint passes" as an acceptance criterion for a committed generated JSON
-    artifact its tests `json.loads`; the criterion was vacuous by construction,
-    and the pin had to be asserted by a project-side test instead. Read a
-    warning here as authoritative and silence as *no reading taken*.
+    shape, in `_byte_exact_reads` — a committed artifact whose tests
+    `read_text()` and *parse* draws no warning whether or not it is pinned,
+    because universal newlines make that read immune. The second is the one
+    that misleads, because such a file looks exactly like the kind this lint
+    exists for. Recorded (issue #124): a spec wrote "the eol-pin lint passes"
+    as an acceptance criterion for a committed generated JSON artifact its
+    tests `json.loads`; the criterion was vacuous by construction, and the pin
+    had to be asserted by a project-side test instead. Read a warning here as
+    authoritative and silence as *no reading taken*.
     """
     files = _test_files(repo_root, config)
     if not files:
         return []
-    patterns = _gitattributes_lf_patterns(repo_root)
+    patterns = _gitattributes_no_rewrite_patterns(repo_root)
     out: List[str] = []
     seen: set = set()
     root = repo_root.resolve()

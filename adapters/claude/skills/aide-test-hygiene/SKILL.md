@@ -40,7 +40,9 @@ paths:
      - A committed byte-exact fixture needs a `.gitattributes` `text eol=lf` pin
      - Treat a warning as authoritative and its silence as partial
      - the lint decides a *read shape*, not whether a file needs a pin
+     - The immunity is a property of the reader, not of parsing
      - never write "the eol-pin lint passes" as an acceptance criterion
+     - `binary` and `-text` count as pins alongside `eol=lf`
      - A test that captures subprocess output as text must pass
        `encoding="utf-8"`
      - It sees only direct calls: a suite that wraps its subprocess calls in a
@@ -93,9 +95,12 @@ regardless.
   or `core.autocrlf` rewrites it on checkout and every byte comparison fails on
   Windows only. `aide check` warns on the cases it can decide. Treat a warning
   as authoritative and its silence as partial. The lint decides a *read shape*,
-  not whether a file needs a pin: an artifact whose tests parse it rather than
-  byte-compare it draws no warning whether or not it is pinned. So never write
-  "the eol-pin lint passes" as an acceptance criterion: assert the pin itself.
+  not whether a file needs a pin: `read_text()` applies universal-newline
+  translation, so an artifact read that way and parsed draws no warning whether
+  or not it is pinned, while **any** `read_bytes()` on a committed path is
+  reported. The immunity is a property of the reader, not of parsing. So never
+  write "the eol-pin lint passes" as an acceptance criterion: assert the pin
+  itself. `binary` and `-text` count as pins alongside `eol=lf`.
 - **A test that captures subprocess output as text must pass
   `encoding="utf-8"`.** `text=True` names no codec, so Python decodes with the
   platform's locale codec — UTF-8 on a Linux runner, cp1252 on a Windows one.

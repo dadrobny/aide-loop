@@ -141,14 +141,52 @@ def test_check_call_is_silent(tmp_path: Path):
     assert _warn(repo) == []
 
 
-def test_an_unrelated_run_is_silent(tmp_path: Path):
-    """A `run(...)` that is not subprocess's — a test runner helper, a fixture
-    — shares the name but not the keyword, so the keyword is what decides."""
+def test_an_unrelated_run_carrying_text_is_silent(tmp_path: Path):
+    """A `run(...)` that is not subprocess's, **with the keyword present**.
+
+    The version of this test written first passed `check=True` and so proved
+    nothing: it would have stayed silent under a lint matching on method name
+    alone, which is what the lint then did. Review caught that. A `Runner` with
+    its own `text=` parameter is the shape that separates matching a name from
+    resolving an import, so that is what this asserts on.
+    """
     repo = _repo(tmp_path)
     _write(repo,
-           "def test_it(runner):\n"
-           "    runner.run(['x'], check=True)\n")
+           "class Runner:\n"
+           "    def run(self, args, text=True):\n"
+           "        return args\n"
+           "def test_it():\n"
+           "    assert Runner().run(['x'], text=True) == ['x']\n")
     assert _warn(repo) == []
+
+
+def test_a_module_that_never_imports_subprocess_is_silent(tmp_path: Path):
+    """The cheap half of the same guard, and the common one: no import, no
+    subprocess, whatever the call is spelled like."""
+    repo = _repo(tmp_path)
+    _write(repo,
+           "import shutil\n"
+           "def test_it(proc):\n"
+           "    proc.check_output(['x'], universal_newlines=True)\n")
+    assert _warn(repo) == []
+
+
+def test_an_aliased_import_is_still_reported(tmp_path: Path):
+    """Resolving the import must not become a way to hide from the lint —
+    `import subprocess as sp` is the same call by another name."""
+    repo = _repo(tmp_path)
+    _write(repo,
+           "import subprocess as sp\n"
+           "r = sp.run(['x'], capture_output=True, text=True)\n")
+    assert len(_warn(repo)) == 1
+
+
+def test_an_aliased_from_import_is_still_reported(tmp_path: Path):
+    repo = _repo(tmp_path)
+    _write(repo,
+           "from subprocess import check_output as co\n"
+           "out = co(['x'], text=True)\n")
+    assert len(_warn(repo)) == 1
 
 
 # --------------------------------------------------------------------------- #

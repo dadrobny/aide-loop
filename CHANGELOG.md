@@ -95,6 +95,51 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.29.4] — 2026-09-01
+
+### Fixed
+
+- **The eol-pin lint was silent on `read_bytes()` parses, and 1.29.1 said that
+  was fine.** Review disproved the reasoning that release shipped. The claim —
+  a committed artifact its tests *parse* is immune to the CRLF rewrite — is a
+  property of **`read_text()`**, whose universal-newline translation delivers
+  `\n` either way, not a property of parsing. `read_bytes()` translates
+  nothing, and `_BYTE_EXACT_READS` covered both. Measured:
+  `p.read_bytes().decode()` on a CRLF checkout leaves `' value\r'` in the last
+  cell of a Markdown row where `read_text()` leaves `' value'` — so a chained
+  `read_bytes().decode().split()`, which never lands in a comparison, was as
+  exposed as a byte-compare and drew no warning.
+
+  So the split is redrawn where it actually holds: **any** `read_bytes()` on a
+  committed path is reported, `read_text()` still only where its result is
+  compared or hashed. Membership and ordering tests (`b"{" in p.read_bytes()`)
+  stay exempt — there the needle decides, and a literal one carrying no newline
+  is immune. Measured across four real suites before landing: the widening adds
+  **zero** new warnings and removes none, so the hole closes at no cost in
+  noise. §6, both docstrings and the delivered §6 skill are corrected; the
+  1.29.1 prose overstated and is replaced rather than extended.
+
+- **`binary` and `-text` now count as pins.** Both are git spellings that switch
+  the conversion off outright — `binary` is the macro for `-text -diff` — so a
+  file under either is exactly as safe as one under `eol=lf`. Demanding
+  `eol=lf` anyway made the lint tell a fixture's author to add a pin that would
+  **corrupt** the file. Not hypothetical: a consumer's `.gitattributes` carries
+  a comment explaining that `binary` is correct there and *"`text eol=lf` would
+  corrupt them on a Windows checkout"*, and the lint was warning about those two
+  files anyway. Both warnings are now correctly silent. A bare `text` still does
+  not count: it *enables* the conversion.
+
+- **The subprocess-encoding lint matched a method name with no provenance.**
+  `Runner().run(text=True)` — an unrelated object that happens to share the name
+  — was reported, while the docstring claimed every warning named a call that
+  really would decode. It now resolves how each module spells `subprocess`
+  (`import subprocess`, `import subprocess as sp`, `from subprocess import run`,
+  and `as` aliases of both) and matches only through a binding the module
+  actually makes; a module that never imports `subprocess` is skipped outright.
+  The test that meant to cover this passed `check=True` and so would have passed
+  against the broken lint too — it now uses a `Runner` carrying its own `text=`,
+  which is the shape that separates matching a name from resolving an import.
+
 ## [1.29.3] — 2026-09-01
 
 ### Fixed
