@@ -67,6 +67,10 @@ paths:
 <!-- pins: .aide/conventions/1-format-contract/insights.md
      - Capture is a plain append; everything after it has a verb
      - Ticking the checkbox is the one in-place edit
+     - The open inbox is an input to queue authoring, not only an output of
+       triage
+     - considered, and either queued or explicitly passed over — never
+       silently dropped
 -->
 
 <!-- pins: .aide/conventions/5-clarify-mode.md
@@ -133,6 +137,16 @@ verb owns it, so a hand-flipped `[x]` is the improvised form of `tick` — and
 run without `--yes`). Reading the file raw costs the whole closed history to
 see a working set of a dozen lines; editing it by hand is the failure `tick`
 exists to prevent.
+
+**The open inbox is an input to queue authoring, not only an output of triage**
+(§1 → `insights.md`). Triage happens *at* the queue boundary, when the next
+queue does not exist yet, so a `defect`, `gap` or `automation` entry routed
+there to "a candidate item" waits in the inbox for whoever authors that queue:
+`aide insights list --open` is one of its inputs, beside vision, roadmap and
+progress. Every open entry of those three types is **considered, and either
+queued or explicitly passed over — never silently dropped**; a queued one is
+ticked with the item number it became, and a passed-over one stays open,
+because an unchecked entry is still a candidate.
 
 **Root documents are authored through their loop entry point, interactively —
 whatever `loop.clarify` says** (`.aide/conventions.md` §5); here that entry point

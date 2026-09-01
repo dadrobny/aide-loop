@@ -95,6 +95,70 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.33.0] — 2026-09-01
+
+### Added
+
+- **The open insight inbox is an input to queue authoring, not only an output
+  of triage (issue #134).** Triage routes each unchecked entry by type, and
+  every type had a destination that exists except the two that by definition
+  need *scheduling*: `defect` and `gap` were routed to "the queue being
+  authored, or noted for the next `/aide-create-queue` run". Triage runs **at**
+  the queue boundary — the finished queue is closed and the next one is
+  unwritten — so there is no queue being authored, and nothing read such a
+  note: `queue-planner` named `insights.md` once, under **Out-of-scope
+  insights**, to say *append one line and carry on*, and no caller of `aide
+  insights list` existed anywhere in the adapter. The triager's only honest
+  move was to leave the entry unticked and hope the next planner looked. In one
+  consumer that was eight open entries, several already carried past one
+  boundary, in a file the role that would act on them had no instruction to
+  open. The failure is quiet in the usual way — `aide insights list --open`
+  reports them faithfully, the loop reports success, and nothing says "these
+  were routed nowhere".
+
+  The inbox was already the right carrier; it was not declared an input. §1 →
+  `insights.md` now states that it is one, and that every open `defect`, `gap`
+  or `automation` entry is **considered, and either queued or explicitly passed
+  over — never silently dropped**. Queueing one is a routing like any other, so
+  the author who queued it ticks it with the item number it became; a
+  pass-over leaves the entry open and is stated where the queue is reviewed, so
+  an unchecked entry is honestly still a candidate rather than a hope.
+  `automation` is included because the engine's own route sends all three types
+  to "a candidate item" — fixing two of them would leave the third stranding
+  identically. Delivered to `queue-planner` through the `aide-living-documents`
+  skill, which already reaches that role and already pins this section, and
+  carried in the role's own steps: the read in step 1, the tick in step 6, and
+  a summary that names what was queued **and** what was passed over with why,
+  which is what puts both in front of the queue PR's reviewer. The
+  `/aide-feedback-loop` step-0 wording that stated the obligation is corrected
+  to match the mechanism now behind it — leaving a `defect`/`gap`/`automation`
+  entry unchecked **is** the routing, so its "tick each routed entry"
+  instruction is narrowed to the types that really terminate there.
+
+### Changed
+
+- **A `framework` issue body opens with the engine version, and writing that
+  header is the filing role's job (issue #127).** Triage of a consumer report
+  starts by asking which engine it was observed under; without it the report
+  cannot be checked against this changelog, and the two failure modes are
+  symmetric and both bad — a live defect closed as already-fixed, or a fixed
+  one re-fixed. 1.24.0 (#97) already required the version to be *in* the body
+  and said where to take it from, including the `.aide/VERSION` fallback marked
+  as *the version at triage time, not at capture*. What was missing is smaller
+  than it looks and is the half that bites: **where** it goes, and **who** owes
+  it. The version now leads — first line, before the observation, in the shape
+  `.github/ISSUE_TEMPLATE/consumer-report.md` already uses — because triage at
+  the destination begins by checking the claim against that engine's history.
+  And the section now says plainly that a form on the destination cannot reach
+  this path: an issue template binds a human composing in a browser and is
+  silently bypassed when the body is composed by the role and passed on the
+  command line, which is how the handover files. That is what a template is,
+  not a gap in one. The cost of the header is nothing, because the consumer
+  already holds the fact — it is in the entry's own provenance marker (#97), or
+  one read of `.aide/VERSION` away. The adapter's `framework` bullet, the only
+  wired path that reaches `gh issue create`, now quotes the engine's shape
+  instead of carrying a body structure of its own.
+
 ## [1.32.0] — 2026-09-01
 
 ### Added

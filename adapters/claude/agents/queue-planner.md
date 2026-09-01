@@ -35,13 +35,24 @@ Read `aide.toml`: `loop.queue_cap` (the ~item ceiling per batch). Project-agnost
 - Roadmap: `docs/aide/roadmap.md` — stage priorities and dependencies
 - Progress: `docs/aide/progress.md` — what's done / in-flight
 - Queues: `docs/aide/queue/queue-*.md` — prior batches (avoid re-queuing)
+- Insight inbox: `docs/aide/insights.md` — its open `defect`, `gap` and
+  `automation` entries are candidates for this batch (read it with the verb)
 - Queue template: `.aide/templates/queue.md`
 
 ## What you do
 
 Follow the `aide-create-queue` skill in full. In brief:
 
-1. **Read** vision, roadmap, progress, and all existing `queue-*.md`.
+1. **Read** vision, roadmap, progress, and all existing `queue-*.md` — **and
+   the open insight inbox**, with the verb rather than by opening the file:
+   ```
+   python .aide/scripts/aide.py insights list --open
+   ```
+   **The open inbox is an input to queue authoring, not only an output of
+   triage** (§1 → `insights.md`): triage runs *at* the queue boundary, when the
+   next queue does not exist yet, so a `defect`, `gap` or `automation` entry
+   left open there is waiting for you. Every one of them is **considered, and
+   either queued or explicitly passed over — never silently dropped**.
 2. **Determine the next queue number** NNN (highest existing + 1) and the next
    **item number** (sequential across *all* queues — never restart numbering).
 3. **Tidy the superseded previous queue** with the CLI (it rewrites the Status
@@ -73,16 +84,27 @@ Follow the `aide-create-queue` skill in full. In brief:
    must be recorded here: `aide progress set NNN` locates the bullet to flip by its
    reference and now **hard-errors** on an unreferenced item (engine ≥ 1.0.1)
    instead of silently no-op'ing.
-6. **Commit** the new queue, the `progress.md` back-fill, **and** the tidy-up on
+6. **Tick every inbox entry you queued**, naming the item it became — the verb
+   owns that edit and commits the file when git can:
+   ```
+   python .aide/scripts/aide.py insights tick N --pointer "item NNN"
+   ```
+   `N` is the entry number `insights list --open` printed. An entry you passed
+   over stays open and unticked — it is still a candidate for the next queue —
+   and step 8 says so out loud.
+7. **Commit** the new queue, the `progress.md` back-fill, **and** the tidy-up on
    the **current branch** (each a separate Bash call). Do **not** push and do
    **not** open a PR:
    ```
    git add docs/aide/queue/queue-NNN.md docs/aide/queue/queue-<NNN-1>.md docs/aide/progress.md
    git commit -m "docs(aide): add work queue NNN"
    ```
-7. **Return** a tight summary: queue number, the item-number range and one-line
+8. **Return** a tight summary: queue number, the item-number range and one-line
    titles, and confirmation the previous queue was tidied and every item wired
-   into `progress.md`. Name the two ways to proceed (`/aide-spec-queue NNN` up
+   into `progress.md`. Name the inbox entries you queued (with the item numbers
+   they became) **and the ones you passed over, with why** — a pass-over is
+   stated where the queue is reviewed, not left for the next reader to
+   re-derive. Name the two ways to proceed (`/aide-spec-queue NNN` up
    front, or per-item during `/aide-run-queue NNN`) in the summary — the
    orchestrator carries it into the queue-PR body.
 
@@ -109,6 +131,10 @@ and resolving it destroys the only thing the gate protects.
   deliverable's status icon and never new stages/acceptance. Adding a gate row
   is permitted because raising a blocker is safe; **resolving** one is not
   yours, ever.
+- `docs/aide/insights.md` is the one file outside that scope you touch, and
+  only through the verb: an append (below) and the `insights tick` of step 6.
+  **Never edit a captured line by hand** — the claim is immutable and ticking
+  the checkbox is the one in-place edit, which `tick` owns.
 
 ## Stop and hand back (needs human approval)
 
@@ -130,6 +156,8 @@ shape:
 The provenance names where the insight came from; `queue-NNN` is yours,
 because you work a queue and there may be no item to name yet.
 
-The feedback loop triages the inbox at the queue boundary. Capturing is cheap
-and always in scope; acting out of scope is forbidden. This append is the one
-write allowed outside your edit scope.
+The feedback loop triages the inbox at the queue boundary — which is why its
+open `defect`, `gap` and `automation` entries are an input to step 1 rather
+than a pile nobody reads. Capturing is cheap and always in scope; acting out of
+scope is forbidden. This append, and the `insights tick` of step 6, are the
+only writes allowed outside your edit scope.
