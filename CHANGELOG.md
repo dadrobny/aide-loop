@@ -95,6 +95,51 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.29.0] — 2026-09-01
+
+### Added
+
+- **§6 states the subprocess `encoding=` rule, and `aide check` lints it
+  (issue #126).** Six items in one consumer queue each independently wrote
+  `subprocess.run(..., capture_output=True, text=True)` with no `encoding=`.
+  All six passed the Linux-only validator — `locale.getpreferredencoding()` is
+  UTF-8 there — and `windows-latest` decoded the same bytes as cp1252: a
+  `KeyError` on a mangled em-dash heading in one test, and in another an
+  emoji-diff guard that **matched nothing and reported PASS**. The second is a
+  false negative, a gate green having verified nothing, and §7 says no gate
+  inside the loop ever sees the platform that produces it. Six authors
+  reproducing one shape in one queue is the signature of a missing rule, so §6
+  now carries it: *a test that captures subprocess output as text passes
+  `encoding="utf-8"`.* `subprocess_encoding_test_warnings` decides it by AST,
+  in the shape of the eol-pin lint beside it — a `run`/`Popen`/`check_output`
+  call carrying `text=` or `universal_newlines=` and no `encoding=`. Narrowed
+  twice so every warning names a call that really would decode: `call` and
+  `check_call` return an exit status and never a capture, and a literal
+  `text=False` asks for bytes. Its limit is stated rather than left to be
+  found — only direct calls are seen, so a suite that wraps its subprocess
+  calls in a helper shows the lint one call site and hides the rest.
+
+### Fixed
+
+- **The engine decoded git and `gh` output with the platform's locale codec.**
+  The rule above was already broken where it is written: `git()`,
+  `aide env`'s profile check and `aide status`'s open-PR listing all passed
+  `text=True` and named no codec, so on a Windows consumer a branch name, a
+  changed path, a traceback or a PR title came back as different characters
+  than here — and a prefix match against a mis-decoded branch name quietly
+  stopped matching. All three now decode UTF-8 explicitly, with
+  `errors="replace"` so a stray byte in one ref cannot raise out of
+  `aide claim`. This repo's own suite carried the same shape in nine helpers;
+  those are fixed too, strictly, because in a test a byte that will not decode
+  is a finding rather than something to paper over.
+
+### Changed
+
+- §6's closing paragraph claimed the absolute-path rule was "the one rule here
+  a script can decide". Three lints had already made that false and this
+  release makes five; it now names the five and says plainly that the rest of
+  the section binds identically and is checked by nobody.
+
 ## [1.28.1] — 2026-08-31
 
 ### Fixed

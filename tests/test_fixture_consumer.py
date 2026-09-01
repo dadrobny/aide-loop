@@ -172,7 +172,8 @@ _Entries below, newest last._
 
 def _git(args, cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], cwd=str(cwd), check=True,
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          encoding="utf-8")
 
 
 def _branch(repo: Path) -> str:

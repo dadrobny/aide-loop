@@ -393,7 +393,8 @@ def test_malformed_input_exits_zero_and_writes_nothing(tmp_path, payload):
     repo = _consumer(tmp_path, extra_repos=["../sibling"])
     proc = subprocess.run(
         [sys.executable, str(_MODULE_PATH)],
-        input=payload, capture_output=True, text=True, cwd=str(repo),
+        input=payload, capture_output=True, encoding="utf-8",
+        cwd=str(repo),
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == ""
@@ -422,7 +423,8 @@ def test_the_happy_path_also_exits_zero_as_a_subprocess(tmp_path):
     })
     proc = subprocess.run(
         [sys.executable, str(_MODULE_PATH)],
-        input=payload, capture_output=True, text=True, cwd=str(repo),
+        input=payload, capture_output=True, encoding="utf-8",
+        cwd=str(repo),
     )
     assert proc.returncode == 0, proc.stderr
     assert str((repo / ".." / "sibling" / "CLAUDE.md").resolve()) in json.loads(

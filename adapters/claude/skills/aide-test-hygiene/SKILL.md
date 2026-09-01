@@ -35,11 +35,14 @@ paths:
      - A test must be deterministic and pass on Windows, macOS and Linux, with
        no network access
      - Never write the repo's own working-directory path literally into a test
-     - the one rule here a script can decide
      - Any `Path` entering a hash, comparison, or match must be `.as_posix()`
      - an identical tree hashes differently on Windows
      - A committed byte-exact fixture needs a `.gitattributes` `text eol=lf` pin
      - Treat a warning as authoritative and its silence as partial
+     - A test that captures subprocess output as text must pass
+       `encoding="utf-8"`
+     - It sees only direct calls: a suite that wraps its subprocess calls in a
+       helper shows this lint one call site and hides the rest
      - Prefer calling the function over shelling out to the command that calls
        it
      - Assert a derived value is recognisable *before* asserting anything about
@@ -71,7 +74,7 @@ regardless.
   this general statement binds a case none of them names.
 - **Never write the repo's own working-directory path literally into a test.**
   Resolve from the test file: `Path(__file__).resolve().parents[N]`. `aide
-  check` warns on this — the one rule here a script can decide.
+  check` warns on this.
 - **Any `Path` entering a hash, comparison, or match must be `.as_posix()`.**
   `str(Path)` renders the OS-native separator — including a `Path` interpolated
   into an f-string, which calls `str()` — so an identical tree hashes
@@ -80,6 +83,12 @@ regardless.
   or `core.autocrlf` rewrites it on checkout and every byte comparison fails on
   Windows only. `aide check` warns on the cases it can decide. Treat a warning
   as authoritative and its silence as partial.
+- **A test that captures subprocess output as text must pass
+  `encoding="utf-8"`.** `text=True` names no codec, so Python decodes with the
+  platform's locale codec — UTF-8 on a Linux runner, cp1252 on a Windows one.
+  `aide check` warns on this. It sees only direct calls: a suite that wraps its
+  subprocess calls in a helper shows this lint one call site and hides the
+  rest.
 - **Prefer calling the function over shelling out to the command that calls
   it.** The CLI's logic is importable and returns structured data; a subprocess
   boundary adds stdout encoding, platform quirks, and a re-parse of what was

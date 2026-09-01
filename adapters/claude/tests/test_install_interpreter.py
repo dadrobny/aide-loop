@@ -105,7 +105,7 @@ def test_selector_blocks_a_hygiene_violation_end_to_end():
         ["sh", "-c", guard_cmd],
         input=payload,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         cwd=FRAMEWORK_ROOT / "adapters" / "claude",
         timeout=10,
     )
@@ -122,7 +122,7 @@ def test_selector_allows_a_clean_command_end_to_end():
         ["sh", "-c", guard_cmd],
         input=payload,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         cwd=FRAMEWORK_ROOT / "adapters" / "claude",
         timeout=10,
     )

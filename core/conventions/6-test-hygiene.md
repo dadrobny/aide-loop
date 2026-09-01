@@ -40,6 +40,21 @@ reviewer outside the loop — never by a gate inside it.
   generated files to each other and need no pin at all. Treat a warning as
   authoritative and its silence as partial: the pin is still your
   responsibility on a path the check cannot see.
+- **A test that captures subprocess output as text must pass
+  `encoding="utf-8"`.** `text=True` (and its older spelling
+  `universal_newlines=True`) names no codec, so Python decodes with
+  `locale.getpreferredencoding()` — UTF-8 on a Linux runner, **cp1252** on a
+  Windows one — and the same bytes become different strings on the two legs of
+  one CI run. Recorded: six items in a single queue independently wrote
+  `capture_output=True, text=True`; all six passed the Linux-only validator,
+  and `windows-latest` raised a `KeyError` on a mangled em-dash heading in one
+  test and — worse — left an emoji-diff guard **matching nothing and reporting
+  PASS** in another. That second one is the shape to fear: a false negative, a
+  gate that is green having verified nothing. `aide check` warns on a
+  `run`/`Popen`/`check_output` call carrying `text=` or `universal_newlines=`
+  and no `encoding=`. It sees only direct calls: a suite that wraps its
+  subprocess calls in a helper shows this lint one call site and hides the
+  rest.
 
 **Tests that can actually fail.**
 
@@ -56,9 +71,13 @@ reviewer outside the loop — never by a gate inside it.
   returned `""` rather than `None`, the loop over its lines would have iterated
   zero times and the test would have reported PASS having verified nothing.
 
-`aide check` warns when a file under `tests_dir` contains the repository's own
-absolute path — the one rule here a script can decide, and the one whose
-recorded instance survived every other gate for weeks.
+`aide check` decides the ones a script can, five of them: the repository's own
+absolute path written into a test file, a `str()` around a `relative_to(...)`,
+a shell-out to the CLI whose function was importable, a text capture that names
+no codec, and a byte-compared fixture no `eol=lf` pattern covers. Each was added
+after the class it names had already reached `main`. The rest of this section
+binds identically and is checked by nobody, so read a warning as authoritative
+and silence as partial throughout — not only on the pin.
 
 The lints in this section read `tests_dir`, never `docs_dir`, so they do **not**
 require the roadmap document set: `aide check` in a repo with no `docs_dir` runs
