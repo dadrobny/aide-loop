@@ -224,6 +224,12 @@ non-goal can be closed as out of scope rather than left open forever. If a
 proposal fits nowhere in it, say so in the issue — either it is out of scope, or
 `docs/vision.md` is out of date and wants a PR.
 
+The recurring pass over that tracker — version-check newly-raised consumer
+issues against `CHANGELOG.md` and HEAD, file them into the Project with `Theme`
+and labels, order the board, sweep the deferred pile, and propose the next PR's
+worth — is [`/triage-issues`](.claude/skills/triage-issues/SKILL.md). It is
+repo-local (`.claude/` is never installed), so it is outside the version rule.
+
 ## Merge policy
 
 Work on a branch and land via a reviewed PR.
