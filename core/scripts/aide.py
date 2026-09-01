@@ -2565,6 +2565,19 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide") -> List[str]:
         # (issue #94). Exact double-listing only: a literal pin under a May
         # change glob is the legitimate carve-out shape ("I may edit docs/**
         # but not docs/api.md") and scope stays the judge of whether it held.
+        # Silent narrowing, made loud where it is authored (issue #119): the
+        # spans after a bullet's first are dropped, and so is anything on a
+        # continuation line, so the item is authorised for less than its spec
+        # says and only an `aide scope` FAIL much later reveals it.
+        for declared, dropped in dropped_bullet_spans(text):
+            shown = ", ".join(f"'{d}'" for d in dropped)
+            out.append(
+                f"items/{path.name}: the Authorised paths bullet for "
+                f"'{declared}' also names {shown}, and `aide scope` reads none "
+                f"of them — a bullet declares ONE path, the first backtick "
+                f"span of its opening line, and a continuation line is not "
+                f"read at all. Give each path its own bullet, or the item is "
+                f"authorised for less than its spec says")
         may_normalised = {_strip_dot_slash(p.strip())
                          for p in (parsed.may_change if parsed else [])}
         for pin in (parsed.asserts_against if parsed else []):
@@ -4650,6 +4663,82 @@ def _bullet_path(line: str) -> Optional[str]:
     return _strip_dot_slash(candidate)
 
 
+#: Every backtick span on a line. `_bullet_path` reads the FIRST one and the
+#: parser reads no continuation line at all, so every other span this finds in a
+#: bullet is a path the author wrote and the loop never sees.
+_BACKTICK_SPAN_RE = re.compile(r"`([^`]+)`")
+
+
+def _authorised_section_lines(text: str) -> Optional[List[str]]:
+    """The lines under ``## Authorised paths``, or None when it is absent.
+
+    One slicer for the parser and the spec-time lint below, so the lint cannot
+    warn about a bullet the parser never looked at, or stay silent about one it
+    did — the whole point of the warning is to describe what `aide scope` will
+    actually do with the section.
+    """
+    lines = text.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip() == _AUTHORISED_HEADING:
+            start = i + 1
+            break
+    if start is None:
+        return None
+
+    end = len(lines)
+    for i in range(start, len(lines)):
+        if _ANY_HEADER_RE.match(lines[i]) and lines[i].strip() != _AUTHORISED_HEADING:
+            end = i
+            break
+    return lines[start:end]
+
+
+def dropped_bullet_spans(text: str) -> List[Tuple[str, List[str]]]:
+    """``(path read, spans dropped)`` for each over-full Authorised-paths bullet.
+
+    The contract is one path per bullet (conventions.md §1 → authorised-paths),
+    and until issue #119 the two ways to break it were both silent: a bullet
+    listing several comma-separated `` `path` `` spans authorised only the
+    first, and a path wrapped onto a continuation line was not read at all,
+    since the parser only ever inspects bullet lines. The narrowing surfaced
+    much later as an `aide scope` FAIL naming paths the spec's own prose plainly
+    authorised — three of one item's four bullets had that shape.
+
+    Silently narrowing an authorisation is the worst of the three behaviours
+    available, so the violation is reported where it is authored. A *warning*,
+    not an error: the bullet is legible to a human, existing specs carry the
+    shape, and the remedy (split the bullet) is the author's to apply.
+
+    A continuation line belongs to the bullet above it and is closed by a blank
+    line, a sub-list label, or the next bullet — the same shape a Markdown
+    reader sees, so an author can predict what the lint attributes where.
+    """
+    section = _authorised_section_lines(text)
+    if section is None:
+        return []
+    found: List[Tuple[str, List[str]]] = []
+    current: Optional[Tuple[str, List[str]]] = None
+    for line in section:
+        stripped = line.strip()
+        if not stripped or _sub_list_label(line) is not None:
+            current = None
+            continue
+        if stripped[0] in "-*+":
+            path = _bullet_path(line)
+            # A bullet the parser declines — an unfilled `{{slot}}`, a literal
+            # "None." — is somebody else's finding (`aide check` errors on the
+            # slot), and nothing under it was going to be read anyway.
+            if path is None:
+                current = None
+                continue
+            current = (path, _BACKTICK_SPAN_RE.findall(stripped[1:])[1:])
+            found.append(current)
+        elif current is not None:
+            current[1].extend(_BACKTICK_SPAN_RE.findall(line))
+    return [(path, dropped) for path, dropped in found if dropped]
+
+
 def declares_nothing(parsed: Optional[AuthorisedPaths]) -> bool:
     """True when a spec's scope cannot be compared with anything.
 
@@ -4673,25 +4762,14 @@ def parse_authorised_paths(text: str) -> Optional[AuthorisedPaths]:
     which is what makes the flat single-list form — the shape consumers wrote
     before the labels existed — parse correctly rather than silently empty.
     """
-    lines = text.splitlines()
-    start = None
-    for i, line in enumerate(lines):
-        if line.strip() == _AUTHORISED_HEADING:
-            start = i + 1
-            break
-    if start is None:
+    section = _authorised_section_lines(text)
+    if section is None:
         return None
-
-    end = len(lines)
-    for i in range(start, len(lines)):
-        if _ANY_HEADER_RE.match(lines[i]) and lines[i].strip() != _AUTHORISED_HEADING:
-            end = i
-            break
 
     may_change: List[str] = []
     asserts_against: List[str] = []
     current = may_change
-    for line in lines[start:end]:
+    for line in section:
         label = _sub_list_label(line)
         if label is not None:
             current = may_change if label == _MAY_CHANGE_LABEL else asserts_against

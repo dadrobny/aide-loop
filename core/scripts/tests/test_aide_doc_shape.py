@@ -237,6 +237,83 @@ def test_double_listing_matches_through_dot_slash_spelling(tmp_path: Path):
     assert len(w) == 1 and "both May change and Asserts against" in w[0]
 
 
+def _with_section(section: str) -> str:
+    return GOOD_SPEC + "\n## Authorised paths\n\n**May change:**\n\n" + section
+
+
+def test_extra_spans_on_a_bullet_are_reported(tmp_path: Path):
+    """The recorded shape (issue #119): three of one item's four bullets listed
+    several comma-separated paths, only the first was authorised, and the
+    narrowing surfaced much later as an `aide scope` FAIL naming paths the
+    spec's own prose plainly authorised."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md",
+               _with_section("- `src/a.py`, `src/b.py`, `src/c.py` — the extractors\n"))
+    w = aide.item_spec_warnings(repo / "docs" / "aide")
+    assert len(w) == 1 and "reads none of them" in w[0]
+    assert "'src/b.py'" in w[0] and "'src/c.py'" in w[0]
+
+
+def test_a_path_on_a_continuation_line_is_reported(tmp_path: Path):
+    """The parser inspects bullet lines only, so a wrapped path is not narrowed
+    to second place — it is not read at all."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md",
+               _with_section("- `src/a.py` — the extractor,\n  and `src/b.py` — its test\n"))
+    w = aide.item_spec_warnings(repo / "docs" / "aide")
+    assert len(w) == 1 and "'src/b.py'" in w[0]
+
+
+def test_the_lint_names_exactly_what_the_parser_drops(tmp_path: Path):
+    """The warning is only worth reading if it describes `aide scope`'s real
+    behaviour, so the two are checked against each other rather than separately.
+    """
+    text = _with_section(
+        "- `src/a.py`, `src/b.py` — two\n"
+        "- `docs/one.md` — a note\n  and also `docs/two.md`\n"
+        "- `src/ok.py` — fine\n")
+    parsed = aide.parse_authorised_paths(text)
+    dropped = aide.dropped_bullet_spans(text)
+    assert parsed is not None and parsed.may_change == ["src/a.py", "docs/one.md", "src/ok.py"]
+    assert dropped == [("src/a.py", ["src/b.py"]), ("docs/one.md", ["docs/two.md"])]
+
+
+def test_one_path_per_bullet_is_silent(tmp_path: Path):
+    """Backticked prose after the path is ordinary — the reason a bullet is
+    required to carry. Only a span the parser DROPS is a finding, and on a
+    one-path bullet there is none."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md",
+               _with_section("- `src/a.py` — the extractor\n- `src/b.py` — its test\n"))
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
+def test_a_continuation_line_belongs_only_to_the_bullet_above_it(tmp_path: Path):
+    """A blank line and a sub-list label both close a bullet, so backticked
+    prose in the section's own paragraphs is attributed to nothing."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md",
+               _with_section("- `src/a.py` — the extractor\n\n"
+                             "Written against `src/legacy.py`, which stays put.\n"))
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
+def test_a_bullet_the_parser_declines_reports_nothing(tmp_path: Path):
+    """An unfilled `{{slot}}` is `aide check`'s error to raise; reporting the
+    same authoring slip twice is the failure mode issue #13 was filed for."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md",
+               _with_section("- {{path}} — `src/a.py`, `src/b.py`\n"))
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
+def test_a_spec_with_no_authorised_paths_section_reports_nothing(tmp_path: Path):
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md", GOOD_SPEC)
+    assert aide.dropped_bullet_spans(GOOD_SPEC) == []
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
 def test_a_literal_pin_under_a_may_change_glob_is_silent(tmp_path: Path):
     """`May change: docs/**` with `Asserts against: docs/api.md` is the
     deliberate carve-out — "I may edit the tree but not this file" — and only

@@ -97,6 +97,26 @@ keys, and the adapter's agents/skills/commands.
 
 ## [1.30.0] — 2026-09-01
 
+### Added
+
+- **`aide check` warns when an Authorised-paths bullet declares more paths than
+  `aide scope` reads (issue #119).** The contract is one path per bullet — the
+  first backtick span of the opening line — and the two ways to break it were
+  both silent. A bullet listing several comma-separated `` `path` `` spans
+  authorised only the first; a path wrapped onto a continuation line was not
+  read at all, since the parser inspects bullet lines only. Three of one
+  consumer item's four bullets had that shape, and the narrowing surfaced much
+  later as an `aide scope` FAIL naming paths the spec's own prose plainly
+  authorised. Silently narrowing an authorisation is the worst of the three
+  behaviours available, so the violation is now reported where it is authored,
+  naming each dropped span. A **warning**, beside the other item-spec lints:
+  existing specs carry the shape, the remedy (split the bullet) is the author's,
+  and an unattended run must not start failing on a bullet a human reads fine.
+  The lint and the parser share one section slicer, so the warning cannot
+  describe a bullet `aide scope` never looked at — a test pins the dropped set
+  against the parsed set rather than checking either alone. §1 →
+  `authorised-paths` now states the rule and its remedy outright.
+
 ### Fixed
 
 - **The documented provenance shape crashed `aide progress set` repo-wide
