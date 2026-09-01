@@ -114,10 +114,32 @@ keys, and the adapter's agents/skills/commands.
   and an unattended run must not start failing on a bullet a human reads fine.
   The lint and the parser share one section slicer, so the warning cannot
   describe a bullet `aide scope` never looked at — a test pins the dropped set
-  against the parsed set rather than checking either alone. §1 →
+  against the parsed set rather than checking either alone.
+
+  Only the **path position** is read — the opening line up to its reason
+  separator, plus continuation lines while no reason has started, which is
+  exactly the wrapped-list shape. Reading the reason too was measured against
+  two real consumers first and produced 82 and 224 findings, nearly all of them
+  identifiers and config keys legitimately quoted in reasons; the very spec that
+  reported #119, already split one path per bullet and saying so in its own
+  prose, drew six. With the limit it is 3 findings across 21 specs and 25 across
+  131, and they are the real thing. A lint nobody can afford to read is the
+  failure mode issue #13 was filed for, so the limit is stated rather than
+  hidden: a second path written *after* the reason separator is not
+  distinguishable from prose naming a file, and stays silent. §1 →
   `authorised-paths` now states the rule and its remedy outright.
 
 ### Fixed
+
+- **A bullet's reason could start with a line-final dash and be read as more
+  path.** `_bullet_path` split on ` — ` with whitespace required on *both*
+  sides, so `- `path` —` with the reason wrapped below did not register as
+  having a reason at all. Harmless for the parser, which stops at the first
+  backtick span either way, but the new lint reads exactly as far as the reason
+  and would have taken the whole thing for path position. The two now share one
+  definition of where a reason starts; as a side effect a non-backticked bullet
+  written `- src/a.py —` declares `src/a.py` rather than `src/a.py —`, which
+  matched no file git ever reports.
 
 - **The documented provenance shape crashed `aide progress set` repo-wide
   (issue #120).** `AGENT-CONTEXT.md` prescribes `*(item NNN, YYYY-MM-DD, engine

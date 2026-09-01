@@ -4656,17 +4656,32 @@ def _bullet_path(line: str) -> Optional[str]:
     if m:
         candidate = m.group(1)
     else:
-        candidate = re.split(r"\s+[—–-]\s+|:", body, maxsplit=1)[0]
+        candidate = _BULLET_REASON_RE.split(body, maxsplit=1)[0]
     candidate = candidate.strip().strip("`").strip()
     if not candidate or candidate.rstrip(".").lower() == "none":
         return None
     return _strip_dot_slash(candidate)
 
 
-#: Every backtick span on a line. `_bullet_path` reads the FIRST one and the
-#: parser reads no continuation line at all, so every other span this finds in a
-#: bullet is a path the author wrote and the loop never sees.
+#: Every backtick span on a line, and where a bullet's reason starts. The two
+#: together locate the bullet's PATH POSITION — the run before the reason
+#: separator — which is the only place a span is a path claim. `_bullet_path`
+#: splits on the same separator for a bullet written without backticks, so the
+#: two readings of "where the path ends" cannot drift apart.
 _BACKTICK_SPAN_RE = re.compile(r"`([^`]+)`")
+#: The dash may END the line — `- `path` —` with the reason wrapped below is a
+#: common way to write a long one, and reading it as "no reason yet" would take
+#: the whole reason for more path position.
+_BULLET_REASON_RE = re.compile(r"\s+[—–-](?:\s+|$)|:")
+
+#: A Markdown list marker, which `_bullet_path` tests only by its first
+#: character. The lint needs the stricter form: a continuation line opening
+#: `**not** in the project group …` is emphasis, not a bullet, and reading it
+#: as one attributes the reason's own spans to a path it invented. The parser
+#: is left alone — its looser test yields a junk pattern that matches no file,
+#: while a lint that reports MORE than the parser reads is a lint nobody
+#: believes twice.
+_LIST_MARKER_RE = re.compile(r"[-*+]\s")
 
 
 def _authorised_section_lines(text: str) -> Optional[List[str]]:
@@ -4694,48 +4709,74 @@ def _authorised_section_lines(text: str) -> Optional[List[str]]:
     return lines[start:end]
 
 
+def _path_position(line: str) -> Tuple[str, bool]:
+    """The run of *line* before its reason separator, and whether one was seen.
+
+    Everything after the separator is the reason, and a bullet is required to
+    carry one — so a backticked name there is prose about the work, not a path
+    claim. Measured on two real consumers, treating it as a path claim produced
+    82 and 224 findings, almost all of them identifiers and TOML keys quoted in
+    reasons; the spec that *reported* issue #119 would have raised six.
+    """
+    m = _BULLET_REASON_RE.search(line)
+    return (line[: m.start()], True) if m else (line, False)
+
+
 def dropped_bullet_spans(text: str) -> List[Tuple[str, List[str]]]:
     """``(path read, spans dropped)`` for each over-full Authorised-paths bullet.
 
     The contract is one path per bullet (conventions.md §1 → authorised-paths),
     and until issue #119 the two ways to break it were both silent: a bullet
     listing several comma-separated `` `path` `` spans authorised only the
-    first, and a path wrapped onto a continuation line was not read at all,
-    since the parser only ever inspects bullet lines. The narrowing surfaced
-    much later as an `aide scope` FAIL naming paths the spec's own prose plainly
-    authorised — three of one item's four bullets had that shape.
+    first, and a path list wrapped onto a continuation line lost everything
+    below the first line, since the parser only ever inspects bullet lines. The
+    narrowing surfaced much later as an `aide scope` FAIL naming paths the
+    spec's own prose plainly authorised — three of one item's four bullets had
+    that shape.
+
+    Only the **path position** is read: the bullet's opening line up to its
+    reason separator, plus the continuation lines while no separator has been
+    seen yet, which is exactly the wrapped-list shape. That limit is what makes
+    the lint worth reading rather than a source of noise to page past, and it
+    is a limit: a path named after the separator is not distinguishable from a
+    reason that mentions a file, so a second path written there stays silent.
+    The bullet is closed by a blank line, a sub-list label, or the next bullet
+    — the same shape a Markdown reader sees, so an author can predict what the
+    lint attributes where.
 
     Silently narrowing an authorisation is the worst of the three behaviours
-    available, so the violation is reported where it is authored. A *warning*,
+    available, so what IS found is reported where it is authored. A *warning*,
     not an error: the bullet is legible to a human, existing specs carry the
     shape, and the remedy (split the bullet) is the author's to apply.
-
-    A continuation line belongs to the bullet above it and is closed by a blank
-    line, a sub-list label, or the next bullet — the same shape a Markdown
-    reader sees, so an author can predict what the lint attributes where.
     """
     section = _authorised_section_lines(text)
     if section is None:
         return []
     found: List[Tuple[str, List[str]]] = []
-    current: Optional[Tuple[str, List[str]]] = None
+    open_bullet: Optional[Tuple[str, List[str]]] = None
     for line in section:
         stripped = line.strip()
         if not stripped or _sub_list_label(line) is not None:
-            current = None
+            open_bullet = None
             continue
-        if stripped[0] in "-*+":
+        if _LIST_MARKER_RE.match(stripped):
+            open_bullet = None
             path = _bullet_path(line)
             # A bullet the parser declines — an unfilled `{{slot}}`, a literal
             # "None." — is somebody else's finding (`aide check` errors on the
             # slot), and nothing under it was going to be read anyway.
             if path is None:
-                current = None
                 continue
-            current = (path, _BACKTICK_SPAN_RE.findall(stripped[1:])[1:])
-            found.append(current)
-        elif current is not None:
-            current[1].extend(_BACKTICK_SPAN_RE.findall(line))
+            head, reason = _path_position(stripped[1:].strip())
+            entry = (path, _BACKTICK_SPAN_RE.findall(head)[1:])
+            found.append(entry)
+            if not reason:
+                open_bullet = entry
+        elif open_bullet is not None:
+            head, reason = _path_position(line)
+            open_bullet[1].extend(_BACKTICK_SPAN_RE.findall(head))
+            if reason:
+                open_bullet = None
     return [(path, dropped) for path, dropped in found if dropped]
 
 

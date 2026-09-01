@@ -254,14 +254,31 @@ def test_extra_spans_on_a_bullet_are_reported(tmp_path: Path):
     assert "'src/b.py'" in w[0] and "'src/c.py'" in w[0]
 
 
-def test_a_path_on_a_continuation_line_is_reported(tmp_path: Path):
-    """The parser inspects bullet lines only, so a wrapped path is not narrowed
-    to second place — it is not read at all."""
+def test_a_wrapped_path_list_is_reported(tmp_path: Path):
+    """The parser inspects bullet lines only, so a path list that wraps is not
+    narrowed to second place — everything below the first line is not read at
+    all. The continuation is in path position because no reason has started."""
     repo = _repo(tmp_path)
     _spec_file(repo, "027-bounds.md",
-               _with_section("- `src/a.py` — the extractor,\n  and `src/b.py` — its test\n"))
+               _with_section("- `src/a.py`,\n  `src/b.py` — the extractor and its test\n"))
     w = aide.item_spec_warnings(repo / "docs" / "aide")
     assert len(w) == 1 and "'src/b.py'" in w[0]
+
+
+def test_a_backticked_name_in_the_reason_is_not_a_path_claim(tmp_path: Path):
+    """The limit that makes the lint worth reading. A bullet must carry a
+    reason, and reasons quote things: identifiers, config keys, sibling items'
+    deliverables. Reading those as dropped paths produced 82 and 224 findings
+    on two real consumers — and six on the very spec that reported issue #119,
+    which had already been split one-path-per-bullet and says so in its own
+    prose."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md", _with_section(
+        "- `docs/project/failure-taxonomy.md` — one of four, listed individually\n"
+        "  rather than as `docs/project/**` so this item cannot touch Item 006's\n"
+        "  `documentation-conventions.md`.\n"
+        "- `src/pins.py` — adds `normalise_name` and `EXPECTED_UPSTREAM_PINS`\n"))
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []
 
 
 def test_the_lint_names_exactly_what_the_parser_drops(tmp_path: Path):
@@ -270,7 +287,7 @@ def test_the_lint_names_exactly_what_the_parser_drops(tmp_path: Path):
     """
     text = _with_section(
         "- `src/a.py`, `src/b.py` — two\n"
-        "- `docs/one.md` — a note\n  and also `docs/two.md`\n"
+        "- `docs/one.md`,\n  `docs/two.md` — a note\n"
         "- `src/ok.py` — fine\n")
     parsed = aide.parse_authorised_paths(text)
     dropped = aide.dropped_bullet_spans(text)
@@ -305,6 +322,38 @@ def test_a_bullet_the_parser_declines_reports_nothing(tmp_path: Path):
     _spec_file(repo, "027-bounds.md",
                _with_section("- {{path}} — `src/a.py`, `src/b.py`\n"))
     assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
+def test_a_reason_wrapped_under_a_line_final_dash_is_not_path_position(tmp_path: Path):
+    """`- `path` —` with the reason below is a normal way to write a long one.
+    Reading the line-final dash as "no reason yet" took the whole reason for
+    more path position, which is how a spec listing one path per bullet drew
+    seven findings on a real consumer."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md", _with_section(
+        "- `tests/test_a.py` —\n"
+        "  `test_ac5_the_long_name` and `test_ac6_the_other` are re-expressed\n"))
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
+def test_emphasis_opening_a_continuation_line_is_not_a_bullet(tmp_path: Path):
+    """`**not** in the project group …` starts with `*` and is emphasis, not a
+    list item. Reading it as a bullet invented a path (`docs/`) and then
+    reported the paragraph's own spans as dropped from it."""
+    repo = _repo(tmp_path)
+    _spec_file(repo, "027-bounds.md", _with_section(
+        "- `docs/a.md` —\n"
+        "  **not** in the project group, staying flat under `docs/` with the\n"
+        "  expected set widened to include `positioning.md`.\n"))
+    assert aide.item_spec_warnings(repo / "docs" / "aide") == []
+
+
+def test_bullet_path_drops_a_line_final_dash():
+    """One definition of where a reason starts, shared with the lint — so a
+    non-backticked bullet whose dash ends the line no longer declares the dash.
+    `'src/a.py —'` matched no file git ever reports."""
+    assert aide._bullet_path("- src/a.py —") == "src/a.py"
+    assert aide._bullet_path("- src/a.py — the thing") == "src/a.py"
 
 
 def test_a_spec_with_no_authorised_paths_section_reports_nothing(tmp_path: Path):

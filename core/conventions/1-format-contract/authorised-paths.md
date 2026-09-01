@@ -29,13 +29,13 @@ with a short reason:
 ```
 
 **One path per bullet is a contract, not a style note.** A bullet declares the
-**first backtick span of its opening line** and nothing else: a second path on
-the same bullet is dropped, and a path wrapped onto a continuation line is never
-read at all. Everything after that first span is the reason, which is why it may
-be written freely. Splitting the bullet is the whole fix, and `aide check` warns
-at spec time — naming the dropped spans — rather than letting the narrowing
-surface later as an `aide scope` FAIL against a path the spec's own prose
-authorised.
+**first backtick span before its reason** and nothing else: a second path in
+that position is dropped, and so is a path list that wraps onto a continuation
+line. The reason — everything after the ` — ` — is free prose, so quoting an
+identifier, a config key or a sibling item's file there costs nothing. Splitting
+the bullet is the whole fix, and `aide check` warns at spec time, naming the
+dropped spans, rather than letting the narrowing surface later as an
+`aide scope` FAIL against a path the spec's own prose authorised.
 
 - **May change** — every path this item is authorised to modify. Three forms are
   recognised: an exact path, `dir/**` (the whole subtree), and a single-star
