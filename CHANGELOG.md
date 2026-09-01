@@ -95,6 +95,25 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.31.1] — 2026-09-01
+
+### Fixed
+
+- **The "uncommitted status tick" diagnosis now fires in the layouts a string
+  compare missed.** 1.31.0 refuses to merge from a dirty tree and, when the one
+  dirty file is the tick a `--no-commit` run left behind, says so instead of
+  naming a file nobody edited. It said so only in the default layout: `git
+  status --porcelain` **quotes and escapes** a path holding a space or a
+  non-ASCII byte (`"docs/h\303\251llo/progress.md"`), and it reports every
+  path relative to the git **top level**, which is not `repo_root` when
+  `aide.toml` sits in a subdirectory — so a consumer in either layout silently
+  got the generic message back. Dirty paths now come from `--porcelain -z`,
+  which never quotes and never escapes (a rename's source field is consumed
+  rather than read as a second path), and the tick is identified by resolving
+  against `git rev-parse --show-toplevel` rather than by string equality.
+  Degradation-only either way — the refusal itself always fired — but it was
+  cosmetic exactly where nobody would notice it had stopped working.
+
 ## [1.31.0] — 2026-09-01
 
 ### Fixed
