@@ -19,7 +19,9 @@ Retiring long-Done items is part of the default pass, governed by the one
 the issue — but it decides what the *next* triage can see, so run --dry-run
 first and show the list.
 
-Idempotent: when the board already matches, it issues no mutations.
+Idempotent, and a fixpoint: a second run over an ordered board with nothing
+newly stale issues no mutations, and an interrupted run is finished by
+re-running it.
 """
 
 from __future__ import annotations
@@ -140,7 +142,12 @@ def archive_after(value: str) -> int | None:
 
 
 def retire(gh: str, items: list[dict], days: int, dry_run: bool) -> list[dict]:
-    """Archive Done items closed longer than `days` ago; return what remains."""
+    """Archive Done items closed longer than `days` ago; return what remains.
+
+    Under `dry_run` nothing is archived, but the return value still excludes
+    the retirement candidates, so the caller plans over the board a real run
+    would leave behind rather than over today's.
+    """
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
     closed = closed_at_by_item(gh)
 
@@ -161,17 +168,28 @@ def retire(gh: str, items: list[dict], days: int, dry_run: bool) -> list[dict]:
         when = closed[item["id"]].date().isoformat()
         print(f"  archive [{when}] {label(item)}")
 
+    stale_ids = {i["id"] for i in stale}
+    remaining = [i for i in items if i["id"] not in stale_ids]
+
+    # `remaining` in both branches, deliberately: a dry run that returned the
+    # unfiltered list would print a reorder plan over a board the real run has
+    # already emptied of these items — positions the run will never produce,
+    # in the one printout SKILL.md calls the review.
     if dry_run:
         print()
-        return items
+        return remaining
 
     print()
     for item in stale:
-        graphql(gh, ARCHIVE, p=PROJECT_ID, i=item["id"])
+        try:
+            graphql(gh, ARCHIVE, p=PROJECT_ID, i=item["id"])
+        except SystemExit:
+            print("\nboard partially retired — nothing is lost and a re-run "
+                  "finishes it; archiving is a fixpoint", file=sys.stderr)
+            raise
         print(f"  archived {label(item)}")
     print()
-    stale_ids = {i["id"] for i in stale}
-    return [i for i in items if i["id"] not in stale_ids]
+    return remaining
 
 
 def main() -> int:
@@ -229,7 +247,13 @@ def main() -> int:
                 "-f", f"p={PROJECT_ID}", "-f", f"i={item['id']}"]
         if after is not None:
             argv += ["-f", f"a={after}"]
-        run(argv)
+        try:
+            run(argv)
+        except SystemExit:
+            print(f"\nboard partially reordered — {pos} of {len(desired)} "
+                  "placed; re-run to finish, the pass is a fixpoint",
+                  file=sys.stderr)
+            raise
         after = item["id"]
         print(f"  {pos + 1}/{len(desired)} {label(item)}")
 

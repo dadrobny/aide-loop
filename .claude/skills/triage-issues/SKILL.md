@@ -117,7 +117,7 @@ but only add the numbers step 1 found missing.
 
 `Theme` is a single-select on the Project; labels live on the issue. Both must
 be filled — an item with a blank `Theme` is invisible to every grouped view.
-The seven Themes and their option ids, and the field/project ids, are in
+The eight Themes and their option ids, and the field/project ids, are in
 [`reference.md`](reference.md); re-derive them with the query there if a
 mutation rejects an id.
 
@@ -160,8 +160,8 @@ python .claude/skills/triage-issues/reorder_project.py             # applies it
 
 The script is a stable partition and a no-op when the board already matches, so
 running it twice costs one read. Ordering only takes effect on views with no
-explicit sort — view 4 (Board) and **view 5 (Table)** qualify today; a view that
-grows a sort ignores position entirely.
+explicit sort — all three qualify today, view 4 (Board), **view 5 (Table)** and
+view 6 (Open); a view that grows a sort ignores position entirely.
 
 ### Retiring long-Done items is part of the same pass
 

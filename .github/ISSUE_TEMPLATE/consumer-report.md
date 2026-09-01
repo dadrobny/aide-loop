@@ -12,8 +12,13 @@ when it is not, or re-fixed when it is. `cat .aide/VERSION` in the consumer.
 -->
 
 **Project:** {{consumer repo}} (consumer). **Observed under engine {{X.Y.Z}}**
-({{queue-NNN / item NNN}}, {{YYYY-MM-DD}}); {{what the current engine version
-still does — check it, do not assume}}.
+({{item ref}}, {{YYYY-MM-DD}}).
+
+_The item ref is whatever locates it in the consumer — `queue-018`, `item 134`.
+Then say, in the same line, what the **current** engine version does: check it
+against a current checkout rather than assuming the defect survived. The real
+reports say it inline — "re-verified present at 1.28.1", or "the lint shipped in
+1.19.0 and is unchanged through 1.28.1"._
 
 ## Observation
 

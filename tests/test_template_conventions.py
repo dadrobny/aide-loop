@@ -19,7 +19,16 @@ from pathlib import Path
 
 import pytest
 
-_TEMPLATES = sorted((Path(__file__).resolve().parents[1] / "core" / "templates").glob("*.md"))
+_ROOT = Path(__file__).resolve().parents[1]
+_TEMPLATES = sorted((_ROOT / "core" / "templates").glob("*.md"))
+
+#: The issue template is a template this repo authors under the same convention,
+#: and it sat outside this glob until a slip landed in it. Note the limit: this
+#: guard decides one shape — a slot *inside* italic guidance — and the slip that
+#: widened the glob was the other shape, guidance written *as* a slot, which no
+#: heuristic can tell from a legitimate value slot. Covering the shape it can
+#: decide still costs nothing.
+_TEMPLATES += sorted((_ROOT / ".github" / "ISSUE_TEMPLATE").glob("*.md"))
 
 
 _ITALIC_DELIM_RE = re.compile(r"(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])")
