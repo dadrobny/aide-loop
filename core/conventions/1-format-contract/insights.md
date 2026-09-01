@@ -149,7 +149,7 @@ python .aide/scripts/aide.py insights list --open
 Every open `defect`, `gap` or `automation` entry is **considered, and either
 queued or explicitly passed over — never silently dropped**. Queueing one is a
 routing like any other, so the author who queued it ticks it with the item
-number it became (`insights tick N --pointer "item NNN"`, which commits the
+number it became (`aide insights tick N --pointer "item NNN"`, which commits the
 file when git can); a pass-over leaves the entry open and is stated where the queue
 is reviewed, rather than left for the next reader to re-derive. That is what
 makes leaving an entry unchecked at triage an honest move rather than a hope:

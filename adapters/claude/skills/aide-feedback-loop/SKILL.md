@@ -75,15 +75,17 @@ For each **unchecked** entry, by type:
 
 Tick each entry you routed *here* — a `knowledge` fold, a handed-over
 `framework` issue — with the verb, naming where it landed, never by editing the
-line by hand, which is how a claim gets silently reworded. A `defect`, `gap` or
-`automation` entry is not one of those: it is ticked by the queue that absorbs
-it, so leave it open:
+line by hand, which is how a claim gets silently reworded:
 
 ```
 python .aide/scripts/aide.py insights tick 7 --pointer "docs/architecture.md"
 ```
 
 That appends `→ docs/architecture.md` to the entry and flips its checkbox.
+
+A `defect`, `gap` or `automation` entry is **not** one of those, so that command
+is not for it: it is ticked by the queue that absorbs it, and you leave it open.
+
 Never reword, reorder or delete a captured claim — including one that turned
 out to be wrong; the correction goes *beneath* it, as a dated line in the
 entry's status trail, which is what the same command writes when the entry is
