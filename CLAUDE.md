@@ -249,7 +249,7 @@ quotas are expired:
 
 | Reviewer | Trigger | Model / effort |
 |---|---|---|
-| Copilot code review | GraphQL `requestReviews` mutation with `botIds` — the REST reviewers endpoint returns 200 and silently does nothing. This repo's bot node ID: `BOT_kgDOCnlnWA`. Verify via the issue timeline, not `requested_reviewers` | GitHub-managed; not configurable per repo |
+| Copilot code review | GraphQL `requestReviews` mutation with `botIds` — the REST reviewers endpoint returns 200 and silently does nothing. This repo's bot node ID: `BOT_kgDOCnlnWA`. Verify via the timeline API (`issues/<PR#>/timeline` — PRs are issues there), not `requested_reviewers` | GitHub-managed; not configurable per repo |
 | Codex cloud review | comment `@codex review` on the PR (needs the Codex GitHub connector enabled for the repo) | account-side setting, default `gpt-5-codex`; per-repo tuning only via `AGENTS.md` rules |
 | Claude review subagent | `/code-review high <PR#>` — **quota-expired fallback** | Sonnet at `high`; cap at two rounds, round two re-asks the same agent "is the fix complete" and hunts regressions the fix introduced |
 
