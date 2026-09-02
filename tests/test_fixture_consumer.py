@@ -716,6 +716,40 @@ def test_claim_reports_none_left_when_every_open_item_is_already_claimed(
     assert "none left" in capsys.readouterr().out
 
 
+def test_a_failed_claim_push_is_a_sentence_and_never_none_left(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    """#137: the push is the last thing `claim` does, so it fails *after* the
+    branch exists. It used to raise `CalledProcessError` — a raw traceback in
+    an unattended flow — and the next run then skipped the item as claimed and
+    called the queue exhausted, exit 0, having built nothing."""
+    toml = consumer / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        'mode = "local"', 'mode = "auto-merge"'), encoding="utf-8")
+    _commit(consumer, "chore: auto-merge mode")
+    # A remote that resolves to nothing, so every push to it fails.
+    _git(["remote", "add", "origin", str(tmp_path / "no-such.git")], consumer)
+    capsys.readouterr()
+
+    assert _claim(aide, consumer) == 1
+    err = capsys.readouterr().err
+    assert "to origin FAILED" in err
+    assert "claimed LOCALLY ONLY" in err
+    assert "Traceback" not in err
+    # The branch is kept — the push may have reached origin before the client
+    # gave up, and `git push -u origin …` is the one-line repair.
+    assert _branch(consumer) == "aide/001-the-greeter"
+    assert _item_status(aide, consumer, 1) != "complete"
+
+    assert _claim(aide, consumer) == 1          # 002, and its push fails too
+    capsys.readouterr()
+
+    rc = _claim(aide, consumer)
+    out = capsys.readouterr().out
+    assert rc == 1                              # was 0, "none left"
+    assert "2 item(s) still open" in out
+    assert out.count("ORIGIN HAS NEVER SEEN") == 2
+
+
 # --------------------------------------------------------------------------- #
 # scope — the diff against the spec's authorised paths
 # --------------------------------------------------------------------------- #

@@ -3039,8 +3039,18 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     if branches is None:
         branches = _list_claim_branches(repo_root, prefix)
     _, _, item_status = _parse_item_status(lines)
+    unpublished = (set(_unpublished_branches(repo_root, config, prefix))
+                   if branches else set())
     for br in branches:
         n = _branch_item_number(br, prefix)
+        if br in unpublished:
+            # Read against the last fetch, like every other remote question
+            # here, and a warning rather than an error for that reason.
+            warnings.append(
+                f"unpublished branch {br}: this checkout has it and origin "
+                f"does not, so it is invisible to every other checkout — a "
+                f"failed 'aide claim' or 'aide queue start' push is the usual "
+                f"cause. Publish it ('git push -u origin {br}') or delete it.")
         if n is None:
             # Not a claim branch. A queue branch is expected and silent; anything
             # else carrying the prefix is reported rather than ignored, so a real
@@ -3115,6 +3125,30 @@ def git(args: List[str], repo_root: Path, check: bool = True) -> subprocess.Comp
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         encoding="utf-8", errors="replace",
     )
+
+
+def _push_new_branch(repo_root: Path, branch: str) -> Optional[str]:
+    """``git push -u origin <branch>``: None on success, else a sentence.
+
+    Three verbs publish a branch they have just created — `queue start`,
+    `claim`, and `merge` under `pr` mode — and all three pushed with git()'s
+    default `check=True`, so every cause of a failed push (no remote at all,
+    origin unreachable, expired credentials, a rejecting server-side hook)
+    left `main()` on a `CalledProcessError`: a raw traceback in a flow whose
+    whole point is to run unattended. `cmd_queue_start` guarded exactly one
+    cause in prose — the branch already on origin — and let the rest crash.
+
+    The push is the *last* thing each of those verbs does, so its local half is
+    already on disk when it fails. Handing back git's own words lets each
+    caller say what survives and how to finish it by hand, which is the
+    difference between a stall a person can act on and a stack trace.
+    """
+    res = git(["push", "-u", "origin", branch], repo_root, check=False)
+    if res.returncode == 0:
+        return None
+    detail = (res.stderr.strip() or res.stdout.strip()
+              or f"git exited {res.returncode} without a message")
+    return f"pushing {branch} to origin FAILED:\n{detail}"
 
 
 def _list_claim_branches(repo_root: Path, prefix: str) -> List[str]:
@@ -4137,7 +4171,15 @@ def _queue_start(args: argparse.Namespace) -> int:
     # the inbox is guaranteed at the same point `claim` guarantees it.
     ensure_insights_inbox(repo_root, config, verb="queue start")
     if mode != "local":
-        git(["push", "-u", "origin", branch], repo_root)
+        failure = _push_new_branch(repo_root, branch)
+        if failure is not None:
+            print(f"aide queue start: {failure}\n"
+                  f"{branch} exists locally, branched from {base}, and is "
+                  f"checked out — nothing is lost. Publish it with "
+                  f"'git push -u origin {branch}' once the remote is "
+                  f"reachable, or start over with 'git switch {base} && "
+                  f"git branch -D {branch}'.", file=sys.stderr)
+            return 1
     note = "" if base == str(config["git"].get("main_branch", "main")) else f" (base {base})"
     print(f"started {branch}{note}")
     return 0
@@ -4373,6 +4415,115 @@ def _live_queue_text(repo_root: Path, config, number: Optional[int]) -> Optional
     return None
 
 
+def _report_nothing_claimable(repo_root: Path, config, prefix: str,
+                              candidates: List[str],
+                              claim_branches: List[str]) -> int:
+    """Say why `claim` found nothing, and exit non-zero when that is a defect.
+
+    "none left" is a claim about the ground checked, not the repository
+    (conventions.md §2), and `/aide-run-queue` reads it as "the queue is
+    finished — stop and report". Every reason a queue can be open while
+    nothing in it is offerable therefore has to be said out loud, because the
+    alternative is a run that ends reporting success over work it never
+    started: issue #137, where a failed push left a claim branch behind and
+    the next run called the queue exhausted.
+
+    Two of the reasons are ordinary — a claim in flight, a dependency not
+    landed — and keep exit 0. An **unpublished** claim is not: it is a `claim`
+    whose push failed, holding an item on evidence no other checkout can see,
+    so it exits 1 and says how to finish or release it.
+    """
+    ppath = docs_dir(repo_root, config) / "progress.md"
+    plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
+    _, _, item_status = _parse_item_status(plines) if plines else ([], [], {})
+    # Queue scan order, not numeric order: `_pick_item` walks the candidate
+    # queues in order and each queue in its own order, so a report that
+    # renumbered the items it rejected would not be describing the same walk.
+    # It shows under `loop.claim_scope = "all-open"`, where sorting numerically
+    # interleaves two queues that were scanned one after the other.
+    scan_order: List[int] = []
+    seen = set()
+    titles: Dict[int, str] = {}
+    for qt in candidates:
+        titles.update(_queue_titles(qt))
+        for n in queue_item_numbers(qt):
+            if n not in seen:
+                seen.add(n)
+                scan_order.append(n)
+    open_items = {n for n in seen
+                  if item_status.get(n, "planned") == "planned"}
+    open_ordered = [n for n in scan_order if n in open_items]
+
+    # Attribute the empty result to a gate ONLY when a gate actually explains
+    # it: an `all` gate, or a gate reaching an item that is still open in a
+    # queue we just scanned. A gate holding unrelated items — or naming
+    # nothing — is not why this run found no work, and blaming it would be a
+    # false explanation, which is worse than none.
+    def _reached(g):
+        if g.blocks_all:
+            return set(open_items)
+        if g.stage is not None:
+            return set(stage_item_numbers(plines, g.stage)) & open_items
+        return set(g.blocks) & open_items
+
+    relevant = [(n, g) for n, g in enumerate(human_gates(plines), start=1)
+                if g.kind != "approved" and (g.blocks_all or _reached(g))]
+    if relevant:
+        print("none left — held by an unresolved human gate:")
+        for n, g in relevant:
+            held = sorted(_reached(g))
+            where = "everything" if g.blocks_all else (
+                f"{g.reach} — holding " + ", ".join(f"{i:03d}" for i in held))
+            print(f"  gate {n}: {g.text} — blocks {where}")
+        print("  A person decides these, never an agent. Once decided: "
+              "aide gate approve <n> --evidence \"…\" (or gate decline <n>).")
+        return 0
+
+    if not open_items:
+        print("none left")
+        return 0
+
+    # Open items, none offered. Give the reason per item, in the order
+    # `_pick_item` rejects them, so the two cannot drift into disagreeing
+    # about why an item was skipped.
+    claimed: Dict[int, str] = {}
+    for br in claim_branches:
+        num = _branch_item_number(br, prefix)
+        if num is not None:
+            claimed.setdefault(num, br)
+    stranded = {n: br for n, br
+                in _unpublished_claim_branches(repo_root, config, prefix).items()
+                if n in open_items}
+
+    print(f"none left — {len(open_ordered)} item(s) still open, none claimable:")
+    for num in open_ordered:
+        head = f"  {num:03d} {titles.get(num, 'item ' + str(num))} —"
+        br = claimed.get(num)
+        if num in stranded:
+            print(f"{head} claimed by {stranded[num]}, WHICH ORIGIN HAS NEVER "
+                  f"SEEN — the claim's push did not land, so this item is held "
+                  f"by a claim no other checkout can see")
+        elif br is not None:
+            print(f"{head} claimed by {br}, already in flight")
+        else:
+            blockers = [d for d in _item_dependencies(repo_root, config, num)
+                        if item_status.get(d, "planned") in BLOCKING_STATUSES]
+            if blockers:
+                print(f"{head} waiting on "
+                      + ", ".join(f"{d:03d} ({item_status.get(d, 'planned')})"
+                                  for d in blockers))
+            else:
+                print(f"{head} open and unblocked, yet not offered — please "
+                      f"report this")
+
+    if stranded:
+        print("  An unpublished claim is a failed 'aide claim' push, not work "
+              "in flight. Publish it ('git push -u origin <branch>') or "
+              "release the item ('git branch -D <branch>'), then claim again.")
+        return 1
+    return 0
+
+
 def cmd_claim(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
@@ -4398,43 +4549,8 @@ def cmd_claim(args: argparse.Namespace) -> int:
         if pick is not None:
             break
     if pick is None:
-        # "none left" is a claim about the ground checked, not the repository —
-        # an unresolved gate is the one reason nothing is claimable that a
-        # reader would otherwise have no way to see (conventions.md §8).
-        ppath = docs_dir(repo_root, config) / "progress.md"
-        plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
-        # Attribute the empty result to a gate ONLY when a gate actually
-        # explains it: an `all` gate, or a gate reaching an item that is still
-        # open in a queue we just scanned. A gate holding unrelated items — or
-        # naming nothing — is not why this run found no work, and blaming it
-        # would be a false explanation, which is worse than none.
-        _, _, gate_item_status = _parse_item_status(plines) if plines else ([], [], {})
-        queued = set()
-        for qt in candidates:
-            queued.update(queue_item_numbers(qt))
-        open_items = {n for n in queued
-                      if gate_item_status.get(n, "planned") == "planned"}
-        def _reached(g):
-            if g.blocks_all:
-                return set(open_items)
-            if g.stage is not None:
-                return set(stage_item_numbers(plines, g.stage)) & open_items
-            return set(g.blocks) & open_items
-
-        relevant = [(n, g) for n, g in enumerate(human_gates(plines), start=1)
-                    if g.kind != "approved" and (g.blocks_all or _reached(g))]
-        if relevant:
-            print("none left — held by an unresolved human gate:")
-            for n, g in relevant:
-                held = sorted(_reached(g))
-                where = "everything" if g.blocks_all else (
-                    f"{g.reach} — holding " + ", ".join(f"{i:03d}" for i in held))
-                print(f"  gate {n}: {g.text} — blocks {where}")
-            print("  A person decides these, never an agent. Once decided: "
-                  "aide gate approve <n> --evidence \"…\" (or gate decline <n>).")
-            return 0
-        print("none left")
-        return 0
+        return _report_nothing_claimable(repo_root, config, prefix,
+                                         candidates, branches)
     number, title = pick
     branch = claim_branch_name(prefix, number, title)
 
@@ -4470,7 +4586,25 @@ def cmd_claim(args: argparse.Namespace) -> int:
     # base is left exactly as it was.
     ensure_insights_inbox(repo_root, config, verb="claim")
     if mode != "local":
-        git(["push", "-u", "origin", branch], repo_root)
+        failure = _push_new_branch(repo_root, branch)
+        if failure is not None:
+            # The branch is KEPT, not rolled back. The push may have reached
+            # origin before the client gave up, and deleting here would then
+            # leave a remote claim branch blocking the item with nothing local
+            # left to explain it. What must not happen is the half-claim
+            # reading as a claim: `_pick_item` skips any item with a claim
+            # branch, so before this the next run said "none left" and an
+            # unattended loop finished, successfully, having built nothing.
+            # `claim`, `status` and `check` all name an unpublished
+            # claim now, so it cannot pass for work in flight.
+            print(f"aide claim: {failure}\n"
+                  f"Item {number:03d} is claimed LOCALLY ONLY: {branch} exists "
+                  f"here (base {base}) and origin has never seen it, so no "
+                  f"other checkout can see the claim. Publish it with "
+                  f"'git push -u origin {branch}' once the remote is "
+                  f"reachable, or release the item with 'git switch {base} && "
+                  f"git branch -D {branch}'.", file=sys.stderr)
+            return 1
     note = "" if base == str(config["git"].get("main_branch", "main")) else f" (base {base})"
     print(f"claimed item {number:03d}: {branch} — {title}{note}")
     return 0
@@ -4666,7 +4800,15 @@ def cmd_merge(args: argparse.Namespace) -> int:
         return 1
 
     if mode == "pr":
-        git(["push", "-u", "origin", branch], repo_root)
+        failure = _push_new_branch(repo_root, branch)
+        if failure is not None:
+            print(f"aide merge (pr mode): {failure}\n"
+                  f"Nothing else was done — item {args.number:03d} is NOT "
+                  f"ticked, and no PR can be opened over a branch origin does "
+                  f"not have. The work is intact on {branch}. Resolve the "
+                  f"push, then re-run 'aide merge {args.number:03d}'.",
+                  file=sys.stderr)
+            return 1
         print(f"aide merge (pr mode): pushed {branch}. Open a PR against {main} "
               f"to land it (e.g. 'gh pr create'); merge is left to the human "
               f"review gate. Item {args.number:03d} stays 🔍 until it merges — "
@@ -4811,6 +4953,51 @@ def _remote_branches(repo_root: Path) -> List[str]:
         if name.startswith("origin/") and "HEAD" not in name:
             names.append(name.split("/", 1)[1])
     return names
+
+
+def _unpublished_branches(repo_root: Path, config, prefix: str) -> List[str]:
+    """Branches under *prefix* that this checkout has and origin has not.
+
+    Read against the remote-tracking refs, so it reports what the last fetch
+    saw — `claim` fetches first and `status` does too unless asked not to.
+
+    No origin at all is deliberately *not* an exemption. Off ``local`` mode
+    the engine pushes every branch it creates, so a repository with no remote
+    fails every push; issue #137's own reproduction is exactly that, and a
+    claim branch there is unpublished in the strongest sense — there is
+    nowhere for it to have gone. ``local`` mode is the one configuration where
+    an unpushed claim branch is the design rather than a failure.
+    """
+    if str(config["git"].get("mode", "auto-merge")) == "local":
+        return []
+    remote = set(_remote_branches(repo_root))
+    out = [line.strip() for line
+           in git(["branch", "--format=%(refname:short)"],
+                  repo_root, check=False).stdout.splitlines()]
+    return sorted(br for br in out if br.startswith(prefix) and br not in remote)
+
+
+def _unpublished_claim_branches(repo_root: Path, config,
+                                prefix: str) -> Dict[int, str]:
+    """Item number -> a claim branch this checkout has that origin has not.
+
+    Off ``local`` mode a claim is published by construction: `claim` creates
+    the branch and pushes it in the same breath, and refuses out loud when the
+    push does not land. So a claim branch origin has never seen is a claim
+    that did not finish — visible here, invisible to every other checkout, and
+    counted as a claim by `_pick_item` regardless. That is the half-claim of
+    issue #137, and naming it is what stops it reading as work in flight.
+
+    ``local`` mode is the one configuration that reports nothing: there, an
+    unpushed claim branch is the design. A repository with no origin at all is
+    *not* an exemption — see `_unpublished_branches`, which this narrows.
+    """
+    out: Dict[int, str] = {}
+    for br in _unpublished_branches(repo_root, config, prefix):
+        num = _branch_item_number(br, prefix)
+        if num is not None:
+            out.setdefault(num, br)
+    return out
 
 
 def _branch_item_number(branch: str, prefix: str) -> Optional[int]:
@@ -5529,12 +5716,18 @@ def cmd_status(args: argparse.Namespace) -> int:
             print(f"  target: {t.text}{objs} — {label}")
 
     branches = _list_claim_branches(repo_root, prefix)
+    # Guarded the way `run_checks` guards it: two git spawns are not worth
+    # paying on every `status` in the common "claims: none" case, and the
+    # windows leg spends ~13x on a spawn (issue #74).
+    unpublished = (set(_unpublished_branches(repo_root, config, prefix))
+                   if branches else set())
     if branches:
         for br in branches:
             num = _branch_item_number(br, prefix)
             if num is None:
                 kind = "queue branch" if _is_queue_branch(br, prefix) else "unrecognised"
-                print(f"  branch: {br} ({kind} — not an item claim)")
+                extra = " — NOT on origin" if br in unpublished else ""
+                print(f"  branch: {br} ({kind} — not an item claim){extra}")
                 continue
             st = item_status.get(num, "planned")
             note = ""
@@ -5545,6 +5738,12 @@ def cmd_status(args: argparse.Namespace) -> int:
                 # an open PR's head branch. It is awaiting a human, not stale.
                 note = " — awaiting review (merge the PR, then 'aide progress "
                 note += f"set {num:03d} done')"
+            # Composes with the status note rather than replacing it: a branch
+            # can be both stale and unpublished, and a reader needs both.
+            if br in unpublished:
+                note += (f" — NOT on origin: the claim's push did not land, so "
+                         f"no other checkout can see this claim "
+                         f"('git push -u origin {br}' to publish it)")
             print(f"  claim: {br} (item {num:03d}: {st}){note}")
     else:
         print("  claims: none")
