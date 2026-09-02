@@ -95,6 +95,52 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.34.0] — 2026-09-02
+
+### Fixed
+
+- **A failed `git push` is a sentence, and never a silent half-claim (issue
+  #137).** `queue start`, `claim` and `merge` under `pr` mode each publish a
+  branch they have just created, and all three pushed with the default
+  `check=True`: every cause of a failed push — no remote configured, origin
+  unreachable, expired credentials, a rejecting server-side hook — left
+  `main()` on a `CalledProcessError`, i.e. a raw traceback in the flow whose
+  whole point is to run unattended. `queue start` guarded exactly one cause in
+  prose (the branch already on origin) and let the rest crash. All three now
+  report git's own words, name the branch and what survives locally, and exit
+  1: `queue start` and `claim` say the branch is on disk and how to publish or
+  release it, and `merge` says the item is **not** ticked and the work is
+  intact on the branch.
+
+  **The traceback was the smaller half.** `claim`'s push is the last thing it
+  does, so the crash landed *after* `switch -c`, the recorded base and the
+  inbox commit — the item had a claim branch, `_pick_item` skips any item that
+  has one, and the very next run printed `none left` and exited 0. The loop's
+  own "is there work left?" answered no, successfully, having built nothing.
+  A claim branch is kept rather than rolled back (the push may have reached
+  origin before the client gave up, and deleting locally would then leave a
+  remote branch holding the item with nothing left to explain it), so what
+  changes is that it can no longer pass for work in flight: off `local` mode a
+  claim branch origin has never seen is an **unpublished claim**, named as
+  such by `claim` and by `status` (which composes the note with the stale and
+  awaiting-review ones, since a branch can be both). No origin at all is not
+  an exemption — off `local` mode every push fails there, which is #137's own
+  reproduction — while `local` mode, where an unpushed claim branch is the
+  design, reports nothing.
+
+- **`aide claim`'s `none left` is a diagnosis, not a silence (issue #137).**
+  Exit 0 with no work is right when a queue is finished and wrong when items
+  are open but unofferable, and `/aide-run-queue` reads the bare line as "the
+  queue is exhausted — stop and report". The 1.29.0 gate diagnosis is now the
+  general case: with items still 📋 and none offered, `claim` names each one
+  and what holds it, in the order `_pick_item` rejects them — an unresolved
+  human gate (unchanged, and still first), a claim already in flight, a
+  dependency not landed, an unpublished claim. The first three are ordinary
+  and keep exit 0; an unpublished claim exits 1. A genuinely exhausted queue
+  still answers with a bare `none left`, so a finished run gains no noise.
+  `conventions.md` §2 states both rules, and `/aide-run-queue`'s decision step
+  distinguishes the three answers.
+
 ## [1.33.0] — 2026-09-01
 
 ### Added

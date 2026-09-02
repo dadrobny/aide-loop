@@ -1189,3 +1189,140 @@ def test_queue_start_refuses_a_name_that_exists_only_on_origin(tmp_path: Path, c
     rc = aide.main(["--repo", str(root), "queue", "start", "16"])
     assert rc == 1
     assert "already exists on origin" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# a failed push — issue #137: a sentence, and never a silent half-claim
+# --------------------------------------------------------------------------- #
+def test_claim_push_failure_is_a_sentence_not_a_traceback(tmp_path: Path, capsys):
+    """`auto-merge` with no remote: the push cannot succeed, and used to raise.
+
+    `git(..., check=True)` let every cause of a failed push out of `main()` as
+    a `CalledProcessError` — a raw traceback in a flow meant to be unattended.
+    """
+    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    rc = aide.main(["--repo", str(root), "claim"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "pushing aide/027-bounds-rules to origin FAILED" in err
+    assert "claimed LOCALLY ONLY" in err
+    # The branch is kept, not rolled back, and it is what we are standing on.
+    assert _current_branch(root) == "aide/027-bounds-rules"
+
+
+def test_a_failed_claim_does_not_come_back_as_none_left(tmp_path: Path, capsys):
+    """The defect the traceback hid: the item then counted as claimed.
+
+    `_pick_item` skips any item with a claim branch, so the run *after* the
+    failure reported an exhausted queue and exited 0 — the loop's own "is
+    there work left?" answering no, successfully, with nothing built.
+    """
+    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    assert aide.main(["--repo", str(root), "claim"]) == 1        # 027, push fails
+    assert aide.main(["--repo", str(root), "claim"]) == 1        # 028, push fails
+    capsys.readouterr()
+
+    rc = aide.main(["--repo", str(root), "claim"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert out.strip() != "none left"
+    assert "2 item(s) still open" in out
+    assert out.count("ORIGIN HAS NEVER SEEN") == 2
+    assert "aide/027-bounds-rules" in out and "aide/028-coverage-rules" in out
+
+
+def test_status_names_an_unpublished_claim(tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    assert aide.main(["--repo", str(root), "claim"]) == 1
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
+    out = capsys.readouterr().out
+    assert "claim: aide/027-bounds-rules" in out
+    assert "NOT on origin" in out
+
+
+def test_a_published_claim_is_in_flight_not_a_failure(tmp_path: Path, capsys):
+    """The control: a claim whose push landed is an ordinary hold, exit 0."""
+    remote = _mkbare(tmp_path / "remote.git")
+    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    _run(["git", "remote", "add", "origin", str(remote)], root)
+    _run(["git", "push", "-u", "origin", "main"], root)
+    assert aide.main(["--repo", str(root), "claim"]) == 0        # takes 027
+    assert aide.main(["--repo", str(root), "claim"]) == 0        # takes 028
+    capsys.readouterr()
+
+    rc = aide.main(["--repo", str(root), "claim"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "none left" in out
+    assert "already in flight" in out
+    assert "ORIGIN HAS NEVER SEEN" not in out
+
+
+def test_local_mode_never_calls_a_claim_branch_unpublished(tmp_path: Path, capsys):
+    """`local` mode is the one place an unpushed claim branch is the design."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    assert aide.main(["--repo", str(root), "claim"]) == 0
+    assert aide.main(["--repo", str(root), "claim"]) == 0
+    capsys.readouterr()
+
+    rc = aide.main(["--repo", str(root), "claim"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "already in flight" in out
+    assert "ORIGIN HAS NEVER SEEN" not in out
+
+
+def test_none_left_names_a_dependency_that_has_not_landed(tmp_path: Path, capsys):
+    """The third reason a queue is open with nothing offerable."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    items = root / "docs" / "aide" / "items"
+    for num, dep in ((27, 28), (28, 27)):
+        (items / f"{num:03d}-x.md").write_text(
+            f"# Item {num:03d} — X\n\n## Dependencies\n- Item {dep:03d}.\n\n## End\n",
+            encoding="utf-8")
+    rc = aide.main(["--repo", str(root), "claim", "--dry-run"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "027 Bounds rules — waiting on 028 (planned)" in out
+    assert "028 Coverage rules — waiting on 027 (planned)" in out
+
+
+def test_an_empty_queue_still_says_only_none_left(tmp_path: Path, capsys):
+    """The genuinely exhausted case keeps its one-line answer.
+
+    Open queue, nothing in it still 📋 — the state `/aide-run-queue` reads as
+    "the queue is exhausted, stop". It must stay a bare `none left`, or the
+    reason lines would be noise on every finished queue.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    assert aide.main(["--repo", str(root), "progress", "set", "27", "in-progress"]) == 0
+    assert aide.main(["--repo", str(root), "progress", "set", "28", "done"]) == 0
+    capsys.readouterr()
+    rc = aide.main(["--repo", str(root), "claim", "--dry-run"])
+    assert rc == 0
+    assert capsys.readouterr().out.strip().splitlines()[-1] == "none left"
+
+
+def test_queue_start_push_failure_is_a_sentence(tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    rc = aide.main(["--repo", str(root), "queue", "start", "4"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "pushing aide/queue-004 to origin FAILED" in err
+    assert "exists locally, branched from main" in err
+    assert _current_branch(root) == "aide/queue-004"
+
+
+def test_merge_pr_mode_push_failure_leaves_the_item_unticked(tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="pr")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    rc = aide.main(["--repo", str(root), "merge", "27", "aide/027-bounds-rules",
+                    "--no-test"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "pushing aide/027-bounds-rules to origin FAILED" in err
+    assert "is NOT ticked" in err
+    # progress.md untouched: 027 is still 📋.
+    progress = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    assert "📋 Bounds. *(Item 027)*" in progress
