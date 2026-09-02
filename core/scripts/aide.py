@@ -872,8 +872,8 @@ def acceptance_box_trail(lines: List[str], box: int, end: int) -> List[int]:
     return out
 
 
-def _resolve_box(text: str, stage: str, n: int) -> Tuple[List[str], int, int, int]:
-    """``(lines, section_end, box_index, box_line)`` for criterion *n* of *stage*.
+def _resolve_box(text: str, stage: str, n: int) -> Tuple[List[str], int, int]:
+    """``(lines, section_end, box_line_index)`` for criterion *n* of *stage*.
 
     The shared front half of amend/retract/reword: every one of them resolves
     exactly one box and refuses the same way when it cannot, so the error text
@@ -890,7 +890,7 @@ def _resolve_box(text: str, stage: str, n: int) -> Tuple[List[str], int, int, in
     if not 1 <= n <= len(boxes):
         raise ValueError(
             f"Stage {stage} has {len(boxes)} acceptance criteria; {n} is out of range")
-    return lines, end, n, boxes[n - 1]
+    return lines, end, boxes[n - 1]
 
 
 def _append_trail(lines: List[str], box: int, end: int, date: str, note: str) -> str:
@@ -922,7 +922,7 @@ def amend_criterion(text: str, stage: str, n: int, note: str,
     Refuses on an unticked box, which has no attestation to correct: that is
     `accept` (to make one) or `reword` (to fix the criterion's wording).
     """
-    lines, end, _, box = _resolve_box(text, stage, n)
+    lines, end, box = _resolve_box(text, stage, n)
     m = _CHECKBOX_RE.match(lines[box])
     if m.group("mark") == " ":
         raise ValueError(
@@ -947,7 +947,7 @@ def retract_criterion(text: str, stage: str, n: int, reason: str,
     — an insights.md `gap` entry in the same commit (§1's Outcome-target rule,
     applied one level down). That is what keeps it cheap to be honest.
     """
-    lines, end, _, box = _resolve_box(text, stage, n)
+    lines, end, box = _resolve_box(text, stage, n)
     m = _CHECKBOX_RE.match(lines[box])
     if m.group("mark") == " ":
         raise ValueError(
@@ -974,7 +974,7 @@ def reword_criterion(text: str, stage: str, n: int, new_text: str) -> Tuple[str,
             "the criterion text may not contain a line break — it is written "
             "into a single checkbox line, and a break would split one "
             "criterion into two and renumber every box below it")
-    lines, end, _, box = _resolve_box(text, stage, n)
+    lines, end, box = _resolve_box(text, stage, n)
     m = _CHECKBOX_RE.match(lines[box])
     body = m.group("post")[1:]
     if m.group("mark") != " ":
@@ -982,10 +982,11 @@ def reword_criterion(text: str, stage: str, n: int, new_text: str) -> Tuple[str,
             f"Stage {stage} criterion {n} is ticked; its wording is what an "
             f"attestation was made against. Retract it first (`aide progress "
             f"retract`) if the criterion itself was wrong")
-    if _ACCEPT_EVIDENCE_RE.search(body):
+    annotation = _ACCEPT_EVIDENCE_RE.search(body)
+    if annotation:
         raise ValueError(
             f"Stage {stage} criterion {n} carries an annotation "
-            f"({_ACCEPT_EVIDENCE_RE.search(body).group(0).strip()}), so "
+            f"({annotation.group(0).strip()}), so "
             f"something has already been recorded against this wording")
     if acceptance_box_trail(lines, box, end):
         raise ValueError(
@@ -4020,8 +4021,12 @@ def _cmd_progress_accept(args: argparse.Namespace) -> int:
 
 
 #: ``.aide/VERSION`` beside this script, for the engine stamp a captured
-#: insight carries (§1). Absent in a source checkout, and that is not an error:
-#: the note is free-form and optional, so the entry is written without it.
+#: insight carries (§1). One directory up from ``scripts/``, which is the
+#: layout in a consumer *and* in the framework's own tree (``core/VERSION``),
+#: so one relative step serves both — the same reasoning ``_TEMPLATES_DIR``
+#: is built on. Missing only where the script has been copied away from its
+#: siblings, and that is not an error: the note is free-form and optional, so
+#: the entry is written without it.
 _VERSION_FILE = Path(__file__).resolve().parents[1] / "VERSION"
 
 
