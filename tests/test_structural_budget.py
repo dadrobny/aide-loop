@@ -661,8 +661,9 @@ def test_the_always_on_floor_matches_its_recorded_pin(consumer: Path, rules: lis
         "commit.")
 
 
-#: A released section heading, `## [1.25.4] — 2026-08-30`. Anchored, so
-#: `[Unreleased]` and a prose mention of a version both fail to match.
+#: A released section heading, `## [1.25.4] — 2026-08-30`. Anchored, so the
+#: unversioned installer section and a prose mention of a version both fail to
+#: match.
 _RELEASE_HEADING = re.compile(r"^## \[(?P<version>\d+\.\d+\.\d+)\][^\n]*$", re.M)
 #: How this repo records a floor move, established across 1.25.1 → 1.25.4:
 #: "the always-on floor moves from X to Y content bytes". Only the *new* total
