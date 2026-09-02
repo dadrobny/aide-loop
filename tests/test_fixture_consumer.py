@@ -558,6 +558,29 @@ def test_check_warns_on_a_root_document_missing_its_mandatory_sections(
     assert "0 warning(s)" not in out
 
 
+def test_check_warns_on_roadmap_progress_acceptance_drift(
+        aide, consumer: Path, capsys):
+    """Issue #142: the roadmap's Validation / acceptance bullets become the
+    stage's Acceptance boxes, and nothing checked they still agree — a stage
+    grew a fourth, load-bearing box its roadmap never had, silently. Still
+    exit 0: a drifted stage may be mid-replan, and an unattended run must not
+    start failing on a document set that was fine yesterday. The scaffold's
+    stage has one box; a roadmap listing two bullets (plus a Target:, which is
+    not a box and must not be counted) is a one-sided drop."""
+    (consumer / "docs" / "aide" / "roadmap.md").write_text(
+        "# Fixture — Roadmap\n\n## Stage 1 — Foundations\n\n"
+        "**Validation / acceptance.**\n\n"
+        "- Both items land.\n"
+        "- The greeter answers politely.\n"
+        "- Target: the greeter answers in under a millisecond.\n",
+        encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert ("stage 1: progress.md has 1 acceptance box but roadmap.md's "
+            "Validation / acceptance block lists 2 bullets") in out
+    assert "0 warning(s)" not in out
+
+
 def test_check_warns_when_a_bullet_authorises_more_paths_than_scope_reads(
         aide, consumer: Path, capsys):
     """Issue #119: `aide scope` reads the FIRST backtick span of a bullet's
