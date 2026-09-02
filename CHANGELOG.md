@@ -104,6 +104,53 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.36.0] — 2026-09-02
+
+### Added
+
+- **An item spec's assumption can name the engine it was true for, and `aide
+  check` says when that engine has moved (issue #144).** A spec's
+  `## Assumptions` block is a durable record that outlives its branch, and it
+  can legitimately pin **engine** behaviour — what `aide check` warns about,
+  what a verb does. The engine then moves under it: three merged specs in one
+  consumer each asserted two `aide check` warnings that 1.29.4 had
+  deliberately removed, one of them calling their presence "expected output" —
+  a validation item's record of what a clean run looks like, describing a run
+  that is no longer possible. `install.py --update` copies the new engine and
+  says nothing about the claims it has just falsified, nothing marks which
+  engine an assumption was written against, and the consumer found it only by
+  reading the inbox at a queue boundary.
+
+  The marker is the one `insights.md` provenance has carried since #97, moved
+  one document over and put in the bold label beside the assumption's own code:
+
+  ```
+  - **A8 (engine 1.28.1):** `aide check` will warn that `binary` is not a pin.
+  ```
+
+  `aide check` now reports, **advisory and outside every exit code**, each
+  marked assumption whose engine predates the installed one — aggregated into
+  a single line and capped, for the same reason the missing-`Assumptions`
+  finding is: a long queue must not bury its substantive findings. Comparison
+  is on the **feature line** only, because this project's own bump policy
+  defines patch as a fix with no interface change, so a patch release cannot
+  falsify a claim about behaviour and warning on one would be noise on a
+  record the consumer is not allowed to rewrite.
+
+  Clearing it is an **append**, never a rewrite — the discipline 1.35.0 built
+  `progress amend` on, and the reason a consumer cannot fix this locally
+  today: a re-check goes into the marker, `(engine 1.28.1, re-checked
+  1.36.0)`, and the newest version named is the one the claim stands on. A
+  merged spec is never edited to agree with a later engine; that is the
+  failure mode, not the fix.
+
+  An **unmarked** assumption is never warned about. The marker is what makes a
+  claim checkable, and guessing a version for an assumption that names none
+  would warn on every spec ever written — the same reasoning that keeps the
+  insights engine note free-form. `conventions.md` §1 → `items.md` states the
+  rule, the item template carries the authoring guidance, and `spec-author`
+  points at it.
+
 ## [1.35.1] — 2026-09-02
 
 ### Fixed
