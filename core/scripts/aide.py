@@ -1094,6 +1094,53 @@ def reword_roadmap_bullet(text: str, stage: str, n: int, new_text: str,
     return "\n".join(lines) + ("\n" if text.endswith("\n") else ""), None
 
 
+def acceptance_drift_warnings(ddir: Path, plines: List[str]) -> List[str]:
+    """Stages whose acceptance box count disagrees with roadmap.md's mirror.
+
+    §1 → progress.md says the Acceptance boxes come "from the matching roadmap
+    stage", and `templates/roadmap.md` says the Validation / acceptance bullets
+    become those boxes — the one mirror in §1 nothing enforced (issue #142).
+    The observed drift: a consumer's stage carried a fourth, load-bearing box
+    its roadmap never grew, and there was no moment at which anything would
+    have said so. Since 1.35.0 the silence also has teeth: `aide progress
+    reword` matches boxes to bullets by index and refuses on a drifted stage,
+    so a consumer met a refusal with no tool that would say which stages drift
+    or where.
+
+    Counts, not text: comparing wording would fire on every honest tightening
+    of a criterion's prose, which is exactly what `reword` exists to make
+    cheap. The count is the signal that a criterion was *added or dropped* on
+    one side only.
+
+    A warning, never an error — a stage may legitimately be mid-replan, and a
+    document set that was fine yesterday must not start failing today. Silent
+    when roadmap.md is absent, when a stage has no roadmap section, and when
+    its section has no Validation / acceptance block at all: no mirror is a
+    different situation from a mirror that disagrees, and
+    ``roadmap_acceptance_bullets`` keeps the two apart for `reword` already.
+    """
+    rpath = ddir / "roadmap.md"
+    if not rpath.is_file():
+        return []
+    rlines = rpath.read_text(encoding=_ENCODING).splitlines()
+    out: List[str] = []
+    for start, end, stage in stage_sections(plines):
+        bullets = roadmap_acceptance_bullets(rlines, stage)
+        if bullets is None:
+            continue
+        boxes = len(acceptance_boxes(plines, start, end))
+        if boxes != len(bullets):
+            out.append(
+                f"stage {stage}: progress.md has {boxes} acceptance "
+                f"box{'' if boxes == 1 else 'es'} but roadmap.md's Validation "
+                f"/ acceptance block lists {len(bullets)} "
+                f"bullet{'' if len(bullets) == 1 else 's'} — a criterion was "
+                f"added or dropped on one side only; line the two up by hand "
+                f"('aide progress reword' refuses on this stage until they "
+                f"agree)")
+    return out
+
+
 def _objective_stages(delivered_by: str) -> List[str]:
     return re.findall(r"\bStage[s]?\s+([\d,\s]+)", delivered_by)
 
@@ -3343,6 +3390,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
             f"attestation is kept above the correction")
     warnings.extend(nested_deliverable_warnings(lines))
     warnings.extend(unattributed_reference_warnings(lines))
+    warnings.extend(acceptance_drift_warnings(ddir, lines))
 
     # Mandatory sections.
     has_stage_table = any(

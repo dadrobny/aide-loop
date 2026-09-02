@@ -104,6 +104,36 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.37.0] — 2026-09-02
+
+### Added
+
+- **`aide check` reports roadmap↔progress acceptance-criterion drift (issue
+  #142).** The roadmap's Validation / acceptance bullets become the matching
+  stage's Acceptance boxes — §1 → `progress.md` and `templates/roadmap.md`
+  both say so — and it was the only mirror in §1 with no enforcement at all:
+  a consumer's stage carried a fourth, load-bearing box its roadmap never
+  grew, and there was no moment at which anything would have said so. Since
+  1.35.0 the silence also had teeth: `aide progress reword` matches boxes to
+  bullets by index and refuses on a drifted stage, so the consumer met a
+  refusal with no tool naming the stages affected. `check` now compares, for
+  each stage present in both documents, the Acceptance box count against the
+  non-`Target:` bullets of the stage's Validation / acceptance block
+  (`Target:` bullets are Outcome-target material, not boxes, and are not
+  counted), and warns naming the count on each side.
+
+  Deliberately a **warning, not an error** — a stage may legitimately be
+  mid-replan, and a document set that was fine yesterday must not start
+  failing today — and deliberately **counts, not text**: comparing wording
+  would fire on every honest tightening of a criterion's prose, which is
+  exactly what `reword` exists to make cheap. The count is the signal that a
+  criterion was added or dropped on one side only. A missing `roadmap.md`, a
+  stage the roadmap does not have, and a roadmap stage with no Validation /
+  acceptance block at all are all silent: no mirror is a different situation
+  from a mirror that disagrees, and `reword` already keeps the two apart.
+  The repair is a hand edit of one document; after it, `reword` works on
+  that stage again.
+
 ## [1.36.0] — 2026-09-02
 
 ### Added
