@@ -4421,7 +4421,7 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     """Say why `claim` found nothing, and exit non-zero when that is a defect.
 
     "none left" is a claim about the ground checked, not the repository
-    (conventions.md §8), and `/aide-run-queue` reads it as "the queue is
+    (conventions.md §2), and `/aide-run-queue` reads it as "the queue is
     finished — stop and report". Every reason a queue can be open while
     nothing in it is offerable therefore has to be said out loud, because the
     alternative is a run that ends reporting success over work it never
