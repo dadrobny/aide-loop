@@ -846,8 +846,12 @@ _ACCEPT_TRAIL_RE = re.compile(
 #: have to find it again after the fact.
 _RETRACTED_PREFIX = "retracted: "
 #: An attestation annotation, as `accept --evidence` writes it: a trailing
-#: `*(…)*`. `reword` refuses over one — see `reword_criterion`.
-_ACCEPT_EVIDENCE_RE = re.compile(r"\*\([^)]*\)\*\s*$")
+#: `*(…)*`. `reword` refuses over one — see `reword_criterion`. The body is
+#: greedy and the close anchored at end of line, because evidence carrying its
+#: own parentheses is ordinary ("(4 cores)", "(see §6)"): a `[^)]*` body
+#: stopped at the first `)` and then matched nothing at all, so the guard
+#: opened on exactly the annotations most worth keeping (#143).
+_ACCEPT_EVIDENCE_RE = re.compile(r"\*\(.*\)\*\s*$")
 
 
 def acceptance_box_trail(lines: List[str], box: int, end: int) -> List[int]:

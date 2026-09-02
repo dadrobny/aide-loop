@@ -104,6 +104,28 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.35.1] — 2026-09-02
+
+### Fixed
+
+- **`aide progress reword`'s annotation guard now reads an annotation that
+  contains a `)` (issue #143).** `reword` is the one amendment that edits in
+  place, and it is safe for exactly one reason: nothing has been claimed
+  against the wording yet. That precondition is three independent checks —
+  unticked, no correction trail, no `*(…)*` annotation — and the third did not
+  hold on its own: its body was `[^)]*`, which stopped at the first `)` and
+  left the closing `)*` nothing to match, so the guard **opened** on exactly
+  the annotations most worth keeping. Evidence carrying its own parentheses is
+  ordinary — "(4 cores)", "(xdist -n 4)", "(see §6)" — and `reword` replaces
+  the whole box body, so such an annotation was deleted outright, with nothing
+  in the trail to say it had ever been recorded. The body is now greedy with
+  the close anchored at end of line. No live path reached it: the two sibling
+  checks cover every state the CLI itself can produce (`accept --evidence`
+  ticks the box; `retract` writes a trail), so an unticked, trail-free,
+  annotated box took a hand edit of `progress.md` to reach — but a guard
+  stated as one of three independent preconditions has to be one, or the next
+  change to either sibling exposes it.
+
 ## [1.35.0] — 2026-09-02
 
 ### Added
