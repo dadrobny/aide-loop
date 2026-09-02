@@ -576,7 +576,8 @@ def test_check_warns_on_roadmap_progress_acceptance_drift(
         encoding="utf-8")
     assert aide.main(["--repo", str(consumer), "check"]) == 0
     out = capsys.readouterr().out
-    assert "1 acceptance box" in out and "2" in out
+    assert ("stage 1: progress.md has 1 acceptance box but roadmap.md's "
+            "Validation / acceptance block lists 2 bullets") in out
     assert "0 warning(s)" not in out
 
 
