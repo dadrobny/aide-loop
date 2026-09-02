@@ -15,7 +15,16 @@ versioning: [SemVer](https://semver.org/spec/v2.0.0.html), where the "API" is wh
 a consumer installs — the document formats, the `aide` CLI surface, `aide.toml`
 keys, and the adapter's agents/skills/commands.
 
-## [Unreleased]
+## Installer (unversioned)
+
+_`install.py` is **not** part of what a consumer installs — it is what does the
+installing — so a change to it alone moves no `core/VERSION` and has no release
+to sit under. These entries have shipped: a consumer picks them up by pulling
+this repository, not through `--update`, which is why each one closes by saying
+the version is deliberately unmoved. Newest first, like the releases below.
+Anything touching `core/` or `adapters/` belongs in a versioned section
+instead — that is the bump policy above, and it is enforced by
+`tests/test_repo_versioning.py`._
 
 ### Added
 

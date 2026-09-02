@@ -75,7 +75,10 @@ version" are not the same triage.
 
 Then, for each issue whose observed version is behind `core/VERSION`:
 
-1. **Read `CHANGELOG.md` between the two**, plus `[Unreleased]`. Search it for
+1. **Read `CHANGELOG.md` between the two**, plus `## Installer (unversioned)`
+   — installer fixes ship without moving `core/VERSION`, so a consumer can be
+   "up to date" and still be running an `install.py` that predates the fix its
+   issue describes. Search it for
    the surface the issue names — the verb (`aide scope`), the file
    (`conventions/6-test-hygiene.md`), the lint (`absolute_path_test_warnings`),
    the hook. The changelog here is prose-dense and one entry routinely covers
