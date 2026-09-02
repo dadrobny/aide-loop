@@ -5716,7 +5716,11 @@ def cmd_status(args: argparse.Namespace) -> int:
             print(f"  target: {t.text}{objs} — {label}")
 
     branches = _list_claim_branches(repo_root, prefix)
-    unpublished = set(_unpublished_branches(repo_root, config, prefix))
+    # Guarded the way `run_checks` guards it: two git spawns are not worth
+    # paying on every `status` in the common "claims: none" case, and the
+    # windows leg spends ~13x on a spawn (issue #74).
+    unpublished = (set(_unpublished_branches(repo_root, config, prefix))
+                   if branches else set())
     if branches:
         for br in branches:
             num = _branch_item_number(br, prefix)
