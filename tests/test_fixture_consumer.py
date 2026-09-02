@@ -1273,3 +1273,147 @@ def test_repo_flag_wins_over_a_cwd_inside_another_consumer(
     assert aide.main(["check"]) != 0
     # The same cwd with --repo judges the sibling, whose documents are sound.
     assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+
+# --------------------------------------------------------------------------- #
+# progress amend / retract / reword — correcting an attestation, through the CLI
+#
+# Issue #118: `accept` reports an already-ticked box as "unchanged", so the only
+# route to a wrong attestation was the hand edit of progress.md every role is
+# forbidden from making. These drive the verbs the way a consumer does, and
+# assert effects — the files afterwards, and the exit codes — never prose.
+# --------------------------------------------------------------------------- #
+_ROADMAP = """\
+# Fixture — Roadmap
+
+## Stage 1 — Foundations
+
+**Validation / acceptance.**
+
+- Both items land.
+- Target: the greeter answers in under a millisecond.
+"""
+
+
+def _acceptance_block(consumer: Path) -> list:
+    text = (consumer / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    body = text.split("**Acceptance.**", 1)[1]
+    return [l for l in body.splitlines() if l.strip()]
+
+
+def _accept_one(aide, consumer: Path, evidence: str) -> None:
+    assert aide.main(["--repo", str(consumer), "progress", "accept", "1",
+                      "--criterion", "1", "--evidence", evidence]) == 0
+
+
+def test_amend_appends_a_correction_without_touching_the_attestation(
+        aide, consumer: Path):
+    _accept_one(aide, consumer, "validator, 2026-08-29: on this CPU-only machine")
+    before = _acceptance_block(consumer)[0]
+    assert aide.main(["--repo", str(consumer), "progress", "amend", "1",
+                      "--criterion", "1", "--date", "2026-09-01",
+                      "--evidence", "the host has four GPUs"]) == 0
+    after = _acceptance_block(consumer)
+    assert after[0] == before            # the claim itself is never reworded
+    assert after[1] == "  - **2026-09-01** → the host has four GPUs"
+    assert _files_in_head(consumer) == ["docs/aide/progress.md"]
+
+
+def test_amend_refuses_an_unticked_box_and_writes_nothing(aide, consumer: Path):
+    before = (consumer / "docs" / "aide" / "progress.md").read_bytes()
+    assert aide.main(["--repo", str(consumer), "progress", "amend", "1",
+                      "--criterion", "1", "--evidence", "x"]) == 1
+    assert (consumer / "docs" / "aide" / "progress.md").read_bytes() == before
+
+
+def test_amend_requires_a_stated_basis(aide, consumer: Path):
+    _accept_one(aide, consumer, "checked")
+    assert aide.main(["--repo", str(consumer), "progress", "amend", "1",
+                      "--criterion", "1", "--evidence", "   "]) == 2
+
+
+def test_amend_and_retract_do_not_offer_all(aide, consumer: Path):
+    _accept_one(aide, consumer, "checked")
+    assert aide.main(["--repo", str(consumer), "progress", "amend", "1",
+                      "--all", "--evidence", "x"]) == 2
+    assert aide.main(["--repo", str(consumer), "progress", "retract", "1",
+                      "--all", "--reason", "x"]) == 2
+
+
+def test_retract_unticks_keeps_the_original_and_captures_a_gap(
+        aide, consumer: Path):
+    _accept_one(aide, consumer, "validator, 2026-08-29: on this CPU-only machine")
+    assert aide.main(["--repo", str(consumer), "progress", "retract", "1",
+                      "--criterion", "1", "--date", "2026-09-02",
+                      "--reason", "the host was misread"]) == 0
+    block = _acceptance_block(consumer)
+    assert block[0].startswith("- [ ] Both items land.")
+    assert "on this CPU-only machine" in block[0]      # the claim is kept
+    assert block[1] == "  - **2026-09-02** → retracted: the host was misread"
+    inbox = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert "- [ ] gap — acceptance criterion retracted: the host was misread" in inbox
+    assert "*(stage 1 criterion 1, 2026-09-02" in inbox
+    # One commit, both documents — the finding lands with the withdrawal.
+    assert sorted(_files_in_head(consumer)) == [
+        "docs/aide/insights.md", "docs/aide/progress.md"]
+
+
+def test_a_retraction_stays_visible_in_check_and_status(
+        aide, consumer: Path, capsys):
+    _accept_one(aide, consumer, "checked")
+    assert aide.main(["--repo", str(consumer), "progress", "retract", "1",
+                      "--criterion", "1", "--reason", "the host was misread"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "was retracted" in capsys.readouterr().out
+    assert aide.main(["--repo", str(consumer), "status"]) == 0
+    assert "retracted: stage 1 criterion 1" in capsys.readouterr().out
+
+
+def test_the_gap_a_retraction_captures_is_a_well_shaped_inbox_entry(
+        aide, consumer: Path, capsys):
+    """It must survive `check`'s own shape rule, or the verb files a warning."""
+    _accept_one(aide, consumer, "checked")
+    assert aide.main(["--repo", str(consumer), "progress", "retract", "1",
+                      "--criterion", "1", "--reason", "the host was misread"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "does not match" not in capsys.readouterr().out
+
+
+def test_reword_rewrites_an_untouched_criterion_and_mirrors_the_roadmap(
+        aide, consumer: Path):
+    (consumer / "docs" / "aide" / "roadmap.md").write_text(_ROADMAP, encoding="utf-8")
+    _commit(consumer, "a roadmap that mirrors the criteria")
+    assert aide.main(["--repo", str(consumer), "progress", "reword", "1",
+                      "--criterion", "1", "--text", "Both items merge to main."]) == 0
+    assert _acceptance_block(consumer)[0] == "- [ ] Both items merge to main."
+    roadmap = (consumer / "docs" / "aide" / "roadmap.md").read_text(encoding="utf-8")
+    assert "- Both items merge to main." in roadmap.splitlines()
+    # The Target: bullet is not a box, so it must not have been consumed.
+    assert "- Target: the greeter answers in under a millisecond." in roadmap.splitlines()
+    assert sorted(_files_in_head(consumer)) == [
+        "docs/aide/progress.md", "docs/aide/roadmap.md"]
+
+
+def test_reword_refuses_once_the_criterion_has_been_attested(aide, consumer: Path):
+    _accept_one(aide, consumer, "checked")
+    before = (consumer / "docs" / "aide" / "progress.md").read_bytes()
+    assert aide.main(["--repo", str(consumer), "progress", "reword", "1",
+                      "--criterion", "1", "--text", "something else"]) == 1
+    assert (consumer / "docs" / "aide" / "progress.md").read_bytes() == before
+
+
+def test_a_roadmap_that_cannot_be_lined_up_leaves_both_files_alone(
+        aide, consumer: Path):
+    """Both documents or neither — a half-landed rewording is the drift the
+    verb exists to remove."""
+    (consumer / "docs" / "aide" / "roadmap.md").write_text(
+        _ROADMAP + "- An extra bullet progress.md never mirrored.\n", encoding="utf-8")
+    _commit(consumer, "a roadmap that disagrees")
+    progress = consumer / "docs" / "aide" / "progress.md"
+    roadmap = consumer / "docs" / "aide" / "roadmap.md"
+    before = (progress.read_bytes(), roadmap.read_bytes())
+    assert aide.main(["--repo", str(consumer), "progress", "reword", "1",
+                      "--criterion", "1", "--text", "should not land"]) == 1
+    assert (progress.read_bytes(), roadmap.read_bytes()) == before

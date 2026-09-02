@@ -95,6 +95,55 @@ keys, and the adapter's agents/skills/commands.
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.35.0] — 2026-09-02
+
+### Added
+
+- **A CLI path to correct an acceptance attestation, and to reword a criterion
+  nobody has attested (issue #118).** `aide progress accept` reports an
+  already-ticked box as "unchanged", so an attestation that turned out to be
+  wrong had no verb at all: one consumer evidenced a Stage 0 box as run "on
+  this CPU-only machine" on a workstation with four GPUs, and the correction
+  eventually landed as a hand edit of `progress.md` in a PR review — the one
+  edit every role is otherwise forbidden from making. Three verbs now cover
+  it, and **none of them edits the original line**:
+
+  ```
+  aide progress amend   <stage> --criterion N --evidence "<the corrected basis>"
+  aide progress retract <stage> --criterion N --reason   "<why it is withdrawn>"
+  aide progress reword  <stage> --criterion N --text     "<the new wording>"
+  ```
+
+  `amend` appends a dated correction beneath a **ticked** box, in the same
+  status-trail shape `insights.md` already uses. That is deliberately the only
+  thing it can do: a verb that can only add cannot be used to make an
+  inconvenient attestation agree with a shipped stage, so the guard against
+  over-use is structural rather than a line of instruction a role may or may
+  not have loaded. `retract` unticks a box while keeping the original
+  attestation visible above the withdrawal — the record then reads as
+  *claimed, then withdrawn, for this reason*, not as a box nobody ever ticked
+  — and, because a retraction is a **finding**, it captures a `- [ ] gap`
+  entry in `insights.md` in the same commit, exactly as §1 already requires of
+  a `❌ Not met` outcome target. Neither takes `--all`, and both refuse
+  without a stated reason.
+
+  `reword` is the one amendment that edits in place, and it is safe for
+  exactly one reason: nothing has been claimed yet. It refuses over a box that
+  is ticked, annotated, or already carrying a correction trail — a mechanical
+  precondition, so no role has to remember it — which is precisely the window
+  #118 identifies as safe. Because `roadmap.md` mirrors a stage's criteria, it
+  **writes both documents or neither**: the Nth box is matched to the Nth
+  non-`Target:` bullet of the roadmap stage's **Validation / acceptance**
+  block, and when the two cannot be lined up nothing is written and the
+  message names the counts that disagreed. A stage with no acceptance block in
+  the roadmap is not an error — there is simply no mirror to keep in step.
+
+  `aide check` warns on every retracted criterion and `aide status` prints it,
+  so a withdrawal stays visible instead of living only in one commit's diff.
+  Correction trails carry no status icon, so they are invisible to the rollup
+  and to the nested-deliverable lint; a criterion's index is unchanged by
+  anything written beneath it.
+
 ## [1.34.0] — 2026-09-02
 
 ### Fixed
