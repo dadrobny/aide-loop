@@ -232,4 +232,26 @@ repo-local (`.claude/` is never installed), so it is outside the version rule.
 
 ## Merge policy
 
-Work on a branch and land via a reviewed PR.
+Work on a branch and land via a reviewed PR — opened as a **draft**, with the
+review folded in before it is marked ready.
+
+The review contract — severity, what to check, what never to flag — is
+[`REVIEW.md`](REVIEW.md). Copilot code review and Claude Code Review read it
+(and this file) natively; Codex applies it through the Code Review Rules
+section of [`AGENTS.md`](AGENTS.md); a **local** `/code-review` subagent reads
+only CLAUDE.md, so hand it `REVIEW.md` in the prompt. Keep the three files
+from drifting: `AGENTS.md` restates only `REVIEW.md` highlights, and nothing
+here restates either.
+
+Reviewer routing — request **both** external reviewers on the draft PR (their
+quotas and blind spots are independent), fall back to Claude only when those
+quotas are expired:
+
+| Reviewer | Trigger | Model / effort |
+|---|---|---|
+| Copilot code review | GraphQL `requestReviews` mutation with `botIds` — the REST reviewers endpoint returns 200 and silently does nothing. This repo's bot node ID: `BOT_kgDOCnlnWA`. Verify via the issue timeline, not `requested_reviewers` | GitHub-managed; not configurable per repo |
+| Codex cloud review | comment `@codex review` on the PR (needs the Codex GitHub connector enabled for the repo) | account-side setting, default `gpt-5-codex`; per-repo tuning only via `AGENTS.md` rules |
+| Claude review subagent | `/code-review high <PR#>` — **quota-expired fallback** | Sonnet at `high`; cap at two rounds, round two re-asks the same agent "is the fix complete" and hunts regressions the fix introduced |
+
+`/code-review ultra` (multi-agent cloud review, billed) is user-triggered
+only — never launched by an agent on its own.
