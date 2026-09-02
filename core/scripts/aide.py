@@ -4436,13 +4436,23 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     ppath = docs_dir(repo_root, config) / "progress.md"
     plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
     _, _, item_status = _parse_item_status(plines) if plines else ([], [], {})
-    queued: set = set()
+    # Queue scan order, not numeric order: `_pick_item` walks the candidate
+    # queues in order and each queue in its own order, so a report that
+    # renumbered the items it rejected would not be describing the same walk.
+    # It shows under `loop.claim_scope = "all-open"`, where sorting numerically
+    # interleaves two queues that were scanned one after the other.
+    scan_order: List[int] = []
+    seen = set()
     titles: Dict[int, str] = {}
     for qt in candidates:
-        queued.update(queue_item_numbers(qt))
         titles.update(_queue_titles(qt))
-    open_items = {n for n in queued
+        for n in queue_item_numbers(qt):
+            if n not in seen:
+                seen.add(n)
+                scan_order.append(n)
+    open_items = {n for n in seen
                   if item_status.get(n, "planned") == "planned"}
+    open_ordered = [n for n in scan_order if n in open_items]
 
     # Attribute the empty result to a gate ONLY when a gate actually explains
     # it: an `all` gate, or a gate reaching an item that is still open in a
@@ -4485,8 +4495,8 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
                 in _unpublished_claim_branches(repo_root, config, prefix).items()
                 if n in open_items}
 
-    print(f"none left — {len(open_items)} item(s) still open, none claimable:")
-    for num in sorted(open_items):
+    print(f"none left — {len(open_ordered)} item(s) still open, none claimable:")
+    for num in open_ordered:
         head = f"  {num:03d} {titles.get(num, 'item ' + str(num))} —"
         br = claimed.get(num)
         if num in stranded:
@@ -4585,7 +4595,8 @@ def cmd_claim(args: argparse.Namespace) -> int:
             # reading as a claim: `_pick_item` skips any item with a claim
             # branch, so before this the next run said "none left" and an
             # unattended loop finished, successfully, having built nothing.
-            # `claim` and `status` both name an unpublished claim now.
+            # `claim`, `status` and `check` all name an unpublished
+            # claim now, so it cannot pass for work in flight.
             print(f"aide claim: {failure}\n"
                   f"Item {number:03d} is claimed LOCALLY ONLY: {branch} exists "
                   f"here (base {base}) and origin has never seen it, so no "
@@ -4977,8 +4988,9 @@ def _unpublished_claim_branches(repo_root: Path, config,
     counted as a claim by `_pick_item` regardless. That is the half-claim of
     issue #137, and naming it is what stops it reading as work in flight.
 
-    Under ``local`` mode, or with no origin configured, every claim branch is
-    local-only and that is the entire design, so there is nothing to report.
+    ``local`` mode is the one configuration that reports nothing: there, an
+    unpushed claim branch is the design. A repository with no origin at all is
+    *not* an exemption — see `_unpublished_branches`, which this narrows.
     """
     out: Dict[int, str] = {}
     for br in _unpublished_branches(repo_root, config, prefix):

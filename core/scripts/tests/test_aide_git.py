@@ -1350,3 +1350,29 @@ def test_check_is_silent_about_claim_branches_in_local_mode(tmp_path: Path, caps
     capsys.readouterr()
     aide.main(["--repo", str(root), "check"])
     assert "unpublished branch" not in capsys.readouterr().out
+
+
+def test_none_left_reports_in_the_queues_own_order(tmp_path: Path, capsys):
+    """The report follows `_pick_item`'s walk, not the item numbers.
+
+    A queue is free to list its items out of numeric order, and under
+    `claim_scope = "all-open"` the walk crosses queues in turn — sorting
+    numerically would describe a scan that never happened.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    (root / "docs" / "aide" / "queue" / "queue-003.md").write_text(
+        "# Demo — Work Queue 003\n\n"
+        "> **Status:** Live · **Created:** 2026-07-01\n\n"
+        "### Item 026: Rule engine core\nCore.\n\n"
+        "### Item 028: Coverage rules\nCoverage.\n\n"
+        "### Item 027: Bounds rules\nBounds.\n",
+        encoding="utf-8")
+    items = root / "docs" / "aide" / "items"
+    for num, dep in ((27, 28), (28, 27)):
+        (items / f"{num:03d}-x.md").write_text(
+            f"# Item {num:03d} — X\n\n## Dependencies\n- Item {dep:03d}.\n\n## End\n",
+            encoding="utf-8")
+    assert aide.main(["--repo", str(root), "claim", "--dry-run"]) == 0
+    reported = [line.split()[0] for line in capsys.readouterr().out.splitlines()
+                if line.startswith("  0")]
+    assert reported == ["028", "027"]
