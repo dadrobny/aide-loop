@@ -3039,8 +3039,18 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     if branches is None:
         branches = _list_claim_branches(repo_root, prefix)
     _, _, item_status = _parse_item_status(lines)
+    unpublished = (set(_unpublished_branches(repo_root, config, prefix))
+                   if branches else set())
     for br in branches:
         n = _branch_item_number(br, prefix)
+        if br in unpublished:
+            # Read against the last fetch, like every other remote question
+            # here, and a warning rather than an error for that reason.
+            warnings.append(
+                f"unpublished branch {br}: this checkout has it and origin "
+                f"does not, so it is invisible to every other checkout — a "
+                f"failed 'aide claim' or 'aide queue start' push is the usual "
+                f"cause. Publish it ('git push -u origin {br}') or delete it.")
         if n is None:
             # Not a claim branch. A queue branch is expected and silent; anything
             # else carrying the prefix is reported rather than ignored, so a real
@@ -5700,7 +5710,8 @@ def cmd_status(args: argparse.Namespace) -> int:
             num = _branch_item_number(br, prefix)
             if num is None:
                 kind = "queue branch" if _is_queue_branch(br, prefix) else "unrecognised"
-                print(f"  branch: {br} ({kind} — not an item claim)")
+                extra = " — NOT on origin" if br in unpublished else ""
+                print(f"  branch: {br} ({kind} — not an item claim){extra}")
                 continue
             st = item_status.get(num, "planned")
             note = ""

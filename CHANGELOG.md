@@ -122,9 +122,10 @@ keys, and the adapter's agents/skills/commands.
   remote branch holding the item with nothing left to explain it), so what
   changes is that it can no longer pass for work in flight: off `local` mode a
   claim branch origin has never seen is an **unpublished claim**, named as
-  such by `claim` and by `status` (which composes the note with the stale and
-  awaiting-review ones, since a branch can be both). No origin at all is not
-  an exemption — off `local` mode every push fails there, which is #137's own
+  such by `claim`, by `status` (which composes the note with the stale and
+  awaiting-review ones, since a branch can be both) and by `check`, which
+  already carries the claim-branch/status agreement warnings §2 puts there.
+  No origin at all is not an exemption — off `local` mode every push fails there, which is #137's own
   reproduction — while `local` mode, where an unpushed claim branch is the
   design, reports nothing.
 

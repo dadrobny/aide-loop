@@ -1326,3 +1326,27 @@ def test_merge_pr_mode_push_failure_leaves_the_item_unticked(tmp_path: Path, cap
     # progress.md untouched: 027 is still 📋.
     progress = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
     assert "📋 Bounds. *(Item 027)*" in progress
+
+
+def test_check_warns_about_an_unpublished_branch(tmp_path: Path, capsys):
+    """The third reporting surface, beside `claim` and `status`.
+
+    §2 already puts claim-branch/status agreement in `check`, and a branch
+    origin has never seen is the same kind of disagreement: the document set
+    says an item is taken, and no other checkout can see the claim.
+    """
+    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    assert aide.main(["--repo", str(root), "claim"]) == 1
+    capsys.readouterr()
+    aide.main(["--repo", str(root), "check"])
+    out = capsys.readouterr().out
+    assert "unpublished branch aide/027-bounds-rules" in out
+    assert "git push -u origin aide/027-bounds-rules" in out
+
+
+def test_check_is_silent_about_claim_branches_in_local_mode(tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="local")
+    assert aide.main(["--repo", str(root), "claim"]) == 0
+    capsys.readouterr()
+    aide.main(["--repo", str(root), "check"])
+    assert "unpublished branch" not in capsys.readouterr().out

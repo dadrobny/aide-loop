@@ -28,9 +28,9 @@ the branch's own base, which `claim` alone could not do.
 origin*, so `claim` fails when it cannot publish one — as a sentence naming the
 branch, the remote and git's own words, never a traceback — and leaves the local
 branch for you to push or delete. Off `local` mode a claim branch origin has
-never seen is reported as an **unpublished claim** by `claim` and `status`,
-never counted as work in flight: it holds an item on evidence no other checkout
-can see. `queue start` and `merge`'s `pr`-mode push fail the same way.
+never seen is reported as an **unpublished claim** by `claim`, `status` and
+`check`, never counted as work in flight: it holds an item on evidence no other
+checkout can see. `queue start` and `merge`'s `pr`-mode push fail the same way.
 
 **`none left` means the ground checked was empty, and nothing else.** A queue
 still open while nothing in it is offerable is a different answer, and `claim`
