@@ -98,3 +98,13 @@ shapes fail that, all recorded in one consumer's queue:
   entirely; all four were retracted the same day. `aide progress accept` is
   per-criterion for this reason — the evidence string must name the check that
   closes *that* criterion, and an index is not a check.
+
+  A merged spec predating the annotation is never rewritten to carry it — §1
+  keeps merged specs as records — and a stage mid-flight does not thereby stop
+  being attestable. Where the spec carries no annotation at all, the ground is
+  the stage criterion's **own subject**, verified in this run and named in the
+  evidence; what the annotation buys is that the mapping was decided at spec
+  time, by the author who knew it, rather than inferred at attestation time by
+  a validator holding two lists. Either way the index is not the mapping, and
+  a criterion whose check the evidence cannot name is one nobody has yet
+  closed.

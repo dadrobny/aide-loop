@@ -167,8 +167,12 @@ evidence, and three of those passed three false claims into merged artifacts in
 one queue. And an item's ACs are not positionally mapped onto its stage's
 acceptance criteria: an AC closes one only where the spec's optional *(closes
 Stage N criterion M)* annotation says so, and **an AC that names none closes
-none** — so `aide progress accept` is reached for per-criterion, on the evidence
-of the check that closes *that* criterion.
+none**. `aide progress accept` is per-criterion for this reason: the evidence
+names the check that closes *that* criterion, and an index is not a check.
+A merged spec predating the annotation is not rewritten to carry it, and its
+stage does not stop being attestable: where no annotation exists the ground is
+the stage criterion's own subject, verified in this run and named in the
+evidence.
 
 **Capture is a plain append; everything after it has a verb** (§1 →
 `insights.md`): `aide insights list --open` reads the backlog without the

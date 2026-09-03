@@ -52,14 +52,14 @@ state**, never as a property of the sentence that states it; a test that checks
 a string's length, a token's presence, or a flag the code under test sets is
 not evidence of the fact (conventions.md §1 → items.md)._
 
-_An AC that closes one of this stage's acceptance criteria says which, in an
-optional annotation — `*(closes Stage 20 criterion 3)*` — and only when this
-item's deliverable **is** that criterion's subject. Most ACs close none; that
-is the ordinary case. Position is never the mapping: the validator ticks a
-stage criterion only where an AC names it._
+_An AC that closes one of this stage's acceptance criteria says which, by
+appending the annotation `*(closes Stage 20 criterion 3)*` to the criterion
+line — and only when this item's deliverable **is** that criterion's subject,
+not when it touches the same area. Most ACs close none; that is the ordinary
+case, and an AC without the annotation closes nothing. Position is never the
+mapping: the validator ticks a stage criterion only where an AC names it._
 
-- [ ] **AC1: {{short name}}.** {{observable statement}} _*(closes Stage N
-      criterion M)* — optional; delete the annotation unless this AC closes one_
+- [ ] **AC1: {{short name}}.** {{observable statement}}
 
 ## Assumptions  <!-- MANDATORY: what was assumed when the queued one-liner was ambiguous -->
 

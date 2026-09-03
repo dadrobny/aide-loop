@@ -38,9 +38,12 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
    Ending your turn with a placeholder ("I'll wait for the notification")
    leaves the orchestrator with no verdict and no way to learn when the real
    one arrives — wait for each command's actual exit, however long it takes.
-2. **Tests cover all AC.** Every Acceptance Criterion in the spec must have at
-   least one test that directly exercises it. An uncovered AC is a FAIL (report
-   which).
+2. **Tests cover all AC, and each test measures what its AC claims.** Every
+   Acceptance Criterion in the spec must have at least one test that directly
+   exercises it; an uncovered AC is a FAIL (report which). So is an AC that
+   asserts a fact about live state answered by a test its subject could pass
+   while the claim is false — §1 → items.md names that shape, and it is a FAIL
+   with that reason, not a PASS.
 3. **Code stays within scope.** Run the check rather than eyeballing the diff:
 
    ```
@@ -120,12 +123,16 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      python .aide/scripts/aide.py progress accept <stage> --criterion N \
          --evidence "what you ran, and when"
      ```
-     Tick **only** what you verified in this run, and only a stage criterion
-     an AC of this item names — §1 → items.md is what rules out the index
-     coincidence and the shape check that never measured the claim; an AC
-     failing either is a FAIL with that reason, not a PASS. If a criterion is
-     not met,
-     leave it `- [ ]` and annotate why beside it: a stage may be ✅ with an
+     Tick **only** what you verified in this run, and at stage level only a
+     criterion an AC of this item **names** — the *(closes Stage N criterion
+     M)* annotation. An item's ACs and its stage's criteria are two
+     independent lists, so the index is never the mapping (§1 → items.md).
+     Where the spec carries no such annotation, the ground is the stage
+     criterion's own subject, verified here and named in the evidence; when
+     you cannot say that in the evidence string, you have nothing to tick.
+
+     If a criterion is not met, leave it `- [ ]` and annotate why beside it:
+     a stage may be ✅ with an
      unticked box, and that record is the point — nothing will re-tick it.
      Nothing forces you to tick anything, and a criterion you cannot evaluate
      is not yours to claim.

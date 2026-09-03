@@ -126,7 +126,11 @@ instead — that is the bump policy above, and it is enforced by
   five-criterion stage by index and attested four criteria against tests that
   measured something else entirely, all four retracted the same day. An item's
   ACs and its stage's criteria are two independent lists; an AC closes one only
-  where the spec says so.
+  where the spec says so. A merged spec predating the annotation is **not**
+  rewritten to carry it and its stage does not stop being attestable: where no
+  annotation exists the ground is the stage criterion's own subject, verified
+  in that run and named in the evidence — the index is what is ruled out, not
+  attestation itself.
 
 - **`*(closes Stage N criterion M)*` on an item AC (`templates/item.md`).** The
   optional annotation that makes the mapping above explicit, and the only thing

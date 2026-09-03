@@ -54,11 +54,12 @@ what lets `aide check` say so later (§1 → items.md).
    `.aide/templates/item.md`. It MUST contain: the header (**Created** date +
    pointer to `progress.md`, Stage, Queue, Objectives, Suggested branch — **no
    status field**); Description; **atomic, observable, directly testable**
-   Acceptance Criteria (one test per AC, no compound and/or — and the shapes
-   §1 → items.md rules out, including a factual claim worded so a shape check
-   could satisfy it and an AC that leaves which stage criterion it closes to
-   position); the mandatory
-   **Assumptions** block; Implementation Steps (the code path in `source_dir`);
+   Acceptance Criteria, in none of the shapes §1 → items.md rules out — one
+   test per AC, no compound and/or, no factual claim worded so a shape check
+   could satisfy it, and the *(closes Stage N criterion M)* annotation on any
+   AC that closes a stage criterion, since position is not a mapping; the
+   mandatory **Assumptions** block; Implementation Steps (the code path in
+   `source_dir`);
    **Authorised paths**; Testing Strategy (incl. adversarial/edge cases);
    Dependencies (item numbers this relies on — a queue-mate still 📋
    included, which is how an item that pins what a sibling produces records
