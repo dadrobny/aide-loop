@@ -120,7 +120,11 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      python .aide/scripts/aide.py progress accept <stage> --criterion N \
          --evidence "what you ran, and when"
      ```
-     Tick **only** what you verified in this run. If a criterion is not met,
+     Tick **only** what you verified in this run, and only a stage criterion
+     an AC of this item names — §1 → items.md is what rules out the index
+     coincidence and the shape check that never measured the claim; an AC
+     failing either is a FAIL with that reason, not a PASS. If a criterion is
+     not met,
      leave it `- [ ]` and annotate why beside it: a stage may be ✅ with an
      unticked box, and that record is the point — nothing will re-tick it.
      Nothing forces you to tick anything, and a criterion you cannot evaluate

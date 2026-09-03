@@ -46,7 +46,20 @@ what it is NOT (to fence scope)._
 _Each criterion atomic, observable, and directly testable — one test per AC,
 no guessing. Split any compound "and/or" criterion._
 
-- [ ] **AC1: {{short name}}.** {{observable statement}}
+_A criterion asserting a fact about live state — a field set, a firing set, a
+consumed path, a count — is worded as a **measured equality against that
+state**, never as a property of the sentence that states it; a test that checks
+a string's length, a token's presence, or a flag the code under test sets is
+not evidence of the fact (conventions.md §1 → items.md)._
+
+_An AC that closes one of this stage's acceptance criteria says which, in an
+optional annotation — `*(closes Stage 20 criterion 3)*` — and only when this
+item's deliverable **is** that criterion's subject. Most ACs close none; that
+is the ordinary case. Position is never the mapping: the validator ticks a
+stage criterion only where an AC names it._
+
+- [ ] **AC1: {{short name}}.** {{observable statement}} _*(closes Stage N
+      criterion M)* — optional; delete the annotation unless this AC closes one_
 
 ## Assumptions  <!-- MANDATORY: what was assumed when the queued one-liner was ambiguous -->
 

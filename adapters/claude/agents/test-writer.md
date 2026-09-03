@@ -33,7 +33,10 @@ fixture conventions only.
    usage, parametrize patterns, naming conventions, import style.
 3. **Write tests** in `tests_dir` covering:
    - Every AC as at least one direct, clearly-named test — include the AC number
-     or a keyword in the test name so the link is obvious.
+     or a keyword in the test name so the link is obvious. Where the AC asserts
+     a fact about live state, satisfy it the way §1 → items.md requires, and
+     hand back rather than settling for a check the subject can pass while the
+     claim is false.
    - Adversarial and edge-case inputs: boundary/degenerate (empty, single-element,
      extreme/zero/negative/max values); malformed inputs (wrong types/shapes,
      missing fields, unreadable paths, truncated/garbage content); invariants

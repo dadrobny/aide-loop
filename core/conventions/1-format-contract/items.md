@@ -46,8 +46,11 @@
 bound on the diff that produced it, and never a premise about a sibling item's
 schedule.** *(spec-author, test-writer, validator)* The criterion outlives its
 item: its test is still in the suite long after the branch is gone, so a
-criterion that cannot be re-checked then is not one the suite can keep. Two
-shapes fail that, both recorded in one consumer's queue:
+criterion that cannot be re-checked then is not one the suite can keep. **And
+it is a claim about the world, not about its own wording: a criterion that
+asserts a fact about live state is a measured equality against that state, and
+a criterion that closes a stage acceptance criterion names which one.** Four
+shapes fail that, all recorded in one consumer's queue:
 
 - **A bounded diff against a pre-item baseline.** Once the item merges into the
   branch its baseline is derived from, the two sides of the comparison are the
@@ -68,3 +71,30 @@ shapes fail that, both recorded in one consumer's queue:
   from the start, and the earlier item declares what it pins under **Asserts
   against**, which is what makes the collision visible at spec time rather than
   at first pytest.
+- **A shape check standing in for the fact it was supposed to measure.** An
+  AC that asserts a fact about live state — a field set, a firing set, a
+  consumed path, a count — is met only by a test that **recomputes that fact
+  from the primary source and compares**. A test that its subject can satisfy
+  without the claim being true is not evidence of the claim: a sentence's
+  length, a token in it that resolves against live state, a completeness flag
+  derived from the declarations rather than from what they describe. Three such
+  criteria passed three false factual claims into merged artifacts in one
+  queue, each fix making the next check stronger and the next false claim still
+  slipping past it, all three found by a human reading the merged text. Word
+  the criterion as the equality — "the artifact's per-label field set is
+  exactly {…}" — and the test that satisfies it has nowhere to be vacuous.
+  Where the fact genuinely cannot be recomputed, the criterion is not one this
+  suite can keep, and saying so beats attesting a proxy.
+- **A stage acceptance criterion closed by positional coincidence.** An item's
+  ACs and its stage's acceptance criteria are two independent lists; that they
+  are the same length is arithmetic, not a mapping. An AC closes a stage
+  criterion only when the spec says so — the optional *(closes Stage N
+  criterion M)* annotation in the item template — and only when the item's
+  deliverable **is** that criterion's subject, not when it touches the same
+  area. An AC that names none closes none, which is the ordinary case and
+  costs nothing: a stage criterion nobody has attested stays open, which is
+  true. One validator mapped a five-AC item onto a five-criterion stage by
+  index and attested four criteria against tests that measured something else
+  entirely; all four were retracted the same day. `aide progress accept` is
+  per-criterion for this reason — the evidence string must name the check that
+  closes *that* criterion, and an index is not a check.

@@ -243,7 +243,10 @@ def main() -> int:
         print("board already in order — nothing to reorder")
         return 0
 
-    moved = [(n, i) for n, (i, j) in enumerate(zip(desired, current))
+    # 1-based, to match the board's own numbering: an unchanged item can sit
+    # between two changed ones, so a 0-based index printed as a "position"
+    # names the row above the one that actually moves.
+    moved = [(n + 1, i) for n, (i, j) in enumerate(zip(desired, current))
              if i["id"] != j["id"]]
     print(f"{len(moved)} of {len(current)} positions change; "
           "the pass rewrites every position to be deterministic.\n")
