@@ -66,6 +66,11 @@ paths:
 <!-- pins: .aide/conventions/1-format-contract/items.md
      - An acceptance criterion is an invariant over the resulting content
      - never a bound on the diff that produced it
+     - a criterion that asserts a fact about live state is a measured equality
+       against that state
+     - a criterion that closes a stage acceptance criterion names which one
+     - recomputes that fact from the primary source and compares
+     - An AC that names none closes none
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/human-gates.md
@@ -149,6 +154,27 @@ suite can keep. The diff-time half of such a claim ("this item did not touch X")
 is `aide scope`'s, declared under `## Asserts against`; a premise that a sibling
 has not landed yet is guaranteed to become false, so the later item's spec lists
 that test file under **May change** from the start.
+
+**And it is a claim about the world, not about its own wording: a criterion
+that asserts a fact about live state is a measured equality against that
+state, and a criterion that closes a stage acceptance criterion names which
+one** (§1 → `items.md`). A factual AC — a field set, a firing set, a consumed
+path, a count — is met only by a test that **recomputes that fact from the
+primary source and compares**; a check its subject can satisfy while the claim
+is false (a sentence's length, a token in it that resolves, a completeness flag
+derived from the declarations rather than from what they describe) is not
+evidence, and three of those passed three false claims into merged artifacts in
+one queue. And an item's ACs are not positionally mapped onto its stage's
+acceptance criteria: an AC closes one only where the spec's optional *(closes
+Stage N criterion M)* annotation says so, and **an AC that names none closes
+none**. `aide progress accept` is per-criterion for this reason: the evidence
+names the check that closes *that* criterion, and an index is not a check.
+Under a spec authored with the annotation available, silence is an answer: no
+annotation means no stage criterion is closed. The one transitional exception
+declares itself — a merged spec predating the annotation is not rewritten to
+carry it, and its stage may still be attested on the criterion's own subject
+where the evidence names the check and says the mapping was made at attestation
+time.
 
 **Capture is a plain append; everything after it has a verb** (§1 →
 `insights.md`): `aide insights list --open` reads the backlog without the

@@ -38,9 +38,12 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
    Ending your turn with a placeholder ("I'll wait for the notification")
    leaves the orchestrator with no verdict and no way to learn when the real
    one arrives — wait for each command's actual exit, however long it takes.
-2. **Tests cover all AC.** Every Acceptance Criterion in the spec must have at
-   least one test that directly exercises it. An uncovered AC is a FAIL (report
-   which).
+2. **Tests cover all AC, and each test measures what its AC claims.** Every
+   Acceptance Criterion in the spec must have at least one test that directly
+   exercises it; an uncovered AC is a FAIL (report which). So is an AC that
+   asserts a fact about live state answered by a test its subject could pass
+   while the claim is false — §1 → items.md names that shape, and it is a FAIL
+   with that reason, not a PASS.
 3. **Code stays within scope.** Run the check rather than eyeballing the diff:
 
    ```
@@ -94,8 +97,10 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
 
 ## Verdict
 
-- **FAIL** if: the suite is red; an AC has no test; changes are out-of-scope; the
-  vision is contradicted; or an Assumption diverged. Report precisely what failed
+- **FAIL** if: the suite is red; an AC has no test, or has one its subject could
+  pass while the AC's factual claim is false (check 2); changes are
+  out-of-scope; the vision is contradicted; or an Assumption diverged. Report
+  precisely what failed
   and hand back so the orchestrator dispatches the right agent (builder for code,
   test-writer for coverage). Do **not** merge.
 
@@ -120,8 +125,19 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      python .aide/scripts/aide.py progress accept <stage> --criterion N \
          --evidence "what you ran, and when"
      ```
-     Tick **only** what you verified in this run. If a criterion is not met,
-     leave it `- [ ]` and annotate why beside it: a stage may be ✅ with an
+     Tick **only** what you verified in this run, and at stage level only a
+     criterion an AC of this item **names** — the *(closes Stage N criterion
+     M)* annotation. An item's ACs and its stage's criteria are two
+     independent lists, so the index is never the mapping (§1 → items.md).
+     Silence is an answer: a spec that annotates no AC closes no stage
+     criterion, and there is nothing for you to work out. The one exception is
+     a spec authored **before** the annotation existed — never rewritten, §1
+     keeps merged specs as records — where a criterion may be attested on its
+     own subject if the evidence names the check and says the mapping was made
+     at attestation time. Write that phrase or tick nothing.
+
+     If a criterion is not met, leave it `- [ ]` and annotate why beside it:
+     a stage may be ✅ with an
      unticked box, and that record is the point — nothing will re-tick it.
      Nothing forces you to tick anything, and a criterion you cannot evaluate
      is not yours to claim.

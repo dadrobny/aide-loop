@@ -1381,6 +1381,22 @@ def test_retract_unticks_keeps_the_original_and_captures_a_gap(
         "docs/aide/insights.md", "docs/aide/progress.md"]
 
 
+def test_retract_says_the_check_warning_it_creates_is_permanent(
+        aide, consumer: Path, capsys):
+    """Issue #152: the warning is by design, and a consumer that pins the
+    tolerated warning set goes red on it. The verb says so at retraction time,
+    so the widening lands here rather than at the merge gate."""
+    _accept_one(aide, consumer, "checked")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "progress", "retract", "1",
+                      "--criterion", "1", "--reason", "the host was misread"]) == 0
+    out = capsys.readouterr().out
+    assert "will warn about this retraction from now on" in out
+    assert "the record is permanent" in out
+    assert "pins the tolerated warning set needs widening" in out
+    assert "stage 1 criterion 1" in out
+
+
 def test_a_retraction_stays_visible_in_check_and_status(
         aide, consumer: Path, capsys):
     _accept_one(aide, consumer, "checked")

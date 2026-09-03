@@ -104,6 +104,60 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.38.0] — 2026-09-03
+
+### Added
+
+- **Two more failing acceptance-criterion shapes, both truth-of-the-claim
+  (issues #153, #154).** §1 → `items.md` already ruled that an acceptance
+  criterion is an invariant over the resulting content, with two shapes named;
+  one consumer's queue produced two more in two days, and both are the same
+  defect — an AC that claims more than it measured. **A shape check standing in
+  for the fact it was supposed to measure**: three criteria asserting a fact
+  about live state (an artifact's per-label field set, which field a rule
+  reads, a completeness flag) were accepted on a check of the *sentence* — its
+  length, a token in it that resolves, a flag derived from the declarations
+  rather than from what they describe — and each passed a false factual claim
+  into a merged artifact, each fix strengthening the next check while the next
+  false claim still slipped past it. A factual AC is now a **measured equality
+  against that state**, met only by a test that recomputes the fact from the
+  primary source and compares. **A stage acceptance criterion closed by
+  positional coincidence**: a validator mapped a five-AC item onto a
+  five-criterion stage by index and attested four criteria against tests that
+  measured something else entirely, all four retracted the same day. An item's
+  ACs and its stage's criteria are two independent lists; an AC closes one only
+  where the spec says so, and under a spec authored with the annotation
+  available, silence is an answer.
+
+- **`*(closes Stage N criterion M)*` on an item AC (`templates/item.md`).** The
+  optional annotation that makes the mapping above explicit, and the only thing
+  that licenses ticking a stage criterion — an AC that names none closes none,
+  which is the ordinary case. **One transitional exception, which declares
+  itself:** a merged spec predating the annotation is never rewritten to carry
+  it and its stage does not stop being attestable, so a criterion there may be
+  attested on its own subject where the evidence names the check *and* says the
+  mapping was made at attestation time — a phrase that lands in `progress.md`
+  permanently, so the weaker basis stays legible, and one nobody writes by
+  accident on a spec that could have carried the annotation. The
+  `aide-living-documents` skill delivers both statements, and `spec-author`,
+  `test-writer` and `validator` point back at §1 for them.
+
+### Changed
+
+- **`aide progress retract` says the `aide check` warning it creates is
+  permanent (issue #152).** The warning is deliberate — a withdrawn
+  attestation stays visible — but a consumer that pins the tolerated warning
+  set learns that at its merge gate, with a suite reddened by honest
+  self-correction: four retractions turned two such tests red in a consumer
+  whose merge was then blocked on the consequence rather than on any defect.
+  `retract` now prints, beside the finding it captures, that the warning is
+  from now on part of `check`'s output and that a test pinning the warning set
+  needs widening for that stage and criterion — so the widening lands in the
+  same change as the retraction. The warning itself, its wording and its
+  advisory status are unchanged; `run_checks` keeps returning
+  `(errors, warnings)`, which §6 instructs consumers to call in-process and
+  assert on.
+
 ## [1.37.0] — 2026-09-02
 
 ### Added

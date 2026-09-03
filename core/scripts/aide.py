@@ -4345,6 +4345,16 @@ def _cmd_progress_retract(args: argparse.Namespace) -> int:
     rel_insights, note = _route_retraction_to_insights(
         repo_root, config, str(args.number), args.criterion, reason, date)
     print(note)
+    # The retraction warning `aide check` now emits is permanent by design, and
+    # a consumer that pins the tolerated warning set discovers that at its
+    # merge gate rather than here — a suite reddened by honest self-correction,
+    # with nothing at retraction time having said so (issue #152). Say it here,
+    # so the widening lands in the same change as the retraction.
+    print(f"notice: `aide check` will warn about this retraction from now on — "
+          f"the record is permanent, not a defect to clear. A test that pins "
+          f"the tolerated warning set needs widening for stage {args.number} "
+          f"criterion {args.criterion}; do it in this change, not at the merge "
+          f"gate")
     if not args.no_commit and (repo_root / ".git").exists():
         rels = [str(config["project"].get("docs_dir", "docs/aide")) + "/progress.md"]
         if rel_insights:
