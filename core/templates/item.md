@@ -56,8 +56,8 @@ _An AC that closes one of this stage's acceptance criteria says which, by
 appending the annotation `*(closes Stage 20 criterion 3)*` to the criterion
 line — and only when this item's deliverable **is** that criterion's subject,
 not when it touches the same area. Most ACs close none; that is the ordinary
-case, and an AC without the annotation closes nothing. Position is never the
-mapping: the validator ticks a stage criterion only where an AC names it._
+case, and an AC without the annotation closes nothing — silence is an answer,
+and the validator has nothing to work out. Position is never the mapping._
 
 - [ ] **AC1: {{short name}}.** {{observable statement}}
 

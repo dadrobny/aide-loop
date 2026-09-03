@@ -97,8 +97,10 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
 
 ## Verdict
 
-- **FAIL** if: the suite is red; an AC has no test; changes are out-of-scope; the
-  vision is contradicted; or an Assumption diverged. Report precisely what failed
+- **FAIL** if: the suite is red; an AC has no test, or has one its subject could
+  pass while the AC's factual claim is false (check 2); changes are
+  out-of-scope; the vision is contradicted; or an Assumption diverged. Report
+  precisely what failed
   and hand back so the orchestrator dispatches the right agent (builder for code,
   test-writer for coverage). Do **not** merge.
 
@@ -127,9 +129,12 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      criterion an AC of this item **names** — the *(closes Stage N criterion
      M)* annotation. An item's ACs and its stage's criteria are two
      independent lists, so the index is never the mapping (§1 → items.md).
-     Where the spec carries no such annotation, the ground is the stage
-     criterion's own subject, verified here and named in the evidence; when
-     you cannot say that in the evidence string, you have nothing to tick.
+     Silence is an answer: a spec that annotates no AC closes no stage
+     criterion, and there is nothing for you to work out. The one exception is
+     a spec authored **before** the annotation existed — never rewritten, §1
+     keeps merged specs as records — where a criterion may be attested on its
+     own subject if the evidence names the check and says the mapping was made
+     at attestation time. Write that phrase or tick nothing.
 
      If a criterion is not met, leave it `- [ ]` and annotate why beside it:
      a stage may be ✅ with an

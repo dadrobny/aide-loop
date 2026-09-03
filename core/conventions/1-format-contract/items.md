@@ -99,12 +99,21 @@ shapes fail that, all recorded in one consumer's queue:
   per-criterion for this reason — the evidence string must name the check that
   closes *that* criterion, and an index is not a check.
 
-  A merged spec predating the annotation is never rewritten to carry it — §1
-  keeps merged specs as records — and a stage mid-flight does not thereby stop
-  being attestable. Where the spec carries no annotation at all, the ground is
-  the stage criterion's **own subject**, verified in this run and named in the
-  evidence; what the annotation buys is that the mapping was decided at spec
-  time, by the author who knew it, rather than inferred at attestation time by
-  a validator holding two lists. Either way the index is not the mapping, and
-  a criterion whose check the evidence cannot name is one nobody has yet
-  closed.
+  The annotation is what moves the decision to spec time, where the author who
+  knows the deliverable is; inferring it at attestation time, from two lists
+  and nothing else, is the move that produced those four retractions. So under
+  a spec authored with the annotation available, silence is an answer: no
+  annotation means no stage criterion is closed, and there is nothing for the
+  validator to work out.
+
+  **One transitional exception, and it declares itself.** A merged spec
+  predating the annotation is never rewritten to carry it — §1 keeps merged
+  specs as records — and its stage does not thereby stop being attestable. For
+  such a spec only, a stage criterion may be attested on its **own subject**,
+  verified in this run, where the evidence both names the check that closed it
+  and says the mapping was made at attestation time. That phrase is the whole
+  point of the exception: it puts the weaker basis into `progress.md`
+  permanently, so a reader can tell the two apart, and it is a sentence nobody
+  writes by accident on a spec that could have carried the annotation. The
+  index is never the mapping under either, and a criterion whose check the
+  evidence cannot name is one nobody has yet closed.

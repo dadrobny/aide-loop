@@ -169,10 +169,12 @@ acceptance criteria: an AC closes one only where the spec's optional *(closes
 Stage N criterion M)* annotation says so, and **an AC that names none closes
 none**. `aide progress accept` is per-criterion for this reason: the evidence
 names the check that closes *that* criterion, and an index is not a check.
-A merged spec predating the annotation is not rewritten to carry it, and its
-stage does not stop being attestable: where no annotation exists the ground is
-the stage criterion's own subject, verified in this run and named in the
-evidence.
+Under a spec authored with the annotation available, silence is an answer: no
+annotation means no stage criterion is closed. The one transitional exception
+declares itself — a merged spec predating the annotation is not rewritten to
+carry it, and its stage may still be attested on the criterion's own subject
+where the evidence names the check and says the mapping was made at attestation
+time.
 
 **Capture is a plain append; everything after it has a verb** (§1 →
 `insights.md`): `aide insights list --open` reads the backlog without the
