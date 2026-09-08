@@ -119,16 +119,22 @@ does **not** route — see *decayed premise* below, which closes one.
 
 When open `defect`, `gap` or `automation` entries exist at a queue boundary they
 are batched into a **maintenance queue, authored and merged before the stage
-queue** — a normal queue in every respect (its own number, its own PR, ticking
-the entries it absorbs with the item numbers they became). It is not a second
-live queue: **the live queue is the lowest-numbered open one**, so a maintenance
-queue numbered ahead of the stage queue is served first, with no new state
-anywhere and nothing for a role to choose between.
+queue** — a normal queue in every respect: its own number, its own items, and it
+ticks the entries it absorbs with the item numbers they became. It is not a
+second live queue: **the live queue is the lowest-numbered open one**, so a
+maintenance queue numbered ahead of the stage queue is served first, with no new
+state anywhere and nothing for a role to choose between.
+
+**How the pair reaches a human is the caller's business, not this section's.**
+The ordering above falls out of the numbering alone, so it holds whether the two
+plans go up as one review or two — or as neither, in a project whose `git.mode`
+pushes nothing (§4). What the engine fixes is that the fixes are queued *ahead*,
+never the shape of the checkpoint around them.
 
 Why not simply put the fixes in the stage batch: a one-line fix that rides a
 ten-item stage waits for the whole stage to merge, and every other branch picks
-it up only after that. The split costs one more PR and buys a small, fast,
-cleanly-reviewed merge the rest of the work can build on.
+it up only after that. The split costs one more queue to carry and buys a small,
+fast, clean merge the rest of the work can build on.
 
 The queue's author still decides. An entry that does not warrant a queue of its
 own — too small to be worth a branch, blocked on something unbuilt, out of scope
@@ -189,7 +195,7 @@ it is in the entry's own marker, or one read of `.aide/VERSION` away.
 **When triage happens depends on the destination.** `knowledge`, `defect`,
 `gap` and `automation` all land in this project — a document it owns, or a
 candidate item — so they wait for the queue boundary, where the insight-review
-pass runs and the queue PR reviews its routing. `framework` does not: it leaves for an issue
+pass runs and whoever reviews the next queue sees its routing. `framework` does not: it leaves for an issue
 on another repo, and nothing about that destination needs a queue, so a
 `framework` entry may be triaged **on capture or on demand**. Routing it through
 the boundary too means the inbox accumulates for exactly as long as a queue

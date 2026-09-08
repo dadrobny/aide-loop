@@ -64,10 +64,11 @@ queue** (§1 → `insights.md`) — so one create call writes **two** queue file
 2. `queue-(NNN+1).md`, the **stage queue**, from the roadmap as usual.
 
 The maintenance queue is a normal queue in every respect — its own number, its
-own PR, its own items, ticking the entries it absorbs with the item numbers they
-became — and it is not a second live queue: **the live queue is the
-lowest-numbered open one**, so the maintenance queue is served first and the
-stage queue starts when it empties. Number the items sequentially across both,
+own items, ticking the entries it absorbs with the item numbers they became —
+and it is not a second live queue: **the live queue is the lowest-numbered open
+one**, so the maintenance queue is served first and the stage queue starts when
+it empties. How the pair reaches a human is the caller's, below: push and PR are
+never this step's. Number the items sequentially across both,
 maintenance queue first, and wire every one of them into `progress.md`
 (requirement 8) exactly as for a single queue.
 

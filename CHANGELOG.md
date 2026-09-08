@@ -171,7 +171,11 @@ retrospective, and the fixes that pass routes rode the next stage's batch.
   was going to fill anyway stays in the stage queue with that stage named.
   `/aide-run-roadmap` and the `queue-planner` spec expect the pair, branch and
   PR on the lower number, and carry both queue files in the one PR — the split
-  decision is only reviewable with both in front of the human.
+  decision is only reviewable with both in front of the human. The engine
+  states the *ordering* and deliberately not the checkpoint shape: how the two
+  plans reach a person is the caller's, which is why one adapter carries them
+  in a single PR while a project whose `git.mode` pushes nothing (§4) has none
+  at all.
 - **One routing table, written once and pinned twice (issue #160).** Which
   entry type goes where now lives in §1 → `insights.md` as a table;
   `/aide-review-insights` and `/aide-create-queue` each carry it verbatim and
