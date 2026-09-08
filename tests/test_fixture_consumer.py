@@ -1330,6 +1330,277 @@ def test_scope_authorises_the_archive_the_verb_just_wrote(aide, consumer: Path):
 
 
 # --------------------------------------------------------------------------- #
+# insights resolve — a real two-branch conflict, resolved by the verb
+# --------------------------------------------------------------------------- #
+def _append_insight(repo: Path, line: str, branch: str, base: str = "main") -> None:
+    """Capture one insight on its own branch, the way a role does — a plain
+    append to the end of the file, and a commit."""
+    _git(["switch", "-c", branch, base], repo)
+    inbox = repo / "docs" / "aide" / "insights.md"
+    inbox.write_text(inbox.read_text(encoding="utf-8") + line + "\n",
+                     encoding="utf-8")
+    _commit(repo, f"docs(aide): capture on {branch}")
+
+
+_OURS = "- [ ] knowledge — utf-8-sig is the right default *(item 002, 2026-08-25)*"
+_THEIRS = "- [ ] automation — the archive has no dry run *(item 003, 2026-08-26)*"
+
+
+def _two_branches_that_both_appended(consumer: Path) -> None:
+    """Leave *consumer* mid-merge, stopped on a genuine conflict in the inbox.
+
+    Not a hand-written conflict: two branches each append to an append-only
+    file, which is the shape §1 guarantees on every merge, and git produces the
+    markers itself.
+    """
+    _append_insight(consumer, _OURS, "aide/insight-ours")
+    _append_insight(consumer, _THEIRS, "aide/insight-theirs")
+    _git(["switch", "aide/insight-ours"], consumer)
+    merge = _git(["merge", "aide/insight-theirs"], consumer, check=False)
+    assert merge.returncode != 0, "the append-only file did not conflict"
+
+
+def test_two_appends_really_do_conflict_in_an_installed_consumer(consumer: Path):
+    """The premise of the verb, asserted rather than assumed."""
+    _two_branches_that_both_appended(consumer)
+    text = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert "<<<<<<<" in text and ">>>>>>>" in text
+    assert _git(["ls-files", "-u", "--", "docs/aide/insights.md"],
+                consumer).stdout.strip()
+
+
+def test_check_fails_on_the_conflict_and_names_the_verb(aide, consumer: Path, capsys):
+    _two_branches_that_both_appended(consumer)
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
+    # One read: `readouterr` clears what it returns, so a second call would
+    # hand back an empty stream and quietly assert over half the output.
+    captured = capsys.readouterr()
+    out = captured.out + captured.err
+    assert "conflict marker" in out and "insights resolve" in out
+
+
+def test_resolve_writes_the_union_and_stages_it(aide, consumer: Path):
+    """Both captures survive, neither is reworded, and the merge can continue."""
+    _two_branches_that_both_appended(consumer)
+    assert aide.main(["--repo", str(consumer), "insights", "resolve"]) == 0
+
+    inbox = consumer / "docs" / "aide" / "insights.md"
+    text = inbox.read_text(encoding="utf-8")
+    assert "<<<<<<<" not in text
+    # Every claim the two branches held, byte-for-byte, in capture order.
+    assert [e.raw for e in aide.parse_insights(text)] == [
+        line for line in INSIGHTS.splitlines() if line.startswith("- ")
+    ] + [_OURS, _THEIRS]
+    # Staged, so the conflict is marked resolved and the merge can finish.
+    assert not _git(["ls-files", "-u", "--", "docs/aide/insights.md"],
+                    consumer).stdout.strip()
+    _git(["commit", "--no-edit"], consumer)
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
+def test_resolve_stages_a_conflict_that_has_no_merge_base_at_all(
+        aide, consumer: Path):
+    """An add/add conflict — both branches created the inbox — leaves stages 2
+    and 3 in the index and **no stage 1**: there is no base, because the path
+    exists on neither parent. Reading "is this unmerged?" off the merge base
+    therefore answered no about a genuinely unmerged file, the verb silently
+    skipped staging, and the next `git commit` died on unmerged files.
+
+    (A consumer whose inbox came from `.aide/templates/insights.md` usually
+    keeps a base anyway — git's rename detection matches the created file
+    against the byte-identical template in the merge base. This one is
+    hand-scaffolded, which is the shape that has nothing to match.)
+    """
+    inbox = _drop_the_inbox(consumer)
+    header = "# Insight Inbox\n\n_Entries below, newest last._\n\n"
+    for branch, line in (("aide/add-ours", _OURS), ("aide/add-theirs", _THEIRS)):
+        _git(["switch", "-c", branch, "main"], consumer)
+        inbox.write_text(header + line + "\n", encoding="utf-8")
+        _commit(consumer, f"docs(aide): scaffold the inbox on {branch}")
+    _git(["switch", "aide/add-ours"], consumer)
+    assert _git(["merge", "aide/add-theirs"], consumer, check=False).returncode != 0
+
+    rel = "docs/aide/insights.md"
+    assert [l.split()[2] for l in
+            _git(["ls-files", "-u", "--", rel], consumer).stdout.splitlines()] == ["2", "3"]
+    assert _git(["show", f":1:{rel}"], consumer, check=False).returncode != 0
+
+    assert aide.main(["--repo", str(consumer), "insights", "resolve"]) == 0
+    assert not _git(["ls-files", "-u", "--", rel], consumer).stdout.strip()
+    _git(["commit", "--no-edit"], consumer)          # would die if left unstaged
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    text = inbox.read_text(encoding="utf-8")
+    assert _OURS in text and _THEIRS in text and "<<<<<<<" not in text
+
+
+def test_dry_run_prints_the_union_itself_not_only_the_counts(
+        aide, consumer: Path, capsys):
+    """Reviewing the merge before it is written is the whole of what the flag
+    is for, and every place that documents it says it prints what would land."""
+    _two_branches_that_both_appended(consumer)
+    assert aide.main(["--repo", str(consumer), "insights", "resolve",
+                      "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert _OURS in out and _THEIRS in out and "<<<<<<<" not in out
+
+
+def test_resolve_finishes_a_hand_stripped_file_that_git_still_holds_unmerged(
+        aide, consumer: Path, capsys):
+    """Markers gone, path still unmerged — someone resolved it by hand and
+    stopped short of staging. Reporting "nothing to resolve" and exiting 0 left
+    the exact end state the staging fix removed on the other branch of the
+    code: `git commit` dies on unmerged files."""
+    _two_branches_that_both_appended(consumer)
+    inbox = consumer / "docs" / "aide" / "insights.md"
+    kept = [l for l in inbox.read_text(encoding="utf-8").splitlines()
+            if not l.startswith(("<<<<<<<", "=======", ">>>>>>>"))]
+    inbox.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    rel = "docs/aide/insights.md"
+    assert _git(["ls-files", "-u", "--", rel], consumer).stdout.strip()
+
+    assert aide.main(["--repo", str(consumer), "insights", "resolve"]) == 0
+    assert "still held it unmerged" in capsys.readouterr().out
+    assert not _git(["ls-files", "-u", "--", rel], consumer).stdout.strip()
+    _git(["commit", "--no-edit"], consumer)          # would die if left unstaged
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
+def test_resolve_dry_run_leaves_the_conflict_in_place(aide, consumer: Path, capsys):
+    _two_branches_that_both_appended(consumer)
+    before = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "insights", "resolve",
+                      "--dry-run"]) == 0
+    assert "dry run" in capsys.readouterr().out
+    assert (consumer / "docs" / "aide" / "insights.md").read_text(
+        encoding="utf-8") == before
+    assert _git(["ls-files", "-u", "--", "docs/aide/insights.md"],
+                consumer).stdout.strip()
+
+
+def test_resolve_refuses_when_one_side_archived_and_writes_nothing(
+        aide, consumer: Path, capsys):
+    """The archive boundary issue #158 left open: `archive` cuts closed entries
+    out of the middle and renumbers, so the two sides are not one append.
+
+    The collision is the realistic one — a branch archived a closed entry while
+    another appended a trail line to that same entry.
+    """
+    _git(["switch", "-c", "aide/insight-archived", "main"], consumer)
+    assert aide.main(["--repo", str(consumer), "insights", "archive",
+                      "--before", "2026-06-01", "--yes"]) == 0
+    _git(["switch", "-c", "aide/insight-ticked", "main"], consumer)
+    assert aide.main(["--repo", str(consumer), "insights", "tick", "1",
+                      "--pointer", "engine 1.43.0"]) == 0
+    merge = _git(["merge", "aide/insight-archived"], consumer, check=False)
+    assert merge.returncode != 0, "the archive did not collide with the trail line"
+    before = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+
+    assert aide.main(["--repo", str(consumer), "insights", "resolve"]) == 1
+    err = capsys.readouterr().err
+    assert "Resolve this one by hand" in err and "left exactly as it is" in err
+    assert (consumer / "docs" / "aide" / "insights.md").read_text(
+        encoding="utf-8") == before          # markers still there ...
+    assert _git(["ls-files", "-u", "--", "docs/aide/insights.md"],
+                consumer).stdout.strip()     # ... and still unresolved
+
+
+def test_resolve_merges_a_tick_taken_on_one_branch_only(aide, consumer: Path):
+    """The routine loop shape: one branch triaged the last entry while another
+    captured a new one right below it. The tick survives, and the claim it sits
+    on is not appended a second time."""
+    _git(["switch", "-c", "aide/insight-ticked", "main"], consumer)
+    assert aide.main(["--repo", str(consumer), "insights", "tick", "3",
+                      "--pointer", "item 002"]) == 0
+    _append_insight(consumer, _OURS, "aide/insight-ours")
+    merge = _git(["merge", "aide/insight-ticked"], consumer, check=False)
+    assert merge.returncode != 0, "the tick did not collide with the append"
+    assert aide.main(["--repo", str(consumer), "insights", "resolve"]) == 0
+
+    entries = aide.parse_insights(
+        (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8"))
+    assert len(entries) == 4                      # not 5 — the claim is one entry
+    assert entries[2].ticked and entries[2].pointer == "item 002"
+    assert "nothing checks the farewell" in entries[2].text
+    assert entries[3].raw == _OURS
+
+
+# --------------------------------------------------------------------------- #
+# the stall names the verb — `aide merge` is where this conflict lands
+# --------------------------------------------------------------------------- #
+def _capture_here(repo: Path, line: str) -> None:
+    """Append one insight on the branch already checked out."""
+    inbox = repo / "docs" / "aide" / "insights.md"
+    inbox.write_text(inbox.read_text(encoding="utf-8") + line + "\n",
+                     encoding="utf-8")
+    _commit(repo, "docs(aide): capture")
+
+
+def _item_branch_and_main_both_capture(aide, consumer: Path) -> None:
+    """The routine shape: an item branch is open while `main` gains a capture.
+    Both sides appended, so `aide merge` stalls on the inbox and nothing else."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    _capture_here(consumer, _OURS)
+    _git(["switch", "main"], consumer)
+    _capture_here(consumer, _THEIRS)
+    _git(["switch", "aide/001-the-greeter"], consumer)
+
+
+def test_merge_names_the_verb_when_it_stalls_on_the_inbox(
+        aide, consumer: Path, capsys):
+    """The verb is useless to the role that needs it unless the thing that
+    stalls says so: `aide merge` is run by the `validator`, which preloads a
+    different skill and has read nothing about the inbox."""
+    _item_branch_and_main_both_capture(aide, consumer)
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    err = capsys.readouterr().err
+    assert "insights resolve" in err
+    assert "ONLY unmerged path" in err          # so the verb finishes the job
+    assert "Do NOT resolve" in err and "conventions.md §1" in err
+
+
+def test_the_mid_merge_refusal_resolves_before_it_offers_to_abort(
+        aide, consumer: Path, capsys):
+    """An agent that reads "abort" literally aborts, re-runs, and meets the
+    identical conflict. The advice has to end the loop, not restart it — and
+    following it here has to actually finish the merge."""
+    _item_branch_and_main_both_capture(aide, consumer)
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    err = capsys.readouterr().err
+    assert "insights resolve" in err
+    assert err.index("resolve and stage") < err.index("or abort it")
+    assert "brings it back on the next attempt" in err
+
+    # And the route it names ends the stall for real.
+    assert aide.main(["--repo", str(consumer), "insights", "resolve"]) == 0
+    _git(["commit", "--no-edit"], consumer)
+    assert not (consumer / ".git" / "MERGE_HEAD").exists()
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    text = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert _OURS in text and _THEIRS in text
+
+
+def test_the_inbox_hint_stays_quiet_when_the_conflict_is_somewhere_else(
+        aide, consumer: Path, capsys):
+    """A hint that fires on every stall is one a reader learns to skim."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    shared = consumer / "docs" / "aide" / "shared.md"
+    shared.write_text("branch side\n", encoding="utf-8")
+    _commit(consumer, "docs: branch side")
+    _git(["switch", "main"], consumer)
+    shared.write_text("main side\n", encoding="utf-8")
+    _commit(consumer, "docs: main side")
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    err = capsys.readouterr().err
+    assert "shared.md" in err and "insights resolve" not in err
+
+
+# --------------------------------------------------------------------------- #
 # the sibling shape — `--repo` beats a cwd inside a different consumer (#93)
 # --------------------------------------------------------------------------- #
 def test_repo_flag_wins_over_a_cwd_inside_another_consumer(

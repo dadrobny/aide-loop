@@ -14,7 +14,7 @@ Subcommands::
     python .aide/scripts/aide.py gate list|approve|decline [N]  # human gates in progress.md
     python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
-    python .aide/scripts/aide.py insights list|tick|archive     # the insight inbox
+    python .aide/scripts/aide.py insights list|tick|archive|resolve  # the insight inbox
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
     python .aide/scripts/aide.py merge NNN [--base R]  # merge a validated item per git.mode
     python .aide/scripts/aide.py env                   # venv existence / import check + bootstrap
@@ -1666,6 +1666,54 @@ def insight_warnings(ddir: Path) -> List[str]:
     return out
 
 
+#: The three git conflict markers that can never be legitimate markdown at the
+#: start of a line, and so are safe to lint on. ``=======`` is deliberately
+#: **not** among them: it is also a setext heading underline, and a lint that
+#: fires on a heading is a lint a reader learns to skim. A real conflict always
+#: carries an opener and a closer, so nothing is missed by leaving it out.
+_CONFLICT_OPEN_RE = re.compile(r"^<{7}(?: |$)")
+_CONFLICT_BASE_RE = re.compile(r"^\|{7}(?: |$)")
+_CONFLICT_SEP_RE = re.compile(r"^={7}$")
+_CONFLICT_CLOSE_RE = re.compile(r"^>{7}(?: |$)")
+_CONFLICT_LINT_RES = (_CONFLICT_OPEN_RE, _CONFLICT_BASE_RE, _CONFLICT_CLOSE_RE)
+
+
+def conflict_marker_errors(ddir: Path) -> List[str]:
+    """Flag git conflict markers committed into ``insights.md`` — an error.
+
+    The inbox is append-only by contract (conventions.md §1 → ``insights.md``),
+    so two branches that each captured an insight conflict on every merge, and
+    the conflict is always the same trivial shape. That makes a *committed*
+    marker a format-contract error rather than the usual warning. `parse_insights`
+    skips the marker lines themselves — they do not start with ``- `` — which
+    is worse than misreading them: **both sides' entries land in one numbered
+    list**, so ``list`` numbers straight across the halves and the ``N`` a
+    reader takes from it points ``tick`` at a different claim than the one they
+    read. ``archive`` will happily move an entry out from between the markers
+    and leave them behind.
+
+    An error, unlike the shape warnings above, because it is always fixable —
+    ``aide insights resolve`` is the fix, and the message says so. The live
+    file only, for the reason ``insight_warnings`` gives: the resolver works on
+    the file the loop appends to, and an archive is frozen.
+    """
+    path = ddir / "insights.md"
+    if not path.is_file():
+        return []
+    out: List[str] = []
+    for lineno, line in enumerate(path.read_text(encoding=_ENCODING).splitlines(), start=1):
+        if any(rx.match(line) for rx in _CONFLICT_LINT_RES):
+            out.append(
+                f"insights.md:{lineno}: an unresolved git conflict marker "
+                f"({line.split(' ')[0]}) — the inbox is append-only, so this "
+                f"merge is a union of entries; resolve it with "
+                f"`python .aide/scripts/aide.py insights resolve` (add "
+                f"--dry-run to see it first) rather than by hand, which is "
+                f"where a captured claim gets reworded"
+            )
+    return out
+
+
 #: An entry's full shape, parsed rather than merely validated: the claim, its
 #: provenance, and the optional " → <where it landed>" pointer a tick appends.
 #: ``text`` is non-greedy up to the provenance so a claim may itself contain
@@ -1910,6 +1958,372 @@ def _collapse_blank_runs(lines: List[str], trailing_newline: bool) -> str:
             continue
         out.append(line)
     return "\n".join(out) + ("\n" if trailing_newline else "")
+
+
+# --------------------------------------------------------------------------- #
+# insights resolve — an entry-level union of a conflicted inbox
+# --------------------------------------------------------------------------- #
+#: A checkbox left at the front of a line too malformed to parse as an entry.
+#: Stripped before an identity is taken, so a tick on such a line does not make
+#: it look like a *different* claim and get appended twice.
+_CONFLICT_CHECKBOX_RE = re.compile(r"^\[[ xX]\]\s*")
+#: The date a trail line carries, written by `tick` as ``- **YYYY-MM-DD** → …``.
+_TRAIL_DATE_RE = re.compile(r"\*\*(\d{4}-\d{2}-\d{2})\*\*")
+
+
+def split_conflict_sides(text: str) -> Tuple[str, str, int]:
+    """Split a conflicted file into its two whole documents.
+
+    Returns ``(ours, theirs, blocks)`` — each side reconstructed as a complete
+    file (the common regions plus that side's half of every conflict block),
+    and how many blocks there were. Whole documents rather than the hunks
+    alone, because the entry numbering that gives an inbox entry its identity
+    is positional: a hunk read on its own has no idea which entry it starts at.
+
+    ``diff3``/``zdiff3`` conflict style is understood and its ``|||||||`` base
+    section discarded — it belongs to neither side, and appending it to both
+    would duplicate every entry the merge base already had.
+
+    Raises ``ValueError`` on a malformed block (nested, unterminated, or a
+    closer with no opener). That is a refusal, not a repair: a file whose
+    markers do not nest is not a file this verb can reason about.
+    """
+    ours: List[str] = []
+    theirs: List[str] = []
+    state = "common"
+    blocks = 0
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if state == "common":
+            if _CONFLICT_OPEN_RE.match(line):
+                state = "ours"
+            elif _CONFLICT_CLOSE_RE.match(line) or _CONFLICT_BASE_RE.match(line):
+                raise ValueError(
+                    f"insights.md:{lineno}: {line.split(' ')[0]} outside a "
+                    f"conflict block — the markers do not nest")
+            else:
+                ours.append(line)
+                theirs.append(line)
+        elif state == "ours":
+            if _CONFLICT_BASE_RE.match(line):
+                state = "base"
+            elif _CONFLICT_SEP_RE.match(line):
+                state = "theirs"
+            elif _CONFLICT_OPEN_RE.match(line) or _CONFLICT_CLOSE_RE.match(line):
+                raise ValueError(
+                    f"insights.md:{lineno}: {line.split(' ')[0]} inside an "
+                    f"open conflict block — the markers do not nest")
+            else:
+                ours.append(line)
+        elif state == "base":
+            if _CONFLICT_SEP_RE.match(line):
+                state = "theirs"
+            elif (_CONFLICT_OPEN_RE.match(line) or _CONFLICT_CLOSE_RE.match(line)
+                    or _CONFLICT_BASE_RE.match(line)):
+                raise ValueError(
+                    f"insights.md:{lineno}: {line.split(' ')[0]} inside the "
+                    f"merge-base section of a conflict block")
+            # else: the base's own lines, which belong to neither side.
+        else:  # theirs
+            if _CONFLICT_CLOSE_RE.match(line):
+                state = "common"
+                blocks += 1
+            elif (_CONFLICT_OPEN_RE.match(line) or _CONFLICT_BASE_RE.match(line)
+                    or _CONFLICT_SEP_RE.match(line)):
+                raise ValueError(
+                    f"insights.md:{lineno}: {line.split(' ')[0]} inside the "
+                    f"second half of a conflict block — the markers do not nest")
+            else:
+                theirs.append(line)
+    if state != "common":
+        raise ValueError("the last conflict block is never closed — no "
+                         "'>>>>>>>' line, so half the file has no second side")
+    end = "\n" if text.endswith("\n") else ""
+    return ("\n".join(ours) + (end if ours else ""),
+            "\n".join(theirs) + (end if theirs else ""), blocks)
+
+
+def insight_identity(entry: InsightEntry) -> Tuple[str, ...]:
+    """What makes two entries the *same* captured claim across two branches.
+
+    The immutable half of an entry and nothing else (conventions.md §1 →
+    ``insights.md``): its type, claim text, date and provenance. The checkbox,
+    the ``→`` pointer and the status trail are bookkeeping, so an entry ticked
+    on one branch and untouched on the other is one entry here — which is what
+    lets the tick be merged instead of the claim being appended twice.
+
+    A line too malformed to parse has only itself, minus any checkbox.
+    """
+    if entry.type is None:
+        return ("", _CONFLICT_CHECKBOX_RE.sub("", entry.text).strip())
+    return (entry.type, entry.text, entry.date or "", entry.source or "",
+            entry.note or "")
+
+
+def _entry_blocks(text: str) -> Tuple[List[str], List[Tuple[InsightEntry, List[str]]],
+                                     List[str]]:
+    """``(head, [(entry, its lines)], tail)`` — the file cut at entry boundaries.
+
+    An entry's block runs from its own line to just before the next entry's, so
+    whatever sits between two entries (the blank line an archive can leave)
+    travels with the entry above it and no line is dropped by a rebuild.
+    """
+    lines = text.splitlines()
+    entries = parse_insights(text)
+    if not entries:
+        return lines, [], []
+    head = lines[:entries[0].lineno - 1]
+    blocks: List[Tuple[InsightEntry, List[str]]] = []
+    for i, e in enumerate(entries):
+        stop = (entries[i + 1].lineno - 1) if i + 1 < len(entries) else e.end_lineno
+        blocks.append((e, lines[e.lineno - 1:stop]))
+    return head, blocks, lines[entries[-1].end_lineno:]
+
+
+def _strip_trailing_blanks(lines: List[str]) -> List[str]:
+    out = list(lines)
+    while out and not out[-1].strip():
+        out.pop()
+    return out
+
+
+def _merge_trail(ours: List[str], theirs: List[str]) -> List[str]:
+    """Both sides' trail lines, deduplicated, in date order (§1 — newest last).
+
+    The sort is stable and an undated line inherits the date of the line above
+    it, so a hand-written continuation stays under the line it continues
+    instead of being hoisted to the top of the trail.
+    """
+    seen = set()
+    merged: List[str] = []
+    for line in list(ours) + list(theirs):
+        key = line.strip()
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(line)
+    keys: List[str] = []
+    last = ""
+    for line in merged:
+        m = _TRAIL_DATE_RE.search(line)
+        if m:
+            last = m.group(1)
+        keys.append(last)
+    return [line for _, line in sorted(zip(keys, merged), key=lambda p: p[0])]
+
+
+def _merge_entry_block(ours: InsightEntry, ours_lines: List[str],
+                       theirs: InsightEntry, theirs_lines: List[str],
+                       date: str) -> Tuple[List[str], Optional[str]]:
+    """Merge one entry both sides hold. Returns ``(lines, flag)``.
+
+    The claim line is taken whole from the side that ticked it, never rebuilt —
+    that is how the immutability rule survives a merge. Trails are unioned.
+    Two ticks with two different pointers is the one case a machine may not
+    decide: both are kept, the second as a dated trail line, and the flag says
+    a human must pick.
+    """
+    if ours_lines == theirs_lines:
+        return ours_lines, None
+    # Which side's claim line survives, in the order that loses least: the side
+    # that ticked, then — when both did — the side carrying a routing pointer.
+    # Preferring ours unconditionally dropped `theirs`' pointer whenever ours
+    # was ticked without one, and a routing record is the whole reason a tick
+    # is worth merging.
+    if ours.ticked != theirs.ticked:
+        kept, other = (ours, theirs) if ours.ticked else (theirs, ours)
+    elif ours.pointer or not theirs.pointer:
+        kept, other = ours, theirs
+    else:
+        kept, other = theirs, ours
+    flag = None
+    extra: List[str] = []
+    if other.pointer and other.pointer != kept.pointer:
+        # Two pointers, one per side: the one case a machine may not decide, so
+        # it decides nothing and keeps both. Not conditioned on the other side
+        # having *ticked* — a pointer written by hand before a tick is a
+        # routing record like any other, and dropping it is the silent loss
+        # this whole branch exists to prevent.
+        extra.append(f"  - **{date}** {_INSIGHT_POINTER.strip()} {other.pointer} "
+                     f"(second pointer, from the other side of the merge)")
+        flag = (f"entry {ours.ordinal} carries a different pointer on each side "
+                f"of the merge ({kept.pointer!r} and {other.pointer!r}); both "
+                f"are kept — the entry line carries the first and the second is "
+                f"a trail line, so a human must decide which is true")
+    trail = _merge_trail(ours.trail, theirs.trail) + extra
+    # Anything the block held that is neither the claim nor a trail line, from
+    # BOTH sides — ours first. Taking it from ours alone dropped whatever sat
+    # under the entry on the other side and still called the merge clean.
+    # Blank separators are not among them: the caller strips those and puts
+    # each entry's own back.
+    rest = [ln for ln in ours_lines[1:] if ln not in ours.trail]
+    rest += [ln for ln in theirs_lines[1:]
+             if ln not in theirs.trail and ln not in rest]
+    return [kept.raw] + trail + rest, flag
+
+
+def resolve_insights_text(text: str, date: str,
+                          base_text: Optional[str] = None,
+                          ) -> Tuple[str, List[str], List[str]]:
+    """Union the two sides of a conflicted inbox. ``(merged, notes, refusals)``.
+
+    Non-empty ``refusals`` means nothing was merged and the caller must not
+    write: the conflict is not the append shape this verb exists for, and the
+    only safe thing to do with a claim this code cannot align is leave it in
+    front of a human.
+
+    **What "pure append" means here.** Both sides must start with the same
+    entries, in the same order, differing only in bookkeeping; everything past
+    that point is new on one side or the other and is concatenated, ours then
+    theirs. Positional ordinals need no renumbering because nothing moves.
+
+    *base_text* — the merge base, which a conflicted index can supply — makes
+    that check exact rather than inferred: the shared history is the base, so a
+    rewritten prefix is caught even when the rewrite is at the tail, where the
+    two sides alone cannot tell a reworded claim from a second capture. Without
+    it the check falls back to the longest common prefix of the two sides,
+    which still catches every reorder, deletion and archive: an archive cuts
+    closed entries out of the middle, so entries survive on both sides *past*
+    the common prefix, and that overlap is a refusal.
+    """
+    refusals: List[str] = []
+    try:
+        ours_text, theirs_text, blocks = split_conflict_sides(text)
+    except ValueError as exc:
+        return text, [], [str(exc)]
+    if not blocks:
+        return text, [], []
+
+    head_o, blocks_o, tail_o = _entry_blocks(ours_text)
+    head_t, blocks_t, tail_t = _entry_blocks(theirs_text)
+    if _strip_trailing_blanks(head_o) != _strip_trailing_blanks(head_t):
+        refusals.append(
+            "the two sides differ above the first entry — the conflict reaches "
+            "the file's header, which is not an append; resolve it by hand")
+    if _strip_trailing_blanks(tail_o) != _strip_trailing_blanks(tail_t):
+        refusals.append(
+            "the two sides differ below the last entry — the conflict reaches "
+            "past the entry list, which is not an append; resolve it by hand")
+    if refusals:
+        return text, [], refusals
+
+    ids_o = [insight_identity(e) for e, _ in blocks_o]
+    ids_t = [insight_identity(e) for e, _ in blocks_t]
+    if base_text is not None:
+        ids_b = [insight_identity(e) for e in parse_insights(base_text)]
+        n = len(ids_b)
+        rewritten = [side for side, ids in (("HEAD", ids_o), ("the other side", ids_t))
+                     if ids[:n] != ids_b]
+        if rewritten:
+            return text, [], [
+                f"{' and '.join(rewritten)} rewrote the {n} entr"
+                f"{'y' if n == 1 else 'ies'} the two branches share — a claim "
+                f"was reworded, reordered, deleted or archived, and §1 makes "
+                f"every one of those something a human must see. Resolve this "
+                f"one by hand."]
+        common = n
+    else:
+        common = 0
+        while (common < len(ids_o) and common < len(ids_t)
+               and ids_o[common] == ids_t[common]):
+            common += 1
+
+    overlap = set(ids_o[common:]) & set(ids_t[common:])
+    if overlap:
+        return text, [], [
+            f"{len(overlap)} entr{'y' if len(overlap) == 1 else 'ies'} appear"
+            f"{'s' if len(overlap) == 1 else ''} on both sides after the "
+            f"history they share — the file was reordered or an archive cut "
+            f"entries out of the middle of it, so the two sides are not one "
+            f"append on top of a common prefix. Resolve this one by hand "
+            f"(first: {' | '.join(x[1] for x in sorted(overlap))[:120]})"]
+
+    # A blank line between two entries belongs to neither entry, and only a
+    # *last* entry can lack one — its blanks went to the file's tail instead.
+    # So the two sides can disagree about an entry neither of them touched,
+    # purely by where it sits. Each entry is therefore split into its own lines
+    # and its own trailing blanks: the lines are merged, and the blanks are
+    # carried through untouched, so an entry nobody edited is re-emitted with
+    # exactly the spacing it had. Only a *join* the append newly created — an
+    # entry that was last on its side and now has one behind it — needs a
+    # separator supplied, and the one it had is the one its own side's tail is
+    # still holding.
+    strip = _strip_trailing_blanks
+
+    def own(block: List[str]) -> List[str]:
+        return block[len(strip(block)):]
+
+    def leading_blanks(lines: List[str]) -> List[str]:
+        out: List[str] = []
+        for line in lines:
+            if line.strip():
+                break
+            out.append(line)
+        return out
+
+    last_o = len(blocks_o) - 1
+    last_t = len(blocks_t) - 1
+    # What each side's final entry would have been followed by, had anything
+    # followed it. Empty for a file whose entries sit on consecutive lines.
+    end_o = leading_blanks(tail_o)
+    end_t = leading_blanks(tail_t)
+
+    def spacing(*candidates: List[str]) -> List[str]:
+        for c in candidates:
+            if c:
+                return c
+        return []
+
+    # (block, what followed it, whether it ended its side). A block that ended
+    # its side and was followed by nothing has no observed spacing at all —
+    # that is the join the append newly created, and the only place a
+    # separator may be *invented*. Everywhere else an empty `after` is a fact
+    # about the file, and re-spacing entries neither side touched on the
+    # strength of a blank line somewhere else in the file is a reformat.
+    merged_blocks: List[Tuple[List[str], List[str], bool]] = []
+    flags: List[str] = []
+    ticks = 0
+    for i, ((eo, lo), (et, lt)) in enumerate(
+            zip(blocks_o[:common], blocks_t[:common])):
+        block, flag = _merge_entry_block(eo, strip(lo), et, strip(lt), date)
+        if strip(lo) != strip(lt):
+            # A shared claim whose bookkeeping the two sides disagreed on —
+            # counted whichever side won, since the decision is the news.
+            ticks += 1
+        if flag:
+            flags.append(flag)
+        merged_blocks.append((block, spacing(
+            own(lo), own(lt),
+            end_o if i == last_o else [], end_t if i == last_t else []),
+            i == last_o or i == last_t))
+    for i, (_, blk) in enumerate(blocks_o[common:], start=common):
+        merged_blocks.append((strip(blk),
+                              spacing(own(blk), end_o if i == last_o else []),
+                              i == last_o))
+    for i, (_, blk) in enumerate(blocks_t[common:], start=common):
+        merged_blocks.append((strip(blk),
+                              spacing(own(blk), end_t if i == last_t else []),
+                              i == last_t))
+
+    out: List[str] = list(head_o)
+    previous: List[str] = []
+    for i, (block, after, ended_a_side) in enumerate(merged_blocks):
+        out.extend(block)
+        if i == len(merged_blocks) - 1:     # the last entry's blanks are the tail's
+            break
+        # Inherit from the entry above only where there is nothing to inherit
+        # *from* the entry itself, which is exactly the newly created join.
+        after = after or (previous if ended_a_side else [])
+        out.extend(after)
+        previous = after
+    out.extend(tail_o)
+
+    notes = [f"{common} entr{'y' if common == 1 else 'ies'} shared, "
+             f"{len(blocks_o) - common} added on HEAD, "
+             f"{len(blocks_t) - common} added on the other side, "
+             f"{ticks} merged in place"]
+    notes.extend(flags)
+    merged_text = "\n".join(out) + ("\n" if text.endswith("\n") else "")
+    return merged_text, notes, []
 
 
 def absolute_path_test_warnings(repo_root: Path,
@@ -3432,13 +3846,13 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                branches: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
     """Return ``(errors, warnings)``. Empty errors == pass.
 
-    The first twelve checks all run before, and survive, the two early returns
+    The first thirteen checks all run before, and survive, the two early returns
     below, but for two different reasons. Six of them —
     `absolute_path_test_warnings`, `separator_dependent_test_warnings`,
     `cli_subprocess_test_warnings`, `subprocess_encoding_test_warnings`,
     `gitattributes_eol_pin_warnings`, `scope_claim_test_warnings` — read
     `tests_dir` and never touch `docs_dir`, so they are the ones that make this
-    function worth calling in a repo with no document set. The other six *are* document checks; they
+    function worth calling in a repo with no document set. The other seven *are* document checks; they
     simply find nothing to say when `docs_dir` is absent, so keeping them costs
     nothing and they still report on a `docs_dir` that exists but has no
     `progress.md`.
@@ -3455,6 +3869,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     progress_path = ddir / "progress.md"
 
     errors.extend(template_residue_errors(ddir))
+    errors.extend(conflict_marker_errors(ddir))
     warnings.extend(stray_icon_warnings(ddir))
     warnings.extend(insight_warnings(ddir))
     warnings.extend(absolute_path_test_warnings(repo_root, config))
@@ -4782,8 +5197,10 @@ def cmd_insights(args: argparse.Namespace) -> int:
     each triage pass an agent reading and hand-parsing the whole file, which is
     the cost that kept triage getting deferred. ``list`` answers "what is
     outstanding" without loading the archive with it, ``tick`` performs the one
-    in-place edit the immutability rule permits, and ``archive`` keeps the live
-    file the size of its working set.
+    in-place edit the immutability rule permits, ``archive`` keeps the live
+    file the size of its working set, and ``resolve`` merges the file's one
+    recurring conflict — two branches that each appended — without a hand ever
+    retyping a claim.
     """
     import datetime as _dt
     repo_root = find_repo_root(args.repo)
@@ -4815,6 +5232,9 @@ def cmd_insights(args: argparse.Namespace) -> int:
     if args.action == "tick":
         return _cmd_insights_tick(path, text, ddir_rel, repo_root, config, args,
                                   _dt.date.today().isoformat())
+    if args.action == "resolve":
+        return _cmd_insights_resolve(path, text, ddir_rel, repo_root, args,
+                                     _dt.date.today().isoformat())
     return _cmd_insights_archive(path, text, ddir, ddir_rel, repo_root, config, args)
 
 
@@ -4934,6 +5354,113 @@ def _cmd_insights_archive(path: Path, text: str, ddir: Path, ddir_rel: str,
         _commit_docs_files(repo_root, config,
                            f"docs(aide): archive insights closed before {args.before}",
                            rels)
+    return 0
+
+
+def _is_unmerged(repo_root: Path, rel: str) -> bool:
+    """Does git hold *rel* unmerged in the index — i.e. is it still conflicted?
+
+    Kept apart from `_merge_base_text` because the two questions have different
+    answers on an **add/add** conflict, where both branches created the file:
+    the index then holds stages 2 and 3 and **no stage 1**, so the merge base
+    is genuinely absent while the path is very much unmerged. That shape is
+    routine here — `check`, `claim` and `queue start` each create the inbox
+    from the template when it is missing — and conflating the two made the
+    verb decline to stage exactly the conflict a consumer hits first.
+    """
+    if not (repo_root / ".git").exists():
+        return False
+    try:
+        out = git(["ls-files", "-u", "--", rel], repo_root, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return out.returncode == 0 and bool(out.stdout.strip())
+
+
+def _merge_base_text(repo_root: Path, rel: str) -> Optional[str]:
+    """Stage 1 of *rel* — the merge base of a stalled merge or rebase, or None.
+
+    What turns the resolver's append check from an inference into a fact.
+    ``None`` covers every way it can be absent: no repository, no conflict, an
+    add/add conflict that has no base at all, or git off PATH. The resolver
+    falls back to comparing the two sides alone.
+    """
+    if not _is_unmerged(repo_root, rel):
+        return None
+    try:
+        out = git(["show", f":1:{rel}"], repo_root, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout if out.returncode == 0 else None
+
+
+def _cmd_insights_resolve(path: Path, text: str, ddir_rel: str, repo_root: Path,
+                          args: argparse.Namespace, today: str) -> int:
+    """Resolve a conflicted inbox as the union of both sides' entries.
+
+    The verb exists because the alternative is an agent retyping the block, and
+    that is exactly where conventions.md §1's "never reword a captured claim"
+    gets broken — the merge conflict is the one moment the whole file is in
+    front of something willing to rewrite it.
+    """
+    rel = f"{ddir_rel}/insights.md"
+    if not any(rx.match(line) for line in text.splitlines()
+               for rx in _CONFLICT_LINT_RES):
+        if not _is_unmerged(repo_root, rel):
+            print(f"aide insights resolve: no conflict markers in {rel} — "
+                  f"nothing to resolve")
+            return 0
+        # Markers gone but the path still unmerged: someone resolved the file
+        # by hand and stopped short of staging it. Finishing that is the same
+        # end state this verb reaches on its own, and leaving it undone is how
+        # an unattended run stalls on `git commit` with nothing in the message
+        # naming the cause.
+        add = git(["add", "--", rel], repo_root, check=False)
+        if add.returncode != 0:
+            print(f"aide insights resolve: {rel} has no conflict markers but "
+                  f"git still holds it unmerged, and staging it failed "
+                  f"({add.stderr.strip()}) — `git add {rel}` before continuing",
+                  file=sys.stderr)
+            return 1
+        print(f"aide insights resolve: no conflict markers in {rel}, but git "
+              f"still held it unmerged — staged it as it stands, so the merge "
+              f"or rebase can continue. Nothing was rewritten; if a claim was "
+              f"reworded resolving it by hand, §1 says that is the thing to "
+              f"look at.")
+        return 0
+    base = _merge_base_text(repo_root, rel)
+    merged, notes, refusals = resolve_insights_text(text, args.date or today, base)
+    if refusals:
+        for why in refusals:
+            print(f"aide insights resolve: {why}", file=sys.stderr)
+        print(f"aide insights resolve: {rel} left exactly as it is — the "
+              f"markers are still in place and the claims are still both "
+              f"there", file=sys.stderr)
+        return 1
+    for note in notes:
+        print(f"  {note}")
+    if args.dry_run:
+        # The union itself, not just the counts: reviewing the merge before it
+        # is written is the whole of what --dry-run is for, and every place
+        # that documents the flag says it prints what would be written.
+        print(f"--- {rel} would become ---")
+        print(merged, end="" if merged.endswith("\n") else "\n")
+        print(f"aide insights resolve: dry run — {rel} not written")
+        return 0
+    path.write_text(merged, encoding="utf-8")
+    staged = ""
+    # Asked again rather than inferred from `base`: an add/add conflict has no
+    # merge base and is still unmerged, and writing the file does not touch the
+    # index, so this is the same answer it would have given a moment ago.
+    if _is_unmerged(repo_root, rel):
+        add = git(["add", "--", rel], repo_root, check=False)
+        staged = (" and staged it, so the conflict is marked resolved; finish "
+                  "the merge or rebase as usual"
+                  if add.returncode == 0 else
+                  f" but could NOT stage it ({add.stderr.strip()}) — `git add "
+                  f"{rel}` before continuing")
+    print(f"aide insights resolve: wrote {rel} as the union of both sides"
+          f"{staged}")
     return 0
 
 
@@ -5644,6 +6171,65 @@ _INTERRUPTED_OPS: Tuple[Tuple[str, str], ...] = (
 )
 
 
+def _unmerged_paths(repo_root: Path) -> List[str]:
+    """Every path git currently holds unmerged, repo-relative, sorted."""
+    try:
+        out = git(["diff", "--name-only", "--diff-filter=U"], repo_root, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if out.returncode != 0:
+        return []
+    return sorted({line.strip() for line in out.stdout.splitlines() if line.strip()})
+
+
+def _continue_command(repo_root: Path) -> str:
+    """What finishes the operation this tree is stopped in, once staged."""
+    gdir = _git_dir(repo_root)
+    if (gdir / "rebase-merge").exists() or (gdir / "rebase-apply").exists():
+        return "git rebase --continue"
+    if (gdir / "CHERRY_PICK_HEAD").exists():
+        return "git cherry-pick --continue"
+    if (gdir / "REVERT_HEAD").exists():
+        return "git revert --continue"
+    return "git commit --no-edit"
+
+
+def _inbox_conflict_hint(repo_root: Path,
+                         config: Dict[str, Dict[str, object]]) -> Optional[str]:
+    """Name `insights resolve` when the stalled operation is stuck on the inbox.
+
+    The verb is useless to the role that needs it unless the thing that stalls
+    says so. `insights.md` is append-only and every role captures into it
+    (`_ALWAYS_AUTHORISED`), so two open branches conflict here as a matter of
+    course — while the agent that runs `aide merge` is the `validator`, which
+    preloads a different skill and has read nothing about the inbox. A message
+    at the point of the stall reaches every role, every runtime, and a human,
+    without any of them having had to read anything first.
+
+    It also says whether the inbox is the *only* unmerged path, because that
+    decides whether the verb finishes the job or is merely one of the steps.
+    """
+    ddir = docs_dir(repo_root, config)
+    try:
+        rel = (ddir / "insights.md").relative_to(repo_root).as_posix()
+    except ValueError:          # a docs_dir outside the repo: no relative name
+        return None
+    unmerged = _unmerged_paths(repo_root)
+    if rel not in unmerged:
+        return None
+    verb = "python .aide/scripts/aide.py insights resolve"
+    warn = (f"Do NOT resolve {rel} by hand — it is append-only, so the "
+            f"conflict is a union of entries, and retyping the block is where "
+            f"a captured claim gets reworded (conventions.md §1).")
+    others = [p for p in unmerged if p != rel]
+    if not others:
+        return (f"{rel} is the ONLY unmerged path. {warn} `{verb}` writes the "
+                f"union and stages it (add --dry-run to read it first), then "
+                f"`{_continue_command(repo_root)}` finishes this.")
+    return (f"{rel} is one of {len(unmerged)} unmerged paths. {warn} `{verb}` "
+            f"settles that one; the rest are yours: {', '.join(others)}.")
+
+
 def _dirty_paths(repo_root: Path) -> List[str]:
     """Tracked paths carrying uncommitted changes, as git reports them.
 
@@ -5920,11 +6506,20 @@ def cmd_merge(args: argparse.Namespace) -> int:
 
     unsafe = _unsafe_tree_state(repo_root, docs_dir(repo_root, config) / "progress.md")
     if unsafe:
+        # Resolution before abortion, and only when there is something to
+        # resolve: an agent that reads "abort" literally aborts, re-runs, and
+        # meets the identical conflict — a loop, and one this verb can end.
+        hint = _inbox_conflict_hint(repo_root, config)
         print(f"aide merge: refusing to merge item {args.number:03d} — {unsafe}. "
               f"`git switch` and `git pull --rebase` from here rewrite or "
-              f"discard work this process did not create. Finish or abort that "
-              f"state first (`git rebase --abort` / `git merge --abort`, or "
-              f"commit the changes), then re-run.", file=sys.stderr)
+              f"discard work this process did not create."
+              + (f"\naide merge: {hint}" if hint else "")
+              + f"\naide merge: finish that state — resolve and stage, then "
+                f"`{_continue_command(repo_root)}` — or abort it "
+                f"(`git rebase --abort` / `git merge --abort`, or commit the "
+                f"changes), then re-run. Aborting a conflict you have not "
+                f"resolved brings it back on the next attempt.",
+              file=sys.stderr)
         return 1
 
     git(["switch", main], repo_root)
@@ -5961,7 +6556,15 @@ def cmd_merge(args: argparse.Namespace) -> int:
                 git(["pull", "--rebase"], repo_root, check=False)
         merge_res = git(["merge", "--no-edit", branch], repo_root, check=False)
         if merge_res.returncode != 0:
-            print(f"aide merge: merge of {branch} failed:\n{merge_res.stdout}{merge_res.stderr}", file=sys.stderr)
+            # The one conflict this loop produces as a matter of course gets
+            # named here rather than left in git's output, because this is
+            # where it lands and the role standing here has read nothing about
+            # the inbox.
+            hint = _inbox_conflict_hint(repo_root, config)
+            print(f"aide merge: merge of {branch} failed:\n"
+                  f"{merge_res.stdout}{merge_res.stderr}"
+                  + (f"\naide merge: {hint}\n" if hint else ""),
+                  file=sys.stderr)
             return 1
 
     # The claim branch goes BEFORE the test run, so the run sees the refs a
@@ -7294,8 +7897,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_queue.add_argument("--date", default=None, help="tidy: override the supersede date (YYYY-MM-DD)")
     p_queue.set_defaults(func=cmd_queue)
 
-    p_ins = sub.add_parser("insights", help="list / tick / archive the insight inbox")
-    p_ins.add_argument("action", choices=["list", "tick", "archive"])
+    p_ins = sub.add_parser("insights",
+                           help="list / tick / archive / resolve the insight inbox")
+    p_ins.add_argument("action", choices=["list", "tick", "archive", "resolve"])
     p_ins.add_argument("number", type=int, nargs="?", default=None,
                        help="tick: the entry number from `insights list`")
     p_ins.add_argument("--open", action="store_true", dest="open_only",
@@ -7309,7 +7913,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_ins.add_argument("--before", default=None,
                        help="archive: move entries closed before this date (YYYY-MM-DD)")
     p_ins.add_argument("--date", default=None,
-                       help="tick: override the trail-line date (default: today)")
+                       help="tick, resolve: override the trail-line date "
+                            "(default: today)")
+    p_ins.add_argument("--dry-run", action="store_true",
+                       help="resolve: print what the union would be, write nothing")
     p_ins.add_argument("--yes", action="store_true",
                        help="archive: actually move (default: dry run)")
     p_ins.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")

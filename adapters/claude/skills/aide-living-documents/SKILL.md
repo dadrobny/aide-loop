@@ -80,6 +80,7 @@ paths:
 <!-- pins: .aide/conventions/1-format-contract/insights.md
      - Capture is a plain append; everything after it has a verb
      - Ticking the checkbox is the one in-place edit
+     - It refuses anything that is not a pure append
      - The open inbox is an input to queue authoring, not only an output of
        triage
      - considered, and either queued or explicitly passed over — never
@@ -185,6 +186,17 @@ verb owns it, so a hand-flipped `[x]` is the improvised form of `tick` — and
 run without `--yes`). Reading the file raw costs the whole closed history to
 see a working set of a dozen lines; editing it by hand is the failure `tick`
 exists to prevent.
+
+The fourth verb covers the one moment the whole file is in front of something
+willing to rewrite it. Append-only means two branches that each captured an
+insight conflict on every merge, and `aide insights resolve [--dry-run]` writes
+the union of both sides — shared history, then each side's new entries, ticks
+and trails merged — instead of a hand retyping the block. **It refuses anything
+that is not a pure append** (a reworded, reordered or deleted claim, or a side
+that archived) and writes nothing when it does, because each of those is a
+change to an immutable line that a human must see. Do not resolve this file's
+conflict by hand: a committed conflict marker is an `aide check` error, and the
+message names the verb.
 
 **The open inbox is an input to queue authoring, not only an output of triage**
 (§1 → `insights.md`). Triage happens *at* the queue boundary, when the next

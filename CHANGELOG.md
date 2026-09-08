@@ -121,6 +121,82 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.43.0] — 2026-09-08
+
+The one document the loop appends to from every branch had no way to survive
+two branches doing it.
+
+### Added
+
+- **`aide insights resolve [--dry-run]` — an entry-level union of a conflicted
+  inbox (issue #158).** `insights.md` is append-only by contract (§1 →
+  `insights.md`): every role adds a line at the end, so two branches that each
+  captured an insight conflict on every merge or rebase, and the conflict is
+  always the same trivial shape. Resolving it by hand is where "never reword a
+  captured claim" gets broken, because whoever resolves it retypes the block —
+  and an agent asked to resolve one is the least reliable party in the repo to
+  be holding an immutable line. The verb reads the file with the markers in
+  place, parses both sides into entries, and writes the union: the history the
+  two sides share, then each side's new entries in the order they were
+  captured. Positional numbering needs no repair, since nothing moves. An
+  entry ticked on either side ends up ticked and keeps that side's pointer;
+  both sides' trail lines are kept, in date order; two ticks with two
+  different pointers keep both — the second as a dated trail line — and the
+  run says so, because that one needs a human. `diff3`/`zdiff3` conflict style
+  is understood, and its merge-base section discarded rather than appended to
+  both sides. `--dry-run` prints the union and writes nothing. Where git holds
+  the path unmerged the verb stages the result, so the merge or rebase can
+  simply continue — including an **add/add** conflict, which has no merge base
+  at all and which a consumer reaches easily, since `check`, `claim` and
+  `queue start` each create the inbox when it is missing. Run against a file
+  whose markers someone already stripped by hand, it stages that as it stands
+  rather than reporting "nothing to resolve" over a path git still refuses to
+  commit.
+- **It refuses anything that is not a pure append, and a refusal writes
+  nothing.** A claim reworded, reordered or deleted on one side is a change to
+  an immutable line, and so is an archive — `insights archive` cuts closed
+  entries out of the middle and renumbers what remains, which is the open
+  point issue #158 left for the archive boundary. Both are refused with the
+  file left exactly as it was, markers included, because the only safe thing
+  to do with a claim the code cannot align is leave it in front of a human.
+  The check is exact rather than inferred wherever git can supply the merge
+  base (`git show :1:`, which a stalled merge or rebase has): the shared
+  history *is* the base, so a rewrite is caught even at the tail, where the
+  two sides alone cannot tell a reworded claim from a second capture. Without
+  a base it falls back to the sides' longest common prefix, which still
+  catches every reorder, deletion and archive, since those leave entries
+  surviving on both sides past that prefix.
+- **`aide merge` names the verb where the conflict actually lands.** The
+  inbox is `_ALWAYS_AUTHORISED`, so every role captures into it and two open
+  branches conflict here as a matter of course — while the agent standing at
+  the stall is the `validator`, which preloads `aide-review-and-validation`
+  and has read nothing about the inbox. A failure message reaches every role
+  and every runtime without any of them having read anything first, which a
+  skill preload cannot. Both of `merge`'s refusals now carry it: the failed
+  `git merge`, and the refusal to re-run over a tree left mid-merge. It says
+  whether the inbox is the **only** unmerged path — which decides whether the
+  verb finishes the job or is one step of several — and names the command that
+  completes the stalled operation (`git commit --no-edit`, `git rebase
+  --continue`, …). It stays quiet when the conflict is somewhere else.
+- **The interrupted-state refusal offers resolution before abortion.** It
+  previously said only "finish or abort that state first (`git rebase --abort`
+  / `git merge --abort`…)", and an agent that reads that literally aborts,
+  re-runs, and meets the identical conflict — a loop, and one this verb can
+  end. Resolving and staging now comes first, and the message says plainly
+  that aborting an unresolved conflict brings it back on the next attempt.
+- **`aide check` reports a conflict marker in `insights.md` as an error.** The
+  other inbox lints are warnings, deliberately — a captured line is immutable,
+  so a warning on one can never be cleared. A committed marker is the
+  opposite: always fixable, and fatal to every other verb. The markers are
+  skipped rather than misread — they are not entry lines — which is worse,
+  because both sides' entries then land in one numbered list: `list` numbers
+  straight across the halves, and the `N` a reader takes from it points `tick`
+  at a different claim than the one they read. The message names
+  `insights resolve`. `<<<<<<<`,
+  `|||||||` and `>>>>>>>` are matched; `=======` deliberately is not, because
+  it is also a setext heading underline and a lint that fires on a heading is
+  a lint a reader learns to skim.
+
 ## [1.42.0] — 2026-09-08
 
 One surface, taken apart: the routing rules for insight-inbox entries existed
