@@ -198,16 +198,33 @@ SKIP_SUFFIXES = {".pyc"}
 
 GITIGNORE_MARKER = "# --- AIDE framework (managed by aide-loop install.py) ---"
 GITIGNORE_END = "# --- end AIDE ---"
-GITIGNORE_BLOCK = f"""\
-{GITIGNORE_MARKER}
-.aide/**/__pycache__/
-.aide/loop/loop.local.toml
-.aide-merge
-docs/aide/status/
-docs/aide/permissions/*.jsonl
-docs/aide/instructions/*.jsonl
-# --- end AIDE ---
-"""
+#: The engine's own untracked paths — runtime-agnostic, every consumer.
+GITIGNORE_ENGINE_LINES = (
+    ".aide/**/__pycache__/",
+    ".aide/loop/loop.local.toml",
+    ".aide-merge",
+    "docs/aide/status/",
+    "docs/aide/permissions/*.jsonl",
+    "docs/aide/instructions/*.jsonl",
+)
+#: Scratch space an adapter's *runtime* leaves in the consumer's tree, per
+#: adapter — never repository content, and never something a consumer can
+#: predict before it stalls a run: `aide sync` refuses on any untracked path,
+#: and Claude Code's `/code-review` checks the repository out under
+#: `.claude/worktrees/` to review a diff (issue #165). The block is one file
+#: for every runtime, so the adapter's lines are a section of it chosen by
+#: the adapter being installed, not a carve-out in the cleanliness check —
+#: that check is worth having only while it is unconditional.
+ADAPTER_GITIGNORE_LINES = {
+    "claude": (".claude/worktrees/",),
+}
+
+
+def gitignore_block(adapter: str) -> str:
+    """The managed block for *adapter*: engine lines, then the adapter's."""
+    lines = (GITIGNORE_MARKER, *GITIGNORE_ENGINE_LINES,
+             *ADAPTER_GITIGNORE_LINES.get(adapter, ()), GITIGNORE_END)
+    return "".join(line + "\n" for line in lines)
 
 AIDE_TOML_TEMPLATE = """\
 # aide.toml — AIDE project config. Owned by THIS project, not the framework.
@@ -221,6 +238,12 @@ docs_dir = "docs/aide"
 
 [python]
 test_command = "{test_command}"
+# The Python `env --bootstrap` builds the venv from — a command on PATH
+# ("python3.12", "py -3.12") or an absolute path. Unset, it is whatever Python
+# launched the CLI. Set it when the dependency closure resolves on a narrower
+# range than `requires-python` declares; `aide env` reports a venv built from
+# a different version as stale.
+# interpreter = "python3.12"
 
 [git]
 mode = "{git_mode}"
@@ -1560,7 +1583,7 @@ def install_default_context(target: Path, adapter_dir: Path, log: List[str]) -> 
     log.append(f"  ~ {path} ({AGENT_CONTEXT_REL} import appended)")
 
 
-def append_gitignore(target: Path, log: List[str]) -> None:
+def append_gitignore(target: Path, log: List[str], adapter: str = DEFAULT_ADAPTER) -> None:
     """Add the managed ignore block, or reconcile one that is already there.
 
     Runs on update as well as install. The block is delimited by its own
@@ -1592,7 +1615,7 @@ def append_gitignore(target: Path, log: List[str]) -> None:
             log.append(f"  ! {path} has the AIDE marker but no '{GITIGNORE_END}' "
                        f"line — left untouched; re-add the block by hand")
             return
-        rebuilt = "".join(lines[:start]) + GITIGNORE_BLOCK + "".join(lines[end + 1:])
+        rebuilt = "".join(lines[:start]) + gitignore_block(adapter) + "".join(lines[end + 1:])
         if rebuilt == existing:
             return
         path.write_text(bom + rebuilt, encoding="utf-8")
@@ -1602,7 +1625,7 @@ def append_gitignore(target: Path, log: List[str]) -> None:
     sep = "" if (not existing or existing.endswith("\n")) else "\n"
     prefix = "\n" if existing and not existing.endswith("\n\n") else ""
     with path.open("a", encoding="utf-8") as fh:
-        fh.write(sep + prefix + GITIGNORE_BLOCK)
+        fh.write(sep + prefix + gitignore_block(adapter))
     log.append(f"  {'~' if existing else '+'} {path} (AIDE block appended)")
 
 
@@ -1704,8 +1727,9 @@ def run(args: argparse.Namespace) -> int:
     #    interactive session, and it is one idempotent line either way.
     install_default_context(target, adapter_dir, log)
 
-    # 7. .gitignore block — added on install, reconciled on update.
-    append_gitignore(target, log)
+    # 7. .gitignore block — added on install, reconciled on update. The
+    #    adapter picks its section of it (issue #165).
+    append_gitignore(target, log, adapter)
 
     # 8. Prune .aide/ of files the engine no longer ships. After every copy,
     #    deliberately: everything the new engine wants is in place before

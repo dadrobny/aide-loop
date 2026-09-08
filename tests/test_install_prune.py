@@ -340,3 +340,23 @@ def test_an_update_reconciles_the_managed_gitignore_block(tmp_path: Path):
     assert "docs/aide/instructions/*.jsonl" in text
     assert text.count(install.GITIGNORE_MARKER) == 1
 
+
+
+def test_an_update_adds_the_adapters_scratch_paths_to_an_older_block(tmp_path: Path):
+    """#165: the adapter's runtime scratch space is a section of the managed
+    block chosen by the adapter being installed, and the reconcile carries it
+    to a consumer whose block predates it."""
+    target = tmp_path / "consumer"
+    target.mkdir()
+    assert install.main(["--into", str(target), "--yes"]) == 0
+    gitignore = target / ".gitignore"
+    text = gitignore.read_text(encoding=install.CONSUMER_ENCODING)
+    assert ".claude/worktrees/\n" in text
+    gitignore.write_text(text.replace(".claude/worktrees/\n", ""), encoding="utf-8")
+
+    assert install.main(["--into", str(target), "--update"]) == 0
+
+    text = gitignore.read_text(encoding=install.CONSUMER_ENCODING)
+    assert (text.index(install.GITIGNORE_MARKER) < text.index(".claude/worktrees/")
+            < text.index(install.GITIGNORE_END))
+    assert text.count(install.GITIGNORE_MARKER) == 1

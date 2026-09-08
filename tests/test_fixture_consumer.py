@@ -1456,3 +1456,117 @@ def test_a_roadmap_that_cannot_be_lined_up_leaves_both_files_alone(
     assert aide.main(["--repo", str(consumer), "progress", "reword", "1",
                       "--criterion", "1", "--text", "should not land"]) == 1
     assert (progress.read_bytes(), roadmap.read_bytes()) == before
+
+
+# --------------------------------------------------------------------------- #
+# the silent engine wrongs — #167, #169, #166, #165 — through the installed engine
+# --------------------------------------------------------------------------- #
+def test_a_merge_re_run_after_a_red_run_still_lands_on_the_queue_branch(
+        aide, consumer: Path):
+    """#167: the invited re-run resolves to the base the first run had.
+
+    `merge` deletes the claim branch before the post-merge run, and `git
+    branch -d` takes `branch.<claim>.aide-base` with it. The restore used to
+    put back the ref alone, so the retry a red run invites — with no `--base`,
+    since the first run needed none — fell back to main_branch: a consumer's
+    whole queue was fast-forwarded onto `main` and pushed past its
+    one-reviewed-PR-per-queue gate, with nothing in the output naming `main`.
+    """
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    main_before = _git(["rev-parse", "main"], consumer).stdout.strip()
+    assert _claim(aide, consumer) == 0
+    _set_test_command(consumer, "git rev-parse --verify no-such-ref")
+    _do_the_work(consumer)
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 1
+    assert _branch(consumer) == "aide/queue-001"
+    assert "aide/001-the-greeter" in _branches(consumer)
+    recorded = _git(["config", "--get",
+                     f"branch.aide/001-the-greeter.{aide._BASE_CONFIG_KEY}"],
+                    consumer).stdout.strip()
+    assert recorded == "aide/queue-001"
+
+    _set_test_command(consumer, "git rev-parse --verify HEAD")
+    _commit(consumer, "chore: a passing test command")
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 0   # no --base: the invited re-run
+    assert _git(["rev-parse", "main"], consumer).stdout.strip() == main_before
+    assert _branch(consumer) == "aide/queue-001"
+    assert (consumer / "src" / "greeter.py").is_file()
+    assert _item_status(aide, consumer, 1) == "complete"
+    assert "aide/001-the-greeter" not in _branches(consumer)
+
+
+def test_a_split_reports_its_copies_and_check_sees_them_until_reworded(
+        aide, consumer: Path, capsys):
+    """#169: the split writes the shared prose N times, and says so.
+
+    A consumer's ✅ line for one item described two other items' undone work,
+    because the copy the split wrote was flipped without rewording and nothing
+    could tell. The flip now prints every copy it made, and `check` reports
+    identical single-item siblings in a stage until each is reworded.
+    """
+    progress = consumer / "docs" / "aide" / "progress.md"
+    text = progress.read_text(encoding="utf-8")
+    shared = "- 📋 Both functions. *(Items 001, 002)*\n"
+    text = text.replace("- 📋 The greeter. *(Item 001)*\n- 📋 The farewell. *(Item 002)*\n", shared)
+    assert shared in text
+    progress.write_text(text, encoding="utf-8")
+    _commit(consumer, "docs: one bullet for two items")
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1", "in-progress"]) == 0
+    reported = [l.strip() for l in capsys.readouterr().out.splitlines()
+                if l.strip().startswith("progress.md:")]
+    assert len(reported) == 2
+    assert any(l.endswith("- 🚧 Both functions. *(Item 001)*") for l in reported)
+    assert any(l.endswith("- 📋 Both functions. *(Item 002)*") for l in reported)
+    for line in reported:
+        lineno = int(line.split(":")[1])
+        assert progress.read_text(encoding="utf-8").splitlines()[lineno - 1].strip() == line.split(": ", 1)[1]
+
+    _, warnings = aide.run_checks(consumer, aide.load_config(consumer))
+    identical = [w for w in warnings if "identical prose" in w]
+    assert len(identical) == 1 and "001, 002" in identical[0]
+
+    text = progress.read_text(encoding="utf-8").replace(
+        "- 📋 Both functions. *(Item 002)*", "- 📋 The farewell. *(Item 002)*")
+    progress.write_text(text, encoding="utf-8")
+    _, warnings = aide.run_checks(consumer, aide.load_config(consumer))
+    assert not [w for w in warnings if "identical prose" in w]
+
+
+def _set_python_keys(repo: Path, **keys: str) -> None:
+    toml = repo / "aide.toml"
+    text = toml.read_text(encoding="utf-8")
+    assert "[python]\n" in text, "aide.toml lost its [python] section"
+    extra = "".join(f'{k} = "{v}"\n' for k, v in keys.items())
+    toml.write_text(text.replace("[python]\n", "[python]\n" + extra, 1), encoding="utf-8")
+
+
+def test_an_env_bootstrap_that_half_installs_cannot_report_ok(aide, consumer: Path):
+    """#166: a bootstrap whose install aborts leaves a venv, and `env` used
+    to read the venv's existence plus one import as OK. The validator trusted
+    that green and failed on the environment with its item named."""
+    _set_python_keys(consumer, venv=".venv", bootstrap="-m no_such_module_aide_fixture")
+    assert aide.main(["--repo", str(consumer), "env"]) == 1              # missing
+    assert aide.main(["--repo", str(consumer), "env", "--bootstrap"]) == 1
+    assert (consumer / ".venv" / aide._BOOTSTRAP_RECORD).is_file()     # the venv exists…
+    assert aide.main(["--repo", str(consumer), "env"]) == 1              # …and is not OK
+
+
+def test_an_interpreter_this_machine_lacks_stops_the_bootstrap_before_the_venv(
+        aide, consumer: Path):
+    _set_python_keys(consumer, venv=".venv", interpreter="no-such-python-aide-fixture")
+    assert aide.main(["--repo", str(consumer), "env", "--bootstrap"]) == 1
+    assert not (consumer / ".venv").exists()
+
+
+def test_sync_is_not_stalled_by_the_claude_runtimes_scratch_worktrees(aide, consumer: Path):
+    """#165: `/code-review` leaves a scratch checkout under `.claude/worktrees/`;
+    an unattended run stalled on `sync`'s unclean-tree refusal over it. The
+    installed block ignores it, so the cleanliness check stays unconditional."""
+    scratch = consumer / ".claude" / "worktrees" / "review-abc"
+    scratch.mkdir(parents=True)
+    (scratch / "README.md").write_text("a scratch checkout\n", encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "sync"]) == 0
+    assert aide.main(["--repo", str(consumer), "status"]) == 0

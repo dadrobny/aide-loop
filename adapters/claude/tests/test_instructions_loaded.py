@@ -425,7 +425,7 @@ def test_every_logging_hooks_output_path_is_covered_by_the_managed_gitignore():
     _sys.path.insert(0, str(_ADAPTER.parents[1]))
     import install  # noqa: E402
 
-    patterns = [ln.strip() for ln in install.GITIGNORE_BLOCK.splitlines()
+    patterns = [ln.strip() for ln in install.gitignore_block("claude").splitlines()
                 if ln.strip() and not ln.strip().startswith("#")]
 
     log_paths = []
@@ -443,4 +443,4 @@ def test_every_logging_hooks_output_path_is_covered_by_the_managed_gitignore():
     assert log_paths, "no logging hook found — this guard is watching nothing"
     for name, rel in log_paths:
         assert any(fnmatch.fnmatch(rel, pat) for pat in patterns), (
-            f"{name} writes {rel}, which no GITIGNORE_BLOCK pattern covers")
+            f"{name} writes {rel}, which no managed .gitignore pattern covers")
