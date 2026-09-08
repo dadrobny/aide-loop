@@ -109,10 +109,11 @@ them keeps its own copy of is a rule that has already drifted.
 | `automation` | a candidate item adding the script/CLI verb **and** the prose that mandates it | the queue that absorbs it |
 | `framework` | an issue on `[framework] repo` from `aide.toml`; unset or offline, it stays pending | the filing role, on the hand-over |
 
-**A `defect`, `gap` or `automation` entry is never ticked at triage.** Triage
+**Routing a `defect`, `gap` or `automation` entry never ticks it.** Triage
 stands *at* the queue boundary, so the queue that would carry such an entry does
 not exist yet: leaving it unchecked **is** the routing, and the open inbox is
-what carries it to whoever authors that queue.
+what carries it to whoever authors that queue. The exception is the entry triage
+does **not** route — see *decayed premise* below, which closes one.
 
 #### Insight-derived fixes get a queue of their own, ahead of the stage queue
 
@@ -146,8 +147,11 @@ line under the entry, never an edit to the claim**:
   point the later at it; both stay in the file, because two roles noticing the
   same thing independently is itself a fact about the project.
 - **Decayed premise** — what the entry names no longer exists, or has already
-  been fixed by work done since. Tick it, saying what closed it; the claim
-  remains the record of what was true when it was captured.
+  been fixed by work done since. **A decayed premise is ticked, because there is
+  nothing left for a queue to carry** — the trail line says what closed it, and
+  the claim remains the record of what was true when it was captured. This is
+  the one tick triage performs on a `defect`, `gap` or `automation` entry, and
+  it is not a routing: nothing is being sent anywhere.
 - **Wrong type** — the entry describes a defect and is filed as knowledge, or
   the reverse. Route it by what it *is* and say so in the trail; the type in the
   captured line is never rewritten.

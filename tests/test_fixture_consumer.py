@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import codecs
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -65,6 +66,14 @@ def _frontmatter(path: Path):
     return None if end == -1 else text[4:end]
 
 
+#: `user-invocable: false` as a frontmatter *scalar*, matched the way the two
+#: sibling modules match it: case-folded, and tolerant of trailing space. A
+#: plain `"user-invocable: false" in block` would read `False` — valid YAML,
+#: and still a section skill to `test_rules.py` — as a workflow skill, and this
+#: module's checks on it would vanish rather than fail.
+_HIDDEN = re.compile(r"^user-invocable:[ \t]*false[ \t]*$", re.M | re.I)
+
+
 def _is_section_skill(path: Path) -> bool:
     """The same signal `adapters/claude/tests/test_rules.py` and
     `tests/test_structural_budget.py` recognise — `user-invocable: false`, and
@@ -73,8 +82,8 @@ def _is_section_skill(path: Path) -> bool:
     `paths:`, a hidden frontmatter, a resolvable preload name — are a section
     skill's, not a quoting skill's. One recognition here and another there
     would let a skill drop out of these checks silently, so the three stay
-    identical."""
-    return "user-invocable: false" in (_frontmatter(path) or "")
+    identical, spelling included."""
+    return bool(_HIDDEN.search(_frontmatter(path) or ""))
 
 
 #: The skills that deliver a contract section, recognised structurally so the

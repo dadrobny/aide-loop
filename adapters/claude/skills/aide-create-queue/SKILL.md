@@ -175,8 +175,13 @@ git add docs/aide/queue/queue-NNN.md docs/aide/queue/queue-<NNN-1>.md docs/aide/
 git commit -m "docs(aide): add work queue NNN"
 ```
 
-Two queues are two commits, maintenance queue first, so each PR can carry one of
-them if the caller lands them separately.
+**Wrote two queues? Stage both**, in that one command —
+`docs/aide/queue/queue-NNN.md` *and* `docs/aide/queue/queue-<NNN+1>.md` — and
+commit them together, titled `docs(aide): add work queues NNN-<NNN+1>`. One
+commit, not two: `progress.md` carries the item references for both queues and
+cannot be split between them, so a first commit staging only the maintenance
+queue would reference items no committed queue declares. The pair lands in one
+PR anyway.
 
 **Push/PR is the caller's job, not this step's:**
 

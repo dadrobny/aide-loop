@@ -148,8 +148,11 @@ retrospective, and the fixes that pass routes rode the next stage's batch.
   an entry filed under a type that does not fit what it describes. All three
   are recorded the one way a captured claim allows — a dated trail line under
   the entry, never an edit to the claim — and so is a *ticked* entry whose
-  status the triaging role now knows to be stale. In the engine rather than
-  in the skill, because the queue author reads the same rules.
+  status the triaging role now knows to be stale. Routing a `defect`, `gap` or
+  `automation` entry still never ticks it, and the decayed premise is the one
+  stated exception: it is ticked because there is nothing left for a queue to
+  carry, which is not a routing at all. In the engine rather than in the skill,
+  because the queue author reads the same rules.
 
 ### Changed
 

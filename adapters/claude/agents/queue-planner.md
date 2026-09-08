@@ -98,6 +98,11 @@ Follow the `aide-create-queue` skill in full. In brief:
    git add docs/aide/queue/queue-NNN.md docs/aide/queue/queue-<NNN-1>.md docs/aide/progress.md
    git commit -m "docs(aide): add work queue NNN"
    ```
+   **If step 2 gave you two queues, stage both** — add
+   `docs/aide/queue/queue-<NNN+1>.md` to that same `git add` and title the commit
+   `docs(aide): add work queues NNN-<NNN+1>`. One commit for the pair:
+   `progress.md` holds the item references for both and cannot be split between
+   them.
 7. **Tick every inbox entry you queued**, naming the item it became — the verb
    owns that edit and commits the file when git can:
    ```
