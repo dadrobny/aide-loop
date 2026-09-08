@@ -1167,7 +1167,8 @@ def test_two_ticks_with_two_pointers_keep_both_and_flag_it_for_a_human():
     assert merged.splitlines()[5] == (
         "  - **2026-03-01** → aide-loop #52 "
         "(second pointer, from the other side of the merge)")
-    assert any("different pointers" in n and "a human must decide" in n
+    assert any("a different pointer on each side" in n
+               and "a human must decide" in n
                for n in notes)    # ... and says a human must look
 
 
@@ -1303,3 +1304,36 @@ def test_a_shared_entry_neither_side_touched_is_not_counted_as_merged():
     assert "0 merged in place" in notes[0]
     # And the separator survives the join rather than being eaten with it.
     assert merged == _HEAD + f"{_A}\n\n{_B}\n\n{_D}\n"
+
+
+def test_a_pointer_on_an_unticked_side_is_kept_too():
+    """A hand-written routing note is a routing record like any other. Guarding
+    the second-pointer branch on the other side having *ticked* dropped it."""
+    ours = _A + " → see issue #12"                    # unticked, hand pointer
+    theirs = _A.replace("- [ ]", "- [x]") + " → item 007"
+    merged, notes, refusals = _resolve(
+        _conflicted(f"{ours}\n{_B}\n", f"{theirs}\n{_B}\n", _HEAD))
+    assert refusals == []
+    assert merged.splitlines()[4] == theirs            # the tick wins the line
+    assert "see issue #12" in merged                   # ... and nothing is lost
+    assert any("a different pointer on each side" in n for n in notes)
+
+
+def test_a_line_under_a_shared_entry_on_the_other_side_is_not_discarded():
+    """`rest` came from our side alone, so anything sitting under the entry on
+    the other side vanished — and the run still reported a clean merge."""
+    stray = "  (a note that is neither a claim nor a trail line)"
+    merged, _, refusals = _resolve(_conflicted(
+        f"{_A}\n{_B}\n{_C}\n", f"{_A}\n{stray}\n{_B}\n{_D}\n", _HEAD))
+    assert refusals == []
+    assert stray in merged.splitlines()
+
+
+def test_one_stray_blank_does_not_re_space_every_other_entry():
+    """The separator is each entry's own. A whole-file "this file uses blanks"
+    boolean reformatted entries neither side had touched."""
+    ours = f"{_A}\n{_B}\n\n{_C}\n"        # one blank, after B only
+    theirs = f"{_A}\n{_B}\n\n{_D}\n"
+    merged, _, refusals = _resolve(_conflicted(ours, theirs, _HEAD))
+    assert refusals == []
+    assert merged == _HEAD + f"{_A}\n{_B}\n\n{_C}\n\n{_D}\n"

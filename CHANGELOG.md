@@ -144,9 +144,14 @@ two branches doing it.
   different pointers keep both — the second as a dated trail line — and the
   run says so, because that one needs a human. `diff3`/`zdiff3` conflict style
   is understood, and its merge-base section discarded rather than appended to
-  both sides. `--dry-run` prints the union and writes nothing. Where the file
-  is genuinely conflicted in the index the verb stages the result, so the
-  merge or rebase can simply continue.
+  both sides. `--dry-run` prints the union and writes nothing. Where git holds
+  the path unmerged the verb stages the result, so the merge or rebase can
+  simply continue — including an **add/add** conflict, which has no merge base
+  at all and which a consumer reaches easily, since `check`, `claim` and
+  `queue start` each create the inbox when it is missing. Run against a file
+  whose markers someone already stripped by hand, it stages that as it stands
+  rather than reporting "nothing to resolve" over a path git still refuses to
+  commit.
 - **It refuses anything that is not a pure append, and a refusal writes
   nothing.** A claim reworded, reordered or deleted on one side is a change to
   an immutable line, and so is an archive — `insights archive` cuts closed

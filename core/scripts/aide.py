@@ -14,7 +14,7 @@ Subcommands::
     python .aide/scripts/aide.py gate list|approve|decline [N]  # human gates in progress.md
     python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
-    python .aide/scripts/aide.py insights list|tick|archive     # the insight inbox
+    python .aide/scripts/aide.py insights list|tick|archive|resolve  # the insight inbox
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
     python .aide/scripts/aide.py merge NNN [--base R]  # merge a validated item per git.mode
     python .aide/scripts/aide.py env                   # venv existence / import check + bootstrap
@@ -2137,20 +2137,27 @@ def _merge_entry_block(ours: InsightEntry, ours_lines: List[str],
         kept, other = theirs, ours
     flag = None
     extra: List[str] = []
-    if other.ticked and other.pointer and other.pointer != kept.pointer:
-        # Two ticks, two pointers: the one case a machine may not decide, so it
-        # decides nothing and keeps both.
+    if other.pointer and other.pointer != kept.pointer:
+        # Two pointers, one per side: the one case a machine may not decide, so
+        # it decides nothing and keeps both. Not conditioned on the other side
+        # having *ticked* — a pointer written by hand before a tick is a
+        # routing record like any other, and dropping it is the silent loss
+        # this whole branch exists to prevent.
         extra.append(f"  - **{date}** {_INSIGHT_POINTER.strip()} {other.pointer} "
                      f"(second pointer, from the other side of the merge)")
-        flag = (f"entry {ours.ordinal} was ticked on both sides with different "
-                f"pointers ({kept.pointer!r} and {other.pointer!r}); both are "
-                f"kept — the entry line carries the first and the second is a "
-                f"trail line, so a human must decide which is true")
+        flag = (f"entry {ours.ordinal} carries a different pointer on each side "
+                f"of the merge ({kept.pointer!r} and {other.pointer!r}); both "
+                f"are kept — the entry line carries the first and the second is "
+                f"a trail line, so a human must decide which is true")
     trail = _merge_trail(ours.trail, theirs.trail) + extra
-    # Anything the block held that is neither the claim nor a trail line is
-    # kept from our side, at the end. Blank separators are not among them —
-    # the caller strips those and re-inserts one between every pair of entries.
+    # Anything the block held that is neither the claim nor a trail line, from
+    # BOTH sides — ours first. Taking it from ours alone dropped whatever sat
+    # under the entry on the other side and still called the merge clean.
+    # Blank separators are not among them: the caller strips those and puts
+    # each entry's own back.
     rest = [ln for ln in ours_lines[1:] if ln not in ours.trail]
+    rest += [ln for ln in theirs_lines[1:]
+             if ln not in theirs.trail and ln not in rest]
     return [kept.raw] + trail + rest, flag
 
 
@@ -2230,19 +2237,53 @@ def resolve_insights_text(text: str, date: str,
             f"append on top of a common prefix. Resolve this one by hand "
             f"(first: {' | '.join(x[1] for x in sorted(overlap))[:120]})"]
 
-    # A blank between two entries belongs to neither, and only a *last* entry
-    # can lack one, so the two sides disagree about the same entry purely by
-    # where it sits. Strip every separator, decide once whether the file uses
-    # them, and put them back between every pair — otherwise a blank-separated
-    # inbox loses the separator at the join, and entries neither side touched
-    # count as merged because one side's block carried a trailing blank.
+    # A blank line between two entries belongs to neither entry, and only a
+    # *last* entry can lack one — its blanks went to the file's tail instead.
+    # So the two sides can disagree about an entry neither of them touched,
+    # purely by where it sits. Each entry is therefore split into its own lines
+    # and its own trailing blanks: the lines are merged, and the blanks are
+    # carried through untouched, so an entry nobody edited is re-emitted with
+    # exactly the spacing it had. Only a *join* the append newly created — an
+    # entry that was last on its side and now has one behind it — needs a
+    # separator supplied, and the one it had is the one its own side's tail is
+    # still holding.
     strip = _strip_trailing_blanks
-    separated = any(blk != strip(blk) for _, blk in blocks_o + blocks_t)
 
-    merged_blocks: List[List[str]] = []
+    def own(block: List[str]) -> List[str]:
+        return block[len(strip(block)):]
+
+    def leading_blanks(lines: List[str]) -> List[str]:
+        out: List[str] = []
+        for line in lines:
+            if line.strip():
+                break
+            out.append(line)
+        return out
+
+    last_o = len(blocks_o) - 1
+    last_t = len(blocks_t) - 1
+    # What each side's final entry would have been followed by, had anything
+    # followed it. Empty for a file whose entries sit on consecutive lines.
+    end_o = leading_blanks(tail_o)
+    end_t = leading_blanks(tail_t)
+
+    def spacing(*candidates: List[str]) -> List[str]:
+        for c in candidates:
+            if c:
+                return c
+        return []
+
+    # (block, what followed it, whether it ended its side). A block that ended
+    # its side and was followed by nothing has no observed spacing at all —
+    # that is the join the append newly created, and the only place a
+    # separator may be *invented*. Everywhere else an empty `after` is a fact
+    # about the file, and re-spacing entries neither side touched on the
+    # strength of a blank line somewhere else in the file is a reformat.
+    merged_blocks: List[Tuple[List[str], List[str], bool]] = []
     flags: List[str] = []
     ticks = 0
-    for (eo, lo), (et, lt) in zip(blocks_o[:common], blocks_t[:common]):
+    for i, ((eo, lo), (et, lt)) in enumerate(
+            zip(blocks_o[:common], blocks_t[:common])):
         block, flag = _merge_entry_block(eo, strip(lo), et, strip(lt), date)
         if strip(lo) != strip(lt):
             # A shared claim whose bookkeeping the two sides disagreed on —
@@ -2250,15 +2291,30 @@ def resolve_insights_text(text: str, date: str,
             ticks += 1
         if flag:
             flags.append(flag)
-        merged_blocks.append(block)
-    merged_blocks.extend(strip(blk) for _, blk in blocks_o[common:])
-    merged_blocks.extend(strip(blk) for _, blk in blocks_t[common:])
+        merged_blocks.append((block, spacing(
+            own(lo), own(lt),
+            end_o if i == last_o else [], end_t if i == last_t else []),
+            i == last_o or i == last_t))
+    for i, (_, blk) in enumerate(blocks_o[common:], start=common):
+        merged_blocks.append((strip(blk),
+                              spacing(own(blk), end_o if i == last_o else []),
+                              i == last_o))
+    for i, (_, blk) in enumerate(blocks_t[common:], start=common):
+        merged_blocks.append((strip(blk),
+                              spacing(own(blk), end_t if i == last_t else []),
+                              i == last_t))
 
     out: List[str] = list(head_o)
-    for i, block in enumerate(merged_blocks):
-        if i and separated:
-            out.append("")
+    previous: List[str] = []
+    for i, (block, after, ended_a_side) in enumerate(merged_blocks):
         out.extend(block)
+        if i == len(merged_blocks) - 1:     # the last entry's blanks are the tail's
+            break
+        # Inherit from the entry above only where there is nothing to inherit
+        # *from* the entry itself, which is exactly the newly created join.
+        after = after or (previous if ended_a_side else [])
+        out.extend(after)
+        previous = after
     out.extend(tail_o)
 
     notes = [f"{common} entr{'y' if common == 1 else 'ies'} shared, "
@@ -5350,8 +5406,27 @@ def _cmd_insights_resolve(path: Path, text: str, ddir_rel: str, repo_root: Path,
     rel = f"{ddir_rel}/insights.md"
     if not any(rx.match(line) for line in text.splitlines()
                for rx in _CONFLICT_LINT_RES):
-        print(f"aide insights resolve: no conflict markers in {rel} — nothing "
-              f"to resolve")
+        if not _is_unmerged(repo_root, rel):
+            print(f"aide insights resolve: no conflict markers in {rel} — "
+                  f"nothing to resolve")
+            return 0
+        # Markers gone but the path still unmerged: someone resolved the file
+        # by hand and stopped short of staging it. Finishing that is the same
+        # end state this verb reaches on its own, and leaving it undone is how
+        # an unattended run stalls on `git commit` with nothing in the message
+        # naming the cause.
+        add = git(["add", "--", rel], repo_root, check=False)
+        if add.returncode != 0:
+            print(f"aide insights resolve: {rel} has no conflict markers but "
+                  f"git still holds it unmerged, and staging it failed "
+                  f"({add.stderr.strip()}) — `git add {rel}` before continuing",
+                  file=sys.stderr)
+            return 1
+        print(f"aide insights resolve: no conflict markers in {rel}, but git "
+              f"still held it unmerged — staged it as it stands, so the merge "
+              f"or rebase can continue. Nothing was rewritten; if a claim was "
+              f"reworded resolving it by hand, §1 says that is the thing to "
+              f"look at.")
         return 0
     base = _merge_base_text(repo_root, rel)
     merged, notes, refusals = resolve_insights_text(text, args.date or today, base)

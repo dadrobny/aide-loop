@@ -1445,6 +1445,27 @@ def test_dry_run_prints_the_union_itself_not_only_the_counts(
     assert _OURS in out and _THEIRS in out and "<<<<<<<" not in out
 
 
+def test_resolve_finishes_a_hand_stripped_file_that_git_still_holds_unmerged(
+        aide, consumer: Path, capsys):
+    """Markers gone, path still unmerged — someone resolved it by hand and
+    stopped short of staging. Reporting "nothing to resolve" and exiting 0 left
+    the exact end state the staging fix removed on the other branch of the
+    code: `git commit` dies on unmerged files."""
+    _two_branches_that_both_appended(consumer)
+    inbox = consumer / "docs" / "aide" / "insights.md"
+    kept = [l for l in inbox.read_text(encoding="utf-8").splitlines()
+            if not l.startswith(("<<<<<<<", "=======", ">>>>>>>"))]
+    inbox.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    rel = "docs/aide/insights.md"
+    assert _git(["ls-files", "-u", "--", rel], consumer).stdout.strip()
+
+    assert aide.main(["--repo", str(consumer), "insights", "resolve"]) == 0
+    assert "still held it unmerged" in capsys.readouterr().out
+    assert not _git(["ls-files", "-u", "--", rel], consumer).stdout.strip()
+    _git(["commit", "--no-edit"], consumer)          # would die if left unstaged
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
 def test_resolve_dry_run_leaves_the_conflict_in_place(aide, consumer: Path, capsys):
     _two_branches_that_both_appended(consumer)
     before = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
