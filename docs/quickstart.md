@@ -38,13 +38,15 @@ Commit the scaffold so the loop has a clean starting point.
 From inside your repo:
 
 ```
-python .aide/scripts/aide.py env      # venv present + import check (add --bootstrap to build it)
+python .aide/scripts/aide.py env      # venv health: exists, bootstrap finished, imports, test runner (add --bootstrap to build it)
 python .aide/scripts/aide.py check    # consistency gate over docs/aide/
 ```
 
 `check` will report the living documents as missing — expected, you create them
 next. (`env` is only relevant if your project uses a venv; set `[python]` in
-`aide.toml`.)
+`aide.toml` — `interpreter = "python3.12"` there pins what `--bootstrap`
+builds the venv from, when the dependency closure resolves on a narrower
+Python range than the project declares.)
 
 ## 3. Author the plan (one-time)
 

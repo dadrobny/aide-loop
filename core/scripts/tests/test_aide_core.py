@@ -1270,3 +1270,78 @@ def test_cli_queue_tidy_edits_file(tmp_path: Path):
     assert rc == 0
     text = (root / "docs" / "aide" / "queue" / "queue-001.md").read_text(encoding="utf-8")
     assert "Completed — superseded by queue-002 (2026-07-02)" in text
+
+
+# --------------------------------------------------------------------------- #
+# the split reports its copies, and check sees them until reworded (issue #169)
+# --------------------------------------------------------------------------- #
+def test_the_split_records_every_copy_it_wrote():
+    """A consumer's ✅ line for item 045 described items 046/047's still-open
+    work, because the split writes the shared prose N times and nothing said
+    so. The record is what lets a caller say so."""
+    splits = []
+    out = aide.set_item_status(MULTI, 16, "complete", splits)
+    assert [s.marker for s in splits] == ["*(Items 016, 017)*"]
+    lines = out.splitlines()
+    assert [(n, lines[ln - 1]) for n, ln in splits[0].copies] == [
+        (16, "- ✅ Adapters for two datasets. *(Item 016)*"),
+        (17, "- 📋 Adapters for two datasets. *(Item 017)*")]
+
+
+def test_a_flip_that_splits_nothing_records_nothing():
+    splits = []
+    aide.set_item_status(MULTI, 18, "complete", splits)
+    assert splits == []
+
+
+def test_split_line_numbers_survive_a_second_split_above_them():
+    """Spans are split bottom-up, so the lower bullet's copies are recorded
+    before the upper split grows the file above them."""
+    text = ("## Stage 2 — X — 📋\n**Deliverables.**\n"
+            "- 📋 First pair. *(Items 001, 002)*\n"
+            "- 📋 Second trio that wraps onto a\n"
+            "  second line. *(Items 001, 003, 004)*\n")
+    splits = []
+    out = aide.set_item_status(text, 1, "in-progress", splits)
+    assert sorted(splits, key=lambda s: s.copies[0][1]) == [
+        aide.BulletSplit("*(Items 001, 002)*", [(1, 3), (2, 4)]),
+        aide.BulletSplit("*(Items 001, 003, 004)*", [(1, 5), (3, 7), (4, 9)])]
+    lines = out.splitlines()
+    for split in splits:
+        for n, ln in split.copies:
+            assert aide._BULLET_RE.match(lines[ln - 1])
+            span = next((s, l) for s, l in aide._deliverable_bullet_spans(lines) if s == ln - 1)
+            assert aide._bullet_marker_item_numbers(lines[span[1]]) == [n]
+
+
+def test_check_reports_split_copies_until_they_are_reworded():
+    out = aide.set_item_status(MULTI, 16, "complete")
+    warnings = aide.identical_deliverable_warnings(out.splitlines())
+    assert len(warnings) == 1
+    assert "016, 017" in warnings[0] and warnings[0].startswith("progress.md:4:")
+    reworded = out.replace("- 📋 Adapters for two datasets. *(Item 017)*",
+                           "- 📋 The second dataset's adapter. *(Item 017)*")
+    assert aide.identical_deliverable_warnings(reworded.splitlines()) == []
+
+
+def test_an_unsplit_shared_marker_is_not_an_identical_copy():
+    """The shared bullet is one cell, not two copies — #131's desugar is what
+    makes the copies, and only they are the repair that did not happen."""
+    assert aide.identical_deliverable_warnings(MULTI.splitlines()) == []
+
+
+def test_identical_prose_in_different_stages_is_not_reported():
+    text = ("## Stage 1 — A — 📋\n**Deliverables.**\n- 📋 Same words. *(Item 001)*\n\n"
+            "## Stage 2 — B — 📋\n**Deliverables.**\n- 📋 Same words. *(Item 002)*\n")
+    assert aide.identical_deliverable_warnings(text.splitlines()) == []
+
+
+def test_a_wrapped_copy_compares_by_its_whole_prose():
+    text = ("## Stage 2 — X — 📋\n**Deliverables.**\n"
+            "- 📋 A deliverable whose text wraps onto a\n"
+            "  second line. *(Items 016, 017)*\n"
+            "- 📋 A deliverable whose text wraps onto a\n"
+            "  different second line. *(Item 018)*\n")
+    out = aide.set_item_status(text, 17, "complete")
+    warnings = aide.identical_deliverable_warnings(out.splitlines())
+    assert len(warnings) == 1 and "016, 017" in warnings[0] and "018" not in warnings[0]

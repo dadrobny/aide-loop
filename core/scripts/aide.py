@@ -33,6 +33,7 @@ import fnmatch
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -231,8 +232,15 @@ def _deliverable_bullet_spans(lines: List[str]) -> List[Tuple[int, int]]:
 # --------------------------------------------------------------------------- #
 DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
     "project": {"name": "project", "source_dir": "src", "tests_dir": "tests", "docs_dir": "docs/aide"},
+    # `interpreter` names what `env --bootstrap` builds the venv from — a
+    # command on PATH ("python3.12", "py -3.12") or an absolute path. Empty
+    # means the Python running the CLI, which is whatever launched it: a
+    # consumer whose dependency closure only resolves on 3.12 got a 3.14 venv
+    # from an ambient conda, a source build that failed on cmake, and an
+    # `env` that still said OK (issue #166).
     "python": {"venv": ".venv", "bootstrap": "pip install -e .[dev]",
-               "test_command": "python -m pytest", "import_check": ""},
+               "test_command": "python -m pytest", "import_check": "",
+               "interpreter": ""},
     "git": {"mode": "auto-merge", "main_branch": "main", "branch_prefix": "aide/"},
     "loop": {"queue_cap": 10, "validation_rounds": 3, "clarify": "assume",
              "claim_scope": "live-queue"},
@@ -1216,7 +1224,23 @@ def insert_item_reference(text: str, number: int, stage: str, title: str) -> Opt
     return None
 
 
-def _split_multi_item_bullets(lines: List[str], num: int, status: str) -> List[str]:
+class BulletSplit(NamedTuple):
+    """One shared-marker bullet ``_split_multi_item_bullets`` desugared.
+
+    ``marker`` is the marker the bullet carried (``*(Items 044, 045)*``);
+    ``copies`` is one ``(item number, 1-based line)`` per bullet it became,
+    the line being the copy's first line in the text the split produced. The
+    copies all carry the prose the shared bullet had, which described N items
+    at once and now stands under each of them alone — the caller's job is to
+    say so, since the file cannot (issue #169).
+    """
+
+    marker: str
+    copies: List[Tuple[int, int]]
+
+
+def _split_multi_item_bullets(lines: List[str], num: int, status: str,
+                              splits: Optional[List[BulletSplit]] = None) -> List[str]:
     """One bullet, one item: desugar a bullet that owns ``num`` *and* siblings.
 
     A trailing marker may name several items — ``*(Items 016, 017)*``, the form
@@ -1238,6 +1262,16 @@ def _split_multi_item_bullets(lines: List[str], num: int, status: str) -> List[s
     Only a flip that would ADVANCE the bullet splits it. A `progress set` that
     changes nothing must rewrite nothing: re-running one, or setting a status
     the bullet already holds, is not a reason to reshape a consumer's file.
+
+    What the split writes is the shared prose, verbatim, N times. It cannot be
+    otherwise — the bullet had one sentence for N items, and the engine has no
+    other — but that leaves N−1 copies whose text describes work that is not
+    the item named on them, and once one is ticked the file states something
+    undone as done (issue #169: a consumer's ✅ line for item 045 described
+    items 046/047's still-open work). So every split is *recorded* in
+    ``splits``, and the callers print the copies as a chore that the author
+    now owes; ``identical_deliverable_warnings`` keeps reporting them from
+    `aide check` until each copy's prose is its own.
     """
     for start, last in reversed(_deliverable_bullet_spans(lines)):
         marker = _BULLET_MARKER_RE.search(lines[last])
@@ -1270,15 +1304,27 @@ def _split_multi_item_bullets(lines: List[str], num: int, status: str) -> List[s
         matched = marker.group(0)
         tail = matched[len(matched.rstrip(" \t.")):]
         block: List[str] = []
+        copies: List[Tuple[int, int]] = []
+        span = last + 1 - start
         for n in nums:
             copy = lines[start:last + 1]
             copy[-1] = f"{head}*(Item {n:03d})*{tail}"
+            copies.append((n, start + len(block) + 1))
             block.extend(copy)
         lines[start:last + 1] = block
+        if splits is not None:
+            # Spans are walked from the bottom, so a split here shifts every
+            # copy already recorded below it by the lines this one grew.
+            grown = len(block) - span
+            splits[:] = [BulletSplit(s.marker, [(n, ln + grown if ln > start else ln)
+                                                for n, ln in s.copies])
+                         for s in splits]
+            splits.append(BulletSplit(matched.rstrip(" \t."), copies))
     return lines
 
 
-def set_item_status(text: str, num: int, status: str) -> str:
+def set_item_status(text: str, num: int, status: str,
+                    splits: Optional[List[BulletSplit]] = None) -> str:
     """Flip item NNN's deliverable bullet(s) to ``status`` and roll stages up.
 
     ``status`` is ``in-progress``, ``in-review`` or ``complete``. Updates summary/header/
@@ -1288,13 +1334,15 @@ def set_item_status(text: str, num: int, status: str) -> str:
 
     A bullet whose marker names several items is split into one bullet per item
     first (see ``_split_multi_item_bullets``), so no sibling is carried along by
-    a flip it did not earn.
+    a flip it did not earn. Each such split is appended to ``splits`` when the
+    caller passes a list: the copies carry prose written for all the items at
+    once, and the caller is the one who can say so (issue #169).
     """
     lines = text.splitlines()
     # A marker naming several items is one status cell for all of them, so the
     # bullet is desugared into one bullet per item BEFORE anything flips
     # (issue #131). After this the flip below can only move `num`.
-    lines = _split_multi_item_bullets(lines, num, status)
+    lines = _split_multi_item_bullets(lines, num, status, splits)
     # Flip the icon of every bullet whose trailing marker names this item —
     # the same ownership rule `_parse_item_status` reads by (issue #99), so a
     # bullet that merely mentions the item in prose is never flipped.
@@ -2834,6 +2882,60 @@ def nested_deliverable_warnings(lines: List[str]) -> List[str]:
     return out
 
 
+def _bullet_prose(lines: List[str], start: int, last: int) -> str:
+    """A deliverable bullet's text with its icon and trailing marker removed,
+    whitespace-normalised — the part an author wrote about the work."""
+    body = lines[start:last + 1]
+    # Tail first, then head: on a one-line bullet both cuts land on the same
+    # string, and the marker's offset is only right before the icon is gone.
+    marker = _BULLET_MARKER_RE.search(body[-1])
+    if marker is not None:
+        body[-1] = body[-1][:marker.start()]
+    first = _BULLET_RE.match(lines[start])
+    if first:
+        body[0] = body[0][first.end():]
+    return " ".join(part.strip() for part in body).strip()
+
+
+def identical_deliverable_warnings(lines: List[str]) -> List[str]:
+    """Single-item deliverable bullets in one stage with the same prose.
+
+    That shape is what `_split_multi_item_bullets` leaves behind: a shared
+    ``*(Items …)*`` marker desugared into one bullet per item, every copy
+    carrying the sentence written for all of them. It is correct the moment
+    it is written and wrong the moment one copy is ticked — the ✅ then
+    describes the siblings' work as done — and rewording is invisible to every
+    other check, so an un-reworded copy simply stood (issue #169). Reported
+    per stage and per prose, naming the items, until each copy says what its
+    own item delivers. A consumer that genuinely ships two identical
+    deliverables in one stage sees the same warning; the remedy is the same
+    sentence either way.
+    """
+    out: List[str] = []
+    for start, end, num in stage_sections(lines):
+        groups: Dict[str, List[Tuple[int, int]]] = {}
+        for s, last in _deliverable_bullet_spans(lines[start:end]):
+            s, last = s + start, last + start
+            items = _bullet_marker_item_numbers(lines[last])
+            if len(items) != 1:
+                continue
+            prose = _bullet_prose(lines, s, last)
+            if prose:
+                groups.setdefault(prose, []).append((items[0], s + 1))
+        for prose, hits in groups.items():
+            if len(hits) < 2:
+                continue
+            listed = ", ".join(f"{n:03d}" for n, _ in hits)
+            out.append(
+                f"progress.md:{hits[0][1]}: stage {num} has {len(hits)} "
+                f"deliverable bullets with identical prose, attributed to "
+                f"items {listed} — the shape a split of a shared *(Items …)* "
+                f"marker leaves behind, so a ✅ on one describes the others' "
+                f"work too. Reword each copy to say what its own item "
+                f"delivers.")
+    return out
+
+
 def unattributed_reference_warnings(lines: List[str]) -> List[str]:
     """Deliverable bullets that reference items but attribute none of them.
 
@@ -3389,6 +3491,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
             f"{cdate} ({creason}) — the box is open again, and the original "
             f"attestation is kept above the correction")
     warnings.extend(nested_deliverable_warnings(lines))
+    warnings.extend(identical_deliverable_warnings(lines))
     warnings.extend(unattributed_reference_warnings(lines))
     warnings.extend(acceptance_drift_warnings(ddir, lines))
 
@@ -4098,6 +4201,26 @@ _SET_STATUS_MAP = {"in-progress": "in-progress", "in-review": "in-review",
                    "done": "complete"}
 
 
+def _report_bullet_splits(number: int, lines: List[str],
+                          splits: List[BulletSplit]) -> None:
+    """Print the copies a flip's split wrote, as the chore they are.
+
+    The split is the engine's edit, made with no author present, and it
+    produces N bullets carrying one bullet's prose — text that described the
+    shared deliverable and now stands, unchanged, under each item alone. The
+    engine cannot write the right words; it can refuse to be silent about the
+    wrong ones (issue #169). ``lines`` is the text *after* the flip, so the
+    copies print with the icons they ended up with.
+    """
+    for split in sorted(splits, key=lambda s: s.copies[0][1]):
+        print(f"item {number:03d}: split the shared bullet {split.marker} into "
+              f"one bullet per item. Every copy still carries the SHARED "
+              f"prose — reword each to describe its own item's work, or "
+              f"`aide check` keeps reporting them as identical:")
+        for _, lineno in split.copies:
+            print(f"  progress.md:{lineno}: {lines[lineno - 1].strip()}")
+
+
 def cmd_progress(args: argparse.Namespace) -> int:
     #: The acceptance verbs, in the order §1 describes them: make an
     #: attestation, correct its evidence, withdraw it, or reword a criterion
@@ -4157,7 +4280,8 @@ def cmd_progress(args: argparse.Namespace) -> int:
         healed_note = (f"item {args.number:03d}: back-filled missing "
                        f"deliverable reference under Stage {stage} "
                        f"(from the item spec)")
-    updated = set_item_status(text, args.number, status_map[args.status])
+    splits: List[BulletSplit] = []
+    updated = set_item_status(text, args.number, status_map[args.status], splits)
     if args.number not in _parse_item_status(updated.splitlines())[2]:
         # Belt to the heal's braces: if the back-fill (or anything else) left
         # no bullet whose trailing marker names this item, the set recorded
@@ -4179,6 +4303,7 @@ def cmd_progress(args: argparse.Namespace) -> int:
     else:
         progress_path.write_text(updated, encoding="utf-8")
         print(f"item {args.number:03d}: set to {args.status}")
+        _report_bullet_splits(args.number, updated.splitlines(), splits)
     if not args.no_commit and (repo_root / ".git").exists():
         _commit_progress(repo_root, config, args.number, args.status)
     return 0
@@ -4912,17 +5037,136 @@ def resolve_test_command(repo_root: Path, config: Dict[str, Dict[str, object]]) 
     return raw
 
 
+#: Written beside the venv's own files by `env --bootstrap`, read by
+#: `env_report`: the exit status of the install that populated the venv. A
+#: `pip install -e .[dev]` that aborts partway leaves the editable project
+#: importable and the dependency closure unfinished, so an import check alone
+#: reads a half-install as healthy (issue #166). The record is the one thing
+#: that distinguishes them.
+_BOOTSTRAP_RECORD = "aide-bootstrap.json"
+
+
+def _venv_dir(repo_root: Path, config: Dict[str, Dict[str, object]]) -> Path:
+    return repo_root / str(config["python"].get("venv", ".venv"))
+
+
+def _configured_interpreter(config: Dict[str, Dict[str, object]]) -> List[str]:
+    """The command `--bootstrap` builds the venv with, else the Python running
+    this CLI.
+
+    `[python] interpreter` is either a path or a command line. A value that
+    names an existing file is the whole command, spaces and all — Windows's
+    own default install lives under `Program Files`, and splitting that is
+    what turned a valid key into "cannot be run". Anything else is a command
+    line (`py -3.12`, `"C:\\Some Dir\\python.exe" -X utf8`), split the way
+    the platform's shell would: shlex on POSIX; on Windows in non-POSIX mode,
+    which keeps backslashes and leaves the quotes on a quoted token for this
+    to strip.
+    """
+    raw = str(config["python"].get("interpreter", "") or "").strip()
+    if not raw:
+        return [sys.executable]
+    if Path(raw).is_file():
+        return [raw]
+    if os.name == "nt":
+        return [token.strip('"') for token in shlex.split(raw, posix=False)]
+    return shlex.split(raw)
+
+
+def _test_runner_module(config: Dict[str, Dict[str, object]]) -> Optional[str]:
+    """The module `test_command` runs with ``python -m``, if that is its shape.
+
+    Only that shape is answerable from inside the venv: `resolve_test_command`
+    binds a leading `python` to the venv, so `python -m pytest` runs *the
+    venv's* pytest and its absence is the venv's fault. A bare `pytest` or a
+    `make test` resolves on PATH, and whether PATH has it is not a property
+    of the venv this reports on.
+    """
+    raw = str(config["python"].get("test_command", "python -m pytest")).split()
+    if len(raw) >= 3 and raw[0] == "python" and raw[1] == "-m":
+        return raw[2]
+    return None
+
+
+def _python_version(command: List[str], cwd: Path) -> Optional[str]:
+    """``major.minor`` of the interpreter *command* starts, or None when it
+    cannot be run at all."""
+    try:
+        res = subprocess.run(
+            [*command, "-c", "import sys; print('%d.%d' % sys.version_info[:2])"],
+            cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    if res.returncode != 0:
+        return None
+    return res.stdout.strip() or None
+
+
+def _read_bootstrap_record(venv: Path) -> Optional[Dict[str, object]]:
+    path = venv / _BOOTSTRAP_RECORD
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def env_report(repo_root: Path, config: Dict[str, Dict[str, object]]) -> Tuple[str, str]:
+    """``(status, detail)`` for the project venv: 'ok', 'missing' or 'stale'.
+
+    'ok' is a claim the loop acts on — the validator reads it and runs the
+    suite — so it is only made when every question this can ask of the venv
+    is answered: the venv exists; the last `--bootstrap` that built it
+    finished; it is the Python `[python] interpreter` names, where that is
+    set and runnable; `import_check` imports; and the module `test_command`
+    runs with `-m` imports too. A venv with no `pytest` cannot report OK
+    (issue #166). The detail is one sentence for the report line.
+    """
+    vpy = venv_python(repo_root, config)
+    venv = _venv_dir(repo_root, config)
+    if not vpy.exists():
+        return "missing", f"no venv at {venv}"
+    record = _read_bootstrap_record(venv)
+    if record is not None and record.get("exit") not in (0, None):
+        return "stale", (f"the last `env --bootstrap` exited "
+                         f"{record.get('exit')}, so its install did not finish")
+    facts: List[str] = []
+    actual = _python_version([str(vpy)], repo_root)
+    if actual is None:
+        return "stale", f"{vpy} cannot be run"
+    facts.append(f"venv is Python {actual}")
+    configured = str(config["python"].get("interpreter", "") or "").strip()
+    if configured:
+        wanted = _python_version(_configured_interpreter(config), repo_root)
+        if wanted is None:
+            facts.append(f"[python] interpreter '{configured}' cannot be run "
+                         f"on this machine, so the venv was judged on its own")
+        elif wanted != actual:
+            return "stale", (f"venv is Python {actual} but [python] interpreter "
+                             f"'{configured}' is {wanted} — rebuild it")
+        else:
+            facts[-1] += f" ({configured})"
+    for what, module in (("import_check", str(config["python"].get("import_check", "") or "").strip()),
+                         ("test_command", _test_runner_module(config))):
+        if not module:
+            continue
+        res = subprocess.run([str(vpy), "-c", f"import {module}"], cwd=str(repo_root),
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if res.returncode != 0:
+            why = ("its test runner is not installed, so `python -m "
+                   f"{module}` cannot run" if what == "test_command"
+                   else f"`import {module}` fails")
+            return "stale", why
+        facts.append(f"`import {module}` succeeds")
+    return "ok", "; ".join(facts)
+
+
 def env_status(repo_root: Path, config: Dict[str, Dict[str, object]]) -> str:
     """Return 'ok', 'missing', or 'stale' for the project venv."""
-    vpy = venv_python(repo_root, config)
-    if not vpy.exists():
-        return "missing"
-    module = str(config["python"].get("import_check", "") or "").strip()
-    if not module:
-        return "ok"
-    res = subprocess.run([str(vpy), "-c", f"import {module}"],
-                         cwd=str(repo_root), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return "ok" if res.returncode == 0 else "stale"
+    return env_report(repo_root, config)[0]
 
 
 def cmd_env(args: argparse.Namespace) -> int:
@@ -4955,22 +5199,52 @@ def cmd_env(args: argparse.Namespace) -> int:
               f"validation gated on it must record '❓ Unverified', never a silent pass")
         return 1
 
-    status = env_status(repo_root, config)
+    status, detail = env_report(repo_root, config)
     if status == "ok":
-        print("aide env: OK (venv present, import succeeds)")
+        print(f"aide env: OK ({detail})")
         return 0
     if not args.bootstrap:
-        print(f"aide env: {status} — run 'python .aide/scripts/aide.py env --bootstrap' to build it")
+        print(f"aide env: {status} — {detail}; run "
+              f"'python .aide/scripts/aide.py env --bootstrap' to build it")
         return 1
-    venv = repo_root / str(config["python"].get("venv", ".venv"))
+    venv = _venv_dir(repo_root, config)
     bootstrap = str(config["python"].get("bootstrap", "pip install -e .[dev]")).split()
-    print(f"aide env: bootstrapping {venv} …")
-    subprocess.run([sys.executable, "-m", "venv", str(venv)], cwd=str(repo_root), check=True)
+    interpreter = _configured_interpreter(config)
+    # A stale venv is rebuilt from nothing: `-m venv` over an existing tree
+    # re-points the scripts and pyvenv.cfg at the new interpreter and keeps
+    # the old site-packages beside them, which is neither venv.
+    venv_args = ["-m", "venv", *(["--clear"] if venv.exists() else []), str(venv)]
+    print(f"aide env: bootstrapping {venv} with {' '.join(interpreter)} …")
+    try:
+        made = subprocess.run([*interpreter, *venv_args], cwd=str(repo_root), check=False)
+    except OSError as exc:
+        print(f"aide env: [python] interpreter '{' '.join(interpreter)}' cannot "
+              f"be run ({exc}) — nothing was built. Install it, or name one "
+              f"this machine has in aide.toml.", file=sys.stderr)
+        return 1
+    if made.returncode != 0:
+        print(f"aide env: '{' '.join(interpreter)} -m venv' exited "
+              f"{made.returncode} — nothing was built.", file=sys.stderr)
+        return 1
     vpy = venv_python(repo_root, config)
     cmd = [str(vpy), "-m", *bootstrap] if bootstrap and bootstrap[0] == "pip" else [str(vpy), *bootstrap]
-    subprocess.run(cmd, cwd=str(repo_root), check=True)
-    final = env_status(repo_root, config)
-    print(f"aide env: bootstrap done ({final})")
+    installed = subprocess.run(cmd, cwd=str(repo_root), check=False)
+    # The record is what lets a later `env` tell a finished install from one
+    # that aborted after the editable project landed (issue #166). Written
+    # on both outcomes, so a completed rebuild clears an earlier failure.
+    (venv / _BOOTSTRAP_RECORD).write_text(json.dumps({
+        "exit": installed.returncode, "command": cmd,
+        "interpreter": interpreter,
+        "python": _python_version([str(vpy)], repo_root)}, indent=2) + "\n",
+        encoding="utf-8")
+    if installed.returncode != 0:
+        print(f"aide env: bootstrap FAILED — '{' '.join(cmd)}' exited "
+              f"{installed.returncode}. The venv exists but its install did "
+              f"not finish, and `env` reports it stale until a bootstrap "
+              f"completes.", file=sys.stderr)
+        return 1
+    final, detail = env_report(repo_root, config)
+    print(f"aide env: bootstrap done ({final}: {detail})")
     return 0 if final == "ok" else 1
 
 
@@ -5442,7 +5716,8 @@ def _has_unpushed_merge(repo_root: Path) -> bool:
     return res.returncode == 0 and bool(res.stdout.strip())
 
 
-def _restore_claim_branch(repo_root: Path, branch: str, tip: str) -> None:
+def _restore_claim_branch(repo_root: Path, branch: str, tip: str,
+                          base: Optional[str] = None) -> None:
     """Put back a claim branch deleted ahead of a step that then failed.
 
     `merge` deletes the claim branch BEFORE the post-merge test run (so the run
@@ -5451,9 +5726,25 @@ def _restore_claim_branch(repo_root: Path, branch: str, tip: str) -> None:
     nothing and the retry dies at "no claim branch found" — with the work
     merged, un-ticked and unpushed, which is the state a human least wants to
     meet a refusal in.
+
+    Re-runnable means *against the same base*, not merely runnable. `git
+    branch -d` takes the branch's config section with the ref, and
+    `branch.<claim>.aide-base` is the only input `resolve_base` has beyond
+    `--base` — so a retry that found the ref put back resolved its base to
+    `main_branch` and said nothing. A consumer's invited re-run fast-forwarded
+    a whole queue branch onto `main` and pushed it, past its
+    one-reviewed-PR-per-queue gate, with nothing in the output naming `main`
+    (issue #167). *base* is the base THIS run resolved to and merged into —
+    not what the branch recorded beforehand: a run given `--base` landed
+    somewhere the record did not say, and a retry must land there again. It
+    is written unconditionally, so a `branch -d` that refused (record intact,
+    and possibly stale against `--base`) is corrected the same way as one
+    that succeeded.
     """
     if tip and branch not in _local_branches(repo_root):
         git(["branch", branch, tip], repo_root, check=False)
+    if base:
+        _record_branch_base(repo_root, branch, base)
 
 
 def _promote_item_to_complete(repo_root: Path, config, number: int,
@@ -5472,11 +5763,13 @@ def _promote_item_to_complete(repo_root: Path, config, number: int,
               f"not found, so its status was NOT recorded", file=sys.stderr)
         return
     text = progress_path.read_text(encoding=_ENCODING)
-    updated = set_item_status(text, number, "complete")
+    splits: List[BulletSplit] = []
+    updated = set_item_status(text, number, "complete", splits)
     if updated == text:
         return
     progress_path.write_text(updated, encoding="utf-8")
     print(f"item {number:03d}: set to done (merged)")
+    _report_bullet_splits(number, updated.splitlines(), splits)
     if not no_commit and (repo_root / ".git").exists():
         _commit_progress(repo_root, config, number, "done")
 
@@ -5496,7 +5789,20 @@ def cmd_merge(args: argparse.Namespace) -> int:
     # queue by hand — the queue file, a roadmap deliverable and nine item specs
     # lived only on the queue branch and had to land as one reviewed PR, so each
     # item needed to merge *back into* that branch.
+    recorded_base = _recorded_branch_base(repo_root, branch)
     main = resolve_base(repo_root, config, args.base, branch)
+    # Named on every run, whatever chose it. The fallback to main_branch is
+    # right for a branch this machine never claimed, and it is exactly the
+    # case a retargeted merge hides in: the one run that quietly landed a
+    # queue on `main` reported nothing a transcript could catch (issue #167).
+    if args.base:
+        chosen = "from --base"
+    elif recorded_base:
+        chosen = f"recorded for {branch} at claim, or by an earlier merge run"
+    else:
+        chosen = (f"the [git] main_branch default — no base is recorded for "
+                  f"{branch} on this machine; pass --base if that is wrong")
+    print(f"aide merge: item {args.number:03d} lands on {main} ({chosen})")
     if not _local_branch_exists(repo_root, main):
         detail = ("it resolves, but not to a local branch — `git switch` would "
                   "detach HEAD, and a merge into a detached HEAD updates no "
@@ -5573,8 +5879,11 @@ def cmd_merge(args: argparse.Namespace) -> int:
     # test command includes `aide check` got "stale claim branch … item NNN is
     # already ✅" — a failure class the item's acceptance baseline had never
     # seen, produced by nothing but this ordering. Its tip is remembered so any
-    # later exit can put the branch back exactly as it was.
+    # later exit can put the branch back exactly as it was — with the base
+    # this run merged into as its record, since `branch -d` discards the old
+    # one with the ref and a retry must land where this run did (issue #167).
     branch_tip = git(["rev-parse", branch], repo_root, check=False).stdout.strip()
+    branch_base = main
     # `-d` can refuse even though the work landed (e.g. `pull --rebase` rewrote
     # main so the branch tip is no longer an ancestor); this process just
     # established that the branch is merged, so escalating to -D is safe. VERIFY
@@ -5588,15 +5897,16 @@ def cmd_merge(args: argparse.Namespace) -> int:
         cmd = resolve_test_command(repo_root, config)
         test_res = subprocess.run(cmd, cwd=str(repo_root))
         if test_res.returncode != 0:
-            _restore_claim_branch(repo_root, branch, branch_tip)
+            _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
             print(f"aide merge: the post-merge test run FAILED, so item "
                   f"{args.number:03d} is NOT ✅ and nothing was pushed — the "
                   f"tick and the push are what this run refuses, not the merge "
                   f"itself. {branch} is merged into {main} in THIS repository "
-                  f"only, and the claim branch is back. Fix the failures on "
-                  f"{main}, commit, then re-run 'merge {args.number:03d}': the "
-                  f"merge is already an ancestor, so the retry only re-tests, "
-                  f"ticks and pushes.", file=sys.stderr)
+                  f"only, and the claim branch is back with its base. Fix the "
+                  f"failures on {main}, commit, then re-run "
+                  f"'merge {args.number:03d} --base {main}': the merge is "
+                  f"already an ancestor, so the retry only re-tests, ticks and "
+                  f"pushes.", file=sys.stderr)
             return 1
 
     # ✅ is set HERE, by the process that just did the merge, so it always means
@@ -5619,12 +5929,12 @@ def cmd_merge(args: argparse.Namespace) -> int:
             # ticking an item whose tests fail. The remote claim branch is
             # deliberately NOT deleted, so the work still exists somewhere
             # other than this checkout.
-            _restore_claim_branch(repo_root, branch, branch_tip)
+            _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
             print(f"aide merge: item {args.number:03d} is merged and ✅ here, "
                   f"but pushing {main} to origin FAILED, so neither the merge "
                   f"nor the tick has left this repository and the claim branch "
-                  f"is kept. Resolve the push, then re-run "
-                  f"'merge {args.number:03d}'.\n"
+                  f"is kept, with its base. Resolve the push, then re-run "
+                  f"'merge {args.number:03d} --base {main}'.\n"
                   f"{push_res.stdout}{push_res.stderr}", file=sys.stderr)
             return 1
         del_remote = git(["push", "origin", "--delete", branch], repo_root, check=False)
@@ -6903,8 +7213,11 @@ def register_git_subcommands(sub) -> None:
                          help="do not commit the progress.md status the merge records")
     p_merge.set_defaults(func=cmd_merge)
 
-    p_env = sub.add_parser("env", help="venv existence / import check + bootstrap")
-    p_env.add_argument("--bootstrap", action="store_true", help="create + populate the venv if missing/stale")
+    p_env = sub.add_parser("env", help="venv health (exists, bootstrap finished, "
+                                        "interpreter matches, imports, test runner) + bootstrap")
+    p_env.add_argument("--bootstrap", action="store_true",
+                       help="create + populate the venv if missing/stale, from "
+                            "[python] interpreter when set")
     p_env.add_argument("--profile", default=None,
                        help="evaluate a named [validation] environment profile (exit 0 iff satisfied)")
     p_env.set_defaults(func=cmd_env)

@@ -28,6 +28,23 @@ instead — that is the bump policy above, and it is enforced by
 
 ### Added
 
+- **The managed `.gitignore` block carries an adapter-contributed section, and
+  the Claude adapter's is `.claude/worktrees/` (issue #165).** Claude Code's
+  `/code-review` checks the repository out under `.claude/worktrees/` to
+  review a diff and leaves the scratch checkout behind; `aide sync` refuses
+  on any untracked path, so an unattended run stalled on a sibling tool's
+  scratch space with nothing in the message naming the cause. The consumer
+  repaired it in its own `.gitignore` — a per-consumer fix for a condition
+  every consumer of the adapter can reach. The block stays one file for every
+  runtime: the engine's lines are runtime-agnostic, and the installer appends
+  the lines of the adapter it is installing (`ADAPTER_GITIGNORE_LINES` in
+  `install.py`), so the adapter path never enters the cross-runtime list and
+  the cleanliness check keeps the one property that makes it worth having,
+  that it is unconditional. The reconcile on `--update` carries the line to
+  every existing consumer. Installer-only: nothing a consumer's `--update`
+  copies changed *for this entry* — it shipped beside 1.39.0, whose bump is
+  for the engine changes listed there, not for this one.
+
 - **`install.py --check` names contract text a consumer restates in its own
   instruction file (issue #96).** The installer maintains one line in that file
   — the `@.aide/AGENT-CONTEXT.md` import — and reads it for nothing else, which
@@ -103,6 +120,84 @@ instead — that is the bump policy above, and it is enforced by
   update leaves the old one (`--check` says behind; `--update` remains the
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
+
+## [1.39.0] — 2026-09-08
+
+Three engine wrongs that were silent in the direction that costs most: a
+merge that retargeted itself, a progress file that stated undone work done,
+and an environment check that said OK over a venv with no test runner. Each
+was observed in one consumer, and each is now either fixed or loud.
+
+### Added
+
+- **`[python] interpreter` names what `env --bootstrap` builds the venv from
+  (issue #166).** A path to an interpreter, taken whole when it names an
+  existing file so `C:\Program Files\…` survives, or a command line
+  (`python3.12`, `py -3.12`, a quoted path plus flags) split the way the
+  platform's shell would; unset, the bootstrap uses the Python that launched
+  the CLI, as before. A consumer whose dependency closure resolves
+  only on a narrower range than its `requires-python` declares had nowhere to
+  say so: an ambient conda 3.14 built the venv, a pinned dependency with no
+  cp314 wheel fell back to a source build that failed on cmake, and the
+  project's editable install was the only thing that landed. `aide env`
+  reports the venv's Python beside the configured interpreter and calls a
+  venv built from a different version stale, so the mismatch is visible
+  before anything trusts it; a configured interpreter this machine cannot
+  run is a sentence, not a traceback, and builds nothing. The scaffolded
+  `aide.toml` carries the key as a commented hint.
+
+### Fixed
+
+- **A merge re-run resolves to the base the first run had (issue #167).**
+  `merge` deletes the claim branch before the post-merge test run, and `git
+  branch -d` takes the branch's config section — `branch.<claim>.aide-base`,
+  the one input `resolve_base` has beyond `--base` — with the ref. On a red
+  run the restore put back the ref alone, and the retry the failure message
+  invites, run without `--base` because the first run needed none, fell back
+  to `main_branch` and reported no difference. A consumer's re-run
+  fast-forwarded a whole queue branch onto `main` and pushed it, past its
+  one-reviewed-PR-per-queue gate, with nothing in the output naming `main`;
+  a human noticed that `main` had moved. Every restore now records the base
+  *this run merged into* — the resolved one, so a run given `--base` is
+  retried where it landed and not where an older record pointed — beside
+  the ref, so the retry resolves exactly as the first run did. Two belts on
+  that brace:
+  `merge` names the base it lands on and how it was chosen (`--base`,
+  recorded at claim, or the `main_branch` default with no record on this
+  machine) on every run, so a retargeted merge is at least visible in the
+  transcript; and both re-run instructions now carry `--base <resolved>`.
+
+- **A split of a shared `*(Items …)*` marker reports the copies it wrote, and
+  `aide check` reports them until each is reworded (issue #169).** 1.31.0's
+  desugar (#131) is correct — one status cell per item — and what it writes
+  cannot be: the bullet had one sentence for N items, so N−1 copies carry
+  prose describing work that is not the item named on them. One consumer
+  reworded a copy by hand, in a document the CLI owns; the next copy was
+  flipped to ✅ without rewording, and `progress.md` stated another two
+  items' still-open work as done under it, with nothing able to tell.
+  `set_item_status` now records every split, `progress set` and `merge`
+  print each copy with its line number as the chore it is, and a new check
+  warning names the single-item deliverable bullets in one stage whose prose
+  is identical — the shape a split leaves behind and only a rewording
+  removes. A consumer that genuinely writes two identical deliverables in a
+  stage sees the same warning; the remedy is the same sentence either way.
+
+- **`aide env` cannot report OK over a venv with no test runner (issue
+  #166).** The check inferred the health of a whole install from the venv
+  existing and one `import_check` succeeding, which a `pip install -e .[dev]`
+  that aborted after the editable project satisfies. `env_report` now asks
+  everything it can of the venv before saying OK: the venv exists; the last
+  `--bootstrap` that built it finished, read from the record the bootstrap
+  now writes beside the venv's files (`aide-bootstrap.json`, both outcomes,
+  so a completed rebuild clears an earlier failure); its Python matches
+  `[python] interpreter` where that is set and runnable; `import_check`
+  imports; and the module `test_command` runs with `python -m` imports too.
+  A bootstrap whose install fails is an exit-1 sentence rather than a
+  `CalledProcessError` traceback, and the venv is reported stale until a
+  bootstrap completes; a stale venv is rebuilt with `--clear` rather than
+  re-pointed over the old site-packages. `env_status` keeps its three
+  answers for callers that read only the word; the report line carries the
+  facts.
 
 ## [1.38.0] — 2026-09-03
 

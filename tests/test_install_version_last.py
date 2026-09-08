@@ -102,7 +102,7 @@ def test_failed_update_keeps_the_old_version_and_reports_behind(tmp_path: Path, 
 def test_even_the_last_pre_version_step_precedes_the_write(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Failure injected as late as step 7 (.gitignore) still withholds VERSION."""
-    def boom(target, log):
+    def boom(target, log, adapter=None):
         raise OSError("disk full")
 
     monkeypatch.setattr(install, "append_gitignore", boom)
@@ -141,7 +141,7 @@ def test_a_failed_update_keeps_the_old_manifest_too(
     old = manifest.read_bytes() + b".claude/rules/aide-from-the-previous-release.md\n"
     manifest.write_bytes(old)
 
-    def boom(target, log):
+    def boom(target, log, adapter=None):
         raise OSError("disk full")
 
     monkeypatch.setattr(install, "append_gitignore", boom)

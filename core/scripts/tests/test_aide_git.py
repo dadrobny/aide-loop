@@ -1376,3 +1376,175 @@ def test_none_left_reports_in_the_queues_own_order(tmp_path: Path, capsys):
     reported = [line.split()[0] for line in capsys.readouterr().out.splitlines()
                 if line.startswith("  0")]
     assert reported == ["028", "027"]
+
+
+# --------------------------------------------------------------------------- #
+# a merge retry resolves to the base the first run had (issue #167)
+# --------------------------------------------------------------------------- #
+def test_restore_puts_back_the_recorded_base_with_the_ref(tmp_path: Path):
+    """`git branch -d` takes `branch.<claim>.aide-base` with the ref. Restoring
+    the ref alone made the retry *run*; it made it run against main_branch."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    assert aide.main(["--repo", str(root), "queue", "start", "3"]) == 0
+    assert aide.main(["--repo", str(root), "claim", "--queue", "3"]) == 0
+    branch = _current_branch(root)
+    tip = _run(["git", "rev-parse", branch], root).stdout.strip()
+    base = aide._recorded_branch_base(root, branch)
+    assert base == "aide/queue-003"
+    _run(["git", "switch", "aide/queue-003"], root)
+    _run(["git", "branch", "-D", branch], root)
+    assert aide._recorded_branch_base(root, branch) is None
+
+    aide._restore_claim_branch(root, branch, tip, base)
+    assert branch in aide._local_branches(root)
+    assert aide._recorded_branch_base(root, branch) == "aide/queue-003"
+    assert aide.resolve_base(root, aide.load_config(root), None, branch) == "aide/queue-003"
+
+
+def test_merge_names_the_base_and_that_nothing_recorded_it(tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 0
+    out = capsys.readouterr().out
+    assert "item 027 lands on main" in out and "no base is recorded" in out
+
+
+def test_merge_names_a_recorded_base_as_recorded(tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="local")
+    assert aide.main(["--repo", str(root), "queue", "start", "3"]) == 0
+    assert aide.main(["--repo", str(root), "claim", "--queue", "3"]) == 0
+    (root / "work.txt").write_text("work\n", encoding="utf-8")
+    _run(["git", "add", "-A"], root)
+    _run(["git", "commit", "-m", "work"], root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 0
+    out = capsys.readouterr().out
+    assert "item 027 lands on aide/queue-003 (recorded for" in out
+    assert _current_branch(root) == "aide/queue-003"
+
+
+# --------------------------------------------------------------------------- #
+# env: an interpreter to build from, and an OK that means it (issue #166)
+# --------------------------------------------------------------------------- #
+def _env_toml(test_command: str, import_check: str = "", interpreter: str = "") -> str:
+    return (f'[python]\nvenv = ".venv"\ntest_command = "{test_command}"\n'
+            f'import_check = "{import_check}"\ninterpreter = "{interpreter}"\n')
+
+
+def _toml_path(path: str) -> str:
+    return path.replace("\\", "\\\\")
+
+
+@pytest.fixture(scope="module")
+def bare_venv(tmp_path_factory) -> Path:
+    """A real venv with nothing in it — the shape a bootstrap leaves when its
+    `pip install` aborts after the editable project and before the closure.
+    `--without-pip` so the fixture costs one interpreter start, not ensurepip."""
+    root = tmp_path_factory.mktemp("venv-repo")
+    subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(root / ".venv")],
+                   check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return root
+
+
+def test_the_test_runner_module_is_read_only_from_the_python_m_shape():
+    assert aide._test_runner_module({"python": {"test_command": "python -m pytest -q"}}) == "pytest"
+    assert aide._test_runner_module({"python": {"test_command": "pytest -q"}}) is None
+    assert aide._test_runner_module({"python": {"test_command": "make test"}}) is None
+    assert aide._test_runner_module({"python": {}}) == "pytest"
+
+
+def test_a_venv_with_no_test_runner_cannot_report_ok(bare_venv: Path, capsys):
+    """The observed false green: `import spinelab` succeeded, `pytest` was not
+    installed, and the validator trusting OK failed on the environment with
+    the failure attributed to its item."""
+    (bare_venv / "aide.toml").write_text(_env_toml("python -m pytest"), encoding="utf-8")
+    status, detail = aide.env_report(bare_venv, aide.load_config(bare_venv))
+    assert status == "stale" and "pytest" in detail
+    assert aide.main(["--repo", str(bare_venv), "env"]) == 1
+    assert "pytest" in capsys.readouterr().out
+
+
+def test_a_stdlib_runner_in_a_bare_venv_is_ok(bare_venv: Path, capsys):
+    (bare_venv / "aide.toml").write_text(_env_toml("python -m unittest"), encoding="utf-8")
+    assert aide.env_status(bare_venv, aide.load_config(bare_venv)) == "ok"
+    assert aide.main(["--repo", str(bare_venv), "env"]) == 0
+    assert "venv is Python" in capsys.readouterr().out
+
+
+def test_a_failed_bootstrap_record_makes_the_venv_stale(bare_venv: Path):
+    (bare_venv / "aide.toml").write_text(_env_toml("python -m unittest"), encoding="utf-8")
+    record = bare_venv / ".venv" / aide._BOOTSTRAP_RECORD
+    record.write_text('{"exit": 1}', encoding="utf-8")
+    try:
+        status, detail = aide.env_report(bare_venv, aide.load_config(bare_venv))
+    finally:
+        record.unlink()
+    assert status == "stale" and "did not finish" in detail
+
+
+def test_the_configured_interpreter_is_compared_with_the_venvs_version(
+        bare_venv: Path, tmp_path: Path):
+    same = _toml_path(sys.executable)
+    (bare_venv / "aide.toml").write_text(
+        _env_toml("python -m unittest", interpreter=same), encoding="utf-8")
+    status, detail = aide.env_report(bare_venv, aide.load_config(bare_venv))
+    assert status == "ok" and sys.executable in detail
+
+    # An "interpreter" that answers with a version no venv has — a command
+    # line, so the two paths must survive a split.
+    if " " in sys.executable or " " in str(tmp_path):
+        pytest.skip("a command-line interpreter value splits on whitespace")
+    other = tmp_path / "other.py"
+    other.write_text("print('9.9')\n", encoding="utf-8")
+    (bare_venv / "aide.toml").write_text(
+        _env_toml("python -m unittest", interpreter=f"{same} {_toml_path(str(other))}"),
+        encoding="utf-8")
+    status, detail = aide.env_report(bare_venv, aide.load_config(bare_venv))
+    assert status == "stale" and "9.9" in detail and "rebuild" in detail
+
+
+def test_an_interpreter_this_machine_cannot_run_is_reported_not_fatal(bare_venv: Path):
+    (bare_venv / "aide.toml").write_text(
+        _env_toml("python -m unittest", interpreter="no-such-python-zz"), encoding="utf-8")
+    status, detail = aide.env_report(bare_venv, aide.load_config(bare_venv))
+    assert status == "ok" and "no-such-python-zz" in detail
+
+
+def test_bootstrap_with_an_interpreter_this_machine_lacks_is_a_sentence(tmp_path: Path, capsys):
+    (tmp_path / "aide.toml").write_text(
+        _env_toml("python -m unittest", interpreter="no-such-python-zz"), encoding="utf-8")
+    assert aide.main(["--repo", str(tmp_path), "env", "--bootstrap"]) == 1
+    err = capsys.readouterr().err
+    assert "no-such-python-zz" in err and "Traceback" not in err
+    assert not (tmp_path / ".venv").exists()
+
+
+def test_an_interpreter_path_with_a_space_is_one_command(tmp_path: Path):
+    """Windows's default install is under `Program Files`; a split there made
+    a valid key "cannot be run". A value naming an existing file is the whole
+    command; anything else is a command line."""
+    home = tmp_path / "My Python"
+    home.mkdir()
+    exe = home / ("python.exe" if os.name == "nt" else "python3")
+    exe.write_text("", encoding="utf-8")
+    assert aide._configured_interpreter({"python": {"interpreter": str(exe)}}) == [str(exe)]
+    assert aide._configured_interpreter({"python": {"interpreter": "py -3.12"}}) == ["py", "-3.12"]
+    quoted = f'"{exe}" -X utf8'
+    assert aide._configured_interpreter({"python": {"interpreter": quoted}}) == [str(exe), "-X", "utf8"]
+    assert aide._configured_interpreter({"python": {"interpreter": ""}}) == [sys.executable]
+
+
+def test_restore_records_the_base_the_run_merged_into_not_the_old_record(tmp_path: Path):
+    """A run given `--base` landed where the record did not say; its retry
+    must land there again, and a `branch -d` that refused leaves the stale
+    record in place to be corrected, not kept."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    assert aide.main(["--repo", str(root), "queue", "start", "3"]) == 0
+    assert aide.main(["--repo", str(root), "claim", "--queue", "3"]) == 0
+    branch = _current_branch(root)
+    tip = _run(["git", "rev-parse", branch], root).stdout.strip()
+    assert aide._recorded_branch_base(root, branch) == "aide/queue-003"
+
+    aide._restore_claim_branch(root, branch, tip, "main")      # branch still exists
+    assert aide._recorded_branch_base(root, branch) == "main"
+    assert aide.resolve_base(root, aide.load_config(root), None, branch) == "main"
