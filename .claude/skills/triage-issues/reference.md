@@ -1,8 +1,30 @@
 # Tracker reference
 
-Stable ids and the queries that re-derive them. Ids on GitHub Projects do not
-rotate, so these are safe to paste — but if any mutation is rejected with an
-unknown-id error, re-run the derivation rather than guessing.
+Stable ids and the queries that re-derive them. Item, field and project ids on
+GitHub Projects do not rotate, so those are safe to paste — but if any mutation
+is rejected with an unknown-id error, re-run the derivation rather than
+guessing.
+
+**Single-select *option* ids are the exception, and the trap is destructive.**
+`updateProjectV2Field` has no "add one option" form: it takes the *whole*
+`singleSelectOptions` list and replaces it. Every option is reissued with a new
+id — including the ones resubmitted byte-identically — and **every item's value
+for that field is cleared**, because the ids its values pointed at no longer
+exist. Adding a ninth `Theme` on 2026-09-08 rotated all eight existing ids and
+blanked `Theme` on all 83 items; the values were restored only because the
+triage pass still had its `item-list` snapshot from step 1.
+
+So, before touching a single-select's option list:
+
+```bash
+# 1. snapshot the values you are about to destroy
+$GH project item-list 1 --owner dadrobny --format json --limit 200 > /tmp/pre.json
+# 2. run the mutation (pass EVERY existing option, plus the new one)
+# 3. re-read the new option ids, map each item's old theme NAME -> new id,
+#    and replay with `gh project item-edit` — one call per item.
+```
+
+Names survive the rotation; ids do not. Restore by name.
 
 `GH=/mnt/data/ddrobny/.local/bin/gh` throughout (`gh` is not on `PATH`).
 
@@ -16,18 +38,20 @@ unknown-id error, re-run the derivation rather than guessing.
 
 `Status` options: `Todo` `f75ad846` · `In Progress` `47fc9ee4` · `Done` `98236657`
 
-`Theme` options:
+`Theme` options — **ids as of 2026-09-08**; they rotate whenever the option list
+is edited (see above), so re-derive after any such edit:
 
 | Theme | Option id | What it holds |
 |---|---|---|
-| Reaching the reader | `2cdefa2e` | whether the contract arrives at the role that needs it |
-| What the checks decide | `eabc9686` | `aide check` / `aide scope` judging wrongly, or not judging at all |
-| Testing the framework itself | `d6eb1372` | **this repo's own suite** — fixture consumer, structural budget, rule pins |
-| Correctness | `65b8c907` | the engine does the wrong thing at runtime: crashes, parsing, the installer |
-| Naming | `d1401531` | |
-| Unattended runs | `9f48758c` | |
-| The insight inbox | `2da4ce9d` | |
-| Beyond the reference adapter | `162e28eb` | |
+| Reaching the reader | `38346b37` | whether the contract arrives at the role that needs it |
+| What the checks decide | `1399b959` | `aide check` / `aide scope` judging wrongly, or not judging at all |
+| Testing the framework itself | `acf07eb8` | **this repo's own suite** — fixture consumer, structural budget, rule pins |
+| Correctness | `284f2c61` | the engine does the wrong thing at runtime: crashes, parsing, the installer |
+| Naming | `dd564048` | |
+| Unattended runs | `24b131f6` | |
+| The insight inbox | `22b79ce3` | |
+| Beyond the reference adapter | `3e08c9e5` | |
+| The shape of the loop | `2318f08b` | how roles, skills and queues are sequenced and hand off to each other |
 
 The first four are the ones that get confused. **`Testing the framework itself`
 means this repo's suite and nothing else** — a lint that polices a *consumer's*
