@@ -1535,6 +1535,54 @@ def test_a_split_reports_its_copies_and_check_sees_them_until_reworded(
     assert not [w for w in warnings if "identical prose" in w]
 
 
+def test_the_scaffold_carries_the_review_key_and_defaults_it_off(
+        aide, consumer: Path):
+    """1.40.0's `loop.review` (issue #151), through the engine a consumer runs.
+
+    The key is prose-consumed by the orchestrator, the way `clarify` is, so
+    there is no verb to exercise — what the engine owes is that the value
+    arrives, unchanged, at the role that reads it. Both halves matter: the
+    scaffold writes the key so a fresh consumer can see and change it, and the
+    default is `off`, because a review round costs tokens on every item and
+    turning it on is the project's decision.
+    """
+    text = (consumer / "aide.toml").read_text(encoding="utf-8")
+    assert 'review = "off"' in text, "the aide.toml scaffold lost loop.review"
+    assert aide.load_config(consumer)["loop"]["review"] == "off"
+
+
+def test_a_consumer_whose_aide_toml_predates_the_review_key_still_reads_off(
+        aide, consumer: Path):
+    """`--update` never rewrites `aide.toml`, so every consumer installed
+    before 1.40.0 reaches the new engine with no `review` line at all. The
+    default has to come from the engine, not from the scaffold — otherwise the
+    orchestrator reads a missing key on exactly the installs that did not opt
+    in, and the value it invents there is anyone's guess.
+    """
+    toml = consumer / "aide.toml"
+    text = toml.read_text(encoding="utf-8")
+    assert 'review = "off"\n' in text
+    toml.write_text(text.replace('review = "off"\n', ""), encoding="utf-8")
+
+    assert aide.load_config(consumer)["loop"]["review"] == "off"
+
+
+def test_the_review_key_reaches_the_orchestrator_as_the_project_set_it(
+        aide, consumer: Path):
+    """The other direction: a project that opts in gets its value back. The
+    engine does not interpret it — `background` is meaningful to the item
+    orchestrator and to nothing under `.aide/scripts/` — so carrying it
+    verbatim is the entire contract.
+    """
+    toml = consumer / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        'review = "off"', 'review = "background"'), encoding="utf-8")
+
+    assert aide.load_config(consumer)["loop"]["review"] == "background"
+    # and it did not disturb the sibling key it sits next to
+    assert aide.load_config(consumer)["loop"]["clarify"] == "assume"
+
+
 def _set_python_keys(repo: Path, **keys: str) -> None:
     toml = repo / "aide.toml"
     text = toml.read_text(encoding="utf-8")

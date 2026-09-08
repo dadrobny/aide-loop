@@ -18,7 +18,7 @@ current queue by loading `/aide-run-queue` **inline as a skill in this same
 session** (which in turn loads `/aide-run-item` inline), and delegates only the
 *leaf* work — item spec/tests/build/validate and queue *authoring* — to
 **`Task` subagents** (`spec-author`, `test-writer`, `builder`, `validator`,
-`queue-planner`). There is **no headless nesting**: the orchestrator never spawns
+`queue-planner`, and `reviewer` where `loop.review` turns it on). There is **no headless nesting**: the orchestrator never spawns
 `claude -p` child processes. Each new queue is a natural session boundary — the
 loop pauses at the queue PR, and the human re-invokes for the next queue, giving a
 fresh session per batch.

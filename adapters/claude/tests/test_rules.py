@@ -270,18 +270,23 @@ def test_each_delivered_file_names_the_section_it_delivers(path: Path):
     assert re.search(r"§\d", body), f"{_label(path)}: names no section number"
 
 
-@pytest.mark.parametrize("section", ["3", "6"])
-def test_the_two_contract_sections_are_delivered(section: str):
-    """ADAPTER-SPEC §7 names §3 and §6 specifically, and both sections say so.
+#: The sections ADAPTER-SPEC §7 names as delivered, each of which says so in
+#: its own text. §9 joined them in 1.40.0 (issue #150).
+_DELIVERED_SECTIONS = ["3", "6", "9"]
+
+
+@pytest.mark.parametrize("section", _DELIVERED_SECTIONS)
+def test_each_named_contract_section_is_delivered(section: str):
+    """ADAPTER-SPEC §7 names §3, §6 and §9 specifically, and each says so.
 
     Losing one is not a syntax error anywhere: the delivered file simply stops
-    existing and every role carries on with no hygiene contract in context.
+    existing and every role carries on with no contract in context.
     """
     delivering = [p for p in _DELIVERED if f"§{section}" in _split(p)[1]]
     assert delivering, f"no delivered file carries conventions.md §{section}"
 
 
-@pytest.mark.parametrize("section", ["3", "6"])
+@pytest.mark.parametrize("section", _DELIVERED_SECTIONS)
 def test_the_engine_section_still_asks_to_be_delivered(section: str):
     """The other half of the contract, in the engine, where it is runtime-general.
 

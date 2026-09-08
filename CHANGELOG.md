@@ -121,6 +121,68 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.40.0] — 2026-09-08
+
+The item loop gains the two moves it lacked: an adversarial read of the diff,
+and a way back to the spec when the spec and the tests disagree. Both were
+observed as gaps in a consumer, and both were previously unstaffed by any role.
+
+### Added
+
+- **`conventions.md` §9 — review and validation (issue #150).** The loop had a
+  validator and no reviewer, and "review" meant three different things across
+  its own documents. The new section states the split: validation is
+  spec-relative, gated PASS/FAIL, and blocks the merge; review is adversarial,
+  reads the diff for what the spec never anticipated, and produces findings. A
+  green validator is not a review, and a clean review does not discharge
+  validation — the two fail in opposite directions. Findings triage exactly the
+  way insights do: in scope for the running item is a fix on its branch, out of
+  scope is one `insights.md` line. Runtime-general, like §3 and §6, and named
+  by `ADAPTER-SPEC.md` §7 as a third section an adapter must deliver rather
+  than point at.
+- **A `reviewer` agent, off by default behind `[loop] review` (issue #151).**
+  `"off"` (the default) leaves the loop exactly as it was; `"background"`
+  dispatches a `reviewer` the moment the builder returns, concurrent with the
+  validator over the same branch, so the review costs no wall-clock — the
+  validator's suite run is the long pole and a read of the diff fits inside it.
+  **The merge waits for both**: under `"background"` the validator holds the
+  merge and reports PASS (merge held), the orchestrator triages the findings,
+  and `aide merge NNN` runs only once they are discharged — findings that
+  arrive after the item lands gate nothing. The role writes no code, modifies
+  no tests, does not merge and does not touch `progress.md`. Off by default
+  because a review round costs tokens on every item, and a project with CI and
+  hosted reviewers may reasonably decline it. `ADAPTER-SPEC.md` §2 carries it
+  as an optional role definition at T2, so an adapter that omits it stays
+  conformant.
+- **A new section skill, `aide-review-and-validation`, delivering §9 to
+  `reviewer` and `validator`.** Preloaded at spawn into exactly those two
+  specs, which is what keeps the agent prose from inventing the distinction
+  itself: the failure §9 names is a role collapsing the two reads, and a role
+  that has already collapsed them will not go and read a pointer. 2,740 bytes,
+  paid by two roles; the always-on floor is unchanged.
+
+### Changed
+
+- **§5 covers the downstream case: a builder that finds the spec and the tests
+  in contradiction hands the item back to `spec-author` (issue #168).**
+  Observed in a consumer under 1.38.0, where an acceptance criterion, its
+  description and an assumption all described repeated absorption while the
+  test written from it pinned a single pass. The builder implemented the test,
+  recorded the conflict as a Decision, and shipped — a rule defective on its own
+  terms, past a validator for which "tests pass" and "stayed in scope" were both
+  true. The builder reads both and so is the first role that can see it, and has
+  no standing to arbitrate: it now returns the contradiction as a distinguished
+  outcome the driver routes, rather than picking a side. `spec-author` corrects
+  the criterion under `loop.clarify` as an appended, dated amendment — never a
+  rewrite — the tests are re-derived, and the builder is re-dispatched. Capped
+  at one correction per item. `builder.md` and `/aide-run-item` carry the path;
+  `loop.validation_rounds` is untouched, since a spec correction is not a
+  validation round.
+- **`validator.md` no longer calls itself "the skeptical reviewer".** It states
+  what it is and is not (§9), why the status it writes is `in-review`, and that
+  where no reviewer runs the adversarial read is genuinely unstaffed — its PASS
+  means "meets its spec", never "this code is correct".
+
 ## [1.39.0] — 2026-09-08
 
 Three engine wrongs that were silent in the direction that costs most: a

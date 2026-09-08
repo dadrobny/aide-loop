@@ -44,9 +44,10 @@ redefine them.
 
 ## 2. Five role definitions, bound to capability *tiers*
 
-The work is split across five fresh, role-scoped sub-agents. The contract names
-**capability tiers**, not models — each adapter binds a tier to one of its own
-runtime's models (as high as necessary, as low as adequate). No role signs off its
+The work is split across five fresh, role-scoped sub-agents (plus the two
+optional definitions below). The contract names **capability tiers**, not
+models — each adapter binds a tier to one of its own runtime's models (as high
+as necessary, as low as adequate). No role signs off its
 own work; a fresh instance per item.
 
 | Role | Tier | Why the tier |
@@ -63,7 +64,21 @@ third attempt), with `max` reserved for intractable one-offs. A runtime without
 sub-agents degrades gracefully to "a fresh chat per role" guidance — the roles and
 their tiers still hold.
 
-**Optional sixth definition — the queue-boundary reviewer.** Where an adapter
+**Optional definition — the item reviewer.** An adapter **may** express a
+**reviewer** at **T2**, dispatched over one item's diff concurrently with the
+`validator` and gated by a `loop.review` key in `aide.toml` (`"off"` by
+default). The two are different reads and neither covers for the other
+(`conventions.md` §9): the validator is spec-relative and gates the merge, the
+reviewer is adversarial and produces findings. Where an adapter expresses it,
+**the merge must wait for both** — findings collected after the item lands gate
+nothing — and the role writes no code, modifies no tests, does not merge and
+does not touch `progress.md`; its findings triage in scope (a fix dispatched
+back) or out of scope (one `insights.md` line). It is optional because a review
+round costs tokens on every item and a project with CI and hosted reviewers may
+decline it; the engine's default is off, so an adapter that omits the role is
+conformant and its consumers are unaffected.
+
+**Optional definition — the queue-boundary reviewer.** Where an adapter
 supports batch spec-authoring (spec §1's spec-queue entry-point), it should also
 express a **spec-reviewer** at **T3**: one pass over *all* of a queue's specs
 after they are authored and before any is built, reporting the cross-item
@@ -251,9 +266,13 @@ therefore addressable, and an adapter can put one in front of a role without
 putting all of them in front of every role — which matters, because no role
 needs more than about two thirds of the contract and most need a third.
 
-Two sections say so themselves: **§3** (command hygiene) is delivered in
-positive form through whatever always-loaded channel the runtime has, and
-**§6** (test hygiene) is delivered to a role about to write a test.
+Three sections say so themselves: **§3** (command hygiene) is delivered in
+positive form through whatever always-loaded channel the runtime has, **§6**
+(test hygiene) is delivered to a role about to write a test, and **§9** (review
+and validation) is delivered to the roles that judge a finished diff — a role
+told neither what validation answers nor what review does will collapse the
+two, and the collapse is silent, since both reads end in a report saying the
+item is fine.
 
 Which channel carries a section follows from who needs it, in terms no runtime
 owns: an **always-loaded** channel for what binds every action of every role

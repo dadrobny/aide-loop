@@ -23,7 +23,8 @@ pin the session model, so `/model sonnet` first if you're on Opus.
 **One session, one layer.** Per item, load `/aide-run-item NNN` **inline as a
 skill in *this* session** — it is a prompt expansion, not a subprocess. The only
 parallel/isolated contexts are the `Task` subagents (`spec-author`, `test-writer`,
-`builder`, `validator`) that do the leaf work; claiming is a deterministic CLI
+`builder`, `validator`, plus `reviewer` where `loop.review` turns it on) that do
+the leaf work; claiming is a deterministic CLI
 call, not a subagent. There is **no headless `claude -p` nesting** (an earlier
 `--continuous` design tried it and was removed — see `/aide-run-roadmap` →
 *Historical note*). The loop runs **in-place in the primary checkout**; for
@@ -35,7 +36,7 @@ parallel*.
 | Concern | Owner | Notes |
 |---|---|---|
 | Claim the next 📋 item | `aide claim` (CLI) | `python .aide/scripts/aide.py claim [--queue NNN]` — syncs, checks `aide/*` branches, picks the first unclaimed unblocked 📋 item, creates + pushes `aide/NNN-*`; prints item number + branch + title, and the base when it is not `main`. Deterministic, no subagent. **Run it from the branch the queue's work belongs on**: claiming while a queue branch is checked out records that branch as each item's base, so `aide merge` returns the item to it and the whole queue still lands as one reviewed PR. |
-| Run one item end-to-end | **`/aide-run-item NNN`** | spec-author (Opus) → test-writer → builder → validator+merge, incl. the ≤3-round validate cycle. See that command for the per-item detail. |
+| Run one item end-to-end | **`/aide-run-item NNN`** | spec-author (Opus) → test-writer → builder → validator+merge, incl. the ≤3-round validate cycle. Under `loop.review = "background"` a `reviewer` reads the diff concurrently with the validator and the merge waits for both. See that command for the per-item detail. |
 | Approval gates, looping | *orchestrator* | stays in the main thread |
 | Generating the **next** queue | **not here** | only `/aide-run-roadmap` (or a manual `/aide-create-queue`) does that |
 
