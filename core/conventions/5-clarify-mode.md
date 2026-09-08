@@ -10,6 +10,37 @@ Controls how `spec-author` resolves an ambiguous queued item:
 A spec written before its dependencies are *implemented* must pin their interfaces
 as Assumptions; the builder/validator hand back if reality diverged.
 
+**A contradiction between the spec and the tests written from it comes back
+here.** The test-writer encodes the Acceptance Criteria; when the encoding and
+the prose disagree, one of the two is wrong, and `builder` — the first role that
+reads both — is the first position from which that is visible. It has no
+standing to arbitrate: the tests are its oracle, the criteria are what the tests
+were derived from, and picking either side ships one reading of a defect. **So
+it hands the item back to `spec-author`**, naming the criterion, the test, and
+what the two disagree about. The spec is corrected first; the tests are then
+re-derived from the corrected criteria; only then does the builder implement.
+
+This is the same resolution the mode already governs, arriving from downstream
+rather than from a queue line: `spec-author` corrects the criterion under
+whatever `loop.clarify` says — `interactive` asks the human which side is wrong,
+`assume` takes the most defensible reading and records it in the spec's
+Assumptions block for the queue boundary to audit. The builder does not read the
+setting; it has one move, and the setting decides what the role it hands to does
+next.
+
+The correction is an **amendment, never a rewrite** (§1 → items.md): a dated
+correction appended to the spec, the way an in-flight scope repair already is,
+because the original criterion is the record of what the item was built from.
+
+**A Decisions entry is not this hand-back.** Recording "these two assertions are
+unsatisfiable under any implementation" and shipping anyway is a durable, honest
+note that the loop reached a state it should not be able to reach silently — and
+nothing downstream reads it as a signal. The validator checks that the tests
+pass and that the item stayed in scope, and both are true of a defective
+criterion faithfully implemented. The hand-back is a distinguished outcome the
+driver can route on; the Decisions entry records what was decided once a role
+with standing has decided it.
+
 **The setting governs `spec-author` and nothing else.** It reads as a global
 posture on asking-versus-assuming — it sits under `[loop]`, is named generically,
 and is the only such statement in `aide.toml` — and it is not one. `assume` is

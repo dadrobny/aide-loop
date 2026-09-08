@@ -256,6 +256,12 @@ queue_cap = 10
 # (.aide/conventions.md §5). Not a global posture — root documents (vision,
 # roadmap) are authored interactively whatever this says.
 clarify = "assume"
+# Whether the item loop reads the diff adversarially as well as against the
+# spec (.aide/conventions.md §9). "off" runs the validator alone; "background"
+# also dispatches a reviewer concurrently with it, and the merge waits for
+# both. Off by default: a review round costs tokens on every item, and a
+# project with CI and hosted reviewers may reasonably decline it.
+review = "off"
 
 [framework]
 # Where the AIDE framework itself lives (owner/repo). The feedback loop's

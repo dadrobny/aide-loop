@@ -242,8 +242,15 @@ DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
                "test_command": "python -m pytest", "import_check": "",
                "interpreter": ""},
     "git": {"mode": "auto-merge", "main_branch": "main", "branch_prefix": "aide/"},
+    # `review` names whether the item loop runs an adversarial read of the diff
+    # alongside the spec-relative one (conventions.md §9). Prose-consumed by the
+    # orchestrator, the way `clarify` is: "off" (default) runs the validator
+    # alone; "background" also dispatches a reviewer concurrently with it, and
+    # the merge waits for both. Off by default because a review round costs
+    # tokens on every item, and a consumer with CI and hosted reviewers may
+    # reasonably decline it (issue #151).
     "loop": {"queue_cap": 10, "validation_rounds": 3, "clarify": "assume",
-             "claim_scope": "live-queue"},
+             "claim_scope": "live-queue", "review": "off"},
     "framework": {"repo": ""},
     # [validation] — named environment profiles for stage-validation items:
     # <name> = <python expression>, true iff the environment provides the
