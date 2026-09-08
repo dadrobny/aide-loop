@@ -1277,3 +1277,29 @@ def test_a_refusal_leaves_the_markers_exactly_where_they_were(tmp_path: Path, ca
     assert _inbox(repo) == text
     err = capsys.readouterr().err
     assert "archive cut entries out" in err and "left exactly as it is" in err
+
+
+def test_a_pointer_is_never_dropped_when_only_one_tick_carries_one():
+    """A hand-flipped `[x]` with no pointer met a `tick`-written one on the
+    other side. Preferring our side unconditionally threw the routing record
+    away — and the routing record is the whole reason a tick is worth merging."""
+    bare = _A.replace("- [ ]", "- [x]")                  # ticked, no pointer
+    routed = bare + " → item 007"
+    merged, notes, refusals = _resolve(
+        _conflicted(f"{bare}\n{_B}\n", f"{routed}\n{_B}\n", _HEAD))
+    assert refusals == []
+    assert merged.splitlines()[4] == routed
+    # One tick, one pointer — nothing for a human to arbitrate.
+    assert not any("different pointers" in n for n in notes)
+
+
+def test_a_shared_entry_neither_side_touched_is_not_counted_as_merged():
+    """Only a *last* entry lacks a trailing blank, so in a blank-separated file
+    the two sides disagree about an untouched entry purely by where it sits."""
+    ours = f"{_A}\n\n{_B}\n"
+    theirs = f"{_A}\n\n{_B}\n\n{_D}\n"
+    merged, notes, refusals = _resolve(_conflicted(ours, theirs, _HEAD))
+    assert refusals == []
+    assert "0 merged in place" in notes[0]
+    # And the separator survives the join rather than being eaten with it.
+    assert merged == _HEAD + f"{_A}\n\n{_B}\n\n{_D}\n"

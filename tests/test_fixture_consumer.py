@@ -1372,7 +1372,10 @@ def test_two_appends_really_do_conflict_in_an_installed_consumer(consumer: Path)
 def test_check_fails_on_the_conflict_and_names_the_verb(aide, consumer: Path, capsys):
     _two_branches_that_both_appended(consumer)
     assert aide.main(["--repo", str(consumer), "check"]) == 1
-    out = capsys.readouterr().out + capsys.readouterr().err
+    # One read: `readouterr` clears what it returns, so a second call would
+    # hand back an empty stream and quietly assert over half the output.
+    captured = capsys.readouterr()
+    out = captured.out + captured.err
     assert "conflict marker" in out and "insights resolve" in out
 
 
@@ -1394,6 +1397,52 @@ def test_resolve_writes_the_union_and_stages_it(aide, consumer: Path):
     _git(["commit", "--no-edit"], consumer)
     assert aide.main(["--repo", str(consumer), "check"]) == 0
     assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
+def test_resolve_stages_a_conflict_that_has_no_merge_base_at_all(
+        aide, consumer: Path):
+    """An add/add conflict — both branches created the inbox — leaves stages 2
+    and 3 in the index and **no stage 1**: there is no base, because the path
+    exists on neither parent. Reading "is this unmerged?" off the merge base
+    therefore answered no about a genuinely unmerged file, the verb silently
+    skipped staging, and the next `git commit` died on unmerged files.
+
+    (A consumer whose inbox came from `.aide/templates/insights.md` usually
+    keeps a base anyway — git's rename detection matches the created file
+    against the byte-identical template in the merge base. This one is
+    hand-scaffolded, which is the shape that has nothing to match.)
+    """
+    inbox = _drop_the_inbox(consumer)
+    header = "# Insight Inbox\n\n_Entries below, newest last._\n\n"
+    for branch, line in (("aide/add-ours", _OURS), ("aide/add-theirs", _THEIRS)):
+        _git(["switch", "-c", branch, "main"], consumer)
+        inbox.write_text(header + line + "\n", encoding="utf-8")
+        _commit(consumer, f"docs(aide): scaffold the inbox on {branch}")
+    _git(["switch", "aide/add-ours"], consumer)
+    assert _git(["merge", "aide/add-theirs"], consumer, check=False).returncode != 0
+
+    rel = "docs/aide/insights.md"
+    assert [l.split()[2] for l in
+            _git(["ls-files", "-u", "--", rel], consumer).stdout.splitlines()] == ["2", "3"]
+    assert _git(["show", f":1:{rel}"], consumer, check=False).returncode != 0
+
+    assert aide.main(["--repo", str(consumer), "insights", "resolve"]) == 0
+    assert not _git(["ls-files", "-u", "--", rel], consumer).stdout.strip()
+    _git(["commit", "--no-edit"], consumer)          # would die if left unstaged
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    text = inbox.read_text(encoding="utf-8")
+    assert _OURS in text and _THEIRS in text and "<<<<<<<" not in text
+
+
+def test_dry_run_prints_the_union_itself_not_only_the_counts(
+        aide, consumer: Path, capsys):
+    """Reviewing the merge before it is written is the whole of what the flag
+    is for, and every place that documents it says it prints what would land."""
+    _two_branches_that_both_appended(consumer)
+    assert aide.main(["--repo", str(consumer), "insights", "resolve",
+                      "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert _OURS in out and _THEIRS in out and "<<<<<<<" not in out
 
 
 def test_resolve_dry_run_leaves_the_conflict_in_place(aide, consumer: Path, capsys):

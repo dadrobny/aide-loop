@@ -164,9 +164,12 @@ two branches doing it.
 - **`aide check` reports a conflict marker in `insights.md` as an error.** The
   other inbox lints are warnings, deliberately — a captured line is immutable,
   so a warning on one can never be cleared. A committed marker is the
-  opposite: always fixable, and fatal to every other verb, since `list`,
-  `tick` and `archive` all read the marker as a claim line and number every
-  entry below it wrongly. The message names `insights resolve`. `<<<<<<<`,
+  opposite: always fixable, and fatal to every other verb. The markers are
+  skipped rather than misread — they are not entry lines — which is worse,
+  because both sides' entries then land in one numbered list: `list` numbers
+  straight across the halves, and the `N` a reader takes from it points `tick`
+  at a different claim than the one they read. The message names
+  `insights resolve`. `<<<<<<<`,
   `|||||||` and `>>>>>>>` are matched; `=======` deliberately is not, because
   it is also a setext heading underline and a lint that fires on a heading is
   a lint a reader learns to skim.

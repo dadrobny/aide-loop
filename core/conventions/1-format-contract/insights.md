@@ -91,8 +91,10 @@ archived — an archive cuts closed entries out of the middle and renumbers what
 remains, so the two sides no longer share a prefix. Each of those is a change
 to an immutable line, which is precisely what a human must see. A conflict
 marker left in the file is an `aide check` **error**, not a warning, and the
-message names this verb: the markers make every line below them parse as the
-wrong entry, so `list`, `tick` and `archive` are all reading a file that lies.
+message names this verb. The markers are skipped rather than misread — they
+are not entry lines — which is worse: both sides' entries land in one numbered
+list, so `list` numbers straight across the halves and the `N` a reader takes
+from it points `tick` at a different claim than the one they read.
 
 **The claim is immutable; its status is not.** The captured line is never
 reworded, reordered, or deleted — that is what protects provenance, and it is
