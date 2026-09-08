@@ -312,6 +312,15 @@ section it names, so editing either copy alone fails. Another runtime may
 express the guarantee however it likes; what is contractual is that the two
 copies cannot drift unobserved.
 
+The same guard is available to a **workflow** entry point that restates a slice
+of contract it acts on — two of this adapter's skills carry the §1 routing table
+for inbox entries, which is written once in the engine precisely so the pass that
+triages the inbox and the one that authors the next queue cannot route
+differently. Such a skill owes no pin (it delivers no section), and a pin it does
+declare binds it exactly as a delivered file's binds that file. What identifies a
+delivered section skill is therefore its `user-invocable: false` frontmatter, not
+the presence of a pins block.
+
 The **first** obligation has a measurable half too, wherever the channel is
 file-scoped: which roles a given scope actually arms is a fact about the
 delivered tree, and a scope believed to be narrow while arming everyone is a

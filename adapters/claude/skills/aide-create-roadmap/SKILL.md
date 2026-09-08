@@ -55,10 +55,3 @@ rather than assuming, and present the result as a draft for review.
 
 Save to `docs/aide/roadmap.md`. Roadmap changes are framework-level: reviewed PR,
 never a direct merge.
-
-## Hand-off
-
-Close your turn by telling the user, in chat:
-
-> Review `docs/aide/roadmap.md` — it is a draft until you have read it — then
-> start a **fresh chat session** and run `/aide-create-progress`.

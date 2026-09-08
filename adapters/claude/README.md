@@ -41,12 +41,16 @@ documents in the exact shapes `conventions.md` §1 fixes.
 | 6 · execute-item | `aide-execute-item` |
 | 7 · feedback-loop | `aide-feedback-loop` |
 
-Two skills go **beyond the seven** — Claude-specific conveniences, not new contract
-obligations:
+Three skills go **beyond the seven** — Claude-specific conveniences, not new
+contract obligations:
 
 - **`aide-spec-queue`** — a batch variant of step 5: author specs for *every*
   unspecced item in a queue on one branch, interactively, front-loading the human so
   execution can then run unattended.
+- **`aide-review-insights`** — step 7's inbox triage, spun out of the feedback loop
+  so the pass that always runs at a queue boundary can be reached without the
+  retrospective around it. It routes by the §1 routing table, judges duplicates and
+  decayed premises, and files `framework` entries as issues.
 - **`aide-status-report`** — an auxiliary reporter: an evolving HTML status summary
   from the AIDE documents, test suite, and QC outputs. Not part of the loop.
 
@@ -373,7 +377,7 @@ adapters/claude/
 │                  spec-reviewer (queue boundary, not an item role)
 ├── skills/        workflow: aide-{create-vision,-roadmap,-progress,-queue,-item} ·
 │                  aide-execute-item · aide-feedback-loop · aide-spec-queue ·
-│                  aide-status-report
+│                  aide-review-insights · aide-status-report
 │                  section (user-invocable: false, preloaded by role):
 │                  aide-living-documents (§1 shapes) · aide-test-hygiene (§6)
 ├── commands/      aide-run-{item,queue,roadmap} · aide-review-permissions ·

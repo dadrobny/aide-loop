@@ -64,10 +64,15 @@ over rules and section skills alike and stated in `ADAPTER-SPEC.md` §7 — a
 delivered file loads without the role choosing to, names the section it
 delivers, and **adds no rule the engine does not have**. A rule invented in the
 adapter binds one runtime and is invisible to every other; put it in
-`conventions/` first. A new section skill is recognised structurally
-(`user-invocable: false`, or a `<!-- pins:` block), must be preloaded by at
-least one agent, and must not set `disable-model-invocation` — the runtime
-silently refuses to preload such a skill.
+`conventions/` first. A new section skill is recognised structurally by
+`user-invocable: false` alone, must be preloaded by at least one agent, and must
+not set `disable-model-invocation` — the runtime silently refuses to preload
+such a skill. A `<!-- pins:` block does **not** make one: a *workflow* skill may
+pin too (`aide-create-queue` and `aide-review-insights` both carry the §1 routing
+table), and `test_rule_pins.py` checks those quotes in both directions exactly as
+it checks a delivered file's — it just does not *require* them there. The key and
+the preload channel are held together from the other side, by
+`test_every_skill_an_agent_preloads_is_a_section_skill`.
 
 Each delivered file also declares, in a `<!-- reach: … -->` comment near the
 top of its body, the agent roles it expects to reach — `all`, or a
@@ -99,7 +104,11 @@ comments cost the loop nothing: a preload strips them.
 
 Do not re-inline a contract restatement into an agent spec. Six of them carried
 the command-hygiene block verbatim, one had already drifted, and a test now
-fails if the heading comes back.
+fails if the heading comes back. Same shape, same guard, for the `## Hand-off`
+tail seven skills carried (issue #161): the loop sequence lives in
+[`core/README.md`](core/README.md), the fresh-session rationale in
+`AGENT-CONTEXT.md`, and `test_rules.py` fails if the heading returns to any
+skill.
 
 ## Versioning — enforced, not remembered
 

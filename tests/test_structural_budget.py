@@ -88,9 +88,9 @@ import install  # noqa: E402  (path shim above)
 # alone too.
 # --------------------------------------------------------------------------- #
 FLOOR_PIN = {
-    "version": "1.28.0",
+    "version": "1.42.0",
     "files": {
-        ".aide/AGENT-CONTEXT.md": 4479,
+        ".aide/AGENT-CONTEXT.md": 4968,
         ".claude/rules/aide-command-hygiene.md": 3099,
     },
 }
@@ -174,10 +174,16 @@ def _skill_name(path: Path):
 
 def _is_section_skill(path: Path) -> bool:
     """A `SKILL.md` that delivers a contract section rather than a workflow —
-    the same two signals `adapters/claude/tests/test_rules.py` recognises:
-    `user-invocable: false`, or a `<!-- pins:` block."""
-    hidden = (_scalar(_frontmatter(path), "user-invocable") or "").lower() == "false"
-    return hidden or "<!-- pins:" in _text(path)
+    the same signal `adapters/claude/tests/test_rules.py` recognises since
+    1.42.0: `user-invocable: false`, and only that.
+
+    A `<!-- pins:` block no longer classes a skill here: a workflow skill may
+    quote the contract it acts on, and one that did would otherwise be
+    measured as a delivered file — declaring a reach it has no preload to
+    satisfy, and failing on a `<!-- triggers: … -->` line it has no `paths:`
+    for.
+    """
+    return (_scalar(_frontmatter(path), "user-invocable") or "").lower() == "false"
 
 
 _COMMENT = re.compile(r"<!--.*?-->", re.S)

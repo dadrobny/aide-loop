@@ -94,12 +94,67 @@ and what an entry whose premise decayed needs. Without it there is nowhere to
 record that half a claim has since been fixed, so the next reader re-derives all
 of it.
 
-**Triage** routes each unchecked entry by type — `knowledge` → the owning
-document; `defect`/`gap` → candidate items for the **next** queue (so the
-queue PR reviews them); `automation` → a candidate item for that same next
-queue, one that adds a CLI verb/script *and* the skill/agent edit mandating
-it; `framework` → a GitHub issue on `[framework] repo` from `aide.toml` (via
-`gh`; if unset/offline the entry stays pending).
+#### The routing table
+
+**Triage routes each unchecked entry by its type, and this table is the whole
+rule.** It is written once, here, because two roles read it — the pass that
+triages the inbox and the one that authors the next queue — and a rule each of
+them keeps its own copy of is a rule that has already drifted.
+
+| Type | Where it goes | Who ticks the entry |
+|---|---|---|
+| `knowledge` | the owning document — the smallest edit that preserves the fact | the triaging role, on the fold |
+| `defect` | a candidate item on the **maintenance queue** | the queue that absorbs it |
+| `gap` | a candidate item — maintenance queue, or the stage queue when the stage was going to fill it anyway | the queue that absorbs it |
+| `automation` | a candidate item adding the script/CLI verb **and** the prose that mandates it | the queue that absorbs it |
+| `framework` | an issue on `[framework] repo` from `aide.toml`; unset or offline, it stays pending | the filing role, on the hand-over |
+
+**A `defect`, `gap` or `automation` entry is never ticked at triage.** Triage
+stands *at* the queue boundary, so the queue that would carry such an entry does
+not exist yet: leaving it unchecked **is** the routing, and the open inbox is
+what carries it to whoever authors that queue.
+
+#### Insight-derived fixes get a queue of their own, ahead of the stage queue
+
+When open `defect`, `gap` or `automation` entries exist at a queue boundary they
+are batched into a **maintenance queue, authored and merged before the stage
+queue** — a normal queue in every respect (its own number, its own PR, ticking
+the entries it absorbs with the item numbers they became). It is not a second
+live queue: **the live queue is the lowest-numbered open one**, so a maintenance
+queue numbered ahead of the stage queue is served first, with no new state
+anywhere and nothing for a role to choose between.
+
+Why not simply put the fixes in the stage batch: a one-line fix that rides a
+ten-item stage waits for the whole stage to merge, and every other branch picks
+it up only after that. The split costs one more PR and buys a small, fast,
+cleanly-reviewed merge the rest of the work can build on.
+
+The queue's author still decides. An entry that does not warrant a queue of its
+own — too small to be worth a branch, blocked on something unbuilt, out of scope
+— is passed over with the reason stated, exactly as on a stage queue; and a
+`gap` the upcoming stage was going to fill anyway belongs in the stage queue,
+with that stage named as the reason. What is never allowed is silence.
+
+#### Triage judges the entry; the judgement is a trail line
+
+Routing an entry as written is not the whole of triage. An entry may repeat one
+already captured, its premise may have decayed, or it may be filed under a type
+that does not fit what it describes. Three findings, one form — **a dated trail
+line under the entry, never an edit to the claim**:
+
+- **Duplicate** — the same claim as an earlier entry. Route the earlier one and
+  point the later at it; both stay in the file, because two roles noticing the
+  same thing independently is itself a fact about the project.
+- **Decayed premise** — what the entry names no longer exists, or has already
+  been fixed by work done since. Tick it, saying what closed it; the claim
+  remains the record of what was true when it was captured.
+- **Wrong type** — the entry describes a defect and is filed as knowledge, or
+  the reverse. Route it by what it *is* and say so in the trail; the type in the
+  captured line is never rewritten.
+
+**A ticked entry whose status is now stale gets a trail line too** — that is
+triage as much as routing is, and it is what stops the next reader re-deriving
+what someone already knew.
 
 **A `framework` issue body opens with the engine version the observation was
 made under** — first line, before the observation:
@@ -129,8 +184,8 @@ it is in the entry's own marker, or one read of `.aide/VERSION` away.
 
 **When triage happens depends on the destination.** `knowledge`, `defect`,
 `gap` and `automation` all land in this project — a document it owns, or a
-candidate item — so they wait for the queue boundary (the feedback loop), where
-the queue PR reviews the routing. `framework` does not: it leaves for an issue
+candidate item — so they wait for the queue boundary, where the insight-review
+pass runs and the queue PR reviews its routing. `framework` does not: it leaves for an issue
 on another repo, and nothing about that destination needs a queue, so a
 `framework` entry may be triaged **on capture or on demand**. Routing it through
 the boundary too means the inbox accumulates for exactly as long as a queue

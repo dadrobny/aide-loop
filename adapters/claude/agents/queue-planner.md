@@ -55,6 +55,13 @@ Follow the `aide-create-queue` skill in full. In brief:
    either queued or explicitly passed over — never silently dropped**.
 2. **Determine the next queue number** NNN (highest existing + 1) and the next
    **item number** (sequential across *all* queues — never restart numbering).
+   **When open `defect`, `gap` or `automation` entries warrant it, NNN is a
+   maintenance queue and the stage queue is NNN+1** (§1 → `insights.md`): the
+   fixes are batched ahead of the stage so they merge first, since the live
+   queue is the lowest-numbered open one. Item numbers still run sequentially
+   across the pair, maintenance queue first. Write only the stage queue when
+   there is nothing to batch, or nothing that warrants a queue of its own —
+   and say which it was.
 3. **Tidy the superseded previous queue** with the CLI (it rewrites the Status
    line to "Completed — superseded by queue-NNN"):
    ```
@@ -102,9 +109,10 @@ Follow the `aide-create-queue` skill in full. In brief:
    state that makes the rebase fail; `aide-create-queue` orders it the same way.
    An entry you passed over stays open and unticked — it is still a candidate
    for the next queue — and step 8 says so out loud.
-8. **Return** a tight summary: queue number, the item-number range and one-line
-   titles, and confirmation the previous queue was tidied and every item wired
-   into `progress.md`. Name the inbox entries you queued (with the item numbers
+8. **Return** a tight summary: the queue number — or **both**, saying which is
+   the maintenance queue and which the stage queue — the item-number range and
+   one-line titles, and confirmation the previous queue was tidied and every
+   item wired into `progress.md`. Name the inbox entries you queued (with the item numbers
    they became) **and the ones you passed over, with why** — a pass-over is
    stated where the queue is reviewed, not left for the next reader to
    re-derive. Name the two ways to proceed (`/aide-spec-queue NNN` up
@@ -159,8 +167,8 @@ shape:
 The provenance names where the insight came from; `queue-NNN` is yours,
 because you work a queue and there may be no item to name yet.
 
-The feedback loop triages the inbox at the queue boundary — which is why its
-open `defect`, `gap` and `automation` entries are an input to step 1 rather
+The insight-review pass triages the inbox at the queue boundary — which is why
+its open `defect`, `gap` and `automation` entries are an input to step 1 rather
 than a pile nobody reads. Capturing is cheap and always in scope; acting out of
 scope is forbidden. This append, and the `insights tick` of step 7, are the
 only writes allowed outside your edit scope.

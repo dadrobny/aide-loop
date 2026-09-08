@@ -52,6 +52,15 @@ only place the CLI reads. A status claim written anywhere else — a checklist i
 spec, a "current focus" heading, a summary in a README — is a second truth that
 will disagree with the first. Move it, do not copy it.
 
+## Each loop step ends in its own session — [`README.md`](README.md)
+
+The step sequence is in `README.md`, and the run-* orchestrators drive it; a step
+does not restate it. **Close a step by saying what it produced, not by naming the
+next one**, and start the next step in a **fresh session**: each step derives
+from the *written* document the last one produced, and a session still holding
+the conversation that drafted it reproduces those assumptions instead of reading
+the artefact.
+
 ## Root documents go through their entry point — §5
 
 `vision.md` and `roadmap.md` are authored via the loop's create-vision /
