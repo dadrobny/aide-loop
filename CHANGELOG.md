@@ -121,6 +121,63 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.41.0] — 2026-09-08
+
+Two engine wrongs a consumer met head-on, both in the same file: a paused
+deliverable that reported its stage as shipped, and a merge whose base could be
+lost by a killed run and then silently guessed by the next one.
+
+### Fixed
+
+- **A ⏸ deliverable no longer rolls its stage up to ✅ (issue #173).**
+  `rollup_status` treated `deferred` as terminal alongside `complete` and
+  `excluded`, so a stage paused mid-flight derived as `complete` — and `aide
+  check` then advised *"all deliverables ✅ but summary shows in-progress …
+  close the stage"*, exactly the wrong action. It reached the single source of
+  truth: an `aide progress set` run rewrote a consumer's stage summary row and
+  section heading from 🚧 to ✅ over three unticked acceptance criteria, and a
+  human restored it by hand. The terminal set is now `{complete, excluded}`,
+  which is what `scope` has always meant by the same icons one layer down —
+  its spent set is the same pair, and its comment says ⏸ claims are "dormant,
+  not dead". A deferred deliverable is work postponed, so its stage stays 🚧;
+  an excluded one is a decision not to do the work, so its stage can still
+  close. A stage with no ✅ at all is unaffected and still derives `planned` —
+  no new rollup state was added, deliberately: the fix is that ⏸ stops
+  counting as done, not a fourth thing for a stage to be.
+- **A merge killed mid-suite puts the claim branch and its base back (issue
+  #174).** `merge` deletes the claim branch *before* the post-merge test run
+  so the run sees the refs a fresh clone would (issue #125), and since #167
+  restores both the ref and `branch.<claim>.aide-base` on the way out. That
+  restore ran from exactly the two clean failure returns — there was no
+  `try/finally` around the window and no signal handling anywhere in the
+  module, so a run killed inside it (Ctrl-C, a CI timeout, an unattended
+  runner's wall clock) left the item merged into its base with the branch gone
+  and nothing recording where it had been. The window is now wrapped: an
+  interrupt restores the ref and its base, says so, and re-raises, so an
+  interrupted run still exits as interrupted. `SIGTERM` is included — Python's
+  default handler ends the process where it stands, and SIGTERM is how every
+  unattended case arrives. The window ends at the push, so a merge that
+  completed does not get a stale claim branch back.
+
+### Changed
+
+- **`aide merge` refuses a claim branch with no recorded base, instead of
+  falling back to `main_branch` (issue #174).** `SIGKILL` and an OOM kill run
+  no `finally`, so the crash-safe restore above cannot be the whole guarantee:
+  whatever killed the previous run, the *next* one meets a branch with no
+  record — and recreating the ref by hand (`git branch <name> <sha>`) does not
+  bring the config back either. `resolve_base` cannot tell "never recorded"
+  from "recorded and lost with the ref", but `merge` can, because it is the
+  verb that does the deleting. A consumer's re-run took the silent fallback
+  and fast-forwarded a whole queue branch onto `main` and pushed it, past its
+  one-reviewed-PR-per-queue gate, with nothing in the output naming `main`;
+  recovery was a force-push. `merge` now stops and names the choice it will
+  not make for you. **This is the breaking half**: a shape that previously
+  succeeded now exits 1. `claim` records a base for every branch it creates,
+  so the loop's own path is untouched — what this asks for is `--base` on a
+  hand-made branch's first merge, which is one word said once. `resolve_base`
+  itself is unchanged, and every other verb still defaults as before.
+
 ## [1.40.0] — 2026-09-08
 
 The item loop gains the two moves it lacked: an adversarial read of the diff,

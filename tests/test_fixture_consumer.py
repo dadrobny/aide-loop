@@ -1496,6 +1496,49 @@ def test_a_merge_re_run_after_a_red_run_still_lands_on_the_queue_branch(
     assert "aide/001-the-greeter" not in _branches(consumer)
 
 
+def test_a_merge_whose_base_was_lost_refuses_rather_than_landing_on_main(
+        aide, consumer: Path, capsys):
+    """#174, half 2, through the installed engine.
+
+    A `finally` cannot run through `SIGKILL`, so half 1 cannot be the whole
+    guarantee: whatever killed the previous run, the NEXT one meets a claim
+    branch with no recorded base. That is the shape a consumer recovered by
+    hand — `git branch <name> <sha>` puts the ref back and not the config —
+    and the silent `main_branch` fallback then fast-forwarded a whole queue
+    onto `main` and pushed it. Here it stops instead, with `main` untouched.
+    """
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    _set_test_command(consumer, "git rev-parse --verify HEAD")
+    _commit(consumer, "chore: a passing test command")
+    main_before = _git(["rev-parse", "main"], consumer).stdout.strip()
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    branch = _branch(consumer)
+    tip = _git(["rev-parse", branch], consumer).stdout.strip()
+
+    # The aftermath of a killed merge, reproduced: the ref restored by hand,
+    # its `aide-base` gone with the branch it was deleted alongside.
+    _git(["switch", "aide/queue-001"], consumer)
+    _git(["branch", "-D", branch], consumer)
+    _git(["branch", branch, tip], consumer)
+    assert _git(["config", "--get", f"branch.{branch}.{aide._BASE_CONFIG_KEY}"],
+                consumer, check=False).stdout.strip() == ""
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 1
+    err = capsys.readouterr().err
+    assert "no base is recorded" in err and "--base" in err
+    assert _git(["rev-parse", "main"], consumer).stdout.strip() == main_before
+    assert _item_status(aide, consumer, 1) != "complete"
+    assert branch in _branches(consumer)
+
+    # `--base` is the override the refusal names, and it lands on the queue
+    # branch the claim belonged to — not on main.
+    assert aide.main(["--repo", str(consumer), "merge", "1",
+                      "--base", "aide/queue-001"]) == 0
+    assert _git(["rev-parse", "main"], consumer).stdout.strip() == main_before
+    assert _item_status(aide, consumer, 1) == "complete"
+
+
 def test_a_split_reports_its_copies_and_check_sees_them_until_reworded(
         aide, consumer: Path, capsys):
     """#169: the split writes the shared prose N times, and says so.
