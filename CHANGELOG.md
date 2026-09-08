@@ -166,6 +166,24 @@ two branches doing it.
   a base it falls back to the sides' longest common prefix, which still
   catches every reorder, deletion and archive, since those leave entries
   surviving on both sides past that prefix.
+- **`aide merge` names the verb where the conflict actually lands.** The
+  inbox is `_ALWAYS_AUTHORISED`, so every role captures into it and two open
+  branches conflict here as a matter of course — while the agent standing at
+  the stall is the `validator`, which preloads `aide-review-and-validation`
+  and has read nothing about the inbox. A failure message reaches every role
+  and every runtime without any of them having read anything first, which a
+  skill preload cannot. Both of `merge`'s refusals now carry it: the failed
+  `git merge`, and the refusal to re-run over a tree left mid-merge. It says
+  whether the inbox is the **only** unmerged path — which decides whether the
+  verb finishes the job or is one step of several — and names the command that
+  completes the stalled operation (`git commit --no-edit`, `git rebase
+  --continue`, …). It stays quiet when the conflict is somewhere else.
+- **The interrupted-state refusal offers resolution before abortion.** It
+  previously said only "finish or abort that state first (`git rebase --abort`
+  / `git merge --abort`…)", and an agent that reads that literally aborts,
+  re-runs, and meets the identical conflict — a loop, and one this verb can
+  end. Resolving and staging now comes first, and the message says plainly
+  that aborting an unresolved conflict brings it back on the next attempt.
 - **`aide check` reports a conflict marker in `insights.md` as an error.** The
   other inbox lints are warnings, deliberately — a captured line is immutable,
   so a warning on one can never be cleared. A committed marker is the

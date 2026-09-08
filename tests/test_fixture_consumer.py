@@ -1526,6 +1526,81 @@ def test_resolve_merges_a_tick_taken_on_one_branch_only(aide, consumer: Path):
 
 
 # --------------------------------------------------------------------------- #
+# the stall names the verb — `aide merge` is where this conflict lands
+# --------------------------------------------------------------------------- #
+def _capture_here(repo: Path, line: str) -> None:
+    """Append one insight on the branch already checked out."""
+    inbox = repo / "docs" / "aide" / "insights.md"
+    inbox.write_text(inbox.read_text(encoding="utf-8") + line + "\n",
+                     encoding="utf-8")
+    _commit(repo, "docs(aide): capture")
+
+
+def _item_branch_and_main_both_capture(aide, consumer: Path) -> None:
+    """The routine shape: an item branch is open while `main` gains a capture.
+    Both sides appended, so `aide merge` stalls on the inbox and nothing else."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    _capture_here(consumer, _OURS)
+    _git(["switch", "main"], consumer)
+    _capture_here(consumer, _THEIRS)
+    _git(["switch", "aide/001-the-greeter"], consumer)
+
+
+def test_merge_names_the_verb_when_it_stalls_on_the_inbox(
+        aide, consumer: Path, capsys):
+    """The verb is useless to the role that needs it unless the thing that
+    stalls says so: `aide merge` is run by the `validator`, which preloads a
+    different skill and has read nothing about the inbox."""
+    _item_branch_and_main_both_capture(aide, consumer)
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    err = capsys.readouterr().err
+    assert "insights resolve" in err
+    assert "ONLY unmerged path" in err          # so the verb finishes the job
+    assert "Do NOT resolve" in err and "conventions.md §1" in err
+
+
+def test_the_mid_merge_refusal_resolves_before_it_offers_to_abort(
+        aide, consumer: Path, capsys):
+    """An agent that reads "abort" literally aborts, re-runs, and meets the
+    identical conflict. The advice has to end the loop, not restart it — and
+    following it here has to actually finish the merge."""
+    _item_branch_and_main_both_capture(aide, consumer)
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    err = capsys.readouterr().err
+    assert "insights resolve" in err
+    assert err.index("resolve and stage") < err.index("or abort it")
+    assert "brings it back on the next attempt" in err
+
+    # And the route it names ends the stall for real.
+    assert aide.main(["--repo", str(consumer), "insights", "resolve"]) == 0
+    _git(["commit", "--no-edit"], consumer)
+    assert not (consumer / ".git" / "MERGE_HEAD").exists()
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    text = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert _OURS in text and _THEIRS in text
+
+
+def test_the_inbox_hint_stays_quiet_when_the_conflict_is_somewhere_else(
+        aide, consumer: Path, capsys):
+    """A hint that fires on every stall is one a reader learns to skim."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    shared = consumer / "docs" / "aide" / "shared.md"
+    shared.write_text("branch side\n", encoding="utf-8")
+    _commit(consumer, "docs: branch side")
+    _git(["switch", "main"], consumer)
+    shared.write_text("main side\n", encoding="utf-8")
+    _commit(consumer, "docs: main side")
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    err = capsys.readouterr().err
+    assert "shared.md" in err and "insights resolve" not in err
+
+
+# --------------------------------------------------------------------------- #
 # the sibling shape — `--repo` beats a cwd inside a different consumer (#93)
 # --------------------------------------------------------------------------- #
 def test_repo_flag_wins_over_a_cwd_inside_another_consumer(

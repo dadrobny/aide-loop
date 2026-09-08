@@ -6171,6 +6171,65 @@ _INTERRUPTED_OPS: Tuple[Tuple[str, str], ...] = (
 )
 
 
+def _unmerged_paths(repo_root: Path) -> List[str]:
+    """Every path git currently holds unmerged, repo-relative, sorted."""
+    try:
+        out = git(["diff", "--name-only", "--diff-filter=U"], repo_root, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if out.returncode != 0:
+        return []
+    return sorted({line.strip() for line in out.stdout.splitlines() if line.strip()})
+
+
+def _continue_command(repo_root: Path) -> str:
+    """What finishes the operation this tree is stopped in, once staged."""
+    gdir = _git_dir(repo_root)
+    if (gdir / "rebase-merge").exists() or (gdir / "rebase-apply").exists():
+        return "git rebase --continue"
+    if (gdir / "CHERRY_PICK_HEAD").exists():
+        return "git cherry-pick --continue"
+    if (gdir / "REVERT_HEAD").exists():
+        return "git revert --continue"
+    return "git commit --no-edit"
+
+
+def _inbox_conflict_hint(repo_root: Path,
+                         config: Dict[str, Dict[str, object]]) -> Optional[str]:
+    """Name `insights resolve` when the stalled operation is stuck on the inbox.
+
+    The verb is useless to the role that needs it unless the thing that stalls
+    says so. `insights.md` is append-only and every role captures into it
+    (`_ALWAYS_AUTHORISED`), so two open branches conflict here as a matter of
+    course — while the agent that runs `aide merge` is the `validator`, which
+    preloads a different skill and has read nothing about the inbox. A message
+    at the point of the stall reaches every role, every runtime, and a human,
+    without any of them having had to read anything first.
+
+    It also says whether the inbox is the *only* unmerged path, because that
+    decides whether the verb finishes the job or is merely one of the steps.
+    """
+    ddir = docs_dir(repo_root, config)
+    try:
+        rel = (ddir / "insights.md").relative_to(repo_root).as_posix()
+    except ValueError:          # a docs_dir outside the repo: no relative name
+        return None
+    unmerged = _unmerged_paths(repo_root)
+    if rel not in unmerged:
+        return None
+    verb = "python .aide/scripts/aide.py insights resolve"
+    warn = (f"Do NOT resolve {rel} by hand — it is append-only, so the "
+            f"conflict is a union of entries, and retyping the block is where "
+            f"a captured claim gets reworded (conventions.md §1).")
+    others = [p for p in unmerged if p != rel]
+    if not others:
+        return (f"{rel} is the ONLY unmerged path. {warn} `{verb}` writes the "
+                f"union and stages it (add --dry-run to read it first), then "
+                f"`{_continue_command(repo_root)}` finishes this.")
+    return (f"{rel} is one of {len(unmerged)} unmerged paths. {warn} `{verb}` "
+            f"settles that one; the rest are yours: {', '.join(others)}.")
+
+
 def _dirty_paths(repo_root: Path) -> List[str]:
     """Tracked paths carrying uncommitted changes, as git reports them.
 
@@ -6447,11 +6506,20 @@ def cmd_merge(args: argparse.Namespace) -> int:
 
     unsafe = _unsafe_tree_state(repo_root, docs_dir(repo_root, config) / "progress.md")
     if unsafe:
+        # Resolution before abortion, and only when there is something to
+        # resolve: an agent that reads "abort" literally aborts, re-runs, and
+        # meets the identical conflict — a loop, and one this verb can end.
+        hint = _inbox_conflict_hint(repo_root, config)
         print(f"aide merge: refusing to merge item {args.number:03d} — {unsafe}. "
               f"`git switch` and `git pull --rebase` from here rewrite or "
-              f"discard work this process did not create. Finish or abort that "
-              f"state first (`git rebase --abort` / `git merge --abort`, or "
-              f"commit the changes), then re-run.", file=sys.stderr)
+              f"discard work this process did not create."
+              + (f"\naide merge: {hint}" if hint else "")
+              + f"\naide merge: finish that state — resolve and stage, then "
+                f"`{_continue_command(repo_root)}` — or abort it "
+                f"(`git rebase --abort` / `git merge --abort`, or commit the "
+                f"changes), then re-run. Aborting a conflict you have not "
+                f"resolved brings it back on the next attempt.",
+              file=sys.stderr)
         return 1
 
     git(["switch", main], repo_root)
@@ -6488,7 +6556,15 @@ def cmd_merge(args: argparse.Namespace) -> int:
                 git(["pull", "--rebase"], repo_root, check=False)
         merge_res = git(["merge", "--no-edit", branch], repo_root, check=False)
         if merge_res.returncode != 0:
-            print(f"aide merge: merge of {branch} failed:\n{merge_res.stdout}{merge_res.stderr}", file=sys.stderr)
+            # The one conflict this loop produces as a matter of course gets
+            # named here rather than left in git's output, because this is
+            # where it lands and the role standing here has read nothing about
+            # the inbox.
+            hint = _inbox_conflict_hint(repo_root, config)
+            print(f"aide merge: merge of {branch} failed:\n"
+                  f"{merge_res.stdout}{merge_res.stderr}"
+                  + (f"\naide merge: {hint}\n" if hint else ""),
+                  file=sys.stderr)
             return 1
 
     # The claim branch goes BEFORE the test run, so the run sees the refs a
