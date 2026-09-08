@@ -121,6 +121,89 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.42.0] — 2026-09-08
+
+One surface, taken apart: the routing rules for insight-inbox entries existed
+twice in adapter prose and had already been phrased differently, the pass that
+always runs at a queue boundary could only be reached through a seven-step
+retrospective, and the fixes that pass routes rode the next stage's batch.
+
+### Added
+
+- **`/aide-review-insights`, the inbox triage spun out of the feedback loop
+  (issue #159).** Step 0 was the step that always ran, carried most of the
+  skill's prose, and was the only part an unattended queue boundary needed —
+  so a human who wanted to triage the inbox invoked a retrospective, and an
+  agent that invoked the loop paid for all of it. It is now its own skill,
+  reachable on its own, and the feedback loop names it (with
+  `/aide-review-permissions`, `/aide-review-instructions` and
+  `/aide-status-report`) in a table of modular passes instead of restating any
+  of them; the loop keeps steps 1–5, and its own status-regeneration step is
+  now one of those calls. `/aide-run-roadmap`'s pre-planning triage points at
+  the new skill rather than at "`/aide-feedback-loop` §0".
+- **Triage judges what it routes, and the judgement is contract (§1 →
+  `insights.md`).** Routing an entry as written left three findings with
+  nowhere to go: an entry that repeats an earlier one, an entry whose premise
+  has decayed (what it names no longer exists, or has since been fixed), and
+  an entry filed under a type that does not fit what it describes. All three
+  are recorded the one way a captured claim allows — a dated trail line under
+  the entry, never an edit to the claim — and so is a *ticked* entry whose
+  status the triaging role now knows to be stale. Routing a `defect`, `gap` or
+  `automation` entry still never ticks it, and the decayed premise is the one
+  stated exception: it is ticked because there is nothing left for a queue to
+  carry, which is not a routing at all. In the engine rather than in the skill,
+  because the queue author reads the same rules.
+
+### Changed
+
+- **Insight-derived fixes get a maintenance queue ahead of the stage queue
+  (issue #160).** `/aide-create-queue` turned open `defect`, `gap` and
+  `automation` entries into items on the stage queue it was authoring, so a
+  one-line fix waited for a ten-item stage to merge and every other branch
+  picked it up only after that. When such entries exist and warrant it, one
+  create call now writes **two** queues: a short maintenance queue from those
+  entries, numbered first, then the stage queue. It is not a second live
+  queue — the live queue is the lowest-numbered open one, so the maintenance
+  queue is served, merged, and rebased onto first with no new state anywhere,
+  which is the property `tests/test_fixture_consumer.py` now pins at verb
+  level. The planner still decides: an entry too small, blocked or out of
+  scope is passed over with the reason stated, and a `gap` the upcoming stage
+  was going to fill anyway stays in the stage queue with that stage named.
+  `/aide-run-roadmap` and the `queue-planner` spec expect the pair, branch and
+  PR on the lower number, and carry both queue files in the one PR — the split
+  decision is only reviewable with both in front of the human. The engine
+  states the *ordering* and deliberately not the checkpoint shape: how the two
+  plans reach a person is the caller's, which is why one adapter carries them
+  in a single PR while a project whose `git.mode` pushes nothing (§4) has none
+  at all.
+- **One routing table, written once and pinned twice (issue #160).** Which
+  entry type goes where now lives in §1 → `insights.md` as a table;
+  `/aide-review-insights` and `/aide-create-queue` each carry it verbatim and
+  each pin it, so the two copies and the engine's cannot drift apart in
+  silence. That needed one guard to change: a `<!-- pins:` block no longer
+  classes a skill as a *section* skill (it would have demanded a `paths:`
+  block, a hidden frontmatter and an agent preload of a skill whose purpose is
+  to be invoked by name). A section skill is now recognised by
+  `user-invocable: false` alone; `test_rule_pins.py` checks any skill's pins in
+  both directions and requires them only of a delivered file; and what the old
+  second signal bought is bought instead from the preload side, by
+  `test_every_skill_an_agent_preloads_is_a_section_skill`.
+- **The seven `## Hand-off` tails are gone; the sequence has one home (issue
+  #161).** Each was a slice of the loop sequence restated per skill — "start a
+  fresh chat session and run `/aide-…`" — drifting independently, and no
+  template carried one. `AGENT-CONTEXT.md` now states the rule once: close a
+  step by saying what it produced, not by naming the next one, and start the
+  next step in a fresh session, because each step derives from the *written*
+  document the last one produced rather than the conversation that drafted it
+  (create-vision's rationale, generalised). The step list itself stays in
+  `README.md`. The two content-bearing endings survived under headings that
+  name what they are — `/aide-create-queue`'s absorbed and passed-over entries
+  is now "Absorbed and passed-over entries" — and `test_rules.py` fails if a
+  `Hand-off` heading comes back to any skill.
+- The always-on floor moves from 7,578 to 8,067 content bytes, all of it the
+  fresh-session rule added to `AGENT-CONTEXT.md` above; `FLOOR_PIN` in
+  `tests/test_structural_budget.py` moves with it.
+
 ## [1.41.0] — 2026-09-08
 
 Two engine wrongs a consumer met head-on, both in the same file: a paused

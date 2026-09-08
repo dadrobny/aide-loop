@@ -22,9 +22,13 @@ warning only — that each still names its section, that every preload names a
 skill that exists and every section skill is preloaded by someone, and that
 the restatements this mechanism replaced stay retired.
 
-A section skill is recognised **structurally** (either signal is enough, and
-the tests below then require the other), never by a name list, so the next one
-is covered the moment it lands. Stdlib + pytest only.
+A section skill is recognised **structurally** — `user-invocable: false`, the
+key that hides it from the `/` menu while leaving it preloadable — never by a
+name list, so the next one is covered the moment it lands. A `<!-- pins:` block
+is not that signal: a workflow skill may quote the contract it acts on, and
+`test_rule_pins.py` holds it to the quote either way. What keeps the key and
+the preload channel from coming apart is asserted from the preload side
+instead. Stdlib + pytest only.
 """
 from __future__ import annotations
 
@@ -96,16 +100,25 @@ def _list(block, key: str) -> list:
 def _is_section_skill(path: Path) -> bool:
     """A `SKILL.md` that delivers a contract section rather than a workflow.
 
-    Two signals, either sufficient: it quotes the section it delivers
-    (`<!-- pins:`), or it hides itself from the `/` menu
-    (`user-invocable: false`). Structural, so the next section skill is
-    covered without anyone editing a list here; and the tests below require
-    the *other* signal of anything recognised by one, so the two cannot drift
-    apart in silence.
+    One signal: `user-invocable: false`, the frontmatter key that keeps a
+    skill out of the `/` menu while leaving it preloadable. Structural, so
+    the next section skill is covered without anyone editing a list here.
+
+    A `<!-- pins:` block used to be a second sufficient signal, and is not any
+    more (1.42.0): a **workflow** skill may quote the contract it acts on —
+    `aide-create-queue` and `aide-review-insights` both carry the §1 routing
+    table — and `test_rule_pins.py` checks those quotes in both directions
+    exactly as it checks a delivered file's. Classing them as section skills
+    would demand a `paths:` block, a hidden frontmatter, and an agent preload
+    of a skill whose whole purpose is to be invoked by name. What the old
+    signal actually bought — a section skill that loses `user-invocable:
+    false` failing loudly rather than sliding into the workflow set — is
+    bought instead by
+    `test_every_skill_an_agent_preloads_is_a_section_skill`, which comes at
+    it from the preload side.
     """
-    block, body = _split(path)
-    return ("<!-- pins:" in body
-            or (_scalar(block, "user-invocable") or "").lower() == "false")
+    block, _ = _split(path)
+    return (_scalar(block, "user-invocable") or "").lower() == "false"
 
 
 _SECTION_SKILLS = [p for p in _SKILL_FILES if _is_section_skill(p)]
@@ -140,7 +153,7 @@ def test_the_adapter_ships_section_skills():
     one makes every parametrised test below vanish with a green suite."""
     assert _SKILL_FILES, "no skills/*/SKILL.md found — the glob or the layout moved"
     assert _SECTION_SKILLS, ("no section skill recognised — none carries "
-                             "`<!-- pins:` or `user-invocable: false`")
+                             "`user-invocable: false`")
     assert _WORKFLOW_SKILLS, "every skill reads as a section skill — the signal broke"
 
 
@@ -331,6 +344,34 @@ def test_every_skill_an_agent_preloads_exists_and_can_be_preloaded(agent: Path):
             f"preload with a debug-log warning only")
 
 
+@pytest.mark.parametrize("agent", _AGENT_FILES, ids=lambda p: p.stem)
+def test_every_skill_an_agent_preloads_is_a_section_skill(agent: Path):
+    """The other half of the recognition, come at from the preload side.
+
+    Since 1.42.0 a section skill is recognised by `user-invocable: false`
+    alone, so a spec that loses that key would simply drop out of
+    `_SECTION_SKILLS` and stop being checked as one — no failure, and a
+    section delivered by a file nothing holds to a section skill's rules. A
+    preload is the thing only a section skill has, so requiring every
+    preloaded skill to carry the key closes that: the key and the channel
+    cannot come apart in silence.
+
+    It also catches the mirror mistake — preloading a workflow skill, which
+    pays its whole body on every spawn of that role for something the role
+    was going to invoke by name anyway.
+    """
+    for name in _preloads(agent):
+        skill = _ADAPTER / "skills" / name / "SKILL.md"
+        if not skill.is_file():
+            continue  # named by the test above, which fails on it
+        block, _ = _split(skill)
+        assert (_scalar(block, "user-invocable") or "").lower() == "false", (
+            f"{agent.name}: preloads `{name}`, which is not `user-invocable: "
+            f"false` — either it is a section skill that lost the key (add it "
+            f"back; nothing else classes it as one) or it is a workflow skill "
+            f"being paid for on every spawn of this role")
+
+
 @pytest.mark.parametrize("path", _SECTION_SKILLS, ids=_label)
 def test_every_section_skill_is_preloaded_by_at_least_one_agent(path: Path):
     """A section skill nobody preloads is a pointer wearing a skill's name.
@@ -382,3 +423,26 @@ def test_no_agent_or_skill_tells_a_role_to_copy_the_inbox_template(path: Path):
     assert not _INBOX_TEMPLATE_RE.search(body), (
         f"{path.name}: names templates/insights.md — the engine creates the "
         f"inbox (conventions.md §1); a role only appends to it")
+
+
+_HANDOFF_HEADING = re.compile(r"^#{1,6}[ \t]*Hand-?off[ \t]*$", re.M | re.I)
+
+
+@pytest.mark.parametrize("path", _SKILL_FILES, ids=_label)
+def test_no_skill_ends_in_a_navigational_hand_off_tail(path: Path):
+    """The restatement retired in 1.42.0 (issue #161).
+
+    Seven skills ended with a `## Hand-off` section telling the user to start a
+    fresh session and run the next entry point — a slice of the loop sequence
+    each, drifting independently, and paid for on every spawn that loads the
+    skill. The sequence now has one home (`README.md`) and the fresh-session
+    rule one statement (`AGENT-CONTEXT.md`); a skill closes by saying what it
+    produced. The two content-bearing endings survived the change under
+    headings that name what they are, which is why this guards the *heading*
+    rather than the content.
+    """
+    _, body = _split(path)
+    assert not _HANDOFF_HEADING.search(body), (
+        f"{_label(path)}: carries a `Hand-off` heading. The loop sequence and "
+        f"the fresh-session rationale live in README.md and AGENT-CONTEXT.md; "
+        f"if this ending carries content, head it with what that content is.")

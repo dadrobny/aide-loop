@@ -78,8 +78,8 @@ isolation).
 |---|---|
 | **Roadmap exhausted** — every stage ✅ / deferred / excluded | Report done. Stop. |
 | **An open `aide/queue-NNN` PR is awaiting merge** | Tell the user to review/merge it; **stop**. Re-invoke after merge. |
-| **Latest queue merged to `main` but has 📋 items left** | Run that queue → go to **Run a queue**. |
-| **Latest queue fully exhausted, roadmap has more stages** | Generate the next queue → go to **Generate the next queue**. |
+| **A merged queue still has 📋 items left** | Run the live queue — the lowest-numbered open one, which is the maintenance queue when one was split off → go to **Run a queue**. |
+| **Every queue exhausted, roadmap has more stages** | Generate the next queue → go to **Generate the next queue**. |
 | **No queue exists yet** | Generate the first queue → go to **Generate the next queue**. |
 
 ## Generate the next queue
@@ -92,19 +92,29 @@ on whatever branch it's on, then returns a one-line summary. **You** (orchestrat
 prepare the branch and handle push/PR around it.
 
 - **Triage the insight inbox first** — if `docs/aide/insights.md` has unchecked
-  entries, run `/aide-feedback-loop` §0 (triage) before planning. `defect`,
-  `gap` and `automation` entries stay **open** through triage on purpose: the
-  open inbox is an input to queue authoring, so the planner reads them with
+  entries, run `/aide-review-insights` before planning. `defect`, `gap` and
+  `automation` entries stay **open** through triage on purpose: the open inbox
+  is an input to queue authoring, so the planner reads them with
   `insights list --open` and ticks the ones it queues. The queue PR is where the
   human reviews both those and the ones it passed over.
+- **Expect up to two queues from one create call.** When open `defect`, `gap` or
+  `automation` entries exist, the planner writes a **maintenance queue** from
+  those entries and the **stage queue** after it (`.aide/conventions.md` §1 →
+  `insights.md`), numbered in that order. That is not two live queues: the live
+  queue is the lowest-numbered open one, so the maintenance queue is executed
+  and merged first and the stage queue starts when it empties. Its summary says
+  which queues it wrote; branch and PR on the **lower** number, and carry both
+  queue files in the one PR — the split decision (what went to maintenance and
+  what went to the stage) is only reviewable with both in front of the human.
 - **Create the queue branch with the CLI**, off an up-to-date `main`
   (`git pull --rebase`): `python .aide/scripts/aide.py queue start NNN`. It
   builds the name, records the base, and pushes it. Typing the name by hand
   risks a shape `aide claim` does not recognise, which silently retargets
   every item's merge at `main` instead of the queue branch.
 - **Spawn `queue-planner`**: "Generate queue NNN on branch `aide/queue-NNN`;
-  tidy the previous queue; commit both; consider the triaged insight candidates;
-  do not push or PR." Wait for its summary.
+  tidy the previous queue; commit both; consider the triaged insight candidates,
+  splitting off a maintenance queue ahead of the stage queue if they warrant
+  one; do not push or PR." Wait for its summary.
 - `git push` the planner's commits — `queue start` pushed the branch when it
   was empty and set its upstream, so a bare `git push` is enough and no
   branch name is typed. Do this **before** `gh pr create`: with commits
@@ -112,7 +122,9 @@ prepare the branch and handle push/PR around it.
   run rather than failing loudly. Then open a **PR**:
   `gh pr create` titled `docs(aide): work queue NNN`, body summarising the batch
   — including the inbox entries it absorbed and the ones it passed over, which
-  the planner's summary names.
+  the planner's summary names. If it wrote two queues, the title names the pair
+  (`work queues NNN-NNN+1`) and the body says which is the maintenance queue and
+  which the stage queue.
 - **STOP and tell the user**: review/edit/merge the queue PR, then re-invoke
   `/aide-run-roadmap` (or `/aide-run-queue NNN`) to execute it. A queue PR is
   the right place to reshape the plan before any code is built against it.

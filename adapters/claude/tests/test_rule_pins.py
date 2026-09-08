@@ -44,6 +44,13 @@ every other path inside `adapters/`, and is resolved back to `core/conventions/`
 here. Source tree, not an install: this is adapter↔engine consistency, and both
 sides sit in this repo.
 
+**Who may pin.** Every delivered file must (that is the obligation above); any
+other skill may. A **workflow** skill that restates a slice of the contract it
+acts on — `/aide-create-queue` and `/aide-review-insights` each carry the §1
+routing table verbatim, which is the whole point of writing that table once —
+declares the same blocks and is held to them the same way, in both directions.
+It simply owes none, because it delivers no section.
+
 **What the pin list is not.** It is hand-curated and can go stale — but only
 toward under-checking: a statement nobody pinned is unguarded exactly as it was
 before, while a pinned one cannot move on one side alone. The known cost, taken
@@ -86,8 +93,8 @@ _PINS_OPENER = re.compile(r"<!--[ \t]*pins:", re.I)
 #: the check would assert nothing at all.
 _COMMENT = re.compile(r"<!--.*?-->", re.S)
 
-#: `user-invocable: false` in a skill's frontmatter — the other structural
-#: signal of a section skill (the first being a pins block at all).
+#: `user-invocable: false` in a skill's frontmatter — the structural signal of
+#: a section skill, and since 1.42.0 the only one.
 _HIDDEN = re.compile(r"^user-invocable:[ \t]*false[ \t]*$", re.M | re.I)
 
 #: Emphasis and code markers. Dropped on both sides, so bolding a clause in one
@@ -140,21 +147,31 @@ def _normalise(text: str) -> str:
 
 
 def _is_section_skill(path: Path) -> bool:
-    """The same two-signal recognition `test_rules.py` uses: a `SKILL.md` that
-    carries a pins block, or hides itself from the `/` menu. Either alone is
-    enough to be collected here — and then
-    `test_every_delivered_file_pins_at_least_one_statement` requires the
-    pins, so a section skill that lost its block is a failure, not an
-    absence.
+    """The same recognition `test_rules.py` uses: a `SKILL.md` that hides
+    itself from the `/` menu with `user-invocable: false`.
+
+    Not "carries a pins block" — since 1.42.0 a **workflow** skill may quote
+    the contract it acts on too (`aide-create-queue`, `aide-review-insights`
+    and the §1 routing table), and those quotes are checked here exactly like
+    a delivered file's. What separates the two sets is only the *obligation*
+    below: a delivered file must pin something, a workflow skill need not.
     """
     text = _read(path)
     head = text[4:text.find("\n---\n", 4)] if text.startswith("---\n") else ""
-    return bool(_PINS_OPENER.search(text)) or bool(_HIDDEN.search(head))
+    return bool(_HIDDEN.search(head))
 
 
-#: Every file that delivers a contract section: the rules, and the section
-#: skills. Nothing below distinguishes the two — the pin grammar is the same.
+#: Every file that **delivers** a contract section: the rules, and the section
+#: skills. This is the set that owes at least one pin.
 _DELIVERED = _RULE_FILES + [p for p in _SKILL_FILES if _is_section_skill(p)]
+
+#: Every file whose pins are **checked**: the delivered files, plus any other
+#: skill that quotes the contract. A workflow skill owes no pin, but a pin it
+#: does declare binds it exactly as a rule's binds the rule — which is what
+#: makes "one routing table, restated in two skills" a checkable claim rather
+#: than a review note.
+_PINNING = _DELIVERED + [p for p in _SKILL_FILES
+                         if p not in _DELIVERED and _PINS_OPENER.search(_read(p))]
 
 
 def _label(path: Path) -> str:
@@ -195,7 +212,7 @@ def _section_path(declared: str) -> Path:
 #: `(rule, section as written, pin)`, flattened at collection time so each pin
 #: is its own test case and a failure names the sentence that moved.
 _PINNED = [(rule, section, pin)
-           for rule in _DELIVERED
+           for rule in _PINNING
            for section, pins in _pin_blocks(rule)
            for pin in pins]
 
@@ -219,7 +236,11 @@ def test_there_are_delivered_files_and_they_declare_pins():
     assert _RULE_FILES, "no rules/*.md found — the glob or the layout moved"
     assert len(_DELIVERED) > len(_RULE_FILES), (
         "no skills/*/SKILL.md reads as a section skill — the layout moved, or "
-        "the recognition here stopped seeing `<!-- pins:` / `user-invocable`")
+        "the recognition here stopped seeing `user-invocable: false`")
+    assert len(_PINNING) > len(_DELIVERED), (
+        "no workflow skill declares a `<!-- pins: … -->` block — the routing "
+        "table `/aide-create-queue` and `/aide-review-insights` share is "
+        "unpinned, or the opener regex stopped matching")
     assert _PINNED, "no delivered file declares a `<!-- pins: … -->` block"
 
 
@@ -247,7 +268,7 @@ def test_every_delivered_file_pins_at_least_one_statement(rule: Path):
         f"exists to prevent, wearing the guard's clothes.")
 
 
-@pytest.mark.parametrize("rule", _DELIVERED, ids=_label)
+@pytest.mark.parametrize("rule", _PINNING, ids=_label)
 def test_every_pins_comment_in_a_delivered_file_actually_parses(rule: Path):
     """A block the grammar does not recognise must be loud, not absent.
 

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import codecs
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -65,13 +66,24 @@ def _frontmatter(path: Path):
     return None if end == -1 else text[4:end]
 
 
+#: `user-invocable: false` as a frontmatter *scalar*, matched the way the two
+#: sibling modules match it: case-folded, and tolerant of trailing space. A
+#: plain `"user-invocable: false" in block` would read `False` — valid YAML,
+#: and still a section skill to `test_rules.py` — as a workflow skill, and this
+#: module's checks on it would vanish rather than fail.
+_HIDDEN = re.compile(r"^user-invocable:[ \t]*false[ \t]*$", re.M | re.I)
+
+
 def _is_section_skill(path: Path) -> bool:
-    """The same two signals `adapters/claude/tests/test_rules.py` and
-    `tests/test_structural_budget.py` recognise — `user-invocable: false`, or
-    a `<!-- pins:` block; either is enough. One signal here and two there
-    would let a skill that lost one key drop out of these checks silently."""
-    hidden = "user-invocable: false" in (_frontmatter(path) or "")
-    return hidden or "<!-- pins:" in path.read_bytes().decode("utf-8-sig")
+    """The same signal `adapters/claude/tests/test_rules.py` and
+    `tests/test_structural_budget.py` recognise — `user-invocable: false`, and
+    since 1.42.0 only that. A `<!-- pins:` block is no longer sufficient: a
+    workflow skill may quote the contract it acts on, and the checks below —
+    `paths:`, a hidden frontmatter, a resolvable preload name — are a section
+    skill's, not a quoting skill's. One recognition here and another there
+    would let a skill drop out of these checks silently, so the three stay
+    identical, spelling included."""
+    return bool(_HIDDEN.search(_frontmatter(path) or ""))
 
 
 #: The skills that deliver a contract section, recognised structurally so the
@@ -725,6 +737,49 @@ def test_an_exhausted_queue_is_no_longer_open_to_claim_from(aide, consumer: Path
     assert _claim(aide, consumer) == 1
     assert "no open queue" in capsys.readouterr().err
     assert _branch(consumer) == "main"
+
+
+def test_a_maintenance_queue_is_served_before_the_stage_queue_behind_it(
+        aide, consumer: Path):
+    """The engine property #160's split rests on, exercised rather than assumed.
+
+    `/aide-create-queue` may now write **two** queues from one call: a
+    maintenance queue of the insight-derived fixes, then the stage queue after
+    it. Nothing new records which of the two is live — the claim is simply
+    that "the live queue is the lowest-numbered open one" already produces the
+    ordering, so the fixes merge first and every other branch rebases onto
+    them early. That makes the whole design one assertion deep, and this is
+    it: with both queues open, `claim` takes the maintenance queue's item, and
+    only reaches the stage queue when the maintenance queue is exhausted.
+    """
+    ddir = consumer / "docs" / "aide"
+    (ddir / "queue" / "queue-002.md").write_text(
+        "# Fixture — Work Queue 002 (maintenance)\n\n"
+        "### Item 003: Strip the greeting whitespace\n"
+        "The fix insight entry 2 asked for.\n", encoding="utf-8")
+    (ddir / "queue" / "queue-003.md").write_text(
+        "# Fixture — Work Queue 003\n\n"
+        "### Item 004: The stage item\n"
+        "The batch the roadmap was going to produce anyway.\n", encoding="utf-8")
+    ppath = ddir / "progress.md"
+    ppath.write_text(ppath.read_text(encoding="utf-8").replace(
+        "- 📋 The farewell. *(Item 002)*",
+        "- 📋 The farewell. *(Item 002)*\n"
+        "- 📋 Strip the greeting whitespace. *(Item 003)*\n"
+        "- 📋 The stage item. *(Item 004)*"), encoding="utf-8")
+    _commit(consumer, "docs: a maintenance queue ahead of the stage queue")
+    for n in ("1", "2"):
+        assert aide.main(["--repo", str(consumer), "progress", "set", n, "done"]) == 0
+
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer).startswith("aide/003-"), (
+        "claim reached past the maintenance queue for the stage queue behind "
+        "it — the lowest-numbered-open rule is what orders the two")
+
+    _git(["switch", "main"], consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "3", "done"]) == 0
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer).startswith("aide/004-")
 
 
 def test_claim_reports_none_left_when_every_open_item_is_already_claimed(
