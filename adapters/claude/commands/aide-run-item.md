@@ -31,7 +31,7 @@ pin the session model, so `/model sonnet` first if you're on Opus.
 | 1 | **Write tests** for the item | `test-writer` | Sonnet | reads spec + AC + existing test style, writes tests for every AC + adversarial cases, commits. **No production code, no pytest.** |
 | 2 | **Implement** production code | `builder` | Sonnet (→ Opus on 3rd attempt) | checkout branch, implement `source_dir` per every AC, record decisions, set progress in-progress (`aide progress set NNN in-progress`), commit. **No tests, no pytest.** |
 | 2b | **Review** the diff | `reviewer` | Sonnet | **only when `aide.toml` sets `loop.review = "background"`** (default `"off"`). Dispatched in the background the moment builder returns, concurrent with step 3 over the same branch. Reads the diff adversarially and reports findings; writes nothing, merges nothing. |
-| 3 | **Validate** + merge | `validator` | Sonnet | a **different** agent: runs pytest, checks AC coverage + scope + vision fit, then on PASS reconciles + merges via the CLI (`aide progress set NNN in-review`, `aide merge NNN` — `merge` writes the ✅ itself once the merge lands). **No new tests.** |
+| 3 | **Validate** (+ merge, unless held) | `validator` | Sonnet | a **different** agent: runs pytest, checks AC coverage + scope + vision fit, then on PASS reconciles via the CLI (`aide progress set NNN in-review`) and merges (`aide merge NNN` — `merge` writes the ✅ itself once the merge lands). **Under `loop.review = "background"` the merge is held**: it stops after the reconcile, reports PASS (merge held), and *you* merge once the review is discharged. **No new tests.** |
 
 **Spec authoring, testing, implementation, and validation are always separate
 agents.** No agent signs off its own work. Spawn a **new** instance of each per
@@ -42,10 +42,11 @@ item number, the branch name, and (from spec-author) the list of AC.
 §9). Validation is spec-relative and gates the merge; review is adversarial and
 produces findings. A green validator is not a review. Read `loop.review` from
 `aide.toml` before dispatching the builder: `"off"` (the default) runs the
-validator alone — step 4 does not happen and step 5 merges as it always has; `"background"` runs
-both, and **the merge waits for both** — a review whose findings arrive after
-the merge gates nothing. Under `"background"` the validator holds the merge and
-you run `aide merge NNN` yourself once step 6's triage is discharged.
+validator alone — no `reviewer` is spawned, and the validator merges as it
+always has; `"background"` runs both, and **the merge waits for both** — a
+review whose findings arrive after the merge gates nothing. Under
+`"background"` the validator stops at PASS with the merge held, and you run
+`aide merge NNN` yourself once its findings are triaged.
 
 **Command hygiene.** Sub-agents (and you) emit git/CLI commands in the
 allow-list-friendly shape delivered by `.claude/rules/aide-command-hygiene.md`
