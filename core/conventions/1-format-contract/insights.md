@@ -58,6 +58,7 @@ triaging the file by hand is what made triage expensive enough to defer:
 python .aide/scripts/aide.py insights list [--open] [--type T] [--trail]
 python .aide/scripts/aide.py insights tick N --pointer "<where it landed>"
 python .aide/scripts/aide.py insights archive --before YYYY-MM-DD [--yes]
+python .aide/scripts/aide.py insights resolve [--dry-run]
 ```
 
 `list` numbers entries by position and prints the backlog without the closed
@@ -70,6 +71,28 @@ malformed to yield a date can be moved by no cut at all; `archive` names each
 one it had to leave behind rather than dropping it silently.
 Archived entries are frozen and no longer shape-checked, since the immutability
 rule leaves no way to act on a warning about one.
+
+**Append-only means every pair of branches conflicts here, and the conflict is
+always a union.** Two branches that each captured an insight added lines at the
+same position, so a merge or rebase stops on this file routinely; resolving it
+by hand is where "never reword a captured claim" gets broken, because whoever
+resolves it retypes the block. `resolve` reads the file with the conflict
+markers in place, parses both sides into entries, and writes the union — the
+shared history, then each side's new entries in the order they were captured.
+Positional numbering needs no repair, since nothing moves. An entry ticked on
+either side ends up ticked and keeps that side's pointer; both sides' trail
+lines are kept, in date order; two ticks with two different pointers keep both
+and say so, because that one needs a human. `--dry-run` prints the union
+without writing it.
+
+**It refuses anything that is not a pure append**, and a refusal writes
+nothing: a claim reworded, reordered or deleted on one side, and a side that
+archived — an archive cuts closed entries out of the middle and renumbers what
+remains, so the two sides no longer share a prefix. Each of those is a change
+to an immutable line, which is precisely what a human must see. A conflict
+marker left in the file is an `aide check` **error**, not a warning, and the
+message names this verb: the markers make every line below them parse as the
+wrong entry, so `list`, `tick` and `archive` are all reading a file that lies.
 
 **The claim is immutable; its status is not.** The captured line is never
 reworded, reordered, or deleted — that is what protects provenance, and it is
