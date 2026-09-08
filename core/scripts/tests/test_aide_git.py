@@ -274,12 +274,23 @@ def test_claim_dry_run_does_not_switch(tmp_path: Path):
 # --------------------------------------------------------------------------- #
 # merge
 # --------------------------------------------------------------------------- #
-def _make_item_branch(root: Path, branch: str, filename: str) -> None:
+def _make_item_branch(root: Path, branch: str, filename: str,
+                      base: str = "main") -> None:
+    """A claim branch as `aide claim` would leave it — base recorded and all.
+
+    Recording the base is not decoration: since issue #174 `merge` refuses a
+    claim branch that has none, because `claim` writes one for every branch it
+    creates, so a missing record means the record was LOST. A fixture that
+    skipped it would be testing the refusal in every merge test rather than
+    the merge. Pass ``base=None`` for a branch that genuinely has no record.
+    """
     _run(["git", "switch", "-c", branch], root)
     (root / filename).write_text("work\n", encoding="utf-8")
     _run(["git", "add", "-A"], root)
     _run(["git", "commit", "-m", f"work on {branch}"], root)
     _run(["git", "switch", "main"], root)
+    if base:
+        aide._record_branch_base(root, branch, base)
 
 
 def test_merge_local_merges_to_main(tmp_path: Path):
@@ -1058,6 +1069,9 @@ def test_merge_after_a_no_commit_run_names_the_tick_it_is_blocked_on(
     _run(["git", "add", "feature2.txt"], root)
     _run(["git", "commit", "-m", "work on 028"], root)
     _run(["git", "switch", "main"], root)
+    # As `claim` would have left it — otherwise the base refusal (issue #174)
+    # answers first and this test stops being about the dirty tree.
+    aide._record_branch_base(root, "aide/028-coverage-rules", "main")
     capsys.readouterr()
     assert aide.main(["--repo", str(root), "merge", "28", "--no-test"]) == 1
     err = capsys.readouterr().err
@@ -1401,12 +1415,40 @@ def test_restore_puts_back_the_recorded_base_with_the_ref(tmp_path: Path):
     assert aide.resolve_base(root, aide.load_config(root), None, branch) == "aide/queue-003"
 
 
-def test_merge_names_the_base_and_that_nothing_recorded_it(tmp_path: Path, capsys):
+def test_merge_refuses_a_claim_branch_with_no_recorded_base(tmp_path: Path, capsys):
+    """Issue #174, half 2 — and the assertion this file used to make the other
+    way round (it pinned the fallback being *named*, which was not enough).
+
+    `claim` records a base for every branch it makes, so a claim branch with
+    none has lost its record — the way an interrupted merge loses it, with the
+    ref. `resolve_base` cannot tell that from a branch this machine never
+    claimed; `merge` can, so it stops instead of resolving to `main_branch` and
+    fast-forwarding a queue's work onto main.
+    """
     root = _init_repo(tmp_path / "r", mode="local")
-    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
-    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 0
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt", base=None)
+    assert aide._recorded_branch_base(root, "aide/027-bounds-rules") is None
+
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 1
+    captured = capsys.readouterr()
+    assert "no base is recorded" in captured.err
+    assert "--base" in captured.err
+    # Refused means refused: nothing merged, and the branch is untouched.
+    assert not (root / "feature.txt").is_file()
+    assert "aide/027-bounds-rules" in aide._local_branches(root)
+
+
+def test_merge_names_an_explicit_base_and_proceeds_without_a_record(tmp_path: Path,
+                                                                   capsys):
+    """`--base` is the override the refusal points at, so the legitimate
+    first-merge-onto-main shape still lands — it just says where."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt", base=None)
+    assert aide.main(["--repo", str(root), "merge", "27", "--base", "main",
+                      "--no-test"]) == 0
     out = capsys.readouterr().out
-    assert "item 027 lands on main" in out and "no base is recorded" in out
+    assert "item 027 lands on main (from --base)" in out
+    assert (root / "feature.txt").is_file()
 
 
 def test_merge_names_a_recorded_base_as_recorded(tmp_path: Path, capsys):
@@ -1532,6 +1574,82 @@ def test_an_interpreter_path_with_a_space_is_one_command(tmp_path: Path):
     quoted = f'"{exe}" -X utf8'
     assert aide._configured_interpreter({"python": {"interpreter": quoted}}) == [str(exe), "-X", "utf8"]
     assert aide._configured_interpreter({"python": {"interpreter": ""}}) == [sys.executable]
+
+
+def test_a_merge_killed_mid_suite_puts_the_branch_and_its_base_back(
+        tmp_path: Path, monkeypatch, capsys):
+    """Issue #174, half 1 — the exit #167 could not see.
+
+    `_restore_claim_branch` was called from exactly the two clean failure
+    returns, so a run KILLED between the branch delete and the push restored
+    nothing: the item was merged into its base, the branch was gone, and the
+    next run's `resolve_base` fell back to main_branch. The post-merge suite is
+    the long pole in that window, which is where Ctrl-C, a CI timeout and a
+    runner's wall clock all land.
+
+    The interrupt is aimed at the test command alone — `git` goes through the
+    same `subprocess.run`, and stubbing it wholesale would kill the run before
+    it ever deleted the branch, which is the state this is about.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    assert aide.main(["--repo", str(root), "queue", "start", "3"]) == 0
+    assert aide.main(["--repo", str(root), "claim", "--queue", "3"]) == 0
+    branch = _current_branch(root)
+    (root / "work.txt").write_text("work\n", encoding="utf-8")
+    _run(["git", "add", "-A"], root)
+    _run(["git", "commit", "-m", "work"], root)
+    _run(["git", "switch", "aide/queue-003"], root)
+    assert aide._recorded_branch_base(root, branch) == "aide/queue-003"
+
+    real_run = aide.subprocess.run
+    test_cmd = aide.resolve_test_command(root, aide.load_config(root))
+
+    def _killed_mid_suite(cmd, *a, **kw):
+        if list(cmd) == list(test_cmd):
+            raise KeyboardInterrupt
+        return real_run(cmd, *a, **kw)
+
+    monkeypatch.setattr(aide.subprocess, "run", _killed_mid_suite)
+    with pytest.raises(KeyboardInterrupt):
+        aide.main(["--repo", str(root), "merge", "27"])
+
+    assert branch in aide._local_branches(root)
+    assert aide._recorded_branch_base(root, branch) == "aide/queue-003"
+    # The whole point of recording it: the re-run lands where this run did.
+    assert aide.resolve_base(root, aide.load_config(root), None, branch) == "aide/queue-003"
+    assert "interrupted" in capsys.readouterr().err
+
+
+def test_the_restore_window_ends_at_the_push_not_at_the_return(tmp_path: Path):
+    """A merge that got all the way through must NOT get its branch back.
+
+    The `except` arm covers the window; putting the branch back after the work
+    has left the repository would leave a stale claim branch behind a ✅ item —
+    the state deleting it before the tests exists to avoid (issue #125).
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 0
+    assert "aide/027-bounds-rules" not in aide._local_branches(root)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal delivery")
+def test_a_terminating_signal_unwinds_instead_of_ending_the_process(tmp_path: Path):
+    """SIGTERM is how the unattended cases in #174 arrive, and Python's default
+    handler ends the process where it stands — no `finally`, no `except`. The
+    context manager is what gives the restore above a stack to unwind."""
+    import signal
+
+    original = signal.getsignal(signal.SIGTERM)
+    with aide._restore_on_signal():
+        # Asserted BEFORE the signal is sent, deliberately: were the handler
+        # not installed, the SIGTERM below would end the pytest process rather
+        # than fail this test.
+        assert signal.getsignal(signal.SIGTERM) is not original
+        with pytest.raises(aide._Terminated):
+            os.kill(os.getpid(), signal.SIGTERM)
+    # And handed back, so nothing outside the merge window inherits it.
+    assert signal.getsignal(signal.SIGTERM) is original
 
 
 def test_restore_records_the_base_the_run_merged_into_not_the_old_record(tmp_path: Path):

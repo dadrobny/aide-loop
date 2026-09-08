@@ -132,8 +132,27 @@ def test_rollup_status():
     assert aide.rollup_status(["complete", "complete"]) == "complete"
     assert aide.rollup_status(["complete", "planned"]) == "in-progress"
     assert aide.rollup_status(["planned", "planned"]) == "planned"
-    assert aide.rollup_status(["complete", "deferred"]) == "complete"
+    assert aide.rollup_status(["complete", "excluded"]) == "complete"
     assert aide.rollup_status([]) is None
+
+
+def test_a_deferred_deliverable_keeps_its_stage_open():
+    """Issue #173, and the assertion this file used to make the other way round.
+
+    A \u23f8 deliverable is work postponed, not work done, so a stage still
+    holding one is \U0001f6a7 — which is what `scope` has always meant by the same
+    icon (its spent set is `{complete, excluded}`). ❌ stays terminal: an
+    excluded deliverable is a decision *not* to do the work, and a stage waits
+    for nothing on its account.
+    """
+    assert aide.rollup_status(["complete", "deferred"]) == "in-progress"
+    assert aide.rollup_status(["complete", "deferred", "excluded"]) == "in-progress"
+    assert aide.rollup_status(["complete", "excluded"]) == "complete"
+    # Unchanged, and deliberately so: with no ✅ among them there is no work to
+    # report as shipped, so an all-⏸ stage is still `planned` rather than a
+    # rollup state of its own.
+    assert aide.rollup_status(["deferred"]) == "planned"
+    assert aide.rollup_status(["deferred", "excluded"]) == "planned"
 
 
 def test_stage_sections_bounds():

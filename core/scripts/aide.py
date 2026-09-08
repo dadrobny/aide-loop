@@ -29,11 +29,13 @@ from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
 import fnmatch
 import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -518,7 +520,7 @@ def rollup_status(statuses: List[str]) -> Optional[str]:
     """Derive a stage status from its deliverable statuses (None if no bullets)."""
     if not statuses:
         return None
-    if all(s in ("complete", "deferred", "excluded") for s in statuses) and any(
+    if all(s in ("complete", "excluded") for s in statuses) and any(
         s == "complete" for s in statuses
     ):
         return "complete"
@@ -526,6 +528,15 @@ def rollup_status(statuses: List[str]) -> Optional[str]:
     # not landed, so a stage holding one is 🚧, never ✅. That is the whole point
     # of the state — a `pr`-mode run must not roll a stage up to "shipped" on
     # work that is still an open PR.
+    #
+    # ⏸ is absent for the stronger version of the same reason (issue #173): a
+    # deferred deliverable has landed even less than a reviewed one — it is a
+    # decision to do the work *later*, so a stage still holding one has not
+    # shipped. ❌ stays terminal because an excluded deliverable is a decision
+    # not to do the work at all, and there is nothing left to wait for. This is
+    # the distinction `scope` already draws one layer down, where the spent set
+    # is `{complete, excluded}` and the comment says ⏸ claims are "dormant, not
+    # dead"; the two read the same icon the same way now.
     if any(s in ("complete", "in-progress", "in-review") for s in statuses):
         return "in-progress"
     return "planned"
@@ -5723,6 +5734,57 @@ def _has_unpushed_merge(repo_root: Path) -> bool:
     return res.returncode == 0 and bool(res.stdout.strip())
 
 
+class _Terminated(BaseException):
+    """Raised in place of a terminating signal, so a `finally` can run.
+
+    Deliberately a `BaseException`: it is not an error the surrounding code
+    should ever catch and continue past, exactly like the `KeyboardInterrupt`
+    it stands beside.
+    """
+
+
+@contextlib.contextmanager
+def _restore_on_signal(signals: Tuple[str, ...] = ("SIGTERM", "SIGHUP")):
+    """Context manager: turn terminating signals into `_Terminated` inside it.
+
+    `KeyboardInterrupt` already unwinds the stack, so a `try` arm covers Ctrl-C
+    for free. `SIGTERM` does not — Python's default handler ends the process
+    where it stands, no `finally`, no `except` — and SIGTERM is exactly how the
+    unattended cases in issue #174 arrive: a CI job's timeout, a runner's wall
+    clock, a supervisor tearing down a stuck step. Without this, the crash-safe
+    restore below would cover only the case a human is present to watch.
+
+    `SIGKILL` and a hard OOM kill remain uncoverable by construction, which is
+    why the refusal in `cmd_merge` (issue #174, half 2) exists as well: this
+    makes the interrupted run tidy up, that makes the *next* run safe whether
+    or not it did.
+
+    Best effort about where it can be installed: `signal.signal` is main-thread
+    only and not every name exists on every platform (Windows has no SIGHUP).
+    A signal it cannot claim is simply left alone.
+    """
+    def _raise(signum, _frame):
+        raise _Terminated(signum)
+
+    previous = []
+    for name in signals:
+        sig = getattr(signal, name, None)
+        if sig is None:
+            continue
+        try:
+            previous.append((sig, signal.signal(sig, _raise)))
+        except (ValueError, OSError, RuntimeError):
+            continue
+    try:
+        yield
+    finally:
+        for sig, old in previous:
+            try:
+                signal.signal(sig, old)
+            except (ValueError, OSError, RuntimeError):
+                pass
+
+
 def _restore_claim_branch(repo_root: Path, branch: str, tip: str,
                           base: Optional[str] = None) -> None:
     """Put back a claim branch deleted ahead of a step that then failed.
@@ -5807,8 +5869,29 @@ def cmd_merge(args: argparse.Namespace) -> int:
     elif recorded_base:
         chosen = f"recorded for {branch} at claim, or by an earlier merge run"
     else:
-        chosen = (f"the [git] main_branch default — no base is recorded for "
-                  f"{branch} on this machine; pass --base if that is wrong")
+        # Refused, not defaulted (issue #174). `claim` records a base for every
+        # branch it creates, so a claim branch with none is a branch whose
+        # record was LOST — most often with the ref itself, by the `branch -d`
+        # below in a run that was then killed before it could put either back.
+        # `resolve_base` cannot tell that apart from "this machine never
+        # claimed it"; `merge` can, because it is the verb that does the
+        # deleting, and the two readings differ by a force-push: a consumer's
+        # re-run took the silent `main_branch` fallback and fast-forwarded a
+        # whole queue branch onto `main`, past its one-reviewed-PR-per-queue
+        # gate, with nothing in the output naming `main`.
+        #
+        # A first merge onto `main` from a hand-made branch is the legitimate
+        # shape this refuses, and `--base` is what it passes — one word, said
+        # once, in exchange for the fallback never being taken by accident.
+        print(f"aide merge: no base is recorded for {branch}, so this run "
+              f"cannot tell where item {args.number:03d} is meant to land. "
+              f"Guessing would mean the [git] main_branch default "
+              f"('{main}'), and a claim branch reaches this state by losing "
+              f"its record — typically to an interrupted earlier merge — so "
+              f"the guess is exactly as likely to be a queue branch's work "
+              f"pushed onto {main}. Re-run with the base named: "
+              f"'merge {args.number:03d} --base <branch>'.", file=sys.stderr)
+        return 1
     print(f"aide merge: item {args.number:03d} lands on {main} ({chosen})")
     if not _local_branch_exists(repo_root, main):
         detail = ("it resolves, but not to a local branch — `git switch` would "
@@ -5900,53 +5983,82 @@ def cmd_merge(args: argparse.Namespace) -> int:
         del_res = git(["branch", "-D", branch], repo_root, check=False)
     local_gone = branch not in _local_branches(repo_root)
 
-    if not args.no_test:
-        cmd = resolve_test_command(repo_root, config)
-        test_res = subprocess.run(cmd, cwd=str(repo_root))
-        if test_res.returncode != 0:
-            _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
-            print(f"aide merge: the post-merge test run FAILED, so item "
-                  f"{args.number:03d} is NOT ✅ and nothing was pushed — the "
-                  f"tick and the push are what this run refuses, not the merge "
-                  f"itself. {branch} is merged into {main} in THIS repository "
-                  f"only, and the claim branch is back with its base. Fix the "
-                  f"failures on {main}, commit, then re-run "
-                  f"'merge {args.number:03d} --base {main}': the merge is "
-                  f"already an ancestor, so the retry only re-tests, ticks and "
-                  f"pushes.", file=sys.stderr)
-            return 1
-
-    # ✅ is set HERE, by the process that just did the merge, so it always means
-    # "merged" — not "an agent said so before attempting one". The validator
-    # marks the item 🔍 before this call; whether it becomes ✅ is a fact about
-    # git, and in `pr` mode the return above leaves it 🔍 for the human's merge.
+    # Every exit from here to the push must put the branch back, not just the
+    # two this function writes out longhand: the window covers a whole test
+    # suite, and a run killed inside it (Ctrl-C, a CI timeout, an unattended
+    # runner's wall clock) left the item merged into its base with the claim
+    # branch gone and nothing to say where it had been. The next run's
+    # `resolve_base` then fell back to `main_branch` and a consumer's queue was
+    # fast-forwarded onto `main` and pushed, past its one-reviewed-PR-per-queue
+    # gate (issue #174). The `except` arm is what covers the killed run; the
+    # two explicit calls inside stay, because each carries a message about the
+    # specific failure it is reporting.
     #
-    # It must precede the push: the tick is a commit like any other, and the
-    # single `git push` below is the only one that carries `main` to origin.
-    # Recording it afterwards stranded it locally, so origin's progress.md
-    # under-reported — and on a queue's last item nothing would ever push it.
-    _promote_item_to_complete(repo_root, config, args.number,
-                              getattr(args, "no_commit", False))
-    remote_gone = True
-    if mode != "local":
-        push_res = git(["push"], repo_root, check=False)
-        if push_res.returncode != 0:
-            # Reported, not swallowed: a silent failure here leaves ✅ on a
-            # merge origin never received, which is the same class of lie as
-            # ticking an item whose tests fail. The remote claim branch is
-            # deliberately NOT deleted, so the work still exists somewhere
-            # other than this checkout.
+    # It ends at the push on purpose. Past that the merge has left this
+    # repository and the retry has nothing left to do, so putting the branch
+    # back would leave a stale claim branch behind a ✅ item — the very state
+    # deleting it before the tests avoids.
+    with _restore_on_signal():
+        try:
+            if not args.no_test:
+                cmd = resolve_test_command(repo_root, config)
+                test_res = subprocess.run(cmd, cwd=str(repo_root))
+                if test_res.returncode != 0:
+                    _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
+                    print(f"aide merge: the post-merge test run FAILED, so item "
+                          f"{args.number:03d} is NOT ✅ and nothing was pushed — the "
+                          f"tick and the push are what this run refuses, not the merge "
+                          f"itself. {branch} is merged into {main} in THIS repository "
+                          f"only, and the claim branch is back with its base. Fix the "
+                          f"failures on {main}, commit, then re-run "
+                          f"'merge {args.number:03d} --base {main}': the merge is "
+                          f"already an ancestor, so the retry only re-tests, ticks and "
+                          f"pushes.", file=sys.stderr)
+                    return 1
+
+            # ✅ is set HERE, by the process that just did the merge, so it always means
+            # "merged" — not "an agent said so before attempting one". The validator
+            # marks the item 🔍 before this call; whether it becomes ✅ is a fact about
+            # git, and in `pr` mode the return above leaves it 🔍 for the human's merge.
+            #
+            # It must precede the push: the tick is a commit like any other, and the
+            # single `git push` below is the only one that carries `main` to origin.
+            # Recording it afterwards stranded it locally, so origin's progress.md
+            # under-reported — and on a queue's last item nothing would ever push it.
+            _promote_item_to_complete(repo_root, config, args.number,
+                                      getattr(args, "no_commit", False))
+            remote_gone = True
+            if mode != "local":
+                push_res = git(["push"], repo_root, check=False)
+                if push_res.returncode != 0:
+                    # Reported, not swallowed: a silent failure here leaves ✅ on a
+                    # merge origin never received, which is the same class of lie as
+                    # ticking an item whose tests fail. The remote claim branch is
+                    # deliberately NOT deleted, so the work still exists somewhere
+                    # other than this checkout.
+                    _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
+                    print(f"aide merge: item {args.number:03d} is merged and ✅ here, "
+                          f"but pushing {main} to origin FAILED, so neither the merge "
+                          f"nor the tick has left this repository and the claim branch "
+                          f"is kept, with its base. Resolve the push, then re-run "
+                          f"'merge {args.number:03d} --base {main}'.\n"
+                          f"{push_res.stdout}{push_res.stderr}", file=sys.stderr)
+                    return 1
+                del_remote = git(["push", "origin", "--delete", branch], repo_root, check=False)
+                remote_gone = (del_remote.returncode == 0
+                               or "remote ref does not exist" in (del_remote.stderr or ""))
+        except BaseException:
+            # BaseException, so `KeyboardInterrupt` and `_Terminated` are caught
+            # alongside an ordinary bug. Nothing is swallowed: the restore is a
+            # side effect on the way out and the original exception continues to
+            # unwind, so an interrupted run still exits as interrupted.
             _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
-            print(f"aide merge: item {args.number:03d} is merged and ✅ here, "
-                  f"but pushing {main} to origin FAILED, so neither the merge "
-                  f"nor the tick has left this repository and the claim branch "
-                  f"is kept, with its base. Resolve the push, then re-run "
-                  f"'merge {args.number:03d} --base {main}'.\n"
-                  f"{push_res.stdout}{push_res.stderr}", file=sys.stderr)
-            return 1
-        del_remote = git(["push", "origin", "--delete", branch], repo_root, check=False)
-        remote_gone = (del_remote.returncode == 0
-                       or "remote ref does not exist" in (del_remote.stderr or ""))
+            print(f"aide merge: interrupted after {main} took the merge of "
+                  f"{branch} but before it was pushed, so {branch} has been "
+                  f"put back with {main} recorded as its base. The merge is "
+                  f"in THIS repository only. Re-run "
+                  f"'merge {args.number:03d} --base {main}'.", file=sys.stderr)
+            raise
 
     if local_gone and remote_gone:
         print(f"aide merge: item {args.number:03d} merged to {main} and claim branch {branch} deleted")
