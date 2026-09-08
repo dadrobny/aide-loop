@@ -33,6 +33,7 @@ import fnmatch
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -5050,11 +5051,26 @@ def _venv_dir(repo_root: Path, config: Dict[str, Dict[str, object]]) -> Path:
 
 
 def _configured_interpreter(config: Dict[str, Dict[str, object]]) -> List[str]:
-    """The command `--bootstrap` builds the venv with: `[python] interpreter`
-    split on whitespace (so `py -3.12` works on Windows), else the Python
-    running this CLI."""
+    """The command `--bootstrap` builds the venv with, else the Python running
+    this CLI.
+
+    `[python] interpreter` is either a path or a command line. A value that
+    names an existing file is the whole command, spaces and all — Windows's
+    own default install lives under `Program Files`, and splitting that is
+    what turned a valid key into "cannot be run". Anything else is a command
+    line (`py -3.12`, `"C:\\Some Dir\\python.exe" -X utf8`), split the way
+    the platform's shell would: shlex on POSIX; on Windows in non-POSIX mode,
+    which keeps backslashes and leaves the quotes on a quoted token for this
+    to strip.
+    """
     raw = str(config["python"].get("interpreter", "") or "").strip()
-    return raw.split() if raw else [sys.executable]
+    if not raw:
+        return [sys.executable]
+    if Path(raw).is_file():
+        return [raw]
+    if os.name == "nt":
+        return [token.strip('"') for token in shlex.split(raw, posix=False)]
+    return shlex.split(raw)
 
 
 def _test_runner_module(config: Dict[str, Dict[str, object]]) -> Optional[str]:
@@ -5124,7 +5140,7 @@ def env_report(repo_root: Path, config: Dict[str, Dict[str, object]]) -> Tuple[s
     facts.append(f"venv is Python {actual}")
     configured = str(config["python"].get("interpreter", "") or "").strip()
     if configured:
-        wanted = _python_version(configured.split(), repo_root)
+        wanted = _python_version(_configured_interpreter(config), repo_root)
         if wanted is None:
             facts.append(f"[python] interpreter '{configured}' cannot be run "
                          f"on this machine, so the venv was judged on its own")
@@ -5718,13 +5734,16 @@ def _restore_claim_branch(repo_root: Path, branch: str, tip: str,
     `main_branch` and said nothing. A consumer's invited re-run fast-forwarded
     a whole queue branch onto `main` and pushed it, past its
     one-reviewed-PR-per-queue gate, with nothing in the output naming `main`
-    (issue #167). *base* is what the branch recorded before the delete; it is
-    written back with the ref, so the retry resolves exactly as the first run
-    did.
+    (issue #167). *base* is the base THIS run resolved to and merged into —
+    not what the branch recorded beforehand: a run given `--base` landed
+    somewhere the record did not say, and a retry must land there again. It
+    is written unconditionally, so a `branch -d` that refused (record intact,
+    and possibly stale against `--base`) is corrected the same way as one
+    that succeeded.
     """
     if tip and branch not in _local_branches(repo_root):
         git(["branch", branch, tip], repo_root, check=False)
-    if base and not _recorded_branch_base(repo_root, branch):
+    if base:
         _record_branch_base(repo_root, branch, base)
 
 
@@ -5779,7 +5798,7 @@ def cmd_merge(args: argparse.Namespace) -> int:
     if args.base:
         chosen = "from --base"
     elif recorded_base:
-        chosen = f"recorded when {branch} was claimed"
+        chosen = f"recorded for {branch} at claim, or by an earlier merge run"
     else:
         chosen = (f"the [git] main_branch default — no base is recorded for "
                   f"{branch} on this machine; pass --base if that is wrong")
@@ -5860,10 +5879,11 @@ def cmd_merge(args: argparse.Namespace) -> int:
     # test command includes `aide check` got "stale claim branch … item NNN is
     # already ✅" — a failure class the item's acceptance baseline had never
     # seen, produced by nothing but this ordering. Its tip is remembered so any
-    # later exit can put the branch back exactly as it was — and so is its
-    # recorded base, which `branch -d` discards with the ref (issue #167).
+    # later exit can put the branch back exactly as it was — with the base
+    # this run merged into as its record, since `branch -d` discards the old
+    # one with the ref and a retry must land where this run did (issue #167).
     branch_tip = git(["rev-parse", branch], repo_root, check=False).stdout.strip()
-    branch_base = recorded_base
+    branch_base = main
     # `-d` can refuse even though the work landed (e.g. `pull --rebase` rewrote
     # main so the branch tip is no longer an ancestor); this process just
     # established that the branch is merged, so escalating to -D is safe. VERIFY

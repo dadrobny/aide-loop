@@ -42,7 +42,8 @@ instead — that is the bump policy above, and it is enforced by
   the cleanliness check keeps the one property that makes it worth having,
   that it is unconditional. The reconcile on `--update` carries the line to
   every existing consumer. Installer-only: nothing a consumer's `--update`
-  copies changed, so `core/VERSION` is unmoved.
+  copies changed *for this entry* — it shipped beside 1.39.0, whose bump is
+  for the engine changes listed there, not for this one.
 
 - **`install.py --check` names contract text a consumer restates in its own
   instruction file (issue #96).** The installer maintains one line in that file
@@ -130,9 +131,11 @@ was observed in one consumer, and each is now either fixed or loud.
 ### Added
 
 - **`[python] interpreter` names what `env --bootstrap` builds the venv from
-  (issue #166).** A command on PATH (`python3.12`, `py -3.12`) or an absolute
-  path, split on whitespace; unset, the bootstrap uses the Python that
-  launched the CLI, as before. A consumer whose dependency closure resolves
+  (issue #166).** A path to an interpreter, taken whole when it names an
+  existing file so `C:\Program Files\…` survives, or a command line
+  (`python3.12`, `py -3.12`, a quoted path plus flags) split the way the
+  platform's shell would; unset, the bootstrap uses the Python that launched
+  the CLI, as before. A consumer whose dependency closure resolves
   only on a narrower range than its `requires-python` declares had nowhere to
   say so: an ambient conda 3.14 built the venv, a pinned dependency with no
   cp314 wheel fell back to a source build that failed on cmake, and the
@@ -154,9 +157,11 @@ was observed in one consumer, and each is now either fixed or loud.
   to `main_branch` and reported no difference. A consumer's re-run
   fast-forwarded a whole queue branch onto `main` and pushed it, past its
   one-reviewed-PR-per-queue gate, with nothing in the output naming `main`;
-  a human noticed that `main` had moved. The recorded base is now captured
-  beside the tip and written back with the ref on every restore, so the
-  retry resolves exactly as the first run did. Two belts on that brace:
+  a human noticed that `main` had moved. Every restore now records the base
+  *this run merged into* — the resolved one, so a run given `--base` is
+  retried where it landed and not where an older record pointed — beside
+  the ref, so the retry resolves exactly as the first run did. Two belts on
+  that brace:
   `merge` names the base it lands on and how it was chosen (`--base`,
   recorded at claim, or the `main_branch` default with no record on this
   machine) on every run, so a retargeted merge is at least visible in the

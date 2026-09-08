@@ -1419,7 +1419,7 @@ def test_merge_names_a_recorded_base_as_recorded(tmp_path: Path, capsys):
     capsys.readouterr()
     assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 0
     out = capsys.readouterr().out
-    assert "item 027 lands on aide/queue-003 (recorded when" in out
+    assert "item 027 lands on aide/queue-003 (recorded for" in out
     assert _current_branch(root) == "aide/queue-003"
 
 
@@ -1484,15 +1484,16 @@ def test_a_failed_bootstrap_record_makes_the_venv_stale(bare_venv: Path):
 
 def test_the_configured_interpreter_is_compared_with_the_venvs_version(
         bare_venv: Path, tmp_path: Path):
-    if " " in sys.executable or " " in str(tmp_path):
-        pytest.skip("[python] interpreter splits on whitespace")
     same = _toml_path(sys.executable)
     (bare_venv / "aide.toml").write_text(
         _env_toml("python -m unittest", interpreter=same), encoding="utf-8")
     status, detail = aide.env_report(bare_venv, aide.load_config(bare_venv))
     assert status == "ok" and sys.executable in detail
 
-    # An "interpreter" that answers with a version no venv has.
+    # An "interpreter" that answers with a version no venv has — a command
+    # line, so the two paths must survive a split.
+    if " " in sys.executable or " " in str(tmp_path):
+        pytest.skip("a command-line interpreter value splits on whitespace")
     other = tmp_path / "other.py"
     other.write_text("print('9.9')\n", encoding="utf-8")
     (bare_venv / "aide.toml").write_text(
@@ -1516,3 +1517,34 @@ def test_bootstrap_with_an_interpreter_this_machine_lacks_is_a_sentence(tmp_path
     err = capsys.readouterr().err
     assert "no-such-python-zz" in err and "Traceback" not in err
     assert not (tmp_path / ".venv").exists()
+
+
+def test_an_interpreter_path_with_a_space_is_one_command(tmp_path: Path):
+    """Windows's default install is under `Program Files`; a split there made
+    a valid key "cannot be run". A value naming an existing file is the whole
+    command; anything else is a command line."""
+    home = tmp_path / "My Python"
+    home.mkdir()
+    exe = home / ("python.exe" if os.name == "nt" else "python3")
+    exe.write_text("", encoding="utf-8")
+    assert aide._configured_interpreter({"python": {"interpreter": str(exe)}}) == [str(exe)]
+    assert aide._configured_interpreter({"python": {"interpreter": "py -3.12"}}) == ["py", "-3.12"]
+    quoted = f'"{exe}" -X utf8'
+    assert aide._configured_interpreter({"python": {"interpreter": quoted}}) == [str(exe), "-X", "utf8"]
+    assert aide._configured_interpreter({"python": {"interpreter": ""}}) == [sys.executable]
+
+
+def test_restore_records_the_base_the_run_merged_into_not_the_old_record(tmp_path: Path):
+    """A run given `--base` landed where the record did not say; its retry
+    must land there again, and a `branch -d` that refused leaves the stale
+    record in place to be corrected, not kept."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    assert aide.main(["--repo", str(root), "queue", "start", "3"]) == 0
+    assert aide.main(["--repo", str(root), "claim", "--queue", "3"]) == 0
+    branch = _current_branch(root)
+    tip = _run(["git", "rev-parse", branch], root).stdout.strip()
+    assert aide._recorded_branch_base(root, branch) == "aide/queue-003"
+
+    aide._restore_claim_branch(root, branch, tip, "main")      # branch still exists
+    assert aide._recorded_branch_base(root, branch) == "main"
+    assert aide.resolve_base(root, aide.load_config(root), None, branch) == "main"
