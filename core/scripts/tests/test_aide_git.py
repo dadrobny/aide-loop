@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
@@ -275,14 +276,15 @@ def test_claim_dry_run_does_not_switch(tmp_path: Path):
 # merge
 # --------------------------------------------------------------------------- #
 def _make_item_branch(root: Path, branch: str, filename: str,
-                      base: str = "main") -> None:
+                      base: Optional[str] = "main") -> None:
     """A claim branch as `aide claim` would leave it — base recorded and all.
 
     Recording the base is not decoration: since issue #174 `merge` refuses a
     claim branch that has none, because `claim` writes one for every branch it
     creates, so a missing record means the record was LOST. A fixture that
     skipped it would be testing the refusal in every merge test rather than
-    the merge. Pass ``base=None`` for a branch that genuinely has no record.
+    the merge. Pass ``base=None`` for a branch that genuinely has no record —
+    as does an empty string, since a base recorded as "" is not a base.
     """
     _run(["git", "switch", "-c", branch], root)
     (root / filename).write_text("work\n", encoding="utf-8")
@@ -1618,6 +1620,42 @@ def test_a_merge_killed_mid_suite_puts_the_branch_and_its_base_back(
     # The whole point of recording it: the re-run lands where this run did.
     assert aide.resolve_base(root, aide.load_config(root), None, branch) == "aide/queue-003"
     assert "interrupted" in capsys.readouterr().err
+
+
+def test_a_failure_in_the_window_restores_but_is_not_called_an_interrupt(
+        tmp_path: Path, monkeypatch, capsys):
+    """The restore is owed to any exception; the word "interrupted" is not.
+
+    A test command that is not on PATH raises `FileNotFoundError` right here.
+    Reporting that as an interrupt would send a human hunting for a signal
+    nobody sent — the failure class the `--no-commit` message was fixed for in
+    issue #133.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    assert aide.main(["--repo", str(root), "queue", "start", "3"]) == 0
+    assert aide.main(["--repo", str(root), "claim", "--queue", "3"]) == 0
+    branch = _current_branch(root)
+    (root / "work.txt").write_text("work\n", encoding="utf-8")
+    _run(["git", "add", "-A"], root)
+    _run(["git", "commit", "-m", "work"], root)
+    _run(["git", "switch", "aide/queue-003"], root)
+
+    real_run = aide.subprocess.run
+    test_cmd = aide.resolve_test_command(root, aide.load_config(root))
+
+    def _no_such_command(cmd, *a, **kw):
+        if list(cmd) == list(test_cmd):
+            raise FileNotFoundError(2, "No such file or directory", cmd[0])
+        return real_run(cmd, *a, **kw)
+
+    monkeypatch.setattr(aide.subprocess, "run", _no_such_command)
+    with pytest.raises(FileNotFoundError):
+        aide.main(["--repo", str(root), "merge", "27"])
+
+    assert branch in aide._local_branches(root)
+    assert aide._recorded_branch_base(root, branch) == "aide/queue-003"
+    err = capsys.readouterr().err
+    assert "FileNotFoundError" in err and "interrupted" not in err
 
 
 def test_the_restore_window_ends_at_the_push_not_at_the_return(tmp_path: Path):

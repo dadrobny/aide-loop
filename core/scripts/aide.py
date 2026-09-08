@@ -6047,13 +6047,23 @@ def cmd_merge(args: argparse.Namespace) -> int:
                 del_remote = git(["push", "origin", "--delete", branch], repo_root, check=False)
                 remote_gone = (del_remote.returncode == 0
                                or "remote ref does not exist" in (del_remote.stderr or ""))
-        except BaseException:
+        except BaseException as exc:
             # BaseException, so `KeyboardInterrupt` and `_Terminated` are caught
             # alongside an ordinary bug. Nothing is swallowed: the restore is a
             # side effect on the way out and the original exception continues to
             # unwind, so an interrupted run still exits as interrupted.
+            #
+            # The restore is owed either way; the WORDING is not. A test
+            # command that is not on PATH raises `FileNotFoundError` here, and
+            # a run that reported itself "interrupted" would send a human
+            # hunting for a signal nobody sent — the same failure the
+            # `--no-commit` message was fixed for in issue #133. So the cause
+            # is named, and the traceback that follows says the rest.
             _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
-            print(f"aide merge: interrupted after {main} took the merge of "
+            cause = ("interrupted"
+                     if isinstance(exc, (KeyboardInterrupt, _Terminated))
+                     else f"failed with {type(exc).__name__}")
+            print(f"aide merge: {cause} after {main} took the merge of "
                   f"{branch} but before it was pushed, so {branch} has been "
                   f"put back with {main} recorded as its base. The merge is "
                   f"in THIS repository only. Re-run "
