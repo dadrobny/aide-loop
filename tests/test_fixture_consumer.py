@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import codecs
 import importlib.util
-import re
 import shutil
 import subprocess
 import sys
@@ -34,7 +33,9 @@ import pytest
 
 FRAMEWORK_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FRAMEWORK_ROOT))
+sys.path.insert(0, str(FRAMEWORK_ROOT / "tests"))
 import install  # noqa: E402  (path shim above)
+from _delivered import STRIPS_BOM  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -49,42 +50,15 @@ import install  # noqa: E402  (path shim above)
 SOURCE_RULES = sorted((FRAMEWORK_ROOT / "adapters" / "claude" / "rules").glob("*.md"))
 
 
-def _frontmatter(path: Path):
-    """The file's YAML block, read the way a runtime reads it — or ``None``.
-
-    Bytes first, then `utf-8-sig` and CRLF normalisation: an install that
-    rewrote the file — a BOM prepended, native line endings — leaves the
-    delimiter unrecognised. For a rule that silently makes a scoped one
-    unscoped, loaded into every context; for a section skill it loses the
-    `name:` a preload resolves, so the skill reaches nobody. Nothing errors
-    either way.
-    """
-    text = path.read_bytes().decode("utf-8-sig").replace("\r\n", "\n")
-    if not text.startswith("---\n"):
-        return None
-    end = text.find("\n---\n", 4)
-    return None if end == -1 else text[4:end]
-
-
-#: `user-invocable: false` as a frontmatter *scalar*, matched the way the two
-#: sibling modules match it: case-folded, and tolerant of trailing space. A
-#: plain `"user-invocable: false" in block` would read `False` — valid YAML,
-#: and still a section skill to `test_rules.py` — as a workflow skill, and this
-#: module's checks on it would vanish rather than fail.
-_HIDDEN = re.compile(r"^user-invocable:[ \t]*false[ \t]*$", re.M | re.I)
-
-
-def _is_section_skill(path: Path) -> bool:
-    """The same signal `adapters/claude/tests/test_rules.py` and
-    `tests/test_structural_budget.py` recognise — `user-invocable: false`, and
-    since 1.42.0 only that. A `<!-- pins:` block is no longer sufficient: a
-    workflow skill may quote the contract it acts on, and the checks below —
-    `paths:`, a hidden frontmatter, a resolvable preload name — are a section
-    skill's, not a quoting skill's. One recognition here and another there
-    would let a skill drop out of these checks silently, so the three stay
-    identical, spelling included."""
-    return bool(_HIDDEN.search(_frontmatter(path) or ""))
-
+#: This module reads the adapter's source tree and, in the tests below, the
+#: copy an install left behind — where a BOM is something to *report*: the
+#: assertions name it (`raw.startswith(codecs.BOM_UTF8)`) rather than parse
+#: around it, and a reader that refused one would report "no frontmatter" for
+#: a file whose frontmatter is intact behind it. `tests/_delivered.py` holds
+#: both readers and the reasoning; `test_structural_budget.py` makes the other
+#: choice, for the one reason that justifies it.
+_frontmatter = STRIPS_BOM.frontmatter
+_is_section_skill = STRIPS_BOM.is_section_skill
 
 #: The skills that deliver a contract section, recognised structurally so the
 #: checks below are on whatever is a section skill today rather than on a

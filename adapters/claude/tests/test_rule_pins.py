@@ -61,6 +61,7 @@ Stdlib + pytest only.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -68,6 +69,15 @@ import pytest
 _ADAPTER = Path(__file__).resolve().parents[1]
 _RULES_DIR = _ADAPTER / "rules"
 _CORE = _ADAPTER.parents[1] / "core"
+
+sys.path.insert(0, str(_ADAPTER.parents[1] / "tests"))
+from _delivered import COMMENT as _COMMENT, STRIPS_BOM, label as _label  # noqa: E402
+
+#: The source tree, so the reader that reports on a file behind a BOM rather
+#: than the one that refuses it — `tests/_delivered.py` has the difference.
+_read = STRIPS_BOM.text
+_body = STRIPS_BOM.body
+_is_section_skill = STRIPS_BOM.is_section_skill
 
 _RULE_FILES = sorted(_RULES_DIR.glob("*.md"))
 _SKILL_FILES = sorted((_ADAPTER / "skills").glob("*/SKILL.md"))
@@ -88,29 +98,9 @@ _PINS = re.compile(r"<!--[ \t]*pins:[ \t]*(?P<section>[^\s]+)[ \t]*\n"
 #: instead of vanishing.
 _PINS_OPENER = re.compile(r"<!--[ \t]*pins:", re.I)
 
-#: Any HTML comment, stripped from a rule body before the rule side is searched
-#: — otherwise every pin would match its own declaration and the rule half of
-#: the check would assert nothing at all.
-_COMMENT = re.compile(r"<!--.*?-->", re.S)
-
-#: `user-invocable: false` in a skill's frontmatter — the structural signal of
-#: a section skill, and since 1.42.0 the only one.
-_HIDDEN = re.compile(r"^user-invocable:[ \t]*false[ \t]*$", re.M | re.I)
-
 #: Emphasis and code markers. Dropped on both sides, so bolding a clause in one
 #: copy and not the other is not a failure, while rewording it still is.
 _MARKERS = str.maketrans("", "", "*_`")
-
-
-def _read(path: Path) -> str:
-    """`utf-8-sig`, CRLF folded — the reader used everywhere in this suite.
-
-    A BOM from a Windows editor and a CRLF checkout are both invisible to a
-    human reading the file, so neither may decide whether a pin holds. This
-    repo has no `.gitattributes` `text eol=lf` pin, so the windows CI leg does
-    get CRLF (conventions.md §6).
-    """
-    return path.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
 
 
 def _normalise(text: str) -> str:
@@ -146,21 +136,6 @@ def _normalise(text: str) -> str:
     return " ".join(" ".join(rows).translate(_MARKERS).split()).casefold()
 
 
-def _is_section_skill(path: Path) -> bool:
-    """The same recognition `test_rules.py` uses: a `SKILL.md` that hides
-    itself from the `/` menu with `user-invocable: false`.
-
-    Not "carries a pins block" — since 1.42.0 a **workflow** skill may quote
-    the contract it acts on too (`aide-create-queue`, `aide-review-insights`
-    and the §1 routing table), and those quotes are checked here exactly like
-    a delivered file's. What separates the two sets is only the *obligation*
-    below: a delivered file must pin something, a workflow skill need not.
-    """
-    text = _read(path)
-    head = text[4:text.find("\n---\n", 4)] if text.startswith("---\n") else ""
-    return bool(_HIDDEN.search(head))
-
-
 #: Every file that **delivers** a contract section: the rules, and the section
 #: skills. This is the set that owes at least one pin.
 _DELIVERED = _RULE_FILES + [p for p in _SKILL_FILES if _is_section_skill(p)]
@@ -172,11 +147,6 @@ _DELIVERED = _RULE_FILES + [p for p in _SKILL_FILES if _is_section_skill(p)]
 #: than a review note.
 _PINNING = _DELIVERED + [p for p in _SKILL_FILES
                          if p not in _DELIVERED and _PINS_OPENER.search(_read(p))]
-
-
-def _label(path: Path) -> str:
-    """`aide-test-hygiene` for a skill, the filename for a rule."""
-    return path.parent.name if path.name == "SKILL.md" else path.name
 
 
 def _pin_blocks(path: Path) -> list:
@@ -346,10 +316,7 @@ def test_a_pinned_statement_still_appears_in_the_rule_that_declares_it(case):
     becomes part of it.
     """
     rule, _, pin = case
-    body = _COMMENT.sub(" ", _read(rule))
-    if body.startswith("---\n"):
-        end = body.find("\n---\n", 4)
-        body = body[end + 5:] if end != -1 else body
+    body = _COMMENT.sub(" ", _body(rule))
     assert _normalise(pin) in _normalise(body), (
         f"{_label(rule)}: declares a pin its own body no longer states\n"
         f"  pinned: {pin}\n"

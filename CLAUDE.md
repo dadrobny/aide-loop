@@ -74,6 +74,14 @@ it checks a delivered file's — it just does not *require* them there. The key 
 the preload channel are held together from the other side, by
 `test_every_skill_an_agent_preloads_is_a_section_skill`.
 
+That reading is **written once**, in
+[`tests/_delivered.py`](tests/_delivered.py) — the frontmatter grammar, the
+section-skill recogniser, the `paths:`/`skills:` readers — and the four modules
+that check delivered files import it (issue #113). Four hand copies drifted the
+one time the rule moved (1.42.0), so a change to the recognition rule or the
+frontmatter grammar is now one edit, and the modules only say which reading of
+a BOM they want.
+
 Each delivered file also declares, in a `<!-- reach: … -->` comment near the
 top of its body, the agent roles it expects to reach — `all`, or a
 comma-separated list.
@@ -155,6 +163,18 @@ a verb's behaviour belongs there**, on both matrix legs.
 
 It is still a fixture, not a project: it says the install works, not that *your*
 consumer is happy. Landing a change in a real one (below) remains the last step.
+
+The three suites share exactly one module,
+[`tests/_delivered.py`](tests/_delivered.py) (above), reached the way `install`
+already is: the importing module puts `tests/` on `sys.path` itself, since
+there is no `conftest.py` anywhere in this repo and adding one would make the
+dependency invisible. It parses and never asserts — pytest rewrites assertions
+in test modules only, and these functions run at collection time — so it
+returns `None` or an empty list and the caller decides what that means. Its two
+readers differ in one thing, and the difference is deliberate:
+`tests/test_structural_budget.py` takes `REFUSES_BOM` because it must see the
+frontmatter *the runtime* sees; everything else takes `STRIPS_BOM` to report on
+the file behind a BOM.
 
 ## Landing a change in a consumer
 

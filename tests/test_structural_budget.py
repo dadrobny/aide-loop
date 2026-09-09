@@ -69,7 +69,26 @@ import pytest
 
 FRAMEWORK_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FRAMEWORK_ROOT))
+sys.path.insert(0, str(FRAMEWORK_ROOT / "tests"))
 import install  # noqa: E402  (path shim above)
+from _delivered import (REFUSES_BOM, label as _label,  # noqa: E402
+                        strip_comments)
+
+#: **The one reader that refuses a BOM.** Every other caller of
+#: `tests/_delivered.py` reports on the file behind one; this module has to see
+#: what the runtime sees, because a `---` that is not at byte 0 is the failure
+#: it exists to measure — a scoped rule read as unscoped and armed everywhere,
+#: a section skill with no resolvable `name:` that reaches nobody. Everything
+#: below reads through it, including the two sizes: `text()` is BOM-insensitive
+#: under either reader (no delimiter is at stake in a byte count), and a body
+#: measured behind a delimiter this module refuses is a body nothing preloads.
+_READ = REFUSES_BOM
+_text = _READ.text
+_frontmatter = _READ.frontmatter
+_globs = _READ.globs
+_skill_name = _READ.skill_name
+_is_section_skill = _READ.is_section_skill
+_preloads = _READ.preloads
 
 
 # --------------------------------------------------------------------------- #
@@ -97,96 +116,13 @@ FLOOR_PIN = {
 
 
 # --------------------------------------------------------------------------- #
-# reading the delivered files
+# measuring the delivered files — the parsers themselves are in `_delivered.py`
 # --------------------------------------------------------------------------- #
-def _text(path: Path) -> str:
-    """The file as a runtime reads it, normalised for measurement.
-
-    `utf-8-sig` and CRLF folding for the same reason everywhere else in this
-    suite: this repo has no `.gitattributes` `text eol=lf` pin, so a Windows
-    checkout hands back CRLF and the installer's `utf-8-sig` may prepend a BOM.
-    Neither is content, and a byte pin that counted them would fail on one CI
-    leg and hold on the other.
-    """
-    return path.read_bytes().decode("utf-8-sig").replace("\r\n", "\n")
-
-
 def _size(path: Path) -> int:
-    """Content bytes, after the normalisation above. UTF-8, so a multi-byte
-    character counts as the bytes it is — closer to a token than a character
-    count, without pretending to be one."""
+    """Content bytes, BOM and CRLF normalised away by `_text`. UTF-8, so a
+    multi-byte character counts as the bytes it is — closer to a token than a
+    character count, without pretending to be one."""
     return len(_text(path).encode("utf-8"))
-
-
-def _frontmatter(path: Path):
-    """The file's YAML block, or ``None`` — which is the *loud* answer here.
-
-    A rule with no frontmatter is unscoped and loads into every context. That
-    is a legitimate state (`aide-command-hygiene.md`) and also the failure mode
-    a BOM produces, so callers must treat ``None`` as "arms everywhere" rather
-    than as "nothing to check". For a skill ``None`` means the opposite — no
-    `name:` to preload by — and callers treat it as "reaches nobody". Either
-    way: the whole point of assertion 2.
-
-    Read from bytes and **not** with `utf-8-sig`, unlike `_text` above: the
-    other readers in this suite strip a BOM so they can report on the file
-    behind it, but this one has to see what the runtime sees. With `\\ufeff` in
-    front, `---` is not at byte 0, the block does not parse, and the file's
-    carrier fails — so stripping it here would hide the one thing worth
-    catching. CRLF is still folded, because that is a checkout artefact the
-    runtime handles and this repo has no `.gitattributes` pin against.
-    """
-    raw = path.read_bytes()
-    if raw.startswith(codecs.BOM_UTF8):
-        return None
-    text = raw.decode("utf-8").replace("\r\n", "\n")
-    if not text.startswith("---\n"):
-        return None
-    end = text.find("\n---\n", 4)
-    return None if end == -1 else text[4:end]
-
-
-def _globs(path: Path) -> list:
-    """The `paths:` globs of a delivered file; empty for an unscoped one."""
-    block = _frontmatter(path)
-    if block is None:
-        return []
-    return [line.strip().lstrip("- ").strip('"\'')
-            for line in block.splitlines() if line.strip().startswith("- ")]
-
-
-def _scalar(block, key: str):
-    """The value of a one-line ``key: value`` frontmatter entry, or ``None``."""
-    if block is None:
-        return None
-    match = re.search(rf"^{re.escape(key)}:[ \t]*(?P<value>[^\n]*)$", block, re.M)
-    return match.group("value").strip() if match else None
-
-
-def _skill_name(path: Path):
-    """The name a `skills:` preload resolves this skill by, or ``None``.
-
-    ``None`` is the loud answer for a skill: with no readable `name:` the
-    runtime cannot preload it and does not list it.
-    """
-    return _scalar(_frontmatter(path), "name")
-
-
-def _is_section_skill(path: Path) -> bool:
-    """A `SKILL.md` that delivers a contract section rather than a workflow —
-    the same signal `adapters/claude/tests/test_rules.py` recognises since
-    1.42.0: `user-invocable: false`, and only that.
-
-    A `<!-- pins:` block no longer classes a skill here: a workflow skill may
-    quote the contract it acts on, and one that did would otherwise be
-    measured as a delivered file — declaring a reach it has no preload to
-    satisfy, and failing on a `<!-- triggers: … -->` line it has no `paths:`
-    for.
-    """
-    return (_scalar(_frontmatter(path), "user-invocable") or "").lower() == "false"
-
-
-_COMMENT = re.compile(r"<!--.*?-->", re.S)
 
 
 def _preload_size(path: Path) -> int:
@@ -201,32 +137,7 @@ def _preload_size(path: Path) -> int:
     not. If that ever proves wrong, the comments move to frontmatter
     `metadata:` and this function measures the whole body.
     """
-    text = _text(path)
-    if text.startswith("---\n"):
-        end = text.find("\n---\n", 4)
-        text = text[end + 5:] if end != -1 else text
-    return len(_COMMENT.sub("", text).encode("utf-8"))
-
-
-def _preloads(agent: Path) -> list:
-    """The skill names an agent spec's `skills:` frontmatter preloads."""
-    block = _frontmatter(agent)
-    if block is None:
-        return []
-    match = re.search(r"^skills:[ \t]*(?P<inline>[^\n]*)\n(?P<items>(?:[ \t]+-[^\n]*\n?)*)",
-                      block + "\n", re.M)
-    if not match:
-        return []
-    inline = match.group("inline").strip()
-    if inline.startswith("[") and inline.endswith("]"):
-        return [x.strip().strip("\"'") for x in inline[1:-1].split(",") if x.strip()]
-    return [line.strip().lstrip("- ").strip("\"'")
-            for line in match.group("items").splitlines() if line.strip().startswith("-")]
-
-
-def _label(path: Path) -> str:
-    """`aide-test-hygiene` for a skill, the filename for a rule."""
-    return path.parent.name if path.name == "SKILL.md" else path.name
+    return len(strip_comments(_READ.body(path)).encode("utf-8"))
 
 
 #: `<!-- reach: … -->`, the whole rest of that line. A prose note goes on the
