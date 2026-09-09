@@ -1,5 +1,10 @@
 ## 4. Git modes (`git.mode` in `aide.toml`)
 
+Governs what the mode changes — where a claim branch goes, how an item lands,
+and what kind of CI gate can see it. The human who sets it reads this; the
+validator's merge step is pointed here, and `aide claim` and `aide merge`
+carry it out.
+
 Enforced **only** inside `aide claim` / `aide merge`; agent instructions are
 identical across modes.
 
