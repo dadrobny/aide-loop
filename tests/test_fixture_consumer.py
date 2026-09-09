@@ -1687,6 +1687,43 @@ def test_sync_refuses_a_start_point_whose_rebase_stopped(
     assert "tree clean" not in captured.out       # the line it used to print
 
 
+def test_sync_says_a_claim_branch_was_not_refreshed_and_still_starts(
+        aide, consumer: Path, tmp_path: Path, capsys, monkeypatch):
+    """The other half of the discriminator, and the one that must NOT refuse.
+
+    A pull that comes back non-zero without starting anything — a flake
+    between the fetch and the pull, an origin that went away — leaves the
+    branch checked out and clean, which is exactly what this verb promises.
+    Refusing there would stall an unattended run over a remote. It still has
+    to be said, because the success line claims the remotes were fetched.
+
+    Forced rather than staged: `fetch --all --prune` runs first and prunes a
+    ref that has gone, so the reachable version of this is a network flake
+    between two calls, which a fixture cannot produce.
+    """
+    _with_origin(consumer, tmp_path)
+    assert _claim(aide, consumer) == 0
+    _git(["push", "-u", "origin", "aide/001-the-greeter"], consumer, check=False)
+    real_git = aide.git
+
+    def flaky(args, *rest, **kw):
+        if args and args[0] == "pull":
+            return subprocess.CompletedProcess(
+                args, 1, "", "fatal: unable to access origin: could not resolve host\n")
+        return real_git(args, *rest, **kw)
+
+    monkeypatch.setattr(aide, "git", flaky)
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(consumer), "sync", "--item", "1"]) == 0
+    captured = capsys.readouterr()
+    assert "was NOT refreshed from origin" in captured.err
+    assert "could not resolve host" in captured.err
+    assert "work can start" in captured.err
+    assert "rebase onto the upstream stopped" not in captured.err
+    assert "aide sync: OK" in captured.out       # and it is still a green start
+
+
 def test_a_bookkeeping_commit_is_refused_over_an_unfinished_rebase(
         aide, consumer: Path, tmp_path: Path, capsys):
     """The shared committer behind `progress set`, `insights tick` and
