@@ -168,6 +168,9 @@ says the paragraph changes no decision.
   - **§2** — the signal, `aide claim`'s steps, the two non-claim shapes, the
     unpublished-claim and `none left` semantics, and `gc`'s merge-tree ground
     stay; why each is what it is moves.
+  - **§3** — every rule and every delivered pin stays byte-for-byte; the
+    reasons for each rule move. The always-on rule file is untouched, so the
+    structural floor does not move.
 
 ## [1.45.0] — 2026-09-09
 
