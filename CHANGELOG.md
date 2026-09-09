@@ -121,6 +121,25 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.45.2] — 2026-09-09
+
+Each delivered section's core is compared to its delivered copy sentence by
+sentence, and the cores are compacted the way #78 compacted the always-read
+files, for the first time on a section body (issue #184). Every core sentence
+the receiving roles act on and the delivered copy did not carry is now carried
+and pinned; every sentence no role acts on leaves the core for `Rationale`;
+no rule is weakened, moved out of `conventions/`, or cut across files (the
+cross-file duplicates and the per-document split of the §1 bundle stay with
+#109). The per-sentence disposition tables, and the before/after measurement,
+are on the issue.
+
+### Changed
+
+- **§1 (index)** — the template rule, the ISO-date rule and the header
+  blockquote reach `aide-living-documents` and are pinned; why the date slot
+  spells its format and why the read-cold rules sit on the floor move under
+  Rationale.
+
 ## [1.45.1] — 2026-09-09
 
 Every section under `conventions/` now reads core first, rationale last (issue

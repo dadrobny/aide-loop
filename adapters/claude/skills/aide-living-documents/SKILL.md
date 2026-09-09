@@ -47,8 +47,16 @@ paths:
 -->
 
 <!-- pins: .aide/conventions/1-format-contract.md
+     - The templates in `.aide/templates/` model the shapes and `aide check`
+       enforces them
      - a literal value to substitute
      - authoring guidance to read then replace
+     - left in a generated `docs/aide/**.md` file as an unfilled template slot
+     - Dates are always **ISO 8601** (`YYYY-MM-DD`)
+     - every living document opens with one, carrying its step number in the
+       loop, what it derives from, and what derives from it
+     - Keep the line current when a document's relationships change
+     - is spoken by the skill that wrote the file, not stored in it
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/progress.md
@@ -99,12 +107,13 @@ paths:
 
 # Living-document shapes
 
-`.aide/scripts/aide.py` parses these files by exact shape. `.aide/conventions.md`
-§1 is the source of truth and carries one file per shape (`§1 → progress.md` is
-`conventions/1-format-contract/progress.md`, and so on); this file is **delivery,
-not a second source of truth**, and carries only the shape rules — the durable
-artifact, insight-immutability and human-gate rules are in `AGENT-CONTEXT.md`,
-already in this context.
+`.aide/scripts/aide.py` parses these files by exact shape. The templates in
+`.aide/templates/` model the shapes and `aide check` enforces them.
+`.aide/conventions.md` §1 is the source of truth and carries one file per shape
+(`§1 → progress.md` is `conventions/1-format-contract/progress.md`, and so on);
+this file is **delivery, not a second source of truth**, and carries only the
+shape rules — the durable artifact, insight-immutability and human-gate rules
+are in `AGENT-CONTEXT.md`, already in this context.
 
 It is preloaded into the two roles that write a living document —
 `spec-author` and `queue-planner` — so it is in context before the first
@@ -122,9 +131,15 @@ bullet. An icon anywhere else — prose, mid-bullet, a title — is plain text a
 is never read as status.
 
 **`{{slot}}` is a literal value to substitute; an _italic line_ is authoring
-guidance to read then replace.** `aide check` flags any `{{…}}` surviving into a
-generated document as an unfilled slot, so guidance must never be written as a
-slot.
+guidance to read then replace.** `aide check` flags any `{{...}}` left in a
+generated `docs/aide/**.md` file as an unfilled template slot, so guidance must
+never be written as a slot. Dates are always **ISO 8601** (`YYYY-MM-DD`).
+
+**Header blockquote** — every living document opens with one, carrying its step
+number in the loop, what it derives from, and what derives from it. Keep the
+line current when a document's relationships change. The transient hand-off
+("run `/aide-…` next") is spoken by the skill that wrote the file, not stored
+in it.
 
 **Prefer the verb to a hand edit**: `aide progress set`, `aide progress accept`,
 `aide queue tidy`, `aide gate`. Acceptance boxes are **ticked only by
