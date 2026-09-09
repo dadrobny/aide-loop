@@ -1,5 +1,9 @@
 ### Status icons (the only six)
 
+Governs the vocabulary every status cell, stage header and deliverable bullet
+carries, and how the parsers rank and read it. Every role that writes a status
+document uses it; ✅ is the CLI's to write.
+
 | Icon | Meaning | Rank |
 |------|---------|------|
 | 📋 | Planned | 0 |

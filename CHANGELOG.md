@@ -121,6 +121,62 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.45.3] — 2026-09-09
+
+A style pass over the seven sections no file delivers — §2, §4, §7, §8,
+`§1 → authorised-paths`, `environment-gated-capabilities`, `queue-NNN` —
+which #184 (1.45.2) left as 1.45.1 wrote them (issue #186). The style the
+other ten already share is written down once, in `conventions.md` after its
+index table: the opener, the bullet grammar, the `Rationale` shape, the
+consumer annotation and the rule that a verb's mechanism lives in its `-h`.
+Conciseness and one shape across the tree, not cutting: no rule sentence is
+reworded, and the cross-file duplicates stay with #109. The per-section
+reach column — which roles reach each of the seven, and by what — is on the
+issue, as #109's input.
+
+### Changed
+
+- **`conventions.md`** — the shape paragraph after the index table now
+  states the style contract every section follows, the way #122 stated
+  core-then-tail there.
+- **§1 → authorised paths** — the opener names who acts on the section.
+  `aide scope`'s item and base resolution (the no-argument read, the
+  queue-branch skip, `--base` > recorded > `main_branch`, the `origin/`
+  preference) and its exit codes' meaning now sit in `aide scope -h`; the
+  three discounts `check --queue` applies — spent items, a declared
+  dependency that still orders the pair, the cycle check's membership — sit
+  in `aide check -h`. The section keeps the sentence that names each verb,
+  the exit codes, and the rule an author decides against: a pair with no
+  declared dependency keeps the error. Why a queue branch is skipped joins
+  the Rationale, beside the discounts' own why.
+- **§1 → environment-gated capabilities** — opens on what it governs and who
+  acts on it (the templates point here); the two recording mechanisms and
+  the two planning additions are bullets led by the thing they name; the
+  Rationale paragraph becomes two `Why` bullets. No sentence of the rule
+  changes.
+- **§1 → queue-NNN** — opens on what it governs and who acts on it instead
+  of a bare list; every bullet leads with its rule in bold; every bullet
+  carries the consumer annotation, and the stale `scout/claim` in it becomes
+  `claim` (recon is not a role, ADAPTER-SPEC §2).
+- **§2** — opens on what it governs and who acts on it, ahead of the rule.
+  `gc`'s merge-tree ground, the git ≥ 2.38 refusal and the preview
+  semantics now sit in `aide gc -h` and under `Why gc asks git` / `Why the
+  preview is exact`; the section keeps the two rule sentences, the skip an
+  operator decides against, and `--abandon`.
+- **§4** — opens on what the mode changes and who reads it; the
+  enforced-only-inside sentence follows as the rule it is.
+- **§7** — opens on what the validator does with a CI result instead of on
+  an argument; "test hygiene reduces the odds" becomes the first of two `Why`
+  bullets, where the Rationale was one bare sentence.
+- **§8** — opens on what it governs (a declared sibling) and who acts on it
+  (every role, a person, the always-on page), ahead of the context paragraph.
+- **The read across all seventeen** found two delivered sections still
+  opening without an opener — `§1 → items.md` on a bare bullet, `§1 →
+  status-icons` on its table — and gave each one; `items.md`'s first bullet
+  now leads with its rule in bold like the rest (the pin normaliser absorbs
+  emphasis, so nothing in the delivered copy moves). Every Rationale in the
+  tree is now `- **Why X.**` bullets.
+
 ## [1.45.2] — 2026-09-09
 
 Each delivered section's core is compared to its delivered copy sentence by

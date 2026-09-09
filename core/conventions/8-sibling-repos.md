@@ -1,5 +1,9 @@
 ## 8. Reaching into another repository
 
+Governs work inside a repository that is not the working directory's — a
+declared sibling. Every role and a person too act on it; the always-on page
+points here, and a runtime may automate the pointer.
+
 A project may legitimately span more than one repo — a library and a sibling
 programme repo, or a consumer and the framework clone it updates from. `aide.toml`
 never records where those live; `[framework] local_path` and `[hygiene] extra_repos`
