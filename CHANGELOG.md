@@ -171,6 +171,9 @@ says the paragraph changes no decision.
   - **§3** — every rule and every delivered pin stays byte-for-byte; the
     reasons for each rule move. The always-on rule file is untouched, so the
     structural floor does not move.
+  - **§4** — the three modes, the CI-gate table, the PR-context distinction,
+    the recorded base and its resolution stay; why the branch goes first, why
+    inference is narrow and why a base must be a local branch move.
 
 ## [1.45.0] — 2026-09-09
 
