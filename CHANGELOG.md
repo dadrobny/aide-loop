@@ -121,6 +121,51 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.44.0] — 2026-09-09
+
+Three of the engine's `git pull --rebase` calls threw away their return value,
+so a rebase that stopped on a conflict was invisible at the one moment the
+repository stopped being what the next command assumed.
+
+### Fixed
+
+- **A stopped rebase is a sentence, not a silent state (issue #178).**
+  `cmd_merge`, `cmd_sync` and `_commit_docs_files` each ran `git pull --rebase`
+  with `check=False` and never looked at the result. A rebase that stops on a
+  conflict returns non-zero and leaves the repository mid-rebase, and all three
+  then continued into an operation that cannot run over one. `aide merge` was
+  the sharpest: `git merge` refuses outright while a rebase is in progress, so
+  the operator read the **merge's** failure for a stall the pull had caused, on
+  a base branch left in a state neither message described. Now each site asks
+  whether the pull left an operation in progress and stops with a message that
+  names it — `aide merge` before it touches the merge, with the item explicitly
+  not ticked and the work named on its branch; `aide sync` as the refusal a
+  preflight exists to produce, in place of the `tree clean` line it used to
+  print over a conflicted index; and the shared committer behind `progress
+  set`, `insights tick` and `insights archive` as a returned reason that is
+  also printed, because all three of those callers discard it. Where the
+  unmerged path is the inbox, the stall names `aide insights resolve`, so the
+  same route out is offered here as from `aide merge` (1.43.0).
+- **The discriminator is the state, not the exit code.** `git pull --rebase`
+  also returns non-zero when it never started — no upstream for this branch, an
+  unreachable origin, a refused fetch — and those have always been tolerated
+  here, correctly: the local operation that follows is still right, and
+  refusing on them would stall an unattended run over a missing remote. Only a
+  pull that left a `rebase-merge`/`rebase-apply` (or merge, cherry-pick, revert)
+  marker behind is a refusal. `aide sync` is the one exception to the silence:
+  it now says when the claim branch was **not** refreshed and why, because its
+  success line claims the remotes were fetched, and still exits 0 because the
+  branch is clean and work can start.
+- **`_commit_docs_files`'s docstring no longer promises more than git
+  delivers.** It said the pull "rebases onto the upstream first, which is right
+  for an edit to a file other machines also edit (a tick, an archive)" — but
+  every caller has already written that edit to the worktree, and `git pull
+  --rebase` refuses over an unstaged change before it starts (exit 128, no
+  marker). In the ordinary path that rebase does not run at all; what the pull
+  still reaches is a repository already stopped in an earlier operation, which
+  is the case the new refusal covers. Whether the pull there should be made
+  real is left open, in issue #178.
+
 ## [1.43.0] — 2026-09-08
 
 The one document the loop appends to from every branch had no way to survive

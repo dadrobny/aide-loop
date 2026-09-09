@@ -5044,10 +5044,29 @@ def _commit_docs_files(repo_root: Path, config, message: str,
     file other machines also edit (a tick, an archive) and wrong for a file
     that did not exist a moment ago — ``ensure_insights_inbox`` passes
     ``False`` so that ``check``, a gate, never fetches on the caller's behalf.
+    Measured, because the sentence above promises more than git delivers:
+    every caller here has already written its edit to the worktree, and
+    ``git pull --rebase`` refuses outright over an unstaged change ("cannot
+    pull with rebase: You have unstaged changes", exit 128, nothing started).
+    In the ordinary path the rebase therefore does not run and the commit
+    below is purely local. What the pull still reaches is the repository that
+    was *already* stopped in an earlier operation — and that is the case
+    `_stalled_pull` refuses to commit over, rather than adding a bookkeeping
+    commit to a tree mid-rebase (issue #178).
     """
     try:
         if pull:
-            git(["pull", "--rebase"], repo_root, check=False)
+            pulled = git(["pull", "--rebase"], repo_root, check=False)
+            stalled = _stalled_pull(repo_root, config, pulled)
+            if stalled is not None:
+                # Loud for the reason the `except` arm below is loud: the
+                # callers that reach here discard the reason, and the commit
+                # this was the first step of cannot run over an unfinished
+                # rebase — so a verb that printed its success line would be
+                # announcing a tick that is not in any commit.
+                print(f"aide: could not commit {', '.join(rels)} — {stalled}",
+                      file=sys.stderr)
+                return stalled
         for rel in rels:
             git(["add", "--", rel], repo_root, check=False)
         res = git(["commit", "-m", message, "--", *rels], repo_root, check=False)
@@ -6182,6 +6201,23 @@ def _unmerged_paths(repo_root: Path) -> List[str]:
     return sorted({line.strip() for line in out.stdout.splitlines() if line.strip()})
 
 
+def _interrupted_op(repo_root: Path) -> Optional[str]:
+    """The in-progress git operation this tree is stopped in, or ``None``.
+
+    One reading of `_INTERRUPTED_OPS`, shared by the callers that ask the
+    question for different reasons: `_unsafe_tree_state` asks it *before*
+    acting, `_stalled_pull` asks it *after* a `pull --rebase` came back
+    non-zero. The second is what tells a failed pull that stopped on a
+    conflict apart from one that never started — no upstream configured, an
+    unreachable origin — since only the former leaves a marker behind.
+    """
+    gdir = _git_dir(repo_root)
+    for marker, what in _INTERRUPTED_OPS:
+        if (gdir / marker).exists():
+            return what
+    return None
+
+
 def _continue_command(repo_root: Path) -> str:
     """What finishes the operation this tree is stopped in, once staged."""
     gdir = _git_dir(repo_root)
@@ -6230,6 +6266,43 @@ def _inbox_conflict_hint(repo_root: Path,
             f"settles that one; the rest are yours: {', '.join(others)}.")
 
 
+def _stalled_pull(repo_root: Path, config: Dict[str, Dict[str, object]],
+                  res: "subprocess.CompletedProcess") -> Optional[str]:
+    """One line for a ``pull --rebase`` that stopped mid-way, else ``None``.
+
+    ``git pull --rebase`` comes back non-zero for two unrelated reasons and
+    only one of them is a state the caller must not act on. A pull that never
+    started — no upstream for this branch, an origin that cannot be reached, a
+    refused fetch — leaves the repository byte-for-byte as it was, and every
+    call site below has always continued past it into a local operation that
+    is still correct; making that a refusal would stall an unattended run over
+    a missing remote. A pull that stopped **inside** the rebase leaves
+    conflicts in the index and a marker in the git directory, and there the
+    next `merge`, `commit` or `switch` cannot run at all — git refuses, naming
+    that second operation rather than the rebase that caused it, so the
+    operator reads a failure of something they did not ask for while the tree
+    sits in a state neither message describes (issue #178).
+
+    So the discriminator is the marker, not the exit code. The message names
+    `insights resolve` when the inbox is what stopped it: `insights.md` is
+    append-only and every role captures into it, which makes it the conflict
+    this loop produces as a matter of course, and none of the three roles that
+    reach these call sites has read anything about it.
+    """
+    if res.returncode == 0:
+        return None
+    what = _interrupted_op(repo_root)
+    if what is None:
+        return None
+    hint = _inbox_conflict_hint(repo_root, config)
+    return (f"the rebase onto the upstream stopped — {what}, and the "
+            f"repository is left in it."
+            + (f" {hint}" if hint else "")
+            + f" Finish that state — resolve and stage, then "
+              f"`{_continue_command(repo_root)}` — or abort it "
+              f"(`git rebase --abort` / `git merge --abort`), then re-run.")
+
+
 def _dirty_paths(repo_root: Path) -> List[str]:
     """Tracked paths carrying uncommitted changes, as git reports them.
 
@@ -6276,10 +6349,9 @@ def _unsafe_tree_state(repo_root: Path,
     genuinely collides with one aborts with git's own message through the merge
     path below. Refusing on them would block the common case to catch nothing.
     """
-    gdir = _git_dir(repo_root)
-    for marker, what in _INTERRUPTED_OPS:
-        if (gdir / marker).exists():
-            return what
+    interrupted = _interrupted_op(repo_root)
+    if interrupted:
+        return interrupted
     paths = _dirty_paths(repo_root)
     if not paths:
         return None
@@ -6553,7 +6625,19 @@ def cmd_merge(args: argparse.Namespace) -> int:
                           f"re-run.\n{ff.stdout}{ff.stderr}", file=sys.stderr)
                     return 1
             else:
-                git(["pull", "--rebase"], repo_root, check=False)
+                pulled = git(["pull", "--rebase"], repo_root, check=False)
+                stalled = _stalled_pull(repo_root, config, pulled)
+                if stalled is not None:
+                    # The sharpest of the three: `git merge` refuses outright
+                    # while a rebase is in progress, so without this the
+                    # operator reads the MERGE's failure for a stall the pull
+                    # caused, on a base branch that is now mid-rebase.
+                    print(f"aide merge: {stalled}\n"
+                          f"aide merge: nothing was merged and item "
+                          f"{args.number:03d} is NOT ticked — the work is "
+                          f"intact on {branch}. Re-run once {main} is settled.",
+                          file=sys.stderr)
+                    return 1
         merge_res = git(["merge", "--no-edit", branch], repo_root, check=False)
         if merge_res.returncode != 0:
             # The one conflict this loop produces as a matter of course gets
@@ -7386,7 +7470,25 @@ def cmd_sync(args: argparse.Namespace) -> int:
                 return 1
             branch = claim
         if mode != "local" and _has_origin(repo_root) and claim in _remote_branches(repo_root):
-            git(["pull", "--rebase", "origin", claim], repo_root, check=False)
+            pulled = git(["pull", "--rebase", "origin", claim], repo_root, check=False)
+            stalled = _stalled_pull(repo_root, config, pulled)
+            if stalled is not None:
+                print(f"aide sync: {stalled}\n"
+                      f"aide sync: this verb exists to say the start point is "
+                      f"safe, and it is not — work must not start here.",
+                      file=sys.stderr)
+                return 1
+            if pulled.returncode != 0:
+                # Non-zero, but the tree is untouched: origin unreachable, the
+                # ref gone. Not a reason to refuse — the branch is checked out
+                # and clean, which is what this verb promises — but the success
+                # line below says "remotes fetched", and that would overclaim.
+                why = next((l.strip() for l in
+                            (pulled.stderr + pulled.stdout).splitlines()
+                            if l.strip()), "git gave no reason")
+                print(f"aide sync: {claim} was NOT refreshed from origin — "
+                      f"{why}. The branch is clean and work can start; it may "
+                      f"be behind origin.", file=sys.stderr)
 
     for line in _landed_review_items(repo_root, config, prefix, main):
         print(line)
