@@ -121,6 +121,75 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.45.1] — 2026-09-09
+
+Every section under `conventions/` now reads core first, rationale last (issue
+#122): the rule, its shape examples and its disambiguators, then a closing
+`Rationale` heading holding the provenance, the counterfactual and the
+rejected alternative. No section loses a rule; each loses the paragraph that
+argues for one to a reader who already believes it, and only where #78's test
+says the paragraph changes no decision.
+
+### Changed
+
+- **`conventions.md` states the shape once**, after its index table, so a
+  delivered copy has a natural cut and a reader who learns the convention in
+  one section applies it in every other. `§N` and `§1 → file.md` pointers
+  resolve exactly as before: no file is renamed and no section renumbered.
+- **Sections rewritten core-then-tail**, one commit each, in index order:
+  - **§1 (index)** — the template conventions, the three read-cold rules and
+    the header blockquote stay; why slots and italic guidance render safely,
+    and why narrated process ages badly, move under Rationale.
+  - **§1 → status-icons** — the six icons, what ✅ and 🔍 assert and the
+    structural positions stay; why ✅ had to stop meaning two things per
+    mode, and why closing a landed 🔍 item is a content check, move.
+  - **§1 → progress.md** — the structure, the marker forms, the rollup, the
+    attestation verbs and the outcome-target semantics stay; why a marker is
+    desugared, why no rollup ticks a box, why an attestation is immutable and
+    why a measured outcome is not a box move.
+  - **§1 → queue-NNN** — derived state, sequential numbering and the three
+    senses of "parallel" stay; why one queue is live at a time moves.
+  - **§1 → items.md** — the header, the engine marker, the Dependencies scan
+    and the four failing AC shapes stay with their remedies; the defects that
+    earned each shape move.
+  - **§1 → authorised paths** — the shape, the one-path-per-bullet contract,
+    `aide scope`'s resolution and exit codes, the fence rules, the two
+    suite-side shapes and the cross-spec discounts stay; why each exists moves.
+  - **§1 → insights.md** — the entry shape, the verbs, `resolve`'s union, the
+    immutability rule, the routing table and the queue-authoring duty stay;
+    why the date is strict, why conflicts are unions, why the claim is
+    immutable and why a `framework` issue leads with its version move.
+  - **§1 → human gates** — the row, the reach table, where a gate lives, who
+    may raise and resolve one, and the CLI semantics stay; why not a checkbox,
+    why never a queue and why resolution is a person's alone move.
+  - **§1 → environment-gated capabilities** — the fallback bar, the two
+    records and the two planning additions stay; why a skip-clean run is not
+    evidence moves.
+  - **§2** — the signal, `aide claim`'s steps, the two non-claim shapes, the
+    unpublished-claim and `none left` semantics, and `gc`'s merge-tree ground
+    stay; why each is what it is moves.
+  - **§3** — every rule and every delivered pin stays byte-for-byte; the
+    reasons for each rule move. The always-on rule file is untouched, so the
+    structural floor does not move.
+  - **§4** — the three modes, the CI-gate table, the PR-context distinction,
+    the recorded base and its resolution stay; why the branch goes first, why
+    inference is narrow and why a base must be a local branch move.
+  - **§5** — the two settings, the builder's hand-back, the amendment rule,
+    the root-document rule and the producer's duty stay; why the builder has
+    no standing, why `assume` is safe for an item and not a root, and what the
+    entry points guard move.
+  - **§6** — the delivery clause, the "earned by a defect" paragraph, every
+    rule, every lint boundary and every operative instruction stay; the
+    recorded instances behind them move, and the `stdout is None` story is
+    told once instead of twice.
+  - **§7** — both instructions stay; the one provenance sentence moves.
+  - **§8** — where siblings are declared, the approved shapes, the binding
+    rule and the adapter's pointer stay; why the failure is silent and why a
+    pointer rather than contents move.
+  - **§9** — the two questions, the non-coverage rule, the finding routing,
+    the post-merge rule and the sign-off rule stay; the arguments for each,
+    already brief, move.
+
 ## [1.45.0] — 2026-09-09
 
 The bookkeeping committer promised a rebase git would never perform. Now the

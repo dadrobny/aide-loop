@@ -47,6 +47,17 @@ section is one file under [`core/conventions/`](core/conventions/), so `§6` is
 is used in a hundred places, it survives a file being renamed, and the index
 resolves it.
 
+**Every section reads core first, then a closing `Rationale` heading** (one
+level below the file's own heading; issue #122). The core is the rule, its
+shape examples and its disambiguators — what an agent that reads only it needs
+to decide every case; the tail is the defect that earned a rule, the
+counterfactual and the rejected alternative. Add a rule to the core and its
+provenance to the tail, in the same commit. The test for which side a sentence
+belongs on is #78's: would an agent that never saw it make a *different
+decision*? No → tail. Unsure → it is a disambiguator; core. A pinned sentence
+is core by definition, so a delivered file's pins should never point below the
+heading.
+
 **Sections are runtime-general; an adapter delivers them, it does not restate
 them.** The Claude adapter's **delivered files** are the one unscoped rule in
 [`adapters/claude/rules/`](adapters/claude/rules/) (§3; loads in every session

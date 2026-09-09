@@ -22,6 +22,12 @@ Read the section you were pointed at; nothing here expects a top-to-bottom read.
 | 9 | [Review and validation](conventions/9-review-and-validation.md) | Two different reads of one diff: what each answers, why neither covers for the other, and how a finding triages. Runtime-general, like §3 and §6 |
 
 Sections are **runtime-general**: an adapter delivers them to its own agents by
-whatever mechanism it has, and never restates a rule as its own. The one page
+whatever mechanism it has, and never restates a rule as its own. Each section is
+written **core first**: the rule, its shape examples and the cases that
+disambiguate it, in the order an agent decides them; then a closing
+**Rationale** heading holding the defect that earned a rule, the counterfactual
+and the rejected alternative, for the reader who follows a pointer. A delivered
+copy carries the core; nothing under Rationale changes a decision the core does
+not already make. The one page
 that must bind before anything points anywhere is
 [`AGENT-CONTEXT.md`](AGENT-CONTEXT.md).

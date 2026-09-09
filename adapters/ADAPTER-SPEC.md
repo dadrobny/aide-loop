@@ -264,7 +264,10 @@ degradation §5 and §6 use.
 insights.md` is `conventions/1-format-contract/insights.md`. A section is
 therefore addressable, and an adapter can put one in front of a role without
 putting all of them in front of every role — which matters, because no role
-needs more than about two thirds of the contract and most need a third.
+needs more than about two thirds of the contract and most need a third. Each
+section is written core first — the rule, its shape examples, its
+disambiguators — with the provenance under a closing `Rationale` heading, so a
+delivered copy has a natural cut: everything above the heading.
 
 Three sections say so themselves: **§3** (command hygiene) is delivered in
 positive form through whatever always-loaded channel the runtime has, **§6**
