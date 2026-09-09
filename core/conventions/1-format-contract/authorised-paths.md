@@ -93,11 +93,10 @@ with no diff to check against, not the norm:
 - **Never walk untracked or ignored paths.** A tree walk that picks up
   `__pycache__/*.pyc` hashes bytes that embed source mtimes: the "pin" is not
   reproducible even against an unchanged tree.
-- **It is platform-fragile in two specific ways.** Any path component entering a
-  hash, comparison or match must be `Path.as_posix()` — `str(Path)` renders the
-  OS-native separator, so an identical tree hashes differently on Windows. And a
-  byte-exact committed fixture needs a `text eol=lf` pin in `.gitattributes`, or
-  `core.autocrlf` rewrites it on checkout and the pin never matches.
+- **It is platform-fragile, in the two ways §6 rules on.** A digest takes path
+  components and committed bytes — exactly what the separator rule and the
+  line-ending pin govern — so a fence is subject to both, and §6 states them
+  once, for the role that writes the test.
 
 **Re-pinning.** When a later item is deliberately authorised to change a file an
 earlier item pinned, update the earlier constant in the same commit, with a
@@ -110,24 +109,11 @@ should be retired when its item merges, while an *artifact-integrity invariant*
 inside an unrelated item's regression module under a `_PRE_NNN_` name.
 
 **A diff-time scope claim is never a suite assertion.** It is decided on the
-branch, by `aide scope`, against this declaration. Two shapes get written
-instead, and `aide check` warns on both:
-
-- **A hardcoded range in a test**, `git diff main...HEAD`. On a stacked queue
-  the item's base is the *queue branch*, so `main` is stale by the whole queue
-  and every sibling item's legitimate change is reported as this item's
-  violation.
-- **A shell-out to `aide scope` from the suite.** The verb resolves its base
-  from the **current** branch's recorded base, not from the item number, and
-  `aide merge` re-runs the suite from the merge target — so the assertion holds
-  only on the item's own claim branch and fails by construction inside the
-  loop's own post-merge run.
-
-Skip-guarding rescues neither: a guard leaves the test permanently skipped once
-the claim branch is deleted, which §6 forbids. A test that *computes* its base —
-`git merge-base HEAD origin/main`, then a diff — is a claim about the branch
-rather than about an item's scope, and is deliberately not reported; the rule
-still binds where the lint cannot look.
+branch, by `aide scope`, against this declaration — which is what this section
+fixes. The rest of the rule is §6's, stated there once for the role that writes
+the test: the two shapes written instead, what `aide check` warns on, why
+neither a skip guard nor a base taken from the verb repairs them, and the one
+base computation that is deliberately not reported.
 
 **One queue's specs are checked against each other before any is built**, in the
 window `/aide-spec-queue` creates — N specs on one branch, every cross-item
@@ -178,10 +164,9 @@ value computed in the same run is a determinism check and must stay.
 - **Why a path is never double-listed.** The moment the item uses its
   authorisation, `aide scope` reports the change as a contradiction — correctly,
   by the pin's meaning — and no spec-side fix is visible at validation time.
-- **Why fences are a fallback.** Each of the four failure modes above has cost a
-  real CI break. The two suite-side shapes of a diff-time claim were written by
-  two independent authors in one consumer, which is the signature of a missing
-  rule rather than a careless author.
+- **Why fences are a fallback.** Each of the four failure modes above has cost
+  a real CI break; §6's Rationale records what the suite-side shapes of a
+  diff-time claim cost, since that is where those shapes are ruled on.
 - **Why the discounts.** A merged item's claim can neither be harmed by a
   later writer nor harm one, and an excluded item is never offered. The
   dependency discount is the whole shape of a stage-validation item, which

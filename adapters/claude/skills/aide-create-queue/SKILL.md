@@ -243,7 +243,15 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
      - When open `defect`, `gap` or `automation` entries exist at a queue
        boundary they are batched into a maintenance queue, authored and merged
        before the stage queue
-     - the live queue is the lowest-numbered open one
      - a pass-over leaves the entry open and is stated where the queue is
        reviewed
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/queue-NNN.md
+     One statement, and it moved here in 1.46.0 (issue #109): "the live queue
+     is the lowest-numbered open one" was stated in three sections at once,
+     and queue state is what §1 → `queue-NNN.md` fixes, so that is where it
+     is stated and the other two point at it. This skill still says it,
+     because the maintenance-queue ordering is unreadable without it.
+     - the live queue is the lowest-numbered open one
 -->

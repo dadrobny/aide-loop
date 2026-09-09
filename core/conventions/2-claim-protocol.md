@@ -9,7 +9,7 @@ branch** (config `git.branch_prefix`, default `aide/`) — not `progress.md`'s
 `🚧`, which lives on a feature branch. `aide claim` owns this:
 
 1. `git fetch --all --prune`; list remote `aide/*` branches.
-2. Read the live queue (lowest-numbered open queue) + `progress.md`; pick the
+2. Read the live queue (§1 → `queue-NNN.md`) + `progress.md`; pick the
    **first** item that is 📋, whose dependencies are all ✅, and that has no
    existing `aide/NNN-*` branch. With `loop.claim_scope = "all-open"` in
    `aide.toml`, claiming scans **every** open queue in number order instead —

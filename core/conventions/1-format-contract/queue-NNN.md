@@ -6,7 +6,7 @@ one, `aide check` and `aide queue tidy` keep its declared status honest, and
 `spec-author` expands its items.
 
 - **Queue state is derived, not declared.** A queue is **open** iff any of its
-  items is 📋/🚧 in `progress.md`, else **done**; "the live queue" is the
+  items is 📋/🚧 in `progress.md`, else **done**; the live queue is the
   lowest-numbered open one (`aide claim`'s default). A `> **Status:**` line is
   optional decoration for human readers — `aide queue tidy` stamps a completion
   note on superseded queues, and `aide check` warns only when a declared status

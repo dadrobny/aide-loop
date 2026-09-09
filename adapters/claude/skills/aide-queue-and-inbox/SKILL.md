@@ -39,7 +39,7 @@ paths:
      - Queue state is derived, not declared
      - A queue is **open** iff any of its items is 📋/🚧 in `progress.md`,
        else **done**
-     - "the live queue" is the lowest-numbered open one
+     - the live queue is the lowest-numbered open one
      - A `> **Status:**` line is optional decoration for human readers
      - `aide queue tidy` stamps a completion note on superseded queues
      - `aide check` warns only when a declared status contradicts the derived
@@ -78,7 +78,7 @@ The immutability of a captured claim and the entry shape itself are on the
 floor, in `AGENT-CONTEXT.md`, already in this context.
 
 **Queue state is derived, not declared.** A queue is **open** iff any of its
-items is 📋/🚧 in `progress.md`, else **done**; "the live queue" is the
+items is 📋/🚧 in `progress.md`, else **done**; the live queue is the
 lowest-numbered open one. A `> **Status:**` line is optional decoration for
 human readers — `aide queue tidy` stamps a completion note on superseded
 queues, and `aide check` warns only when a declared status contradicts the
