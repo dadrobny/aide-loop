@@ -20,9 +20,9 @@ paths:
      `progress.md` and dated lines into `insights.md`, and is the role that
      moves an item's status, so the icon vocabulary and the ISO-date rule bind
      it too — it had the ✅-means-merged half of §1 → status-icons restated
-     inline in its own spec and nothing pinned it. The three roles that write
-     no shape-parsed document are deliberately not listed: the one line they
-     do append, the insight entry, has its shape on the floor in
+     inline in its own spec and nothing pinned it. The four roles that write
+     none of the shape-parsed documents are deliberately not listed: the one
+     line they do append, the insight entry, has its shape on the floor in
      `AGENT-CONTEXT.md`. The `paths:` above inject nothing on a read (issue
      #85, measured): the description sits in every interactive session's skill
      listing regardless, and the globs only narrow when the runtime
