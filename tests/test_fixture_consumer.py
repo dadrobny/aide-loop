@@ -1925,6 +1925,36 @@ def test_a_tick_beside_unstaged_work_stays_local_and_says_so(
     assert not (consumer / ".git" / "rebase-merge").exists()
 
 
+def test_a_created_inbox_is_not_committed_into_an_unfinished_operation(
+        aide, consumer: Path, capsys):
+    """The one caller that passes `pull=False` — `check` creating a missing
+    inbox — meets the same guard: a NEW file committed mid-cherry-pick is the
+    same misplaced commit as a tick would be. The file is still created, so
+    the gate can read it; the commit waits for the operation to finish."""
+    inbox = _drop_the_inbox(consumer)
+    note = consumer / "docs" / "aide" / "note.md"
+    note.write_text("base\n", encoding="utf-8")
+    _commit(consumer, "docs(aide): add note")
+    _git(["switch", "-c", "side"], consumer)
+    note.write_text("side\n", encoding="utf-8")
+    _commit(consumer, "docs(aide): side")
+    _git(["switch", "main"], consumer)
+    note.write_text("main\n", encoding="utf-8")
+    _commit(consumer, "docs(aide): main")
+    picked = _git(["cherry-pick", "side"], consumer, check=False)
+    assert picked.returncode != 0, "the cherry-pick did not stop on a conflict"
+    head = _git(["rev-parse", "HEAD"], consumer).stdout.strip()
+    capsys.readouterr()
+
+    aide.main(["--repo", str(consumer), "check"])
+    captured = capsys.readouterr()
+    assert inbox.read_bytes() == _installed_template(consumer)
+    assert "NOT committed" in captured.out
+    assert "a cherry-pick is in progress" in captured.out
+    assert _git(["rev-parse", "HEAD"], consumer).stdout.strip() == head
+    assert "?? docs/aide/insights.md" in _git(["status", "--porcelain"], consumer).stdout
+
+
 def test_a_tick_in_local_mode_never_reaches_for_a_remote(
         aide, consumer: Path, capsys):
     """`git.mode = "local"` is the fixture default, and the other pull sites

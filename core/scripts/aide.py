@@ -5025,10 +5025,15 @@ def _commit_docs_files(repo_root: Path, config, message: str,
                        rels: List[str], pull: bool = True) -> Optional[str]:
     """Commit exactly *rels* — repo-relative paths — with *message*.
 
-    Returns ``None`` when every named path is in the new commit and that
-    commit is settled here, otherwise a one-line reason it is not — so a
-    caller that announces a commit announces what happened, not what it
-    intended. "Exactly" is enforced by pathspec: ``git commit -- <rels>``
+    Returns ``None`` when every named path is in a new commit on this
+    branch, otherwise a one-line reason — so a caller that announces a commit
+    announces what happened, not what it intended. Two things are reasons:
+    the commit did not happen (a refused tree, a failed ``git commit``, a
+    path the commit left out), and the commit happened but replaying it onto
+    the upstream stopped mid-rebase, since the branch no longer carries it
+    until that rebase is finished. A rebase that was skipped or never started
+    is **not** a reason: the commit is complete and local, and that case is a
+    printed notice, never a return. "Exactly" is enforced by pathspec: ``git commit -- <rels>``
     commits the named paths and nothing else, so a builder's staged work
     sitting in the index stays staged and out of the bookkeeping commit; a
     bare ``git commit`` would have swept it in, which is why ``git add <rel>``
@@ -5054,12 +5059,14 @@ def _commit_docs_files(repo_root: Path, config, message: str,
     conflict then stops **inside** a rebase — a state with a marker, which
     `_stalled_pull` names and routes the same way `aide merge` does.
 
-    Three shapes the pull deliberately does not touch. Under ``git.mode =
-    "local"``, or with no ``origin``, there is nothing to rebase onto and the
-    other sites skip it too. A tree already stopped in an earlier operation is
-    refused *before* the commit — git would let a commit through once the
-    conflicts were staged, and that would add a bookkeeping commit to the
-    middle of someone's rebase (issue #178). And a ``HEAD`` carrying a merge
+    A tree already stopped in an earlier operation is refused *before* the
+    commit, and for every caller, *pull* or not — git lets a commit through
+    once the conflicts are staged, and a bookkeeping commit in the middle of
+    someone's rebase is the state this exists to prevent (issue #178); the
+    guard reads the git directory and fetches nothing, so ``check`` stays a
+    gate. Two shapes the pull itself deliberately does not touch. Under
+    ``git.mode = "local"``, or with no ``origin``, there is nothing to rebase
+    onto and the other sites skip it too. And a ``HEAD`` carrying a merge
     commit origin has not seen is never rebased by a bookkeeping verb: the
     rebase drops the merge and replays both parents, bringing back every
     conflict resolved inside it (issue #133) — and `aide merge` reaches here
@@ -5068,18 +5075,19 @@ def _commit_docs_files(repo_root: Path, config, message: str,
     """
     joined = ", ".join(rels)
     try:
-        if pull:
-            what = _interrupted_op(repo_root)
-            if what is not None:
-                # Refused, and refused HERE rather than left to `git commit`:
-                # with the conflicts staged git accepts a commit mid-rebase,
-                # and the callers that reach this discard the reason, so a
-                # verb would print its success line over a tick sitting in
-                # the middle of an unfinished operation.
-                reason = (f"the repository is stopped in an earlier operation "
-                          f"— {_stopped_state(repo_root, config, what)}")
-                print(f"aide: could not commit {joined} — {reason}", file=sys.stderr)
-                return reason
+        what = _interrupted_op(repo_root)
+        if what is not None:
+            # Refused, and refused HERE rather than left to `git commit`: with
+            # the conflicts staged git accepts a commit mid-rebase, and the
+            # callers that reach this discard the reason, so a verb would
+            # print its success line over a tick sitting in the middle of an
+            # unfinished operation. Unconditional on `pull`: the one caller
+            # that passes False (`ensure_insights_inbox`) is creating a file,
+            # and a new file committed mid-rebase is the same misplaced commit.
+            reason = (f"the repository is stopped in an earlier operation "
+                      f"— {_stopped_state(repo_root, config, what)}")
+            print(f"aide: could not commit {joined} — {reason}", file=sys.stderr)
+            return reason
         for rel in rels:
             git(["add", "--", rel], repo_root, check=False)
         res = git(["commit", "-m", message, "--", *rels], repo_root, check=False)

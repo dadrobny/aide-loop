@@ -163,7 +163,8 @@ commit lands first and the rebase after it is real.
   that could not start.** 1.44.0 caught a repository already mid-rebase as a
   side effect of the pull refusing over it; with the pull moved behind the
   commit that side effect is gone, so the committer now asks
-  `_interrupted_op` first and refuses with the same sentence — "stopped in an
+  `_interrupted_op` first — for every caller, including the one that creates
+  a missing inbox with no pull at all — and refuses with the same sentence — "stopped in an
   earlier operation — a cherry-pick is in progress", the matching continue
   and abort, the inbox hint when it applies. It matters because git accepts a
   commit mid-rebase once the conflicts are staged, and a bookkeeping commit
