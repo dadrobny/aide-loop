@@ -6230,6 +6230,24 @@ def _continue_command(repo_root: Path) -> str:
     return "git commit --no-edit"
 
 
+def _abort_command(repo_root: Path) -> str:
+    """What throws away the operation this tree is stopped in.
+
+    The mirror of `_continue_command`, and derived the same way rather than
+    written as a fixed pair: `_stalled_pull` reaches this with a cherry-pick or
+    a revert marker whenever the pull refused because one was *already* in
+    progress, and `git rebase --abort` is not merely unhelpful there — it fails.
+    """
+    gdir = _git_dir(repo_root)
+    if (gdir / "rebase-merge").exists() or (gdir / "rebase-apply").exists():
+        return "git rebase --abort"
+    if (gdir / "CHERRY_PICK_HEAD").exists():
+        return "git cherry-pick --abort"
+    if (gdir / "REVERT_HEAD").exists():
+        return "git revert --abort"
+    return "git merge --abort"
+
+
 def _inbox_conflict_hint(repo_root: Path,
                          config: Dict[str, Dict[str, object]]) -> Optional[str]:
     """Name `insights resolve` when the stalled operation is stuck on the inbox.
@@ -6283,7 +6301,10 @@ def _stalled_pull(repo_root: Path, config: Dict[str, Dict[str, object]],
     operator reads a failure of something they did not ask for while the tree
     sits in a state neither message describes (issue #178).
 
-    So the discriminator is the marker, not the exit code. The message names
+    So the discriminator is the marker, not the exit code — and the message
+    names the operation git reports rather than assuming a rebase, since a
+    pull that refused because a cherry-pick or a merge was already under way
+    lands here with that marker and no rebase of its own. The message names
     `insights resolve` when the inbox is what stopped it: `insights.md` is
     append-only and every role captures into it, which makes it the conflict
     this loop produces as a matter of course, and none of the three roles that
@@ -6295,12 +6316,17 @@ def _stalled_pull(repo_root: Path, config: Dict[str, Dict[str, object]],
     if what is None:
         return None
     hint = _inbox_conflict_hint(repo_root, config)
-    return (f"the rebase onto the upstream stopped — {what}, and the "
-            f"repository is left in it."
+    # Never "the rebase stopped": `what` is whichever of `_INTERRUPTED_OPS` is
+    # in progress, and the pull refusing because a cherry-pick was ALREADY
+    # under way is the reachable case at the `_commit_docs_files` site. Naming
+    # the operation git reports, and the abort that matches it, is the whole
+    # point — a message that guessed `git rebase --abort` there would hand the
+    # reader a command that fails.
+    return (f"git pull --rebase could not complete — {what}."
             + (f" {hint}" if hint else "")
             + f" Finish that state — resolve and stage, then "
               f"`{_continue_command(repo_root)}` — or abort it "
-              f"(`git rebase --abort` / `git merge --abort`), then re-run.")
+              f"(`{_abort_command(repo_root)}`), then re-run.")
 
 
 def _dirty_paths(repo_root: Path) -> List[str]:

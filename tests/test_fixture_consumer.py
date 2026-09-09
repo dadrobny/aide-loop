@@ -1657,7 +1657,7 @@ def test_merge_stops_when_its_pull_leaves_a_rebase_unfinished(
 
     assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
     err = capsys.readouterr().err
-    assert "rebase onto the upstream stopped" in err
+    assert "git pull --rebase could not complete" in err
     assert "a rebase is in progress" in err
     # The cause, not the casualty: the merge is never attempted.
     assert "merge of aide/001-the-greeter failed" not in err
@@ -1682,7 +1682,7 @@ def test_sync_refuses_a_start_point_whose_rebase_stopped(
 
     assert aide.main(["--repo", str(consumer), "sync", "--item", "1"]) == 1
     captured = capsys.readouterr()
-    assert "rebase onto the upstream stopped" in captured.err
+    assert "git pull --rebase could not complete" in captured.err
     assert "work must not start here" in captured.err
     assert "tree clean" not in captured.out       # the line it used to print
 
@@ -1720,7 +1720,7 @@ def test_sync_says_a_claim_branch_was_not_refreshed_and_still_starts(
     assert "was NOT refreshed from origin" in captured.err
     assert "could not resolve host" in captured.err
     assert "work can start" in captured.err
-    assert "rebase onto the upstream stopped" not in captured.err
+    assert "git pull --rebase could not complete" not in captured.err
     assert "aide sync: OK" in captured.out       # and it is still a green start
 
 
@@ -1744,11 +1744,39 @@ def test_a_bookkeeping_commit_is_refused_over_an_unfinished_rebase(
                       "--pointer", "item 002"]) == 0
     err = capsys.readouterr().err
     assert "could not commit" in err
-    assert "rebase onto the upstream stopped" in err
+    assert "git pull --rebase could not complete" in err
     assert "insights resolve" not in err        # the inbox is not the conflict
     # written to the worktree, deliberately not committed on top of the rebase
     assert "docs/aide/insights.md" in _git(
         ["status", "--porcelain"], consumer).stdout
+
+
+def test_the_stall_names_the_operation_git_reports_not_a_rebase(
+        aide, consumer: Path, capsys):
+    """The pull is not always what stopped: it also refuses because an earlier
+    operation is STILL in progress, and at the shared-committer site that is
+    the reachable case. The message then has to name that operation and the
+    abort that matches it — `git rebase --abort` fails inside a cherry-pick."""
+    note = consumer / "docs" / "aide" / "note.md"
+    note.write_text("base\n", encoding="utf-8")
+    _commit(consumer, "docs(aide): add note")
+    _git(["switch", "-c", "side"], consumer)
+    note.write_text("side\n", encoding="utf-8")
+    _commit(consumer, "docs(aide): side")
+    _git(["switch", "main"], consumer)
+    note.write_text("main\n", encoding="utf-8")
+    _commit(consumer, "docs(aide): main")
+    picked = _git(["cherry-pick", "side"], consumer, check=False)
+    assert picked.returncode != 0, "the cherry-pick did not stop on a conflict"
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(consumer), "insights", "tick", "1",
+                      "--pointer", "item 002"]) == 0
+    err = capsys.readouterr().err
+    assert "a cherry-pick is in progress" in err
+    assert "git cherry-pick --abort" in err
+    assert "git rebase --abort" not in err       # would fail if run
+    assert "git cherry-pick --continue" in err
 
 
 # --------------------------------------------------------------------------- #

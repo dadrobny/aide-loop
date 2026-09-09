@@ -146,6 +146,14 @@ repository stopped being what the next command assumed.
   also printed, because all three of those callers discard it. Where the
   unmerged path is the inbox, the stall names `aide insights resolve`, so the
   same route out is offered here as from `aide merge` (1.43.0).
+- **The message names the operation git reports, never an assumed rebase.**
+  The pull is not always what stopped: it also refuses because an *earlier*
+  operation is still in progress, and at the shared-committer site that is the
+  reachable case rather than the exotic one. So the sentence is "git pull
+  --rebase could not complete — a cherry-pick is in progress", and the abort it
+  offers is derived from the marker the same way the continue command already
+  was — `git rebase --abort` inside a cherry-pick is not merely unhelpful, it
+  fails.
 - **The discriminator is the state, not the exit code.** `git pull --rebase`
   also returns non-zero when it never started — no upstream for this branch, an
   unreachable origin, a refused fetch — and those have always been tolerated
