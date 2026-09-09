@@ -186,6 +186,9 @@ says the paragraph changes no decision.
   - **§8** — where siblings are declared, the approved shapes, the binding
     rule and the adapter's pointer stay; why the failure is silent and why a
     pointer rather than contents move.
+  - **§9** — the two questions, the non-coverage rule, the finding routing,
+    the post-merge rule and the sign-off rule stay; the arguments for each,
+    already brief, move.
 
 ## [1.45.0] — 2026-09-09
 
