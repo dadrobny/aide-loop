@@ -136,6 +136,12 @@ RETIRED_ADAPTER_PATHS = {
         # beside the skill is delivered the same text twice.
         ".claude/rules/aide-living-documents.md",
         ".claude/rules/aide-test-hygiene.md",
+        # 1.27.0–1.45.3 delivered the seven §1 document shapes as one bundled
+        # section skill; 1.46.0 split it into per-document section skills
+        # preloaded by the role that writes each document (issue #109). A
+        # consumer that keeps the bundle beside them is delivered four of the
+        # seven twice, and the other three to roles that never write them.
+        ".claude/skills/aide-living-documents/SKILL.md",
     ),
 }
 

@@ -11,6 +11,9 @@ model: sonnet
 effort: medium
 skills:
   - aide-review-and-validation
+  - aide-document-format
+  - aide-progress-file
+  - aide-off-platform-verification
 ---
 
 You are **validator**, the independent quality gate. You did **not** write this

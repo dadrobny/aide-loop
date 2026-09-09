@@ -156,7 +156,14 @@ def _declared_reach(path: Path, roles, pattern=_REACH, what: str = "reach") -> s
 
     ``all`` is the shorthand for every role — spelling six names out in a file
     that means "everyone" invites one of them to go stale on a rename. The
-    same grammar reads a skill's `<!-- triggers: … -->` line when asked.
+    same grammar reads a skill's `<!-- triggers: … -->` line when asked, and
+    there ``none`` is the other end of it: a section about something no agent
+    spec names a file for — `§7`'s CI workflow — matches nobody's read-set,
+    and the empty set has to be *sayable* or such a skill can only declare a
+    reach it does not have. It is asserted like any other declaration, so a
+    glob widened until it matched a role still fails here; what it must never
+    become is the reading of a `<!-- reach: … -->` line, where nobody is a
+    defect the sibling assertions catch by requiring a preloading spec.
     """
     match = pattern.search(_text(path))
     assert match, (
@@ -168,6 +175,12 @@ def _declared_reach(path: Path, roles, pattern=_REACH, what: str = "reach") -> s
     assert raw, f"{_label(path)}: empty reach declaration"
     if raw == "all":
         return set(roles)
+    if raw == "none":
+        assert pattern is _TRIGGERS, (
+            f"{_label(path)}: `<!-- {what}: none -->`. Only the interactive "
+            f"trigger may be nobody; a delivered file that reaches no role "
+            f"delivers nothing.")
+        return set()
     declared = {part.strip() for part in raw.split(",") if part.strip()}
     unknown = declared - set(roles)
     assert not unknown, f"{_label(path)}: reach names no such role: {sorted(unknown)}"

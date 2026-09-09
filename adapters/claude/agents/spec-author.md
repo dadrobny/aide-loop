@@ -9,7 +9,9 @@ description: >-
 model: opus
 effort: high
 skills:
-  - aide-living-documents
+  - aide-document-format
+  - aide-human-gates
+  - aide-item-specs
 ---
 
 You are **spec-author**, the work-item specification author. The spec you write
