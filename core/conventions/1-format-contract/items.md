@@ -10,8 +10,7 @@
   for** — `- **A3 (engine 1.28.1):** …`, the marker `insights.md` provenance
   already carries, in the bold label beside the assumption's own code. `aide
   check` warns (advisory, never an exit code) when a marked assumption names an
-  engine whose **feature line** predates the installed one; a patch release
-  cannot falsify a claim about behaviour, so it is silent. Clear it the way
+  engine whose **feature line** predates the installed one. Clear it the way
   every other durable record in this loop is corrected — **append**: a
   re-check goes into the marker, `(engine 1.28.1, re-checked 1.36.0)`, and the
   newest version named is the one the claim stands on. A merged spec is never
@@ -21,10 +20,9 @@
 - **`## Dependencies` blocks `aide claim`.** Every item number named in this
   section (any of the accepted forms in the table above) is read as something
   this item is blocked on until that item is **merged** (✅), or leaves the
-  queue's way as ❌ excluded or ⏸️ deferred. 🚧 and 🔍 both still block: work
-  in progress is not in the base a dependent would branch from, and neither is
-  work whose PR is still open. `aide claim` therefore skips a `📋` item while
-  any of its dependencies is still open. Text at or after a literal
+  queue's way as ❌ excluded or ⏸️ deferred. 🚧 and 🔍 both still block.
+  `aide claim` therefore skips a `📋` item while any of its dependencies is
+  still open. Text at or after a literal
   `**Downstream` marker is excluded from that scan, so a forward-looking aside
   ("**Downstream:** item 099 depends on this item's CI job") does not register
   as a backward blocker — put such asides after the marker, never before it.
@@ -46,20 +44,16 @@ asserts a fact about live state is a measured equality against that state, and
 a criterion that closes a stage acceptance criterion names which one.** Four
 shapes fail that:
 
-- **A bounded diff against a pre-item baseline.** Once the item merges into the
-  branch its baseline is derived from, the two sides of the comparison are the
-  same tree: the test is then either vacuous — green while asserting nothing —
-  or red, a fixture-sanity guard correctly refusing to compare. Assert the
-  property the edit was supposed to produce instead. The diff-time half of such
-  a claim — "this item did not touch X" — is `aide scope`'s job on the claim
+- **A bounded diff against a pre-item baseline.** Assert the property the
+  edit was supposed to produce instead. The diff-time half of such a claim —
+  "this item did not touch X" — is `aide scope`'s job on the claim
   branch, declared under `## Asserts against`; §1 → authorised paths says what
   not to write, and `aide check` warns on the two literal shapes.
 - **A premise about a sibling item's schedule.** "Item NNN has not landed yet"
   is guaranteed to become false. Where an earlier item's test must change when
   a later one lands, the later item's spec lists that test file under **May
   change** from the start, and the earlier item declares what it pins under
-  **Asserts against**, which is what makes the collision visible at spec time
-  rather than at first pytest.
+  **Asserts against**.
 - **A shape check standing in for the fact it was supposed to measure.** An
   AC that asserts a fact about live state — a field set, a firing set, a
   consumed path, a count — is met only by a test that **recomputes that fact
@@ -77,9 +71,8 @@ shapes fail that:
   criterion only when the spec says so — the optional *(closes Stage N
   criterion M)* annotation in the item template — and only when the item's
   deliverable **is** that criterion's subject, not when it touches the same
-  area. An AC that names none closes none, which is the ordinary case and
-  costs nothing: a stage criterion nobody has attested stays open, which is
-  true. `aide progress accept` is per-criterion for this reason — the evidence
+  area. An AC that names none closes none. `aide progress accept` is
+  per-criterion for this reason — the evidence
   string must name the check that closes *that* criterion, and an index is not
   a check. Under a spec authored with the annotation available, silence is an
   answer: no annotation means no stage criterion is closed, and there is
@@ -104,14 +97,21 @@ shapes fail that:
   falsified. Rewriting a merged spec to agree with a later engine is the
   failure mode, not the fix; and inventing a version for an unmarked
   assumption is worse than leaving it unclaimed, which is why the unmarked
-  case is not warned about.
-- **Why a bounded diff fails on arrival.** Which of vacuous and red it becomes
-  depends only on whether the author happened to write the fixture guard, and
-  under a stacked queue it arrives on the very next claim, since the queue
-  branch tip *is* the post-item state.
+  case is not warned about. A patch release cannot falsify a claim about
+  behaviour, which is why the lint is silent across one.
+- **Why 🚧 and 🔍 block.** Work in progress is not in the base a dependent
+  would branch from, and neither is work whose PR is still open.
+- **Why a bounded diff fails on arrival.** Once the item merges into the
+  branch its baseline is derived from, the two sides of the comparison are the
+  same tree: the test is then either vacuous — green while asserting nothing —
+  or red, a fixture-sanity guard correctly refusing to compare. Which of the
+  two it becomes depends only on whether the author happened to write the
+  fixture guard, and under a stacked queue it arrives on the very next claim,
+  since the queue branch tip *is* the post-item state.
 - **Why a schedule premise is expensive.** It breaks in a file the later item's
   Authorised paths do not cover — so the repair needs a spec amendment before
-  it can be made at all.
+  it can be made at all. Declaring the pin under **Asserts against** is what
+  makes the collision visible at spec time rather than at first pytest.
 - **Why the equality wording.** Three shape-check criteria passed three false
   factual claims into merged artifacts in one queue, each fix making the next
   check stronger and the next false claim still slipping past it, all three
@@ -122,7 +122,9 @@ shapes fail that:
   retracted the same day. The annotation moves the decision to spec time,
   where the author who knows the deliverable is; inferring it at attestation
   time, from two lists and nothing else, is the move that produced those
-  retractions. The transitional exception's required phrase puts the weaker
+  retractions. An AC that names none is the ordinary case and costs nothing: a
+  stage criterion nobody has attested stays open, which is true. The
+  transitional exception's required phrase puts the weaker
   basis into `progress.md` permanently, so a reader can tell the two apart,
   and it is a sentence nobody writes by accident on a spec that could have
   carried the annotation.

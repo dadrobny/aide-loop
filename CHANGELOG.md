@@ -150,6 +150,14 @@ are on the issue.
   prints of unmet targets, and the over-50 range rule move under Rationale,
   and the first two now sit in the CLI's own help — `aide progress -h`
   describes the five actions, and `aide status -h` names what it reports.
+- **§1 → items.md** — the filename and heading, the status-free header, the
+  engine marker and its append-only correction, and the whole `## Dependencies`
+  scan (what blocks, the `**Downstream` and `Blocks:` exclusions) reach
+  `aide-living-documents` and are pinned; the spec-author spec had carried the
+  marker alone. Five argument clauses move under Rationale: why a patch
+  release is silent, why 🚧 and 🔍 block, why a bounded diff goes vacuous or
+  red, what makes a schedule collision visible at spec time, and why an
+  unannotated AC costs nothing.
 
 ## [1.45.1] — 2026-09-09
 

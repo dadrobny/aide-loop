@@ -96,6 +96,24 @@ paths:
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/items.md
+     - Filename begins with the zero-padded number
+     - First `#` heading is `# Item NNN — Title`
+     - **No status field** in the header — status lives only in `progress.md`
+     - The header carries `Created`, Stage, Queue, Objectives, Suggested
+       branch, and a mandatory **Assumptions** block
+     - An assumption that pins engine behaviour names the engine it was true
+       for
+     - a re-check goes into the marker, `(engine 1.28.1, re-checked 1.36.0)`,
+       and the newest version named is the one the claim stands on
+     - A merged spec is never rewritten to agree with a later engine
+     - `## Dependencies` blocks `aide claim`
+     - 🚧 and 🔍 both still block
+     - Text at or after a literal `**Downstream` marker is excluded from that
+       scan
+     - put such asides after the marker, never before it
+     - The rest of any line from a backticked or bold `Blocks:` label on is
+       excluded too
+     - Keep a reach quote on one line — the exclusion does not extend past it
      - An acceptance criterion is an invariant over the resulting content
      - never a bound on the diff that produced it
      - a criterion that asserts a fact about live state is a measured equality
@@ -211,6 +229,25 @@ one** into `insights.md`. **`reword` is the one amendment that edits rather
 than appends**, so it **refuses over a box that is ticked, annotated, or
 already carries a correction trail**, and it **writes both documents or
 neither** — `roadmap.md` mirrors the criteria.
+
+**An item spec's filename begins with the zero-padded number, and its first
+`#` heading is `# Item NNN — Title`** (§1 → `items.md`). **No status field in
+the header — status lives only in `progress.md`.** The header carries
+`Created`, Stage, Queue, Objectives, Suggested branch, and a mandatory
+**Assumptions** block. **An assumption that pins engine behaviour names the
+engine it was true for** — `- **A3 (engine 1.28.1):** …` — and is corrected by
+append: a re-check goes into the marker, `(engine 1.28.1, re-checked 1.36.0)`,
+and the newest version named is the one the claim stands on. A merged spec is
+never rewritten to agree with a later engine.
+
+**`## Dependencies` blocks `aide claim`**: every item number named there is
+read as something this item is blocked on until that item is merged (✅), or
+leaves the queue's way as ❌ excluded or ⏸️ deferred — 🚧 and 🔍 both still
+block. Text at or after a literal `**Downstream` marker is excluded from that
+scan, so put such asides after the marker, never before it. The rest of any
+line from a backticked or bold `Blocks:` label on is excluded too, so quoting a
+gate row's reach adds no edges; keep a reach quote on one line — the exclusion
+does not extend past it.
 
 **An acceptance criterion is an invariant over the resulting content** (§1 →
 `items.md`) — never a bound on the diff that produced it, and never a premise
