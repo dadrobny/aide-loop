@@ -178,6 +178,10 @@ says the paragraph changes no decision.
     the root-document rule and the producer's duty stay; why the builder has
     no standing, why `assume` is safe for an item and not a root, and what the
     entry points guard move.
+  - **§6** — the delivery clause, the "earned by a defect" paragraph, every
+    rule, every lint boundary and every operative instruction stay; the
+    recorded instances behind them move, and the `stdout is None` story is
+    told once instead of twice.
 
 ## [1.45.0] — 2026-09-09
 
