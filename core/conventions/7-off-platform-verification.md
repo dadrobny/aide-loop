@@ -9,5 +9,9 @@ so the honest response is to look at the one gate that does:
   configured here" or "it had not finished" — never let a local pass stand in
   for a platform the loop cannot reach.
 - When CI is red on a leg that passed locally, treat it as a **portability
-  finding first** (§6), not a flake, until the log says otherwise. Every
-  recorded instance looked like a content problem and was a platform one.
+  finding first** (§6), not a flake, until the log says otherwise.
+
+### Rationale
+
+Every recorded instance of a red leg that passed locally looked like a content
+problem and was a platform one.

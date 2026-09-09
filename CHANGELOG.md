@@ -182,6 +182,7 @@ says the paragraph changes no decision.
     rule, every lint boundary and every operative instruction stay; the
     recorded instances behind them move, and the `stdout is None` story is
     told once instead of twice.
+  - **§7** — both instructions stay; the one provenance sentence moves.
 
 ## [1.45.0] — 2026-09-09
 
