@@ -174,6 +174,10 @@ says the paragraph changes no decision.
   - **§4** — the three modes, the CI-gate table, the PR-context distinction,
     the recorded base and its resolution stay; why the branch goes first, why
     inference is narrow and why a base must be a local branch move.
+  - **§5** — the two settings, the builder's hand-back, the amendment rule,
+    the root-document rule and the producer's duty stay; why the builder has
+    no standing, why `assume` is safe for an item and not a root, and what the
+    entry points guard move.
 
 ## [1.45.0] — 2026-09-09
 
