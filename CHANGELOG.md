@@ -189,6 +189,12 @@ are on the issue.
   root-document rule alone, and the spec-author spec the settings. Why the
   setting reads as global and why a human is present at the root move under
   Rationale; the builder's half stays in the core, reached by pointer.
+- **§6** — what the eol lint can resolve, the codec remedy, the
+  deliberately-unreported merge-base shape and the closing "checked by
+  nobody" rule reach `aide-test-hygiene` and are pinned. The absolute-path
+  argument, the CRLF `\r` example, the "binds hardest on `aide check`
+  itself" argument and the no-`docs_dir` fact move under Rationale; the last
+  is now in `aide check -h`.
 
 ## [1.45.1] — 2026-09-09
 

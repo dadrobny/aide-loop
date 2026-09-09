@@ -8032,7 +8032,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo", type=Path, default=None, help="repo root (default: search up for aide.toml)")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_check = sub.add_parser("check", help="consistency gate over docs/aide "
+    p_check = sub.add_parser("check", help="consistency gate over docs/aide, "
+                             "plus the test-hygiene lints over tests_dir, which "
+                             "run with a notice even in a repo with no docs_dir "
                              "(writes only a missing insights.md, from the "
                              "template, and the file --report names)")
     p_check.add_argument("--queue", type=int, default=None,
