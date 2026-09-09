@@ -139,6 +139,10 @@ are on the issue.
   blockquote reach `aide-living-documents` and are pinned; why the date slot
   spells its format and why the read-cold rules sit on the floor move under
   Rationale.
+- **§1 → status-icons** — the stray-icon warning and the rank rule reach
+  `aide-living-documents` and are pinned. Nothing leaves the core: every
+  sentence is acted on, by the receiving roles or by the validator and the
+  CLI, which is the outcome #184 allowed.
 
 ## [1.45.1] — 2026-09-09
 

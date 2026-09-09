@@ -44,6 +44,10 @@ paths:
        and the leading icon of a deliverable bullet
      - An icon anywhere else — prose, mid-bullet, a title — is plain text and
        is never read as status
+     - `aide check` still *warns* on such stray icons in the status-bearing
+       documents (`progress.md`, queue files)
+     - Rank is used when one item is referenced on several lines: the
+       most-advanced status wins
 -->
 
 <!-- pins: .aide/conventions/1-format-contract.md
@@ -128,7 +132,10 @@ consumer configured.
 **structural positions only** — a table row's **Status (last) cell**, a stage
 header's **trailing** `— <icon>`, and the **leading** icon of a deliverable
 bullet. An icon anywhere else — prose, mid-bullet, a title — is plain text and
-is never read as status.
+is never read as status; `aide check` still *warns* on such stray icons in the
+status-bearing documents (`progress.md`, queue files), so keep them out of
+those. Rank is used when one item is referenced on several lines: the
+most-advanced status wins.
 
 **`{{slot}}` is a literal value to substitute; an _italic line_ is authoring
 guidance to read then replace.** `aide check` flags any `{{...}}` left in a
