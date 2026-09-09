@@ -170,6 +170,12 @@ issue, as #109's input.
   bullets, where the Rationale was one bare sentence.
 - **§8** — opens on what it governs (a declared sibling) and who acts on it
   (every role, a person, the always-on page), ahead of the context paragraph.
+- **The read across all seventeen** found two delivered sections still
+  opening without an opener — `§1 → items.md` on a bare bullet, `§1 →
+  status-icons` on its table — and gave each one; `items.md`'s first bullet
+  now leads with its rule in bold like the rest (the pin normaliser absorbs
+  emphasis, so nothing in the delivered copy moves). Every Rationale in the
+  tree is now `- **Why X.**` bullets.
 
 ## [1.45.2] — 2026-09-09
 

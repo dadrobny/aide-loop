@@ -1,6 +1,11 @@
 ### `items/NNN-*.md`
 
-- Filename begins with the zero-padded number. First `#` heading is
+Governs the item spec — one file per item, the single source of truth the
+test-writer, builder and validator build against. `spec-author` writes it,
+`spec-reviewer` reads a queue's against each other, and `aide check` reads its
+header and its `## Dependencies`.
+
+- **Filename begins with the zero-padded number.** First `#` heading is
   `# Item NNN — Title`. *(status report title parse)*
 - **No status field** in the header — status lives only in `progress.md`. The
   header carries `Created`, Stage, Queue, Objectives, Suggested branch, and a
