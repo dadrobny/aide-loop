@@ -8264,8 +8264,9 @@ def register_git_subcommands(sub) -> None:
             "base, else main_branch; the two derived answers prefer "
             "origin/<base> over the local ref.\n"
             "\n"
-            "Exit 0: in scope. 1: something changed outside it. 2: could not "
-            "check (no spec, no section, or no base to diff against)."))
+            "Exit 0: in scope, or nothing to check (a queue branch). 1: "
+            "something changed outside it. 2: could not check (no spec, no "
+            "section, or no base to diff against)."))
     p_scope.add_argument("number", type=int, nargs="?", default=None,
                          help="item number (default: read from the current claim branch)")
     p_scope.add_argument("--base", default=None,

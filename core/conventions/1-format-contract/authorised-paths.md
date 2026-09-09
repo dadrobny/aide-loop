@@ -3,7 +3,8 @@
 An item spec declares the files it may change, and `aide scope` proves the
 declaration by the diff. `spec-author` writes it, `spec-reviewer` checks one
 queue's against each other, the validator proves it on the branch, and a role
-writing a test decides against it whether an assertion is a scope claim.
+writing a test reads it to tell a scope claim from an assertion the suite may
+make.
 
 The section is **expected but not required**: it ships in the item template, so
 every new spec carries one, and a spec written before this convention stays
