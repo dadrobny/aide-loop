@@ -149,6 +149,9 @@ says the paragraph changes no decision.
     why a measured outcome is not a box move.
   - **§1 → queue-NNN** — derived state, sequential numbering and the three
     senses of "parallel" stay; why one queue is live at a time moves.
+  - **§1 → items.md** — the header, the engine marker, the Dependencies scan
+    and the four failing AC shapes stay with their remedies; the defects that
+    earned each shape move.
 
 ## [1.45.0] — 2026-09-09
 
