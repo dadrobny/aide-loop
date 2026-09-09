@@ -171,6 +171,17 @@ are on the issue.
   when the created file is committed — move into `aide insights -h`, and why
   the section fixes the maintenance-queue ordering and not the checkpoint
   around it moves under Rationale.
+- **§3** — the verb-by-verb mapping behind "if an `aide` verb covers it",
+  the two-repos-stay-blocked clause and "never a bare `python`/`pytest`, and
+  never an absolute path" reach `rules/aide-command-hygiene.md` and are
+  pinned; the redirection bullet is aligned to the section's wording. The
+  three argument clauses — why the rules hold on any runtime, why a pipeline
+  is one command, why a project may span repos — move under Rationale. No
+  rule changes, so the hygiene hook and the allow-list are untouched.
+- The always-on floor moves from 8,067 to 9,149 content bytes, all of it the
+  §3 rule file above (its comment-stripped body grows from 1,998 to 2,488 B;
+  the rest is the pins that now guard it); `FLOOR_PIN` in
+  `tests/test_structural_budget.py` moves with it.
 
 ## [1.45.1] — 2026-09-09
 
