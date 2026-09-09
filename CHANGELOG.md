@@ -121,6 +121,26 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.45.1] — 2026-09-09
+
+Every section under `conventions/` now reads core first, rationale last (issue
+#122): the rule, its shape examples and its disambiguators, then a closing
+`Rationale` heading holding the provenance, the counterfactual and the
+rejected alternative. No section loses a rule; each loses the paragraph that
+argues for one to a reader who already believes it, and only where #78's test
+says the paragraph changes no decision.
+
+### Changed
+
+- **`conventions.md` states the shape once**, after its index table, so a
+  delivered copy has a natural cut and a reader who learns the convention in
+  one section applies it in every other. `§N` and `§1 → file.md` pointers
+  resolve exactly as before: no file is renamed and no section renumbered.
+- **Sections rewritten core-then-tail**, one commit each, in index order:
+  - **§1 (index)** — the template conventions, the three read-cold rules and
+    the header blockquote stay; why slots and italic guidance render safely,
+    and why narrated process ages badly, move under Rationale.
+
 ## [1.45.0] — 2026-09-09
 
 The bookkeeping committer promised a rebase git would never perform. Now the
