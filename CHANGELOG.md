@@ -195,6 +195,14 @@ are on the issue.
   argument, the CRLF `\r` example, the "binds hardest on `aide check`
   itself" argument and the no-`docs_dir` fact move under Rationale; the last
   is now in `aide check -h`.
+- **§9** — unchanged: every core sentence is delivered by
+  `aide-review-and-validation` and acted on by a receiving role, the outcome
+  #184 allowed for a section whose skill is already the section.
+- **Not in this pass**: the seven sections no file delivers (§2, §4, §7, §8,
+  `authorised-paths`, `environment-gated-capabilities`, `queue-NNN`) have no
+  receiving role to build a disposition against and stay as 1.45.1 left
+  them; the cross-file duplicates and the per-document split of the §1
+  bundle are #109's.
 
 ## [1.45.1] — 2026-09-09
 
