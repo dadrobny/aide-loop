@@ -270,7 +270,9 @@ every skill a consumer has.
 
 The globs match **by filename, not by `project.tests_dir` /
 `project.docs_dir`**, so they hold whatever a consumer configured — templating
-them at install time would turn a silent mismatch into a config error.
+them at install time would turn a silent mismatch into a config error. (The
+install-time rendering below touches the *body* of a delivered file and never
+its frontmatter, for that reason.)
 
 **How a retired delivered file leaves a consumer.** `install.py --update`
 removes `.claude/rules/aide-test-hygiene.md`,
@@ -285,7 +287,9 @@ sections to roles that write none of them.
 
 A delivered file **defers to its section**: the engine copy is the source of
 truth, and a file that invents a rule of its own binds Claude and no other
-runtime. [`tests/test_rules.py`](tests/test_rules.py) pins the three
+runtime. Four of them do better than defer — they *are* the section, rendered
+into place at install time (**generated delivered files**, below).
+[`tests/test_rules.py`](tests/test_rules.py) pins the three
 obligations over rules and section skills alike — a section skill is recognised
 structurally, by `user-invocable: false` alone since 1.42.0, never by a name
 list and never by a `<!-- pins:` block, which a workflow skill may carry too —
@@ -321,7 +325,36 @@ preload strips it, so it costs the loop nothing (measured, with its caveats,
 in issue #85's comment "Measurement — what a skill body carries into
 context"; an *invoked* skill keeps its comments, a preloaded one does not).
 
-**Every delivered file quotes the statements it delivers**, in one
+**Four delivered files are generated from their section**, and the rest quote
+it. Which one a file uses is declared in the file:
+
+```
+<!-- generated-from: .aide/conventions/6-test-hygiene.md -->
+```
+
+`install.py` writes such a file as its own text — frontmatter, `<!-- reach -->`,
+`<!-- triggers -->` and whatever *this adapter* has to say about delivering the
+section (§3's `PreToolUse` hook and its "use the Bash tool, not PowerShell"
+shaping; §6's note on what its globs match) — followed by the section's **core**,
+everything above the closing `Rationale` heading, verbatim. Nothing is reflowed
+or trimmed, so the delivered body *is* the section and the third obligation
+holds by construction. The four are `rules/aide-command-hygiene.md` (§3) and the
+section skills for §6, §7 and §9; each stays at the path it already had.
+[`tests/test_generated_delivery.py`](tests/test_generated_delivery.py) asserts
+the render equals the adapter's half plus the core byte for byte, that a
+statement added to a section reaches the delivered copy with no second edit, and
+that the adapter's half stays a delivery note — it names the section, says the
+engine copy wins, opens no heading of its own (the section's `## N.` heading is
+the file's title) and is under half the delivered body.
+[`tests/test_install_generated.py`](../../tests/test_install_generated.py)
+holds the installer half, including that a section that cannot be rendered
+**aborts the install** (exit 4) rather than shipping a delivered file with no
+rules in it. Generating a section is a judgement about *that section*: its core
+arrives whole, so a core several times the size of the copy a role needs is a
+reason to leave the file hand-written and pinned — which is where the five §1
+skills sit — never to trim it here.
+
+**Every hand-written delivered file quotes the statements it delivers**, in one
 `<!-- pins: … -->` block per section it draws from — and this one is *not* a
 one-liner:
 
@@ -346,7 +379,10 @@ so it fails in **both** directions, and the fix is to edit both copies in one
 commit. Every delivered file must pin at least one statement; a block that
 quotes none, and a `<!-- pins:` comment the grammar does not recognise (the
 one-line spelling `reach:` uses, notably), are both failures rather than silent
-no-ops. Curate them: the load-bearing sentences, not every line.
+no-ops. Curate them: the load-bearing sentences, not every line. A **generated**
+file declares none — there is no restatement to guard — and fails the suite if
+it grows one: the quote would be of a wording the file does not control, so the
+only way it could ever fail is by reporting drift that cannot happen.
 
 `scripts/review_instructions.py` reports on `.claude/rules/` only. A preload is
 not an instruction file to the runtime, so it never appears in the
@@ -422,7 +458,7 @@ adapters/claude/
 ├── settings.json  permission allow/ask-list + hook registration
 ├── usage_probe.py the anthropic-oauth usage probe (installed into .aide/loop/)
 ├── default-context.json   CLAUDE.md + @path — how .aide/AGENT-CONTEXT.md gets linked
-└── tests/         adapter/installer conformance — rules, pins, agents, hooks, probe
+└── tests/         adapter/installer conformance — rules, pins, generation, agents, hooks, probe
 ```
 
 For the *why* behind each obligation — and the conformance checklist a new adapter

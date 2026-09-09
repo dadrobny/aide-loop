@@ -301,20 +301,41 @@ Three properties make a delivery mechanism conformant rather than decorative:
   must bind before the first write.
 - **It names the section it delivers, and defers to it.** The engine section is
   the source of truth; the delivered copy is a restatement that will drift, and
-  the reader has to know which one wins.
+  the reader has to know which one wins — unless it is **generated** from the
+  section (below), in which case it still names it, because the reader has to
+  know where the rationale and the `§N` pointers resolve.
 - **It carries no rule the engine does not have.** A rule that exists only in an
   adapter binds one runtime and is invisible to every other — the failure the
   engine/adapter split exists to prevent. Add it to `conventions.md` first.
 
 The last two are the ones a commit breaks in silence, since a restatement that
-has drifted still reads as authoritative. The Claude adapter therefore makes
-them checkable rather than reviewable: each delivered file — rule or section
-skill — carries `<!-- pins: <section file> … -->` blocks quoting the normative
-statements it delivers, and `adapters/claude/tests/test_rule_pins.py` asserts
-every quoted statement still appears in both the delivered copy *and* the
-section it names, so editing either copy alone fails. Another runtime may
-express the guarantee however it likes; what is contractual is that the two
-copies cannot drift unobserved.
+has drifted still reads as authoritative. **What is contractual is that the two
+copies cannot drift unobserved**; there are two ways to hold that, and an
+adapter may use either per file.
+
+*Quote it.* A hand-written delivered copy carries `<!-- pins: <section file> …
+-->` blocks quoting the normative statements it delivers, and
+`adapters/claude/tests/test_rule_pins.py` asserts every quoted statement still
+appears in both the delivered copy *and* the section it names, so editing
+either copy alone fails. The known cost is curation: a statement nobody pinned
+drifts freely.
+
+*Generate it.* A delivered copy that is **rendered from the section at install
+time** is not a restatement, so it cannot drift and owes no pin. The Claude
+adapter writes `<!-- generated-from: <section file> -->` in the file, and
+`install.py` emits that file's own text — frontmatter, reach declarations, and
+whatever the *adapter* has to say about delivering the section — followed by
+the section's core, everything above the `Rationale` heading, verbatim. What is
+contractual is the property, not the spelling: a runtime that generates must
+make the generation checkable (the delivered body equals the section core, and
+a section that cannot be rendered fails the install rather than shipping a
+delivered file with no rules in it), and must keep the adapter's own half
+distinguishable from the engine's, since that half can still state a rule the
+engine does not have. Generating a section is a **judgement about that
+section**: its core is delivered whole, so a core three times the size of the
+copy a role needs is a reason to leave the file hand-written and pinned, or to
+compact the section — never to trim it in the delivered copy, which would put
+the restatement back.
 
 The same guard is available to a **workflow** entry point that restates a slice
 of contract it acts on — two of this adapter's skills carry the §1 routing table
@@ -323,7 +344,8 @@ triages the inbox and the one that authors the next queue cannot route
 differently. Such a skill owes no pin (it delivers no section), and a pin it does
 declare binds it exactly as a delivered file's binds that file. What identifies a
 delivered section skill is therefore its `user-invocable: false` frontmatter, not
-the presence of a pins block.
+the presence of a pins block — which a generated delivered file does not carry
+at all, and is refused if it grows one.
 
 The **first** obligation has a measurable half too, wherever the channel is
 file-scoped: which roles a given scope actually arms is a fact about the
@@ -443,7 +465,8 @@ the `conventions.md` §8 rule being read, the same graceful degradation §5, §6
       writers, by that declaration — not by a file-scoped channel, which fires
       inside spawned roles too. Either way: loaded without the role choosing
       to, naming the section it delivers, and adding no rule the engine does
-      not have.
+      not have — the last held either by pins the suite checks in both
+      directions, or by generating the copy from the section.
 - [ ] *(if the runtime can inject context mid-session)* a lazy, non-blocking
       mechanism surfacing a declared sibling repo's instruction file, once, on
       first reach.

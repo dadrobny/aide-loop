@@ -68,8 +68,8 @@ and every sub-agent) and the eight **section skills** in
 `adapters/claude/skills/`: `user-invocable: false`, never a command, preloaded
 at spawn into exactly the agent specs whose `skills:` frontmatter names them.
 Since 1.46.0 (issue #109) the set is keyed by **which document a role writes**,
-one skill per distinct reach set, never one section across two skills — that is
-what lets the generator #109's PR 2 builds emit a section core whole:
+one skill per distinct reach set, never one section across two skills — which
+is what lets a section core be emitted whole:
 `aide-document-format` (§1 index + status icons → the three roles that write a
 shape-parsed document), `aide-human-gates` (§1 → human gates → the two that
 raise one), `aide-progress-file`, `aide-queue-and-inbox`, `aide-item-specs`
@@ -96,13 +96,36 @@ it checks a delivered file's — it just does not *require* them there. The key 
 the preload channel are held together from the other side, by
 `test_every_skill_an_agent_preloads_is_a_section_skill`.
 
+**Four of them are generated, and are therefore not restatements at all**
+(1.47.0, #109's PR 2). A delivered file that declares `<!-- generated-from:
+.aide/conventions/<file>.md -->` is written by `install.py` as its own text —
+frontmatter, the reach declarations, and whatever the *adapter* has to say
+about delivering the section — followed by that section's core, everything
+above the `Rationale` heading, **verbatim**: `rules/aide-command-hygiene.md`
+(§3), `aide-test-hygiene` (§6), `aide-off-platform-verification` (§7) and
+`aide-review-and-validation` (§9). Nothing is reflowed, re-headed or trimmed,
+so a section that reads wrongly when delivered whole is a section to fix, never
+a wrapper to fix; and a core several times the size of the copy a role needs is
+a reason to leave the file hand-written and pinned — where the five §1 skills
+sit, at 0.35–0.66 of their cores. The source tree holds no generated body: it
+holds the file with the declaration in it, which is why the four still read as
+delivered files here. The grammar lives in `install.py` (the installer applies
+it inside a consumer, where `tests/` does not exist);
+[`adapters/claude/tests/test_generated_delivery.py`](adapters/claude/tests/test_generated_delivery.py)
+asserts the render is the adapter's half plus the core byte for byte and that
+an edit to the section reaches the delivered copy,
+[`tests/test_install_generated.py`](tests/test_install_generated.py) holds the
+installer half, and a section that cannot be rendered **aborts the install**
+(exit 4) rather than shipping a delivered file with no rules in it.
+
 That reading is **written once**, in
 [`tests/_delivered.py`](tests/_delivered.py) — the frontmatter grammar, the
-section-skill recogniser, the `paths:`/`skills:` readers — and the four modules
-that check delivered files import it (issue #113). Four hand copies drifted the
-one time the rule moved (1.42.0), so a change to the recognition rule or the
-frontmatter grammar is now one edit, and the modules only say which reading of
-a BOM they want.
+section-skill recogniser, the `paths:`/`skills:` readers, and pointers at
+`install.py`'s reading of "generated" — and the four modules that check
+delivered files import it (issue #113). Four hand copies drifted the one time
+the rule moved (1.42.0), so a change to the recognition rule or the frontmatter
+grammar is now one edit, and the modules only say which reading of a BOM they
+want.
 
 Each delivered file also declares, in a `<!-- reach: … -->` comment near the
 top of its body, the agent roles it expects to reach — `all`, or a
@@ -121,8 +144,8 @@ skill is not part of it) byte-for-byte — it fails in both directions on
 purpose, and moving it means bumping `VERSION` and editing the pin
 deliberately.
 
-And each delivered file **quotes the statements it delivers**, in `<!-- pins:
-<section file> … -->` blocks — one block per section, each `- ` line a sentence
+And each **hand-written** delivered file **quotes the statements it delivers**,
+in `<!-- pins: <section file> … -->` blocks — one block per section, each `- ` line a sentence
 lifted from it.
 [`adapters/claude/tests/test_rule_pins.py`](adapters/claude/tests/test_rule_pins.py)
 asserts every pin still appears in the delivered file *and* in the section it
@@ -132,7 +155,9 @@ does a section rewritten under a file that still quotes the old wording — edit
 both copies, in one commit. Every delivered file must pin at least one
 statement; one that delivers no normative engine statement is a question, not
 an exemption. Curate the pins — the load-bearing sentences, not every line. The
-comments cost the loop nothing: a preload strips them.
+comments cost the loop nothing: a preload strips them. A **generated** file
+declares no pins and fails the suite if it grows one — the mechanism guards a
+restatement, and there is none there.
 
 Do not re-inline a contract restatement into an agent spec. Six of them carried
 the command-hygiene block verbatim, one had already drifted, and a test now
@@ -165,6 +190,7 @@ Stdlib + pytest only — **no venv, no dependencies, no editable install**:
 pytest                                   # whole suite (the ubuntu CI leg runs exactly this)
 pytest tests/test_repo_versioning.py     # the version gate alone
 pytest tests/test_fixture_consumer.py    # the loop verbs against a real install
+pytest tests/test_install_generated.py   # the generator, and an install of it
 pytest core/scripts/tests/               # the aide CLI
 pytest adapters/claude/tests/            # hygiene guard, settings overlay, probe
 ```
@@ -210,8 +236,10 @@ python install.py --into <consumer-repo> --update
 python install.py --into <consumer-repo> --check     # writes nothing, non-zero if behind
 ```
 
-`--update` re-copies engine + adapter but **never** touches the consumer's
-`aide.toml` or `docs/aide/` — those are project-owned. `settings.json` is
+`--update` re-copies engine + adapter — re-*rendering* the four generated
+delivered files, so a `conventions/` edit reaches them with no second edit — but
+**never** touches the consumer's `aide.toml` or `docs/aide/`, which are
+project-owned. `settings.json` is
 non-clobbering by default; a consumer that has adopted
 `.claude/settings.overlay.json` gets it deterministically regenerated from
 framework-base + overlay instead, so it never needs manual reconciliation.
