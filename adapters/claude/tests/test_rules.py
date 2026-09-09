@@ -49,77 +49,20 @@ _AGENT_FILES = sorted(_AGENTS_DIR.glob("*.md"))
 
 FRAMEWORK_ROOT = _ADAPTER.parents[1]
 sys.path.insert(0, str(FRAMEWORK_ROOT))
+sys.path.insert(0, str(FRAMEWORK_ROOT / "tests"))
 import install  # noqa: E402  (path shim above)
+from _delivered import (STRIPS_BOM, glob_list, keys as _keys,  # noqa: E402
+                        label as _label, scalar as _scalar)
 
 
-def _split(path: Path) -> tuple:
-    """``(frontmatter_or_None, body)``. A rule may legitimately have neither.
-
-    Reads with `utf-8-sig` and normalises CRLF before looking for the
-    delimiter. A BOM from a Windows editor, or CRLF line endings, would
-    otherwise make `startswith("---\\n")` false — and this helper would report a
-    scoped rule as an unscoped one with a clean bill of health.
-    """
-    text = path.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
-    if not text.startswith("---\n"):
-        return None, text
-    end = text.find("\n---\n", 4)
-    assert end != -1, f"{path.name}: unterminated frontmatter block"
-    return text[4:end], text[end + 5:]
-
-
-def _keys(block: str) -> list:
-    """Top-level frontmatter keys, in order. A tiny hand parser, not PyYAML."""
-    return [line.split(":", 1)[0] for line in block.splitlines()
-            if line and not line[0].isspace() and ":" in line]
-
-
-def _scalar(block, key: str):
-    """The value of a one-line ``key: value`` frontmatter entry, or ``None``."""
-    if block is None:
-        return None
-    match = re.search(rf"^{re.escape(key)}:[ \t]*(?P<value>[^\n]*)$", block, re.M)
-    return match.group("value").strip() if match else None
-
-
-def _list(block, key: str) -> list:
-    """The items of a ``key:`` block list (or a ``[a, b]`` flow list)."""
-    if block is None:
-        return []
-    match = re.search(rf"^{re.escape(key)}:[ \t]*(?P<inline>[^\n]*)\n"
-                      rf"(?P<items>(?:[ \t]+-[^\n]*\n?)*)", block + "\n", re.M)
-    if not match:
-        return []
-    inline = match.group("inline").strip()
-    if inline.startswith("[") and inline.endswith("]"):
-        return [x.strip().strip("\"'") for x in inline[1:-1].split(",") if x.strip()]
-    return [line.strip().lstrip("- ").strip("\"'")
-            for line in match.group("items").splitlines() if line.strip().startswith("-")]
-
-
-def _is_section_skill(path: Path) -> bool:
-    """A `SKILL.md` that delivers a contract section rather than a workflow.
-
-    One signal: `user-invocable: false`, the frontmatter key that keeps a
-    skill out of the `/` menu while leaving it preloadable. Structural, so
-    the next section skill is covered without anyone editing a list here.
-
-    A `<!-- pins:` block used to be a second sufficient signal, and is not any
-    more (1.42.0): a **workflow** skill may quote the contract it acts on —
-    `aide-create-queue` and `aide-review-insights` both carry the §1 routing
-    table — and `test_rule_pins.py` checks those quotes in both directions
-    exactly as it checks a delivered file's. Classing them as section skills
-    would demand a `paths:` block, a hidden frontmatter, and an agent preload
-    of a skill whose whole purpose is to be invoked by name. What the old
-    signal actually bought — a section skill that loses `user-invocable:
-    false` failing loudly rather than sliding into the workflow set — is
-    bought instead by
-    `test_every_skill_an_agent_preloads_is_a_section_skill`, which comes at
-    it from the preload side.
-    """
-    block, _ = _split(path)
-    return (_scalar(block, "user-invocable") or "").lower() == "false"
-
+#: This module reads the adapter's **source** tree, where a BOM in front of a
+#: `---` is an authoring accident to report on rather than a runtime's view of
+#: the file — so the reader that strips it. `tests/_delivered.py` holds the
+#: whole parser set and the reasoning for the other choice;
+#: `tests/test_structural_budget.py` is the caller that makes it.
+_split = STRIPS_BOM.split
+_is_section_skill = STRIPS_BOM.is_section_skill
+_preloads = STRIPS_BOM.preloads
 
 _SECTION_SKILLS = [p for p in _SKILL_FILES if _is_section_skill(p)]
 _WORKFLOW_SKILLS = [p for p in _SKILL_FILES if p not in _SECTION_SKILLS]
@@ -127,18 +70,6 @@ _WORKFLOW_SKILLS = [p for p in _SKILL_FILES if p not in _SECTION_SKILLS]
 #: Every file that delivers a contract section: the rules, and the section
 #: skills. The tests that pin "delivered files" range over this list.
 _DELIVERED = _RULE_FILES + _SECTION_SKILLS
-
-
-def _label(path: Path) -> str:
-    """A test id and a failure name: `aide-test-hygiene` for a skill, the
-    filename for a rule — `SKILL.md` alone would name every skill the same."""
-    return path.parent.name if path.name == "SKILL.md" else path.name
-
-
-def _preloads(agent: Path) -> list:
-    """The skill names an agent spec's `skills:` frontmatter preloads."""
-    block, _ = _split(agent)
-    return _list(block, "skills")
 
 
 # --------------------------------------------------------------------------- #
@@ -196,8 +127,7 @@ def test_body_is_not_empty(path: Path):
 
 
 def _assert_globs_are_well_formed(path: Path, block: str) -> None:
-    globs = [line.strip().lstrip("- ").strip('"\'')
-             for line in block.splitlines() if line.strip().startswith("- ")]
+    globs = glob_list(block)
     assert globs, f"{_label(path)}: `paths:` with no glob matches nothing"
     for glob in globs:
         assert not glob.startswith("/"), f"{_label(path)}: {glob!r} is not repo-relative"
@@ -213,6 +143,14 @@ def test_a_rules_frontmatter_declares_only_paths_and_declares_it_well(path: Path
     """
     block, body = _split(path)
     if block is None:
+        # No readable block. Two ways to get here and they are not the same
+        # mistake, so name the broken one before the legitimate one: a block
+        # that is opened and never closed reads to the runtime as no
+        # frontmatter at all, and would otherwise be reported below as a rule
+        # missing its `<!-- reach:` line.
+        assert not path.read_bytes().lstrip().startswith(b"---"), (
+            f"{path.name}: opens a frontmatter block that is never closed — "
+            f"the runtime finds no `paths:` and loads it into every context")
         # The unscoped case — today the only shipped rule. Nothing about
         # `paths:` to check, so assert what an unscoped rule must be instead:
         # it opens with its reach declaration, the one thing that says it is
