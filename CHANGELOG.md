@@ -165,6 +165,9 @@ says the paragraph changes no decision.
   - **§1 → environment-gated capabilities** — the fallback bar, the two
     records and the two planning additions stay; why a skip-clean run is not
     evidence moves.
+  - **§2** — the signal, `aide claim`'s steps, the two non-claim shapes, the
+    unpublished-claim and `none left` semantics, and `gc`'s merge-tree ground
+    stay; why each is what it is moves.
 
 ## [1.45.0] — 2026-09-09
 
