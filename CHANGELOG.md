@@ -183,6 +183,9 @@ says the paragraph changes no decision.
     recorded instances behind them move, and the `stdout is None` story is
     told once instead of twice.
   - **§7** — both instructions stay; the one provenance sentence moves.
+  - **§8** — where siblings are declared, the approved shapes, the binding
+    rule and the adapter's pointer stay; why the failure is silent and why a
+    pointer rather than contents move.
 
 ## [1.45.0] — 2026-09-09
 
