@@ -40,9 +40,7 @@ Spacing around a separator does not matter. A range spanning more than 50 is
 read as a typo and contributes only its endpoints. Prefer the explicit list when
 the items are not contiguous; a range is only shorthand for one.
 
-**A marker naming several items is shorthand, never a shared status cell.** One
-bullet carries one icon, so while items share a marker they share a status —
-and the first flip would otherwise carry the siblings with it. It does not:
+**A marker naming several items is shorthand, never a shared status cell.**
 `aide progress set` and `aide merge` **desugar** the bullet first, into one
 bullet per item with the same text and one `*(Item NNN)*` each, and move only
 the item named. The others keep the status they had. Nothing is asked of the
@@ -66,20 +64,12 @@ on a check it actually performed — via:
 aide progress accept <stage> (--criterion N | --all) [--evidence "<text>"]
 ```
 
-The reason is that a derived tick is not an attestation. While `progress set`
-auto-ticked, a box deliberately left `[ ]` in a ✅ stage — the honest record of
-a criterion that shipped unmet — was silently flipped back on the next status
-change for *any* item in *any* stage, converting a recorded shortfall into a
-false claim that nobody had made. A stage may be ✅ with an unticked box; say
-why in an annotation beside it.
+A stage may be ✅ with an unticked box; say why in an annotation beside it.
 
-**The attestation is immutable; what is recorded about it is not.** The same
-rule `insights.md` runs on, and load-bearing for the same reason: an
-attestation that turns out to be wrong is the record, and a correction written
-beneath it teaches what a silent rewrite would erase. So the criterion line is
-never reworded once anything has been claimed against it, and every later
-statement about it goes in an appendable **correction trail** — dated lines
-indented under the box, newest last:
+**The attestation is immutable; what is recorded about it is not.** The
+criterion line is never reworded once anything has been claimed against it, and
+every later statement about it goes in an appendable **correction trail** —
+dated lines indented under the box, newest last:
 
 ```
 - [ ] Benchmark run end to end. *(validator, 2026-08-29: on this CPU-only machine)*
@@ -96,22 +86,17 @@ aide progress reword  <stage> --criterion N --text     "<the new wording>"
 ```
 
 - **`amend` appends, and only to a ticked box.** The attestation stands; what
-  was recorded about it was wrong or thin. This is the whole guard, and it is
-  structural rather than advisory: **a verb that can only add cannot be used to
-  make an inconvenient attestation agree with a shipped stage.** Over-using it
-  costs verbosity, never truth.
+  was recorded about it was wrong or thin. **A verb that can only add cannot be
+  used to make an inconvenient attestation agree with a shipped stage.**
 - **`retract` unticks, and keeps the original attestation visible.** The
   criterion does not hold after all, so the box reads as *claimed, then
   withdrawn, for this reason* — not as one nobody ever ticked. **A retraction
   is a finding, so the verb routes it like one**: an `insights.md` `- [ ] gap`
-  entry in the same commit, exactly as a `❌ Not met` outcome target does. That
-  is what keeps the honest path the cheap one.
+  entry in the same commit, exactly as a `❌ Not met` outcome target does.
 - **`reword` is the one amendment that edits rather than appends**, and it is
   safe for exactly one reason: nothing has been claimed yet. It **refuses over
   a box that is ticked, annotated, or already carries a correction trail** —
-  the precondition is mechanical, so no role has to remember it. Rewording a
-  criterion an attestation was made against would silently re-point that
-  attestation at a different claim.
+  the precondition is mechanical, so no role has to remember it.
 
 **`reword` writes both documents or neither.** `roadmap.md` mirrors a stage's
 criteria, so a rewording that lands in one file is precisely the two-file drift
@@ -132,8 +117,7 @@ Acceptance box is therefore an observable check **of the built thing** (the
 CLI runs, the artifact validates) — something completing the deliverables can
 guarantee. A **measured outcome** the work aims for but cannot guarantee by
 construction (an error-rate target, a benchmark result) must NOT be an
-Acceptance box: it would hold the stage's honest record hostage to a result the
-work cannot promise. Such goals go in the **Outcome targets** table below.
+Acceptance box. Such goals go in the **Outcome targets** table below.
 
 **Outcome targets (optional, additive).** A `## Outcome targets` section in
 `progress.md` with one row per measured goal:
@@ -154,9 +138,31 @@ Unverified` until measured, then `✅ Met (date, evidence)` or `❌ Not met
   an objective claimed ✅ over a `❌ Not met` target (the goal-level mirror of
   the deliverable-level over-claim error).
 - Marking a target `❌ Not met` is a *finding*, so route it like one: append a
-  `- [ ] gap — …` line to `insights.md` in the same edit. The feedback loop
-  then plans the follow-on deliverables explicitly — needing more work than
-  planned to hit a goal is normal, and it enters through the queue, not by
-  retro-editing a closed stage's deliverable list.
+  `- [ ] gap — …` line to `insights.md` in the same edit. The follow-on
+  deliverables then enter through the queue, never by retro-editing a closed
+  stage's deliverable list.
 - `aide status` prints every target not yet `✅ Met`, so the state stays
   visible even though the stage summary table does not carry it.
+
+#### Rationale
+
+- **Why a shared marker is desugared.** One bullet carries one icon, so while
+  items share a marker they share a status — and the first flip would
+  otherwise carry the siblings with it.
+- **Why no rollup ticks a box.** A derived tick is not an attestation. While
+  `progress set` auto-ticked, a box deliberately left `[ ]` in a ✅ stage — the
+  honest record of a criterion that shipped unmet — was silently flipped back
+  on the next status change for *any* item in *any* stage, converting a
+  recorded shortfall into a false claim that nobody had made.
+- **Why the attestation is immutable.** The same rule `insights.md` runs on,
+  and load-bearing for the same reason: an attestation that turns out to be
+  wrong is the record, and a correction written beneath it teaches what a
+  silent rewrite would erase. `amend`'s guard is structural rather than
+  advisory — over-using it costs verbosity, never truth — and `retract`'s
+  routing is what keeps the honest path the cheap one. `reword` refuses over a
+  claimed box because rewording a criterion an attestation was made against
+  would silently re-point that attestation at a different claim.
+- **Why a measured outcome is not an Acceptance box.** It would hold the
+  stage's honest record hostage to a result the work cannot promise. Needing
+  more work than planned to hit a goal is normal; a `❌ Not met` target routed
+  as a gap is how that work is planned explicitly.

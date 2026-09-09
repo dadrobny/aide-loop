@@ -143,6 +143,10 @@ says the paragraph changes no decision.
   - **§1 → status-icons** — the six icons, what ✅ and 🔍 assert and the
     structural positions stay; why ✅ had to stop meaning two things per
     mode, and why closing a landed 🔍 item is a content check, move.
+  - **§1 → progress.md** — the structure, the marker forms, the rollup, the
+    attestation verbs and the outcome-target semantics stay; why a marker is
+    desugared, why no rollup ticks a box, why an attestation is immutable and
+    why a measured outcome is not a box move.
 
 ## [1.45.0] — 2026-09-09
 
