@@ -154,6 +154,10 @@ issue, as #109's input.
   the two planning additions are bullets led by the thing they name; the
   Rationale paragraph becomes two `Why` bullets. No sentence of the rule
   changes.
+- **§1 → queue-NNN** — opens on what it governs and who acts on it instead
+  of a bare list; every bullet leads with its rule in bold; every bullet
+  carries the consumer annotation, and the stale `scout/claim` in it becomes
+  `claim` (recon is not a role, ADAPTER-SPEC §2).
 
 ## [1.45.2] — 2026-09-09
 

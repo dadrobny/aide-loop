@@ -1,14 +1,19 @@
 ### `queue-NNN.md`
 
+Governs the queue file — the next batch of items, one file per queue under
+`docs/aide/queue/`. `queue-planner` writes it, `aide claim` reads the live
+one, `aide check` and `aide queue tidy` keep its declared status honest, and
+`spec-author` expands its items.
+
 - **Queue state is derived, not declared.** A queue is **open** iff any of its
   items is 📋/🚧 in `progress.md`, else **done**; "the live queue" is the
   lowest-numbered open one (`aide claim`'s default). A `> **Status:**` line is
   optional decoration for human readers — `aide queue tidy` stamps a completion
   note on superseded queues, and `aide check` warns only when a declared status
   contradicts the derived state. *(aide check, claim, queue tidy)*
-- Work items as `### Item NNN: Short Title` + a description paragraph. Item
+- **Work items as `### Item NNN: Short Title` + a description paragraph.** Item
   numbers are **globally sequential across all queues** — never restart. *(aide
-  check, scout/claim, spec-author)*
+  check, claim, spec-author)*
 - **One queue is live at a time, deliberately.** The model offers no
   concurrency above the item level, and a roadmap cannot ask for it. Three
   senses of "parallel" get confused here — the first two are real and useful,
@@ -22,6 +27,8 @@
   - **Concurrent live queues** — not offered. `loop.claim_scope = "all-open"`
     widens *claiming* across every open queue, but nothing creates a second live
     queue.
+
+  *(aide claim, queue-planner)*
 
 #### Rationale
 
