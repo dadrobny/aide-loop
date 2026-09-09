@@ -281,7 +281,8 @@ Which channel carries a section follows from who needs it, in terms no runtime
 owns: an **always-loaded** channel for what binds every action of every role
 (§3); a **role-declared** channel — one the role's own definition names, loaded
 when the role starts — for what a role always needs and other roles do not (§6
-for a test author; the §1 document shapes for a document writer); and a
+for a test author; each §1 document shape for the role that writes *that*
+document); and a
 **file-scoped** channel, armed by a matching file, only where it cannot fire
 inside a spawned role — otherwise it is an unconditional channel wearing a
 scope, paid on every spawn that reads a matching file whether or not the role
@@ -343,8 +344,11 @@ The Claude adapter uses `.claude/rules/` for the always-loaded channel — one
 unscoped file for §3, loaded into every session and every sub-agent — and
 `.claude/skills/aide-<section>/SKILL.md` for the role-declared one: a skill
 with `user-invocable: false`, preloaded at spawn into exactly the agent specs
-whose `skills:` frontmatter names it (§6 into `test-writer`; the §1 document
-shapes into `spec-author` and `queue-planner`). The same skill files carry
+whose `skills:` frontmatter names it (§6 into `test-writer`; §9 into
+`reviewer` and `validator`; each §1 document shape into the role that writes
+that document). One skill may bundle several sections, and does wherever their
+reach is identical; a section is never split across two skills, so a delivered
+copy still has one section to defer to and to be generated from. The same skill files carry
 `paths:`, which on a skill injects nothing on a read: the skill's one-line
 description is in every interactive session's listing regardless, and the
 globs only narrow when the runtime auto-invokes the skill on its own — so that

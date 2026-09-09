@@ -64,10 +64,18 @@ new or reshaped section follows it rather than the file next to it.
 **Sections are runtime-general; an adapter delivers them, it does not restate
 them.** The Claude adapter's **delivered files** are the one unscoped rule in
 [`adapters/claude/rules/`](adapters/claude/rules/) (§3; loads in every session
-and every sub-agent) and the **section skills** in `adapters/claude/skills/`
-(`aide-living-documents`, `aide-test-hygiene`): `user-invocable: false`, never
-a command, preloaded at spawn into exactly the agent specs whose `skills:`
-frontmatter names them. A `paths:` block on a skill injects nothing on a read —
+and every sub-agent) and the eight **section skills** in
+`adapters/claude/skills/`: `user-invocable: false`, never a command, preloaded
+at spawn into exactly the agent specs whose `skills:` frontmatter names them.
+Since 1.46.0 (issue #109) the set is keyed by **which document a role writes**,
+one skill per distinct reach set, never one section across two skills — that is
+what lets the generator #109's PR 2 builds emit a section core whole:
+`aide-document-format` (§1 index + status icons → the three roles that write a
+shape-parsed document), `aide-human-gates` (§1 → human gates → the two that
+raise one), `aide-progress-file`, `aide-queue-and-inbox`, `aide-item-specs`
+(§1 → items, authorised paths, environment-gated capabilities; §5),
+`aide-off-platform-verification` (§7), `aide-test-hygiene` (§6) and
+`aide-review-and-validation` (§9). A `paths:` block on a skill injects nothing on a read —
 the description is in an interactive session's listing regardless, and the
 globs only narrow when the runtime auto-invokes it — so the loop's delivery is
 the preload alone, and there is deliberately no
@@ -104,7 +112,9 @@ the adapter and fails when the declaration and the carrier disagree: for a
 rule, its `paths:` globs evaluated against each role's read-set derived from
 the agent specs; for a section skill, **literally** the set of specs whose
 `skills:` list it, plus a `<!-- triggers: … -->` line naming the roles whose
-reads match its `paths:` (the interactive half, kept under test). **Changing a rule's globs or a spec's `skills:` changes a
+reads match its `paths:` (the interactive half, kept under test — `none` is a
+legal answer there and only there, for a section about no document the loop
+writes: `aide-off-platform-verification`). **Changing a rule's globs or a spec's `skills:` changes a
 reach**, so update the declaration in the same commit. That module also pins
 the always-on floor (`AGENT-CONTEXT.md` plus every unscoped rule; a section
 skill is not part of it) byte-for-byte — it fails in both directions on
