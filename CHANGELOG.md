@@ -182,6 +182,13 @@ are on the issue.
   §3 rule file above (its comment-stripped body grows from 1,998 to 2,488 B;
   the rest is the pins that now guard it); `FLOOR_PIN` in
   `tests/test_structural_budget.py` moves with it.
+- **§5** — the two settings, the pin-your-dependencies rule, the
+  spec-author half of the contradiction hand-back, the amendment rule, the
+  governs-spec-author-only rule and the producer's serialised-form duty
+  reach `aide-living-documents` and are pinned; the skill had carried the
+  root-document rule alone, and the spec-author spec the settings. Why the
+  setting reads as global and why a human is present at the root move under
+  Rationale; the builder's half stays in the core, reached by pointer.
 
 ## [1.45.1] — 2026-09-09
 

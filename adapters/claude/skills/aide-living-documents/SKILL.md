@@ -158,6 +158,20 @@ paths:
 -->
 
 <!-- pins: .aide/conventions/5-clarify-mode.md
+     - **`interactive`** — ask ≤3 targeted questions before writing the spec
+     - pick the most defensible default and record each choice in the spec's
+       mandatory **Assumptions** block
+     - Nothing ever hangs
+     - A spec written before its dependencies are *implemented* must pin their
+       interfaces as Assumptions
+     - The setting governs `spec-author` and nothing else
+     - A contradiction between the spec and the tests written from it comes
+       back here
+     - The spec is corrected first; the tests are then re-derived from the
+       corrected criteria; only then does the builder implement
+     - The correction is an **amendment, never a rewrite**
+     - the *producing* spec must enumerate the shape its declared consumers
+       read
      - Root documents are authored through their loop entry point,
        interactively — whatever `loop.clarify` says
      - Do not write a root document directly, however well the template shape
@@ -358,6 +372,30 @@ progress. Every open entry of those three types is **considered, and either
 queued or explicitly passed over — never silently dropped**; a queued one is
 ticked with the item number it became, and a passed-over one stays open,
 because an unchecked entry is still a candidate.
+
+**`loop.clarify` controls how `spec-author` resolves an ambiguous queued item**
+(`.aide/conventions.md` §5): **`interactive`** — ask ≤3 targeted questions
+before writing the spec; **`assume`** (unattended default) — pick the most
+defensible default and record each choice in the spec's mandatory
+**Assumptions** block, which the validator surfaces so a human can audit at
+the queue boundary. Nothing ever hangs. A spec written before its dependencies
+are *implemented* must pin their interfaces as Assumptions; the
+builder/validator hand back if reality diverged. **The setting governs
+`spec-author` and nothing else.**
+
+**A contradiction between the spec and the tests written from it comes back
+here**: `builder` hands the item back naming the criterion, the test, and what
+the two disagree about, and `spec-author` corrects the criterion under
+whatever `loop.clarify` says. The spec is corrected first; the tests are then
+re-derived from the corrected criteria; only then does the builder implement.
+The correction is an **amendment, never a rewrite** (§1 → `items.md`): a
+dated correction appended to the spec, because the original criterion is the
+record of what the item was built from.
+
+**The duty runs both ways.** When several specs are authored before any is
+built, the *producing* spec must enumerate the shape its declared consumers
+read — not only the API it exposes but the **serialised form**: the JSON
+layout, which tiers or records appear in a walk, what a strict mode rejects.
 
 **Root documents are authored through their loop entry point, interactively —
 whatever `loop.clarify` says** (`.aide/conventions.md` §5); here that entry point
