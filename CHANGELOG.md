@@ -159,6 +159,9 @@ says the paragraph changes no decision.
     immutability rule, the routing table and the queue-authoring duty stay;
     why the date is strict, why conflicts are unions, why the claim is
     immutable and why a `framework` issue leads with its version move.
+  - **§1 → human gates** — the row, the reach table, where a gate lives, who
+    may raise and resolve one, and the CLI semantics stay; why not a checkbox,
+    why never a queue and why resolution is a person's alone move.
 
 ## [1.45.0] — 2026-09-09
 

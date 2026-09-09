@@ -15,16 +15,8 @@ A **decision only a person can make**, blocking work until they make it. A
 - **Status** — table-local vocabulary, like Outcome targets': `⏳ Awaiting`,
   then `✅ Approved (date)` or `❌ Declined (date)`.
 
-**Why not an acceptance box.** Those are observable checks *of the built thing*
-— something completing the deliverables can guarantee. A steering decision is
-not that, and overloading the checkboxes would repeat exactly the conflation
-Outcome targets were introduced to avoid. Gates get their own table for the
-same reason.
-
-**Reach is per gate, and never a queue.** A queue is an *incidental* batch
-boundary — part of a stage, one stage, or several small ones — so "the live
-queue" names different work from one week to the next while the decision has
-not changed. Blocking is tied to the units that mean something:
+**Reach is per gate, and never a queue.** Blocking is tied to the units that
+mean something:
 
 | Blocks | Reaches | Use when |
 |---|---|---|
@@ -34,8 +26,7 @@ not changed. Blocking is tied to the units that mean something:
 
 `stage N` resolves through `progress.md` each time it is read, so a gate's reach
 follows the roadmap as the stage's contents change rather than freezing a list
-written when the gate was raised. Only the person who knows what the pending
-decision might change can judge which reach applies, so the table asks them.
+written when the gate was raised. The person raising the gate chooses the reach.
 
 **Where a gate is raised, and where it lives.** Same split as Outcome targets:
 raised wherever it is noticed, recorded in one place.
@@ -49,18 +40,14 @@ raised wherever it is noticed, recorded in one place.
   of truth for status and the only place the CLI reads, so a gate that exists
   only as prose in a roadmap or a spec blocks nothing.
 
-**Any role may raise a gate; only a person may resolve one.** Creating a blocker
-is safe — the worst case is work pausing for a human — so an agent noticing that
-a decision is needed should add the row and say so. Removing one is not safe,
-and no agent may run `aide gate approve`/`decline`: a gate exists precisely
-because the decision is not derivable from the work, so an agent resolving it
-destroys the only thing it was protecting.
+**Any role may raise a gate; only a person may resolve one.** An agent noticing
+that a decision is needed adds the row and says so. No agent may run `aide gate
+approve`/`decline`.
 
 **A declined gate keeps blocking.** It is resolved — someone decided — but the
-decision was "no", so releasing the work would run exactly what was refused.
-The remedy is to re-plan: drop the blocked items, or change what the gate asks.
-Only `✅ Approved` opens a gate; an unrecognised status blocks too, so a typo
-in the mark cannot silently open one.
+decision was "no". The remedy is to re-plan: drop the blocked items, or change
+what the gate asks. Only `✅ Approved` opens a gate; an unrecognised status
+blocks too, so a typo in the mark cannot silently open one.
 
 Semantics *(aide claim, check, status, gate)*:
 
@@ -75,3 +62,21 @@ Semantics *(aide claim, check, status, gate)*:
   ```
 
 Agents *read* gates — to know why they must stop — and stop.
+
+#### Rationale
+
+- **Why not an acceptance box.** Those are observable checks *of the built
+  thing* — something completing the deliverables can guarantee. A steering
+  decision is not that, and overloading the checkboxes would repeat exactly the
+  conflation Outcome targets were introduced to avoid. Gates get their own
+  table for the same reason.
+- **Why never a queue.** A queue is an *incidental* batch boundary — part of a
+  stage, one stage, or several small ones — so "the live queue" names different
+  work from one week to the next while the decision has not changed. And only
+  the person who knows what the pending decision might change can judge which
+  reach applies, which is why the table asks them.
+- **Why raising is open and resolving is not.** Creating a blocker is safe —
+  the worst case is work pausing for a human. Removing one is not: a gate
+  exists precisely because the decision is not derivable from the work, so an
+  agent resolving it destroys the only thing it was protecting. And releasing
+  work behind a declined gate would run exactly what was refused.
