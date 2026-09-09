@@ -8105,8 +8105,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_queue.add_argument("--date", default=None, help="tidy: override the supersede date (YYYY-MM-DD)")
     p_queue.set_defaults(func=cmd_queue)
 
-    p_ins = sub.add_parser("insights",
-                           help="list / tick / archive / resolve the insight inbox")
+    p_ins = sub.add_parser(
+        "insights", help="list / tick / archive / resolve the insight inbox",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "list:    number the entries by position and print the backlog "
+            "without the closed history around it\n"
+            "tick:    the one in-place edit — tick entry N with --pointer; on "
+            "an entry already ticked, append a dated trail line instead\n"
+            "archive: move closed entries older than --before into "
+            "insights/archive-YYYY-QN.md, each with its trail, line for line; "
+            "an entry it cannot date is named and left behind; the archive is "
+            "frozen and no longer shape-checked; what remains is renumbered, "
+            "so re-run list\n"
+            "resolve: write the union of a conflicted inbox — the shared "
+            "history, then each side's new entries in capture order; a tick "
+            "on either side stands and keeps its pointer, trail lines merge "
+            "in date order, and two ticks with different pointers keep both "
+            "and say so. Refuses, writing nothing, anything that is not a "
+            "pure append: a claim reworded, reordered or deleted on one side, "
+            "or a side that archived.\n"
+            "\n"
+            "A missing insights.md is created from .aide/templates/insights.md "
+            "by list (and by check, claim and queue start) and committed when "
+            "git can — on a branch, with an identity; otherwise it is left "
+            "untracked and the notice says why."))
     p_ins.add_argument("action", choices=["list", "tick", "archive", "resolve"])
     p_ins.add_argument("number", type=int, nargs="?", default=None,
                        help="tick: the entry number from `insights list`")

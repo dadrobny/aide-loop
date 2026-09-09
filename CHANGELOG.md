@@ -164,6 +164,13 @@ are on the issue.
   roles raise gates and neither had the row shape. Why a typo cannot open a
   gate and why `check` warns move under Rationale; that `aide status` prints
   gates is now in its help.
+- **§1 → insights.md** — the engine-creates-the-file rule, the re-run-`list`
+  rule and the aligned wording of `resolve`'s union and the conflict-marker
+  error reach `aide-living-documents` and are pinned. The verb mechanics —
+  what `archive` carries and names, how `resolve` merges ticks and trails,
+  when the created file is committed — move into `aide insights -h`, and why
+  the section fixes the maintenance-queue ordering and not the checkpoint
+  around it moves under Rationale.
 
 ## [1.45.1] — 2026-09-09
 

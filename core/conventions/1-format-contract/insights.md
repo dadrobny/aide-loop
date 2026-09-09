@@ -14,9 +14,7 @@ could replace — script it), **framework** (belongs to AIDE itself).
 **The file exists before a role needs it — the engine puts it there.**
 `aide check`, `aide claim`, `aide queue start` and `aide insights list` each
 create a missing `insights.md` as a byte-exact copy of
-`.aide/templates/insights.md`, and commit it when git can — on a branch, with an
-identity to commit as; otherwise the file is left untracked and the notice says
-why, for the next commit to carry. No role copies the template by hand, and an
+`.aide/templates/insights.md`. No role copies the template by hand, and an
 existing file — malformed or not — is never touched.
 
 **Name where it came from, in whatever form is honest.** The provenance before
@@ -34,9 +32,8 @@ of `.aide/VERSION`. Optional and unenforced like the provenance — and **never
 retrofitted**, since the claim line below is immutable: an entry captured
 without one stays as captured.
 
-`aide check` shape-checks entries (warning, never error — capture must stay
-cheap). It is deliberately loose either side of the date and strict about the
-date.
+`aide check` shape-checks entries (warning, never error), loose either side of
+the date and strict about the date.
 
 **Capture is a plain append; everything after it has a verb.**
 
@@ -51,28 +48,17 @@ python .aide/scripts/aide.py insights resolve [--dry-run]
 history around it; `tick` performs the one in-place edit below, or appends a
 dated trail line when the entry is already ticked; `archive` moves **closed**
 entries older than a date into `insights/archive-YYYY-QN.md`, each moved entry
-and its trail carried across line for line, and says so — an archive renumbers
-what remains, so re-run `list` after one. A closed entry whose line is too
-malformed to yield a date can be moved by no cut at all; `archive` names each
-one it had to leave behind rather than dropping it silently. Archived entries
-are frozen and no longer shape-checked.
+with its trail — an archive renumbers what remains, so re-run `list` after
+one. Archived entries are frozen and no longer shape-checked.
 
-**`resolve` writes the union of a conflicted inbox.** It reads the file with
-the conflict markers in place, parses both sides into entries, and writes the
-shared history, then each side's new entries in the order they were captured.
-Positional numbering needs no repair, since nothing moves. An entry ticked on
-either side ends up ticked and keeps that side's pointer; both sides' trail
-lines are kept, in date order; two ticks with two different pointers keep both
-and say so, because that one needs a human. `--dry-run` prints the union
-without writing it.
-
-**It refuses anything that is not a pure append**, and a refusal writes
-nothing: a claim reworded, reordered or deleted on one side, and a side that
-archived — an archive cuts closed entries out of the middle and renumbers what
-remains, so the two sides no longer share a prefix. Each of those is a change
-to an immutable line, which is precisely what a human must see. A conflict
-marker left in the file is an `aide check` **error**, not a warning, and the
-message names this verb.
+**`resolve` writes the union of a conflicted inbox** — the shared history,
+then each side's new entries in the order they were captured, with both
+sides' ticks and trail lines kept; `--dry-run` prints the union without
+writing it. **It refuses anything that is not a pure append**, and a refusal
+writes nothing: a claim reworded, reordered or deleted on one side, and a side
+that archived. A conflict marker left in the file is an `aide check`
+**error**, not a warning, and the message names this verb. `aide insights -h`
+states what each verb does.
 
 **The claim is immutable; its status is not.** The captured line is never
 reworded, reordered, or deleted. Ticking the checkbox is the one in-place edit.
@@ -118,12 +104,6 @@ ticks the entries it absorbs with the item numbers they became. It is not a
 second live queue: **the live queue is the lowest-numbered open one**, so a
 maintenance queue numbered ahead of the stage queue is served first, with no new
 state anywhere and nothing for a role to choose between.
-
-**How the pair reaches a human is the caller's business, not this section's.**
-The ordering above falls out of the numbering alone, so it holds whether the two
-plans go up as one review or two — or as neither, in a project whose `git.mode`
-pushes nothing (§4). What the engine fixes is that the fixes are queued *ahead*,
-never the shape of the checkpoint around them.
 
 The queue's author still decides. An entry that does not warrant a queue of its
 own — too small to be worth a branch, blocked on something unbuilt, out of scope
@@ -206,8 +186,15 @@ entry is still a candidate**, and the next queue's author sees it.
   skim the one run where a warning was real. Archived entries stop being
   checked for the same reason: immutability leaves no way to act on a warning
   about one.
+- **Why the engine creates the file.** A role that copies the template by
+  hand is a role writing outside its scope; the verbs commit the file when git
+  can — on a branch, with an identity to commit as — and otherwise leave it
+  untracked and say why in the notice, for the next commit to carry.
 - **Why everything after capture has a verb.** Reading and triaging the file by
-  hand is what made triage expensive enough to defer.
+  hand is what made triage expensive enough to defer. An archive carries each
+  entry and its trail across line for line and says so; an entry too malformed
+  to yield a date can be moved by no cut at all, so `archive` names each one it
+  left behind rather than dropping it silently.
 - **Why `resolve` exists, and why it refuses.** Append-only means every pair of
   branches conflicts here, and the conflict is always a union: two branches
   that each captured an insight added lines at the same position, so a merge or
@@ -217,7 +204,19 @@ entry is still a candidate**, and the next queue's author sees it.
   markers are skipped rather than misread — they are not entry lines — which
   is worse: both sides' entries land in one numbered list, so `list` numbers
   straight across the halves and the `N` a reader takes from it points `tick`
-  at a different claim than the one they read.
+  at a different claim than the one they read. The union needs no renumbering
+  because nothing moves; a tick on either side stands and keeps its pointer,
+  and two ticks with two different pointers are kept together and said so,
+  because that one needs a human. A side that archived is refused because an
+  archive cuts closed entries out of the middle and renumbers what remains, so
+  the two sides no longer share a prefix — and each refused shape is a change
+  to an immutable line, which is precisely what a human must see.
+- **Why the ordering, and not the checkpoint.** How a maintenance queue and
+  its stage queue reach a human is the caller's business: the ordering falls
+  out of the numbering alone, so it holds whether the two plans go up as one
+  review or two — or as neither, in a project whose `git.mode` pushes nothing
+  (§4). What the engine fixes is that the fixes are queued *ahead*, never the
+  shape of the checkpoint around them.
 - **Why the claim is immutable.** That is what protects provenance, and it is
   load-bearing precisely when an entry turns out to be *wrong*: the wrongness
   is the record, and a correction written beneath it teaches what a silent
