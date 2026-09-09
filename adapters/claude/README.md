@@ -209,8 +209,33 @@ no restatement is carried twice:
 | Layer | Carrier | Reaches |
 |---|---|---|
 | **Floor** | `CLAUDE.md` → `@.aide/AGENT-CONTEXT.md`, plus the one unscoped rule `rules/aide-command-hygiene.md` (`conventions.md` §3, in positive form) | every context — the human's session and every sub-agent |
-| **Role sections** | `skills/aide-living-documents/SKILL.md` (the §1 document shapes) and `skills/aide-test-hygiene/SKILL.md` (§6): `user-invocable: false`, named in an agent spec's `skills:` frontmatter | exactly the roles that list them — `aide-living-documents` → `spec-author`, `queue-planner`; `aide-test-hygiene` → `test-writer` |
+| **Role sections** | the eight `skills/aide-*/SKILL.md` files that carry `user-invocable: false` and are named in an agent spec's `skills:` frontmatter | exactly the roles that list them — see the manifest below |
 | **Interactive** | the same skill files carry `paths:` (the globs the rules had) | the human's session: the description is in the skill listing regardless, the globs narrow when the runtime auto-invokes it on its own — surfaced, not delivered |
+
+**The manifest, keyed by which document a role writes (issue #109).** One
+skill per distinct *reach set*, so no role carries a section it never acts on,
+and — deliberately — never one section across two skills: PR 2's generator
+emits a section's core whole or not at all, and a delivered copy has to have
+one section to defer to.
+
+| Section skill | Sections | Preloaded by |
+|---|---|---|
+| `aide-document-format` | §1 index, §1 → status icons | `queue-planner`, `spec-author`, `validator` |
+| `aide-human-gates` | §1 → human gates | `queue-planner`, `spec-author` |
+| `aide-progress-file` | §1 → `progress.md` | `queue-planner`, `validator` |
+| `aide-queue-and-inbox` | §1 → `queue-NNN.md`, §1 → `insights.md` | `queue-planner` |
+| `aide-item-specs` | §1 → items, authorised paths, environment-gated capabilities; §5 | `spec-author` |
+| `aide-off-platform-verification` | §7 | `validator` |
+| `aide-test-hygiene` | §6 | `test-writer` |
+| `aide-review-and-validation` | §9 | `reviewer`, `validator` |
+
+Until 1.46.0 the first five were one bundle, `aide-living-documents`,
+preloaded by the two writers: seven sections each, of which each wrote two or
+three. The split is what makes the reach honest, and it is also what let three
+sections be delivered for the first time — authorised paths and
+environment-gated capabilities to `spec-author`, §7 to `validator`, each of
+which had been reaching its role through an unpinned restatement in the spec
+or a pointer in a template.
 
 **Why skills and not `paths:` rules — measured, issue #85.** A `paths:` *rule*
 injects its body on a matching read, and does so inside sub-agent contexts too:
@@ -232,7 +257,7 @@ interactive layer is deliberately **not** backed by a thin `paths:` rule: such
 a rule would fire inside sub-agent contexts on a matching read and re-pay
 exactly the cost the swap removes.
 
-**Two kinds of skill share `skills/`.** The nine **workflow skills**
+**Two kinds of skill share `skills/`.** The ten **workflow skills**
 (`aide-create-item`, `aide-execute-item`, …) are entry points a person invokes
 and the orchestrators run. The **section skills** are `user-invocable: false` —
 hidden from the `/` menu, never a command — and preloaded by role.
@@ -247,19 +272,24 @@ The globs match **by filename, not by `project.tests_dir` /
 `project.docs_dir`**, so they hold whatever a consumer configured — templating
 them at install time would turn a silent mismatch into a config error.
 
-**How the two rules leave a consumer.** `install.py --update` removes
-`.claude/rules/aide-test-hygiene.md` and `.claude/rules/aide-living-documents.md`
-because `.aide/adapter-manifest.txt` records that the installer wrote them, and
-`RETIRED_ADAPTER_PATHS` in `install.py` names both for consumers installed
-before the manifest existed; `--check` names them first and writes nothing. A
-consumer that kept a rule beside its skill would be delivered the section twice.
+**How a retired delivered file leaves a consumer.** `install.py --update`
+removes `.claude/rules/aide-test-hygiene.md`,
+`.claude/rules/aide-living-documents.md` (the two `paths:` rules 1.27.0
+replaced) and `.claude/skills/aide-living-documents/SKILL.md` (the bundle
+1.46.0 replaced) because `.aide/adapter-manifest.txt` records that the
+installer wrote them, and `RETIRED_ADAPTER_PATHS` in `install.py` names all
+three for consumers installed before the manifest existed; `--check` names them
+first and writes nothing. A consumer that kept the old carrier beside the new
+one would be delivered the section twice — and, for the bundle, delivered four
+sections to roles that write none of them.
 
 A delivered file **defers to its section**: the engine copy is the source of
 truth, and a file that invents a rule of its own binds Claude and no other
 runtime. [`tests/test_rules.py`](tests/test_rules.py) pins the three
 obligations over rules and section skills alike — a section skill is recognised
-structurally, by `user-invocable: false` or a `<!-- pins:` block, never by a
-name list — and adds the preload's own guards: every `skills:` entry names a
+structurally, by `user-invocable: false` alone since 1.42.0, never by a name
+list and never by a `<!-- pins:` block, which a workflow skill may carry too —
+and adds the preload's own guards: every `skills:` entry names a
 skill that exists and does not set `disable-model-invocation`, every section
 skill is preloaded by at least one agent, and the six agent specs never
 re-inline the block this replaced.
@@ -379,7 +409,10 @@ adapters/claude/
 │                  aide-execute-item · aide-feedback-loop · aide-spec-queue ·
 │                  aide-review-insights · aide-status-report
 │                  section (user-invocable: false, preloaded by role):
-│                  aide-living-documents (§1 shapes) · aide-test-hygiene (§6)
+│                  aide-document-format · aide-human-gates · aide-progress-file ·
+│                  aide-queue-and-inbox · aide-item-specs ·
+│                  aide-off-platform-verification · aide-test-hygiene (§6) ·
+│                  aide-review-and-validation (§9)
 ├── commands/      aide-run-{item,queue,roadmap} · aide-review-permissions ·
 │                  aide-review-instructions
 ├── rules/         aide-command-hygiene.md — the one unscoped rule (§3), every context

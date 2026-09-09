@@ -101,9 +101,10 @@ When open `defect`, `gap` or `automation` entries exist at a queue boundary they
 are batched into a **maintenance queue, authored and merged before the stage
 queue** — a normal queue in every respect: its own number, its own items, and it
 ticks the entries it absorbs with the item numbers they became. It is not a
-second live queue: **the live queue is the lowest-numbered open one**, so a
-maintenance queue numbered ahead of the stage queue is served first, with no new
-state anywhere and nothing for a role to choose between.
+second live queue: which queue is live falls out of the numbering (§1 →
+`queue-NNN.md`), so a maintenance queue numbered ahead of the stage queue is
+served first, with no new state anywhere and nothing for a role to choose
+between.
 
 The queue's author still decides. An entry that does not warrant a queue of its
 own — too small to be worth a branch, blocked on something unbuilt, out of scope

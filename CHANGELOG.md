@@ -121,6 +121,92 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.46.0] — 2026-09-09
+
+The manifest #109 has been waiting on, realised as **per-document section
+skills**: `aide-living-documents` carried seven sections to `spec-author` and
+`queue-planner`, and neither wrote four of them. The delivery set is now keyed
+by **which document a role writes** — one skill per distinct reach set, and
+never one section across two skills, because #109's PR 2 emits a section's core
+whole or not at all. Three sections reach a role for the first time, from
+#186's reach column, and four rules stated twice across `conventions/` are now
+stated once. Inputs: #122 (the core/tail cut), #184 (the per-sentence
+dispositions), #186 (the reach column).
+
+| Section skill | Sections | Preloaded by |
+|---|---|---|
+| `aide-document-format` | §1 index, §1 → status icons | `queue-planner`, `spec-author`, `validator` |
+| `aide-human-gates` | §1 → human gates | `queue-planner`, `spec-author` |
+| `aide-progress-file` | §1 → `progress.md` | `queue-planner`, `validator` |
+| `aide-queue-and-inbox` | §1 → `queue-NNN.md`, §1 → `insights.md` | `queue-planner` |
+| `aide-item-specs` | §1 → items, authorised paths, environment-gated capabilities; §5 | `spec-author` |
+| `aide-off-platform-verification` | §7 | `validator` |
+
+What a spawn preloads, curated bytes (the body a preload injects) against the
+section core behind it: `queue-planner` 14,028 → **11,703** (35,037 B of core
+for seven sections → 27,558 for six it writes); `spec-author` 14,028 →
+**14,175** (35,037 → 27,929, and now including the two sections it had been
+reaching through its own inline prose); `validator` 2,740 → **9,332** (1,959 →
+16,018, from §9 alone to §9 plus the four sections it writes or reads a result
+against). The always-on floor does not move — a section skill was never part of
+it.
+
+### Added
+
+- **Six section skills**, replacing one bundle (issue #109). Each carries
+  `<!-- reach -->`, `<!-- triggers -->` and one `<!-- pins: … -->` block per
+  section it delivers, and is preloaded by the roles named above.
+- **Three sections are delivered for the first time.** `§1 → authorised paths`
+  and `§1 → environment-gated capabilities` reach `spec-author` beside
+  `§1 → items.md`: the first had been reaching it only through an unpinned
+  restatement in the spec's own step 4, the second only through a pointer in
+  the item template. **§7** reaches `validator`, which had §7's two bullets
+  inline in its check 6 with nothing pinning them — the #81 shape, on the
+  undelivered side.
+- **`<!-- triggers: none -->`** is legal grammar in
+  `tests/test_structural_budget.py`, and only on a triggers line. §7 is the one
+  delivered section that is not about a document the loop writes, so its
+  `paths:` match no agent spec's read-set; the empty set has to be sayable, and
+  it is asserted like any other declaration.
+
+### Changed
+
+- **The mapping in #109's own comment, corrected against #184's tables.**
+  Human gates reach whoever *raises* one — both writers, not the `validator`,
+  whose spec raises none and whose half of the section (agents read a gate and
+  stop; only a person resolves one) is on the always-on floor.
+  `§1 → progress.md` reaches `queue-planner` as well as `validator`, because
+  the deliverable bullets and the `*(Item NNN)*` markers item numbers are born
+  on are the planner's. The status-icon vocabulary reaches `validator`, whose
+  spec had ✅-means-merged inline with nothing pinning it.
+- **Four rules stated in two sections are stated in one.** `.as_posix()`, the
+  `eol=lf` pin and the diff-time scope-claim rule were each written out in both
+  `§1 → authorised paths` and §6; §6 is what reaches the role that writes the
+  test, so §6 keeps all three and authorised paths keeps only the sentence that
+  is its own — a diff-time claim is decided against *this* declaration — and
+  points at §6. "The live queue is the lowest-numbered open one" was in
+  `queue-NNN.md`, `insights.md` and §2; queue state is what `queue-NNN.md`
+  fixes, so it is stated there and the other two point at it (it loses its
+  scare quotes so one wording is quotable from both sides).
+- **Four restatements in the adapter reduced to the pointer they now have a
+  preload behind**: `queue-planner`'s tidy-stamp shape and live-queue clause,
+  `validator`'s check 6, `spec-author`'s clarify-mode block and step 4, and
+  `/aide-run-roadmap`'s "Tidy the previous queue", which described the
+  planner's step in the planner's words. `/aide-run-roadmap`'s two other
+  live-queue mentions stay: the orchestrator runs in a session with no preload
+  and is itself the reader choosing which queue to run.
+- **`ADAPTER-SPEC.md` §7 and the adapter README** state the manifest rule — a
+  skill may bundle sections whose reach is identical, a section is never split
+  across skills — instead of naming one bundle.
+
+### Removed
+
+- **`skills/aide-living-documents/`.** `install.py --update` removes it from a
+  consumer through `.aide/adapter-manifest.txt`, and
+  `RETIRED_ADAPTER_PATHS` names it for consumers installed before the manifest
+  existed. A consumer that kept it beside the new skills would be delivered
+  four sections twice, and three of them to roles that write none of them.
+
 ## [1.45.3] — 2026-09-09
 
 A style pass over the seven sections no file delivers — §2, §4, §7, §8,

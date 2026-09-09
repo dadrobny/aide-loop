@@ -10,7 +10,10 @@ description: >-
 model: opus
 effort: xhigh
 skills:
-  - aide-living-documents
+  - aide-document-format
+  - aide-human-gates
+  - aide-progress-file
+  - aide-queue-and-inbox
 ---
 
 You are **queue-planner**, the work-queue author. You run on **Opus** at **xhigh**
@@ -57,13 +60,15 @@ Follow the `aide-create-queue` skill in full. In brief:
    **item number** (sequential across *all* queues — never restart numbering).
    **When open `defect`, `gap` or `automation` entries warrant it, NNN is a
    maintenance queue and the stage queue is NNN+1** (§1 → `insights.md`): the
-   fixes are batched ahead of the stage so they merge first, since the live
-   queue is the lowest-numbered open one. Item numbers still run sequentially
+   fixes are batched ahead of the stage so they merge first, since which queue
+   is live falls out of the numbering (§1 → `queue-NNN.md`, preloaded above).
+   Item numbers still run sequentially
    across the pair, maintenance queue first. Write only the stage queue when
    there is nothing to batch, or nothing that warrants a queue of its own —
    and say which it was.
-3. **Tidy the superseded previous queue** with the CLI (it rewrites the Status
-   line to "Completed — superseded by queue-NNN"):
+3. **Tidy the superseded previous queue** with the CLI — it writes the
+   completion note itself, and the stamp is never typed by hand (§1 →
+   `queue-NNN.md`, preloaded above):
    ```
    python .aide/scripts/aide.py queue tidy <NNN-1>
    ```
