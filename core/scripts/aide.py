@@ -8032,11 +8032,30 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo", type=Path, default=None, help="repo root (default: search up for aide.toml)")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_check = sub.add_parser("check", help="consistency gate over docs/aide, "
-                             "plus the test-hygiene lints over tests_dir, which "
-                             "run with a notice even in a repo with no docs_dir "
-                             "(writes only a missing insights.md, from the "
-                             "template, and the file --report names)")
+    p_check = sub.add_parser(
+        "check", help="consistency gate over docs/aide, "
+        "plus the test-hygiene lints over tests_dir, which "
+        "run with a notice even in a repo with no docs_dir "
+        "(writes only a missing insights.md, from the "
+        "template, and the file --report names)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "--queue NNN checks one queue's specs against each other: two items "
+            "claiming one path under May change (warning), one item changing a "
+            "path another pins under Asserts against (error), a dependency "
+            "cycle, and a dependency on an item that exists nowhere.\n"
+            "\n"
+            "Three discounts apply. Spent items (\u2705 merged or \u274c excluded in "
+            "progress.md) are discounted on both sides of every comparison, and "
+            "a finding against one is an error no later item can clear. A "
+            "declared dependency is discounted in one direction: when the "
+            "pinning item names the changing one under ## Dependencies, "
+            "directly or through a chain of items on the same queue, the edit "
+            "landing cannot break its pin. Only links that still order count: a "
+            "dependency claim no longer waits for (\u2705, \u274c, \u23f8\ufe0f) earns no "
+            "exemption, and neither does a chain whose middle item no longer "
+            "blocks. The cycle check keeps only items whose status still blocks "
+            "a claim; deferred items stay in the path comparisons."))
     p_check.add_argument("--queue", type=int, default=None,
                          help="also check this queue's specs against each other "
                               "(scope overlaps, pinned state, dependency graph)")
@@ -8216,8 +8235,21 @@ def register_git_subcommands(sub) -> None:
                                "current branch's recorded base, else main_branch)")
     p_status.set_defaults(func=cmd_status)
 
-    p_scope = sub.add_parser("scope",
-                             help="check this branch's diff against the item's authorised paths")
+    p_scope = sub.add_parser(
+        "scope", help="check this branch's diff against the item's authorised paths",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Diffs the branch against the merge-base with the item's base and "
+            "reports every changed path outside the spec's ## Authorised paths; "
+            "a path listed under Asserts against and then changed is reported "
+            "separately. With no number the item is read from the current "
+            "claim branch, and a queue branch resolves to no item and is "
+            "skipped. The base is --base if given, else the branch's recorded "
+            "base, else main_branch; the two derived answers prefer "
+            "origin/<base> over the local ref.\n"
+            "\n"
+            "Exit 0: in scope. 1: something changed outside it. 2: could not "
+            "check (no spec, no section, or no base to diff against)."))
     p_scope.add_argument("number", type=int, nargs="?", default=None,
                          help="item number (default: read from the current claim branch)")
     p_scope.add_argument("--base", default=None,

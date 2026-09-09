@@ -139,6 +139,16 @@ issue, as #109's input.
 - **`conventions.md`** — the shape paragraph after the index table now
   states the style contract every section follows, the way #122 stated
   core-then-tail there.
+- **§1 → authorised paths** — the opener names who acts on the section.
+  `aide scope`'s item and base resolution (the no-argument read, the
+  queue-branch skip, `--base` > recorded > `main_branch`, the `origin/`
+  preference) and its exit codes' meaning now sit in `aide scope -h`; the
+  three discounts `check --queue` applies — spent items, a declared
+  dependency that still orders the pair, the cycle check's membership — sit
+  in `aide check -h`. The section keeps the sentence that names each verb,
+  the exit codes, and the rule an author decides against: a pair with no
+  declared dependency keeps the error. Why a queue branch is skipped joins
+  the Rationale, beside the discounts' own why.
 
 ## [1.45.2] — 2026-09-09
 

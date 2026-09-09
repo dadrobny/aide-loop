@@ -1,7 +1,9 @@
 ### `## Authorised paths` — an item's scope, declared
 
 An item spec declares the files it may change, and `aide scope` proves the
-declaration by the diff.
+declaration by the diff. `spec-author` writes it, `spec-reviewer` checks one
+queue's against each other, the validator proves it on the branch, and a role
+writing a test decides against it whether an assertion is a scope claim.
 
 The section is **expected but not required**: it ships in the item template, so
 every new spec carries one, and a spec written before this convention stays
@@ -50,17 +52,11 @@ against the branch's changed files:
 python .aide/scripts/aide.py scope [NNN] [--base <ref>]
 ```
 
-With no argument it reads the item number from the current claim branch; a
-queue branch resolves to no item and is skipped, since per-item scope is checked
-on each claim branch as it merges and a queue branch legitimately aggregates
-many items' lists. It diffs against the **merge-base with the item's base** —
-`--base` if given, else the branch's recorded base, else `main_branch`, resolved
-exactly as §4 describes, with the two *derived* answers preferring the `origin/`
-counterpart over the local ref. On stacked work the base is the **queue
-branch**, not `main`.
-
-Exit `0` in scope · `1` something changed outside it · `2` could not check. A
-spec with no section cannot be read as an unconstrained one.
+It diffs against the **merge-base with the item's base** (`--base`, else the
+recorded base, else `main_branch` — §4; `scope -h` says how the item and the
+base are resolved). On stacked work the base is the **queue branch**, not
+`main`. Exit `0` in scope · `1` something changed outside it · `2` could not
+check. A spec with no section cannot be read as an unconstrained one.
 
 Three paths are authorised for every item without being listed — `progress.md`
 and `insights.md`, which the CLI and the roles are mandated to write on any
@@ -143,25 +139,11 @@ python .aide/scripts/aide.py check --queue NNN [--report <path>]
 It reports two items claiming the same path under **May change** (warning), one
 item changing what another pins under **Asserts against** (error), and a
 dependency cycle or a dependency on an item that exists nowhere. `--report`
-writes the findings as JSON for a reviewer pass to pick up. Three discounts
-apply:
-
-- **Spent items** — ✅ merged or ❌ excluded in `progress.md` — are discounted
-  on both sides of every comparison: a merged item's claim can neither be
-  harmed by a later writer nor harm one, an excluded item is never offered,
-  and a finding against either is an error no later item can clear.
-- **A declared dependency** is discounted in one direction: when the pinning
-  item names the changing one under `## Dependencies` — directly, or through a
-  chain of items on the same queue — it is built against a tree that already
-  holds that edit, so the edit landing cannot break its pin. Only links that
-  still order count: a dependency `aide claim` no longer waits for (✅ merged,
-  ❌ excluded, ⏸️ deferred) leaves the dependent claimable today, so it earns
-  no exemption, and a chain whose middle item no longer blocks orders nothing
-  either. A pair with **no** declared dependency keeps the error, and saying so
-  under `## Dependencies` is the third remedy the message offers.
-- **The cycle check** keeps only items whose status still blocks a claim (⏸️
-  deferred drops out too, since a deferred dependency does not block).
-  Deferred items stay in the path comparisons.
+writes the findings as JSON for a reviewer pass to pick up. Spent items (✅,
+❌) are discounted on both sides of every comparison, and a declared dependency
+that still orders the pair discounts it in one direction (`check -h` says
+exactly how far). **A pair with no declared dependency keeps the error, and
+saying so under `## Dependencies` is the third remedy the message offers.**
 
 **Auditing fences goes by shape, not by name.** The distinguishing feature is a
 digest compared against a **hardcoded literal**; a digest compared against a
@@ -179,6 +161,9 @@ value computed in the same run is a determinism check and must stay.
   authorised edit changes.*
 - **Why the narrowing warns at spec time.** Left to surface later, it arrives
   as an `aide scope` FAIL against a path the spec's own prose authorised.
+- **Why a queue branch is skipped.** Per-item scope is checked on each claim
+  branch as it merges, and a queue branch legitimately aggregates many items'
+  lists — there is no one declaration to prove.
 - **Why the derived base prefers `origin/`.** A local ref on a checkout sitting
   behind the work has itself as the merge-base, so every file the earlier
   items touched would be reported against this item's spec; and diffing a
@@ -196,10 +181,13 @@ value computed in the same run is a determinism check and must stay.
   real CI break. The two suite-side shapes of a diff-time claim were written by
   two independent authors in one consumer, which is the signature of a missing
   rule rather than a careless author.
-- **Why the discounts.** The dependency discount is the whole shape of a
-  stage-validation item, which exists to pin what its stage produced; an
-  undeclared ordering is exactly what the check is for, so a pair without one
-  keeps the error. A deferred blocker's edit is dormant, not spent, and still
+- **Why the discounts.** A merged item's claim can neither be harmed by a
+  later writer nor harm one, and an excluded item is never offered. The
+  dependency discount is the whole shape of a stage-validation item, which
+  exists to pin what its stage produced — built against a tree that already
+  holds the edit, so the edit landing cannot break its pin; an undeclared
+  ordering is exactly what the check is for, so a pair without one keeps the
+  error. A deferred blocker's edit is dormant, not spent, and still
   ahead of the pin, so it earns no exemption — and deferred items stay in the
   path comparisons because a conflict with one is worth surfacing while
   re-planning is cheap. A cycle whose members all merged proved its order
