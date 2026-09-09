@@ -158,6 +158,11 @@ issue, as #109's input.
   of a bare list; every bullet leads with its rule in bold; every bullet
   carries the consumer annotation, and the stale `scout/claim` in it becomes
   `claim` (recon is not a role, ADAPTER-SPEC §2).
+- **§2** — opens on what it governs and who acts on it, ahead of the rule.
+  `gc`'s merge-tree ground, the git ≥ 2.38 refusal and the preview
+  semantics now sit in `aide gc -h` and under `Why gc asks git` / `Why the
+  preview is exact`; the section keeps the two rule sentences, the skip an
+  operator decides against, and `--abandon`.
 
 ## [1.45.2] — 2026-09-09
 

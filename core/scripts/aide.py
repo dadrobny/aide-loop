@@ -8215,7 +8215,23 @@ def register_git_subcommands(sub) -> None:
                         help="verify/switch to this item's claim branch")
     p_sync.set_defaults(func=cmd_sync)
 
-    p_gc = sub.add_parser("gc", help="delete claim branches whose work has landed (dry-run by default)")
+    p_gc = sub.add_parser(
+        "gc", help="delete claim branches whose work has landed (dry-run by default)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Deletes claim branches, local and remote, whose item is \u2705 in "
+            "progress.md, and with --merged also branches already merged into "
+            "the base. On the \u2705 ground a branch goes only when "
+            "`git merge-tree --write-tree` says merging it into the base would "
+            "change nothing; a branch that still carries unlanded content is "
+            "skipped with the base named, unless --abandon. merge-tree "
+            "--write-tree needs git >= 2.38: on older git the \u2705 ground "
+            "refuses rather than falling back to a weaker test.\n"
+            "\n"
+            "Every skip \u2014 checked out, unlanded, git too old \u2014 is decided "
+            "before anything is printed and shown as `skipping <branch>: "
+            "<reason>` on both paths, so the dry run is exactly the set --yes "
+            "deletes."))
     p_gc.add_argument("--merged", action="store_true",
                       help="also delete claim branches already merged into the base")
     p_gc.add_argument("--base", default=None,
