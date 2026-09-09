@@ -163,6 +163,13 @@ issue, as #109's input.
   semantics now sit in `aide gc -h` and under `Why gc asks git` / `Why the
   preview is exact`; the section keeps the two rule sentences, the skip an
   operator decides against, and `--abandon`.
+- **§4** — opens on what the mode changes and who reads it; the
+  enforced-only-inside sentence follows as the rule it is.
+- **§7** — opens on what the validator does with a CI result instead of on
+  an argument; "test hygiene reduces the odds" becomes the first of two `Why`
+  bullets, where the Rationale was one bare sentence.
+- **§8** — opens on what it governs (a declared sibling) and who acts on it
+  (every role, a person, the always-on page), ahead of the context paragraph.
 
 ## [1.45.2] — 2026-09-09
 
