@@ -162,6 +162,9 @@ says the paragraph changes no decision.
   - **§1 → human gates** — the row, the reach table, where a gate lives, who
     may raise and resolve one, and the CLI semantics stay; why not a checkbox,
     why never a queue and why resolution is a person's alone move.
+  - **§1 → environment-gated capabilities** — the fallback bar, the two
+    records and the two planning additions stay; why a skip-clean run is not
+    evidence moves.
 
 ## [1.45.0] — 2026-09-09
 

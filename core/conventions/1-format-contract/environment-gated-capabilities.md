@@ -5,9 +5,8 @@ library, Docker, a large/optional pip extra, ...) must degrade gracefully —
 its tests skip cleanly (never fail, never silently pass as if exercised) when
 the dependency is absent, mirroring the project's existing optional-extra
 pattern. That graceful-fallback bar is enough for a stage to reach ✅ under the
-rollup rule above — **but** a skip-clean pytest run is not evidence the
-optional path was ever run for real, and nothing else records that gap by
-default. Two additive, non-blocking mechanisms close it:
+rollup rule. Two additive, non-blocking mechanisms record whether the gated
+path was ever run for real:
 
 - The item template's optional **Environment / Hardware Dependencies**
   section — filled in by any item introducing such a capability, naming the
@@ -35,5 +34,12 @@ Two additions make the verification *planned* rather than hoped-for:
   updates the capability table (✅ Verified where the profile is satisfied,
   else an explicit ❓ Unverified with the reason). Item specs may also carry an
   optional **Validation** section (see the item template) that the validator
-  must execute — tests prove the code runs; validation observes that it does
-  something meaningful.
+  must execute.
+
+#### Rationale
+
+A skip-clean pytest run is not evidence the optional path was ever run for
+real, and nothing else records that gap by default — the table is the record.
+Tests prove the code runs; validation observes that it does something
+meaningful, which is why a stage-validation item replays use cases rather than
+re-running the suite.
