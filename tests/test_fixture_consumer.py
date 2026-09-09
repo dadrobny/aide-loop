@@ -1731,24 +1731,32 @@ def test_a_bookkeeping_commit_is_refused_over_an_unfinished_rebase(
     three callers discard it — so the reason is printed here too, or a verb
     announces a tick that is in no commit.
 
-    The conflict is deliberately NOT on the inbox: the hint has to stay quiet
-    when the inbox is not what stopped this.
+    Since #180 the guard runs BEFORE the commit rather than as a side effect
+    of a pull that could not start: with the conflicts staged git accepts a
+    commit mid-rebase, and a bookkeeping commit in the middle of someone's
+    rebase is the state this refuses. The conflict is deliberately NOT on the
+    inbox: the hint has to stay quiet when the inbox is not what stopped this.
     """
     _with_origin(consumer, tmp_path)
     _diverge_on(consumer, "docs/aide/note.md", "their note\n", "our note\n")
     stopped = _git(["pull", "--rebase"], consumer, check=False)
     assert stopped.returncode != 0, "the rebase did not stop on a conflict"
+    head = _git(["rev-parse", "HEAD"], consumer).stdout.strip()
     capsys.readouterr()
 
     assert aide.main(["--repo", str(consumer), "insights", "tick", "1",
                       "--pointer", "item 002"]) == 0
     err = capsys.readouterr().err
     assert "could not commit" in err
-    assert "git pull --rebase could not complete" in err
+    assert "stopped in an earlier operation" in err
+    assert "a rebase is in progress" in err
+    assert "git rebase --continue" in err
     assert "insights resolve" not in err        # the inbox is not the conflict
     # written to the worktree, deliberately not committed on top of the rebase
     assert "docs/aide/insights.md" in _git(
         ["status", "--porcelain"], consumer).stdout
+    assert _git(["rev-parse", "HEAD"], consumer).stdout.strip() == head
+    assert (consumer / ".git" / "rebase-merge").is_dir()   # still theirs to finish
 
 
 def test_the_stall_names_the_operation_git_reports_not_a_rebase(
@@ -1777,6 +1785,157 @@ def test_the_stall_names_the_operation_git_reports_not_a_rebase(
     assert "git cherry-pick --abort" in err
     assert "git rebase --abort" not in err       # would fail if run
     assert "git cherry-pick --continue" in err
+
+
+# --------------------------------------------------------------------------- #
+# the bookkeeping commit lands first, and the rebase after it is real (#180)
+# --------------------------------------------------------------------------- #
+def _origin_moves_on(consumer: Path, rel: str, line: str) -> str:
+    """Push one commit touching *rel* to the upstream and take it back here,
+    so origin is one commit ahead of this checkout. Returns its sha."""
+    target = consumer / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text((target.read_text(encoding="utf-8") if target.exists()
+                       else "") + line + "\n", encoding="utf-8")
+    _commit(consumer, "docs(aide): the other machine's commit")
+    sha = _git(["rev-parse", "HEAD"], consumer).stdout.strip()
+    _git(["push"], consumer)
+    _git(["reset", "--hard", "HEAD~1"], consumer)
+    return sha
+
+
+def _tick(aide, consumer: Path, number: int) -> int:
+    return aide.main(["--repo", str(consumer), "insights", "tick", str(number),
+                      "--pointer", "item 003", "--date", "2026-09-09"])
+
+
+def test_a_tick_converges_with_origin_before_push_time(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    """The promise the docstring always made and git never kept: a tick on a
+    file other machines also edit rebases onto the upstream. Before #180 the
+    pull ran ahead of the commit, refused over the unstaged tick every time,
+    and two machines diverged until one of them was rejected at push."""
+    _with_origin(consumer, tmp_path)
+    theirs = _origin_moves_on(consumer, "docs/aide/note.md", "their note")
+    capsys.readouterr()
+
+    assert _tick(aide, consumer, 2) == 0
+    err = capsys.readouterr().err
+    assert "NOT rebased" not in err and "could not" not in err
+    # Their commit is now an ancestor, ours sits on top, and nothing is left
+    # over: one linear line, clean tree, exactly one commit ahead of origin.
+    assert _git(["merge-base", "--is-ancestor", theirs, "HEAD"],
+                consumer, check=False).returncode == 0
+    assert _git(["rev-list", "--count", "@{u}..HEAD"], consumer).stdout.strip() == "1"
+    assert _git(["rev-list", "--count", "HEAD..@{u}"], consumer).stdout.strip() == "0"
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    assert "- [x] defect — greet() does not strip whitespace" in (
+        consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert (consumer / "docs" / "aide" / "note.md").read_text(
+        encoding="utf-8") == "their note\n"
+
+
+def test_a_tick_that_collides_with_origin_stops_inside_a_real_rebase(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    """The failure the reorder introduces, and why it is the right one: the
+    conflict now arrives INSIDE a rebase, with a marker, which is the state
+    #178 already detects and routes. No autostash, so no stash-pop conflict
+    with nothing in progress and nothing to resolve it (issue #180).
+
+    The other machine appended to the inbox; this one ticks its last entry.
+    Both edits touch the end of the file, so the replay stops on the inbox —
+    and the way out is the verb built for it, driven here to the end.
+    """
+    _with_origin(consumer, tmp_path)
+    _origin_moves_on(consumer, "docs/aide/insights.md", _THEIRS)
+    capsys.readouterr()
+
+    assert _tick(aide, consumer, 3) == 0
+    err = capsys.readouterr().err
+    assert "docs/aide/insights.md is committed here" in err
+    assert "git pull --rebase could not complete" in err
+    assert "a rebase is in progress" in err
+    assert "insights resolve" in err
+    assert "git rebase --continue" in err
+    assert (consumer / ".git" / "rebase-merge").is_dir()
+
+    # The route out, as named: the union, then the continue.
+    assert aide.main(["--repo", str(consumer), "insights", "resolve"]) == 0
+    cont = _git(["-c", "core.editor=true", "rebase", "--continue"], consumer,
+                check=False)
+    assert cont.returncode == 0, cont.stdout + cont.stderr
+    text = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert "- [x] gap — nothing checks the farewell" in text     # our tick
+    assert _THEIRS in text                                       # their line
+    assert "<<<<<<<" not in text
+    assert _git(["rev-list", "--count", "HEAD..@{u}"], consumer).stdout.strip() == "0"
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
+def test_a_tick_never_rebases_an_unpushed_merge_commit(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    """#133's shape, reached through the committer: `aide merge` ticks
+    progress with its own merge commit on HEAD and origin integrated a moment
+    earlier, and a rebase there would drop the merge and replay both parents.
+    So the pull is skipped — silently, because every non-fast-forward merge
+    would otherwise print a notice about a state it created on purpose."""
+    _with_origin(consumer, tmp_path)
+    _origin_moves_on(consumer, "docs/aide/note.md", "origin side")
+    _git(["switch", "-c", "side"], consumer)
+    (consumer / "docs" / "aide" / "side.md").write_text("side\n", encoding="utf-8")
+    _commit(consumer, "docs: side")
+    _git(["switch", "main"], consumer)
+    _git(["merge", "--no-ff", "--no-edit", "side"], consumer)
+    merged = _git(["rev-parse", "main"], consumer).stdout.strip()
+    capsys.readouterr()
+
+    assert _tick(aide, consumer, 2) == 0
+    err = capsys.readouterr().err
+    assert "NOT rebased" not in err and "could not" not in err
+    assert _git(["rev-parse", "HEAD~1"], consumer).stdout.strip() == merged
+    assert _git(["rev-list", "--merges", "@{u}..HEAD"],
+                consumer).stdout.strip() != ""      # still a merge, not replayed
+    assert not (consumer / ".git" / "rebase-merge").exists()
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
+def test_a_tick_beside_unstaged_work_stays_local_and_says_so(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    """The limit, stated rather than hidden: git refuses to start a rebase
+    over ANY unstaged change, so a tick made beside a builder's uncommitted
+    edit is committed — exactly that path, nothing else — and not rebased.
+    The commit is complete and local; the notice is what keeps the docstring
+    honest about which of the two happened."""
+    _with_origin(consumer, tmp_path)
+    theirs = _origin_moves_on(consumer, "docs/aide/note.md", "their note")
+    (consumer / "aide.toml").write_text(
+        (consumer / "aide.toml").read_text(encoding="utf-8") + "\n# a builder's edit\n",
+        encoding="utf-8")
+    capsys.readouterr()
+
+    assert _tick(aide, consumer, 2) == 0
+    err = capsys.readouterr().err
+    assert "docs/aide/insights.md is committed here but NOT rebased onto origin" in err
+    assert "unstaged changes" in err
+    assert _git(["show", "--name-only", "--format=", "HEAD"],
+                consumer).stdout.split() == ["docs/aide/insights.md"]
+    assert _git(["merge-base", "--is-ancestor", theirs, "HEAD"],
+                consumer, check=False).returncode != 0     # origin's commit: not here
+    assert " M aide.toml" in _git(["status", "--porcelain"], consumer).stdout
+    assert not (consumer / ".git" / "rebase-merge").exists()
+
+
+def test_a_tick_in_local_mode_never_reaches_for_a_remote(
+        aide, consumer: Path, capsys):
+    """`git.mode = "local"` is the fixture default, and the other pull sites
+    all skip the remote under it. A notice about "no tracking information"
+    on every tick of a local-mode consumer would be noise about a remote the
+    mode says does not exist."""
+    capsys.readouterr()
+    assert _tick(aide, consumer, 2) == 0
+    err = capsys.readouterr().err
+    assert "rebased" not in err and "tracking" not in err
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
 
 
 # --------------------------------------------------------------------------- #

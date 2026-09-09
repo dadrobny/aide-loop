@@ -5025,13 +5025,14 @@ def _commit_docs_files(repo_root: Path, config, message: str,
                        rels: List[str], pull: bool = True) -> Optional[str]:
     """Commit exactly *rels* — repo-relative paths — with *message*.
 
-    Returns ``None`` when every named path is in the new commit, otherwise a
-    one-line reason it is not — so a caller that announces a commit announces
-    what happened, not what it intended. "Exactly" is enforced by pathspec:
-    ``git commit -- <rels>`` commits the named paths and nothing else, so a
-    builder's staged work sitting in the index stays staged and out of the
-    bookkeeping commit; a bare ``git commit`` would have swept it in, which is
-    why ``git add <rel>`` alone was never enough.
+    Returns ``None`` when every named path is in the new commit and that
+    commit is settled here, otherwise a one-line reason it is not — so a
+    caller that announces a commit announces what happened, not what it
+    intended. "Exactly" is enforced by pathspec: ``git commit -- <rels>``
+    commits the named paths and nothing else, so a builder's staged work
+    sitting in the index stays staged and out of the bookkeeping commit; a
+    bare ``git commit`` would have swept it in, which is why ``git add <rel>``
+    alone was never enough.
 
     A commit that fails — no ``user.name`` on a fresh clone, a hook, a path
     ``.gitignore`` reaches — leaves *rels* unstaged again, so the tree degrades
@@ -5040,33 +5041,45 @@ def _commit_docs_files(repo_root: Path, config, message: str,
     at all is a reason, not a traceback; ``check`` in particular must keep
     passing in a repo whose ``git`` is off PATH, as it did before 1.26.0.
 
-    *pull* rebases onto the upstream first, which is right for an edit to a
-    file other machines also edit (a tick, an archive) and wrong for a file
-    that did not exist a moment ago — ``ensure_insights_inbox`` passes
-    ``False`` so that ``check``, a gate, never fetches on the caller's behalf.
-    Measured, because the sentence above promises more than git delivers:
-    every caller here has already written its edit to the worktree, and
-    ``git pull --rebase`` refuses outright over an unstaged change ("cannot
-    pull with rebase: You have unstaged changes", exit 128, nothing started).
-    In the ordinary path the rebase therefore does not run and the commit
-    below is purely local. What the pull still reaches is the repository that
-    was *already* stopped in an earlier operation — and that is the case
-    `_stalled_pull` refuses to commit over, rather than adding a bookkeeping
-    commit to a tree mid-rebase (issue #178).
+    *pull* rebases the new commit onto the upstream **afterwards**, which is
+    right for an edit to a file other machines also edit (a tick, an archive)
+    and wrong for a file that did not exist a moment ago —
+    ``ensure_insights_inbox`` passes ``False`` so that ``check``, a gate,
+    never fetches on the caller's behalf. The order is the whole point: every
+    caller has already written its edit to the worktree, and ``git pull
+    --rebase`` refuses over an unstaged change before it starts, so a pull
+    *ahead* of the commit never ran in the ordinary path and two machines
+    ticking the same inbox diverged until push time (issue #180). Committing
+    first leaves a clean tree in the common case, the rebase is real, and a
+    conflict then stops **inside** a rebase — a state with a marker, which
+    `_stalled_pull` names and routes the same way `aide merge` does.
+
+    Three shapes the pull deliberately does not touch. Under ``git.mode =
+    "local"``, or with no ``origin``, there is nothing to rebase onto and the
+    other sites skip it too. A tree already stopped in an earlier operation is
+    refused *before* the commit — git would let a commit through once the
+    conflicts were staged, and that would add a bookkeeping commit to the
+    middle of someone's rebase (issue #178). And a ``HEAD`` carrying a merge
+    commit origin has not seen is never rebased by a bookkeeping verb: the
+    rebase drops the merge and replays both parents, bringing back every
+    conflict resolved inside it (issue #133) — and `aide merge` reaches here
+    with exactly that commit on ``HEAD``, having integrated origin itself a
+    moment earlier, so the skip is silent there by design.
     """
+    joined = ", ".join(rels)
     try:
         if pull:
-            pulled = git(["pull", "--rebase"], repo_root, check=False)
-            stalled = _stalled_pull(repo_root, config, pulled)
-            if stalled is not None:
-                # Loud for the reason the `except` arm below is loud: the
-                # callers that reach here discard the reason, and the commit
-                # this was the first step of cannot run over an unfinished
-                # rebase — so a verb that printed its success line would be
-                # announcing a tick that is not in any commit.
-                print(f"aide: could not commit {', '.join(rels)} — {stalled}",
-                      file=sys.stderr)
-                return stalled
+            what = _interrupted_op(repo_root)
+            if what is not None:
+                # Refused, and refused HERE rather than left to `git commit`:
+                # with the conflicts staged git accepts a commit mid-rebase,
+                # and the callers that reach this discard the reason, so a
+                # verb would print its success line over a tick sitting in
+                # the middle of an unfinished operation.
+                reason = (f"the repository is stopped in an earlier operation "
+                          f"— {_stopped_state(repo_root, config, what)}")
+                print(f"aide: could not commit {joined} — {reason}", file=sys.stderr)
+                return reason
         for rel in rels:
             git(["add", "--", rel], repo_root, check=False)
         res = git(["commit", "-m", message, "--", *rels], repo_root, check=False)
@@ -5077,8 +5090,7 @@ def _commit_docs_files(repo_root: Path, config, message: str,
                 return "nothing to commit"
             first = next((l.strip() for l in text.splitlines() if l.strip()),
                          "git commit failed")
-            print(f"aide: could not commit {', '.join(rels)} — {first}",
-                  file=sys.stderr)
+            print(f"aide: could not commit {joined} — {first}", file=sys.stderr)
             return first
         # One path per line, never whitespace-split: a `docs_dir` with a space
         # in it must match its own entry. `core.quotepath=false` keeps a
@@ -5086,19 +5098,47 @@ def _commit_docs_files(repo_root: Path, config, message: str,
         out = git(["-c", "core.quotepath=false", "show", "--name-only",
                    "--format=", "HEAD"], repo_root, check=False).stdout
         shown = [line.strip() for line in out.splitlines() if line.strip()]
+        missing = [r for r in rels if r not in shown]
+        if missing:
+            # `add` was refused (an ignored path, say) and `commit -- <path>`
+            # then committed the rest of the list: a commit happened, the file
+            # is not in it, and "committed" would be a lie about the one path
+            # that matters.
+            return f"{', '.join(missing)} is not in the commit (ignored by .gitignore?)"
+        mode = str(config["git"].get("mode", "auto-merge"))
+        if not pull or mode == "local" or not _has_origin(repo_root):
+            return None
+        if _has_unpushed_merge(repo_root):
+            return None
+        pulled = git(["pull", "--rebase"], repo_root, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
         # Loud here, not only in the return: three callers (`progress set`,
         # `tick`, `archive`) discard the reason, and a verb that prints its
         # success line over an uncommitted edit is the failure this names.
         why = f"git could not be run ({exc.__class__.__name__}: {exc})"
-        print(f"aide: could not commit {', '.join(rels)} — {why}", file=sys.stderr)
+        print(f"aide: could not commit {joined} — {why}", file=sys.stderr)
         return why
-    missing = [r for r in rels if r not in shown]
-    if missing:
-        # `add` was refused (an ignored path, say) and `commit -- <path>` then
-        # committed the rest of the list: a commit happened, the file is not in
-        # it, and "committed" would be a lie about the one path that matters.
-        return f"{', '.join(missing)} is not in the commit (ignored by .gitignore?)"
+    stalled = _stalled_pull(repo_root, config, pulled)
+    if stalled is not None:
+        # The commit exists and is being replayed; the tree is now mid-rebase
+        # and the next verb will meet it. Said in full, because the callers
+        # discard the return and the one verb that ends the usual case
+        # (`insights resolve`) is named inside `stalled`.
+        print(f"aide: {joined} is committed here, but replaying that commit "
+              f"onto origin stopped: {stalled}", file=sys.stderr)
+        return stalled
+    if pulled.returncode != 0:
+        # Non-zero with the tree untouched: unstaged changes beside the tick
+        # (git refuses to start over ANY of them), an origin that cannot be
+        # reached, a branch with no upstream. The commit is complete and
+        # local, so this is a notice rather than a reason — but a silent one
+        # would have the docstring promising a convergence that did not
+        # happen, which is the state issue #180 was filed on.
+        why = next((l.strip() for l in (pulled.stderr + pulled.stdout).splitlines()
+                    if l.strip()), "git gave no reason")
+        print(f"aide: {joined} is committed here but NOT rebased onto origin — "
+              f"{why}. The commit is in this repository only until a later "
+              f"pull or push settles it.", file=sys.stderr)
     return None
 
 
@@ -6315,14 +6355,25 @@ def _stalled_pull(repo_root: Path, config: Dict[str, Dict[str, object]],
     what = _interrupted_op(repo_root)
     if what is None:
         return None
+    return f"git pull --rebase could not complete — {_stopped_state(repo_root, config, what)}"
+
+
+def _stopped_state(repo_root: Path, config: Dict[str, Dict[str, object]],
+                   what: str) -> str:
+    """*what* is in progress, and the two ways out of it — one sentence.
+
+    Shared by `_stalled_pull` (a pull that stopped, or refused because *what*
+    was already under way) and the guard `_commit_docs_files` runs before it
+    commits, so both name the same state the same way. Never "the rebase
+    stopped": *what* is whichever of `_INTERRUPTED_OPS` is in progress, and a
+    cherry-pick ALREADY under way is the reachable case at the committer.
+    Naming the operation git reports, and the abort that matches it, is the
+    whole point — a message that guessed `git rebase --abort` there would hand
+    the reader a command that fails. `insights resolve` is named when the
+    inbox is what stopped it.
+    """
     hint = _inbox_conflict_hint(repo_root, config)
-    # Never "the rebase stopped": `what` is whichever of `_INTERRUPTED_OPS` is
-    # in progress, and the pull refusing because a cherry-pick was ALREADY
-    # under way is the reachable case at the `_commit_docs_files` site. Naming
-    # the operation git reports, and the abort that matches it, is the whole
-    # point — a message that guessed `git rebase --abort` there would hand the
-    # reader a command that fails.
-    return (f"git pull --rebase could not complete — {what}."
+    return (f"{what}."
             + (f" {hint}" if hint else "")
             + f" Finish that state — resolve and stage, then "
               f"`{_continue_command(repo_root)}` — or abort it "
