@@ -30,35 +30,15 @@ paths:
      honest answer, and it is asserted like any other: a glob widened until it
      matched a role's read would fail here rather than pass unnoticed. -->
 
-<!-- pins: .aide/conventions/7-off-platform-verification.md
-     Quoted from that section; `test_rule_pins.py` fails if either copy moves
-     alone.
-     - No role in this loop sees a non-Linux checkout, a different working
-       directory, or real CI status
-     - Once work is pushed, **check the real CI result** rather than inferring
-       it from a green local suite
-     - Report what CI actually said, including "no CI is configured here" or
-       "it had not finished"
-     - never let a local pass stand in for a platform the loop cannot reach
-     - When CI is red on a leg that passed locally, treat it as a
-       **portability finding first** (§6), not a flake, until the log says
-       otherwise
--->
+<!-- generated-from: .aide/conventions/7-off-platform-verification.md
+     Everything below the note is that file, down to its `Rationale` heading,
+     written here by `install.py` at install time (issue #109). There is no
+     hand-written copy of §7 to drift, so this file declares no `pins`
+     block: that mechanism guards a restatement, and this is not one. Edit
+     the section. -->
 
-# Off-platform verification
-
-`.aide/conventions.md` §7 is the source of truth; this file is how it reaches
-`validator`, the role that acts on it once the item's push exists. It is
-**delivery, not a second source of truth**. §6 covers the leg this loop can
-see; this is the one it cannot.
-
-**No role in this loop sees a non-Linux checkout, a different working
-directory, or real CI status**, so the honest response is to look at the one
-gate that does:
-
-- Once work is pushed, **check the real CI result** rather than inferring it
-  from a green local suite. Report what CI actually said, including "no CI is
-  configured here" or "it had not finished" — never let a local pass stand in
-  for a platform the loop cannot reach.
-- When CI is red on a leg that passed locally, treat it as a **portability
-  finding first** (§6), not a flake, until the log says otherwise.
+**Delivery, not a second source of truth.** What follows is
+`.aide/conventions.md` §7 — `.aide/conventions/7-off-platform-verification.md`,
+down to its `Rationale` heading — rendered here verbatim at install time, so it
+cannot say anything the engine does not. The reasoning behind each rule is in
+the section below that heading; `.aide/conventions.md` resolves any `§N`.

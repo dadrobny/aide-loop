@@ -56,6 +56,18 @@ toward under-checking: a statement nobody pinned is unguarded exactly as it was
 before, while a pinned one cannot move on one side alone. The known cost, taken
 deliberately in exchange for a check that needs no natural-language judgement.
 
+**What it is no longer for: a generated file** (1.47.0, issue #109). Where a
+delivered file declares `<!-- generated-from: <section> -->`, `install.py`
+writes the section's core into it verbatim at install time — so the delivered
+copy is not a restatement and there is nothing for a pin to guard. Those files
+are excluded from every check below and held instead by
+`test_generated_delivery.py`, which asserts the stronger property this one
+approximates: not "these sentences still appear on both sides" but "the
+delivered body *is* the section". A pin declared in one is a category error and
+fails here, because a curated quote beside a generated body is a claim nobody
+maintains — the pin cannot drift from the section, so it can only go stale
+against a wording it does not control.
+
 Stdlib + pytest only.
 """
 from __future__ import annotations
@@ -70,8 +82,11 @@ _ADAPTER = Path(__file__).resolve().parents[1]
 _RULES_DIR = _ADAPTER / "rules"
 _CORE = _ADAPTER.parents[1] / "core"
 
+sys.path.insert(0, str(_ADAPTER.parents[1]))
 sys.path.insert(0, str(_ADAPTER.parents[1] / "tests"))
-from _delivered import COMMENT as _COMMENT, STRIPS_BOM, label as _label  # noqa: E402
+import install  # noqa: E402  (path shim above)
+from _delivered import (COMMENT as _COMMENT, STRIPS_BOM,  # noqa: E402
+                        is_generated as _is_generated, label as _label)
 
 #: The source tree, so the reader that reports on a file behind a BOM rather
 #: than the one that refuses it — `tests/_delivered.py` has the difference.
@@ -137,8 +152,16 @@ def _normalise(text: str) -> str:
 
 
 #: Every file that **delivers** a contract section: the rules, and the section
-#: skills. This is the set that owes at least one pin.
-_DELIVERED = _RULE_FILES + [p for p in _SKILL_FILES if _is_section_skill(p)]
+#: skills.
+_DELIVERING = _RULE_FILES + [p for p in _SKILL_FILES if _is_section_skill(p)]
+
+#: The generated half — rendered from its section at install time, so it has
+#: no restatement to pin and declares none.
+_GENERATED = [p for p in _DELIVERING if _is_generated(p)]
+
+#: The hand-curated half: the set that owes at least one pin. "Delivered" means
+#: this from here down, because a generated file is delivered and owes nothing.
+_DELIVERED = [p for p in _DELIVERING if p not in _GENERATED]
 
 #: Every file whose pins are **checked**: the delivered files, plus any other
 #: skill that quotes the contract. A workflow skill owes no pin, but a pin it
@@ -146,7 +169,7 @@ _DELIVERED = _RULE_FILES + [p for p in _SKILL_FILES if _is_section_skill(p)]
 #: makes "one routing table, restated in two skills" a checkable claim rather
 #: than a review note.
 _PINNING = _DELIVERED + [p for p in _SKILL_FILES
-                         if p not in _DELIVERED and _PINS_OPENER.search(_read(p))]
+                         if p not in _DELIVERING and _PINS_OPENER.search(_read(p))]
 
 
 def _pin_blocks(path: Path) -> list:
@@ -204,14 +227,39 @@ def test_there_are_delivered_files_and_they_declare_pins():
     module exists to prevent elsewhere.
     """
     assert _RULE_FILES, "no rules/*.md found — the glob or the layout moved"
-    assert len(_DELIVERED) > len(_RULE_FILES), (
+    assert len(_DELIVERING) > len(_RULE_FILES), (
         "no skills/*/SKILL.md reads as a section skill — the layout moved, or "
         "the recognition here stopped seeing `user-invocable: false`")
+    assert _DELIVERED, (
+        "every delivered file reads as generated — either the last curated one "
+        "was converted (in which case this module is finished and should go, "
+        "not be left passing vacuously) or `is_generated` stopped saying no")
+    assert _GENERATED, (
+        "no delivered file reads as generated — `<!-- generated-from: … -->` "
+        "stopped parsing, and the exclusions below now describe nothing")
     assert len(_PINNING) > len(_DELIVERED), (
         "no workflow skill declares a `<!-- pins: … -->` block — the routing "
         "table `/aide-create-queue` and `/aide-review-insights` share is "
         "unpinned, or the opener regex stopped matching")
     assert _PINNED, "no delivered file declares a `<!-- pins: … -->` block"
+
+
+@pytest.mark.parametrize("path", _GENERATED, ids=_label)
+def test_a_generated_file_declares_no_pins(path: Path):
+    """The other side of the exclusion, so it cannot be taken silently.
+
+    A generated file that grows a pins block is not harmlessly redundant: the
+    pin quotes a sentence the file does not control, so the only way it can
+    ever fail is by the section being reworded — reporting drift in a copy
+    that by construction has none, and inviting the fix that "updates both
+    copies" of something with one copy.
+    """
+    assert not _PINS_OPENER.search(_read(path)), (
+        f"{_label(path)}: declares a pin, and its body is rendered from "
+        f"{install.generated_sections(_read(path))} at install time. The pins "
+        f"mechanism guards a restatement; there is none here. Delete the "
+        f"block — `test_generated_delivery.py` asserts the whole body against "
+        f"the section, which is strictly stronger.")
 
 
 @pytest.mark.parametrize("rule", _DELIVERED, ids=_label)
@@ -223,6 +271,10 @@ def test_every_delivered_file_pins_at_least_one_statement(rule: Path):
     genuinely delivers no normative engine statement, that is a question about
     why it is delivered at all, and it should surface here rather than be
     exempted in silence.
+
+    The one exemption is not one: a **generated** file has no restatement to
+    pin, and is not in this list at all (see the module docstring). It is the
+    same obligation discharged by a stronger mechanism, not a waiver.
     """
     blocks = _pin_blocks(rule)
     assert blocks, (

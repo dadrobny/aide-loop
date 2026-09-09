@@ -30,6 +30,7 @@ Stdlib + pytest only.
 """
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -282,3 +283,136 @@ def test_copy_tree_without_a_render_hook_copies_a_declaring_file(tmp_path: Path)
     install.copy_tree(src, dst, [])
 
     assert (dst / "SKILL.md").read_text(encoding="utf-8") == STUB
+
+
+# --------------------------------------------------------------------------- #
+# against a real framework tree — what a consumer actually receives
+#
+# The functions above are the grammar; these are the installer applying it,
+# through `install.main` on a **copy** of `core/` and `adapters/`. A copy
+# because two of them edit a section to see the edit arrive, which is the
+# claim that matters and cannot be made against the checkout the suite runs
+# from. In-process rather than by subprocess: the windows leg pays ~70ms a
+# spawn (issue #74), and `FRAMEWORK_ROOT` is a module global by design.
+# --------------------------------------------------------------------------- #
+SECTION_UNDER_TEST = Path("conventions") / "3-command-hygiene.md"
+GENERATED_RULE = Path(".claude") / "rules" / "aide-command-hygiene.md"
+
+
+@pytest.fixture
+def framework(tmp_path: Path, monkeypatch) -> Path:
+    """A copy of this framework's `core/` and `adapters/`, installable from."""
+    root = tmp_path / "framework"
+    root.mkdir()
+    for name in ("core", "adapters"):
+        shutil.copytree(FRAMEWORK_ROOT / name, root / name,
+                        ignore=shutil.ignore_patterns("__pycache__", "tests"))
+    monkeypatch.setattr(install, "FRAMEWORK_ROOT", root)
+    return root
+
+
+@pytest.fixture
+def target(tmp_path: Path) -> Path:
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    return consumer
+
+
+def _install(target: Path, *args: str) -> int:
+    return install.main(["--into", str(target), "--yes", "--git-mode", "local",
+                         "--name", "Generated", *args])
+
+
+def _section_of(framework: Path) -> Path:
+    return framework / "core" / SECTION_UNDER_TEST
+
+
+def _amend(framework: Path, sentence: str) -> None:
+    """Add a statement to the section's core, above its `Rationale` heading —
+    the edit a `conventions/` change is, made where a consumer cannot see it
+    until an `--update` brings it."""
+    path = _section_of(framework)
+    text = install.source_text(path)
+    cut = install.RATIONALE_HEADING.search(text)
+    assert cut, "the section under test lost its `Rationale` heading"
+    path.write_text(f"{text[:cut.start()]}{sentence}\n\n{text[cut.start():]}",
+                    encoding="utf-8")
+
+
+def test_a_fresh_install_renders_the_generated_file(framework: Path, target: Path):
+    """The delivered copy the consumer ends up with is the section, and the
+    consumer holds both halves so it can be read as one claim about one repo."""
+    assert _install(target) == 0
+
+    delivered = (target / GENERATED_RULE).read_text(encoding="utf-8")
+    core = install.section_core(
+        (target / ".aide" / SECTION_UNDER_TEST).read_text(encoding="utf-8"))
+    assert core.rstrip("\n") in delivered
+    assert install.generated_sections(delivered), (
+        "the installed copy lost its declaration, so the next --update would "
+        "have nothing to re-render from")
+
+
+def test_the_generated_file_is_recorded_in_the_adapter_manifest(framework: Path,
+                                                                target: Path):
+    """A rendered file is one the installer *wrote*, so it belongs in the
+    manifest like any copied one — otherwise a release that dropped it would
+    read it as a file the project added and leave it armed forever."""
+    assert _install(target) == 0
+    manifest = (target / ".aide" / install.ADAPTER_MANIFEST).read_text(
+        encoding=install.CONSUMER_ENCODING)
+    assert GENERATED_RULE.as_posix() in manifest
+
+
+def test_update_re_renders_the_file_when_only_the_section_changed(framework: Path,
+                                                                  target: Path):
+    """The point of generating: one edit, in `conventions/`, reaches the
+    delivered copy with nothing else touched."""
+    assert _install(target) == 0
+    before = (target / GENERATED_RULE).read_bytes()
+    _amend(framework, "**A rule added between the two installs.**")
+
+    assert _install(target, "--update") == 0
+
+    after = (target / GENERATED_RULE).read_text(encoding="utf-8")
+    assert "**A rule added between the two installs.**" in after
+    assert after.encode("utf-8") != before
+
+
+def test_check_says_behind_when_the_section_change_ships_with_its_version(
+        framework: Path, target: Path, capsys):
+    """`--check` compares `.aide/VERSION`, as it does for every copied file —
+    a section edit is consumer-visible exactly because the repo's own version
+    gate makes it arrive with a bump (`tests/test_repo_versioning.py`). Both
+    halves asserted here, because the unbumped one is the case a reader is
+    most likely to assume works: it does not, and it never did for any other
+    file either.
+    """
+    assert _install(target) == 0
+    _amend(framework, "**A rule added with no release behind it.**")
+    assert _install(target, "--check") == 0, "the version did not move"
+
+    version = framework / "core" / "VERSION"
+    major, minor, patch = install.parse_version(
+        version.read_text(encoding="utf-8").strip())
+    version.write_text(f"{major}.{minor + 1}.0\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert _install(target, "--check") == 1
+    assert "BEHIND" in capsys.readouterr().out
+
+
+def test_an_unrenderable_section_aborts_the_install_and_moves_no_version(
+        framework: Path, target: Path, capsys):
+    """A framework checkout that contradicts itself: the rule still delivers a
+    section the engine no longer has. Exit 4, and — because `.aide/VERSION` is
+    written last — the consumer stays on the version it had rather than
+    reporting an install that delivered a rule file with no rules in it."""
+    assert _install(target) == 0
+    installed_version = (target / ".aide" / "VERSION").read_bytes()
+    _section_of(framework).unlink()
+    capsys.readouterr()
+
+    assert _install(target, "--update") == 4
+    assert "does not have" in capsys.readouterr().err
+    assert (target / ".aide" / "VERSION").read_bytes() == installed_version
