@@ -140,6 +140,9 @@ says the paragraph changes no decision.
   - **§1 (index)** — the template conventions, the three read-cold rules and
     the header blockquote stay; why slots and italic guidance render safely,
     and why narrated process ages badly, move under Rationale.
+  - **§1 → status-icons** — the six icons, what ✅ and 🔍 assert and the
+    structural positions stay; why ✅ had to stop meaning two things per
+    mode, and why closing a landed 🔍 item is a content check, move.
 
 ## [1.45.0] — 2026-09-09
 
