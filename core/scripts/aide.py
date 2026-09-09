@@ -5111,8 +5111,12 @@ def _commit_docs_files(repo_root: Path, config, message: str,
             # `add` was refused (an ignored path, say) and `commit -- <path>`
             # then committed the rest of the list: a commit happened, the file
             # is not in it, and "committed" would be a lie about the one path
-            # that matters.
-            return f"{', '.join(missing)} is not in the commit (ignored by .gitignore?)"
+            # that matters. Printed as well as returned, like every other
+            # arm: the callers discard the return, and `insights archive`
+            # reaches this with the archive file it just created.
+            reason = f"{', '.join(missing)} is not in the commit (ignored by .gitignore?)"
+            print(f"aide: {reason}", file=sys.stderr)
+            return reason
         mode = str(config["git"].get("mode", "auto-merge"))
         if not pull or mode == "local" or not _has_origin(repo_root):
             return None

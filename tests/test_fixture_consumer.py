@@ -1313,6 +1313,33 @@ def test_insights_archive_yes_moves_only_the_closed_entry(aide, consumer: Path):
     assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
 
 
+def test_an_archive_the_gitignore_swallows_refuses_the_whole_commit_loudly(
+        aide, consumer: Path, capsys):
+    """Measured for the round-two review of #181, which asked whether the
+    committer's "path not in the commit" arm could fail silently: an ignored
+    archive path never reaches it. `git add` refuses the path, and `commit
+    -- <paths>` then refuses the WHOLE commit — "pathspec did not match any
+    file(s) known to git" — so nothing lands, the inbox edit is unstaged
+    again, and the refusal is printed with both paths named. The arm itself
+    now prints as well, for the shape that does reach it."""
+    ignore = consumer / ".gitignore"
+    ignore.write_text(ignore.read_text(encoding="utf-8") + "docs/aide/insights/\n",
+                      encoding="utf-8")
+    _commit(consumer, "chore: ignore the archive directory")
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(consumer), "insights", "archive",
+                      "--before", "2026-06-01", "--yes"]) == 0
+    err = capsys.readouterr().err
+    assert ("could not commit docs/aide/insights.md, "
+            "docs/aide/insights/archive-2026-Q1.md") in err
+    assert "did not match" in err
+    assert _files_in_head(consumer) == [".gitignore"]           # nothing landed
+    status = _git(["status", "--porcelain"], consumer).stdout
+    assert " M docs/aide/insights.md" in status                  # unstaged again
+    assert (consumer / "docs" / "aide" / "insights" / "archive-2026-Q1.md").is_file()
+
+
 def test_check_stays_clean_after_an_archive(aide, consumer: Path):
     """An archived claim is frozen — the gate must not start warning about it."""
     assert aide.main(["--repo", str(consumer), "insights", "archive",

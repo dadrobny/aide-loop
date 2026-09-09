@@ -171,6 +171,15 @@ commit lands first and the rebase after it is real.
   in the middle of someone's rebase is the state this exists to prevent. The
   sentence is built once, in `_stopped_state`, and shared with
   `_stalled_pull`.
+- **The one arm of the committer that returned its reason without printing
+  it now prints it too.** "<path> is not in the commit (ignored by
+  .gitignore?)" went back to callers that all discard it. Measured while
+  closing that gap: an ignored archive path does not reach this arm at all —
+  `git commit -- <paths>` refuses the whole commit over the pathspec it
+  cannot match, nothing lands, and that refusal was already loud with both
+  paths named — so the print is for the shape that does reach it, and a
+  fixture case pins what `insights archive` actually does when
+  `docs/aide/insights/` is ignored.
 
 ## [1.44.0] — 2026-09-09
 
