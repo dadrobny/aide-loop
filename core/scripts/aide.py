@@ -8032,7 +8032,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo", type=Path, default=None, help="repo root (default: search up for aide.toml)")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_check = sub.add_parser("check", help="consistency gate over docs/aide "
+    p_check = sub.add_parser("check", help="consistency gate over docs/aide, "
+                             "plus the test-hygiene lints over tests_dir, which "
+                             "run with a notice even in a repo with no docs_dir "
                              "(writes only a missing insights.md, from the "
                              "template, and the file --report names)")
     p_check.add_argument("--queue", type=int, default=None,
@@ -8042,7 +8044,24 @@ def build_parser() -> argparse.ArgumentParser:
                          help="with --queue: write the findings as JSON to this path")
     p_check.set_defaults(func=cmd_check)
 
-    p_prog = sub.add_parser("progress", help="edit progress.md status / acceptance")
+    p_prog = sub.add_parser(
+        "progress", help="edit progress.md status / acceptance",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "set:     flip an item's deliverable bullet and roll its stage up\n"
+            "accept:  tick one acceptance criterion (--criterion N) or every "
+            "one in the stage (--all), with --evidence\n"
+            "amend:   append a dated correction under a ticked box; the tick "
+            "stands (--evidence required)\n"
+            "retract: untick a box, keep the original attestation visible, "
+            "and capture a `gap` insight (--reason required)\n"
+            "reword:  change a criterion's text in progress.md and roadmap.md, "
+            "or in neither; refuses over a ticked, annotated or corrected box\n"
+            "\n"
+            "Neither amend nor retract takes --all: each attestation was made "
+            "separately and is corrected or withdrawn separately. Both refuse "
+            "without a stated reason. `aide check` warns on every retracted "
+            "criterion and `aide status` prints it."))
     p_prog.add_argument("action",
                         choices=["set", "accept", "amend", "retract", "reword"])
     p_prog.add_argument("number", type=int,
@@ -8088,8 +8107,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_queue.add_argument("--date", default=None, help="tidy: override the supersede date (YYYY-MM-DD)")
     p_queue.set_defaults(func=cmd_queue)
 
-    p_ins = sub.add_parser("insights",
-                           help="list / tick / archive / resolve the insight inbox")
+    p_ins = sub.add_parser(
+        "insights", help="list / tick / archive / resolve the insight inbox",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "list:    number the entries by position and print the backlog "
+            "without the closed history around it\n"
+            "tick:    the one in-place edit — tick entry N with --pointer; on "
+            "an entry already ticked, append a dated trail line instead\n"
+            "archive: move closed entries older than --before into "
+            "insights/archive-YYYY-QN.md, each with its trail, line for line; "
+            "an entry it cannot date is named and left behind; the archive is "
+            "frozen and no longer shape-checked; what remains is renumbered, "
+            "so re-run list\n"
+            "resolve: write the union of a conflicted inbox — the shared "
+            "history, then each side's new entries in capture order; a tick "
+            "on either side stands and keeps its pointer, trail lines merge "
+            "in date order, and two ticks with different pointers keep both "
+            "and say so. Refuses, writing nothing, anything that is not a "
+            "pure append: a claim reworded, reordered or deleted on one side, "
+            "or a side that archived.\n"
+            "\n"
+            "A missing insights.md is created from .aide/templates/insights.md "
+            "by list (and by check, claim and queue start) and committed when "
+            "git can — on a branch, with an identity; otherwise it is left "
+            "untracked and the notice says why."))
     p_ins.add_argument("action", choices=["list", "tick", "archive", "resolve"])
     p_ins.add_argument("number", type=int, nargs="?", default=None,
                        help="tick: the entry number from `insights list`")
@@ -8166,7 +8208,8 @@ def register_git_subcommands(sub) -> None:
     p_gc.add_argument("--yes", action="store_true", help="actually delete (default: dry run)")
     p_gc.set_defaults(func=cmd_gc)
 
-    p_status = sub.add_parser("status", help="one-call roadmap-state report (branch, queues, claims, PRs)")
+    p_status = sub.add_parser("status", help="one-call roadmap-state report (branch, queues, "
+                              "claims, PRs, open gates, unmet targets, retracted criteria)")
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
     p_status.add_argument("--base", default=None,
                           help="ref to report ahead/behind against (default: the "

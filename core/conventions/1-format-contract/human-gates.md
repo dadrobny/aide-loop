@@ -47,15 +47,14 @@ approve`/`decline`.
 **A declined gate keeps blocking.** It is resolved — someone decided — but the
 decision was "no". The remedy is to re-plan: drop the blocked items, or change
 what the gate asks. Only `✅ Approved` opens a gate; an unrecognised status
-blocks too, so a typo in the mark cannot silently open one.
+blocks too.
 
 Semantics *(aide claim, check, status, gate)*:
 
 - **`aide claim` will not offer a blocked item**, and reports the gate as the
   reason rather than an unexplained "none left".
 - **`aide check` warns** on every gate still blocking — a normal state, not a
-  defect; the point is that it is visible instead of buried in a spec's prose.
-- **`aide status`** prints them, like Outcome targets.
+  defect.
 - **Resolving is a CLI operation**, never a hand edit:
   ```
   aide gate (list | approve <n> | decline <n>) [--evidence "…"]
@@ -79,4 +78,9 @@ Agents *read* gates — to know why they must stop — and stop.
   the worst case is work pausing for a human. Removing one is not: a gate
   exists precisely because the decision is not derivable from the work, so an
   agent resolving it destroys the only thing it was protecting. And releasing
-  work behind a declined gate would run exactly what was refused.
+  work behind a declined gate would run exactly what was refused. An
+  unrecognised status blocks for the same reason: a typo in the mark must not
+  silently open a gate.
+- **Why `check` warns and `status` prints.** A gate that is still blocking is
+  visible on every run instead of buried in a spec's prose; `aide status -h`
+  names open gates among what it reports.

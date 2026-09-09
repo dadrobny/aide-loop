@@ -36,19 +36,16 @@ note — and nothing downstream reads it as a signal. The hand-back is a
 distinguished outcome the driver can route on; the Decisions entry records what
 was decided once a role with standing has decided it.
 
-**The setting governs `spec-author` and nothing else.** It reads as a global
-posture on asking-versus-assuming — it sits under `[loop]`, is named generically,
-and is the only such statement in `aide.toml` — and it is not one.
+**The setting governs `spec-author` and nothing else.** It is not a global
+posture on asking-versus-assuming.
 
 **Root documents are authored through their loop entry point, interactively —
 whatever `loop.clarify` says.** `vision.md` and `roadmap.md` are Steps 1 and 2
 of the loop, and the adapter's create-vision / create-roadmap entry points carry
 the safeguards a free-hand file write skips. Do not write a root document
-directly, however well the template shape is known. Root-document authoring is
-the one part of the loop where a human is present by construction — the step
-exists to capture what only they know — so ask until the mandatory sections are
-grounded in their answers, and never fill **Guiding principles**, **Out of
-scope**, or **Success criteria** from assumption.
+directly, however well the template shape is known. Ask until the mandatory
+sections are grounded in their answers, and never fill **Guiding principles**,
+**Out of scope**, or **Success criteria** from assumption.
 
 **The duty runs both ways.** When several specs are authored before any is built,
 the *producing* spec must enumerate the shape its declared consumers read — not
@@ -65,12 +62,18 @@ or records appear in a walk, what a strict mode rejects.
   defective criterion faithfully implemented; the entry is a note that the
   loop reached a state it should not be able to reach silently, and nothing
   routes on it.
+- **Why the setting reads as global, and is not.** It sits under `[loop]`, is
+  named generically, and is the only such statement in `aide.toml`; the roles
+  it does not govern have one move each, and the setting decides what the
+  role they hand to does next.
 - **Why `assume` is defensible for an item and not for a root document.** A
   queued item's trade is audited: every choice lands in the spec's mandatory
   Assumptions block, a human reads it at the queue boundary, and a wrong item
   is one unit of a batch, cheap to redo. A wrong assumption at the root has no
   Assumptions block to be audited in, no queue boundary to be caught at, and
   propagates into the roadmap and every queue and item derived from it.
+  Root-document authoring is the one part of the loop where a human is
+  present by construction — the step exists to capture what only they know.
 - **What the entry points guard.** The existing-document check (a vision is
   overwritten only after explicit confirmation; a roadmap is updated
   incrementally, never regenerated), and the hand-off that presents the result

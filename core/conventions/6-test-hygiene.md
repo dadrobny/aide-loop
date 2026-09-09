@@ -15,10 +15,7 @@ entire loop, indefinitely.
   network access.** The rules below are the specific ways that is lost; this is
   the general statement they serve, and it binds a case none of them names.
 - **Never write the repo's own working-directory path literally into a test.**
-  Resolve from the test file (`Path(__file__).resolve().parents[N]`). An
-  absolute path ignores where the process runs, so it passes on the machine
-  that authored it and matches nothing anywhere else — including a fresh clone
-  in a *different* directory.
+  Resolve from the test file (`Path(__file__).resolve().parents[N]`).
 - **Any `Path` entering a hash, comparison, or match must be `.as_posix()`.**
   `str(Path)` — including a `Path` interpolated into an f-string, which calls
   `str()` — renders the OS-native separator, so an identical tree hashes
@@ -39,10 +36,9 @@ entire loop, indefinitely.
   `json.loads`, a Markdown table walked cell by cell — is immune to the rewrite
   and draws no warning whether or not it is pinned. `read_bytes()` has no such
   immunity, so **any** use of it on a committed path is reported. The immunity
-  is a property of the reader, not of parsing: `p.read_bytes().decode()` on a
-  CRLF checkout leaves a `\r` in the last cell of a Markdown row where
-  `read_text()` does not. And a `read_text()` parse may still need the pin for
-  a byte-reproducibility claim made where the lint cannot look, so never write
+  is a property of the reader, not of parsing. And a `read_text()` parse may
+  still need the pin for a byte-reproducibility claim made where the lint
+  cannot look, so never write
   "the eol-pin lint passes" as an acceptance criterion: assert the pin itself.
   `binary` and `-text` count as pins alongside `eol=lf` — all three stop the
   conversion — while a bare `text` enables it.
@@ -70,11 +66,10 @@ entire loop, indefinitely.
 - **Prefer calling the function over shelling out to the command that calls
   it.** The CLI's logic is importable and returns structured data; a subprocess
   boundary adds stdout encoding, platform quirks, and a re-parse of what was
-  structured a moment earlier. This binds hardest where it looks least
-  applicable: **a test asserting on `aide check`'s own output should call
-  `run_checks` in-process**, which returns `(errors, warnings)` as structured
-  data, rather than replaying the CLI's stdout. `aide check` flags such a
-  module, and that is the rule working rather than the verb flagging itself.
+  structured a moment earlier. **A test asserting on `aide check`'s own
+  output should call `run_checks` in-process**, which returns
+  `(errors, warnings)` as structured data, rather than replaying the CLI's
+  stdout.
 - **Never pin an exact warning or error count from a module that itself trips
   the lint being counted.** The module raises the count by one the moment it is
   committed, so a baseline recorded before it existed is falsified by the act of
@@ -107,11 +102,6 @@ scope claim written as a suite assertion. The rest of this section binds
 identically and is checked by nobody, so read a warning as authoritative and
 silence as partial throughout — not only on the pin.
 
-The lints in this section read `tests_dir`, never `docs_dir`, so they do **not**
-require the roadmap document set: `aide check` in a repo with no `docs_dir` runs
-them, says so in a `notice:`, and exits 0. A repo may adopt these conventions and
-the CLI without adopting the loop.
-
 ### Rationale
 
 - **Why delivered, not pointed at.** A pointer is followed only if the role
@@ -119,16 +109,28 @@ the CLI without adopting the loop.
   by a human reading a CI log, or by a reviewer outside the loop — never by a
   gate inside it — and each lint above was added after the class it names had
   already reached `main`.
-- **The absolute path.** A hardcoded sandbox path made a glob return nothing
-  on every CI runner, collapsing a digest to SHA-256-of-empty input and failing
-  all four legs while every local gate stayed green.
+- **The absolute path.** It ignores where the process runs, so it passes on
+  the machine that authored it and matches nothing anywhere else — including
+  a fresh clone in a *different* directory. A hardcoded sandbox path made a
+  glob return nothing on every CI runner, collapsing a digest to
+  SHA-256-of-empty input and failing all four legs while every local gate
+  stayed green.
 - **The separator.** The `.as_posix()` class alone has caused four separate
   CI-only failures.
 - **Why the eol lint stays narrow.** The majority of `read_bytes()` calls in a
   real suite compare two freshly generated files to each other and need no pin
   at all, so guessing at an unresolvable path would be noise; and warning on
   a `read_text()` parse would be wrong rather than merely noisy, since the
-  reader is immune.
+  reader is immune — `p.read_bytes().decode()` on a CRLF checkout leaves a
+  `\r` in the last cell of a Markdown row where `read_text()` does not.
+- **Why the in-process call binds on `aide check` itself.** It is where the
+  rule looks least applicable and binds hardest; `aide check` flags a module
+  that replays its stdout, and that is the rule working rather than the verb
+  flagging itself.
+- **Why the lints run without the loop.** They read `tests_dir`, never
+  `docs_dir`, so `aide check` in a repo with no `docs_dir` runs them, says so
+  in a `notice:`, and exits 0 — a repo may adopt these conventions and the
+  CLI without adopting the loop. `aide check -h` says so.
 - **The codec, twice.** Six items in a single queue independently wrote
   `capture_output=True, text=True`; all six passed the Linux-only validator,
   and `windows-latest` raised a `KeyError` on a mangled em-dash heading in one

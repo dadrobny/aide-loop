@@ -121,6 +121,89 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.45.2] — 2026-09-09
+
+Each delivered section's core is compared to its delivered copy sentence by
+sentence, and the cores are compacted the way #78 compacted the always-read
+files, for the first time on a section body (issue #184). Every core sentence
+the receiving roles act on and the delivered copy did not carry is now carried
+and pinned; every sentence no role acts on leaves the core for `Rationale`;
+no rule is weakened, moved out of `conventions/`, or cut across files (the
+cross-file duplicates and the per-document split of the §1 bundle stay with
+#109). The per-sentence disposition tables, and the before/after measurement,
+are on the issue.
+
+### Changed
+
+- **§1 (index)** — the template rule, the ISO-date rule and the header
+  blockquote reach `aide-living-documents` and are pinned; why the date slot
+  spells its format and why the read-cold rules sit on the floor move under
+  Rationale.
+- **§1 → status-icons** — the stray-icon warning and the rank rule reach
+  `aide-living-documents` and are pinned. Nothing leaves the core: every
+  sentence is acted on, by the receiving roles or by the validator and the
+  CLI, which is the outcome #184 allowed.
+- **§1 → progress.md** — the deliverable-bullet shape, the suffix rule, the
+  marker forms, the shared-marker rule and the through-the-queue rule reach
+  `aide-living-documents` and are pinned. Three mechanism passages leave the
+  core: why neither `amend` nor `retract` takes `--all`, what `aide status`
+  prints of unmet targets, and the over-50 range rule move under Rationale,
+  and the first two now sit in the CLI's own help — `aide progress -h`
+  describes the five actions, and `aide status -h` names what it reports.
+- **§1 → items.md** — the filename and heading, the status-free header, the
+  engine marker and its append-only correction, and the whole `## Dependencies`
+  scan (what blocks, the `**Downstream` and `Blocks:` exclusions) reach
+  `aide-living-documents` and are pinned; the spec-author spec had carried the
+  marker alone. Five argument clauses move under Rationale: why a patch
+  release is silent, why 🚧 and 🔍 block, why a bounded diff goes vacuous or
+  red, what makes a schedule collision visible at spec time, and why an
+  unannotated AC costs nothing.
+- **§1 → human gates** — the row, the `Blocks` and `Status` vocabularies, the
+  reach rule, where a gate is stated and where it lives, and what a declined
+  gate means reach `aide-living-documents` and are pinned; both receiving
+  roles raise gates and neither had the row shape. Why a typo cannot open a
+  gate and why `check` warns move under Rationale; that `aide status` prints
+  gates is now in its help.
+- **§1 → insights.md** — the engine-creates-the-file rule, the re-run-`list`
+  rule and the aligned wording of `resolve`'s union and the conflict-marker
+  error reach `aide-living-documents` and are pinned. The verb mechanics —
+  what `archive` carries and names, how `resolve` merges ticks and trails,
+  when the created file is committed — move into `aide insights -h`, and why
+  the section fixes the maintenance-queue ordering and not the checkpoint
+  around it moves under Rationale.
+- **§3** — the verb-by-verb mapping behind "if an `aide` verb covers it",
+  the two-repos-stay-blocked clause and "never a bare `python`/`pytest`, and
+  never an absolute path" reach `rules/aide-command-hygiene.md` and are
+  pinned; the redirection bullet is aligned to the section's wording. The
+  three argument clauses — why the rules hold on any runtime, why a pipeline
+  is one command, why a project may span repos — move under Rationale. No
+  rule changes, so the hygiene hook and the allow-list are untouched.
+- The always-on floor moves from 8,067 to 9,149 content bytes, all of it the
+  §3 rule file above (its comment-stripped body grows from 1,998 to 2,488 B;
+  the rest is the pins that now guard it); `FLOOR_PIN` in
+  `tests/test_structural_budget.py` moves with it.
+- **§5** — the two settings, the pin-your-dependencies rule, the
+  spec-author half of the contradiction hand-back, the amendment rule, the
+  governs-spec-author-only rule and the producer's serialised-form duty
+  reach `aide-living-documents` and are pinned; the skill had carried the
+  root-document rule alone, and the spec-author spec the settings. Why the
+  setting reads as global and why a human is present at the root move under
+  Rationale; the builder's half stays in the core, reached by pointer.
+- **§6** — what the eol lint can resolve, the codec remedy, the
+  deliberately-unreported merge-base shape and the closing "checked by
+  nobody" rule reach `aide-test-hygiene` and are pinned. The absolute-path
+  argument, the CRLF `\r` example, the "binds hardest on `aide check`
+  itself" argument and the no-`docs_dir` fact move under Rationale; the last
+  is now in `aide check -h`.
+- **§9** — unchanged: every core sentence is delivered by
+  `aide-review-and-validation` and acted on by a receiving role, the outcome
+  #184 allowed for a section whose skill is already the section.
+- **Not in this pass**: the seven sections no file delivers (§2, §4, §7, §8,
+  `authorised-paths`, `environment-gated-capabilities`, `queue-NNN`) have no
+  receiving role to build a disposition against and stay as 1.45.1 left
+  them; the cross-file duplicates and the per-document split of the §1
+  bundle are #109's.
+
 ## [1.45.1] — 2026-09-09
 
 Every section under `conventions/` now reads core first, rationale last (issue

@@ -9,8 +9,7 @@ from them breaks the tooling.
 value to substitute, and an _italic line_ for authoring guidance to read then
 replace with real prose. `aide check` flags any `{{...}}` left in a generated
 `docs/aide/**.md` file as an unfilled template slot. Dates are always
-**ISO 8601** (`YYYY-MM-DD`) — the templates' `{{yyyy-mm-dd}}` slot spells the
-format out so no separate lookup is needed.
+**ISO 8601** (`YYYY-MM-DD`).
 
 **Durable artifacts must read cold.** Everything the loop produces outlives
 the session that produced it — item specs, `insights.md` entries, commit
@@ -35,8 +34,7 @@ section fixes:
 
 The rules bind interactive sessions as much as unattended ones — a human and a
 runtime writing a commit message or an issue body are producing exactly these
-artifacts, with no agent spec in play. `.aide/AGENT-CONTEXT.md` exists so they
-reach that session without anything having to point at this file.
+artifacts, with no agent spec in play.
 
 **Header blockquote** — every living document opens with one, carrying its step
 number in the loop, what it derives from, and what derives from it. Keep the
@@ -64,7 +62,11 @@ The shapes themselves are one file each, so a pointer of the form
   swallowed by a renderer the way an unescaped `<Placeholder>` tag would be —
   and only one of the two is a machine-recognisable shape, which is what lets
   `aide check` flag a surviving slot without ever flagging guidance. It is also
-  why guidance must never be written as a slot.
+  why guidance must never be written as a slot. The templates' `{{yyyy-mm-dd}}`
+  slot spells the date format out so no separate lookup is needed.
+- **Why the reading-cold rules are on the floor.** They bind a session with no
+  agent spec in play, so `.aide/AGENT-CONTEXT.md` carries them and they reach
+  that session without anything having to point at this file.
 - **Reading cold.** The reader who matters is someone opening the artifact
   months later with none of the conversation. A chat-local label resolves only
   for someone who was there; a reader who was not cannot even tell what the

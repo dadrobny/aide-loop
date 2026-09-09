@@ -38,6 +38,9 @@ paths:
      - Any `Path` entering a hash, comparison, or match must be `.as_posix()`
      - an identical tree hashes differently on Windows
      - A committed byte-exact fixture needs a `.gitattributes` `text eol=lf` pin
+     - It reports **only what it can resolve** — a fixture reached through a
+       `tmp_path`, a function argument, or a constant imported from another
+       package is skipped in silence rather than guessed at
      - Treat a warning as authoritative and its silence as partial
      - the lint decides a *read shape*, not whether a file needs a pin
      - The immunity is a property of the reader, not of parsing
@@ -50,6 +53,8 @@ paths:
      - The codec is the producing side's job too
      - a script that writes non-ASCII to stdout or stderr inherits the console
        codepage on Windows, so it must reconfigure its own streams
+     - name the codec on the read, fix the writer if you own it, and pass
+       `errors="replace"` when you do not
      - Prefer calling the function over shelling out to the command that calls
        it
      - a test asserting on `aide check`'s own output should call `run_checks`
@@ -61,6 +66,11 @@ paths:
        it
      - A scope claim about a diff belongs on the branch, not in the suite
      - Deriving the base from `aide scope` is not the repair
+     - a test that computes its base (`git merge-base HEAD origin/main`) is a
+       claim about the branch rather than about an item and is deliberately
+       not reported
+     - The rest of this section binds identically and is checked by nobody,
+       so read a warning as authoritative and silence as partial throughout
 -->
 
 # Test hygiene
@@ -95,9 +105,12 @@ regardless.
   differently on Windows.
 - **A committed byte-exact fixture needs a `.gitattributes` `text eol=lf` pin**,
   or `core.autocrlf` rewrites it on checkout and every byte comparison fails on
-  Windows only. `aide check` warns on the cases it can decide. Treat a warning
-  as authoritative and its silence as partial. The lint decides a *read shape*,
-  not whether a file needs a pin: `read_text()` applies universal-newline
+  Windows only. `aide check` warns on the cases it can decide. It reports
+  **only what it can resolve** — a fixture reached through a `tmp_path`, a
+  function argument, or a constant imported from another package is skipped
+  in silence rather than guessed at. Treat a warning as authoritative and its
+  silence as partial. The lint decides a *read shape*, not whether a file
+  needs a pin: `read_text()` applies universal-newline
   translation, so an artifact read that way and parsed draws no warning whether
   or not it is pinned, while **any** `read_bytes()` on a committed path is
   reported. The immunity is a property of the reader, not of parsing. So never
@@ -112,8 +125,9 @@ regardless.
   non-ASCII to stdout or stderr inherits the console codepage on Windows, so it
   must reconfigure its own streams. When the reader and the writer disagree the
   read comes back **`None`** rather than raising — the decode runs in
-  `subprocess.run`'s reader thread — so assert the value is there before
-  asserting anything about it.
+  `subprocess.run`'s reader thread. So name the codec on the read, fix the
+  writer if you own it, and pass `errors="replace"` when you do not — then
+  assert the value is there before asserting anything about it.
 - **Prefer calling the function over shelling out to the command that calls
   it.** The CLI's logic is importable and returns structured data; a subprocess
   boundary adds stdout encoding, platform quirks, and a re-parse of what was
@@ -133,9 +147,15 @@ regardless.
   `aide scope` is not the repair**: the verb reads the *current* branch's
   recorded base, and `aide merge` re-runs the suite from the merge target. Nor
   is a skip guard, which leaves the test permanently skipped once the claim
-  branch is deleted. `aide check` warns on both literal shapes.
+  branch is deleted. `aide check` warns on both literal shapes; a test that
+  computes its base (`git merge-base HEAD origin/main`) is a claim about the
+  branch rather than about an item and is deliberately not reported.
 - **Assert a derived value is recognisable *before* asserting anything about
   it.** A glob that matched nothing, a capture that came back empty, a slice
   taken from a failed `find()` — each yields a value that flows into the
   assertion and passes while checking nothing at all. A test that cannot fail is
   worse than no test.
+
+`aide check` decides the ones a script can. The rest of this section binds
+identically and is checked by nobody, so read a warning as authoritative and
+silence as partial throughout — not only on the pin.
