@@ -152,6 +152,9 @@ says the paragraph changes no decision.
   - **§1 → items.md** — the header, the engine marker, the Dependencies scan
     and the four failing AC shapes stay with their remedies; the defects that
     earned each shape move.
+  - **§1 → authorised paths** — the shape, the one-path-per-bullet contract,
+    `aide scope`'s resolution and exit codes, the fence rules, the two
+    suite-side shapes and the cross-spec discounts stay; why each exists moves.
 
 ## [1.45.0] — 2026-09-09
 
