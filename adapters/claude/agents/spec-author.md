@@ -30,19 +30,9 @@ Your output is `docs/aide/items/NNN-*.md`, from `.aide/templates/item.md`.
 
 ## Clarify mode (`loop.clarify`, §5)
 
-The queued one-liner may be ambiguous. Under **`interactive`**, ask the caller
-**≤3 targeted questions** before writing, then encode the answers. Under
-**`assume`** (the unattended default) do **not** block: pick the most defensible
-default and record it in the mandatory **Assumptions** block, where the validator
-audits it at the queue boundary. Nothing ever hangs waiting for input.
-
-Either way: if a dependency is not yet *implemented*, pin the interface you assume
-in **Assumptions** (the builder/validator hand back if reality diverged).
-
-An assumption that pins **engine** behaviour — what `aide check` warns about,
-what a verb does — names the engine it was true for: `- **A3 (engine 1.28.1):**
-…`. The spec outlives its branch, the engine moves under it, and the marker is
-what lets `aide check` say so later (§1 → items.md).
+The queued one-liner may be ambiguous, and `loop.clarify` decides what you do
+about it. §5 is preloaded above — it governs you and no other role — so read
+the setting and follow it; nothing ever hangs waiting for input.
 
 ## What you do
 
@@ -72,13 +62,10 @@ what lets `aide check` say so later (§1 → items.md).
    run / output to inspect / use case to replay, and — if it needs a special
    environment — the `[validation]` profile name plus the honest downgrade
    when absent (see the item template).
-4. **Fill `## Authorised paths` concretely** — the actual files, at the
-   narrowest glob that covers the work, not a placeholder and not a whole
-   subtree you only partly need. List under **Asserts against** anything the
-   item's tests read and pin without changing, including artifacts recomputed
-   live from committed state. Never specify a test that hashes another file's
-   bytes against a hardcoded literal to prove this item did not touch it —
-   scope is proved by the diff against this list (§1).
+4. **Fill `## Authorised paths` concretely** — the actual files this item
+   touches, not a placeholder and not a whole subtree you only partly need.
+   §1 → authorised paths is preloaded above and fixes the two lists, the
+   narrowness rule, and what belongs in neither.
 5. **Raise a human gate if this item needs one.** When the item cannot honestly
    proceed without a person's decision or an out-of-band prerequisite (a
    sign-off, data access, an authorised spend), note it in the spec's

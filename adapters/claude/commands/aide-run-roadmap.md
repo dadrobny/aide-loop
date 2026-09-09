@@ -137,18 +137,15 @@ PRs + stops again — the human re-invokes, giving a fresh session per queue).
 
 ## Tidy the previous queue
 
-Whenever you generate queue NNN, first tidy the now-superseded queue NNN-1 so the
-queue history stays legible and it's obvious which batch is live:
+Tidying the now-superseded queue NNN-1 is the planner's step, not yours: it
+runs `python .aide/scripts/aide.py queue tidy <NNN-1>`, which writes the
+completion note, then reflects each item's final `progress.md` state so a stale
+📋 list isn't left implying open work, and commits that alongside the new queue
+on the `aide/queue-NNN` branch.
 
-- Add/update a status line at its top, e.g.
-  `> **Status:** ✅ Completed — superseded by queue-NNN (YYYY-MM-DD).`
-- Mark each of its items with its final `progress.md` state (✅ done, or ⏸️/❌ if
-  carried/dropped) so a stale 📋 list isn't left implying open work.
-- Commit that tidy-up alongside the new queue, on the `aide/queue-NNN` branch.
-
-Queue state itself is **derived** (a queue is open while any of its items is
-📋/🚧 in `progress.md`), so the tidy stamp is decorative — it keeps the queue
-history legible to humans; nothing parses it.
+The shape of the stamp is `.aide/conventions.md` §1 → `queue-NNN.md`'s, and the
+planner has that section preloaded — so the verb writes it and nobody types
+one by hand. Ask for a tidy that did not happen; never for different wording.
 
 ## Working in parallel (optional worktree isolation)
 
