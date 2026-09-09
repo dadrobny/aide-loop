@@ -147,6 +147,8 @@ says the paragraph changes no decision.
     attestation verbs and the outcome-target semantics stay; why a marker is
     desugared, why no rollup ticks a box, why an attestation is immutable and
     why a measured outcome is not a box move.
+  - **§1 → queue-NNN** — derived state, sequential numbering and the three
+    senses of "parallel" stay; why one queue is live at a time moves.
 
 ## [1.45.0] — 2026-09-09
 
