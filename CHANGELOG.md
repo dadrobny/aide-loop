@@ -121,6 +121,40 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.47.0] — 2026-09-09
+
+`install.py` can now **render** a delivered file instead of copying it: where
+an adapter's rule or section skill declares
+
+```
+<!-- generated-from: .aide/conventions/6-test-hygiene.md -->
+```
+
+the installer writes that file's own text followed by the section's **core** —
+everything above its closing `Rationale` heading (issue #122) — verbatim. The
+delivered copy therefore *is* the section, and the drift `<!-- pins: … -->`
+blocks exist to catch cannot happen in it. PR 2 of issue #109; PR 1 (1.46.0)
+built the manifest this reads.
+
+### Added
+
+- **The generator** (`install.py`: `generated_sections`, `section_core`,
+  `render_delivered`, `delivered_bytes`, and `copy_tree`'s `render` hook). The
+  declaration is a comment in the adapter's own file rather than a side
+  manifest, so the source tree stays inspectable — frontmatter, `<!-- reach
+  -->`, `<!-- triggers -->` and whatever the *adapter* has to say about
+  delivering the section are all still authored where a reader of
+  `adapters/<name>/` will find them — and a second adapter (issue #64) reuses
+  the convention by writing the same comment against the same engine path.
+  Rendered bytes are UTF-8 without a BOM and LF-only whichever OS ran the
+  install, so a consumer's `git diff` after `--update` does not depend on the
+  platform.
+- **Exit code 4** for a framework checkout that contradicts itself — a
+  delivered file naming a section that moved, or a section that never got its
+  `Rationale` heading. It aborts rather than shipping a delivered file with no
+  rules in it; `.aide/VERSION` is written last, so the target still reports the
+  version it had.
+
 ## [1.46.0] — 2026-09-09
 
 The manifest #109 has been waiting on, realised as **per-document section
