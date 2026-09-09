@@ -149,6 +149,11 @@ issue, as #109's input.
   the exit codes, and the rule an author decides against: a pair with no
   declared dependency keeps the error. Why a queue branch is skipped joins
   the Rationale, beside the discounts' own why.
+- **§1 → environment-gated capabilities** — opens on what it governs and who
+  acts on it (the templates point here); the two recording mechanisms and
+  the two planning additions are bullets led by the thing they name; the
+  Rationale paragraph becomes two `Why` bullets. No sentence of the rule
+  changes.
 
 ## [1.45.2] — 2026-09-09
 

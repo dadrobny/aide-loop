@@ -1,19 +1,25 @@
 ### Environment-gated capabilities (optional, additive)
 
-A capability gated behind an optional package or external tool (a GPU
-library, Docker, a large/optional pip extra, ...) must degrade gracefully —
+Governs a capability only some environments can exercise — a GPU library,
+Docker, a large optional extra — and how its verification is recorded. The
+item and `progress.md` templates point here: `spec-author` fills the item
+section, a stage-closing item's builder keeps the table, and `aide env`
+evaluates a profile.
+
+**A capability gated behind an optional package or external tool (a GPU
+library, Docker, a large/optional pip extra, ...) must degrade gracefully** —
 its tests skip cleanly (never fail, never silently pass as if exercised) when
 the dependency is absent, mirroring the project's existing optional-extra
 pattern. That graceful-fallback bar is enough for a stage to reach ✅ under the
 rollup rule. Two additive, non-blocking mechanisms record whether the gated
 path was ever run for real:
 
-- The item template's optional **Environment / Hardware Dependencies**
-  section — filled in by any item introducing such a capability, naming the
+- **The item template's optional Environment / Hardware Dependencies
+  section** — filled in by any item introducing such a capability, naming the
   package/tool, its `pyproject`/equivalent declaration, and the required
   fallback behaviour.
-- `progress.md`'s optional **Environment-Gated Capability Verification**
-  table — one row per capability, starting `❓ Unverified`. A stage-closing
+- **`progress.md`'s optional Environment-Gated Capability Verification
+  table** — one row per capability, starting `❓ Unverified`. A stage-closing
   item's Implementation Steps must add/update the row(s) for any capability
   its stage introduced. The row flips to `✅ Verified (date, host/CI)` only
   when a human or a CI runner that actually has the dependency present has
@@ -38,8 +44,9 @@ Two additions make the verification *planned* rather than hoped-for:
 
 #### Rationale
 
-A skip-clean pytest run is not evidence the optional path was ever run for
-real, and nothing else records that gap by default — the table is the record.
-Tests prove the code runs; validation observes that it does something
-meaningful, which is why a stage-validation item replays use cases rather than
-re-running the suite.
+- **Why a table, and not the suite's verdict.** A skip-clean pytest run is not
+  evidence the optional path was ever run for real, and nothing else records
+  that gap by default — the table is the record.
+- **Why a stage-validation item replays use cases.** Tests prove the code
+  runs; validation observes that it does something meaningful — so it replays
+  the stage's use cases rather than re-running the suite.
