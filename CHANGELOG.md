@@ -155,6 +155,10 @@ says the paragraph changes no decision.
   - **§1 → authorised paths** — the shape, the one-path-per-bullet contract,
     `aide scope`'s resolution and exit codes, the fence rules, the two
     suite-side shapes and the cross-spec discounts stay; why each exists moves.
+  - **§1 → insights.md** — the entry shape, the verbs, `resolve`'s union, the
+    immutability rule, the routing table and the queue-authoring duty stay;
+    why the date is strict, why conflicts are unions, why the claim is
+    immutable and why a `framework` issue leads with its version move.
 
 ## [1.45.0] — 2026-09-09
 
