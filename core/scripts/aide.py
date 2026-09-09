@@ -8042,7 +8042,24 @@ def build_parser() -> argparse.ArgumentParser:
                          help="with --queue: write the findings as JSON to this path")
     p_check.set_defaults(func=cmd_check)
 
-    p_prog = sub.add_parser("progress", help="edit progress.md status / acceptance")
+    p_prog = sub.add_parser(
+        "progress", help="edit progress.md status / acceptance",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "set:     flip an item's deliverable bullet and roll its stage up\n"
+            "accept:  tick one acceptance criterion (--criterion N) or every "
+            "one in the stage (--all), with --evidence\n"
+            "amend:   append a dated correction under a ticked box; the tick "
+            "stands (--evidence required)\n"
+            "retract: untick a box, keep the original attestation visible, "
+            "and capture a `gap` insight (--reason required)\n"
+            "reword:  change a criterion's text in progress.md and roadmap.md, "
+            "or in neither; refuses over a ticked, annotated or corrected box\n"
+            "\n"
+            "Neither amend nor retract takes --all: each attestation was made "
+            "separately and is corrected or withdrawn separately. Both refuse "
+            "without a stated reason. `aide check` warns on every retracted "
+            "criterion and `aide status` prints it."))
     p_prog.add_argument("action",
                         choices=["set", "accept", "amend", "retract", "reword"])
     p_prog.add_argument("number", type=int,
@@ -8166,7 +8183,8 @@ def register_git_subcommands(sub) -> None:
     p_gc.add_argument("--yes", action="store_true", help="actually delete (default: dry run)")
     p_gc.set_defaults(func=cmd_gc)
 
-    p_status = sub.add_parser("status", help="one-call roadmap-state report (branch, queues, claims, PRs)")
+    p_status = sub.add_parser("status", help="one-call roadmap-state report (branch, queues, "
+                              "claims, PRs, open gates, unmet targets, retracted criteria)")
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
     p_status.add_argument("--base", default=None,
                           help="ref to report ahead/behind against (default: the "

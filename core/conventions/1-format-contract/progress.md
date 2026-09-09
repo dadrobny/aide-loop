@@ -36,9 +36,8 @@ accepted for the marker, and all mean the same thing to every command:
 | `*(Items 071–075)*` | 71, 72, 73, 74, 75 — inclusive, hyphen or en-dash |
 | `*(Items 006, 044–046)*` | 6, 44, 45, 46 — an element may be a range |
 
-Spacing around a separator does not matter. A range spanning more than 50 is
-read as a typo and contributes only its endpoints. Prefer the explicit list when
-the items are not contiguous; a range is only shorthand for one.
+Spacing around a separator does not matter. Prefer the explicit list when the
+items are not contiguous; a range is only shorthand for one.
 
 **A marker naming several items is shorthand, never a shared status cell.**
 `aide progress set` and `aide merge` **desugar** the bullet first, into one
@@ -105,12 +104,6 @@ bullet of the roadmap stage's **Validation / acceptance** block; if the two
 cannot be lined up, **nothing is written** and the message says which counts
 disagreed.
 
-Neither `amend` nor `retract` takes `--all`: each attestation was made
-separately and is corrected or withdrawn separately. Both refuse without a
-stated reason. And `aide check` warns on every retracted criterion while
-`aide status` prints it, so a withdrawal stays visible instead of living only
-in one commit's diff.
-
 **What a stage's ✅ means — and what it deliberately does not.** The rollup
 makes stage status track exactly one thing: *the planned work shipped*. An
 Acceptance box is therefore an observable check **of the built thing** (the
@@ -141,8 +134,6 @@ Unverified` until measured, then `✅ Met (date, evidence)` or `❌ Not met
   `- [ ] gap — …` line to `insights.md` in the same edit. The follow-on
   deliverables then enter through the queue, never by retro-editing a closed
   stage's deliverable list.
-- `aide status` prints every target not yet `✅ Met`, so the state stays
-  visible even though the stage summary table does not carry it.
 
 #### Rationale
 
@@ -165,4 +156,13 @@ Unverified` until measured, then `✅ Met (date, evidence)` or `❌ Not met
 - **Why a measured outcome is not an Acceptance box.** It would hold the
   stage's honest record hostage to a result the work cannot promise. Needing
   more work than planned to hit a goal is normal; a `❌ Not met` target routed
-  as a gap is how that work is planned explicitly.
+  as a gap is how that work is planned explicitly. `aide status` prints every
+  target not yet `✅ Met`, so the state stays visible even though the stage
+  summary table does not carry it.
+- **Why neither `amend` nor `retract` takes `--all`.** Each attestation was
+  made separately and is corrected or withdrawn separately, and both refuse
+  without a stated reason. `aide check` warns on every retracted criterion
+  while `aide status` prints it, so a withdrawal stays visible instead of
+  living only in one commit's diff. `aide progress -h` states all of this.
+- **A range spanning more than 50** is read as a typo and contributes only
+  its endpoints.

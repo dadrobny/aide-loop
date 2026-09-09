@@ -64,6 +64,26 @@ paths:
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/progress.md
+     - a **Deliverables** block of **flat** bullets, each
+       `- <icon> <text>. *(Item NNN)*` — one status icon, one item ref, no nested
+       status-bearing sub-bullets
+     - The `*(Item NNN)*` suffix is what ties an item to the bullet whose
+       status it moves
+     - an item no bullet references is untracked
+     - **Suffix means suffix**: only the trailing marker that ends the bullet
+       (its last wrapped line) attributes
+     - A bullet whose references all sit mid-prose tracks nothing, and `aide
+       check` warns about it
+     - | `*(Items 006, 044)*` | 6, 44 — one deliverable, several items |
+     - | `*(Items 071–075)*` | 71, 72, 73, 74, 75 — inclusive, hyphen or en-dash |
+     - | `*(Items 006, 044–046)*` | 6, 44, 45, 46 — an element may be a range |
+     - Prefer the explicit list when the items are not contiguous; a range is
+       only shorthand for one
+     - A marker naming several items is shorthand, never a shared status cell
+     - write the shared marker freely; the file simply grows a row the first
+       time its items diverge
+     - enter through the queue, never by retro-editing a closed stage's
+       deliverable list
      - ticked only by `aide progress accept` — never derived
      - The attestation is immutable; what is recorded about it is not
      - `amend` appends, and only to a ticked box
@@ -147,6 +167,29 @@ number in the loop, what it derives from, and what derives from it. Keep the
 line current when a document's relationships change. The transient hand-off
 ("run `/aide-…` next") is spoken by the skill that wrote the file, not stored
 in it.
+
+**A stage section's work is a Deliverables block of flat bullets, each
+`- <icon> <text>. *(Item NNN)*` — one status icon, one item ref, no nested
+status-bearing sub-bullets** (§1 → `progress.md`). The `*(Item NNN)*` suffix is
+what ties an item to the bullet whose status it moves, so an item no bullet
+references is untracked. **Suffix means suffix**: only the trailing marker that
+ends the bullet (its last wrapped line) attributes; a bullet whose references
+all sit mid-prose tracks nothing, and `aide check` warns about it. The marker
+forms, all read the same way by every command:
+
+| Form | Reads as |
+|---|---|
+| `*(Item 006)*` | 6 |
+| `*(Items 006, 044)*` | 6, 44 — one deliverable, several items |
+| `*(Items 089/090)*` | 89, 90 |
+| `*(Items 071–075)*` | 71, 72, 73, 74, 75 — inclusive, hyphen or en-dash |
+| `*(Items 006, 044–046)*` | 6, 44, 45, 46 — an element may be a range |
+
+Prefer the explicit list when the items are not contiguous; a range is only
+shorthand for one. **A marker naming several items is shorthand, never a shared
+status cell** — write the shared marker freely; the file simply grows a row the
+first time its items diverge. Follow-on deliverables enter through the queue,
+never by retro-editing a closed stage's deliverable list.
 
 **Prefer the verb to a hand edit**: `aide progress set`, `aide progress accept`,
 `aide queue tidy`, `aide gate`. Acceptance boxes are **ticked only by

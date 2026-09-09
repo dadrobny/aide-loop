@@ -143,6 +143,13 @@ are on the issue.
   `aide-living-documents` and are pinned. Nothing leaves the core: every
   sentence is acted on, by the receiving roles or by the validator and the
   CLI, which is the outcome #184 allowed.
+- **§1 → progress.md** — the deliverable-bullet shape, the suffix rule, the
+  marker forms, the shared-marker rule and the through-the-queue rule reach
+  `aide-living-documents` and are pinned. Three mechanism passages leave the
+  core: why neither `amend` nor `retract` takes `--all`, what `aide status`
+  prints of unmet targets, and the over-50 range rule move under Rationale,
+  and the first two now sit in the CLI's own help — `aide progress -h`
+  describes the five actions, and `aide status -h` names what it reports.
 
 ## [1.45.1] — 2026-09-09
 
