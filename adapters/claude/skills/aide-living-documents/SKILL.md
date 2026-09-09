@@ -124,6 +124,20 @@ paths:
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/human-gates.md
+     - A **decision only a person can make**, blocking work until they make it
+     - | Gate | Blocks | Status | Decision / evidence |
+     - **Blocks** — item numbers (any §1 reference form, or bare: `106`,
+       `110, 111`, `106–108`), `stage N`, or `all`
+     - `⏳ Awaiting`, then `✅ Approved (date)` or `❌ Declined (date)`
+     - Reach is per gate, and never a queue
+     - The person raising the gate chooses the reach
+     - implies `Blocks: stage N`
+     - implying `Blocks: NNN`
+     - the **authoritative row**, always
+     - a gate that exists only as prose in a roadmap or a spec blocks nothing
+     - A declined gate keeps blocking
+     - The remedy is to re-plan: drop the blocked items, or change what the
+       gate asks
      - Resolving is a CLI operation, never a hand edit
 -->
 
@@ -215,6 +229,29 @@ never by retro-editing a closed stage's deliverable list.
 `progress.md` is adding a row to the `## Human gates` table, which has no verb —
 **resolving is a CLI operation, never a hand edit** (`aide gate` only lists,
 approves and declines).
+
+**A human gate is a decision only a person can make, blocking work until they
+make it** (§1 → human gates) — one row in that table:
+
+```
+| Gate | Blocks | Status | Decision / evidence |
+|------|--------|--------|---------------------|
+| Golden-file retirement approved | 106 | ⏳ Awaiting | — |
+```
+
+**Blocks** — item numbers (any §1 reference form, or bare: `106`, `110, 111`,
+`106–108`), `stage N`, or `all`. **Status** — `⏳ Awaiting`, then
+`✅ Approved (date)` or `❌ Declined (date)`. **Reach is per gate, and never a
+queue**: exactly those items when the decision affects one thread and the
+queue keeps producing other work; `stage N` when the decision could
+*invalidate* a stage's work (resolved live through `progress.md`); `all` for a
+programme-level stop. The person raising the gate chooses the reach. A gate
+known at planning time is stated in the `roadmap.md` stage and implies
+`Blocks: stage N`; one discovered while specifying an item is noted in its
+Validation or Assumptions block, implying `Blocks: NNN`; `progress.md` holds
+the **authoritative row**, always — a gate that exists only as prose in a
+roadmap or a spec blocks nothing. **A declined gate keeps blocking.** The
+remedy is to re-plan: drop the blocked items, or change what the gate asks.
 
 **Correcting an attestation has verbs too, so it is never a hand edit either.**
 **The attestation is immutable; what is recorded about it is not** (§1 →

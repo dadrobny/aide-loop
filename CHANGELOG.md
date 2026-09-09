@@ -158,6 +158,12 @@ are on the issue.
   release is silent, why 🚧 and 🔍 block, why a bounded diff goes vacuous or
   red, what makes a schedule collision visible at spec time, and why an
   unannotated AC costs nothing.
+- **§1 → human gates** — the row, the `Blocks` and `Status` vocabularies, the
+  reach rule, where a gate is stated and where it lives, and what a declined
+  gate means reach `aide-living-documents` and are pinned; both receiving
+  roles raise gates and neither had the row shape. Why a typo cannot open a
+  gate and why `check` warns move under Rationale; that `aide status` prints
+  gates is now in its help.
 
 ## [1.45.1] — 2026-09-09
 
