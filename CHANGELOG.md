@@ -121,6 +121,25 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.45.3] — 2026-09-09
+
+A style pass over the seven sections no file delivers — §2, §4, §7, §8,
+`§1 → authorised-paths`, `environment-gated-capabilities`, `queue-NNN` —
+which #184 (1.45.2) left as 1.45.1 wrote them (issue #186). The style the
+other ten already share is written down once, in `conventions.md` after its
+index table: the opener, the bullet grammar, the `Rationale` shape, the
+consumer annotation and the rule that a verb's mechanism lives in its `-h`.
+Conciseness and one shape across the tree, not cutting: no rule sentence is
+reworded, and the cross-file duplicates stay with #109. The per-section
+reach column — which roles reach each of the seven, and by what — is on the
+issue, as #109's input.
+
+### Changed
+
+- **`conventions.md`** — the shape paragraph after the index table now
+  states the style contract every section follows, the way #122 stated
+  core-then-tail there.
+
 ## [1.45.2] — 2026-09-09
 
 Each delivered section's core is compared to its delivered copy sentence by
