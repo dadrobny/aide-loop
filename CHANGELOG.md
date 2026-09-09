@@ -121,6 +121,66 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.45.0] — 2026-09-09
+
+The bookkeeping committer promised a rebase git would never perform. Now the
+commit lands first and the rebase after it is real.
+
+### Changed
+
+- **`_commit_docs_files` commits first and rebases onto origin afterwards
+  (issue #180).** The shared committer behind `progress set`, `insights
+  tick` and `insights archive` ran `git pull --rebase` *before* committing,
+  over an edit every caller had already written to the worktree — and git
+  refuses to start a rebase over an unstaged change (exit 128, no marker), so
+  in the ordinary path the pull never ran, the tick stayed local, and two
+  machines editing the same inbox diverged until one was rejected at push.
+  The order is reversed: the pathspec commit lands, the tree is then clean in
+  the common case, and `git pull --rebase` replays that one commit onto the
+  upstream — so a tick on one machine converges with the other's before any
+  push. A collision now stops **inside** the rebase, with a marker, which is
+  the state 1.44.0 taught the engine to see: the verb says the commit exists
+  here, that replaying it onto origin stopped, and — when the inbox is what
+  stopped it — names `aide insights resolve` and `git rebase --continue` as
+  the way out, the same route `aide merge` offers. No `--autostash`: a
+  stash-pop conflict leaves conflict markers with no operation in progress,
+  which nothing in the engine detects and `insights resolve` cannot read.
+- **Three shapes the pull deliberately leaves alone, each stated.** Under
+  `git.mode = "local"`, or with no `origin`, there is no rebase at all — the
+  other pull sites already skip it there, and a notice about missing tracking
+  information on every tick of a local-mode consumer would be noise about a
+  remote the mode says does not exist. A `HEAD` carrying a merge commit origin
+  has not seen is never rebased by a bookkeeping verb, for the reason 1.31.1
+  gave `aide merge` (issue #133): the rebase drops the merge and replays both
+  parents, and `aide merge` itself reaches this committer with exactly that
+  commit on `HEAD`, having integrated origin a moment earlier — so the skip is
+  silent there by design. And a pull that comes back non-zero with the tree
+  untouched — unstaged changes beside the tick, an unreachable origin, a
+  branch with no upstream — is a **notice**, not a refusal: the commit is
+  complete and local, and the message says it was not rebased and why, so the
+  docstring's promise is either kept or visibly not.
+- **The already-stopped tree is refused before the commit, not after a pull
+  that could not start.** 1.44.0 caught a repository already mid-rebase as a
+  side effect of the pull refusing over it; with the pull moved behind the
+  commit that side effect is gone, so the committer now asks
+  `_interrupted_op` first — for every caller, including the one that creates
+  a missing inbox with no pull at all — and refuses with the same sentence — "stopped in an
+  earlier operation — a cherry-pick is in progress", the matching continue
+  and abort, the inbox hint when it applies. It matters because git accepts a
+  commit mid-rebase once the conflicts are staged, and a bookkeeping commit
+  in the middle of someone's rebase is the state this exists to prevent. The
+  sentence is built once, in `_stopped_state`, and shared with
+  `_stalled_pull`.
+- **The one arm of the committer that returned its reason without printing
+  it now prints it too.** "<path> is not in the commit (ignored by
+  .gitignore?)" went back to callers that all discard it. Measured while
+  closing that gap: an ignored archive path does not reach this arm at all —
+  `git commit -- <paths>` refuses the whole commit over the pathspec it
+  cannot match, nothing lands, and that refusal was already loud with both
+  paths named — so the print is for the shape that does reach it, and a
+  fixture case pins what `insights archive` actually does when
+  `docs/aide/insights/` is ignored.
+
 ## [1.44.0] — 2026-09-09
 
 Three of the engine's `git pull --rebase` calls threw away their return value,
