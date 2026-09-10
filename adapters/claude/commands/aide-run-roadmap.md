@@ -100,7 +100,7 @@ prepare the branch and handle push/PR around it.
 - **Expect up to two queues from one create call.** When open `defect`, `gap` or
   `automation` entries exist, the planner writes a **maintenance queue** from
   those entries and the **stage queue** after it (`.aide/conventions.md` §1 →
-  `insights.md`), numbered in that order. That is not two live queues: the live
+  `insights-maintenance-queue.md`), numbered in that order. That is not two live queues: the live
   queue is the lowest-numbered open one, so the maintenance queue is executed
   and merged first and the stage queue starts when it empties. Its summary says
   which queues it wrote; branch and PR on the **lower** number, and carry both

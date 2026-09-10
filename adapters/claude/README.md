@@ -223,11 +223,25 @@ one section to defer to.
 | `aide-document-format` | §1 index, §1 → status icons | `queue-planner`, `spec-author`, `validator` |
 | `aide-human-gates` | §1 → human gates | `queue-planner`, `spec-author` |
 | `aide-progress-file` | §1 → `progress.md` | `queue-planner`, `validator` |
-| `aide-queue-and-inbox` | §1 → `queue-NNN.md`, §1 → `insights.md` | `queue-planner` |
+| `aide-queue-and-inbox` | §1 → `queue-NNN.md`, §1 → `insights.md`, §1 → the maintenance queue | `queue-planner` |
 | `aide-item-specs` | §1 → items, authorised paths, environment-gated capabilities; §5 | `spec-author` |
 | `aide-off-platform-verification` | §7 | `validator` |
 | `aide-test-hygiene` | §6 | `test-writer` |
 | `aide-review-and-validation` | §9 | `reviewer`, `validator` |
+
+**Two §1 sections are split by reader, and no skill delivers either half's
+other reader** (1.48.0, issue #191). `insights.md` is capture — the shape every
+role appends, on the floor and in `aide-queue-and-inbox` — while
+`insights-triage.md` (routing, judging, the `framework` hand-over) is the
+workflow skill `/aide-review-insights`'s and `insights-maintenance-queue.md`
+(the fixes queued ahead of the stage queue) is the queue author's, delivered by
+`aide-queue-and-inbox` and restated under pin by `/aide-create-queue`.
+`authorised-paths.md` is the declaration `spec-author` writes;
+`authorised-paths-proof.md` — `aide scope`, `check --queue`, the fences a test
+must never write — is delivered by no skill and reached by pointer from the
+validator's, spec-reviewer's and test-writer's own instructions. The two skills
+were carrying about 4.8 kB and 3.1 kB of other roles' rules; the split is what
+lets each core be delivered whole.
 
 Until 1.46.0 the first five were one bundle, `aide-living-documents`,
 preloaded by the two writers: seven sections each, of which each wrote two or

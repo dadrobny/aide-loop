@@ -11,12 +11,16 @@ paths:
      Literal, not measured: this body is preloaded into exactly the agent
      specs whose `skills:` frontmatter names `aide-queue-and-inbox` — the one
      role that writes a queue file and the one that reads the open inbox as an
-     input to the batch. Two sections in one skill because their reach is
+     input to the batch. Three sections in one skill because their reach is
      identical: a queue is planned from the inbox, and the maintenance-queue
-     ordering is a statement about both. The other roles append an insight
-     line and nothing else, and that shape is on the always-on floor in
-     `AGENT-CONTEXT.md`; `spec-author` expands a queue's items but writes no
-     queue file, and its own spec names the queue file it reads. Before this
+     ordering is a statement about both. Triage is deliberately not among
+     them — since 1.48.0 (issue #191) the routing table, the judgement and the
+     `framework` hand-over are §1 → `insights-triage.md`, performed by
+     `/aide-review-insights` before this role is spawned. The other roles
+     append an insight line and nothing else, and that shape is on the
+     always-on floor in `AGENT-CONTEXT.md`; `spec-author` expands a queue's
+     items but writes no queue file, and its own spec names the queue file it
+     reads. Before this
      the queue-file section was reached by nothing that pointed at it — two
      inline restatements of the completion stamp, unpinned (issue #186's reach
      column). The `paths:` above inject nothing on a read (issue #85,
@@ -35,7 +39,7 @@ paths:
 
 <!-- pins: .aide/conventions/1-format-contract/queue-NNN.md
      Quoted from that section; `test_rule_pins.py` fails if either copy moves
-     alone. One block per section file, so two blocks follow.
+     alone. One block per section file, so three blocks follow.
      - Queue state is derived, not declared
      - A queue is **open** iff any of its items is 📋/🚧 in `progress.md`,
        else **done**
@@ -62,20 +66,29 @@ paths:
        warning, and the message names this verb
      - Ticking the checkbox is the one in-place edit
      - It refuses anything that is not a pure append
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/insights-maintenance-queue.md
      - The open inbox is an input to queue authoring, not only an output of
        triage
      - considered, and either queued or explicitly passed over — never
        silently dropped
+     - Insight-derived fixes get a queue of their own, ahead of the stage
+       queue
+     - a maintenance queue, authored and merged before the stage queue
+     - An unchecked entry is still a candidate
 -->
 
 # Queue files and the insight inbox
 
-`.aide/conventions.md` §1 → `queue-NNN.md` and §1 → `insights.md` are the
-sources of truth; this file is how both reach `queue-planner`, preloaded at
-spawn, since a queue is planned from the inbox and neither shape is one the
-role can look up mid-write. It is **delivery, not a second source of truth**.
-The immutability of a captured claim and the entry shape itself are on the
-floor, in `AGENT-CONTEXT.md`, already in this context.
+`.aide/conventions.md` §1 → `queue-NNN.md`, §1 → `insights.md` and §1 →
+`insights-maintenance-queue.md` are the sources of truth; this file is how the
+three reach `queue-planner`, preloaded at spawn, since a queue is planned from
+the inbox and neither shape is one the role can look up mid-write. It is
+**delivery, not a second source of truth**. The immutability of a captured
+claim and the entry shape itself are on the floor, in `AGENT-CONTEXT.md`,
+already in this context; routing an entry by type is triage's, §1 →
+`insights-triage.md`, and runs before you are spawned.
 
 **Queue state is derived, not declared.** A queue is **open** iff any of its
 items is 📋/🚧 in `progress.md`, else **done**; the live queue is the
@@ -123,11 +136,22 @@ resolve this file's conflict by hand: a conflict marker left in the file is an
 `aide check` **error**, not a warning, and the message names this verb.
 
 **The open inbox is an input to queue authoring, not only an output of triage**
-(§1 → `insights.md`). Triage happens *at* the queue boundary, when the next
-queue does not exist yet, so a `defect`, `gap` or `automation` entry routed
-there to "a candidate item" waits in the inbox for whoever authors that queue:
-`aide insights list --open` is one of its inputs, beside vision, roadmap and
-progress. Every open entry of those three types is **considered, and either
-queued or explicitly passed over — never silently dropped**; a queued one is
-ticked with the item number it became, and a passed-over one stays open,
-because an unchecked entry is still a candidate.
+(§1 → `insights-maintenance-queue.md`). Triage happens *at* the queue boundary,
+when the next queue does not exist yet, so a `defect`, `gap` or `automation`
+entry routed there to "a candidate item" waits in the inbox for whoever authors
+that queue: `aide insights list --open` is one of its inputs, beside vision,
+roadmap and progress. Every open entry of those three types is **considered,
+and either queued or explicitly passed over — never silently dropped**; a
+queued one is ticked with the item number it became, and a passed-over one
+stays open, because **an unchecked entry is still a candidate**.
+
+**Insight-derived fixes get a queue of their own, ahead of the stage queue**
+(§1 → `insights-maintenance-queue.md`). When those open entries warrant it they
+are batched into **a maintenance queue, authored and merged before the stage
+queue** — its own number, its own items, ticking what it absorbs — and the
+stage queue is the next number up. It is not a second live queue: the live
+queue is the lowest-numbered open one, so the fixes are simply served first.
+Whether an entry warrants one is yours to decide and never silent: too small
+to be worth a branch, blocked on something unbuilt, out of scope, or a `gap`
+the upcoming stage was going to fill anyway — say which, where the queue is
+reviewed.

@@ -23,8 +23,8 @@ Read vision, roadmap, and progress, then write the queue from the template
 ### Read the open insight inbox first
 
 **The open inbox is an input to queue authoring, not only an output of triage**
-(`.aide/conventions.md` §1 → `insights.md`). Read it with the verb, never by
-opening the file — the file interleaves closed and open entries:
+(`.aide/conventions.md` §1 → `insights-maintenance-queue.md`). Read it with the
+verb, never by opening the file — the file interleaves closed and open entries:
 
 ```
 python .aide/scripts/aide.py insights list --open
@@ -39,8 +39,8 @@ the item number it became (below), and one you pass over stays open — still a
 candidate for the next queue — and is named, with why, at the end of your turn.
 
 **Triage routes each unchecked entry by its type, and this table is the whole
-rule** (§1 → `insights.md`, where it is written once so that this skill and
-`/aide-review-insights` cannot hold different copies of it):
+rule** (§1 → `insights-triage.md`, where it is written once so that this skill
+and `/aide-review-insights` cannot hold different copies of it):
 
 | Type | Where it goes | Who ticks the entry |
 |---|---|---|
@@ -58,7 +58,8 @@ than folding or filing it mid-batch.
 
 **When open `defect`, `gap` or `automation` entries exist at a queue boundary
 they are batched into a maintenance queue, authored and merged before the stage
-queue** (§1 → `insights.md`) — so one create call writes **two** queue files:
+queue** (§1 → `insights-maintenance-queue.md`) — so one create call writes
+**two** queue files:
 
 1. `queue-NNN.md`, the **maintenance queue**, from those entries only.
 2. `queue-(NNN+1).md`, the **stage queue**, from the roadmap as usual.
@@ -217,17 +218,30 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
   to re-derive. That is what makes leaving an entry unchecked an honest routing
   rather than a hope.
 
-<!-- pins: .aide/conventions/1-format-contract/insights.md
+<!-- pins: .aide/conventions/1-format-contract/insights-maintenance-queue.md
+     What this skill does with a routed entry, quoted from the section that
+     owns it — §1 → `insights-maintenance-queue.md` since 1.48.0 (issue #191),
+     when the queue half was split out of §1 → `insights.md` by reader, the
+     queue's author being the reader. `test_rule_pins.py` fails if either copy
+     is reworded alone.
+     - The open inbox is an input to queue authoring, not only an output of
+       triage
+     - considered, and either queued or explicitly passed over — never silently
+       dropped
+     - When open `defect`, `gap` or `automation` entries exist at a queue
+       boundary they are batched into a maintenance queue, authored and merged
+       before the stage queue
+     - a pass-over leaves the entry open and is stated where the queue is
+       reviewed
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/insights-triage.md
      The routing table this skill queues from, quoted from the section that
      owns it; `test_rule_pins.py` fails if either copy is reworded alone, which
      is what keeps this table and `/aide-review-insights`'s identical to the
      engine's. A table row is pinned whole, pipes included: the normaliser
      de-pipes a line that both starts and ends with `|`, so the row and the pin
      compare as the same phrase.
-     - The open inbox is an input to queue authoring, not only an output of
-       triage
-     - considered, and either queued or explicitly passed over — never silently
-       dropped
      - Triage routes each unchecked entry by its type, and this table is the
        whole rule
      - | `knowledge` | the owning document — the smallest edit that preserves
@@ -240,11 +254,6 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
        prose that mandates it | the queue that absorbs it |
      - | `framework` | an issue on `[framework] repo` from `aide.toml`; unset or
        offline, it stays pending | the filing role, on the hand-over |
-     - When open `defect`, `gap` or `automation` entries exist at a queue
-       boundary they are batched into a maintenance queue, authored and merged
-       before the stage queue
-     - a pass-over leaves the entry open and is stated where the queue is
-       reviewed
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/queue-NNN.md

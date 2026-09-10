@@ -18,7 +18,7 @@ other: a check measured against the spec cannot find what the spec never
 anticipated, and a review that reported nothing has said nothing about whether
 the item did what it was specified to do.
 
-**Findings triage the way insights do (§1 → insights.md).** A review finding
+**Findings triage the way insights do (§1 → insights-triage.md).** A review finding
 in scope for the running item is a fix on its branch, dispatched back to the
 role that owns the file. One outside it is a single line in `insights.md`, for
 the feedback loop to triage at the queue boundary — never a widening of the

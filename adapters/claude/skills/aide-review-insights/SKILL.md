@@ -29,8 +29,9 @@ only when you need one entry's full context, and then only that entry.
 ### 2. Route each unchecked entry by its type
 
 **Triage routes each unchecked entry by its type, and this table is the whole
-rule** (`.aide/conventions.md` §1 → `insights.md`, where it is written once so
-that this pass and `/aide-create-queue` cannot hold different copies of it):
+rule** (`.aide/conventions.md` §1 → `insights-triage.md`, where it is written
+once so that this pass and `/aide-create-queue` cannot hold different copies of
+it):
 
 | Type | Where it goes | Who ticks the entry |
 |---|---|---|
@@ -95,7 +96,7 @@ entry unchecked with a `(pending handover)` note.
 
 **A `framework` issue body opens with the engine version the observation was
 made under** — the body's first line, before the observation
-(`.aide/conventions.md` §1 → `insights.md`):
+(`.aide/conventions.md` §1 → `insights-triage.md`):
 
 ```
 **Project:** <this repo> (consumer). **Observed under engine X.Y.Z**
@@ -141,12 +142,15 @@ handed over (with issue numbers), the ones left open for the next queue and
 which type each is, and every judgement you recorded. The count of entries left
 open is what the next queue author is about to read.
 
-<!-- pins: .aide/conventions/1-format-contract/insights.md
-     Quoted from the section this skill routes by; `test_rule_pins.py` fails if
-     either copy is reworded alone, which is what keeps this routing table and
+<!-- pins: .aide/conventions/1-format-contract/insights-triage.md
+     Quoted from the section this skill routes by — §1 → `insights-triage.md`
+     since 1.48.0 (issue #191), when routing and judging were split out of
+     §1 → `insights.md` by reader, this pass being the reader.
+     `test_rule_pins.py` fails if either copy is reworded alone, which is what
+     keeps this routing table and
      `/aide-create-queue`'s identical to the engine's. A table row is pinned
-     whole, pipes included: the normaliser de-pipes a line that both starts and
-     ends with `|`, so the row and the pin compare as the same phrase.
+     whole, pipes included: the normaliser de-pipes a line that both starts
+     and ends with `|`, so the row and the pin compare as the same phrase.
      - Triage routes each unchecked entry by its type, and this table is the
        whole rule
      - | `knowledge` | the owning document — the smallest edit that preserves
@@ -168,6 +172,11 @@ open is what the next queue author is about to read.
        was made under
      - Writing that header is the filing role's job; a form on the destination
        cannot reach it
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/insights.md
+     The capture half, which this pass edits but never rewrites: one statement,
+     and it is the one that says the verb owns the edit.
      - Ticking the checkbox is the one in-place edit
 -->
 

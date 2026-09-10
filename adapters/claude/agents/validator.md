@@ -67,7 +67,9 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
    ```
 
    It reads the item from the claim branch and compares every changed file
-   against the spec's `## Authorised paths`. Exit **0** in scope; **1** lists
+   against the spec's `## Authorised paths` (§1 → authorised-paths-proof: how
+   the base is resolved — the queue branch on stacked work — and what is
+   reported separately). Exit **0** in scope; **1** lists
    each file outside it — an automatic FAIL, report the paths; **2** means it
    could not check (usually a spec predating the convention, with no section) —
    then fall back to reading the Description, and **say so in your report**

@@ -52,20 +52,21 @@ Follow the `aide-create-queue` skill in full. In brief:
    python .aide/scripts/aide.py insights list --open
    ```
    **The open inbox is an input to queue authoring, not only an output of
-   triage** (§1 → `insights.md`): triage runs *at* the queue boundary, when the
-   next queue does not exist yet, so a `defect`, `gap` or `automation` entry
-   left open there is waiting for you. Every one of them is **considered, and
-   either queued or explicitly passed over — never silently dropped**.
+   triage** (§1 → `insights-maintenance-queue.md`, preloaded above): triage
+   runs *at* the queue boundary, when the next queue does not exist yet, so a
+   `defect`, `gap` or `automation` entry left open there is waiting for you.
+   Every one of them is **considered, and either queued or explicitly passed
+   over — never silently dropped**.
 2. **Determine the next queue number** NNN (highest existing + 1) and the next
    **item number** (sequential across *all* queues — never restart numbering).
    **When open `defect`, `gap` or `automation` entries warrant it, NNN is a
-   maintenance queue and the stage queue is NNN+1** (§1 → `insights.md`): the
-   fixes are batched ahead of the stage so they merge first, since which queue
-   is live falls out of the numbering (§1 → `queue-NNN.md`, preloaded above).
-   Item numbers still run sequentially
-   across the pair, maintenance queue first. Write only the stage queue when
-   there is nothing to batch, or nothing that warrants a queue of its own —
-   and say which it was.
+   maintenance queue and the stage queue is NNN+1** (§1 →
+   `insights-maintenance-queue.md`, preloaded above): the fixes are batched
+   ahead of the stage so they merge first, since which queue is live falls out
+   of the numbering (§1 → `queue-NNN.md`, preloaded above). Item numbers still
+   run sequentially across the pair, maintenance queue first. Write only the
+   stage queue when there is nothing to batch, or nothing that warrants a queue
+   of its own — and say which it was.
 3. **Tidy the superseded previous queue** with the CLI — it writes the
    completion note itself, and the stamp is never typed by hand (§1 →
    `queue-NNN.md`, preloaded above):

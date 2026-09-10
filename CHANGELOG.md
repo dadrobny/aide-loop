@@ -121,6 +121,66 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.48.0] — 2026-09-10
+
+Two §1 sections split **by reader** (issue #191) — the per-document split of
+1.46.0 applied one level down, and the largest class of divergence the
+sentence-level analysis on #109 found: not a rule missing from a delivered
+copy, but a section three quarters of which is somebody else's job. A section
+that reads wrongly when delivered whole is a section to fix, so the fix is in
+`conventions/`, not in a wrapper. No rule is reworded and nothing is deleted:
+every sentence lands in exactly one of the new files, and the halves name each
+other.
+
+### Changed
+
+- **`§1 → insights.md` is now three sections.** `insights.md` keeps **capture** —
+  the entry shape, provenance, the engine marker, the file the engine creates,
+  the four verbs and the immutable claim — which every role in the loop
+  performs. `insights-triage.md` takes **routing and judging**: the routing
+  table, "routing a `defect`, `gap` or `automation` entry never ticks it", the
+  duplicate / decayed-premise / wrong-type judgements, the `framework` issue
+  header and when triage may happen — performed by `/aide-review-insights` and
+  the orchestrator that runs it. `insights-maintenance-queue.md` takes **the
+  queue half**: the open inbox as an input to queue authoring, considered-or-
+  passed-over, and the maintenance queue authored and merged ahead of the stage
+  queue — the queue author's, and nobody else's.
+- **`§1 → authorised paths` is now two.** `authorised-paths.md` is the
+  **declaration** `spec-author` writes — the two lists, one path per bullet, the
+  three path forms, the always-authorised paths, never double-listing, and the
+  `## Dependencies` remedy. `authorised-paths-proof.md` is the **proof**:
+  `aide scope`'s bases and exit codes, what it reports separately,
+  `check --queue`'s findings and discounts, the four scope-fence failure modes,
+  re-pinning, and auditing by shape — the validator's, the spec-reviewer's and
+  the test-writer's, delivered by no skill and reached by pointer from each of
+  their instructions.
+- **Delivery follows the split.** `aide-queue-and-inbox` now delivers §1 →
+  `queue-NNN.md`, capture and the maintenance queue — and states the
+  maintenance-queue ordering itself, under pin, instead of leaving it to an
+  unpinned restatement in the `queue-planner` spec. `aide-item-specs` delivers
+  the declaration and keeps only the three proof statements a spec author
+  decides against while writing the list; the fences, the bases and
+  `check --queue`'s mechanics stay in the section for the roles that run them.
+  `/aide-review-insights` and `/aide-create-queue` pin the triage and
+  maintenance-queue sections respectively, so the one routing table still
+  cannot drift between them.
+- **Pointers moved with the rules** — §6's scope-claim bullet, §9's findings
+  bullet, `items.md`'s bounded-diff bullet, the two `aide scope` warning
+  messages in `aide.py`, the `queue-planner`, `spec-author`, `validator` and
+  `spec-reviewer` specs, `/aide-run-roadmap`, and the §1 index, which gains
+  three rows and says why a shape may have more than one file.
+
+Measured with the convention on #189 (× = core ÷ delivered, per role):
+`aide-queue-and-inbox` **2.83× → 1.80×** and `aide-item-specs` **1.90× →
+1.56×**. Neither reaches #109's ~1.4× generation trigger, and the residue is
+now other classes, not other readers: what is left of `insights.md`'s core
+above the queue author's copy is the entry shape and immutability the floor
+already carries (#194's class), and the verb mechanism #192 moves to `-h`. No
+file is generated here — that is a separate decision, with its own reach and
+pin consequences. The §1 index gains three rows and grows 3,880 → 4,458 B, so
+`aide-document-format` moves 2.02× → 2.22×; an index costs a row per file, and
+#194 is where that core is addressed.
+
 ## [1.47.1] — 2026-09-10
 
 The eight core sentences a receiving role acts on and its section skill did not
