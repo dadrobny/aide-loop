@@ -2675,10 +2675,10 @@ def scope_claim_test_warnings(repo_root: Path,
                               config: Dict[str, Dict[str, object]]) -> List[str]:
     """Diff-time scope claims written as suite assertions.
 
-    §1 → authorised-paths says a *diff-time scope claim* — "item N did not touch
-    X" — belongs under **Asserts against** and is retired when its item merges,
-    and `cmd_scope` exists precisely so the claim is not "enshrined as a suite
-    assertion that outlives its truth". Both statements were already written
+    §1 → authorised-paths-proof says a *diff-time scope claim* — "item N did
+    not touch X" — belongs under **Asserts against** and is retired when its
+    item merges, and `cmd_scope` exists precisely so the claim is not
+    "enshrined as a suite assertion that outlives its truth". Both statements were already written
     down, and reached neither the spec-author writing the criterion nor the
     test-writer implementing it: two independent items in one consumer wrote the
     same `git diff main...HEAD` guard (issue #132), which is the signature of a
@@ -2729,7 +2729,7 @@ def scope_claim_test_warnings(repo_root: Path,
                 f"a stacked queue where the real base is the queue branch. "
                 f"Declare the pinned file under '## Asserts against' in the item "
                 f"spec and let 'aide scope' decide it on the claim branch "
-                f"(conventions.md §1 → authorised-paths, §6)")
+                f"(conventions.md §1 → authorised-paths-proof, §6)")
             continue
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -2754,7 +2754,7 @@ def scope_claim_test_warnings(repo_root: Path,
                 f"Scope is "
                 f"checked on the branch, not asserted in the suite: declare the "
                 f"pinned file under '## Asserts against' instead "
-                f"(conventions.md §1 → authorised-paths, §6)")
+                f"(conventions.md §1 → authorised-paths-proof, §6)")
             break
     return out
 

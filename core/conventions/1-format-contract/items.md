@@ -52,8 +52,8 @@ shapes fail that:
 - **A bounded diff against a pre-item baseline.** Assert the property the
   edit was supposed to produce instead. The diff-time half of such a claim —
   "this item did not touch X" — is `aide scope`'s job on the claim
-  branch, declared under `## Asserts against`; §1 → authorised paths says what
-  not to write, and `aide check` warns on the two literal shapes.
+  branch, declared under `## Asserts against`; §1 → authorised-paths-proof
+  says what not to write, and `aide check` warns on the two literal shapes.
 - **A premise about a sibling item's schedule.** "Item NNN has not landed yet"
   is guaranteed to become false. Where an earlier item's test must change when
   a later one lands, the later item's spec lists that test file under **May

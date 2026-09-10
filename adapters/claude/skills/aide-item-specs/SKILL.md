@@ -17,9 +17,14 @@ paths:
      else"; `1-format-contract/environment-gated-capabilities.md` reached this
      role only through the item template's pointer, and
      `1-format-contract/authorised-paths.md` only through the spec's own
-     inline restatement (issue #186's reach column). `test-writer` and
-     `builder` read an authorised-paths list without writing one and reach it
-     by pointer from `aide-test-hygiene`; `queue-planner` writes no item spec.
+     inline restatement (issue #186's reach column). The declaration is what
+     that section still is: since 1.48.0 (issue #191) proving it — `aide
+     scope`, `check --queue`, the fences a test must not write — is
+     `1-format-contract/authorised-paths-proof.md`, delivered to nobody and
+     reached by pointer from here, from `aide-test-hygiene` (§6) and from the
+     validator's and spec-reviewer's own specs. `test-writer` and
+     `builder` read an authorised-paths list without writing one;
+     `queue-planner` writes no item spec.
      The `paths:` above inject nothing on a read (issue #85, measured): the
      description sits in every interactive session's skill listing regardless,
      and the globs only narrow when the runtime auto-invokes the skill on its
@@ -35,7 +40,8 @@ paths:
 
 <!-- pins: .aide/conventions/1-format-contract/items.md
      Quoted from that section; `test_rule_pins.py` fails if either copy moves
-     alone. One block per section file, so four blocks follow.
+     alone. One block per section file, so five blocks follow — four
+     sections delivered, and the pointed-at half of the fifth.
      - Filename begins with the zero-padded number
      - First `#` heading is `# Item NNN — Title`
      - **No status field** in the header — status lives only in `progress.md`
@@ -75,17 +81,23 @@ paths:
        and **pin** without changing
      - Include derived artifacts recomputed live, not just files compared
        byte-for-byte
-     - Scope is proved by the diff, not by a hash
      - Three paths are authorised for every item without being listed
      - Never list an always-authorised path under Asserts against
      - **Asserts against means pinned-not-changed**, so never list the same
        path under both **May change** and **Asserts against**
-     - It inverts on the next legitimate edit
-     - Never fence a whole tree
-     - Never walk untracked or ignored paths
-     - A diff-time scope claim is never a suite assertion
      - **A pair with no declared dependency keeps the error, and saying so
-       under `## Dependencies` is the third remedy the message offers.**
+       under `## Dependencies` is the third remedy the message offers**
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/authorised-paths-proof.md
+     The other half, delivered to nobody: what a spec author decides against
+     while writing the declaration, and no more. `aide scope`'s bases and exit
+     codes, `check --queue`'s findings, the four fence failure modes and
+     re-pinning are the validator's, the spec-reviewer's and the test-writer's,
+     and stay in the section (issue #191).
+     - Scope is proved by the diff, not by a hash
+     - inverts on the next legitimate edit
+     - A diff-time scope claim is never a suite assertion
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/environment-gated-capabilities.md
@@ -135,7 +147,9 @@ paths:
 environment-gated capabilities and §5 are the sources of truth; this file is
 how the four reach `spec-author`, preloaded at spawn, because they fix the
 parts of the one document it writes. It is **delivery, not a second source of
-truth**.
+truth**. Proving a declaration once the branch exists is §1 →
+authorised-paths-proof, another role's job and not delivered here — only the
+handful of its statements you decide against while writing the spec.
 
 **An item spec's filename begins with the zero-padded number, and its first
 `#` heading is `# Item NNN — Title`.** **No status field in the header —
@@ -216,30 +230,25 @@ Prefer the narrowest form that covers the work. **Asserts against** — files or
 derived artifacts this item's tests read and **pin** without changing. Include
 derived artifacts recomputed live, not just files compared byte-for-byte.
 
-**Scope is proved by the diff, not by a hash**: `aide scope` diffs the branch
-against the merge-base with the item's base — the queue branch on stacked work,
-not `main`. Three paths are authorised for every item without being listed —
+Three paths are authorised for every item without being listed —
 `progress.md`, `insights.md`, and the item's own spec — and **never list an
 always-authorised path under Asserts against**. **Asserts against means
 pinned-not-changed**, so never list the same path under both **May change** and
 **Asserts against**.
 
-One queue's specs are checked against each other before any is built:
-`aide check --queue NNN` reports one item changing what another pins under
-**Asserts against** as an error, discounted in one direction where a declared
-dependency already orders the pair. **A pair with no declared dependency keeps
-the error, and saying so under `## Dependencies` is the third remedy the
-message offers.**
-
-A test that hashes another file's bytes against a hardcoded literal to prove
-this item did not touch it — a *scope fence* — is a fallback for the case with
-no diff to check against, never the norm. **It inverts on the next legitimate
-edit**, so declare the file under **Asserts against** instead; **never fence a
-whole tree**; **never walk untracked or ignored paths**. And **a diff-time
-scope claim is never a suite assertion** — it is decided on the branch, by
-`aide scope`, against this declaration; §6 names the two shapes written instead,
-what `aide check` warns on, and why neither a skip guard nor a base taken from
-the verb repairs them.
+**Scope is proved by the diff, not by a hash** (§1 → authorised-paths-proof):
+the validator runs `aide scope` on the claim branch against what you wrote
+here, so a list that is honest at spec time is the whole of it — write the
+narrowest form the work actually needs, not the one that will pass. Two
+consequences are yours while the spec is still cheap to change. Where a sibling
+in the same batch changes what this item pins, `aide check --queue` errors
+unless the ordering is declared: **a pair with no declared dependency keeps the
+error, and saying so under `## Dependencies` is the third remedy the message
+offers**. And **a diff-time scope claim is never a suite assertion** — "this
+item did not touch X" is decided on the branch, so declare the file under
+**Asserts against** rather than specifying a test that hashes its bytes against
+a literal, which **inverts on the next legitimate edit** (§6 names the two
+shapes `aide check` warns on).
 
 ## Environment-gated capabilities
 

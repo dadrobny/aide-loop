@@ -42,8 +42,9 @@ line current when a document's relationships change. The transient hand-off
 ("run `/aide-…` next") is spoken by the skill that wrote the file, not stored
 in it.
 
-The shapes themselves are one file each, so a pointer of the form
-`§1 → insights.md` resolves to `1-format-contract/insights.md`:
+One file per shape — and, where several roles act on one shape, one file per
+reader. A pointer of the form `§1 → insights.md` resolves to
+`1-format-contract/insights.md`:
 
 | `§1 → …` | File | What it fixes |
 |---|---|---|
@@ -51,8 +52,11 @@ The shapes themselves are one file each, so a pointer of the form
 | `progress.md` | [`progress.md`](1-format-contract/progress.md) | The single source of truth for status — objectives, stages, deliverable bullets, outcome targets |
 | `queue-NNN.md` | [`queue-NNN.md`](1-format-contract/queue-NNN.md) | A batch of one-line items, and how a superseded queue is tidied |
 | items | [`items.md`](1-format-contract/items.md) | An item spec's mandatory sections and the reference forms that link it |
-| Authorised paths | [`authorised-paths.md`](1-format-contract/authorised-paths.md) | An item's declared scope, which `aide scope` proves by the diff |
-| `insights.md` | [`insights.md`](1-format-contract/insights.md) | The compound-engineering inbox: entry shape, immutability, archiving |
+| Authorised paths | [`authorised-paths.md`](1-format-contract/authorised-paths.md) | An item's declared scope — the two lists `spec-author` writes |
+| Scope proof | [`authorised-paths-proof.md`](1-format-contract/authorised-paths-proof.md) | How that declaration is proved: `aide scope`, `check --queue`, and what a test may never claim |
+| `insights.md` | [`insights.md`](1-format-contract/insights.md) | The compound-engineering inbox every role appends to: entry shape, the verbs, immutability |
+| Insight triage | [`insights-triage.md`](1-format-contract/insights-triage.md) | Routing an entry by type, judging it, handing a `framework` entry over |
+| The maintenance queue | [`insights-maintenance-queue.md`](1-format-contract/insights-maintenance-queue.md) | Insight-derived fixes, queued ahead of the stage queue |
 | Human gates | [`human-gates.md`](1-format-contract/human-gates.md) | The table that blocks an item until a person decides |
 | Environment-gated capabilities | [`environment-gated-capabilities.md`](1-format-contract/environment-gated-capabilities.md) | Declaring a capability the loop's own machine cannot verify |
 
