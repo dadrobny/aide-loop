@@ -1,13 +1,16 @@
 ### `progress.md` (the single source of truth for status)
 
+`.aide/templates/progress.md` models every shape below; this section fixes what
+a shape cannot — what a cell may hold, and what is mandatory.
+
 Mandatory, in order (consumer in brackets):
 
-1. **Stage summary table** — `| Stage | Title | Objectives | Status |` with one
-   row per stage; `Stage` is an integer, `Status` a single icon. *(aide check,
-   status report, queue-planner)*
-2. **Objective coverage table** — `| Objective | Delivered by | Status |`; the
-   objective cell starts with a `G<n>` code. *(status report, validator)*
-3. **One `## Stage N — <title> — <icon>` section per stage.** Inside it:
+1. **Stage summary table** — one row per stage; `Stage` is an integer,
+   `Status` a single icon. *(aide check, status report, queue-planner)*
+2. **Objective coverage table** — one row per vision objective; the objective
+   cell starts with a `G<n>` code. *(status report, validator)*
+3. **One section per stage**, headed with the stage number, its title and its
+   rolled-up icon. Inside it:
    - a **Deliverables** block of **flat** bullets, each
      `- <icon> <text>. *(Item NNN)*` — one status icon, one item ref, no nested
      status-bearing sub-bullets (keep rollup unambiguous). *(builder, validator,
@@ -56,11 +59,8 @@ over a derived cell is drift `aide check` reports.
 outside the derivation entirely: the rollup skips checkbox lines, `aide check`
 never gates a ✅ stage on them, and `aide progress set` leaves them exactly as
 the author wrote them. A box is ticked only by a human — or by an agent acting
-on a check it actually performed — via:
-
-```
-aide progress accept <stage> (--criterion N | --all) [--evidence "<text>"]
-```
+on a check it actually performed — via `aide progress accept`, whose flags
+`aide progress -h` states.
 
 A stage may be ✅ with an unticked box; say why in an annotation beside it.
 
@@ -75,13 +75,8 @@ dated lines indented under the box, newest last:
   - **2026-09-02** → retracted: re-run pending on a host we have identified
 ```
 
-Three verbs, and **none of them edits the original line**:
-
-```
-aide progress amend   <stage> --criterion N --evidence "<the corrected basis>"
-aide progress retract <stage> --criterion N --reason   "<why it is withdrawn>"
-aide progress reword  <stage> --criterion N --text     "<the new wording>"
-```
+Three verbs, and **none of them edits the original line**, their flags in
+`aide progress -h`:
 
 - **`amend` appends, and only to a ticked box.** The attestation stands; what
   was recorded about it was wrong or thin. **A verb that can only add cannot be
@@ -110,18 +105,11 @@ guarantee. A **measured outcome** the work aims for but cannot guarantee by
 construction (an error-rate target, a benchmark result) must NOT be an
 Acceptance box. Such goals go in the **Outcome targets** table below.
 
-**Outcome targets (optional, additive).** A `## Outcome targets` section in
-`progress.md` with one row per measured goal:
-
-```
-| Target | Objective | Attempted by | Status | Evidence / follow-up |
-|--------|-----------|--------------|--------|----------------------|
-| Held-out FPR ≤ 0.10 | G3 | Stage 14 | ❌ Not met | FPR 0.975 → gap insight, item 0NN |
-```
-
-Status is table-local (like the env-gated verification table's): `❓
-Unverified` until measured, then `✅ Met (date, evidence)` or `❌ Not met
-(result → follow-up)`. Semantics *(aide progress, aide check, aide status)*:
+**Outcome targets (optional, additive).** The template's optional
+`## Outcome targets` section, one row per measured goal. Status is table-local
+(like the env-gated verification table's): `❓ Unverified` until measured, then
+`✅ Met (date, evidence)` or `❌ Not met (result → follow-up)`. Semantics
+*(aide progress, aide check, aide status)*:
 
 - A target **never blocks its stage** — the stage closes when its work ships.
   It gates the **Objective coverage rows** instead: an objective linked to a

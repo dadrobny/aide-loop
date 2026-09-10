@@ -36,7 +36,6 @@ paths:
      Quoted from that section; `test_rule_pins.py` fails if either copy moves
      alone.
      - A **decision only a person can make**, blocking work until they make it
-     - | Gate | Blocks | Status | Decision / evidence |
      - **Blocks** — item numbers (any §1 reference form, or bare: `106`,
        `110, 111`, `106–108`), `stage N`, or `all`
      - `⏳ Awaiting`, then `✅ Approved (date)` or `❌ Declined (date)`
@@ -63,7 +62,8 @@ raise a gate and only a person may resolve one is on the floor, in
 `AGENT-CONTEXT.md`, already in this context.
 
 **A human gate is a decision only a person can make, blocking work until they
-make it** — one row in `progress.md`'s `## Human gates` table:
+make it** — one row in `progress.md`'s `## Human gates` table, whose shape
+`.aide/templates/progress.md` models:
 
 ```
 | Gate | Blocks | Status | Decision / evidence |

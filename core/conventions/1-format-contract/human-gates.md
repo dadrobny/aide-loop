@@ -1,14 +1,8 @@
 ### Human gates (optional, additive)
 
-A **decision only a person can make**, blocking work until they make it. A
-`## Human gates` section in `progress.md`, one row per gate:
-
-```
-| Gate | Blocks | Status | Decision / evidence |
-|------|--------|--------|---------------------|
-| Golden-file retirement approved | 106 | ⏳ Awaiting | — |
-| Real segmenter output available | stage 21 | ⏳ Awaiting | — |
-```
+A **decision only a person can make**, blocking work until they make it. The
+template's optional `## Human gates` section in `progress.md`, one row per
+gate. Two of its cells have a fixed vocabulary:
 
 - **Blocks** — item numbers (any §1 reference form, or bare: `106`,
   `110, 111`, `106–108`), `stage N`, or `all`.

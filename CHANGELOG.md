@@ -121,6 +121,52 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.48.2] — 2026-09-10
+
+Issue #193: three §1 sections stated a shape `.aide/templates/progress.md`
+already models — and `aide check` enforces the template, so the template is the
+shape's executable statement while a section's copy of it is a second one, free
+to drift where the checked one cannot. The sections now keep the **rule** and
+name the template for the shape. Each fence was decided by #78's test, which
+kept two of the candidates the issue listed.
+
+### Changed
+
+- **`§1 → progress.md` names the template instead of drawing its tables.** The
+  stage summary and objective coverage column lists, the literal
+  `## Stage N — <title> — <icon>` header, and the `## Outcome targets` fence
+  with its example row are gone; what a cell may hold stays — `Stage` is an
+  integer, `Status` one icon, an objective cell opens with `G<n>`, a target's
+  status is table-local. The `aide progress accept` fence and the three-verb
+  fence go to `aide progress -h`, which has stated both since 1.45.2 and
+  1.48.1.
+- **`§1 → human gates` names the template too.** The row fence went; the
+  `Blocks` and `Status` vocabularies, the reach table and the rest of the rule
+  did not.
+- **The runtime instructions that author `progress.md` stop restating the
+  shapes** — and with them goes a drifted copy of the status legend, which
+  still said "the five-icon legend (📋 🚧 ✅ ⏸️ ❌)". There have been six since
+  🔍 was added, and nothing compared that list to the template. The role is now
+  pointed at `.aide/templates/progress.md`, which it already opens to create
+  the file.
+
+### Kept, deliberately
+
+- **§1 → `insights.md`'s entry line.** The two rules under it position
+  themselves against it — the provenance goes *before the date*, the engine
+  version *after* — so the fence is the coordinate system they are stated in,
+  not a spare copy of the shape.
+- **`§1 → progress.md`'s correction trail example**, which shows the original
+  line untouched under two dated corrections, and the shorthand-marker example,
+  which shows why a reference in mid-prose moves nothing. Both disambiguate a
+  rule rather than repeat a shape (#78).
+
+The two section cores lose 525 B (progress.md −4.8%, human-gates.md −5.8%) —
+less than the issue's 1,574 B estimate, which counted the fences without the
+rule prose that replaces them, and assumed the two kept examples would go.
+Delivered copies are unchanged but for one pin: `aide-human-gates` no longer
+quotes the table header row, because the section no longer states it.
+
 ## [1.48.1] — 2026-09-10
 
 The remainder of H3 (issue #192): verb mechanism still sitting in the §1
