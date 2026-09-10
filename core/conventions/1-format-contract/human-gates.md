@@ -51,8 +51,8 @@ blocks too.
 
 Semantics *(aide claim, check, status, gate)*:
 
-- **`aide claim` will not offer a blocked item**, and reports the gate as the
-  reason rather than an unexplained "none left".
+- **`aide claim` will not offer a blocked item**, and names the gate as the
+  reason.
 - **`aide check` warns** on every gate still blocking — a normal state, not a
   defect.
 - **Resolving is a CLI operation**, never a hand edit:

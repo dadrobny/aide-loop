@@ -22,11 +22,11 @@ between: the work is pushed and awaiting a human's merge. The mode never
 changes what a status asserts.
 
 A 🔍 item **holds its stage at 🚧** (an open PR has not shipped) and **holds its
-queue open**. `aide check` does not call its claim branch stale, and `aide
-status` reports it as awaiting review rather than recommending `gc`. Because in
-`pr` mode nothing inside the loop ever observes the merge, `aide sync` and `aide
-status` name any 🔍 item whose work has since landed in the base and print the
-`aide progress set NNN done` that closes it.
+queue open**, and its claim branch is live, not stale. Because in `pr` mode
+nothing inside the loop ever observes the merge, `aide sync` and `aide status`
+name any 🔍 item whose work has since landed in the base and print the `aide
+progress set NNN done` that closes it — **that command is what closes a 🔍
+item**, never an agent reading the merge off the forge.
 
 **Structural positions only.** The parsers read icons *only* at structural
 positions: a table row's **Status (last) cell**, a stage header's **trailing**

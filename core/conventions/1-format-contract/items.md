@@ -14,8 +14,8 @@ header and its `## Dependencies`.
 - **An assumption that pins engine behaviour names the engine it was true
   for** — `- **A3 (engine 1.28.1):** …`, the marker `insights.md` provenance
   already carries, in the bold label beside the assumption's own code. `aide
-  check` warns (advisory, never an exit code) when a marked assumption names an
-  engine whose **feature line** predates the installed one. Clear it the way
+  check` warns when the engine has since moved past a marked assumption.
+  Clear it the way
   every other durable record in this loop is corrected — **append**: a
   re-check goes into the marker, `(engine 1.28.1, re-checked 1.36.0)`, and the
   newest version named is the one the claim stands on. A merged spec is never

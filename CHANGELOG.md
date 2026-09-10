@@ -121,6 +121,76 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.48.1] — 2026-09-10
+
+The remainder of H3 (issue #192): verb mechanism still sitting in the §1
+cores — what a verb prints, warns on, discounts and refuses — moved into the
+verb's own `-h`, continuing the pass 1.45.2 (#184) and 1.45.3 (#186) ran over
+nine verbs. Each unit was decided by #78's test rather than by its shape: a
+sentence a receiving role decides *against* stays in the section, however
+mechanical it sounds, and only the sentences no author acts on moved. That
+kept four of the units the issue listed as candidates, so the §1 cores lose
+951 B rather than the ~2.3 kB the estimate assumed — recorded on the issue
+with the reasons.
+
+### Changed
+
+- **The rollup rule is now `aide progress -h`'s, and it is stated correctly
+  there.** `§1 → progress.md` said "a stage is ✅ if *every* Deliverables
+  bullet in it is ✅", which had not been the rule for two releases: `❌`
+  excluded bullets count toward ✅ (with at least one ✅ required), and 🔍 and
+  ⏸️ are deliberately not terminal (1.44.0, issue #173). The section now
+  states the rule an author acts on — stage status, its summary row, its
+  header and the Objective rows are **derived, never hand-written** — and the
+  help states the derivation, traced against `rollup_status()` case by case.
+  Both icons are kept out of the ✅ rule but they part below it: 🔍 also
+  satisfies the 🚧 rule, while ⏸️ does not, so a stage whose bullets are only
+  ⏸️/📋/❌ reads 📋.
+- **`aide check -h` gains the shape lints the sections used to gloss.** The
+  goal-level over-claim error (an objective ✅ over a `❌ Not met` target), the
+  dropped-span warning and what it names, the exact double-listing and the
+  May-change-glob carve-out it deliberately excludes, the always-authorised
+  pin, the stale engine assumption (advisory, never an exit code), every
+  blocking gate and retracted criterion as normal states, the insights shape
+  check and its exemption for an archive, and that a 🔍 claim branch is not
+  reported stale.
+- **`aide progress -h` also takes** the desugar's "the others keep the status
+  they had" and `reword`'s Nth-box matching against the roadmap's Validation
+  block; `aide claim -h` and `aide status -h` gain descriptions — the gate
+  named as the reason a pick was withheld, and the 🔍 branch reported as
+  awaiting review plus the landed-🔍 close.
+- **Seven §1 sections keep the verb sentence and drop the help.**
+  `progress.md`, `items.md`, `authorised-paths.md`,
+  `authorised-paths-proof.md` (its `check --queue` finding list was verbatim
+  `check -h`), `human-gates.md`, `status-icons.md` and `insights.md` (whose
+  `list`/`tick`/`archive`/`resolve` gloss was verbatim `insights -h`). Every
+  pinned statement survives; `adapters/claude/skills/aide-item-specs/SKILL.md`
+  carried the dropped-span clause and was trimmed with its section.
+
+### Added
+
+- **A drift guard pinning `aide progress -h`'s rollup to `rollup_status()`**
+  (`core/scripts/tests/test_aide_core.py`). The rule now lives in the help and
+  nowhere else, so nothing in `conventions/` would have to change if the
+  derivation moved — the failure mode that let the section's own copy go stale
+  for two releases, and that this release's first draft then reproduced in the
+  replacement. The test renders the help argparse actually emits, transcribes
+  the sentence as a predicate, and checks it against `rollup_status` over every
+  multiset of up to four bullets drawn from all six statuses; it also asserts
+  the help still makes the claims that predicate encodes, so a rewording that
+  drops one fails too. Both directions are mutation-checked.
+
+### Kept, deliberately
+
+- **Four units the issue listed stay**, each because a role decides against
+  it: an `Asserts against` path reported separately means *this item's own
+  test now pins state it moved*, a different remedy from an out-of-scope edit;
+  `--report` is the reviewer's instruction, not a description; the
+  May-change-glob carve-out is what lets an author legitimately pin a file
+  inside a subtree they may edit; and the landed-🔍 sentence is the one that
+  keeps a reader from calling a pushed item shipped — the issue names it as
+  the example that stays.
+
 ## [1.48.0] — 2026-09-10
 
 Two §1 sections split **by reader** (issue #191) — the per-document split of
