@@ -142,7 +142,10 @@ with the reasons.
   ⏸️ are deliberately not terminal (1.44.0, issue #173). The section now
   states the rule an author acts on — stage status, its summary row, its
   header and the Objective rows are **derived, never hand-written** — and the
-  help states the derivation, matching `rollup_status()`.
+  help states the derivation, traced against `rollup_status()` case by case.
+  Both icons are kept out of the ✅ rule but they part below it: 🔍 also
+  satisfies the 🚧 rule, while ⏸️ does not, so a stage whose bullets are only
+  ⏸️/📋/❌ reads 📋.
 - **`aide check -h` gains the shape lints the sections used to gloss.** The
   goal-level over-claim error (an objective ✅ over a `❌ Not met` target), the
   dropped-span warning and what it names, the exact double-listing and the
