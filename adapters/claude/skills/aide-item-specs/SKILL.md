@@ -223,7 +223,7 @@ reason:
 **One path per bullet is a contract, not a style note**: a bullet declares the
 **first backtick span before its reason** and nothing else, so a second path
 in that position is dropped, and so is a list that wraps onto a continuation
-line — `aide check` warns at spec time, naming the dropped spans. **May
+line — `aide check` warns at spec time. **May
 change** — every path this item is authorised to modify, in one of three
 recognised forms: an exact path, `dir/**`, or a single-star `dir/*.ext`.
 Prefer the narrowest form that covers the work. **Asserts against** — files or

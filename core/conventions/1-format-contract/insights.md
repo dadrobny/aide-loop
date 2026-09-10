@@ -34,8 +34,7 @@ of `.aide/VERSION`. Optional and unenforced like the provenance — and **never
 retrofitted**, since the claim line below is immutable: an entry captured
 without one stays as captured.
 
-`aide check` shape-checks entries (warning, never error), loose either side of
-the date and strict about the date.
+`aide check` shape-checks entries, and only the date strictly.
 
 **Capture is a plain append; everything after it has a verb.**
 
@@ -46,21 +45,15 @@ python .aide/scripts/aide.py insights archive --before YYYY-MM-DD [--yes]
 python .aide/scripts/aide.py insights resolve [--dry-run]
 ```
 
-`list` numbers entries by position and prints the backlog without the closed
-history around it; `tick` performs the one in-place edit below, or appends a
-dated trail line when the entry is already ticked; `archive` moves **closed**
-entries older than a date into `insights/archive-YYYY-QN.md`, each moved entry
-with its trail — an archive renumbers what remains, so re-run `list` after
-one. Archived entries are frozen and no longer shape-checked.
+`aide insights -h` states what each verb does. Two consequences an author
+acts on: `tick` performs the one in-place edit below, and an archive renumbers
+what remains, so re-run `list` after one.
 
-**`resolve` writes the union of a conflicted inbox** — the shared history,
-then each side's new entries in the order they were captured, with both
-sides' ticks and trail lines kept; `--dry-run` prints the union without
-writing it. **It refuses anything that is not a pure append**, and a refusal
-writes nothing: a claim reworded, reordered or deleted on one side, and a side
-that archived. A conflict marker left in the file is an `aide check`
-**error**, not a warning, and the message names this verb. `aide insights -h`
-states what each verb does.
+**`resolve` writes the union of a conflicted inbox**, so this file's conflict
+is never resolved by hand. **It refuses anything that is not a pure append** —
+the immutability rule below, enforced where two branches meet — and a refusal
+writes nothing. A conflict marker left in the file is an `aide check`
+**error**, not a warning, and the message names this verb.
 
 **The claim is immutable; its status is not.** The captured line is never
 reworded, reordered, or deleted. Ticking the checkbox is the one in-place edit.

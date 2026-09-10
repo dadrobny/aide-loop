@@ -33,13 +33,11 @@ conflict still cheap to fix:
 python .aide/scripts/aide.py check --queue NNN [--report <path>]
 ```
 
-It reports two items claiming the same path under **May change** (warning), one
-item changing what another pins under **Asserts against** (error), and a
-dependency cycle or a dependency on an item that exists nowhere. `--report`
-writes the findings as JSON for a reviewer pass to pick up. Spent items (✅,
-❌) are discounted on both sides of every comparison, and a declared dependency
-that still orders the pair discounts it in one direction (`check -h` says
-exactly how far). The remedies the message offers are the spec author's, and
+It reports the collisions between two declarations and a dependency graph that
+cannot be satisfied, and discounts a pair that a spent item or a declared
+dependency already settles — `check -h` states the findings and how far each
+discount reaches. `--report` writes them as JSON for a reviewer pass to pick
+up. The remedies the message offers are the spec author's, and
 §1 → authorised paths states them.
 
 A test that hashes some *other* file's bytes against a hardcoded literal to

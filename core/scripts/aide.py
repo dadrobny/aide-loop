@@ -8055,7 +8055,25 @@ def build_parser() -> argparse.ArgumentParser:
             "dependency claim no longer waits for (\u2705, \u274c, \u23f8\ufe0f) earns no "
             "exemption, and neither does a chain whose middle item no longer "
             "blocks. The cycle check keeps only items whose status still blocks "
-            "a claim; deferred items stay in the path comparisons."))
+            "a claim; deferred items stay in the path comparisons.\n"
+            "\n"
+            "Over docs/aide, among the shape lints: an objective marked "
+            "\u2705 over an Outcome target that is \u274c Not met is an "
+            "ERROR \u2014 the goal-level mirror of the deliverable-level "
+            "over-claim. These are warnings: an Authorised paths bullet whose "
+            "second backtick span or continuation line is silently dropped, "
+            "named span by span; one path listed under both May change and "
+            "Asserts against (the exact double-listing only \u2014 a literal "
+            "pin under a May-change glob is the legitimate carve-out, left "
+            "for `aide scope` to judge); an always-authorised path pinned "
+            "under Asserts against; a marked assumption pinning an engine "
+            "whose feature line predates the installed one (advisory, never "
+            "an exit code); every human gate still blocking, and every "
+            "retracted acceptance criterion, both normal states rather than "
+            "defects; and an insights entry whose shape is off \u2014 loose "
+            "either side of the date, strict about the date, and never "
+            "applied to an archived entry. A \U0001f50d item's claim branch "
+            "is not reported stale."))
     p_check.add_argument("--queue", type=int, default=None,
                          help="also check this queue's specs against each other "
                               "(scope overlaps, pinned state, dependency graph)")
@@ -8067,7 +8085,10 @@ def build_parser() -> argparse.ArgumentParser:
         "progress", help="edit progress.md status / acceptance",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "set:     flip an item's deliverable bullet and roll its stage up\n"
+            "set:     flip an item's deliverable bullet and roll its stage "
+            "up; a marker naming several items is desugared into one bullet "
+            "per item first, and only the named item moves \u2014 the others "
+            "keep the status they had\n"
             "accept:  tick one acceptance criterion (--criterion N) or every "
             "one in the stage (--all), with --evidence\n"
             "amend:   append a dated correction under a ticked box; the tick "
@@ -8076,6 +8097,23 @@ def build_parser() -> argparse.ArgumentParser:
             "and capture a `gap` insight (--reason required)\n"
             "reword:  change a criterion's text in progress.md and roadmap.md, "
             "or in neither; refuses over a ticked, annotated or corrected box\n"
+            "\n"
+            "The rollup, applied by set and read by `aide check`: a stage is "
+            "\u2705 when every deliverable bullet in it is \u2705 or \u274c "
+            "and at least one is \u2705; \U0001f6a7 when any bullet is "
+            "\u2705, \U0001f6a7 or \U0001f50d; otherwise \U0001f4cb. "
+            "\U0001f50d and \u23f8\ufe0f are deliberately not terminal \u2014 "
+            "an item awaiting review or deferred has not shipped, so a stage "
+            "holding one is \U0001f6a7. The stage header, its summary-table "
+            "row, and any Objective row delivered solely by \u2705 stages "
+            "follow; an objective linked to an Outcome target that is not "
+            "\u2705 Met never rolls up. A status is never downgraded, and no "
+            "rollup ever ticks an acceptance box.\n"
+            "\n"
+            "reword matches the Nth box to the Nth non-`Target:` bullet of the "
+            "roadmap stage's Validation / acceptance block; if the two cannot "
+            "be lined up, nothing is written and the message says which counts "
+            "disagreed.\n"
             "\n"
             "Neither amend nor retract takes --all: each attestation was made "
             "separately and is corrected or withdrawn separately. Both refuse "
@@ -8180,7 +8218,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def register_git_subcommands(sub) -> None:
     """Attach the claim / merge / env subparsers (git layer)."""
-    p_claim = sub.add_parser("claim", help="pick + claim the next unclaimed 📋 item")
+    p_claim = sub.add_parser(
+        "claim", help="pick + claim the next unclaimed 📋 item",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Picks the lowest-numbered 📋 item on the queue whose "
+            "dependencies have all left the way (\u2705, \u274c or "
+            "\u23f8\ufe0f) and that no unresolved human gate reaches. It "
+            "will not offer a blocked item: where a gate holds the pick, the "
+            "report names that gate, what it blocks and who may resolve it, "
+            "rather than an unexplained \"none left\". A missing insights.md "
+            "is created from the template on the way through."))
     p_claim.add_argument("--queue", type=int, default=None,
                          help="queue number (default: the lowest-numbered open queue)")
     p_claim.add_argument("--base", default=None,
@@ -8243,8 +8291,22 @@ def register_git_subcommands(sub) -> None:
     p_gc.add_argument("--yes", action="store_true", help="actually delete (default: dry run)")
     p_gc.set_defaults(func=cmd_gc)
 
-    p_status = sub.add_parser("status", help="one-call roadmap-state report (branch, queues, "
-                              "claims, PRs, open gates, unmet targets, retracted criteria)")
+    p_status = sub.add_parser(
+        "status", help="one-call roadmap-state report (branch, queues, "
+        "claims, PRs, open gates, unmet targets, retracted criteria)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "A \U0001f50d item's claim branch is reported as awaiting review, "
+            "never as stale and never with a `gc` recommendation \u2014 that "
+            "would be recommending the deletion of an open PR's head branch. "
+            "Because in `pr` mode nothing inside the loop observes the merge, "
+            "status (like `aide sync`) also names any \U0001f50d item whose "
+            "work has since landed in the base, by the same merge-tree "
+            "comparison `gc` uses, and prints the `aide progress set NNN done` "
+            "that closes it. Every human gate still blocking, every Outcome "
+            "target not yet \u2705 Met and every retracted acceptance "
+            "criterion is printed too, so none of them lives only in one "
+            "commit's diff."))
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
     p_status.add_argument("--base", default=None,
                           help="ref to report ahead/behind against (default: the "

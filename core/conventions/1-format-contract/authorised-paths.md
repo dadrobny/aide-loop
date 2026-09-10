@@ -34,8 +34,7 @@ with a short reason:
 that position is dropped, and so is a path list that wraps onto a continuation
 line. The reason — everything after the ` — ` — is free prose, so quoting an
 identifier, a config key or a sibling item's file there costs nothing. Splitting
-the bullet is the whole fix, and `aide check` warns at spec time, naming the
-dropped spans.
+the bullet is the whole fix, and `aide check` warns at spec time.
 
 - **May change** — every path this item is authorised to modify. Three forms are
   recognised: an exact path, `dir/**` (the whole subtree), and a single-star

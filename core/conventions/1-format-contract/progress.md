@@ -42,16 +42,15 @@ items are not contiguous; a range is only shorthand for one.
 **A marker naming several items is shorthand, never a shared status cell.**
 `aide progress set` and `aide merge` **desugar** the bullet first, into one
 bullet per item with the same text and one `*(Item NNN)*` each, and move only
-the item named. The others keep the status they had. Nothing is asked of the
-author — write the shared marker freely; the file simply grows a row the first
-time its items diverge.
+the item named. Nothing is asked of the author — write the shared marker
+freely; the file simply grows a row the first time its items diverge.
 
-**Rollup rule (deterministic — `aide progress` and `aide check` both apply it):**
-a stage is ✅ if *every* Deliverables bullet in it is ✅; then its summary-table
-row, section header, and any Objective row delivered solely by complete stages
-read ✅ (unless the objective is linked to an Outcome target that is not
-`✅ Met` — see below). If any bullet is ✅/🚧 but not all, the stage is 🚧.
-Otherwise 📋.
+**Stage status is rolled up from the bullets, never hand-written.** A stage's
+icon, its summary-table row, its section header and the Objective rows it
+delivers are all derived from the Deliverables bullets under it, by one
+deterministic rule `aide progress` and `aide check` both apply — `aide progress
+-h` states the rule. Write the bullets and let the stage follow; an icon typed
+over a derived cell is drift `aide check` reports.
 
 **Acceptance boxes are attestations, and no rollup ever ticks one.** They are
 outside the derivation entirely: the rollup skips checkbox lines, `aide check`
@@ -99,10 +98,9 @@ aide progress reword  <stage> --criterion N --text     "<the new wording>"
 
 **`reword` writes both documents or neither.** `roadmap.md` mirrors a stage's
 criteria, so a rewording that lands in one file is precisely the two-file drift
-the verb exists to remove. The Nth box is matched to the Nth non-`Target:`
-bullet of the roadmap stage's **Validation / acceptance** block; if the two
-cannot be lined up, **nothing is written** and the message says which counts
-disagreed.
+the verb exists to remove. The two blocks are matched **by position**, so keep
+them in the same order; where they cannot be lined up the verb writes nothing
+rather than guessing.
 
 **What a stage's ✅ means — and what it deliberately does not.** The rollup
 makes stage status track exactly one thing: *the planned work shipped*. An
@@ -128,8 +126,7 @@ Unverified` until measured, then `✅ Met (date, evidence)` or `❌ Not met
 - A target **never blocks its stage** — the stage closes when its work ships.
   It gates the **Objective coverage rows** instead: an objective linked to a
   target that is not `✅ Met` cannot roll up to ✅, and `aide check` errors on
-  an objective claimed ✅ over a `❌ Not met` target (the goal-level mirror of
-  the deliverable-level over-claim error).
+  an objective claimed ✅ over one.
 - Marking a target `❌ Not met` is a *finding*, so route it like one: append a
   `- [ ] gap — …` line to `insights.md` in the same edit. The follow-on
   deliverables then enter through the queue, never by retro-editing a closed
