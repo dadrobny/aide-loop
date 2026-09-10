@@ -44,17 +44,41 @@ one red test. Every reader returns the honest answer — `None`, or an empty lis
 — and the caller decides what that means: for a rule, "loads into every
 context"; for a skill, "reaches nobody".
 
+**The generated half is a pointer, not a copy.** Since 1.47.0 a delivered file
+may be *rendered* at install time from the engine section it names, instead of
+being authored (issue #109) — and the grammar of that (`<!-- generated-from:
+… -->`, the `Rationale` cut, the wrapper) lives in `install.py`, because the
+installer applies it inside a consumer where `tests/` does not exist.
+`generated_from`, `is_generated`, `rendered` and `rendered_body` below only
+point at it. Same one-reading rule as everything else here; the copy simply
+had to sit on the other side of the boundary.
+
 **How the adapter suite reaches it.** `adapters/claude/tests/` puts the
 framework root on `sys.path` to `import install` already; reaching this module
-adds `tests/` the same way. A repo-root module was the alternative and the root
-is a curated surface, so the shared reader lives with the suite that owns the
+adds `tests/` the same way. This module now adds the framework root itself as
+well, since it imports `install` for the readings above and two of its callers
+had no reason to. A repo-root module was the alternative and the root is a
+curated surface, so the shared reader lives with the suite that owns the
 broadest view of an install. Stdlib only, no pytest import: this is a parser.
 """
 from __future__ import annotations
 
 import codecs
 import re
+import sys
 from pathlib import Path
+
+#: The framework root, put on `sys.path` here rather than by every importer:
+#: two of the four callers reach this module without needing `install`
+#: themselves, and a shared reader that depends on its caller's path setup is
+#: the drift this module exists to end.
+FRAMEWORK_ROOT = Path(__file__).resolve().parents[1]
+if str(FRAMEWORK_ROOT) not in sys.path:
+    sys.path.insert(0, str(FRAMEWORK_ROOT))
+import install  # noqa: E402  (path shim above)
+
+#: The engine the generated delivered files are rendered from.
+CORE_DIR = FRAMEWORK_ROOT / "core"
 
 #: The frontmatter key that makes a `SKILL.md` a section skill. One key, since
 #: 1.42.0 — see `Reader.is_section_skill`.
@@ -130,6 +154,63 @@ def strip_comments(text: str) -> str:
     return COMMENT.sub("", text)
 
 
+def split_text(text: str) -> tuple:
+    """``(frontmatter_or_None, body)`` of already-decoded text.
+
+    The delimiter half of `Reader.split`, without the BOM policy — there is no
+    BOM left to have a policy about by the time a caller holds a string. It is
+    separate so the same reading serves a file on disk and the *rendered* form
+    of a generated one, which never touches a disk in this repo.
+    """
+    if not text.startswith("---\n"):
+        return None, text
+    end = text.find("\n---\n", 4)
+    return (None, text) if end == -1 else (text[4:end], text[end + 5:])
+
+
+# -- the generated delivered files ----------------------------------------- #
+# One reading, and it is not written here: `install.py` owns the grammar,
+# because the installer has to apply it inside a consumer where `tests/` does
+# not exist. These are pointers at it, so the four modules below reach it the
+# way they already reach `install` (issue #109).
+def generated_from(path: Path) -> list:
+    """The engine sections a delivered file declares, or ``[]`` for a copy.
+
+    ``[]`` is the honest answer for every hand-curated file, which is most of
+    them: it means "this body is authored here", and the pins are what hold it
+    to its section.
+    """
+    return install.generated_sections(install.source_text(path))
+
+
+def is_generated(path: Path) -> bool:
+    """Whether an install renders this file rather than copying it."""
+    return bool(generated_from(path))
+
+
+def rendered(path: Path) -> str:
+    """The text an install writes for a generated file — its delivered form.
+
+    Raises `install.GenerationError` for a file that declares a section the
+    engine does not have, which is the failure worth surfacing loudly: the
+    caller is asking what a consumer receives, and the answer is "the install
+    stops".
+    """
+    return install.render_delivered(install.source_text(path), CORE_DIR)
+
+
+def rendered_body(path: Path) -> str:
+    """`rendered()` without the frontmatter — what a role is delivered."""
+    return split_text(rendered(path))[1]
+
+
+def delivered_body(path: Path, reader: "Reader") -> str:
+    """The body a consumer gets: rendered for a generated file, the authored
+    body for a hand-curated one. The reader decides only the second case,
+    since the first has no file on disk to have a BOM."""
+    return rendered_body(path) if is_generated(path) else reader.body(path)
+
+
 class Reader:
     """A reading of a delivered file, with one policy: what a BOM means.
 
@@ -173,10 +254,7 @@ class Reader:
         text = raw.decode("utf-8-sig").replace("\r\n", "\n")
         if self.refuse_bom and raw.startswith(codecs.BOM_UTF8):
             return None, text
-        if not text.startswith("---\n"):
-            return None, text
-        end = text.find("\n---\n", 4)
-        return (None, text) if end == -1 else (text[4:end], text[end + 5:])
+        return split_text(text)
 
     def frontmatter(self, path: Path):
         """The YAML block alone, or ``None`` — `split()` without the body."""

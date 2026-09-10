@@ -10,6 +10,11 @@ into a target repo:
   2. copy  adapters/<adapter>/{agents,skills,commands,hooks,scripts,settings.json,
            default-context.json}
                                               -> <target>/.claude/
+           A control file carrying `<!-- generated-from: <section> -->` is
+           RENDERED rather than copied: the adapter's half of it (frontmatter,
+           reach declarations, its own delivery note) with the engine section's
+           core appended verbatim, so the delivered copy IS the section and
+           cannot drift from it (`delivered_bytes`).
            settings.json reconciliation depends on whether the project has
            adopted an overlay (see `install_settings`):
              * <target>/.claude/settings.overlay.json present -> settings.json is
@@ -68,7 +73,7 @@ import re
 import shutil
 import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 FRAMEWORK_ROOT = Path(__file__).resolve().parent
 
@@ -648,7 +653,8 @@ def _skip(path: Path) -> bool:
 
 def copy_tree(src: Path, dst: Path, log: List[str],
               defer_names: Iterable[str] = (),
-              written: Optional[List[Path]] = None) -> None:
+              written: Optional[List[Path]] = None,
+              render: Optional[Callable[[Path], Optional[bytes]]] = None) -> None:
     """Recursively copy ``src`` into ``dst``, merging into an existing ``dst`` and
     skipping junk / private files. Existing files are overwritten (framework-owned).
 
@@ -661,6 +667,14 @@ def copy_tree(src: Path, dst: Path, log: List[str],
     call copied. It is what the adapter manifest is built from — the files the
     installer actually wrote, rather than a second walk of the source that
     would have to agree with this one about what gets skipped.
+
+    ``render``, when given, is asked about every file first: bytes back means
+    "write these instead of copying", ``None`` means "copy it". It exists for
+    the **generated delivered files** (``delivered_bytes`` below), whose body
+    is an engine section this call renders in rather than a copy anybody
+    maintains. Applied here rather than as a second pass over ``dst`` so a
+    generated file is written exactly once, lands in ``written`` like any
+    other, and needs no special case anywhere downstream.
     """
     dst.mkdir(parents=True, exist_ok=True)
     for child in sorted(src.iterdir()):
@@ -668,10 +682,17 @@ def copy_tree(src: Path, dst: Path, log: List[str],
             continue
         target = dst / child.name
         if child.is_dir():
-            copy_tree(child, target, log, written=written)
+            copy_tree(child, target, log, written=written, render=render)
         else:
+            rendered = render(child) if render is not None else None
             existed = target.exists()
-            shutil.copy2(child, target)
+            if rendered is None:
+                shutil.copy2(child, target)
+            else:
+                # Bytes, not `write_text`: the rendered form is LF and UTF-8
+                # without a BOM on both CI legs, so the file a consumer gets
+                # is the same file whichever OS installed it.
+                target.write_bytes(rendered)
             log.append(f"  {'~' if existed else '+'} {target}")
             if written is not None:
                 written.append(target)
@@ -909,6 +930,196 @@ def retire_adapter_files(adapter_dir: Path, target: Path, candidates: Iterable[s
             log.append(f"  - {parent}/")
             parent = parent.parent
     return removed
+
+
+# --------------------------------------------------------------------------- #
+# generated delivered files — the section itself, wrapped, at install time
+#
+# ADAPTER-SPEC §7 has an adapter deliver a contract section to its roles, and
+# the delivered copy "adds no rule the engine does not have". A hand-written
+# copy can only be held to that by quoting itself (the `<!-- pins: … -->`
+# blocks `test_rule_pins.py` checks in both directions); a copy the installer
+# renders **is** the section, so it cannot drift at all.
+#
+# The declaration is a `<!-- generated-from: <consumer path> -->` comment in
+# the adapter's own file, which therefore stays a real, readable delivered
+# file in the source tree: its frontmatter, its `<!-- reach -->` /
+# `<!-- triggers -->` declarations and whatever the *adapter* has to say about
+# delivering it (a `paths:` note, a provider-specific command shape) are
+# authored there, and the section's normative text is appended below them at
+# install time. No side file to keep in step with the tree, nothing to parse
+# that a reader of `adapters/<name>/` cannot see, and a second adapter (#64)
+# reuses the convention by writing the same comment in its own files — the
+# path it names is the engine's, which is runtime-general by construction.
+#
+# The cut is #122's: everything above the section's closing `Rationale`
+# heading. The core is what an agent needs to decide every case; the tail is
+# the provenance, which the section file itself carries into the consumer at
+# `.aide/conventions/`.
+# --------------------------------------------------------------------------- #
+class GenerationError(ValueError):
+    """A delivered file names an engine section that cannot be rendered.
+
+    Raised only for a framework checkout that contradicts itself — a section
+    that moved, was renamed, or never got its `Rationale` heading. Not a
+    consumer-input error: nothing a project owns can cause it, which is why it
+    aborts the install rather than degrading to a copy. Every generated file
+    is rendered before the first write (`prerender_delivered`), so an install
+    stopped here has changed nothing in the target — not the engine copy, not
+    a sibling delivered file that would have rendered fine.
+    """
+
+
+#: `<!-- generated-from: .aide/conventions/6-test-hygiene.md -->`, the whole
+#: rest of that line — the `<!-- reach: … -->` grammar of `tests/
+#: test_structural_budget.py`, deliberately, since these comments sit
+#: together and are read by the same eyes. A comma-separated list is a file
+#: that delivers more than one section, rendered in the order written.
+GENERATED_FROM = re.compile(r"<!--\s*generated-from:[ \t]*(?P<sections>[^\n]*)")
+
+#: The `Rationale` heading that closes a section's core (issue #122). Any
+#: heading level: a numbered section heads it `###`, one level below its own
+#: `##`, and a `1-format-contract/` subsection heads it one below whatever it
+#: uses. Anchored to a whole line so a prose mention of the word is not it.
+RATIONALE_HEADING = re.compile(r"^#{2,6}[ \t]*Rationale[ \t]*$", re.M)
+
+#: The prefix a delivered file writes an engine path with. Inside
+#: `adapters/`, every path is the *consumer's* — `.aide/conventions/…` is
+#: where the section lands — and it resolves back to `core/` only here and in
+#: `adapters/claude/tests/test_rule_pins.py`, which reads the same form.
+CONSUMER_ENGINE_PREFIX = ".aide/"
+
+
+def source_text(path: Path) -> str:
+    """A framework file as text: BOM stripped, CRLF folded.
+
+    This repo pins no `text eol=lf`, so a Windows checkout of it holds CRLF
+    (conventions §6) — and the rendered bytes must not depend on which OS ran
+    the install, or a consumer's `git diff` after `--update` would be the
+    whole file on one platform and empty on the other.
+    """
+    return path.read_bytes().decode(CONSUMER_ENCODING).replace("\r\n", "\n")
+
+
+def generated_sections(text: str) -> List[str]:
+    """The engine sections a delivered file declares, or ``[]`` for a copy.
+
+    ``[]`` is the ordinary answer: most adapter files are copied verbatim and
+    say nothing about a section. Only a `<!-- generated-from: … -->` line opts
+    a file into rendering.
+    """
+    match = GENERATED_FROM.search(text)
+    if not match:
+        return []
+    raw = match.group("sections").strip()
+    if raw.endswith("-->"):
+        raw = raw[:-3].strip()
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def section_core(text: str) -> Optional[str]:
+    """A section's core: everything above its closing `Rationale` heading.
+
+    ``None`` when there is no such heading — a section that has not had #122's
+    split applied, whose tail would otherwise be delivered as if it were rule
+    text. The caller raises; guessing at the cut is the one thing this must
+    not do.
+    """
+    match = RATIONALE_HEADING.search(text)
+    return None if match is None else text[:match.start()]
+
+
+def _section_source(declared: str, core_dir: Path) -> Path:
+    """A consumer-form `.aide/conventions/…` path, resolved into `core/`."""
+    if not declared.startswith(CONSUMER_ENGINE_PREFIX):
+        raise GenerationError(
+            f"{declared!r}: a generated file names its section by the consumer "
+            f"path, e.g. `.aide/conventions/6-test-hygiene.md`")
+    posix = _relative_posix(declared[len(CONSUMER_ENGINE_PREFIX):])
+    if posix is None or not posix.parts:
+        raise GenerationError(f"{declared!r}: escapes the engine")
+    return core_dir.joinpath(*posix.parts)
+
+
+def render_delivered(text: str, core_dir: Path) -> str:
+    """The delivered file an install writes: the adapter's half, then the core.
+
+    The adapter's half is the file as authored, verbatim, up to its last
+    non-blank line; the engine's half is each declared section's core,
+    verbatim, in declaration order. Nothing is reflowed, re-headed or trimmed
+    on either side — the whole claim this makes is that the delivered text
+    *is* the section, and a transform is a place for that to stop being true.
+    """
+    sections = generated_sections(text)
+    if not sections:
+        raise GenerationError("no `<!-- generated-from: … -->` declaration")
+    parts = [text.rstrip("\n")]
+    for declared in sections:
+        path = _section_source(declared, core_dir)
+        if not path.is_file():
+            raise GenerationError(
+                f"{declared}: no such section under {core_dir} — it moved or "
+                f"was renamed, and the file that delivers it says so first")
+        core = section_core(source_text(path))
+        if core is None:
+            raise GenerationError(
+                f"{declared}: no closing `Rationale` heading, so there is no "
+                f"core to deliver (conventions.md is sectioned core-then-tail; "
+                f"issue #122)")
+        core = core.rstrip("\n")
+        if not core.strip():
+            raise GenerationError(f"{declared}: empty core")
+        parts.append(core)
+    return "\n\n".join(parts) + "\n"
+
+
+def delivered_bytes(src: Path, core_dir: Path) -> Optional[bytes]:
+    """The bytes to write for ``src``, or ``None`` to copy it unchanged.
+
+    The one entry point: `copy_tree`'s `render` hook in `run`, and the suites
+    that assert an installed delivered file is its section (through
+    `tests/_delivered.py`, which re-exports this rather than re-deriving it —
+    the installer has to apply the rule in a consumer, where `tests/` does not
+    exist, so this is the copy and that one is the pointer).
+    """
+    if src.suffix != ".md":
+        return None
+    text = source_text(src)
+    if not generated_sections(text):
+        return None
+    return render_delivered(text, core_dir).encode("utf-8")
+
+
+def prerender_delivered(adapter_dir: Path, core_dir: Path) -> Dict[Path, bytes]:
+    """Every generated delivered file under the adapter's control directories,
+    rendered — before ``run`` writes anything.
+
+    The walk is `copy_tree`'s (same directories, same skips), so the set this
+    renders is the set step 2 will write. Rendering up front is what makes a
+    `GenerationError` an abort rather than an interruption: `copy_tree` writes
+    in walk order, and a section broken for the third generated file would
+    otherwise land the first two at the new version, the engine copy already
+    updated, with nothing in the output saying which. Here the exception fires
+    with the target untouched.
+    """
+    rendered: Dict[Path, bytes] = {}
+
+    def walk(src: Path) -> None:
+        for child in sorted(src.iterdir()):
+            if _skip(child):
+                continue
+            if child.is_dir():
+                walk(child)
+                continue
+            data = delivered_bytes(child, core_dir)
+            if data is not None:
+                rendered[child] = data
+
+    for name in ADAPTER_CONTROL:
+        src = adapter_dir / name
+        if src.is_dir():
+            walk(src)
+    return rendered
 
 
 # --------------------------------------------------------------------------- #
@@ -1693,6 +1904,11 @@ def run(args: argparse.Namespace) -> int:
     # wrong in the first place, and the log line is where a person would notice.
     print(f"AIDE {mode}: {adapter} v{version} -> {target}")
 
+    # 0. Render every generated delivered file before the first write. A
+    #    framework checkout that contradicts itself (`GenerationError`) is
+    #    found here, with the target untouched — not three files into step 2.
+    rendered = prerender_delivered(adapter_dir, core_dir)
+
     # 1. engine -> .aide/ — minus VERSION, which is deferred to the end (§9).
     #    VERSION is what --check compares, i.e. the mark that an install
     #    finished; written here, any failure in the steps below would leave a
@@ -1701,12 +1917,18 @@ def run(args: argparse.Namespace) -> int:
     copy_tree(core_dir, aide_dir, log, defer_names=("VERSION",))
 
     # 2. adapter control files -> .claude/ — recording what lands, for the
-    #    manifest written in step 8b.
+    #    manifest written in step 8b. A delivered file that declares
+    #    `<!-- generated-from: … -->` is rendered from the engine section it
+    #    names instead of copied (`delivered_bytes`), so the copy a role loads
+    #    is the section rather than a restatement of it. The bytes come from
+    #    step 0, so a file is rendered once and the set written is the set
+    #    checked.
     written: List[Path] = []
     for name in ADAPTER_CONTROL:
         src = adapter_dir / name
         if src.is_dir():
-            copy_tree(src, claude_dir / name, log, written=written)
+            copy_tree(src, claude_dir / name, log, written=written,
+                      render=rendered.get)
 
     # 2b. The adapter's §7 declaration travels with the adapter. It is read here
     #     at install time from the source tree, but the §8 sibling-instruction
@@ -1848,6 +2070,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("  fix .claude/settings.overlay.json and re-run (install is idempotent).",
               file=sys.stderr)
         return 3
+    except GenerationError as exc:
+        # Its own code, because its own repair: nothing the consumer owns can
+        # cause this and no re-run fixes it — the framework checkout is
+        # internally inconsistent (a section renamed without the file that
+        # delivers it). Raised before the first write (`prerender_delivered`),
+        # so the target is exactly as it was.
+        print(f"error: {exc}", file=sys.stderr)
+        print("  a delivered file names an engine section this framework "
+              "checkout does not have — fix adapters/<name>/ or core/"
+              "conventions/, not the target repo, which was not written to.",
+              file=sys.stderr)
+        return 4
 
 
 if __name__ == "__main__":

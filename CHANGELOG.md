@@ -121,6 +121,90 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.47.0] — 2026-09-09
+
+Four delivered files are no longer written by hand: `install.py` **renders**
+them from the engine section they name, so the copy a role loads *is* the
+section and cannot drift from it. PR 2 of issue #109; PR 1 (1.46.0) built the
+manifest this reads. Where a rule or section skill declares
+
+```
+<!-- generated-from: .aide/conventions/6-test-hygiene.md -->
+```
+
+the installer writes that file's own text — frontmatter, `<!-- reach -->` /
+`<!-- triggers -->`, and whatever the *adapter* has to say about delivering the
+section — followed by the section's **core**, everything above its closing
+`Rationale` heading (issue #122), verbatim.
+
+| Delivered file | Section | section core | delivered bytes before → after | adapter's note |
+|---|---|---|---|---|
+| `rules/aide-command-hygiene.md` (a rule loads whole, comments included) | §3 | 2,587 | 4,181 → **4,018** (body alone 2,493 → 3,302) | 712 |
+| `skills/aide-test-hygiene/SKILL.md` | §6 | 6,781 | 5,711 → **7,444** | 660 |
+| `skills/aide-review-and-validation/SKILL.md` | §9 | 1,957 | 2,740 → **2,340** | 380 |
+| `skills/aide-off-platform-verification/SKILL.md` | §7 | 830 | 880 → **1,217** | 384 |
+
+A skill's delivered bytes are its body with frontmatter and comments removed
+(`tests/test_structural_budget.py`'s `_preload_size`); a rendered file is the
+adapter's note, the core and the two joins. Each is at the path it already
+had, so nothing retires and no consumer loses a file. **The always-on floor
+moves from 9,149 to 8,986 content bytes** — down, even though §3 now arrives
+whole: the retired `<!-- pins: … -->` block was larger than the rules it
+quoted. Per spawn, `test-writer` pays +1,570 B (the §6 skill +1,733, the
+floor −163), the roles that read §9 pay less, and what a role pays for is the
+section's own wording rather than a curated paraphrase of it.
+
+The five hand-curated section skills stay hand-curated and pinned, and #109
+re-defers that row with its numbers — the section core over the hand-written
+copy, i.e. what the preload would grow by if generated: `aide-queue-and-inbox`
+2.8×, `aide-progress-file` 2.6×, `aide-item-specs` 2.0×,
+`aide-document-format` 2.0×, `aide-human-gates` 1.5×. A 1.5–2.8× increase per
+spawn is a decision about the §1 bundle rather than about the generator.
+
+### Added
+
+- **The generator** (`install.py`: `generated_sections`, `section_core`,
+  `render_delivered`, `delivered_bytes`, and `copy_tree`'s `render` hook). The
+  declaration is a comment in the adapter's own file rather than a side
+  manifest, so the source tree stays inspectable — everything an author writes
+  is still where a reader of `adapters/<name>/` will find it — and a second
+  adapter (issue #64) reuses the convention by writing the same comment against
+  the same engine path. Rendered bytes are UTF-8 without a BOM and LF-only
+  whichever OS ran the install, so a consumer's `git diff` after `--update`
+  does not depend on the platform.
+- **Exit code 4** for a framework checkout that contradicts itself — a
+  delivered file naming a section that moved, or a section that never got its
+  `Rationale` heading. Every generated file is rendered before the first
+  write, so it aborts with the target untouched — not the engine copy, not a
+  sibling delivered file that rendered fine — rather than shipping a
+  delivered file with no rules in it.
+- **`test_generated_delivery.py`** (adapter suite) and
+  **`tests/test_install_generated.py`**: the rendered body equals the adapter's
+  half plus the section core byte for byte, a statement added to a section
+  reaches the delivered copy with no second edit, an `--update` re-renders when
+  only the section changed, and the adapter's half stays a delivery note (it
+  names the section, says the engine copy wins, opens no heading of its own,
+  and is under half the delivered body).
+
+### Changed
+
+- **`test_rule_pins.py` retires for a generated file.** The pins mechanism
+  guards a restatement; a generated file is not one. It is excluded from the
+  pin checks and **fails if it declares a pin anyway** — a curated quote beside
+  a body nobody hand-maintains can only go stale against a wording it does not
+  control. The five hand-curated section skills and the two workflow skills
+  that quote the §1 routing table are bound exactly as before.
+- **The four files lost their `<!-- pins: … -->` blocks and their restatement**,
+  keeping only what the adapter owns: §3's `PreToolUse` hook note and the
+  "use the Bash tool, not PowerShell" shaping §3 explicitly leaves to an
+  adapter, and §6's note on what its `paths:` globs match. The section's own
+  `## N.` heading now titles each delivered file.
+- **`tests/_delivered.py`** gains the one reading of "generated"
+  (`generated_from`, `is_generated`, `rendered`, `rendered_body`) — pointers at
+  `install.py`, which owns the grammar because the installer applies it inside
+  a consumer where `tests/` does not exist — and puts the framework root on
+  `sys.path` itself rather than depending on each caller's shim.
+
 ## [1.46.0] — 2026-09-09
 
 The manifest #109 has been waiting on, realised as **per-document section

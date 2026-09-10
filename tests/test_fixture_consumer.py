@@ -35,7 +35,7 @@ FRAMEWORK_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FRAMEWORK_ROOT))
 sys.path.insert(0, str(FRAMEWORK_ROOT / "tests"))
 import install  # noqa: E402  (path shim above)
-from _delivered import STRIPS_BOM  # noqa: E402
+from _delivered import STRIPS_BOM, is_generated  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -67,12 +67,30 @@ SOURCE_SECTION_SKILLS = [
     p for p in sorted((FRAMEWORK_ROOT / "adapters" / "claude" / "skills").glob("*/SKILL.md"))
     if _is_section_skill(p)]
 
+#: The delivered files an install **renders** from an engine section rather
+#: than copying (1.47.0, issue #109). Derived the same way as everything else
+#: here, so a file converted tomorrow is checked the moment it lands.
+SOURCE_GENERATED = [p for p in SOURCE_RULES + SOURCE_SECTION_SKILLS if is_generated(p)]
+
 #: The two `paths:`-scoped rules 1.22.0–1.26.0 shipped and 1.27.0 retired in
 #: favour of the section skills above (issue #85). Every consumer installed
 #: before the manifest existed still has them, and nothing but
 #: `RETIRED_ADAPTER_PATHS` can remove them.
 RETIRED_RULES = (".claude/rules/aide-living-documents.md",
                  ".claude/rules/aide-test-hygiene.md")
+
+
+def delivered(source: Path) -> bytes:
+    """The bytes an install writes for one adapter source file.
+
+    Most of them are copies, and for those this is the file itself. A
+    **generated** delivered file (1.47.0, issue #109) is rendered instead: its
+    own text with the core of the engine section it names appended, so the
+    consumer's copy is longer than the source and byte-equality against the
+    source would be the wrong assertion — while byte-equality against the
+    render is the right one, and is what says the generator ran.
+    """
+    return install.delivered_bytes(source, FRAMEWORK_ROOT / "core") or source.read_bytes()
 
 
 # --------------------------------------------------------------------------- #
@@ -339,9 +357,11 @@ def test_the_install_delivers_every_rule_and_no_others(prototype: Path):
 
 @pytest.mark.parametrize("source", SOURCE_RULES, ids=lambda p: p.name)
 def test_a_rule_reaches_the_consumer_byte_for_byte(prototype: Path, source: Path):
+    """Byte-exact, against what the installer is supposed to write: the file
+    for a copy, the render for a generated one (`delivered` above)."""
     installed = prototype / ".claude" / "rules" / source.name
     assert installed.is_file(), f"{source.name} never reached .claude/rules/"
-    assert installed.read_bytes() == source.read_bytes()
+    assert installed.read_bytes() == delivered(source)
 
 
 @pytest.mark.parametrize("source", SOURCE_SECTION_SKILLS, ids=lambda p: p.parent.name)
@@ -354,7 +374,7 @@ def test_a_section_skill_is_still_preloadable_after_the_copy(prototype: Path, so
     name = source.parent.name
     path = prototype / ".claude" / "skills" / name / "SKILL.md"
     assert path.is_file(), f"{name}: never reached .claude/skills/"
-    assert path.read_bytes() == source.read_bytes()
+    assert path.read_bytes() == delivered(source)
     raw = path.read_bytes()
     assert not raw.startswith(codecs.BOM_UTF8), f"{name}: the install added a BOM"
     assert raw.startswith(b"---"), f"{name}: no frontmatter delimiter at byte 0"
@@ -363,6 +383,44 @@ def test_a_section_skill_is_still_preloadable_after_the_copy(prototype: Path, so
     assert f"name: {name}" in block, f"{name}: lost the `name:` a preload resolves"
     assert "user-invocable: false" in block, f"{name}: lost `user-invocable: false`"
     assert "paths:" in block, f"{name}: lost its `paths:`"
+
+
+def test_the_source_tree_has_generated_delivered_files(prototype: Path):
+    """Fails closed for the test below. An empty list would make it vanish
+    with a green suite, which is the one way "the generator ran" can stop
+    being checked without anything going red."""
+    assert SOURCE_GENERATED, (
+        "no adapter file declares `<!-- generated-from: … -->` — the "
+        "declaration stopped parsing, or the last generated file was converted "
+        "back to a hand-written copy")
+
+
+@pytest.mark.parametrize("source", SOURCE_GENERATED,
+                         ids=lambda p: p.parent.name if p.name == "SKILL.md" else p.name)
+def test_a_generated_file_is_the_engine_section_the_same_consumer_holds(
+        prototype: Path, source: Path):
+    """The claim, made where it matters: inside one consumer.
+
+    Both halves land in the same install — `.aide/conventions/<file>` from the
+    engine and the delivered copy from the adapter — so "the delivered copy is
+    the section" is a fact about two files a project can open side by side, and
+    it is asserted against the consumer's own engine rather than this repo's.
+    A generator that silently stopped running, or ran against the wrong tree,
+    leaves the delivered file ending in its own prose and fails here.
+    """
+    rel = source.relative_to(FRAMEWORK_ROOT / "adapters" / "claude")
+    installed = prototype / ".claude" / rel
+    body = installed.read_text(encoding="utf-8")
+    declared = install.generated_sections(body)
+    assert declared, f"{source}: the installed copy lost its declaration"
+    for section in declared:
+        engine = prototype / Path(section)
+        assert engine.is_file(), f"{section}: not in the consumer's engine"
+        core = install.section_core(engine.read_text(encoding="utf-8"))
+        assert core is not None, f"{section}: no `Rationale` heading in the consumer"
+        assert core.rstrip("\n") in body, (
+            f"{installed.name}: does not carry {section}'s core verbatim — the "
+            f"generator did not run, or it rendered from a different tree")
 
 
 def test_the_retired_rules_are_not_installed_and_are_listed_for_retirement(prototype: Path):
@@ -386,7 +444,7 @@ def test_update_adds_the_rules_directory_to_a_consumer_that_never_had_one(
     for source in SOURCE_RULES:
         installed = consumer / ".claude" / "rules" / source.name
         assert installed.is_file(), f"{source.name} missing after --update"
-        assert installed.read_bytes() == source.read_bytes()
+        assert installed.read_bytes() == delivered(source)
 
 
 def test_the_prune_reaches_the_engine_and_stops_before_the_rules(consumer: Path):
@@ -407,7 +465,7 @@ def test_the_prune_reaches_the_engine_and_stops_before_the_rules(consumer: Path)
     assert own.is_file(), "the prune crossed into .claude/ and ate a project's rule"
     for source in SOURCE_RULES:
         assert (consumer / ".claude" / "rules" / source.name).read_bytes() == \
-            source.read_bytes()
+            delivered(source)
 
 
 def test_update_retires_the_two_paths_scoped_rules_from_a_pre_swap_consumer(
@@ -477,7 +535,7 @@ def test_update_retires_a_rule_the_adapter_dropped_and_keeps_the_projects_own(
     assert b"aide-dropped-by-a-later-release" not in manifest.read_bytes()
     for source in SOURCE_RULES:
         assert (consumer / ".claude" / "rules" / source.name).read_bytes() == \
-            source.read_bytes()
+            delivered(source)
     assert install.main(["--into", str(consumer), "--check"]) == 0
 
 
