@@ -107,7 +107,7 @@ above the `Rationale` heading, **verbatim**: `rules/aide-command-hygiene.md`
 so a section that reads wrongly when delivered whole is a section to fix, never
 a wrapper to fix; and a core several times the size of the copy a role needs is
 a reason to leave the file hand-written and pinned — where the five §1 skills
-sit, at 0.35–0.66 of their cores. The source tree holds no generated body: it
+sit, their cores 1.5–2.8× the copies. The source tree holds no generated body: it
 holds the file with the declaration in it, which is why the four still read as
 delivered files here. The grammar lives in `install.py` (the installer applies
 it inside a consumer, where `tests/` does not exist);

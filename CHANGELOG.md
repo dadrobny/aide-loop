@@ -137,26 +137,29 @@ the installer writes that file's own text — frontmatter, `<!-- reach -->` /
 section — followed by the section's **core**, everything above its closing
 `Rationale` heading (issue #122), verbatim.
 
-| Delivered file | Section | preloaded bytes before → after |
-|---|---|---|
-| `rules/aide-command-hygiene.md` | §3 | 2,493 → **3,302** |
-| `skills/aide-test-hygiene/SKILL.md` | §6 | 5,711 → **7,444** |
-| `skills/aide-review-and-validation/SKILL.md` | §9 | 2,740 → **2,340** |
-| `skills/aide-off-platform-verification/SKILL.md` | §7 | 880 → **1,217** |
+| Delivered file | Section | section core | delivered bytes before → after | adapter's note |
+|---|---|---|---|---|
+| `rules/aide-command-hygiene.md` (a rule loads whole, comments included) | §3 | 2,587 | 4,181 → **4,018** (body alone 2,493 → 3,302) | 712 |
+| `skills/aide-test-hygiene/SKILL.md` | §6 | 6,781 | 5,711 → **7,444** | 660 |
+| `skills/aide-review-and-validation/SKILL.md` | §9 | 1,957 | 2,740 → **2,340** | 380 |
+| `skills/aide-off-platform-verification/SKILL.md` | §7 | 830 | 880 → **1,217** | 384 |
 
-Each is at the path it already had, so nothing retires and no consumer loses a
-file. **The always-on floor moves from 9,149 to 8,986 content bytes** — down,
-even though §3 now arrives whole: the retired `<!-- pins: … -->` block was
-larger than the rules it quoted. A role that preloads a generated skill pays
-more (`test-writer` +1,733 B, the roles that read §9 −400 B), and what it pays
-for is the section's own wording rather than a curated paraphrase of it.
+A skill's delivered bytes are its body with frontmatter and comments removed
+(`tests/test_structural_budget.py`'s `_preload_size`); a rendered file is the
+adapter's note, the core and the two joins. Each is at the path it already
+had, so nothing retires and no consumer loses a file. **The always-on floor
+moves from 9,149 to 8,986 content bytes** — down, even though §3 now arrives
+whole: the retired `<!-- pins: … -->` block was larger than the rules it
+quoted. Per spawn, `test-writer` pays +1,570 B (the §6 skill +1,733, the
+floor −163), the roles that read §9 pay less, and what a role pays for is the
+section's own wording rather than a curated paraphrase of it.
 
 The five hand-curated section skills stay hand-curated and pinned, and #109
-re-defers that row with its numbers: `aide-document-format` 0.50,
-`aide-item-specs` 0.49, `aide-progress-file` 0.38, `aide-queue-and-inbox` 0.35
-and `aide-human-gates` 0.66, curated against their sections' cores. Delivering
-those whole is a 2–3x increase per spawn, which is a decision about the §1
-bundle rather than about the generator.
+re-defers that row with its numbers — the section core over the hand-written
+copy, i.e. what the preload would grow by if generated: `aide-queue-and-inbox`
+2.8×, `aide-progress-file` 2.6×, `aide-item-specs` 2.0×,
+`aide-document-format` 2.0×, `aide-human-gates` 1.5×. A 1.5–2.8× increase per
+spawn is a decision about the §1 bundle rather than about the generator.
 
 ### Added
 
