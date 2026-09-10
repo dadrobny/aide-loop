@@ -407,17 +407,48 @@ def _snapshot(root: Path) -> dict:
             for p in root.rglob("*") if p.is_file()}
 
 
+def _amend_every_surviving_core(framework: Path, sentinel: str) -> int:
+    """Put ``sentinel`` into the core of every section a generated file
+    delivers, except the one the test breaks. Returns how many were amended."""
+    conventions = framework / "core" / "conventions"
+    amended = 0
+    for control in install.ADAPTER_CONTROL:
+        root = framework / "adapters" / "claude" / control
+        if not root.is_dir():
+            continue
+        for src in root.rglob("*.md"):
+            for declared in install.generated_sections(install.source_text(src)):
+                section = install._section_source(declared, framework / "core")
+                if section == _section_of(framework) or not section.is_file():
+                    continue
+                text = install.source_text(section)
+                cut = install.RATIONALE_HEADING.search(text).start()
+                section.write_text(text[:cut].rstrip("\n") + f"\n\n{sentinel}\n\n"
+                                   + text[cut:], encoding="utf-8", newline="\n")
+                amended += 1
+    assert conventions.is_dir()
+    return amended
+
+
 def test_an_unrenderable_section_aborts_the_install_and_writes_nothing(
         framework: Path, target: Path, capsys):
     """A framework checkout that contradicts itself: the rule still delivers a
     section the engine no longer has. Exit 4, and the target is byte-for-byte
     what it was — not only `.aide/VERSION` (written last) but the engine copy
     and every sibling delivered file, because every generated file is rendered
-    before the first write. A `copy_tree` that rendered as it walked would
-    have landed the files sorting before the broken one at the new version and
-    said nothing about which (review of #109's PR 2)."""
+    before the first write.
+
+    The break alone would not show a partial write: a `copy_tree` that renders
+    as it walks rewrites the files sorting before the broken one with the bytes
+    they already hold. So every surviving generated section's core is amended
+    first — a real change to the engine copy and to every sibling delivered
+    file — and the test then asserts none of it landed, and that it does land
+    once the break is repaired (round two of the review of #109's PR 2)."""
     assert _install(target) == 0
     before = _snapshot(target)
+    sentinel = "Sentinel sentence: a partial write would carry this."
+    assert _amend_every_surviving_core(framework, sentinel) >= 1
+    broken = _section_of(framework).read_text(encoding="utf-8")
     _section_of(framework).unlink()
     (framework / "core" / "VERSION").write_text("9.9.9\n", encoding="utf-8")
     capsys.readouterr()
@@ -426,3 +457,13 @@ def test_an_unrenderable_section_aborts_the_install_and_writes_nothing(
     err = capsys.readouterr().err
     assert "does not have" in err and "not written to" in err
     assert _snapshot(target) == before
+    assert not any(sentinel.encode() in data for data in before.values())
+
+    # The held-back change was real: repair the break and it lands everywhere
+    # a surviving section is delivered, engine copy included.
+    _section_of(framework).write_text(broken, encoding="utf-8", newline="\n")
+    assert _install(target, "--update") == 0
+    after = _snapshot(target)
+    carriers = [path for path, data in after.items() if sentinel.encode() in data]
+    assert any(path.startswith(".aide/conventions/") for path in carriers)
+    assert any(path.startswith(".claude/") for path in carriers)
