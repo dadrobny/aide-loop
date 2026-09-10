@@ -52,7 +52,18 @@ paths:
      - enter through the queue, never by retro-editing a closed stage's
        deliverable list
      - ticked only by `aide progress accept` — never derived
+     - A box is ticked only by a human — or by an agent acting on a check it
+       actually performed
+     - A stage may be ✅ with an unticked box; say why in an annotation beside it
+     - An Acceptance box is therefore an observable check **of the built thing**
+     - A **measured outcome** the work aims for but cannot guarantee by
+       construction (an error-rate target, a benchmark result) must NOT be an
+       Acceptance box
+     - A target **never blocks its stage**
+     - Marking a target `❌ Not met` is a *finding*, so route it like one:
+       append a `- [ ] gap — …` line to `insights.md` in the same edit
      - The attestation is immutable; what is recorded about it is not
+     - Three verbs, and **none of them edits the original line**
      - `amend` appends, and only to a ticked box
      - a verb that can only add cannot be used to make an inconvenient attestation agree with a shipped stage
      - `retract` unticks, and keeps the original attestation visible
@@ -96,13 +107,33 @@ never by retro-editing a closed stage's deliverable list.
 
 **Prefer the verb to a hand edit**: `aide progress set`, `aide progress
 accept`, `aide queue tidy`. Acceptance boxes are **ticked only by
-`aide progress accept` — never derived**, and no rollup ever ticks one.
+`aide progress accept` — never derived**, and no rollup ever ticks one. **A
+box is ticked only by a human — or by an agent acting on a check it actually
+performed** — via:
+
+```
+aide progress accept <stage> (--criterion N | --all) [--evidence "<text>"]
+```
+
+**A stage may be ✅ with an unticked box; say why in an annotation beside it.**
+
+**What a box may claim.** Stage status tracks exactly one thing — the planned
+work shipped. **An Acceptance box is therefore an observable check of the built
+thing** (the CLI runs, the artifact validates), something completing the
+deliverables can guarantee. **A measured outcome the work aims for but cannot
+guarantee by construction (an error-rate target, a benchmark result) must NOT
+be an Acceptance box**: it belongs in the `## Outcome targets` table, where **a
+target never blocks its stage** — the stage closes when its work ships, and the
+target gates the Objective coverage rows instead. **Marking a target
+`❌ Not met` is a *finding*, so route it like one: append a `- [ ] gap — …`
+line to `insights.md` in the same edit.**
 
 **Correcting an attestation has verbs too, so it is never a hand edit either.**
 **The attestation is immutable; what is recorded about it is not** — the rule
-`insights.md` already runs on. `aide progress amend` appends a dated correction
-to a ticked box, `retract` unticks one while keeping the original visible, and
-`reword` fixes a criterion's wording. **`amend` appends, and only to a ticked
+`insights.md` already runs on. **Three verbs, and none of them edits the
+original line**: `aide progress amend` appends a dated correction to a ticked
+box, `retract` unticks one while keeping the original visible, and `reword`
+fixes a criterion's wording. **`amend` appends, and only to a ticked
 box** — the guard is structural, not advisory: **a verb that can only add
 cannot be used to make an inconvenient attestation agree with a shipped
 stage.** **`retract` unticks, and keeps the original attestation visible**;
