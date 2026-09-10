@@ -171,9 +171,10 @@ bundle rather than about the generator.
   does not depend on the platform.
 - **Exit code 4** for a framework checkout that contradicts itself — a
   delivered file naming a section that moved, or a section that never got its
-  `Rationale` heading. It aborts rather than shipping a delivered file with no
-  rules in it; `.aide/VERSION` is written last, so the target still reports the
-  version it had.
+  `Rationale` heading. Every generated file is rendered before the first
+  write, so it aborts with the target untouched — not the engine copy, not a
+  sibling delivered file that rendered fine — rather than shipping a
+  delivered file with no rules in it.
 - **`test_generated_delivery.py`** (adapter suite) and
   **`tests/test_install_generated.py`**: the rendered body equals the adapter's
   half plus the section core byte for byte, a statement added to a section

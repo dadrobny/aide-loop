@@ -356,6 +356,10 @@ def test_no_agent_or_skill_tells_a_role_to_copy_the_inbox_template(path: Path):
     template-scoped delivery from discriminating by role. Guarded on the
     template's path, not the clause's wording, because a reworded restatement
     of the same step would re-open both.
+
+    Reads the source file, so for a generated delivered file it sees the
+    adapter's half only: the section core that arrives at install time is
+    engine text, governed by `core/conventions/` and never by this guard.
     """
     body = path.read_text(encoding="utf-8")
     assert not _INBOX_TEMPLATE_RE.search(body), (

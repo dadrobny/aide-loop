@@ -348,8 +348,8 @@ engine copy wins, opens no heading of its own (the section's `## N.` heading is
 the file's title) and is under half the delivered body.
 [`tests/test_install_generated.py`](../../tests/test_install_generated.py)
 holds the installer half, including that a section that cannot be rendered
-**aborts the install** (exit 4) rather than shipping a delivered file with no
-rules in it. Generating a section is a judgement about *that section*: its core
+**aborts the install** (exit 4) before the first write, the target untouched,
+rather than shipping a delivered file with no rules in it. Generating a section is a judgement about *that section*: its core
 arrives whole, so a core several times the size of the copy a role needs is a
 reason to leave the file hand-written and pinned — which is where the five §1
 skills sit — never to trim it here.

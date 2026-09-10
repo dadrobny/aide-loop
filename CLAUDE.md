@@ -116,7 +116,8 @@ asserts the render is the adapter's half plus the core byte for byte and that
 an edit to the section reaches the delivered copy,
 [`tests/test_install_generated.py`](tests/test_install_generated.py) holds the
 installer half, and a section that cannot be rendered **aborts the install**
-(exit 4) rather than shipping a delivered file with no rules in it.
+(exit 4) before the first write — every generated file is rendered up front,
+so the target is untouched rather than three files into an update.
 
 That reading is **written once**, in
 [`tests/_delivered.py`](tests/_delivered.py) — the frontmatter grammar, the

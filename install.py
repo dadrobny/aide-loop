@@ -963,9 +963,10 @@ class GenerationError(ValueError):
     Raised only for a framework checkout that contradicts itself — a section
     that moved, was renamed, or never got its `Rationale` heading. Not a
     consumer-input error: nothing a project owns can cause it, which is why it
-    aborts the install rather than degrading to a copy. `core/VERSION` is
-    written last, so an install stopped here leaves the target reporting the
-    version it already had.
+    aborts the install rather than degrading to a copy. Every generated file
+    is rendered before the first write (`prerender_delivered`), so an install
+    stopped here has changed nothing in the target — not the engine copy, not
+    a sibling delivered file that would have rendered fine.
     """
 
 
@@ -1087,6 +1088,38 @@ def delivered_bytes(src: Path, core_dir: Path) -> Optional[bytes]:
     if not generated_sections(text):
         return None
     return render_delivered(text, core_dir).encode("utf-8")
+
+
+def prerender_delivered(adapter_dir: Path, core_dir: Path) -> Dict[Path, bytes]:
+    """Every generated delivered file under the adapter's control directories,
+    rendered — before ``run`` writes anything.
+
+    The walk is `copy_tree`'s (same directories, same skips), so the set this
+    renders is the set step 2 will write. Rendering up front is what makes a
+    `GenerationError` an abort rather than an interruption: `copy_tree` writes
+    in walk order, and a section broken for the third generated file would
+    otherwise land the first two at the new version, the engine copy already
+    updated, with nothing in the output saying which. Here the exception fires
+    with the target untouched.
+    """
+    rendered: Dict[Path, bytes] = {}
+
+    def walk(src: Path) -> None:
+        for child in sorted(src.iterdir()):
+            if _skip(child):
+                continue
+            if child.is_dir():
+                walk(child)
+                continue
+            data = delivered_bytes(child, core_dir)
+            if data is not None:
+                rendered[child] = data
+
+    for name in ADAPTER_CONTROL:
+        src = adapter_dir / name
+        if src.is_dir():
+            walk(src)
+    return rendered
 
 
 # --------------------------------------------------------------------------- #
@@ -1871,6 +1904,11 @@ def run(args: argparse.Namespace) -> int:
     # wrong in the first place, and the log line is where a person would notice.
     print(f"AIDE {mode}: {adapter} v{version} -> {target}")
 
+    # 0. Render every generated delivered file before the first write. A
+    #    framework checkout that contradicts itself (`GenerationError`) is
+    #    found here, with the target untouched — not three files into step 2.
+    rendered = prerender_delivered(adapter_dir, core_dir)
+
     # 1. engine -> .aide/ — minus VERSION, which is deferred to the end (§9).
     #    VERSION is what --check compares, i.e. the mark that an install
     #    finished; written here, any failure in the steps below would leave a
@@ -1882,13 +1920,15 @@ def run(args: argparse.Namespace) -> int:
     #    manifest written in step 8b. A delivered file that declares
     #    `<!-- generated-from: … -->` is rendered from the engine section it
     #    names instead of copied (`delivered_bytes`), so the copy a role loads
-    #    is the section rather than a restatement of it.
+    #    is the section rather than a restatement of it. The bytes come from
+    #    step 0, so a file is rendered once and the set written is the set
+    #    checked.
     written: List[Path] = []
     for name in ADAPTER_CONTROL:
         src = adapter_dir / name
         if src.is_dir():
             copy_tree(src, claude_dir / name, log, written=written,
-                      render=lambda path: delivered_bytes(path, core_dir))
+                      render=rendered.get)
 
     # 2b. The adapter's §7 declaration travels with the adapter. It is read here
     #     at install time from the source tree, but the §8 sibling-instruction
@@ -2034,12 +2074,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         # Its own code, because its own repair: nothing the consumer owns can
         # cause this and no re-run fixes it — the framework checkout is
         # internally inconsistent (a section renamed without the file that
-        # delivers it). VERSION is written last, so the target still reports
-        # the version it had.
+        # delivers it). Raised before the first write (`prerender_delivered`),
+        # so the target is exactly as it was.
         print(f"error: {exc}", file=sys.stderr)
         print("  a delivered file names an engine section this framework "
               "checkout does not have — fix adapters/<name>/ or core/"
-              "conventions/, not the target repo.", file=sys.stderr)
+              "conventions/, not the target repo, which was not written to.",
+              file=sys.stderr)
         return 4
 
 

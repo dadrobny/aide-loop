@@ -402,17 +402,27 @@ def test_check_says_behind_when_the_section_change_ships_with_its_version(
     assert "BEHIND" in capsys.readouterr().out
 
 
-def test_an_unrenderable_section_aborts_the_install_and_moves_no_version(
+def _snapshot(root: Path) -> dict:
+    return {p.relative_to(root).as_posix(): p.read_bytes()
+            for p in root.rglob("*") if p.is_file()}
+
+
+def test_an_unrenderable_section_aborts_the_install_and_writes_nothing(
         framework: Path, target: Path, capsys):
     """A framework checkout that contradicts itself: the rule still delivers a
-    section the engine no longer has. Exit 4, and — because `.aide/VERSION` is
-    written last — the consumer stays on the version it had rather than
-    reporting an install that delivered a rule file with no rules in it."""
+    section the engine no longer has. Exit 4, and the target is byte-for-byte
+    what it was — not only `.aide/VERSION` (written last) but the engine copy
+    and every sibling delivered file, because every generated file is rendered
+    before the first write. A `copy_tree` that rendered as it walked would
+    have landed the files sorting before the broken one at the new version and
+    said nothing about which (review of #109's PR 2)."""
     assert _install(target) == 0
-    installed_version = (target / ".aide" / "VERSION").read_bytes()
+    before = _snapshot(target)
     _section_of(framework).unlink()
+    (framework / "core" / "VERSION").write_text("9.9.9\n", encoding="utf-8")
     capsys.readouterr()
 
     assert _install(target, "--update") == 4
-    assert "does not have" in capsys.readouterr().err
-    assert (target / ".aide" / "VERSION").read_bytes() == installed_version
+    err = capsys.readouterr().err
+    assert "does not have" in err and "not written to" in err
+    assert _snapshot(target) == before
