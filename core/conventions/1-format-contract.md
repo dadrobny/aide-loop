@@ -81,7 +81,9 @@ reader. A pointer of the form `§1 → insights.md` resolves to
   earns its place where it *disambiguates a rule* (§1 → `progress.md`'s
   shorthand-marker bullet, and its correction trail); §1 → `insights.md`'s
   entry line stays for a further reason, that the two rules under it position
-  themselves as "before the date" and "after the date".
+  themselves as "before the date" and "after the date"; and §1 → human gates
+  keeps its header row for a third, that mis-shaping that one table is the
+  only such mistake the tooling does not report.
 - **Why the reading-cold rules are on the floor.** They bind a session with no
   agent spec in play, so `.aide/AGENT-CONTEXT.md` carries them and they reach
   that session without anything having to point at this file.

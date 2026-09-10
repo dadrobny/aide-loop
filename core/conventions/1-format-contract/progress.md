@@ -1,7 +1,8 @@
 ### `progress.md` (the single source of truth for status)
 
-`.aide/templates/progress.md` models every shape below; this section fixes what
-a shape cannot — what a cell may hold, and what is mandatory.
+`.aide/templates/progress.md` draws this document's shape; where it does, this
+section names it rather than drawing it again, and fixes instead what a shape
+cannot carry — what a cell may hold, and what is mandatory.
 
 Mandatory, in order (consumer in brackets):
 

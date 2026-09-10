@@ -123,12 +123,11 @@ instead — that is the bump policy above, and it is enforced by
 
 ## [1.48.2] — 2026-09-10
 
-Issue #193: three §1 sections stated a shape `.aide/templates/progress.md`
-already models — and `aide check` enforces the template, so the template is the
-shape's executable statement while a section's copy of it is a second one, free
-to drift where the checked one cannot. The sections now keep the **rule** and
-name the template for the shape. Each fence was decided by #78's test, which
-kept two of the candidates the issue listed.
+Issue #193: §1 sections stated shapes `.aide/templates/progress.md` already
+models — and `aide check` enforces the template, so the template is the shape's
+executable statement while a section's copy of it is a second one, free to
+drift where the checked one cannot. Each candidate was decided by #78's test
+rather than by its shape, which kept three of the five the issue listed.
 
 ### Changed
 
@@ -137,18 +136,29 @@ kept two of the candidates the issue listed.
   `## Stage N — <title> — <icon>` header, and the `## Outcome targets` fence
   with its example row are gone; what a cell may hold stays — `Stage` is an
   integer, `Status` one icon, an objective cell opens with `G<n>`, a target's
-  status is table-local. The `aide progress accept` fence and the three-verb
-  fence go to `aide progress -h`, which has stated both since 1.45.2 and
-  1.48.1.
-- **`§1 → human gates` names the template too.** The row fence went; the
-  `Blocks` and `Status` vocabularies, the reach table and the rest of the rule
-  did not.
+  status is table-local. Each of those tables fails **loudly** when mis-shaped
+  (`aide check` errors on a stage summary table it cannot parse), so the
+  template and the check carry the shape between them. Core −282 B (−3.8%).
+- **The `aide progress accept` fence and the three-verb fence go to
+  `aide progress -h`**, which has stated the first since 1.45.2 and the second
+  since 1.48.1 (#192). `aide-progress-file` drops its copy of the `accept`
+  flags for the same pointer.
 - **The runtime instructions that author `progress.md` stop restating the
   shapes** — and with them goes a drifted copy of the status legend, which
   still said "the five-icon legend (📋 🚧 ✅ ⏸️ ❌)". There have been six since
   🔍 was added, and nothing compared that list to the template. The role is now
-  pointed at `.aide/templates/progress.md`, which it already opens to create
-  the file.
+  pointed at `.aide/templates/progress.md`, which it opens to create the file,
+  and told to re-read it on an incremental update, which otherwise does not.
+
+### Added
+
+- **`§1 → human gates` states what a mis-shaped gates table does.** A row that
+  is not four cells wide is not read as a gate **at all, and nothing says so**:
+  `aide gate list` reports nothing gated, `aide check` warns about nothing, and
+  `aide claim` hands out the work the row was written to hold. It is the one §1
+  table whose mis-shaping is silent, which is why its header row stays stated
+  here rather than left to the template — the reason is in the section's
+  `Rationale`. Core +212 B (+7.0%).
 
 ### Kept, deliberately
 
@@ -159,13 +169,15 @@ kept two of the candidates the issue listed.
 - **`§1 → progress.md`'s correction trail example**, which shows the original
   line untouched under two dated corrections, and the shorthand-marker example,
   which shows why a reference in mid-prose moves nothing. Both disambiguate a
-  rule rather than repeat a shape (#78).
+  rule rather than repeat a shape (#78); neither is modelled by the template.
 
-The two section cores lose 525 B (progress.md −4.8%, human-gates.md −5.8%) —
-less than the issue's 1,574 B estimate, which counted the fences without the
-rule prose that replaces them, and assumed the two kept examples would go.
-Delivered copies are unchanged but for one pin: `aide-human-gates` no longer
-quotes the table header row, because the section no longer states it.
+Net across the two section cores: −70 B (−0.7%). The issue estimated −1,574 B,
+counting the fences' raw bytes without the rule prose that replaces them, and
+assuming the kept examples would go; the gates finding then turned a removal
+into an addition. The saving is in `progress.md`; the rest of the pass bought
+correctness, not size. Delivered copies change in three places: `aide-progress-
+file` loses the `accept` flag fence, `aide-create-progress` loses the shape
+list, and `aide-human-gates` gains the silent-skip rule and a pin for it.
 
 ## [1.48.1] — 2026-09-10
 

@@ -22,11 +22,13 @@ from the template **`.aide/templates/progress.md`**.
 
 `progress.md` is parsed and edited by `python .aide/scripts/aide.py`
 (`check`, `progress set`) and the status report. **`.aide/templates/progress.md`
-models every shape and its header comment states them** — the two tables, the
-stage sections, the flat deliverable bullets and their `*(Item NNN)*` markers,
-the acceptance checkboxes, and the status legend. Copy the template's shapes
-rather than retyping them from memory; `.aide/conventions.md` §1 fixes what the
-cells may hold.
+is the model** — its header comment states the shapes (the two tables, the stage
+sections, the flat deliverable bullets and their `*(Item NNN)*` markers, the
+acceptance checkboxes) and its `## Status legend` table carries the status
+vocabulary. Copy them from the open template rather than retyping them from
+memory; `.aide/conventions.md` §1 → `progress.md` and §1 → status icons fix what
+the cells may hold. **Re-read the template on an incremental update too** — that
+path does not otherwise open it.
 
 One rule the shape cannot carry, so it is stated here: if any roadmap stage
 carries a `Target:` bullet (a measured outcome the work cannot guarantee — an

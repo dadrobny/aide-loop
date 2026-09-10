@@ -109,11 +109,8 @@ never by retro-editing a closed stage's deliverable list.
 accept`, `aide queue tidy`. Acceptance boxes are **ticked only by
 `aide progress accept` — never derived**, and no rollup ever ticks one. **A
 box is ticked only by a human — or by an agent acting on a check it actually
-performed** — via:
-
-```
-aide progress accept <stage> (--criterion N | --all) [--evidence "<text>"]
-```
+performed** — via `aide progress accept`, whose flags `aide progress -h`
+states.
 
 **A stage may be ✅ with an unticked box; say why in an annotation beside it.**
 

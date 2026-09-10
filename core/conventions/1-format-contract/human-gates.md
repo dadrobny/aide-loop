@@ -2,7 +2,19 @@
 
 A **decision only a person can make**, blocking work until they make it. The
 template's optional `## Human gates` section in `progress.md`, one row per
-gate. Two of its cells have a fixed vocabulary:
+gate, four cells in this order:
+
+```
+| Gate | Blocks | Status | Decision / evidence |
+|------|--------|--------|---------------------|
+```
+
+**A row of any other width is not read as a gate at all, and nothing says so** —
+it is skipped in silence, so `aide gate list` reports nothing gated, `aide
+check` warns about nothing, and `aide claim` hands out the work the row was
+written to hold.
+
+Two of the cells have a fixed vocabulary:
 
 - **Blocks** — item numbers (any §1 reference form, or bare: `106`,
   `110, 111`, `106–108`), `stage N`, or `all`.
@@ -75,6 +87,14 @@ Agents *read* gates — to know why they must stop — and stop.
   work behind a declined gate would run exactly what was refused. An
   unrecognised status blocks for the same reason: a typo in the mark must not
   silently open a gate.
+- **Why the shape is stated here and not left to the template.** Every other
+  §1 table fails loudly when mis-shaped: `aide check` errors outright on a
+  stage summary table it cannot parse, so the author is told. A gates table
+  whose rows are not four cells wide yields *no gates*, which is
+  indistinguishable from a project that has none — and the one outcome this
+  table exists to prevent is work proceeding past a decision nobody made. The
+  template models the row too, but it is the section an author reads when
+  raising the first gate in a project whose optional section was deleted.
 - **Why `check` warns and `status` prints.** A gate that is still blocking is
   visible on every run instead of buried in a spec's prose; `aide status -h`
   names open gates among what it reports.
