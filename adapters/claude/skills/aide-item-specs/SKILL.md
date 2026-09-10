@@ -84,6 +84,8 @@ paths:
      - Never fence a whole tree
      - Never walk untracked or ignored paths
      - A diff-time scope claim is never a suite assertion
+     - **A pair with no declared dependency keeps the error, and saying so
+       under `## Dependencies` is the third remedy the message offers.**
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/environment-gated-capabilities.md
@@ -96,6 +98,9 @@ paths:
      - A stage-closing item's Implementation Steps must add/update the row(s)
        for any capability its stage introduced
      - Both mechanisms are opt-in
+     - a queue that closes a roadmap stage ends with a `Validate stage N`
+       item that replays the stage's use cases end-to-end and updates the
+       capability table
      - Item specs may also carry an optional **Validation** section (see the
        item template) that the validator must execute
 -->
@@ -219,6 +224,13 @@ always-authorised path under Asserts against**. **Asserts against means
 pinned-not-changed**, so never list the same path under both **May change** and
 **Asserts against**.
 
+One queue's specs are checked against each other before any is built:
+`aide check --queue NNN` reports one item changing what another pins under
+**Asserts against** as an error, discounted in one direction where a declared
+dependency already orders the pair. **A pair with no declared dependency keeps
+the error, and saying so under `## Dependencies` is the third remedy the
+message offers.**
+
 A test that hashes another file's bytes against a hardcoded literal to prove
 this item did not touch it — a *scope fence* — is a fallback for the case with
 no diff to check against, never the norm. **It inverts on the next legitimate
@@ -246,7 +258,12 @@ Implementation Steps must add/update the row(s) for any capability its stage
 introduced.** Both mechanisms are opt-in. A named `[validation]` profile in
 `aide.toml` makes the check deterministic (`aide env --profile <name>`), and
 **item specs may also carry an optional Validation section (see the item
-template) that the validator must execute**.
+template) that the validator must execute**. The stage's own replay is an item
+like any other: **a queue that closes a roadmap stage ends with a `Validate
+stage N` item that replays the stage's use cases end-to-end and updates the
+capability table** — ✅ Verified where the profile is satisfied, else an
+explicit ❓ Unverified with the reason. `queue-planner` names it; this role
+writes its spec.
 
 ## Clarify mode
 

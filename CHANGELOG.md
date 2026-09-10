@@ -121,6 +121,54 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.47.1] — 2026-09-10
+
+The eight core sentences a receiving role acts on and its section skill did not
+carry (issue #190) — the whole of the "missing rule" class the sentence-level
+analysis posted on #109 found, out of ~45 kB of uncarried core. Deliberately
+not folded into #189: that PR is installer machinery and had been through two
+review rounds. Nothing else moves — `skills:` and `paths:` are untouched, so no
+reach changes; both sections stand exactly as they were; and each sentence is
+delivered the way #185 delivered the missing ten, as a `<!-- pins: -->` line
+plus the sentence in the body, so `test_rule_pins.py` now binds both copies in
+both directions.
+
+### Added
+
+- **`aide-progress-file` delivers the six §1 → `progress.md` sentences the
+  validator acts on.** #184's disposition tables marked them `R:validator` —
+  "stays core, reached by pointer" — and 1.46.0 then made the validator a
+  *receiver* of this skill without delivering them, so for two releases the
+  role that runs `aide progress accept` read the verbs and not the rules about
+  what a box may claim: who may tick one (a human, or an agent acting on a
+  check it actually performed) and through which invocation; that **a stage may
+  be ✅ with an unticked box**, said why in an annotation; that of the three
+  correction verbs **none edits the original line**; that an Acceptance box is
+  an observable check **of the built thing** while a **measured outcome** must
+  not be one; that an Outcome target **never blocks its stage**; and that
+  marking one `❌ Not met` is a *finding*, routed to `insights.md` like any
+  other.
+- **`aide-item-specs` delivers the two the `spec-author` acts on.** The one
+  `check --queue` finding only this role can clear — **a pair with no declared
+  dependency keeps the error, and saying so under `## Dependencies` is the third
+  remedy the message offers** — and the stage-validation item the
+  `queue-planner` names and this role specs: **a queue that closes a roadmap
+  stage ends with a `Validate stage N` item** that replays the stage's use cases
+  end-to-end and updates the capability table.
+
+Five of the eight were clear misses (503 B) — the validator's four above and
+the `check --queue` remedy; the acceptance-box definition, the outcome-target
+rule and the stage-validation item are the three rows a blind second reader
+argued for and the first reader conceded — each a disambiguator by #78's
+test, since the validator decides what to attest against them and the
+`spec-author` writes the item the planner only names.
+
+Per spawn, `validator` and `queue-planner` pay **+1,073** content bytes on this
+skill and `spec-author` **+750**; the core-over-delivered ratio #109 re-deferred
+falls from 2.6× to **1.9×** for `aide-progress-file` and from 2.0× to **1.9×**
+for `aide-item-specs`. Both stay hand-written and pinned — whether the §1 bundle
+is generated instead is still #109's decision, not this patch's.
+
 ## [1.47.0] — 2026-09-09
 
 Four delivered files are no longer written by hand: `install.py` **renders**
