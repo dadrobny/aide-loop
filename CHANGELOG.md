@@ -167,6 +167,19 @@ with the reasons.
   pinned statement survives; `adapters/claude/skills/aide-item-specs/SKILL.md`
   carried the dropped-span clause and was trimmed with its section.
 
+### Added
+
+- **A drift guard pinning `aide progress -h`'s rollup to `rollup_status()`**
+  (`core/scripts/tests/test_aide_core.py`). The rule now lives in the help and
+  nowhere else, so nothing in `conventions/` would have to change if the
+  derivation moved — the failure mode that let the section's own copy go stale
+  for two releases, and that this release's first draft then reproduced in the
+  replacement. The test renders the help argparse actually emits, transcribes
+  the sentence as a predicate, and checks it against `rollup_status` over every
+  multiset of up to four bullets drawn from all six statuses; it also asserts
+  the help still makes the claims that predicate encodes, so a rewording that
+  drops one fails too. Both directions are mutation-checked.
+
 ### Kept, deliberately
 
 - **Four units the issue listed stay**, each because a role decides against

@@ -6,6 +6,7 @@ plus a couple of end-to-end CLI invocations over a temp docs tree.
 """
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import sys
 from pathlib import Path
@@ -134,6 +135,55 @@ def test_rollup_status():
     assert aide.rollup_status(["planned", "planned"]) == "planned"
     assert aide.rollup_status(["complete", "excluded"]) == "complete"
     assert aide.rollup_status([]) is None
+
+
+def test_progress_help_states_the_rollup_the_code_applies():
+    """The rollup rule lives in `aide progress -h` and nowhere else (issue #192).
+
+    §1 → progress.md used to carry the derivation and drifted: it still said "a
+    stage is ✅ if *every* Deliverables bullet is ✅" two releases after #173
+    made ⏸ non-terminal and ❌ count toward ✅. The pass that moved mechanism
+    into `-h` then wrote a *fresh* inaccuracy into the replacement — that a
+    stage holding a ⏸ bullet is 🚧, which is true of 🔍 and false of ⏸.
+
+    A prose rule the sections no longer restate has no pin holding it to the
+    code, so this test is the pin: it reads the help text argparse actually
+    renders and checks every claim in it against `rollup_status` over the whole
+    input space. Reword the help freely; change what the rollup *does* and this
+    fails until the sentence is rewritten with it.
+    """
+    from itertools import combinations_with_replacement
+
+    parser = aide.build_parser()
+    help_text = next(
+        action.choices["progress"].format_help()
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction))
+
+    # The sentence under test, transcribed as a predicate. Kept in the order
+    # the English states it, which is also the order the code branches in.
+    def as_stated(statuses):
+        if (all(s in ("complete", "excluded") for s in statuses)
+                and any(s == "complete" for s in statuses)):
+            return "complete"
+        if any(s in ("complete", "in-progress", "in-review") for s in statuses):
+            return "in-progress"
+        return "planned"
+
+    every = ("complete", "excluded", "in-progress", "in-review",
+             "deferred", "planned")
+    for size in (1, 2, 3, 4):
+        for combo in combinations_with_replacement(every, size):
+            assert aide.rollup_status(list(combo)) == as_stated(list(combo)), (
+                f"`aide progress -h` states a rollup the code does not apply, "
+                f"for {list(combo)}")
+
+    # And the help still makes the two claims that predicate encodes, so a
+    # rewording that silently drops one is caught as well as a behaviour change.
+    for claim in ("\u2705 or \u274c and at least one is \u2705",
+                  "a stage holding one is always \U0001f6a7",
+                  "\u23f8\ufe0f, \U0001f4cb and \u274c reads \U0001f4cb"):
+        assert claim in help_text, f"`aide progress -h` no longer states: {claim}"
 
 
 def test_a_deferred_deliverable_keeps_its_stage_open():
