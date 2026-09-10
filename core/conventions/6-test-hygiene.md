@@ -77,8 +77,8 @@ entire loop, indefinitely.
   you mean by matching it, not on how many there are.
 - **A scope claim about a diff belongs on the branch, not in the suite.**
   "This item did not touch X" is decided by `aide scope` against the item's
-  declared paths (§1 → authorised paths, proved as §1 →
-  authorised-paths-proof rules); written as a test it asserts
+  declared paths (§1 → authorised paths), proved as §1 → authorised-paths-proof
+  rules; written as a test it asserts
   something that stops being true the moment the item merges — on a stacked
   queue, where the item's base is the queue branch and not `main`, it reports
   every sibling item's legitimate change as this item's violation. **Deriving

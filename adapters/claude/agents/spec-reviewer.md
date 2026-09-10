@@ -110,8 +110,8 @@ written `<docs_dir>/…` below are relative to whatever it is actually set to.
 7. **Read every spec the script could not parse.** An `undeclared-scope`
    finding means a spec declares no `## Authorised paths`, so none of the
    machine checks covered it (§1 → authorised-paths-proof states what
-   `check --queue` reports, what it discounts, and the remedies the message
-   offers). Those specs get your scope read by hand — that is
+   `check --queue` reports and what it discounts; the remedies its message
+   offers are the spec author's, §1 → authorised paths). Those specs get your scope read by hand — that is
    what "reported, never silently skipped" means once it reaches you.
 
 8. **Report.** Return findings grouped by spec, each naming the item, the

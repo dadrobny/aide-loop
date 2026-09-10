@@ -11,7 +11,7 @@ Read the section you were pointed at; nothing here expects a top-to-bottom read.
 
 | § | Section | What it governs |
 |---|---|---|
-| 1 | [Format contract](conventions/1-format-contract.md) | The exact shapes `aide.py` parses in `docs/aide/**`, and the rule that every durable artifact must read cold. Its own index, one file per document shape |
+| 1 | [Format contract](conventions/1-format-contract.md) | The exact shapes `aide.py` parses in `docs/aide/**`, and the rule that every durable artifact must read cold. Its own index — one file per document shape, and per reader where several roles act on one |
 | 2 | [Claim protocol](conventions/2-claim-protocol.md) | How "this item is taken" is signalled between concurrent runs — the pushed claim branch, not a `🚧` on a feature branch |
 | 3 | [Command hygiene](conventions/3-command-hygiene.md) | The canonical shell-command rules. Runtime-general; an adapter enforces them, it does not restate them |
 | 4 | [Git modes](conventions/4-git-modes.md) | What `git.mode` changes inside `aide claim` / `aide merge`. Agent instructions are identical across modes |

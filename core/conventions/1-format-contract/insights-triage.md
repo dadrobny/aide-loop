@@ -2,9 +2,11 @@
 
 How an entry captured in `insights.md` (§1 → `insights.md`) leaves the inbox.
 It governs the pass that triages the backlog and the role that hands a
-`framework` entry over — the insight-review pass, and whatever orchestrates it;
-a role that only captures never performs any of this. What a routed `defect`,
-`gap` or `automation` entry becomes is §1 → `insights-maintenance-queue.md`.
+`framework` entry over — the insight-review pass, and whatever orchestrates it.
+The routing table has a second reader: the queue's author, who queues what
+triage left open and needs the same table to know which types are theirs
+(§1 → `insights-maintenance-queue.md`). A role that only captures performs
+none of this.
 
 #### The routing table
 

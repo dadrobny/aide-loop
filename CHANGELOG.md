@@ -156,8 +156,9 @@ other.
   their instructions.
 - **Delivery follows the split.** `aide-queue-and-inbox` now delivers §1 →
   `queue-NNN.md`, capture and the maintenance queue — and states the
-  maintenance-queue ordering itself, under pin, instead of leaving it to an
-  unpinned restatement in the `queue-planner` spec. `aide-item-specs` delivers
+  maintenance-queue ordering itself, under pin, where before the rule reached
+  the role only through its own spec's unpinned restatement (which stays, as
+  the numbering steps it is, and now points at the preload). `aide-item-specs` delivers
   the declaration and keeps only the three proof statements a spec author
   decides against while writing the list; the fences, the bases and
   `check --queue`'s mechanics stay in the section for the roles that run them.

@@ -16,7 +16,9 @@ paths:
      ordering is a statement about both. Triage is deliberately not among
      them — since 1.48.0 (issue #191) the routing table, the judgement and the
      `framework` hand-over are §1 → `insights-triage.md`, performed by
-     `/aide-review-insights` before this role is spawned. The other roles
+     `/aide-review-insights` at the same boundary; this role acts on what that
+     pass left open, and `/aide-create-queue` restates the three rows it may
+     queue, under pin. The other roles
      append an insight line and nothing else, and that shape is on the
      always-on floor in `AGENT-CONTEXT.md`; `spec-author` expands a queue's
      items but writes no queue file, and its own spec names the queue file it
@@ -84,11 +86,12 @@ paths:
 `.aide/conventions.md` §1 → `queue-NNN.md`, §1 → `insights.md` and §1 →
 `insights-maintenance-queue.md` are the sources of truth; this file is how the
 three reach `queue-planner`, preloaded at spawn, since a queue is planned from
-the inbox and neither shape is one the role can look up mid-write. It is
+the inbox and no shape here is one the role can look up mid-write. It is
 **delivery, not a second source of truth**. The immutability of a captured
 claim and the entry shape itself are on the floor, in `AGENT-CONTEXT.md`,
 already in this context; routing an entry by type is triage's, §1 →
-`insights-triage.md`, and runs before you are spawned.
+`insights-triage.md`, and `/aide-create-queue` carries the rows you queue
+from.
 
 **Queue state is derived, not declared.** A queue is **open** iff any of its
 items is 📋/🚧 in `progress.md`, else **done**; the live queue is the

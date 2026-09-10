@@ -69,8 +69,8 @@ implicit.** `aide check --queue` reads a queue's declarations against each other
 before any item is built and errors when one item changes what another pins; a
 declared dependency that already orders the pair discounts it. **A pair with no
 declared dependency keeps the error, and saying so under `## Dependencies` is
-the third remedy the message offers** — the other two being to narrow one list
-or to re-scope the pin.
+the third remedy the message offers** — the other two being to widen the pin
+or narrow the edit.
 
 #### Rationale
 
