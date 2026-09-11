@@ -60,6 +60,9 @@ paths:
        construction (an error-rate target, a benchmark result) must NOT be an
        Acceptance box
      - A target **never blocks its stage**
+     - its Target cell never empty and its Objective cell naming the `G<n>`
+       objectives it gates
+     - A table row its reader cannot use is an `aide check` error
      - Marking a target `❌ Not met` is a *finding*, so route it like one:
        append a `- [ ] gap — …` line to `insights.md` in the same edit
      - The attestation is immutable; what is recorded about it is not
@@ -119,11 +122,14 @@ work shipped. **An Acceptance box is therefore an observable check of the built
 thing** (the CLI runs, the artifact validates), something completing the
 deliverables can guarantee. **A measured outcome the work aims for but cannot
 guarantee by construction (an error-rate target, a benchmark result) must NOT
-be an Acceptance box**: it belongs in the `## Outcome targets` table, where **a
-target never blocks its stage** — the stage closes when its work ships, and the
-target gates the Objective coverage rows instead. **Marking a target
-`❌ Not met` is a *finding*, so route it like one: append a `- [ ] gap — …`
-line to `insights.md` in the same edit.**
+be an Acceptance box**: it belongs in the `## Outcome targets` table, one row
+per goal, **its Target cell never empty and its Objective cell naming the
+`G<n>` objectives it gates**. **A target never blocks its stage** — the stage
+closes when its work ships, and the target gates the Objective coverage rows
+instead. **Marking a target `❌ Not met` is a *finding*, so route it like one:
+append a `- [ ] gap — …` line to `insights.md` in the same edit.** Write the
+row with care: **a table row its reader cannot use is an `aide check`
+error** — a `|` inside a cell, usually.
 
 **Correcting an attestation has verbs too, so it is never a hand edit either.**
 **The attestation is immutable; what is recorded about it is not** — the rule

@@ -121,6 +121,85 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.49.0] — 2026-09-11
+
+Issue #202: a `progress.md` table row that its parser could not read was
+skipped in every table, and what came next depended on the table — a warning
+for human gates, and nothing at all for the stage summary, objective coverage
+and Outcome targets tables, where the row that vanished was often the one a
+check existed to catch. There is now one rule: **an unreadable row fails
+closed.**
+
+### Changed
+
+- **A table row its reader cannot use is an `aide check` error**, in each of
+  the four tables the engine reads, naming the line, the table, what is wrong
+  and what stops being checked while it stands. Unusable means the wrong cell
+  count (a `|` inside a cell, usually, and the message says so), a Stage cell
+  that is not an integer, an Objective cell not starting `G<n>`, a summary or
+  objective Status cell with no icon, or an empty Target cell — exactly the
+  rows each reader skips, because the readers and the check now share one row
+  reader (`_table_rows`), so "skipped" and "reported" cannot drift apart.
+  Before, a ✅ summary row over unfinished work or a ✅ objective over a
+  `❌ Not met` target, mis-shaped by one stray `|`, passed clean: the row
+  dropped out before the over-claim check saw it. **A consumer whose
+  `progress.md` holds such a row sees `aide check` fail after `--update`**;
+  the fix is the one edit the message names. A header row is recognised by the
+  separator under it as well as by its first cell, so a retitled column is not
+  reported.
+- **The human-gates case, under the same rule.** A gate row of the wrong width
+  was a *warning* — which never moves the exit code, and no step of the item
+  loop runs `aide check` anyway: the run is driven by `aide claim`, which read
+  the row as no gate and handed out the work it was written to hold. It is now the same
+  error, and **`aide claim` holds every item while one stands**, since what
+  the row blocks is unknown — the fail-closed reading an unrecognised Status
+  already had. The claim report names the row and exits 1, a defect rather
+  than a normal hold, so a run never reads it as "none left"; §2 and
+  `/aide-run-queue`, which listed an unpublished claim as the only non-zero
+  "none left", now list both. `aide gate list` and `aide status` list the row
+  too, where `gate list` used to report "no '## Human gates' table (nothing
+  gated)" over a table holding only one.
+- **`aide check -h` lists the `progress.md` table lints with their
+  severities** — the errors (a missing table or stage section, a ✅ summary
+  row over unfinished deliverables, a ✅ objective over a `❌ Not met` target,
+  an unreadable row) and the warnings (a summary row disagreeing with its
+  stage, a ✅ objective over a target not yet Met, an unrecognised target or
+  gate status, a gate still blocking) — and says that the environment-gated
+  table is read by no check. It no longer says the remaining lints are all
+  warnings: template residue and conflict markers are errors too.
+
+### Documented
+
+The split #202 asked for, applied to all five tables: the template models the
+shape, the §1 section says what a cell holds and what a malformed row does
+where that changes a decision, and `aide check -h` lists every lint.
+
+- **`§1 → progress.md`** states the unreadable-row error once for the four
+  tables, and the cell rules the readers enforce that it did not state: an
+  objective row's Status is one icon, and a target row's Target cell is never
+  empty and its Objective cell names the `G<n>` objectives it gates. Core
+  +530 B (+7.5%), and a `Rationale` bullet for why an error and not a warning.
+- **`§1 → human gates`** says `aide check` fails and `aide claim` holds every
+  item. It keeps its header row, on a reason that no longer rests on the
+  severity: a gate row is the one row a role adds by hand to a file another
+  role wrote, often with no table above it to copy. Core −25 B.
+- **`§1 → environment-gated capabilities`** says outright that no tool reads
+  the verification table — not `check`, not `status`, not `env` — where "the
+  builder keeps the table" and "`aide env` evaluates a profile" read as if a
+  verb consumed its rows. Core +204 B. Giving it a reader (`aide status`
+  listing `❓ Unverified` rows) was the issue's other option, left for an issue
+  of its own.
+- **§1's opener** — *"`aide check` enforces them"*, true a table at a time and
+  not a row at a time — now reads *"enforces every one the tooling reads"*,
+  and its `Rationale` drops the #202 caveat. Core +23 B. The pinned copy in
+  `aide-document-format` moves with it.
+- **Delivered copies.** `aide-human-gates` states the claim hold and pins it
+  (+11 B delivered); `aide-progress-file` gains the target-row cell rules and
+  the unreadable-row error for the two roles that write a target row by hand,
+  both pinned (+228 B); `aide-document-format` +23 B. Per spawn:
+  `queue-planner` +262 B (33,446), `validator` +251 B (31,526),
+  `spec-author` +34 B (30,494); the floor is unchanged at 9,016.
+
 ## [1.48.4] — 2026-09-11
 
 Issue #194: the three read-cold rules are stated in §1 and again in

@@ -9,7 +9,8 @@ Mandatory, in order (consumer in brackets):
 1. **Stage summary table** — one row per stage; `Stage` is an integer,
    `Status` a single icon. *(aide check, status report, queue-planner)*
 2. **Objective coverage table** — one row per vision objective; the objective
-   cell starts with a `G<n>` code. *(status report, validator)*
+   cell starts with a `G<n>` code, `Status` a single icon. *(aide check, status
+   report, validator)*
 3. **One section per stage**, headed with the stage number, its title and its
    rolled-up icon. Inside it:
    - a **Deliverables** block of **flat** bullets, each
@@ -18,6 +19,13 @@ Mandatory, in order (consumer in brackets):
      aide progress, status report)*
    - an **Acceptance** block of `- [ ]` / `- [x]` checkboxes, ticked only by
      `aide progress accept` — never derived. *(validator)*
+
+**A table row its reader cannot use is an `aide check` error** in each of the
+four tables the engine reads: the two above, Outcome targets (below) and §1 →
+human gates. Unusable means the wrong number of cells — a `|` inside a cell,
+usually — or a cell that does not hold what this section says it holds. The
+Environment-Gated Capability Verification table is the fifth, and no tool reads
+it.
 
 **Item references on a deliverable bullet.** The `*(Item NNN)*` suffix is what
 ties an item to the bullet whose status it moves — `aide progress set NNN` finds
@@ -107,9 +115,11 @@ construction (an error-rate target, a benchmark result) must NOT be an
 Acceptance box. Such goals go in the **Outcome targets** table below.
 
 **Outcome targets (optional, additive).** The template's optional
-`## Outcome targets` section, one row per measured goal. Status is table-local
-(like the env-gated verification table's): `❓ Unverified` until measured, then
-`✅ Met (date, evidence)` or `❌ Not met (result → follow-up)`. Semantics
+`## Outcome targets` section, one row per measured goal, its Target cell never
+empty and its Objective cell naming the `G<n>` objectives it gates. Status is
+table-local (like the env-gated verification table's): `❓ Unverified` until
+measured, then `✅ Met (date, evidence)` or `❌ Not met (result → follow-up)`.
+Semantics
 *(aide progress, aide check, aide status)*:
 
 - A target **never blocks its stage** — the stage closes when its work ships.
@@ -123,6 +133,14 @@ Acceptance box. Such goals go in the **Outcome targets** table below.
 
 #### Rationale
 
+- **Why an unreadable row is an error, not a skip or a warning.** Every check
+  that reads the table drops the row, and its cells cannot be trusted to be in
+  position — a stray `|` shifts every one after it — so nothing can tell
+  whether it held the ✅ a check exists to catch. Before #202 three of these
+  tables dropped such a row without a word, and the check it would have fed
+  went with it: a ✅ summary row over unfinished work, or a ✅ objective over a
+  ❌ target, passed clean. Failing on the row, and naming its line, is the only
+  reading that cannot pass an over-claim, and its cost is one edit.
 - **Why a shared marker is desugared.** One bullet carries one icon, so while
   items share a marker they share a status — and the first flip would
   otherwise carry the siblings with it.
