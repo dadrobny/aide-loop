@@ -36,10 +36,12 @@ the same assertion, which is what covers both directions of drift.
    should pass for a rule; a pin only the tail satisfies fails here.
 
 **What is pinned.** The read-cold block, which #194 measured, and nothing yet
-beyond it. The page's other headings — §1 → `insights.md`, §1 →
-`progress.md`, §3, §5, §8, human gates — are unguarded exactly as before;
-each is one more entry in `FLOOR_PINS`, and adding one is the moment to
-reconcile its wording with its section.
+beyond it. The page carries nine headings; the other eight — §1 →
+`insights.md`, §1 → `progress.md`, `README.md` (each loop step ends in its own
+session), §5, §2/§4/`README.md` (mechanical actions go through the CLI), §3,
+§1 → human gates, §8 — are unguarded exactly as before; each is one more entry
+in `FLOOR_PINS`, and adding one is the moment to reconcile its wording with its
+section.
 
 Stdlib + pytest only.
 """

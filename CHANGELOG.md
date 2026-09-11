@@ -135,12 +135,16 @@ copy, and the first drifted copy is repaired under it.
 ### Fixed
 
 - **`templates/progress.md`'s header no longer restates the rollup, and no
-  longer restates it wrongly.** Both halves of its sentence — *"a stage is ✅ iff
-  every Deliverables bullet is ✅ -> then its Acceptance boxes are [x]"* — had
-  been false since 1.48.1: a ❌ bullet counts toward ✅ (#173), and **no rollup
-  has ever ticked an acceptance box**, which the template's own Acceptance block
-  says correctly three screens further down. The header now states what a
-  template author needs — that a stage's icon and its summary row are *derived*
+  longer restates it wrongly.** Neither half of its sentence — *"a stage is ✅
+  iff every Deliverables bullet is ✅ -> then its Acceptance boxes are [x]"* —
+  was ever true: an ❌ bullet has counted toward ✅ since the first commit, where
+  `rollup_status`'s terminal set was already `("complete", "deferred",
+  "excluded")`, and **no rollup has ever ticked an acceptance box**, which the
+  template's own Acceptance block says correctly three screens further down.
+  1.48.1 is when `§1 → progress.md`'s identical restatement was corrected and
+  the rule moved into `aide progress -h` (#192); nothing compared the template's
+  copy to either, so it shipped on. The header now states what a template author
+  needs — that a stage's icon and its summary row are *derived*
   from that stage's Deliverables bullets and nothing else, checkbox lines
   skipped, and that an Objective row then follows the stages delivering it
   subject to the Outcome-targets gate — and points at `aide progress -h` for the
@@ -157,27 +161,31 @@ copy, and the first drifted copy is repaired under it.
 - **`ADAPTER-SPEC.md`'s unnumbered "Copies of engine text — point, generate,
   pin, or advise" section** is the rule, stated once. It is unnumbered
   deliberately: a bare `§N` resolves through `conventions.md` in a hundred
-  places, and a tenth spec section would have collided with `conventions.md` §9
-  in the one document that names it twice. It decides, for any copy wherever it
+  places, and the spec has eight numbered sections, so a ninth would have been
+  `§9` — colliding with `conventions.md` §9 in the one document that names it
+  twice. It decides, for any copy wherever it
   sits: **point** (the default — the reader already loads
   the section, or the text is mechanism a verb's `-h` owns); **generate** (the
   copy is a whole section core and the channel delivers it whole); **quote-pin**
   (the copy is a hand-compressed restatement) — and **where the pins live**, by
-  the channel rather than by taste: *in the copy* when every reader gets it
-  through something that strips comments (a spawn preload), *in the test module*
-  when the bytes reach any reader unstripped (an instruction-file import, a
-  template a consumer author copies from, anything read interactively);
+  the channel the framework *ships* the copy through rather than by taste: *in
+  the copy* when that designed reader strips comments (a spawn preload), *in the
+  test module* when it gets the bytes whole (an instruction-file import, a
+  template a consumer author copies from);
   **advisory** for consumer-owned files, which the installer may report and must
   never fail over. A fifth rung covers prose the *code* owns: pin it with a test
   that exercises the code against the prose. §7 keeps the two adapter mechanisms
   and now points at the copies rule for the decision that picks one.
-- **The rule declines to grandfather the adapter's own delivered files.** Their
-  pins sit in the copy, which the criterion licenses only for the preload reader
-  — and 26% of the installed skills, rules and `AGENT-CONTEXT.md` is HTML
-  comments (32,141 of 123,684 B measured on an install of 1.49.0; 7,522 of
-  `aide-item-specs`'s 17,847). The rule says the pins belong in the test module
-  or the declarations belong stripped at install, and records that as work rather than
-  re-arguing it. Same for what an install ships: `pins`, `reach` and `triggers`
+- **The criterion is the channel the framework *ships* through, not every reader
+  a file could have** — otherwise it decides nothing, since any file can be
+  opened by a person. A section skill's designed reader is the preload, which
+  strips comments, so the adapter's five hand-written delivered skills keep their
+  pins in the copy; the floor's reader and a template's get the bytes whole, so
+  theirs go in the test module. The incidental readers still cost something — 26%
+  of the installed skills, rules and `AGENT-CONTEXT.md` is HTML comments (32,141
+  of 123,684 B measured on an install of 1.49.0; 7,522 of `aide-item-specs`'s
+  17,847) — but that is the case for not shipping the declarations, not for
+  moving the pins. On what an install ships: `pins`, `reach` and `triggers`
   exist for this repository's tests and should not be in a consumer's tree, with
   the one reader in the way named — `tests/test_structural_budget.py` reads
   `reach` *from an install*, deliberately — so a later pass is mechanical.

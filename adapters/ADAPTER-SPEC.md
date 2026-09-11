@@ -322,9 +322,9 @@ delivered file, and it may use either per file.
 `adapters/claude/tests/test_rule_pins.py` asserts every quoted statement still
 appears in both the delivered copy *and* the section it names, so editing
 either copy alone fails. The known cost is curation: a statement nobody pinned
-drifts freely. The blocks sit **in the file** because the preload that carries
-it strips comments — the copies rule's placement criterion, and the one reader
-it holds for.
+drifts freely. The blocks sit **in the file** because the channel the file is
+shipped through — the preload — strips comments; that is the copies rule's
+placement criterion, applied to a delivered file's designed reader.
 
 *Generate it.* A delivered copy that is **rendered from the section at install
 time** is not a restatement, so it cannot drift and owes no pin. The Claude
@@ -463,16 +463,19 @@ decides what happens whenever engine text is *copied* — wherever the copy sits
 in the engine, in an adapter, in this repository's own documents, or in a
 consumer's tree.
 
-§7 already holds one copy to a property: an adapter's delivered file, where
-**what is contractual is that the two copies cannot drift unobserved**. Every
+§7 above already holds one copy to a property: an adapter's delivered file,
+where **what is contractual is that the two copies cannot drift unobserved**. Every
 other copy got its own answer at the site where somebody noticed it, or none —
 and copies drift exactly where nothing watches them. Two were found wrong within
 two days of each other (issue #205), both shipping to every consumer:
-`templates/progress.md`'s header comment restated the stage rollup in two halves
-that had both been false since 1.48.1 — that a ❌ bullet blocks a stage's ✅, and
-that the rollup then ticks that stage's acceptance boxes, which no rollup has
-ever done — and a workflow skill called the status legend "five-icon" a release
-after 🔍 made it six.
+`templates/progress.md`'s header comment restated the stage rollup in two halves,
+**neither of which was ever true** — that a ❌ bullet blocks a stage's ✅, when an
+excluded bullet has counted toward ✅ since the first commit, and that the rollup
+then ticks that stage's acceptance boxes, which no rollup has ever done. 1.48.1
+is when the *section's* identical restatement was corrected and the rule moved
+into `aide progress -h` (#192); nothing compared the template's copy to either,
+so it shipped on. The second was a workflow skill calling the status legend
+"five-icon" — 🔍 had been the sixth since 1.20.0, forty-eight releases earlier.
 
 ### The ladder
 
@@ -483,12 +486,13 @@ less and have less to go wrong.
 both are about the reader already holding the text, or being one step from the
 only authoritative statement of it.
 
-- **The reader already loads the section.** A role whose definition preloads §6
-  does not need §6 restated inside it, and a rule the always-loaded channel
-  carries (§3) is in front of every session and every spawn already. §7's
-  measurement — 164 sub-agent spawns, 5 reads of `conventions.md`, about 3% — is
-  what a pointer is worth to a reader who does *not* have the text. It says
-  nothing against one aimed at a reader who does.
+- **The reader already loads the section.** A role whose definition preloads
+  `conventions.md` §6 does not need §6 restated inside it, and a rule the
+  always-loaded channel carries (`conventions.md` §3) is in front of every
+  session and every spawn already. The measurement in §7 above — 164 sub-agent
+  spawns, 5 reads of `conventions.md`, about 3% — is what a pointer is worth to
+  a reader who does *not* have the text. It says nothing against one aimed at a
+  reader who does.
 - **The text is mechanism the code owns.** A rule the CLI applies has exactly one
   authoritative statement: the help text `argparse` renders. Prose elsewhere
   describing *what a verb does* is a copy of code, and code moves faster than the
@@ -501,8 +505,8 @@ easiest thing to copy and the easiest thing to leave behind.
 **2. Generate.** When the copy is a **whole section core** and the channel
 delivers it whole, render it from the section at install time: there is no
 restatement, so nothing can drift and nothing needs pinning. The mechanics, and
-the properties a runtime that generates must make checkable, are §7's *Generate
-it*. The judgement is about the **section**, not the file — a core several times
+the properties a runtime that generates must make checkable, are in §7 above,
+under *Generate it*. The judgement is about the **section**, not the file — a core several times
 the size of the copy the reader needs is a reason to leave the file hand-written
 and pinned, or to compact the section, never to trim the delivered copy, which
 puts the restatement back.
@@ -517,38 +521,43 @@ Curate the quotations — the load-bearing sentences, not every line. A statemen
 nobody pinned drifts freely; that is the known and accepted cost of this rung,
 and the reason rungs 1 and 2 come first.
 
-**Where the pins live is decided by the channel, not by taste.** A pin block is
-bytes, and somebody may be paying for them:
+**Where the pins live is decided by the channel the framework ships the copy
+through — its *designed* reader.** Not by every reader it could conceivably have:
+any file can be opened by a person, so a criterion quantified over all readers
+rules out every placement and decides nothing.
 
-- **In the copy**, when every reader receives it through a channel that **strips
-  comments** — a spawn preload. There the declaration is free, and it sits beside
-  the sentence it binds, which is where an editor needs to see it.
-- **In the test module**, when the bytes reach any reader **unstripped** — an
-  instruction-file import the engine does not own, a template a consumer author
-  opens and copies from, anything a human reads interactively. A declaration
-  nobody reads still costs its own size: the always-on floor went *down* at
-  1.47.0 when a rule's pins block retired, because the block outweighed the rules
-  it quoted. `core/AGENT-CONTEXT.md` is the worked case (issue #194) — its pins
-  are a list in `tests/test_floor_pins.py`, and the failure message names the
-  page rather than the test.
+- **In the copy**, when the designed reader receives it through a channel that
+  **strips comments** — a spawn preload. There the declaration is free at the
+  point of use, and it sits beside the sentence it binds, which is where an
+  editor needs to see it. A section skill is this case: it is *shipped to be
+  preloaded*, and a person opening the `SKILL.md` in an editor is incidental to
+  the delivery rather than the delivery.
+- **In the test module**, when the designed reader gets the bytes **unstripped**
+  — an instruction-file import the engine does not own, or a template a consumer
+  author opens and copies from. A declaration nobody reads still costs its own
+  size: the always-on floor went *down* at 1.47.0 when a rule's pins block
+  retired, because the block outweighed the rules it quoted.
+  `core/AGENT-CONTEXT.md` is the worked case (issue #194) — its pins are a list
+  in `tests/test_floor_pins.py`, and the failure message names the page rather
+  than the test.
 
-**The consequence for the adapter's delivered files, recorded rather than
-finessed.** By that criterion the five hand-written delivered skills are on the
-wrong side of the line for every reader but one. Their pins are in the copy,
-which is free when the runtime preloads them and is not free when a person opens
-the file or another runtime's loader reads it whole: measured on an install of
+**What the incidental readers do buy is a different decision.** The adapter's
+five hand-written delivered skills sit on the right side of the criterion — their
+designed reader is the preload, so their pins stay in the copy — and that is not
+an argument that the bytes are free everywhere else. Measured on an install of
 1.49.0, HTML comments are 32,141 of the 123,684 bytes of the installed skills,
 rules and `AGENT-CONTEXT.md` — 26% — and 7,522 of `aide-item-specs`'s 17,847.
-This rule does not grandfather them. It says the pins belong in the test module,
-or the declarations belong stripped at install (below); which of the two, and
-when, is a row of work, not a re-argument of the criterion.
+That number is not a reason to move pins; it is the case for not shipping the
+declarations at all, which is the next subsection, and which stays recorded
+rather than implemented here.
 
 **4. Advisory.** A **consumer-owned** file — its instruction file, its
 `docs/aide/**` — is not the framework's to guard. The installer may *report* a
 copy it recognises and must never fail over one. The file is the project's;
 rewriting it trades a visible duplicate for a silent one, and seeding contract
-text into it is the same trade with the drift hidden. This is §7's stance on the
-instruction file, and it generalises to everything a project writes.
+text into it is the same trade with the drift hidden. This is the stance §7 above
+takes on the instruction file, and it generalises to everything a project
+writes.
 
 **A fifth rung, for code.** A prose statement of behaviour the **code** owns,
 which survives rung 1 because it *is* the authoritative statement (a `-h` block)
@@ -578,7 +587,7 @@ owes a separate assertion that the installed file is the same file.
 `generated-from` is not in that set and differs in kind: it is an instruction to
 the installer, read from **source** at render time, not an assertion about the
 file. Whether the rendered copy keeps the line is a readability call — what §7
-requires of a generated file is that it *names the section it delivers*, which
+above requires of a generated file is that it *names the section it delivers*, which
 its body does in prose.
 
 ### Registering a copy

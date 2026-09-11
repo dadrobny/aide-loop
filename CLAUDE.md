@@ -158,7 +158,8 @@ deliberately.
 And each **hand-written** delivered file **quotes the statements it delivers**,
 in `<!-- pins: <section file> … -->` blocks — one block per section, each `- `
 line a sentence lifted from it (rung 3 of the copies rule, with the blocks in
-the copy because the preload strips them).
+the copy because the channel the file is shipped through — the preload — strips
+them).
 [`adapters/claude/tests/test_rule_pins.py`](adapters/claude/tests/test_rule_pins.py)
 asserts every pin still appears in the delivered file *and* in the section it
 names, after a normalisation that absorbs reflow, emphasis and case but nothing
@@ -177,9 +178,9 @@ way from the other side of the boundary:
 are unpinned until someone reconciles their wording and adds an entry. Its pins
 live in that module's `FLOOR_PINS`, **not** in a comment on the page: an
 instruction-file import is the unstripped side of the copies rule's placement
-criterion, and the page is the criterion's worked case. Rewording a pinned
-sentence on either side means editing the page, the section and `FLOOR_PINS`
-together.
+criterion — the page's designed reader gets the bytes whole — and the page is
+that criterion's worked case. Rewording a pinned sentence on either side means
+editing the page, the section and `FLOOR_PINS` together.
 
 Do not re-inline a contract restatement into an agent spec. Six of them carried
 the command-hygiene block verbatim, one had already drifted, and a test now
