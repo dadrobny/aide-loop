@@ -625,5 +625,7 @@ excavation.
       first reach.
 - [ ] *(always)* every copy of engine text the adapter makes decided by
       *Copies of engine text* — pointed at, generated, quote-pinned with its
-      pins where the channel puts them, or left advisory because a project owns
-      the file — and registered where the runtime's copies are listed.
+      pins where the channel puts them, left advisory because a project owns
+      the file, or, for prose the code owns, pinned by a test that exercises
+      the code against it — and registered where the runtime's copies are
+      listed.

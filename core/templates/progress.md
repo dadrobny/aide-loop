@@ -11,9 +11,10 @@
   DERIVED from that stage's Deliverables bullets and nothing else (checkbox
   lines are skipped), by one rule `aide progress` applies and `aide check`
   reads. An Objective row then follows the stages that deliver it, subject to
-  the Outcome-targets gate stated below. That rule is stated in `python
-  .aide/scripts/aide.py progress -h`, and only there: read it there, and do not
-  restate it here. Write the bullets and let the stage follow.
+  the Outcome-targets gate stated below. The derivation itself is stated in
+  `python .aide/scripts/aide.py progress -h` and nowhere else (conventions.md
+  §1 -> progress.md points there too): read it there, and do not restate it
+  here. Write the bullets and let the stage follow.
   ✅ means MERGED and is written by `aide merge`, never claimed ahead of one
   -- under git.mode = "pr" an item stays 🔍 (pushed, awaiting a human's merge)
   until the PR lands. Update INCREMENTALLY; never reset a non-planned status
