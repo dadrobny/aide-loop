@@ -121,6 +121,64 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.48.2] — 2026-09-10
+
+Issue #193: §1 sections stated shapes `.aide/templates/progress.md` already
+models — and `aide check` enforces the template, so the template is the shape's
+executable statement while a section's copy of it is a second one, free to
+drift where the checked one cannot. Each candidate was decided by #78's test
+rather than by its shape, which kept three of the five the issue listed.
+
+### Changed
+
+- **`§1 → progress.md` names the template instead of drawing its tables.** The
+  stage summary and objective coverage column lists, the literal
+  `## Stage N — <title> — <icon>` header, and the `## Outcome targets` fence
+  with its example row are gone; what a cell may hold stays — `Stage` is an
+  integer, `Status` one icon, an objective cell opens with `G<n>`, a target's
+  status is table-local. Each of those tables fails **loudly** when mis-shaped
+  (`aide check` errors on a stage summary table it cannot parse), so the
+  template and the check carry the shape between them. Core −282 B (−3.8%).
+- **The `aide progress accept` fence and the three-verb fence go to
+  `aide progress -h`**, which has stated the first since 1.45.2 and the second
+  since 1.48.1 (#192). `aide-progress-file` drops its copy of the `accept`
+  flags for the same pointer.
+- **The runtime instructions that author `progress.md` stop restating the
+  shapes** — and with them goes a drifted copy of the status legend, which
+  still said "the five-icon legend (📋 🚧 ✅ ⏸️ ❌)". There have been six since
+  🔍 was added, and nothing compared that list to the template. The role is now
+  pointed at `.aide/templates/progress.md`, which it opens to create the file,
+  and told to re-read it on an incremental update, which otherwise does not.
+
+### Added
+
+- **`§1 → human gates` states what a mis-shaped gates table does.** A row that
+  is not four cells wide is not read as a gate **at all, and nothing says so**:
+  `aide gate list` reports nothing gated, `aide check` warns about nothing, and
+  `aide claim` hands out the work the row was written to hold. It is the one §1
+  table whose mis-shaping is silent, which is why its header row stays stated
+  here rather than left to the template — the reason is in the section's
+  `Rationale`. Core +212 B (+7.0%).
+
+### Kept, deliberately
+
+- **§1 → `insights.md`'s entry line.** The two rules under it position
+  themselves against it — the provenance goes *before the date*, the engine
+  version *after* — so the fence is the coordinate system they are stated in,
+  not a spare copy of the shape.
+- **`§1 → progress.md`'s correction trail example**, which shows the original
+  line untouched under two dated corrections, and the shorthand-marker example,
+  which shows why a reference in mid-prose moves nothing. Both disambiguate a
+  rule rather than repeat a shape (#78); neither is modelled by the template.
+
+Net across the two section cores: −70 B (−0.7%). The issue estimated −1,574 B,
+counting the fences' raw bytes without the rule prose that replaces them, and
+assuming the kept examples would go; the gates finding then turned a removal
+into an addition. The saving is in `progress.md`; the rest of the pass bought
+correctness, not size. Delivered copies change in three places: `aide-progress-
+file` loses the `accept` flag fence, `aide-create-progress` loses the shape
+list, and `aide-human-gates` gains the silent-skip rule and a pin for it.
+
 ## [1.48.1] — 2026-09-10
 
 The remainder of H3 (issue #192): verb mechanism still sitting in the §1
