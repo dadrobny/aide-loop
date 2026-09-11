@@ -10,7 +10,7 @@
   A "> **Status:**" note (e.g. the one `aide queue tidy` stamps on completion)
   is decorative, for human readers only.
   Item numbering across queues is a rule, not a shape: conventions.md §1 →
-  queue-NNN.md states it, and it is not restated here.
+  queue-NNN.md states it, and this comment does not restate it.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
   read then replace. Delete this comment in the generated file.

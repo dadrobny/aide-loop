@@ -155,8 +155,9 @@ def test_multi_line_guidance_is_covered(tmp_path: Path):
 #: near ten words: `- <icon> <text>. *(Item NNN)*` is four, the stage summary
 #: row four, `### Item NNN: Short Title` + a description paragraph seven. That
 #: is why there is **no allow-list**: an entry would be dead the day it was
-#: written. If a header ever does need one, it belongs here, one line, with the
-#: reason it is shape rather than rule.
+#: written, and `_copies` consults none. A run that really is a shape would mean
+#: a section is *drawing* a shape it should be naming — #193's own rule — so the
+#: repair is in the section, not an exemption here.
 #:
 #: **Rules and mechanism are.** A rule belongs to the section core that states
 #: it and mechanism to the `-h` block the code renders, and rung 1 of the copies
@@ -171,13 +172,16 @@ def test_multi_line_guidance_is_covered(tmp_path: Path):
 #: not restated, so both restatement channels stay tuned together — and the
 #: measurement says ten is also right for a header, which is a tenth the size of
 #: the passages that constant was set for. Against this tree before the #205
-#: pass: **66 runs at six words, 30 at eight, 13 at ten**. Six drowns the signal
-#: in ordinary English (`the single source of truth for`, a phrase any document
-#: is entitled to). Eight flags the fill-in convention itself — *authoring
-#: guidance to read then replace with real prose* — which §1 states and a header
-#: is *required* to state, so eight would fail the property it is checking. Ten
-#: left thirteen runs and every one of them was a real copy; all four passages
-#: they fell in now point, and the tree scores zero.
+#: pass: **66 run/source matches (61 distinct runs) at six words, 30 (30) at
+#: eight, 13 (13) at ten** — a run can match more than one source, and `_copies`
+#: names the first, so the two counts separate only where sections overlap. Six
+#: drowns the signal in ordinary English (`the single source of truth for`, a
+#: phrase any document is entitled to). Eight flags the fill-in convention
+#: itself — *authoring guidance to read then replace with real prose* — which §1
+#: states and a header is *required* to state, so eight would fail the property
+#: it is checking. Ten left thirteen runs and every one of them was a real copy;
+#: all four passages they fell in now point, and the tree scores zero at ten
+#: (29 matches / 25 distinct at six, 6 / 6 at eight).
 #:
 #: What ten costs is the short fragment: *ticking the checkbox is the one
 #: in-place edit* is eight words of §1 → `insights.md` and survives. That is the
@@ -209,7 +213,7 @@ def _runs(text: str) -> Set[str]:
     return set(install._contract_runs(install._contract_words(text)))
 
 
-def _sources() -> Dict[str, Set[str]]:
+def _read_sources() -> Dict[str, Set[str]]:
     """`name -> runs` for everything a header must not restate.
 
     Two kinds. Every section **core** under `core/conventions/**` — the cut is
@@ -233,13 +237,30 @@ def _sources() -> Dict[str, Set[str]]:
     for path in sorted((_ROOT / "core" / "conventions").rglob("*.md")):
         text = path.read_text(encoding="utf-8-sig")
         core = install.section_core(text)
-        # A section with no `Rationale` heading is #122's own failure and has
-        # its own guard; comparing the whole file is the honest fallback.
+        # No `Rationale` heading means #122's split has not been applied to
+        # that section, and the whole file is compared. That is the strict
+        # direction — a header is then held against the tail as well, which can
+        # only over-report — and over-reporting is the right way to fail while
+        # a section is mid-split.
         body = install._contract_prose(core if core is not None else text)
         sources[".aide/" + path.relative_to(_ROOT / "core").as_posix()] = _runs(body)
     for verb, description in _help_descriptions().items():
         sources[f"aide {verb} -h"] = _runs(description)
     return sources
+
+
+#: Built once. Ten calls read it across this module's tests, and a build is
+#: 20 ms — so the memo saves about 0.2 s, which is small and is not really the
+#: point: a per-call rebuild grows with every section added to the contract,
+#: and this does not. Every reader treats the dict as read-only.
+_SOURCE_CACHE: Dict[str, Set[str]] = {}
+
+
+def _sources() -> Dict[str, Set[str]]:
+    """`_read_sources()`, memoised for the module."""
+    if not _SOURCE_CACHE:
+        _SOURCE_CACHE.update(_read_sources())
+    return _SOURCE_CACHE
 
 
 def _help_descriptions() -> Dict[str, str]:
@@ -250,6 +271,17 @@ def _help_descriptions() -> Dict[str, str]:
     return {verb: (choice.description or "").strip()
             for verb, choice in sub.choices.items()
             if (choice.description or "").strip()}
+
+
+def _words_of(name: str) -> List[str]:
+    """The normalised words behind a source name, for the floor check below."""
+    if name.endswith(" -h"):
+        return install._contract_words(_help_descriptions()[name.split()[1]])
+    path = _ROOT / "core" / name[len(".aide/"):]
+    text = path.read_text(encoding="utf-8-sig")
+    core = install.section_core(text)
+    return install._contract_words(
+        install._contract_prose(core if core is not None else text))
 
 
 def _copies(header: str, sources: Dict[str, Set[str]]) -> List[Tuple[str, str]]:
@@ -275,9 +307,33 @@ def test_there_is_something_to_compare_against():
     helps = [name for name in sources if name.endswith(" -h")]
     assert len(sections) >= 10, f"only {len(sections)} section cores read: {sections}"
     assert len(helps) >= 5, f"only {len(helps)} -h description blocks read: {helps}"
-    assert all(sources.values()), (
-        "a source contributed no runs at all: "
-        f"{sorted(name for name, runs in sources.items() if not runs)}")
+    # Only for a source long enough to *have* a run. A section core or an `-h`
+    # block under `CONTRACT_ECHO_WORDS` normalised words yields none, which is
+    # arithmetic rather than a broken read — failing over it would make a
+    # legitimately terse source impossible to write.
+    silent = sorted(name for name, runs in sources.items()
+                    if not runs and len(_words_of(name)) >= install.CONTRACT_ECHO_WORDS)
+    assert not silent, f"a source long enough to have runs contributed none: {silent}"
+
+
+def _failure(name: str, hits: List[Tuple[str, str]]) -> str:
+    """What a reader of a red run sees — the template, each run, its source.
+
+    One function, so the two planted-copy tests below assert against the text
+    that will actually be printed rather than against a private return value.
+    A failure message nobody has read is the other half of a guard nobody has
+    seen fail.
+    """
+    return (
+        f"core/templates/{name}: the header comment repeats "
+        f"{len(hits)} ten-word run(s) of engine text —\n"
+        + "\n".join(f"  {source}: “{run}”" for source, run in hits)
+        + "\n\nA header states shapes and fill-in guidance; a rule belongs to "
+          "the section that states it and mechanism to the verb's -h "
+          "(ADAPTER-SPEC.md, 'Copies of engine text', rung 1). Point at the "
+          "source and delete the sentence. A run that is genuinely a shape "
+          "means the section is drawing a shape it should be naming (#193): "
+          "fix the section, not this header.")
 
 
 @pytest.mark.parametrize("path", _ENGINE_TEMPLATES, ids=lambda p: p.name)
@@ -285,15 +341,7 @@ def test_no_header_restates_a_rule_or_a_verbs_help(path: Path):
     header = _header(path)
     assert header.strip(), f"{path.name}: no leading <!-- … --> header comment"
     hits = _copies(header, _sources())
-    assert not hits, (
-        f"core/templates/{path.name}: the header comment repeats "
-        f"{len(hits)} ten-word run(s) of engine text —\n"
-        + "\n".join(f"  {source}: “{run}”" for source, run in hits)
-        + "\n\nA header states shapes and fill-in guidance; a rule belongs to "
-          "the section that states it and mechanism to the verb's -h "
-          "(ADAPTER-SPEC.md, 'Copies of engine text', rung 1). Point at the "
-          "source and delete the sentence. If the run really is a shape the "
-          "template owns, say so beside an allow-list entry in this module.")
+    assert not hits, _failure(path.name, hits)
 
 
 def test_the_guard_catches_a_sentence_planted_from_a_section(tmp_path: Path):
@@ -308,21 +356,29 @@ def test_the_guard_catches_a_sentence_planted_from_a_section(tmp_path: Path):
         "-->\n# {{title}}\n", encoding="utf-8")
     hits = _copies(_header(planted), _sources())
     assert hits, "a sentence lifted verbatim from a section core went unreported"
+    message = _failure("planted.md", hits)
+    assert "core/templates/planted.md" in message, message
+    assert ".aide/conventions/1-format-contract/queue-NNN.md" in message, message
+    assert "globally sequential across all queues" in message, message
     assert all(source == ".aide/conventions/1-format-contract/queue-NNN.md"
                for source, _ in hits), hits
-    assert any("globally sequential across all queues" in run for _, run in hits), hits
 
 
 def test_the_guard_catches_a_sentence_planted_from_a_verbs_help(tmp_path: Path):
     """The other source, and the one the row calls rung 1's second condition:
     mechanism the code owns. A whole sentence of `aide progress -h`, planted.
     """
-    sentence = max(_help_descriptions()["progress"].split("."), key=len)
+    sentence = next(
+        s for s in _help_descriptions()["progress"].split(".")
+        if len(install._contract_words(s)) >= install.CONTRACT_ECHO_WORDS)
     planted = tmp_path / "planted.md"
     planted.write_text(f"<!--\n  AIDE scratch template.{sentence}.\n-->\n",
                        encoding="utf-8")
     hits = _copies(_header(planted), _sources())
     assert hits, f"a sentence of `aide progress -h` went unreported: {sentence!r}"
+    message = _failure("planted.md", hits)
+    assert "core/templates/planted.md" in message, message
+    assert "aide progress -h" in message, message
     assert any(source.endswith(" -h") for source, _ in hits), hits
 
 

@@ -13,7 +13,7 @@
   reads. An Objective row then follows the stages that deliver it, subject to
   the Outcome-targets gate named below. The derivation itself is stated in
   `python .aide/scripts/aide.py progress -h` and nowhere else (conventions.md
-  §1 -> progress.md points there too): read it there, and do not restate it
+  §1 → progress.md points there too): read it there, and do not restate it
   here. Write the bullets and let the stage follow.
   ✅ means MERGED and is written by `aide merge`, never claimed ahead of one
   -- under git.mode = "pr" an item stays 🔍 (pushed, awaiting a human's merge)
@@ -23,19 +23,18 @@
   work cannot guarantee (an error-rate target, a benchmark) belongs in the
   optional "Outcome targets" table, which gates the Objective rows instead.
   How it gates them, and how `aide check` grades an over-claim, are stated in
-  conventions.md §1 -> progress.md: read them there, and do not restate them
+  conventions.md §1 → progress.md: read them there, and do not restate them
   here.
 
   Optional "Environment-Gated Capability Verification" section: include it
   ONLY if the project has ANY stage introducing an environment-gated
   capability — conventions.md §1 → Environment-gated capabilities defines
-  which capabilities those are, and the definition is not repeated here. The
-  table is
-  deliberately OUTSIDE the stage-summary rollup above — a stage's ✅ still only
-  requires its fallback/skip-clean path to pass; this table is a separate,
-  additive visibility mechanism so a green suite is never mistaken for "the
-  optional dependency was actually exercised." Omit the whole section if the
-  project has no such capability.
+  which capabilities those are, and this comment does not repeat the
+  definition. The table is deliberately OUTSIDE the stage-summary rollup
+  above — a stage's ✅ still only requires its fallback/skip-clean path to
+  pass; this table is a separate, additive visibility mechanism so a green
+  suite is never mistaken for "the optional dependency was actually
+  exercised." Omit the whole section if the project has no such capability.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
   read then replace. Delete this comment in the generated file.

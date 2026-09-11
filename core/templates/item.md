@@ -15,12 +15,12 @@
   No Docker/services "Testing Prerequisites" boilerplate in the core — enable a
   project-specific block via aide.toml only if the project actually needs it.
 
-  Optional "Environment / Hardware Dependencies" section: include it ONLY when
-  this item introduces an environment-gated capability — conventions.md §1 →
-  Environment-gated capabilities defines which capabilities those are, and the
-  definition is not repeated here. The section's point is to make the eventual
-  real-dependency verification trackable in progress.md rather than silently
-  inferred from a green (skip-clean) test run.
+  Optional "Environment / Hardware Dependencies" section: include it ONLY
+  when this item introduces an environment-gated capability — conventions.md
+  §1 → Environment-gated capabilities defines which capabilities those are,
+  and this comment does not repeat the definition. The section's point is to
+  make the eventual real-dependency verification trackable in progress.md
+  rather than silently inferred from a green (skip-clean) test run.
   Omit the section entirely for items with no such capability.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
