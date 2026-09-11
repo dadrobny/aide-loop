@@ -9,9 +9,12 @@ branch** (config `git.branch_prefix`, default `aide/`) — not `progress.md`'s
 `🚧`, which lives on a feature branch. `aide claim` owns this:
 
 1. `git fetch --all --prune`; list remote `aide/*` branches.
-2. Read the live queue (§1 → `queue-NNN.md`) + `progress.md`; pick the
-   **first** item that is 📋, whose dependencies are all ✅, and that has no
-   existing `aide/NNN-*` branch. With `loop.claim_scope = "all-open"` in
+2. Read the live queue (§1 → `queue-NNN.md`) + `progress.md`; pick the item
+   the rule in `aide claim -h` names — the **first** 📋 item the queue lists
+   whose dependencies have all left the way, that no unresolved human gate
+   reaches, and that has no existing `aide/NNN-*` branch. The pick is
+   mechanism the CLI owns, so `-h` is where it is stated; what matters here is
+   that a role never chooses an item itself. With `loop.claim_scope = "all-open"` in
    `aide.toml`, claiming scans **every** open queue in number order instead —
    opt-in, because the one-queue scope is also the human-checkpoint boundary.
 3. Create and push `aide/NNN-short-name` (push depends on `git.mode`; `local`

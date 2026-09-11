@@ -121,6 +121,100 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.49.4] — 2026-09-11
+
+Issue #205, the fifth rung of ADAPTER-SPEC's *Copies of engine text* section —
+a prose statement of behaviour the **code** owns is pinned by a test that
+exercises the code against the prose, since there is no second prose copy to
+quote. `aide progress -h`'s rollup sentence has been that since #192; the other
+six description blocks were not, and they are the authoritative statement of
+what a verb does now that the sections point at `-h` rather than restating it.
+Auditing the six against the code found five sentences already wrong, two of
+them the same falsehood #205 found in the `progress.md` template header, one
+copy over.
+
+### Changed
+
+- **One register for all seven `-h` blocks:
+  `core/scripts/tests/test_aide_help_pins.py`.** `HELP_PINS` maps a verb to
+  `(sentence, guard)` pairs — **102 of them**, where a guard is one
+  `"module::function"` or a tuple of them — and asserts two things per pin: the
+  sentence is still in the help `argparse` renders (normalised for reflow,
+  emphasis and case, so a rewrap passes and a reword does not), and every named
+  guard still resolves. **106 distinct guards**, of which **87 are tests that
+  already existed** and were read before they were named — a guard that merely
+  sits near the behaviour proves nothing — and **19 are new**, written where
+  nothing exercised the claim: eleven in the harness, where a document tree is
+  enough (the three missing-table errors as three, the summary over-claim
+  measured by the rollup, its mirror warning and the ⏸️/❌ carve-out, the
+  header/summary disagreement, the orphan summary row, an unrecognised Status
+  in either table, a retracted criterion reaching `check`, a warning alone
+  still exiting 0, the four states `status` promises to print, `amend`/`retract`
+  refusing `--all` and an unstated reason, and `retract` routing its finding
+  into the inbox), and eight in the verb's own module, where git is (the
+  spent-item discount on both sides, `claim`'s walk in the queue's own order,
+  its dependency set and its inbox creation, `status` naming a landed 🔍 item,
+  the two `gc` skip lines, and a derived base preferring `origin/` for the
+  recorded base as well as for `main_branch`). Where a guard's fit was not
+  obvious it was **mutation-checked** — break the behaviour, and the named test
+  must go red — which is how two of them were replaced: `scope`'s "read from
+  the current claim branch" had been guarded by a test that passes an explicit
+  number, and `archive`'s three-claim sentence by one that asserted only that
+  moved lines were unchanged.
+  `test_progress_help_states_the_rollup_the_code_applies` is the seventh entry
+  and stays where it is — the register names it, it is not moved or copied.
+  The module is self-contained: it reimplements the pin normaliser rather than
+  importing `tests/_delivered.py`, because this directory ships to consumers as
+  `.aide/scripts/tests/`, where `tests/` does not exist. Claims that are
+  rationale for a rule pinned beside them, or a pointer at another verb, are
+  listed as deliberately unpinned in the module docstring with the reason.
+
+### Fixed
+
+- **`aide check -h` stated the stage over-claim as "deliverables not all ✅",
+  and its mirror warning as "deliverables are all ✅".** The check compares
+  `rollup_status`, under which a ❌ bullet counts toward ✅ — so a stage of ✅
+  and ❌ under a ✅ summary row is silent where the help predicted an error,
+  and under a 🚧 row is a warning where the help predicted silence. Both now
+  say "roll up to ✅" and point at `aide progress -h`, which is where the rule
+  is written.
+- **`aide claim -h` said "the lowest-numbered 📋 item".** `_pick_item` walks
+  `queue_item_numbers`, which is the queue document's own order; a queue that
+  lists 028 before 027 is offered 028. Now "the first 📋 item the queue lists —
+  its own order, not the item numbers".
+- **`aide gc -h` quoted the skip line as `skipping <branch>: <reason>`.** The
+  line also names where the branch lives, which is the difference between a
+  local copy and a remote one going. Now `skipping <branch> (local/remote):
+  <reason>`.
+- **`aide insights -h` said `list` prints "the backlog without the closed
+  history around it".** That is a true description of `list --open`, which is
+  where `aide-queue-and-inbox` attaches the same phrase — and it had been
+  written against `list`, which prints every entry in `insights.md`, ticked
+  ones included. The two lines now say which verb narrows.
+- **`aide check -h`'s stage comparisons omitted their carve-out.** `run_checks`
+  skips all three — the summary over-claim, its mirror warning and the
+  header/summary disagreement — when the summary row itself is ⏸️ or ❌, so the
+  corrected "roll up to ✅" sentence was still false over a deferred or dropped
+  stage. The block now states the carve-out once, for all three.
+- **`aide gc -h` enumerated three skip reasons and the code has four.** When
+  `_branch_content_landed` returns `None` the run skips saying the landing
+  could not be *determined* — deliberately not the same statement as "has
+  content not in the base", which would be a claim about a ref it never read.
+  The enumeration now names it.
+
+Also corrected, one copy over, in the sections that point at these blocks:
+`conventions/2-claim-protocol.md` said `aide claim` picks the first 📋 item
+"whose dependencies are all ✅" (the pick lets ✅, ❌ and ⏸️ through, and it
+also skips a gated item), and `conventions/1-format-contract/progress.md` said
+`aide check` "errors on an objective claimed ✅ over" a target that is not
+`✅ Met` (it errors over `❌ Not met` and warns over any other non-Met). Both
+now state the rule the code applies and point at `-h` for the mechanism.
+
+A consumer's `--update` receives seven corrected sentences across four help
+blocks in `.aide/scripts/aide.py`, the two corrected `conventions/` sections,
+and the new pin harness in `.aide/scripts/tests/`, which its
+`pytest .aide/scripts/tests` run picks up with the rest of the shipped suite.
+
 ## [1.49.3] — 2026-09-11
 
 Issue #205, the *What an install ships* subsection of ADAPTER-SPEC's *Copies of
