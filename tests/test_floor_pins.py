@@ -164,8 +164,8 @@ def test_the_pins_catch_the_drift_that_earned_them():
     """
     page = normalise(_floor_text())
     drifted = page.replace(
-        normalise('"as discussed above" pointing outside the artifact.'),
-        normalise('"as discussed above".'))
+        normalise('"as discussed above" pointing outside the artifact'),
+        normalise('"as discussed above"'))
     assert drifted != page, "the fixed wording is gone from the page"
     missing = [pin for _, pin in _PINNED if normalise(pin) not in drifted]
     assert missing, "the pre-#194 wording satisfies every pin"
