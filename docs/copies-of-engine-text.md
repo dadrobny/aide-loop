@@ -45,7 +45,12 @@ The **Rule** column names the rung, then whether the framework is already there
   owes no pin — the failure mode a pin prevents (a reader obeying a stale copy as
   if it were the rule) has no reader here. They are still *compared* against a
   consumer's instruction file by `install.py --check`, because `core/README.md`
-  is where the shared-vs-personal ownership rules actually live.
+  is where the shared-vs-personal ownership rules actually live. An explanation
+  may still carry a copy by accident: three of them (`adapters/claude/README.md`,
+  `ADAPTER-SPEC.md` §5, `docs/concepts.md`) glossed §3 in a parenthetical that
+  omitted its `||`/`;` chaining, the directory-changing wrappers and the
+  declared-repo carve-out — the same omission the floor's compression nearly
+  shipped in 1.49.2. They point now, which is rung 1 applied to an explanation.
 - **`AGENTS.md` restating `REVIEW.md`.** A copy of this repository's review
   contract, not of engine text. `CLAUDE.md`'s merge-policy section already says
   the three files must not drift, and none of them is installed.

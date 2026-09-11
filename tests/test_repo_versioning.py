@@ -32,6 +32,7 @@ CONSUMER_VISIBLE = ("core/", "adapters/")
 NOT_INSTALLED = (
     "adapters/claude/tests/",
     "adapters/ADAPTER-SPEC.md",
+    "adapters/claude/README.md",
 )
 
 sys.path.insert(0, str(REPO_ROOT))

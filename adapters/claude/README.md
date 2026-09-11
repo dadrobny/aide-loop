@@ -112,10 +112,10 @@ before the first unattended run.
 
 This is [spec §5](../ADAPTER-SPEC.md) — **optional**, provided only because Claude
 Code *has* a permission model; a runtime without one omits all of it and relies on
-the hygiene rules being followed. The **command-hygiene rules themselves** (one
-command per call, no `cd`, no chained `&&`, no `2>&1`) are runtime-general and live
-in `core/conventions.md`; only the **enforcement mechanism** and the
-**"permission allow-list" framing** are adapter-local and documented here.
+the hygiene rules being followed. The **command-hygiene rules themselves** are
+runtime-general and live in `core/conventions.md` §3 — stated there, not
+summarised here; only the **enforcement mechanism** and the **"permission
+allow-list" framing** are adapter-local and documented here.
 
 - **`settings.json`** — the allow/ask policy: a pre-approved **allow-list** (~60
   entries: reads, greps, the safe git verbs, `python .aide/scripts/aide.py …`, scoped
