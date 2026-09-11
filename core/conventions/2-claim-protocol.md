@@ -38,8 +38,9 @@ push fail the same way.
 **`none left` means the ground checked was empty, and nothing else.** A queue
 still open while nothing in it is offerable is a different answer, and `claim`
 gives the reason per item — an unresolved gate, a claim already in flight, a
-dependency not landed, an unpublished claim. The first three are ordinary and
-exit 0; an unpublished claim exits non-zero.
+dependency not landed, an unpublished claim — or names the human-gates row it
+cannot read, which holds every item (§1 → human gates). The first three are
+ordinary and exit 0; the last two are defects and exit non-zero.
 
 One person (or one loop) owns an item at a time. Abandoning an item means
 deleting its remote branch so the item returns to the pool; `aide check` flags a

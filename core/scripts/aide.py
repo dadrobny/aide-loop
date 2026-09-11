@@ -39,7 +39,7 @@ import signal
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, NamedTuple, Optional, Set, Tuple
+from typing import Callable, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
 # --------------------------------------------------------------------------- #
 # Status icons (the format contract — see .aide/conventions.md)
@@ -641,6 +641,206 @@ def _blocked_item_numbers(cell: str) -> List[int]:
     return _referenced_item_numbers(text)
 
 
+# --------------------------------------------------------------------------- #
+# progress.md tables — the rows a reader can use, and the rows it cannot
+# --------------------------------------------------------------------------- #
+_SUMMARY_HEADING_RE = re.compile(r"^#{1,2}\s+Stage summary\b", re.IGNORECASE)
+_OBJECTIVES_HEADING_RE = re.compile(r"^#{1,2}\s+Objective coverage\b", re.IGNORECASE)
+
+
+class _ProgressTable(NamedTuple):
+    """One of the four ``progress.md`` tables the engine reads.
+
+    The Environment-Gated Capability Verification table is not one: nothing
+    reads it, so nothing here can lose a row of it.
+    """
+    name: str                # how a finding names the table
+    heading: "re.Pattern"    # the section the template puts the table under
+    width: int               # cells in a data row
+    header: str              # the header row's first cell, lower-cased
+    #: Why a row of the right width is still unusable, or None.
+    cell_problem: Callable[[List[str]], Optional[str]]
+    #: What stops being checked while such a row is dropped.
+    loses: str
+    #: True for a table whose reader takes rows by shape from anywhere in the
+    #: document rather than from under its heading — see ``_table_rows``.
+    anywhere: bool = False
+
+
+def _summary_row_problem(cells: List[str]) -> Optional[str]:
+    if not re.fullmatch(r"\d+", cells[0]):
+        return "has a Stage cell that is not an integer"
+    if not _icon_status(cells[3]):
+        return "has no status icon in its Status cell"
+    return None
+
+
+def _objective_row_problem(cells: List[str]) -> Optional[str]:
+    if not re.match(r"G\d+", cells[0]):
+        return "has an Objective cell that does not start with a G<n> code"
+    if not _icon_status(cells[2]):
+        return "has no status icon in its Status cell"
+    return None
+
+
+def _target_row_problem(cells: List[str]) -> Optional[str]:
+    """An Objective cell naming no ``G<n>`` is read: such a target gates no
+    objective, which a measured cost or runtime target may mean to (`—`)."""
+    return None if cells[0] else "has an empty Target cell"
+
+
+_STAGE_SUMMARY = _ProgressTable(
+    "stage summary", _SUMMARY_HEADING_RE, 4, "stage", _summary_row_problem,
+    "its stage's ✅ is never checked against the deliverables under it",
+    anywhere=True)
+_OBJECTIVE_COVERAGE = _ProgressTable(
+    "objective coverage", _OBJECTIVES_HEADING_RE, 3, "objective",
+    _objective_row_problem,
+    "its objective's ✅ is never checked against its Outcome targets",
+    anywhere=True)
+_OUTCOME_TARGETS = _ProgressTable(
+    "Outcome targets", _TARGETS_HEADING_RE, 5, "target", _target_row_problem,
+    "no objective is checked against it")
+#: An unrecognised Status is read, and blocks — a typo in the mark must not
+#: open a gate — so width is the only thing that makes a gate row unusable.
+_HUMAN_GATES = _ProgressTable(
+    "human-gate", _GATES_HEADING_RE, 4, "gate", lambda cells: None,
+    "what it blocks is unknown, and `aide claim` holds every item until it "
+    "is fixed")
+_PROGRESS_TABLES = (_STAGE_SUMMARY, _OBJECTIVE_COVERAGE, _OUTCOME_TARGETS,
+                    _HUMAN_GATES)
+
+
+def _reads(table: _ProgressTable, cells: List[str]) -> bool:
+    """Whether *table*'s reader can use a row — the one test every reader of
+    these tables applies, and the one the check reports the failures of."""
+    return len(cells) == table.width and table.cell_problem(cells) is None
+
+
+def _is_separator_row(cells: List[str]) -> bool:
+    """The ``|---|:---:|`` row: every non-empty cell a delimiter, and one at least.
+
+    Every cell, not the first: a gate titled ``-`` is data. And a NON-EMPTY
+    one: `set("") <= set("-: ")` is true, so an empty first cell used to read
+    as a separator, and a mis-shaped row like `| | 028 | ⏳ Awaiting | a | pipe |`
+    was skipped without a word.
+    """
+    return (any(cells)
+            and all(re.fullmatch(r":?-+:?", c) for c in cells if c))
+
+
+def _is_table_furniture(cells: List[str], header: str) -> bool:
+    """True for a table's header or separator row — never for data.
+
+    A header is recognised by its first cell alone. Markdown's own rule — the
+    row above the separator — would read the only row of a table written
+    without a header as its header, and drop it unreported: an ``all`` gate
+    raised by hand in a project whose optional section was deleted would
+    then hold nothing.
+    """
+    return _is_separator_row(cells) or bool(cells) and cells[0].lower() == header
+
+
+def _pipe_blocks(lines: List[str]) -> List[List[int]]:
+    """Indices of each run of consecutive ``|`` lines — each markdown table."""
+    blocks: List[List[int]] = []
+    for i, line in enumerate(lines):
+        if not line.strip().startswith("|"):
+            continue
+        if blocks and blocks[-1][-1] == i - 1:
+            blocks[-1].append(i)
+        else:
+            blocks.append([i])
+    return blocks
+
+
+def _table_rows(lines: List[str], table: _ProgressTable
+                ) -> Iterator[Tuple[int, List[str], Optional[str]]]:
+    """``(index, cells, problem)`` for each data row of *table* in *lines*.
+
+    *problem* is None for a row the table's reader can use (``_reads``), and
+    otherwise says why it cannot. The rows are every ``|`` line in the section
+    under the table's template heading — a second table there is read as part
+    of this one, and fails closed. An ``anywhere`` table whose section holds
+    no readable row — the heading missing, or the table under another one,
+    where its reader still finds it by shape — also takes in every markdown
+    table the reader takes a row from, so it is checked row by row all the
+    same. (Not always: with a readable table under the heading, a table of the
+    author's own elsewhere that happens to hold one summary-shaped row would
+    have its every other row reported.) "Skipped" and "reported" are thereby
+    one decision rather than two that can drift: issue #202 found three
+    behaviours for the one situation, and the rows silently dropped were the
+    ones taking an error with them.
+    """
+    scope: List[int] = []
+    in_section = False
+    for i, line in enumerate(lines):
+        if table.heading.match(line):
+            in_section = True
+        elif in_section and _ANY_HEADER_RE.match(line):
+            break  # next section — the table is over
+        elif in_section and line.strip().startswith("|"):
+            scope.append(i)
+    if table.anywhere and not any(_reads(table, _split_row(lines[i])) for i in scope):
+        scope = sorted(set(scope).union(
+            i for block in _pipe_blocks(lines)
+            if any(_reads(table, _split_row(lines[j])) for j in block)
+            for i in block))
+    for i in scope:
+        cells = _split_row(lines[i])
+        if _is_table_furniture(cells, table.header):
+            continue
+        yield i, cells, (f"has {len(cells)} cells, not {table.width}"
+                         if len(cells) != table.width else table.cell_problem(cells))
+
+
+def unreadable_row_errors(lines: List[str]) -> List[str]:
+    """One error per row of a read table that its reader cannot use.
+
+    An error, not a warning, because the row's cells cannot be trusted to be in
+    position — the usual cause is a `|` that shifted them — so there is no
+    telling whether it was a ✅ a check exists to catch. The check it would
+    have fed cannot run, so the check fails on the row instead: the only
+    reading of an unreadable row that cannot pass an over-claim.
+    """
+    out: List[str] = []
+    for table, i, cells, problem in _unreadable_rows(lines):
+        below = lines[i + 1] if i + 1 < len(lines) else ""
+        if below.strip().startswith("|") and _is_separator_row(_split_row(below)):
+            # Header position: most likely a retitled header, possibly the
+            # only row of a table written without one. Say both.
+            out.append(
+                f"progress.md:{i + 1}: {table.name} row {problem}, above the "
+                f"separator — a header row's first cell reads "
+                f"'{table.header.capitalize()}'; as data, it is not read, so "
+                f"{table.loses}.")
+            continue
+        hint = (" A '|' inside a cell is the usual cause."
+                if len(cells) != table.width else "")
+        out.append(f"progress.md:{i + 1}: {table.name} row {problem} — it "
+                   f"is not read, so {table.loses}.{hint}")
+    return out
+
+
+def _unreadable_rows(lines: List[str]
+                     ) -> List[Tuple[_ProgressTable, int, List[str], str]]:
+    """``(table, index, cells, problem)`` for every row no reader can use."""
+    return [(table, i, cells, problem) for table in _PROGRESS_TABLES
+            for i, cells, problem in _table_rows(lines, table)
+            if problem is not None]
+
+
+def unreadable_gate_rows(lines: List[str]) -> List[Tuple[int, str]]:
+    """``(line number, problem)`` for each ``## Human gates`` row no reader can use.
+
+    ``aide claim`` holds every item while one exists: what the row blocks is
+    unknown, so any item released could be one it was written to hold — the
+    same fail-closed reading that makes an unrecognised Status block.
+    """
+    return [(i + 1, problem) for i, _, problem in _table_rows(lines, _HUMAN_GATES)
+            if problem is not None]
+
+
 def human_gates(lines: List[str]) -> List[HumanGate]:
     """Rows of the optional ``## Human gates`` table in progress.md.
 
@@ -653,21 +853,13 @@ def human_gates(lines: List[str]) -> List[HumanGate]:
     ``Blocks`` accepts the item-reference forms of §1 (``106``, ``106, 107``,
     ``106–108``), ``stage N`` for every item that stage's deliverables
     reference, or ``all`` for a programme-level stop.
+
+    A row of the wrong width is not a gate; ``unreadable_gate_rows`` reports
+    it, and ``aide claim`` holds everything while it stands.
     """
     out: List[HumanGate] = []
-    in_section = False
-    for i, line in enumerate(lines):
-        if _GATES_HEADING_RE.match(line):
-            in_section = True
-            continue
-        if not in_section:
-            continue
-        if _ANY_HEADER_RE.match(line):
-            break  # next section — the table is over
-        if not line.strip().startswith("|"):
-            continue
-        cells = _split_row(line)
-        if _is_gate_table_furniture(cells) or len(cells) != 4:
+    for i, cells, problem in _table_rows(lines, _HUMAN_GATES):
+        if problem is not None:
             continue
         kind = next((k for icon, k in _GATE_STATUS_KIND.items()
                      if cells[2].startswith(icon)), None)
@@ -723,23 +915,13 @@ def outcome_targets(lines: List[str]) -> List[OutcomeTarget]:
     "the planned work shipped", and goal truth lives here, gating the
     OBJECTIVE rows instead (an objective linked to a target that is not
     ``✅ Met`` cannot roll up to ✅).
+
+    A row of the wrong width, or with an empty Target cell, is not read;
+    ``unreadable_row_errors`` reports it.
     """
     out: List[OutcomeTarget] = []
-    in_section = False
-    for i, line in enumerate(lines):
-        if _TARGETS_HEADING_RE.match(line):
-            in_section = True
-            continue
-        if not in_section:
-            continue
-        if _ANY_HEADER_RE.match(line):
-            break  # next section — the table is over
-        if not line.strip().startswith("|"):
-            continue
-        cells = _split_row(line)
-        # Skip anything but a data row: wrong arity, the header row, the
-        # separator row (only -/:), or an empty Target cell.
-        if len(cells) != 5 or cells[0].lower() == "target" or set(cells[0]) <= set("-: "):
+    for i, cells, problem in _table_rows(lines, _OUTCOME_TARGETS):
+        if problem is not None:
             continue
         kind = next((k for icon, k in _TARGET_STATUS_KIND.items()
                      if cells[3].startswith(icon)), None)
@@ -2377,52 +2559,6 @@ def absolute_path_test_warnings(repo_root: Path,
     return out
 
 
-def _is_gate_table_furniture(cells: List[str]) -> bool:
-    """True for the gates table's header or separator row — never for data.
-
-    The separator test requires a NON-EMPTY cell. `set("") <= set("-: ")` is
-    true, so an empty first cell used to read as a separator: a malformed row
-    like `| | 028 | ⏳ Awaiting | a | pipe |` was skipped *silently*, which is
-    precisely the vanishing-gate failure the warning below exists to catch.
-    """
-    if not cells:
-        return True
-    first = cells[0]
-    return first.lower() == "gate" or bool(first.strip()) and set(first) <= set("-: ")
-
-
-def _malformed_gate_row_warnings(lines: List[str]) -> List[str]:
-    """Rows inside the gates table the parser had to skip.
-
-    A gate is only useful if it is read, so a row with the wrong column count
-    must not vanish in silence — that turns "a person must decide this" into
-    "nothing is blocking", which is the most dangerous way this feature can
-    fail. The CLI refuses to write a `|` into a cell; this catches the rest
-    (a hand edit, a paste).
-    """
-    out: List[str] = []
-    in_section = False
-    for i, line in enumerate(lines):
-        if _GATES_HEADING_RE.match(line):
-            in_section = True
-            continue
-        if not in_section:
-            continue
-        if _ANY_HEADER_RE.match(line):
-            break
-        stripped = line.strip()
-        if not stripped.startswith("|"):
-            continue
-        cells = _split_row(line)
-        if _is_gate_table_furniture(cells) or len(cells) == 4:
-            continue
-        out.append(
-            f"progress.md:{i + 1}: human-gate row has {len(cells)} columns, not 4 — "
-            f"it is being SKIPPED, so whatever it was meant to block is not "
-            f"blocked. A '|' inside a cell is the usual cause.")
-    return out
-
-
 def _reach_with_breadth(lines: List[str], g: HumanGate) -> str:
     """*g*'s reach with the held items resolved and counted.
 
@@ -2454,14 +2590,15 @@ def _reach_with_breadth(lines: List[str], g: HumanGate) -> str:
 
 
 def gate_warnings(lines: List[str]) -> List[str]:
-    """One warning per unresolved human gate, plus one per unreadable row.
+    """One warning per unresolved human gate.
 
     A warning, never an error: an outstanding gate is a normal state — work is
     waiting on a person, which is what it is for. The point is that the state
-    is *visible* rather than buried in an item spec's prose.
+    is *visible* rather than buried in an item spec's prose. A row too
+    mis-shaped to be a gate is not a state but a defect, and is an error in
+    ``unreadable_row_errors``.
     """
     out: List[str] = []
-    out.extend(_malformed_gate_row_warnings(lines))
     for n, g in enumerate(human_gates(lines), start=1):
         if g.kind == "approved":
             continue
@@ -3913,6 +4050,9 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     # One read, reused: two reads can disagree if the file changes between them.
     text = progress_path.read_text(encoding=_ENCODING)
     lines = text.splitlines()
+    # Before anything reads the tables: a row no reader can use is dropped by
+    # every check below, including the ones that would have errored on it.
+    errors.extend(unreadable_row_errors(lines))
     warnings.extend(gate_warnings(lines))
     # A withdrawn attestation is normal, not a defect — the point is that it
     # stays visible. Retracting is append-only, so without a surfacing rule the
@@ -3928,13 +4068,18 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(unattributed_reference_warnings(lines))
     warnings.extend(acceptance_drift_warnings(ddir, lines))
 
-    # Mandatory sections.
-    has_stage_table = any(
-        len(_split_row(l)) == 4 and re.fullmatch(r"\d+", _split_row(l)[0]) for l in lines
-    )
-    has_obj_table = any(
-        len(_split_row(l)) == 3 and re.match(r"G\d+", _split_row(l)[0]) for l in lines
-    )
+    # Mandatory sections. Rows are taken by shape from anywhere in the file,
+    # with the one test `unreadable_row_errors` reports the failures of.
+    # A table whose every row is unreadable is present, and already reported
+    # row by row; "missing" on top of that would send the author looking for
+    # a table that is there. One written without leading `|` is missing: no
+    # reader or writer here has ever taken a row from it.
+    table_rows = [_split_row(l) for l in lines if l.strip().startswith("|")]
+    reported = {t.name for t, *_ in _unreadable_rows(lines)}
+    has_stage_table = (any(_reads(_STAGE_SUMMARY, c) for c in table_rows)
+                       or _STAGE_SUMMARY.name in reported)
+    has_obj_table = (any(_reads(_OBJECTIVE_COVERAGE, c) for c in table_rows)
+                     or _OBJECTIVE_COVERAGE.name in reported)
     sections = stage_sections(lines)
     if not has_stage_table:
         errors.append("progress.md: missing Stage summary table")
@@ -3945,9 +4090,8 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
 
     # Summary row status vs. section header + rollup consistency.
     summary_status: Dict[str, str] = {}
-    for l in lines:
-        cells = _split_row(l) if l.strip().startswith("|") else []
-        if len(cells) == 4 and re.fullmatch(r"\d+", cells[0]) and _icon_status(cells[3]):
+    for cells in table_rows:
+        if _reads(_STAGE_SUMMARY, cells):
             summary_status[cells[0]] = _icon_status(cells[3])
 
     section_nums = set()
@@ -3978,9 +4122,8 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     # table exists to prevent (issue #14) — the mirror of the deliverable-level
     # error above.
     obj_status: Dict[str, str] = {}
-    for l in lines:
-        cells = _split_row(l) if l.strip().startswith("|") else []
-        if len(cells) == 3 and re.match(r"G\d+", cells[0]) and _icon_status(cells[2]):
+    for cells in table_rows:
+        if _reads(_OBJECTIVE_COVERAGE, cells):
             obj_status[re.match(r"G\d+", cells[0]).group(0)] = _icon_status(cells[2])
     for t in outcome_targets(lines):
         if t.kind is None:
@@ -4561,8 +4704,9 @@ def set_gate_status(text: str, index: int, kind: str,
     if note and ("|" in note or "\n" in note or "\r" in note):
         raise ValueError(
             "the note may not contain '|' or a line break — either breaks the "
-            "row's shape, and a row the parser cannot read is skipped, making a "
-            "still-blocking gate silently disappear")
+            "row's shape, and a gate row the parser cannot read stops being a "
+            "gate: `aide check` fails and `aide claim` holds every item until "
+            "someone repairs it")
     icon = {"approved": "✅ Approved", "declined": "❌ Declined"}[kind]
     import datetime as _dt
     stamp = today or _dt.date.today().isoformat()
@@ -4591,17 +4735,25 @@ def cmd_gate(args: argparse.Namespace) -> int:
         return 2
     text = ppath.read_text(encoding=_ENCODING)
     gates = human_gates(text.splitlines())
+    unreadable = unreadable_gate_rows(text.splitlines())
 
     if args.action == "list":
-        if not gates:
+        if not gates and not unreadable:
             print("aide gate: no '## Human gates' table (nothing gated)")
             return 0
         for n, g in enumerate(gates, start=1):
             reach = g.reach
             mark = {"approved": "✅", "declined": "❌", "awaiting": "⏳"}.get(g.kind, "⚠")
             print(f"  {n}. {mark} {g.text} — blocks {reach}")
+        # Unnumbered: `approve <n>` counts readable gates only, and a row the
+        # parser cannot read is not one a verb should write into.
+        for lineno, problem in unreadable:
+            print(f"  ⚠ progress.md:{lineno}: a row that {problem} — not a "
+                  f"gate, and holds every item until it is fixed")
         outstanding = len(blocking_gates(text.splitlines()))
-        print(f"aide gate: {len(gates)} gate(s), {outstanding} still blocking")
+        print(f"aide gate: {len(gates)} gate(s), {outstanding} still blocking"
+              + (f", {len(unreadable)} unreadable row(s) holding everything"
+                 if unreadable else ""))
         return 0
 
     if args.number is None:
@@ -5942,13 +6094,14 @@ def _pick_item(repo_root: Path, config, queue_text: str,
     gate naming items (directly, or via `stage N`) skips just those, so the
     queue keeps producing other work; an `all` gate stops everything, which is
     the point of declaring one — a pending decision that could invalidate what
-    comes next must not have the loop racing ahead of it.
+    comes next must not have the loop racing ahead of it. A gates row too
+    mis-shaped to read stops everything too, since what it holds is unknown.
     """
     ppath = docs_dir(repo_root, config) / "progress.md"
     plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
     _, _, item_status = _parse_item_status(plines) if plines else ([], [], {})
     gate_blocked, block_everything = gate_blocked_items(plines)
-    if block_everything:
+    if block_everything or unreadable_gate_rows(plines):
         return None
     # Anchored resolution, like every other branch->item call site since 1.5.0.
     # The old unanchored search read `aide/queue-016` as item 016 and
@@ -6028,11 +6181,23 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     Two of the reasons are ordinary — a claim in flight, a dependency not
     landed — and keep exit 0. An **unpublished** claim is not: it is a `claim`
     whose push failed, holding an item on evidence no other checkout can see,
-    so it exits 1 and says how to finish or release it.
+    so it exits 1 and says how to finish or release it. Nor is an
+    **unreadable gate row**, which holds every item on a gate nobody can read:
+    exit 1, naming the row.
     """
     ppath = docs_dir(repo_root, config) / "progress.md"
     plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
     _, _, item_status = _parse_item_status(plines) if plines else ([], [], {})
+
+    unreadable = unreadable_gate_rows(plines)
+    if unreadable:
+        print("none left — every item is held by a human-gate row aide cannot "
+              "read, since what it blocks is unknown:")
+        for lineno, problem in unreadable:
+            print(f"  progress.md:{lineno}: a row that {problem}")
+        print("  Repair the row — a '|' inside a cell is the usual cause — and "
+              "claim again. `aide check` names it too.")
+        return 1
     # Queue scan order, not numeric order: `_pick_item` walks the candidate
     # queues in order and each queue in its own order, so a report that
     # renumbered the items it rejected would not be describing the same walk.
@@ -7647,6 +7812,13 @@ def cmd_status(args: argparse.Namespace) -> int:
             label = {"declined": "❌ declined", "awaiting": "⏳ awaiting a decision"}.get(
                 g.kind, "⚠ unrecognised status")
             print(f"  gate {n}: {g.text} [blocks {reach}] — {label}")
+        # Every table, not only gates: a row no reader can use is missing
+        # from the lines above, and would otherwise be missing from here.
+        for table, i, _, problem in _unreadable_rows(plines):
+            held = (" — holding every item until it is fixed"
+                    if table is _HUMAN_GATES else "")
+            print(f"  unreadable: progress.md:{i + 1}: {table.name} row "
+                  f"{problem}{held}")
         for t in outcome_targets(plines):
             if t.kind == "met":
                 continue
@@ -8057,22 +8229,41 @@ def build_parser() -> argparse.ArgumentParser:
             "blocks. The cycle check keeps only items whose status still blocks "
             "a claim; deferred items stay in the path comparisons.\n"
             "\n"
-            "Over docs/aide, among the shape lints: an objective marked "
-            "\u2705 over an Outcome target that is \u274c Not met is an "
-            "ERROR \u2014 the goal-level mirror of the deliverable-level "
-            "over-claim. The rest are warnings, and a warning never moves "
-            "the exit code \u2014 only an error does: an Authorised paths "
-            "bullet whose "
+            "Over progress.md's tables, ERRORS: a missing stage summary "
+            "table, objective coverage table or stage section; a stage "
+            "summary row marked \u2705 over "
+            "deliverables not all \u2705; an objective marked \u2705 over an "
+            "Outcome target that is \u274c Not met \u2014 the goal-level "
+            "mirror of that over-claim; and a row of the stage summary, "
+            "objective coverage, Outcome targets or Human gates table that "
+            "its reader cannot use \u2014 the wrong cell count (a '|' inside "
+            "a cell, usually), a Stage cell that is not an integer, an "
+            "objective coverage row not starting G<n>, an empty Target cell, "
+            "a summary or objective Status cell with no "
+            "icon \u2014 since the row is dropped from every check it would "
+            "have fed. Each table is read under its template heading, or, "
+            "for a summary or objective table without one, wherever its rows "
+            "are found. Warnings, and a warning never moves the exit "
+            "code \u2014 only an error does: a stage whose deliverables are "
+            "all \u2705 under a summary row that is not, a stage header "
+            "disagreeing with its summary row, a summary row with no stage "
+            "section, an objective marked \u2705 over a target not yet \u2705 "
+            "Met, an Outcome target or human gate whose Status is not one of "
+            "its table's marks, and every human gate still blocking \u2014 a "
+            "normal state rather than a defect. The Environment-Gated "
+            "Capability Verification table is read by no check.\n"
+            "\n"
+            "Among the other lints over docs/aide, these are warnings: an "
+            "Authorised paths bullet whose "
             "second backtick span or continuation line is silently dropped, "
             "named span by span; one path listed under both May change and "
             "Asserts against (the exact double-listing only \u2014 a literal "
             "pin under a May-change glob is the legitimate carve-out, left "
             "for `aide scope` to judge); an always-authorised path pinned "
             "under Asserts against; a marked assumption pinning an engine "
-            "whose feature line predates the installed one; every human gate "
-            "still blocking, and every "
-            "retracted acceptance criterion, both normal states rather than "
-            "defects; and an insights entry whose shape is off \u2014 loose "
+            "whose feature line predates the installed one; every "
+            "retracted acceptance criterion, a normal state rather than a "
+            "defect; and an insights entry whose shape is off \u2014 loose "
             "either side of the date, strict about the date, and never "
             "applied to an archived entry. A \U0001f50d item's claim branch "
             "is not reported stale."))
@@ -8233,7 +8424,9 @@ def register_git_subcommands(sub) -> None:
             "\u23f8\ufe0f) and that no unresolved human gate reaches. It "
             "will not offer a blocked item: where a gate holds the pick, the "
             "report names that gate, what it blocks and who may resolve it, "
-            "rather than an unexplained \"none left\". A missing insights.md "
+            "rather than an unexplained \"none left\". A human-gates row it "
+            "cannot read holds every item, since what it blocks is unknown: "
+            "the report names the row and exits 1. A missing insights.md "
             "is created from the template on the way through."))
     p_claim.add_argument("--queue", type=int, default=None,
                          help="queue number (default: the lowest-numbered open queue)")
@@ -8310,9 +8503,9 @@ def register_git_subcommands(sub) -> None:
             "work has since landed in the base, by the same merge-tree "
             "comparison `gc` uses, and prints the `aide progress set NNN done` "
             "that closes it. Every human gate still blocking, every Outcome "
-            "target not yet \u2705 Met and every retracted acceptance "
-            "criterion is printed too, so none of them lives only in one "
-            "commit's diff."))
+            "target not yet \u2705 Met, every retracted acceptance "
+            "criterion and every progress.md table row no reader can use is "
+            "printed too, so none of them lives only in one commit's diff."))
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
     p_status.add_argument("--base", default=None,
                           help="ref to report ahead/behind against (default: the "

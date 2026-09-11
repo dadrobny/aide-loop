@@ -587,6 +587,44 @@ def test_check_fails_when_the_document_set_lost_its_progress(aide, consumer: Pat
     assert aide.main(["--repo", str(consumer), "check"]) == 1
 
 
+def _mis_shape(consumer: Path, row: str, into: str) -> None:
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(row, into),
+                        encoding="utf-8")
+    _commit(consumer, "a table row with a stray pipe")
+
+
+def test_check_fails_on_a_table_row_its_reader_cannot_use(
+        aide, consumer: Path, capsys):
+    """Issue #202: a stray `|` in a stage summary row used to drop the row from
+    every check in silence — taking with it the error a ✅ over unfinished work
+    would have raised. It is now the error itself, and moves the exit code."""
+    _mis_shape(consumer, "| 1 | Foundations | G1 | 🚧 |",
+               "| 1 | Foundations | G1 | a | 🚧 |")
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
+    assert "stage summary row has 5 cells, not 4" in capsys.readouterr().out
+
+
+def test_claim_holds_every_item_behind_an_unreadable_gate_row(
+        aide, consumer: Path, capsys):
+    """What an unreadable gate row blocks is unknown, so nothing is released
+    past it — and the run is told why, with exit 1, never a bare "none left"."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8") + (
+        "\n## Human gates\n\n"
+        "| Gate | Blocks | Status | Decision / evidence |\n"
+        "|------|--------|--------|---------------------|\n"
+        "| Schema approved | 002 | ⏳ Awaiting | a | b |\n"), encoding="utf-8")
+    _commit(consumer, "a gate row with a stray pipe")
+    capsys.readouterr()
+
+    assert _claim(aide, consumer) == 1
+    out = capsys.readouterr().out
+    assert "human-gate row aide cannot read" in out
+    assert _branch(consumer) == "main"          # nothing was claimed
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
+
+
 def test_check_warns_on_a_root_document_missing_its_mandatory_sections(
         aide, consumer: Path, capsys):
     """Issue #86: a vision written free-hand, missing every section its

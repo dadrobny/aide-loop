@@ -6,6 +6,10 @@ item and `progress.md` templates point here: `spec-author` fills the item
 section, a stage-closing item's builder keeps the table, and `aide env`
 evaluates a profile.
 
+**No tool reads the verification table** — not `aide check`, not
+`aide status`, and not `aide env`, which evaluates a profile. A row is evidence
+for a human reader, and a mis-shaped one fails nothing.
+
 **A capability gated behind an optional package or external tool (a GPU
 library, Docker, a large/optional pip extra, ...) must degrade gracefully** —
 its tests skip cleanly (never fail, never silently pass as if exercised) when
@@ -47,6 +51,11 @@ Two additions make the verification *planned* rather than hoped-for:
 - **Why a table, and not the suite's verdict.** A skip-clean pytest run is not
   evidence the optional path was ever run for real, and nothing else records
   that gap by default — the table is the record.
+- **Why "no tool reads it" is said outright.** "The builder keeps the table"
+  and "`aide env` evaluates a profile" read as if a verb consumed the rows,
+  while the other `progress.md` tables are read and their mis-shaped rows are
+  `aide check` errors; a reader who inferred the same guard here would trust a
+  row nothing checks (#202).
 - **Why a stage-validation item replays use cases.** Tests prove the code
   runs; validation observes that it does something meaningful — so it replays
   the stage's use cases rather than re-running the suite.

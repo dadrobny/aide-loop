@@ -9,10 +9,10 @@ gate, four cells in this order:
 |------|--------|--------|---------------------|
 ```
 
-**A row of any other width is not read as a gate at all.** `aide check` warns
-and names the row, but a warning never moves the exit code — until the row is
-fixed, `aide gate list` reports nothing gated and `aide claim` hands out the
-work the row was written to hold.
+**A row of any other width is not read as a gate at all.** `aide check` fails
+and names the row, and until it is fixed `aide claim` holds **every** item:
+what the row blocks is unknown, so any item released could be one it was
+written to hold.
 
 Two of the cells have a fixed vocabulary:
 
@@ -86,15 +86,17 @@ Agents *read* gates — to know why they must stop — and stop.
   agent resolving it destroys the only thing it was protecting. And releasing
   work behind a declined gate would run exactly what was refused. An
   unrecognised status blocks for the same reason: a typo in the mark must not
-  silently open a gate.
-- **Why the shape is stated here and not left to the template.** A gates
-  table whose rows are not four cells wide yields *no gates*, and what notices
-  is a warning, which stops nothing — so a mis-shaped row produces the one
-  outcome this table exists to prevent, work proceeding past a decision nobody
-  made. The template models the row too, but this is the section an author
-  reads when raising the first gate in a project whose optional section was
-  deleted. The other `progress.md` tables drop a mis-shaped row without even a
-  warning; issue #202 asks for one rule across all of them.
+  silently open a gate. Nor may a typo in the shape: a row too mis-shaped to
+  read holds everything, because the only unsafe guess at what it blocks is
+  "nothing" — and until #202 that was the guess, with a warning that stopped
+  nothing.
+- **Why the shape is stated here and not left to the template.** A gate row is
+  the one `progress.md` row a role adds by hand to a file another role wrote,
+  often in a project whose optional section was deleted, so the author has no
+  table above it to copy — and a mis-shaped one halts every item until someone
+  repairs it. The header row costs a line; the mistake costs the programme.
+  The error itself is one rule across all four tables `aide check` reads
+  (§1 → `progress.md`).
 - **Why `check` warns and `status` prints.** A gate that is still blocking is
   visible on every run instead of buried in a spec's prose; `aide status -h`
   names open gates among what it reports.

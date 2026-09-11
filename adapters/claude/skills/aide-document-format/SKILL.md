@@ -40,7 +40,7 @@ paths:
      Quoted from that section; `test_rule_pins.py` fails if either copy moves
      alone. One block per section file, so two blocks follow.
      - The templates in `.aide/templates/` model the shapes and `aide check`
-       enforces them
+       enforces every one the tooling reads
      - a literal value to substitute
      - authoring guidance to read then replace
      - left in a generated `docs/aide/**.md` file as an unfilled template slot
@@ -76,7 +76,8 @@ paths:
 # Living-document format
 
 `.aide/scripts/aide.py` parses these files by exact shape. The templates in
-`.aide/templates/` model the shapes and `aide check` enforces them.
+`.aide/templates/` model the shapes and `aide check` enforces every one the
+tooling reads.
 `.aide/conventions.md` §1 is the source of truth and carries one file per shape
 (`§1 → progress.md` is `conventions/1-format-contract/progress.md`, and so on);
 this file is **delivery, not a second source of truth**, and carries only what
