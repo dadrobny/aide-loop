@@ -121,6 +121,47 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.48.4] — 2026-09-11
+
+Issue #194: the three read-cold rules are stated in §1 and again in
+`AGENT-CONTEXT.md`, the page every role reads on every spawn — two statements
+of one rule inside the engine, neither pointing at the other, and nothing
+holding them together. The issue's first option, taken: pin them.
+
+### Fixed
+
+- **`AGENT-CONTEXT.md` no longer forbids "as discussed above" outright.** Its
+  copy of *cross-reference by resolvable identity* had dropped §1's qualifier,
+  *pointing outside the artifact* — so the always-on page stated a stricter
+  rule than the contract it delivers, forbidding a reference inside the
+  artifact that §1 permits. The qualifier is restored in §1's words.
+- The always-on floor moves from 8,986 to 9,016 content bytes, all of it that
+  qualifier.
+
+### Added (repo tests only)
+
+- **`tests/test_floor_pins.py` holds the page's read-cold block to §1's core,
+  in both directions**, by the mechanism `test_rule_pins.py` applies to the
+  adapter's delivered files: nine sentences quoted from §1, each asserted on
+  the page and in the section, so rewording either copy alone fails. Two
+  deliberate differences. The pins live in the test, not in a
+  `<!-- pins: … -->` block on the page: the page reaches a role through an
+  instruction-file import the engine cannot assume strips comments, and the
+  floor is costed at its whole bytes — 1.47.0's floor went *down* when the §3
+  rule's pins block was retired, because the block outweighed the rules it
+  quoted. And a pin is searched for in the section's **core** only, above its
+  `Rationale` heading, so a pinned sentence has to be one of §1's rules — a
+  reason from its tail cannot satisfy one. Two page sentences paraphrase that
+  tail (why a chat-local label fails, and who the cold reader is); they state
+  no rule and stay unpinned. The page's other headings stay unpinned too; each
+  is one entry away.
+- The pin normaliser moves into `tests/_delivered.py` as `normalise`, so both
+  pin modules read a sentence the same way.
+
+§1 is unchanged, so no delivered copy moves; option 2 of the issue — §1 points
+at the page and the block lives once — waits for the §1 rows to be measured for
+generation again, as the issue recommends.
+
 ## [1.48.3] — 2026-09-11
 
 Corrects a claim 1.48.2 (#193, PR #201) shipped about the human-gates table,

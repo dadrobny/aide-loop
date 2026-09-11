@@ -86,7 +86,8 @@ sys.path.insert(0, str(_ADAPTER.parents[1]))
 sys.path.insert(0, str(_ADAPTER.parents[1] / "tests"))
 import install  # noqa: E402  (path shim above)
 from _delivered import (COMMENT as _COMMENT, STRIPS_BOM,  # noqa: E402
-                        is_generated as _is_generated, label as _label)
+                        is_generated as _is_generated, label as _label,
+                        normalise as _normalise)
 
 #: The source tree, so the reader that reports on a file behind a BOM rather
 #: than the one that refuses it — `tests/_delivered.py` has the difference.
@@ -113,42 +114,11 @@ _PINS = re.compile(r"<!--[ \t]*pins:[ \t]*(?P<section>[^\s]+)[ \t]*\n"
 #: instead of vanishing.
 _PINS_OPENER = re.compile(r"<!--[ \t]*pins:", re.I)
 
-#: Emphasis and code markers. Dropped on both sides, so bolding a clause in one
-#: copy and not the other is not a failure, while rewording it still is.
-_MARKERS = str.maketrans("", "", "*_`")
-
-
-def _normalise(text: str) -> str:
-    """The comparable form of a passage: what it says, not how it is set.
-
-    Four transforms, each chosen to absorb a *typographic* difference between
-    two copies of one sentence and nothing more:
-
-    1. **A markdown table row is de-piped.** `| ⏸️ | Deferred | 2 |` becomes
-       `⏸️ Deferred 2`, so a vocabulary the engine states as a table can be
-       quoted as the phrase a rule states it in. Only a line that both starts
-       and ends with `|` is treated this way — a prose `||` is untouched, which
-       matters because "never chain with `&&`, `||` or `;`" is itself a pin.
-    2. **Runs of whitespace collapse**, so a reflow across a different line
-       width is not a change.
-    3. **`*`, `_` and `` ` `` are dropped**, so bold/italic/code emphasis may
-       differ between the two copies. A quoted identifier survives as its own
-       text (`.as_posix()`), which is the load-bearing part.
-    4. **Case is folded**, because whether a quoted clause starts a sentence is
-       a property of where it was placed, not of what it says.
-
-    Deliberately NOT normalised: punctuation, dashes, word order, and every
-    other content-bearing byte. `test_the_normaliser_still_sees_a_reword`
-    holds that line — a normaliser loose enough to let a reworded sentence pass
-    would turn this whole module into a test that cannot fail.
-    """
-    rows = []
-    for line in text.replace("\r\n", "\n").split("\n"):
-        line = line.strip()
-        if len(line) > 1 and line.startswith("|") and line.endswith("|"):
-            line = line[1:-1].replace("|", " ")
-        rows.append(line)
-    return " ".join(" ".join(rows).translate(_MARKERS).split()).casefold()
+#: `_normalise` — the comparable form of a passage — is `_delivered.normalise`,
+#: shared with `tests/test_floor_pins.py` so the two pin modules cannot read one
+#: sentence two ways. Its four transforms are documented there; the tests that
+#: hold it to "absorbs typography, sees a reword" stay at the bottom of this
+#: module, where they were written.
 
 
 #: Every file that **delivers** a contract section: the rules, and the section

@@ -13,7 +13,9 @@ agent specs whose `skills:` frontmatter names them). Four modules read them —
 — and each carried its own copy of the same parser set: a frontmatter
 splitter, a scalar/list reader for `name:`, `user-invocable:`, `paths:` and
 `skills:`, the section-skill recogniser, a `_label` and an HTML-comment
-stripper (issue #113).
+stripper (issue #113). A fifth, `tests/test_floor_pins.py`, holds the engine's
+own always-on page to its sections the way `test_rule_pins.py` holds the
+adapter's files, and so reads a pin with the same `normalise` (issue #194).
 
 **Why one copy now.** The duplication was tolerable while the rules it encodes
 held still. In 1.42.0 the recognition rule moved — a `<!-- pins:` block stopped
@@ -152,6 +154,52 @@ def glob_list(block) -> list:
 def strip_comments(text: str) -> str:
     """The body as a preload injects it: HTML comments removed."""
     return COMMENT.sub("", text)
+
+
+#: Emphasis and code markers. Dropped on both sides, so bolding a clause in one
+#: copy and not the other is not a failure, while rewording it still is.
+_MARKERS = str.maketrans("", "", "*_`")
+
+
+def normalise(text: str) -> str:
+    """The comparable form of a passage: what it says, not how it is set.
+
+    The one reading of a **pin** — a sentence quoted from a section into a
+    copy of it, asserted on both sides. `adapters/claude/tests/test_rule_pins.py`
+    holds the adapter's delivered files to their sections with it, and
+    `tests/test_floor_pins.py` holds the engine's `AGENT-CONTEXT.md` to its
+    sections with it (issue #194); two normalisers would let one copy pass a
+    reword the other catches.
+
+    Four transforms, each chosen to absorb a *typographic* difference between
+    two copies of one sentence and nothing more:
+
+    1. **A markdown table row is de-piped.** `| ⏸️ | Deferred | 2 |` becomes
+       `⏸️ Deferred 2`, so a vocabulary the engine states as a table can be
+       quoted as the phrase a rule states it in. Only a line that both starts
+       and ends with `|` is treated this way — a prose `||` is untouched, which
+       matters because "never chain with `&&`, `||` or `;`" is itself a pin.
+    2. **Runs of whitespace collapse**, so a reflow across a different line
+       width is not a change.
+    3. **`*`, `_` and `` ` `` are dropped**, so bold/italic/code emphasis may
+       differ between the two copies. A quoted identifier survives as its own
+       text (`.as_posix()`), which is the load-bearing part.
+    4. **Case is folded**, because whether a quoted clause starts a sentence is
+       a property of where it was placed, not of what it says.
+
+    Deliberately NOT normalised: punctuation, dashes, word order, and every
+    other content-bearing byte. `test_rule_pins.py`'s
+    `test_the_normaliser_still_sees_a_reword` holds that line — a normaliser
+    loose enough to let a reworded sentence pass would turn both pin modules
+    into tests that cannot fail.
+    """
+    rows = []
+    for line in text.replace("\r\n", "\n").split("\n"):
+        line = line.strip()
+        if len(line) > 1 and line.startswith("|") and line.endswith("|"):
+            line = line[1:-1].replace("|", " ")
+        rows.append(line)
+    return " ".join(" ".join(rows).translate(_MARKERS).split()).casefold()
 
 
 def split_text(text: str) -> tuple:
