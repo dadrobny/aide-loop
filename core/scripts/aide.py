@@ -759,16 +759,18 @@ def _table_rows(lines: List[str], table: _ProgressTable
     """``(index, cells, problem)`` for each data row of *table* in *lines*.
 
     *problem* is None for a row the table's reader can use (``_reads``), and
-    otherwise says why it cannot. The rows are those of the section under the
-    table's template heading. An ``anywhere`` table in a document without that
-    heading — a summary under ``## Stages``, say, which its reader still finds
-    by shape — is instead every markdown table the reader takes a row from, so
-    it is checked row by row all the same. (Not always both: with the heading
-    present, a table of the author's own elsewhere that happens to hold one
-    summary-shaped row would have its every other row reported.) "Skipped"
-    and "reported" are thereby one decision rather than two that can drift:
-    issue #202 found three behaviours for the one situation, and the rows
-    silently dropped were the ones taking an error with them.
+    otherwise says why it cannot. The rows are every ``|`` line in the section
+    under the table's template heading — a second table there is read as part
+    of this one, and fails closed. An ``anywhere`` table whose section holds
+    no readable row — the heading missing, or the table under another one,
+    where its reader still finds it by shape — also takes in every markdown
+    table the reader takes a row from, so it is checked row by row all the
+    same. (Not always: with a readable table under the heading, a table of the
+    author's own elsewhere that happens to hold one summary-shaped row would
+    have its every other row reported.) "Skipped" and "reported" are thereby
+    one decision rather than two that can drift: issue #202 found three
+    behaviours for the one situation, and the rows silently dropped were the
+    ones taking an error with them.
     """
     scope: List[int] = []
     in_section = False
@@ -779,22 +781,17 @@ def _table_rows(lines: List[str], table: _ProgressTable
             break  # next section — the table is over
         elif in_section and line.strip().startswith("|"):
             scope.append(i)
-    if table.anywhere and not in_section:
-        scope = [i for block in _pipe_blocks(lines)
-                 if any(_reads(table, _split_row(lines[j])) for j in block)
-                 for i in block]
-    header = table.header.capitalize()
+    if table.anywhere and not any(_reads(table, _split_row(lines[i])) for i in scope):
+        scope = sorted(set(scope).union(
+            i for block in _pipe_blocks(lines)
+            if any(_reads(table, _split_row(lines[j])) for j in block)
+            for i in block))
     for i in scope:
         cells = _split_row(lines[i])
         if _is_table_furniture(cells, table.header):
             continue
-        problem = (f"has {len(cells)} cells, not {table.width}"
-                   if len(cells) != table.width else table.cell_problem(cells))
-        below = lines[i + 1] if i + 1 < len(lines) else ""
-        if (problem and below.strip().startswith("|")
-                and _is_separator_row(_split_row(below))):
-            problem += f" (a header row's first cell reads '{header}')"
-        yield i, cells, problem
+        yield i, cells, (f"has {len(cells)} cells, not {table.width}"
+                         if len(cells) != table.width else table.cell_problem(cells))
 
 
 def unreadable_row_errors(lines: List[str]) -> List[str]:
@@ -808,6 +805,16 @@ def unreadable_row_errors(lines: List[str]) -> List[str]:
     """
     out: List[str] = []
     for table, i, cells, problem in _unreadable_rows(lines):
+        below = lines[i + 1] if i + 1 < len(lines) else ""
+        if below.strip().startswith("|") and _is_separator_row(_split_row(below)):
+            # Header position: most likely a retitled header, possibly the
+            # only row of a table written without one. Say both.
+            out.append(
+                f"progress.md:{i + 1}: {table.name} row {problem}, above the "
+                f"separator — a header row's first cell reads "
+                f"'{table.header.capitalize()}'; as data, it is not read, so "
+                f"{table.loses}.")
+            continue
         hint = (" A '|' inside a cell is the usual cause."
                 if len(cells) != table.width else "")
         out.append(f"progress.md:{i + 1}: {table.name} row {problem} — it "
@@ -4063,9 +4070,16 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
 
     # Mandatory sections. Rows are taken by shape from anywhere in the file,
     # with the one test `unreadable_row_errors` reports the failures of.
+    # A table whose every row is unreadable is present, and already reported
+    # row by row; "missing" on top of that would send the author looking for
+    # a table that is there. One written without leading `|` is missing: no
+    # reader or writer here has ever taken a row from it.
     table_rows = [_split_row(l) for l in lines if l.strip().startswith("|")]
-    has_stage_table = any(_reads(_STAGE_SUMMARY, c) for c in table_rows)
-    has_obj_table = any(_reads(_OBJECTIVE_COVERAGE, c) for c in table_rows)
+    reported = {t.name for t, *_ in _unreadable_rows(lines)}
+    has_stage_table = (any(_reads(_STAGE_SUMMARY, c) for c in table_rows)
+                       or _STAGE_SUMMARY.name in reported)
+    has_obj_table = (any(_reads(_OBJECTIVE_COVERAGE, c) for c in table_rows)
+                     or _OBJECTIVE_COVERAGE.name in reported)
     sections = stage_sections(lines)
     if not has_stage_table:
         errors.append("progress.md: missing Stage summary table")

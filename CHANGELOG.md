@@ -141,13 +141,20 @@ closed.**
   exactly the rows each reader skips. The gates and targets readers share one
   row reader with the check (`_table_rows`), and the summary and objective
   readers, which take rows by shape from anywhere in the file, share its row
-  test (`_reads`); the check reads each table under its template heading, or,
-  for a summary or objective table without one, every markdown table its
-  reader takes a row from. Before, a ✅ summary row over unfinished work or a
-  ✅ objective over a `❌ Not met` target, mis-shaped by one stray `|`, passed
-  clean: the row dropped out before the over-claim check saw it. **A consumer
+  test (`_reads`). The check reads every `|` line under each table's template
+  heading — so a second table there is reported too, failing closed rather
+  than scoped narrowly enough for a broken gates table to slip past — and,
+  for a summary or objective table whose heading's section holds no readable
+  row, every markdown table its reader takes a row from. Before, a ✅ summary
+  row over unfinished work or a ✅ objective over a `❌ Not met` target,
+  mis-shaped by one stray `|`, passed clean: the row dropped out before the
+  over-claim check saw it. **A consumer
   whose `progress.md` holds such a row sees `aide check` fail after
-  `--update`**; the fix is the one edit the message names.
+  `--update`**; the fix is the one edit the message names. So does one whose
+  summary or objective table is written without leading `|`: it is now
+  *missing*, which it always was to every reader and writer of it — only the
+  presence test took such rows, so their statuses were never checked. A
+  table whose every row is unreadable is not also reported missing.
 - **A header row is still recognised by its first cell alone**; a retitled
   one is reported, with a hint naming what that cell reads. Recognising a
   header by the separator beneath it, markdown's own rule, would take the only

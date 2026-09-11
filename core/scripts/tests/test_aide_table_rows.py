@@ -178,7 +178,8 @@ def test_a_renamed_header_is_reported_and_says_what_a_header_reads():
     doc = _progress().replace("| Stage | Title |", "| # | Title |")
     errors = aide.unreadable_row_errors(doc.splitlines())
     assert len(errors) == 1, errors
-    assert "(a header row's first cell reads 'Stage')" in errors[0]
+    assert "above the separator — a header row's first cell reads 'Stage'" in errors[0]
+    assert "usual cause" not in errors[0]
 
 
 HEADERLESS_GATES = """\
@@ -217,6 +218,50 @@ def test_a_summary_under_another_heading_is_still_checked_row_by_row(tmp_path: P
     errors, _ = _check(tmp_path, doc)
     assert any(e.startswith(f"progress.md:{_line_of(doc, broken)}: stage summary "
                             f"row has 5 cells, not 4") for e in errors), errors
+
+
+def test_a_summary_away_from_its_present_but_empty_heading_is_checked(tmp_path: Path):
+    """The heading can be there with the table under another one; the reader
+    still finds the table by shape, so the check falls back to finding it the
+    same way whenever the heading's section holds no readable row."""
+    broken = "| 1 | Rule | Engine | G2 | ✅ |"
+    doc = _progress(summary=broken).replace(
+        "## Stage summary\n", "## Stage summary\n\nSee below.\n\n## Stages\n")
+    errors, _ = _check(tmp_path, doc)
+    assert any(e.startswith(f"progress.md:{_line_of(doc, broken)}: stage summary "
+                            f"row has 5 cells, not 4") for e in errors), errors
+
+
+def test_a_table_whose_every_row_is_unreadable_is_not_also_missing(tmp_path: Path):
+    """The rows are reported one by one; "missing Stage summary table" on top
+    would send the author looking for a table that is there."""
+    doc = _progress(summary="| 1 | Rule Engine | G2 | done |").replace(
+        "| 0 | Scaffolding | (foundation) | ✅ |", "| 0 | Scaffolding | — | done |")
+    errors, _ = _check(tmp_path, doc)
+    assert sum("stage summary row has no status icon" in e for e in errors) == 2, errors
+    assert not any("missing Stage summary table" in e for e in errors), errors
+
+
+def test_a_summary_written_without_leading_pipes_is_missing(tmp_path: Path):
+    """Valid markdown, but no reader or writer of the table has ever taken a
+    row without its leading `|` — its statuses were never checked — so the
+    table is reported missing rather than passing as present."""
+    doc = _progress().replace("| 0 | Scaffolding | (foundation) | ✅ |",
+                              "0 | Scaffolding | (foundation) | ✅").replace(
+        SUMMARY_ROW, "1 | Rule Engine | G2 | ✅")
+    errors, _ = _check(tmp_path, doc)
+    assert "progress.md: missing Stage summary table" in errors
+
+
+def test_a_second_table_under_the_gates_heading_fails_closed():
+    """Every `|` line under `## Human gates` is read as the gates table, so a
+    side table there is reported — and holds claims — rather than a scope
+    narrow enough to spare it being one a broken gates table could slip past."""
+    lines = _progress().replace(
+        GATE_ROW + "\n", GATE_ROW + "\n\n| Who | Role |\n|---|---|\n| Ana | lead |\n"
+    ).splitlines()
+    assert [n for n, _ in aide.unreadable_gate_rows(lines)] == [
+        lines.index("| Who | Role |") + 1, lines.index("| Ana | lead |") + 1]
 
 
 def test_with_the_heading_present_an_authors_own_table_is_left_alone():
