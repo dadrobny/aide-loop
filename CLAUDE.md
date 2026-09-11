@@ -160,6 +160,16 @@ comments cost the loop nothing: a preload strips them. A **generated** file
 declares no pins and fails the suite if it grows one — the mechanism guards a
 restatement, and there is none there.
 
+The engine's own always-on page is a restatement too, and is pinned the same
+way from the other side of the boundary:
+[`tests/test_floor_pins.py`](tests/test_floor_pins.py) holds
+`core/AGENT-CONTEXT.md`'s sentences to the **core** of the section each heading
+names (issue #194). Its pins live in that module's `FLOOR_PINS`, **not** in a
+comment on the page — the floor is costed at its whole bytes on every spawn,
+and nothing guarantees an instruction-file import strips comments. Rewording
+a pinned sentence on either side means editing the page, the section and
+`FLOOR_PINS` together.
+
 Do not re-inline a contract restatement into an agent spec. Six of them carried
 the command-hygiene block verbatim, one had already drifted, and a test now
 fails if the heading comes back. Same shape, same guard, for the `## Hand-off`

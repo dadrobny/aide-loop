@@ -19,7 +19,7 @@ with none of the conversation.
    is; title a change by the change.
 2. **Cross-reference by resolvable identity** — an issue number, a file path, a
    commit, a stage number, a dated `insights.md` entry. Never "the companion PR"
-   or "as discussed above".
+   or "as discussed above" pointing outside the artifact.
 3. **Record the decision and why it holds, not the route to it.** "My earlier
    lean was wrong", "agreed direction", "settled while drafting" narrate a
    process the reader was not part of.
