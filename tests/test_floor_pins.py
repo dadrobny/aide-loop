@@ -158,11 +158,14 @@ def test_the_pins_catch_the_drift_that_earned_them():
     Without the qualifier, the page forbade a phrase the section permits
     inside the artifact. If a later edit to the pins stops noticing that, this
     fails before the next such drift ships unobserved.
+
+    The swap is made on the normalised page, so a reflow of those lines is
+    not mistaken for the fixed wording having gone.
     """
-    drifted = _floor_text().replace(
-        '"as discussed above" pointing outside the artifact.',
-        '"as discussed above".')
-    assert drifted != _floor_text(), "the fixed wording is gone from the page"
-    missing = [pin for _, pin in _PINNED
-               if normalise(pin) not in normalise(drifted)]
+    page = normalise(_floor_text())
+    drifted = page.replace(
+        normalise('"as discussed above" pointing outside the artifact.'),
+        normalise('"as discussed above".'))
+    assert drifted != page, "the fixed wording is gone from the page"
+    missing = [pin for _, pin in _PINNED if normalise(pin) not in drifted]
     assert missing, "the pre-#194 wording satisfies every pin"

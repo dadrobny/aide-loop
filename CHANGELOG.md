@@ -150,8 +150,11 @@ holding them together. The issue's first option, taken: pin them.
   floor is costed at its whole bytes — 1.47.0's floor went *down* when the §3
   rule's pins block was retired, because the block outweighed the rules it
   quoted. And a pin is searched for in the section's **core** only, above its
-  `Rationale` heading, so the page cannot deliver a reason as though it were a
-  rule. The page's other headings stay unpinned; each is one entry away.
+  `Rationale` heading, so a pinned sentence has to be one of §1's rules — a
+  reason from its tail cannot satisfy one. Two page sentences paraphrase that
+  tail (why a chat-local label fails, and who the cold reader is); they state
+  no rule and stay unpinned. The page's other headings stay unpinned too; each
+  is one entry away.
 - The pin normaliser moves into `tests/_delivered.py` as `normalise`, so both
   pin modules read a sentence the same way.
 
