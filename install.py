@@ -12,9 +12,12 @@ into a target repo:
                                               -> <target>/.claude/
            A control file carrying `<!-- generated-from: <section> -->` is
            RENDERED rather than copied: the adapter's half of it (frontmatter,
-           reach declarations, its own delivery note) with the engine section's
-           core appended verbatim, so the delivered copy IS the section and
-           cannot drift from it (`delivered_bytes`).
+           its own delivery note) with the engine section's core appended
+           verbatim, so the delivered copy IS the section and cannot drift
+           from it. Every markdown control file also loses its `pins`,
+           `reach` and `triggers` comments on the way in — declarations for
+           this framework's test suite, which a consumer does not install
+           (`delivered_bytes`, `strip_declarations`).
            settings.json reconciliation depends on whether the project has
            adopted an overlay (see `install_settings`):
              * <target>/.claude/settings.overlay.json present -> settings.json is
@@ -933,6 +936,127 @@ def retire_adapter_files(adapter_dir: Path, target: Path, candidates: Iterable[s
 
 
 # --------------------------------------------------------------------------- #
+# test declarations — read from source, never shipped
+#
+# `pins`, `reach` and `triggers` are declarations for the *framework's* suite:
+# a pin is a sentence `adapters/claude/tests/test_rule_pins.py` asserts on both
+# sides, and `reach` / `triggers` are what `tests/test_structural_budget.py`
+# compares against the agent specs. A consumer installs none of those modules,
+# so in a consumer's tree the blocks are bytes nobody can act on, sitting in
+# files a runtime may hand a reader whole. ADAPTER-SPEC's *Copies of engine
+# text* section decides it under *What an install ships*: a declaration that
+# exists for the framework's tests does not ship. They are stripped here, on
+# the way in, and the source file keeps them — which is where every module that
+# reads one now reads it from.
+#
+# `generated-from` is deliberately **not** in the set, and differs in kind: it
+# is an instruction to this installer, read from source at render time rather
+# than an assertion about the file. The rendered copy keeps it, for one line's
+# worth of two things a reader of the installed file otherwise cannot see —
+# that the body below is generated rather than authored, and which engine
+# section it came from — and because `--update` re-renders from the source
+# declaration either way, so nothing downstream depends on dropping it.
+#
+# Only these three openers are removed, never every HTML comment: a comment
+# written for the *reader* of a delivered file is content, and a strip that
+# could not tell the two apart would quietly delete it. And only a block —
+# opening a line, closed before the next blank one — which is the shape every
+# delivered file writes and the only shape that can be removed without
+# guessing at what a stray opener was meant to enclose. See
+# `DECLARATION_OPENER` for how both halves of that are held.
+# --------------------------------------------------------------------------- #
+#: The declaration kinds an install strips. One tuple, so the grammar below and
+#: every failure message name the same set.
+DECLARATION_KINDS = ("pins", "reach", "triggers")
+
+_DECLARATION_OPENER = r"<!--[ \t]*(?:%s):" % "|".join(DECLARATION_KINDS)
+
+#: What makes an opener a *declaration* rather than a mention of one: it opens
+#: a line. Shared by the two patterns below, so the strip and the detector can
+#: never disagree about which openers are in scope.
+_LINE_LEADING = r"^[ \t]*"
+
+#: A declaration block **as the delivered files write one**: the opener at the
+#: start of a line, a body of consecutive non-blank lines, and its `-->`. The
+#: trailing group takes the newline that closes the block *and* the blank line
+#: below it when there is one, so a block between two paragraphs leaves exactly
+#: the one blank line that separated them — not two, and not none.
+#:
+#: **Bounded at a blank line**, which is what the tempered `(?!\n[ \t]*\n)`
+#: buys: a plain `.*?-->` under `re.S` reaches the next `-->` *anywhere* below,
+#: so an opener somebody forgot to close would take every paragraph down to the
+#: next comment in the file with it — silently, since what it deleted included
+#: the evidence. A declaration is one paragraph's worth of lines in every file
+#: that writes one, so an unterminated opener now matches nothing, survives the
+#: install intact, and is caught by name in
+#: `tests/test_install_strips_declarations.py`.
+DECLARATION_BLOCK = re.compile(
+    _LINE_LEADING + _DECLARATION_OPENER + r"(?:(?!\n[ \t]*\n).)*?-->[ \t]*"
+    r"(?:\n[ \t]*\n|\n|\Z)",
+    re.M | re.S | re.I)
+
+#: A declaration *opener* on its own line, with nothing said about how it ends.
+#: Not what the strip removes — it is what a **test** looks for:
+#: `test_no_declaration_reaches_the_consumer` uses it to say no declaration
+#: reached the consumer, and
+#: `test_every_declaration_in_the_source_tree_is_a_block_the_strip_matches`
+#: uses it to say that every opener in a control file starts a block
+#: `DECLARATION_BLOCK` matches — so an unterminated or otherwise mis-shaped
+#: declaration fails in this repository instead of shipping.
+#:
+#: Line-anchored for the same reason the strip is: `<!-- pins:` appears in
+#: prose as an inline code span, and a delivered file may one day explain the
+#: grammar to its reader. The strip correctly leaves such a sentence alone, so
+#: a detector that did not would report a file the installer handled
+#: perfectly. What both patterns share is the anchor; what the detector drops
+#: is the rest of the block, since its whole job is to notice a declaration the
+#: strip could not parse.
+#:
+#: The strip is textual and knows nothing about markdown, so a declaration
+#: inside a **fenced code block** is stripped like any other — a delivered file
+#: therefore cannot show its reader what the grammar looks like, and one that
+#: needs to (this repository's own READMEs, `ADAPTER-SPEC.md`) is not a file an
+#: install writes. Pinned as known rather than accidental by
+#: `test_a_fenced_example_is_stripped_too`.
+DECLARATION_OPENER = re.compile(_LINE_LEADING + _DECLARATION_OPENER,
+                                re.M | re.I)
+
+
+def strip_declarations(text: str) -> str:
+    """``text`` with its `pins` / `reach` / `triggers` blocks removed.
+
+    Whole blocks, each with the blank line it leaves behind, so a declaration
+    between two paragraphs takes exactly the separation it added. A file with
+    no declaration is returned unchanged and identical, which is what lets
+    `delivered_bytes` say "copy it" for the many adapter files that carry none.
+
+    **The one block with nothing below it to pair with is the last**, and only
+    that case is fixed up: a block ending the file would leave the blank line
+    *above* it as a trailing gap, so a file a block was removed from the end of
+    is closed with exactly one newline — whether or not the source ended in
+    one, since a file ending mid-gap is not a shape worth carrying forward.
+    Written as a scan rather than `sub()` for exactly that: a blanket `rstrip`
+    would also flatten trailing blank lines the declaration had nothing to do
+    with, which is an edit to a file's content made on the way past.
+    """
+    pieces: List[str] = []
+    cut = 0
+    closes_the_file = False
+    for match in DECLARATION_BLOCK.finditer(text):
+        pieces.append(text[cut:match.start()])
+        cut = match.end()
+        closes_the_file = match.end() == len(text)
+    if not pieces:
+        return text
+    pieces.append(text[cut:])
+    stripped = "".join(pieces)
+    if closes_the_file:
+        body = stripped.rstrip("\n")
+        stripped = f"{body}\n" if body else ""
+    return stripped
+
+
+# --------------------------------------------------------------------------- #
 # generated delivered files — the section itself, wrapped, at install time
 #
 # ADAPTER-SPEC §7 has an adapter deliver a contract section to its roles, and
@@ -947,7 +1071,8 @@ def retire_adapter_files(adapter_dir: Path, target: Path, candidates: Iterable[s
 # `<!-- triggers -->` declarations and whatever the *adapter* has to say about
 # delivering it (a `paths:` note, a provider-specific command shape) are
 # authored there, and the section's normative text is appended below them at
-# install time. No side file to keep in step with the tree, nothing to parse
+# install time — the declarations staying behind in the source, where the
+# tests that read them are (`strip_declarations` above). No side file to keep in step with the tree, nothing to parse
 # that a reader of `adapters/<name>/` cannot see, and a second adapter (#64)
 # reuses the convention by writing the same comment in its own files — the
 # path it names is the engine's, which is runtime-general by construction.
@@ -1044,16 +1169,19 @@ def _section_source(declared: str, core_dir: Path) -> Path:
 def render_delivered(text: str, core_dir: Path) -> str:
     """The delivered file an install writes: the adapter's half, then the core.
 
-    The adapter's half is the file as authored, verbatim, up to its last
-    non-blank line; the engine's half is each declared section's core,
-    verbatim, in declaration order. Nothing is reflowed, re-headed or trimmed
-    on either side — the whole claim this makes is that the delivered text
-    *is* the section, and a transform is a place for that to stop being true.
+    The adapter's half is the file as authored, minus the test declarations
+    no install ships (`strip_declarations`), up to its last non-blank line;
+    the engine's half is each declared section's core, verbatim, in
+    declaration order. Nothing is reflowed, re-headed or trimmed on either
+    side — the whole claim this makes is that the delivered text *is* the
+    section, and a transform is a place for that to stop being true. The strip
+    is not such a transform: it removes whole comment blocks addressed to this
+    repository's tests and touches no line either half states a rule in.
     """
     sections = generated_sections(text)
     if not sections:
         raise GenerationError("no `<!-- generated-from: … -->` declaration")
-    parts = [text.rstrip("\n")]
+    parts = [strip_declarations(text).rstrip("\n")]
     for declared in sections:
         path = _section_source(declared, core_dir)
         if not path.is_file():
@@ -1076,8 +1204,14 @@ def render_delivered(text: str, core_dir: Path) -> str:
 def delivered_bytes(src: Path, core_dir: Path) -> Optional[bytes]:
     """The bytes to write for ``src``, or ``None`` to copy it unchanged.
 
+    Two transforms, in the order a file meets them: a **generated** file is
+    rendered from the engine section it names, and **every** markdown control
+    file loses its test declarations. A file that is neither generated nor
+    declaring anything returns ``None`` and is copied byte for byte, which is
+    most of the adapter.
+
     The one entry point: `copy_tree`'s `render` hook in `run`, and the suites
-    that assert an installed delivered file is its section (through
+    that assert an installed delivered file is its source (through
     `tests/_delivered.py`, which re-exports this rather than re-deriving it —
     the installer has to apply the rule in a consumer, where `tests/` does not
     exist, so this is the copy and that one is the pointer).
@@ -1085,14 +1219,16 @@ def delivered_bytes(src: Path, core_dir: Path) -> Optional[bytes]:
     if src.suffix != ".md":
         return None
     text = source_text(src)
-    if not generated_sections(text):
-        return None
-    return render_delivered(text, core_dir).encode("utf-8")
+    if generated_sections(text):
+        return render_delivered(text, core_dir).encode("utf-8")
+    stripped = strip_declarations(text)
+    return None if stripped == text else stripped.encode("utf-8")
 
 
 def prerender_delivered(adapter_dir: Path, core_dir: Path) -> Dict[Path, bytes]:
-    """Every generated delivered file under the adapter's control directories,
-    rendered — before ``run`` writes anything.
+    """Every control file whose installed bytes are not its source bytes —
+    the generated files rendered, the declaring ones stripped — before ``run``
+    writes anything.
 
     The walk is `copy_tree`'s (same directories, same skips), so the set this
     renders is the set step 2 will write. Rendering up front is what makes a
@@ -1920,9 +2056,11 @@ def run(args: argparse.Namespace) -> int:
     #    manifest written in step 8b. A delivered file that declares
     #    `<!-- generated-from: … -->` is rendered from the engine section it
     #    names instead of copied (`delivered_bytes`), so the copy a role loads
-    #    is the section rather than a restatement of it. The bytes come from
-    #    step 0, so a file is rendered once and the set written is the set
-    #    checked.
+    #    is the section rather than a restatement of it; and every markdown
+    #    control file arrives without its `pins` / `reach` / `triggers`
+    #    declarations, which address a test suite the consumer never installed
+    #    (`strip_declarations`). The bytes come from step 0, so a file is
+    #    rendered once and the set written is the set checked.
     written: List[Path] = []
     for name in ADAPTER_CONTROL:
         src = adapter_dir / name

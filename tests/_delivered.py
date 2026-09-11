@@ -7,7 +7,7 @@ agent specs whose `skills:` frontmatter names them). Four modules read them —
 
 - `adapters/claude/tests/test_rules.py`      — the envelope and the preload channel
 - `adapters/claude/tests/test_rule_pins.py`  — the quoted statements, both directions
-- `tests/test_structural_budget.py`          — reach and cost, against a real install
+- `tests/test_structural_budget.py`          — declared reach, and cost against a real install
 - `tests/test_fixture_consumer.py`           — the files as an install leaves them
 
 — and each carried its own copy of the same parser set: a frontmatter
@@ -86,10 +86,11 @@ CORE_DIR = FRAMEWORK_ROOT / "core"
 #: 1.42.0 — see `Reader.is_section_skill`.
 SECTION_SKILL_KEY = "user-invocable"
 
-#: Any HTML comment. A preload strips these, so the `<!-- reach: … -->` and
-#: `<!-- pins: … -->` declarations cost the loop nothing — and a check on what
-#: a role actually receives has to strip them too, or a pin would satisfy
-#: itself from its own declaration.
+#: Any HTML comment. A check on what a role actually receives has to strip
+#: these, or a pin would satisfy itself from its own declaration — and a
+#: preload strips them too, which is why a comment addressed to an *editor* of
+#: the source file costs the loop nothing even before the install drops it
+#: (`strip_declarations` below).
 COMMENT = re.compile(r"<!--.*?-->", re.S)
 
 
@@ -154,6 +155,17 @@ def glob_list(block) -> list:
 def strip_comments(text: str) -> str:
     """The body as a preload injects it: HTML comments removed."""
     return COMMENT.sub("", text)
+
+
+#: The narrower strip an **install** applies: the `pins` / `reach` /
+#: `triggers` declarations alone, which are assertions addressed to this
+#: repository's suite and so have no reader in a consumer's tree. Pointed at
+#: rather than re-derived, for the same reason `section_core` is — the
+#: installer has to apply the rule inside a consumer, where `tests/` does not
+#: exist, so `install.py` owns the grammar and this is the pointer (issue
+#: #205). Two strips, deliberately different: `strip_comments` above is what a
+#: *preload* does to a body, and would delete a comment written for a reader.
+strip_declarations = install.strip_declarations
 
 
 #: Emphasis and code markers. Dropped on both sides, so bolding a clause in one

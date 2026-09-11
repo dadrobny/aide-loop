@@ -109,8 +109,8 @@ the preload channel are held together from the other side, by
 **Four of them are generated, and are therefore not restatements at all**
 (1.47.0, #109's PR 2). A delivered file that declares `<!-- generated-from:
 .aide/conventions/<file>.md -->` is written by `install.py` as its own text —
-frontmatter, the reach declarations, and whatever the *adapter* has to say
-about delivering the section — followed by that section's core, everything
+frontmatter and whatever the *adapter* has to say about delivering the
+section, its test declarations stripped — followed by that section's core, everything
 above the `Rationale` heading, **verbatim**: `rules/aide-command-hygiene.md`
 (§3), `aide-test-hygiene` (§6), `aide-off-platform-verification` (§7) and
 `aide-review-and-validation` (§9). Nothing is reflowed, re-headed or trimmed,
@@ -142,7 +142,8 @@ Each delivered file also declares, in a `<!-- reach: … -->` comment near the
 top of its body, the agent roles it expects to reach — `all`, or a
 comma-separated list.
 [`tests/test_structural_budget.py`](tests/test_structural_budget.py) installs
-the adapter and fails when the declaration and the carrier disagree: for a
+the adapter, reads that declaration from the **source** file (1.49.3 strips it
+on the way in, below) and fails when the declaration and the carrier disagree: for a
 rule, its `paths:` globs evaluated against each role's read-set derived from
 the agent specs; for a section skill, **literally** the set of specs whose
 `skills:` list it, plus a `<!-- triggers: … -->` line naming the roles whose
@@ -153,13 +154,29 @@ reach**, so update the declaration in the same commit. That module also pins
 the always-on floor (`AGENT-CONTEXT.md` plus every unscoped rule; a section
 skill is not part of it) byte-for-byte — it fails in both directions on
 purpose, and moving it means bumping `VERSION` and editing the pin
-deliberately.
+deliberately. What it costs it still reads from the install; only the
+declaration comes from source, and the equality that keeps those one claim —
+installed file == source minus the declarations, plus the core for a generated
+one — is asserted in the same module.
+
+**None of the three declarations ships** (issue #205, 1.49.3). `pins`, `reach`
+and `triggers` address this repository's suite, which a consumer does not
+install, so `install.py` strips them from every markdown control file it
+writes — hand-written at copy time, generated before the core is appended
+(`strip_declarations`; the edges are
+[`tests/test_install_strips_declarations.py`](tests/test_install_strips_declarations.py)).
+Only those three openers, and only where one opens a line: a comment written
+for the *reader* survives, and a prose mention of the grammar is prose.
+`generated-from` is deliberately kept — an instruction to the installer rather
+than an assertion, and the one line saying the installed body is generated and
+from where. So write a declaration as a block at the start of a line, and
+write it in `adapters/claude/`, which is the only tree it lives in.
 
 And each **hand-written** delivered file **quotes the statements it delivers**,
 in `<!-- pins: <section file> … -->` blocks — one block per section, each `- `
 line a sentence lifted from it (rung 3 of the copies rule, with the blocks in
 the copy because the channel the file is shipped through — the preload — strips
-them).
+them, and because since 1.49.3 they do not leave this repository at all).
 [`adapters/claude/tests/test_rule_pins.py`](adapters/claude/tests/test_rule_pins.py)
 asserts every pin still appears in the delivered file *and* in the section it
 names, after a normalisation that absorbs reflow, emphasis and case but nothing

@@ -83,12 +83,16 @@ RETIRED_RULES = (".claude/rules/aide-living-documents.md",
 def delivered(source: Path) -> bytes:
     """The bytes an install writes for one adapter source file.
 
-    Most of them are copies, and for those this is the file itself. A
-    **generated** delivered file (1.47.0, issue #109) is rendered instead: its
-    own text with the core of the engine section it names appended, so the
-    consumer's copy is longer than the source and byte-equality against the
-    source would be the wrong assertion — while byte-equality against the
-    render is the right one, and is what says the generator ran.
+    Most of them are copies, and for those this is the file itself. Two things
+    make a file differ from its source, and `delivered_bytes` applies both: a
+    **generated** delivered file (1.47.0, issue #109) is rendered — its own
+    text with the core of the engine section it names appended, so the
+    consumer's copy is longer than the source — and any markdown control file
+    loses its `pins` / `reach` / `triggers` declarations (1.49.3, issue #205),
+    so most delivered files are shorter. Byte-equality against the *source*
+    would be the wrong assertion in both directions; byte-equality against
+    what the installer writes is the right one, and is what says the render
+    and the strip both ran.
     """
     return install.delivered_bytes(source, FRAMEWORK_ROOT / "core") or source.read_bytes()
 
@@ -358,7 +362,8 @@ def test_the_install_delivers_every_rule_and_no_others(prototype: Path):
 @pytest.mark.parametrize("source", SOURCE_RULES, ids=lambda p: p.name)
 def test_a_rule_reaches_the_consumer_byte_for_byte(prototype: Path, source: Path):
     """Byte-exact, against what the installer is supposed to write: the file
-    for a copy, the render for a generated one (`delivered` above)."""
+    for a copy, the render for a generated one, and either of those minus its
+    test declarations (`delivered` above)."""
     installed = prototype / ".claude" / "rules" / source.name
     assert installed.is_file(), f"{source.name} never reached .claude/rules/"
     assert installed.read_bytes() == delivered(source)

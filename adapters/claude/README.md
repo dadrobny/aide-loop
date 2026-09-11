@@ -323,7 +323,8 @@ body:
 `all`, or a comma-separated list of agent names; a note explaining the choice
 goes on the lines below it inside the same comment.
 [`tests/test_structural_budget.py`](../../tests/test_structural_budget.py)
-installs the adapter and fails when the declaration and the carrier disagree.
+installs the adapter, reads the declaration from the file **here in the source
+tree**, and fails when it and the carrier disagree.
 For a rule, the carrier is its globs, evaluated against each role's read-set
 derived from the delivered agent specs. For a section skill reach is
 **literal** — the specs whose `skills:` list it — and its globs are
@@ -333,11 +334,25 @@ the listing keys on in a human's session. The same module
 pins the **always-on floor** (`AGENT-CONTEXT.md` plus every unscoped rule) per
 file, so the constant term every spawn pays cannot move without a deliberate
 edit — a section skill is not part of it — and prints the per-role byte table
-(floor + spec + preloaded skills) as diagnostics. The declaration is a comment
-rather than a frontmatter key on purpose: it carries no runtime meaning, and a
-preload strips it, so it costs the loop nothing (measured, with its caveats,
-in issue #85's comment "Measurement — what a skill body carries into
-context"; an *invoked* skill keeps its comments, a preloaded one does not).
+(floor + spec + preloaded skills) as diagnostics. Reading the declaration from
+source is what it owes for the strip below, and it pays for the split by
+asserting the other half: that every installed control file is its source
+minus the declarations.
+
+The declaration is a comment rather than a frontmatter key on purpose: it
+carries no runtime meaning. **And it does not leave this repository** — since
+1.49.3 (issue #205) `install.py` strips `<!-- reach -->`, `<!-- triggers -->`
+and `<!-- pins -->` from every markdown control file it writes, because all
+three address the framework's own test suite, which a consumer does not
+install. Write them as a block at the start of a line, which is the shape the
+strip recognises and the only shape these files use; a comment written for the
+*reader* of a delivered file is content and survives. The bytes were free to
+the loop before that anyway — a preload strips comments (measured, with its
+caveats, in issue #85's comment "Measurement — what a skill body carries into
+context"; an *invoked* skill keeps its comments, a preloaded one does not) —
+but they were not free to the consumer whose tree carried them: 26% of the
+installed skills, rules and always-on page at 1.49.2, and 42% of
+`aide-item-specs`.
 
 **Four delivered files are generated from their section**, and the rest quote
 it. Which one a file uses is declared in the file:
@@ -346,14 +361,19 @@ it. Which one a file uses is declared in the file:
 <!-- generated-from: .aide/conventions/6-test-hygiene.md -->
 ```
 
-`install.py` writes such a file as its own text — frontmatter, `<!-- reach -->`,
-`<!-- triggers -->` and whatever *this adapter* has to say about delivering the
-section (§3's `PreToolUse` hook and its "use the Bash tool, not PowerShell"
-shaping; §6's note on what its globs match) — followed by the section's **core**,
+`install.py` writes such a file as its own text — frontmatter, and whatever
+*this adapter* has to say about delivering the section (§3's `PreToolUse` hook
+and its "use the Bash tool, not PowerShell" shaping; §6's note on what its
+globs match), its `<!-- reach -->` and `<!-- triggers -->` declarations
+stripped out with every other file's — followed by the section's **core**,
 everything above the closing `Rationale` heading, verbatim. Nothing is reflowed
 or trimmed, so the delivered body *is* the section and the third obligation
 holds by construction. The four are `rules/aide-command-hygiene.md` (§3) and the
-section skills for §6, §7 and §9; each stays at the path it already had.
+section skills for §6, §7 and §9; each stays at the path it already had. The
+`generated-from` line is the one declaration the install **keeps**: it is an
+instruction to the installer read from source, not an assertion about the
+file, and it is what tells a reader of the installed copy that the body is
+generated and which section it came from.
 [`tests/test_generated_delivery.py`](tests/test_generated_delivery.py) asserts
 the render equals the adapter's half plus the core byte for byte, that a
 statement added to a section reaches the delivered copy with no second edit, and

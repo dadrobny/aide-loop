@@ -121,6 +121,92 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.49.3] — 2026-09-11
+
+Issue #205, the *What an install ships* subsection of ADAPTER-SPEC's *Copies of
+engine text* section: `pins`, `reach` and `triggers` are declarations for
+**this repository's tests** — a pin is a sentence `test_rule_pins.py` asserts
+on both sides, a reach is what `test_structural_budget.py` compares against
+the carrier that delivers it. A consumer installs neither module, so in a
+consumer's tree the blocks were bytes nobody could act on, inside files a
+runtime may hand a reader whole. 1.49.1 wrote the rule down and named the one
+thing standing in the way; this release implements it. The declarations stay
+in `adapters/claude/`, where the tests read them, and stop at the installer.
+
+### Changed
+
+- **`install.py` strips the three declaration kinds from every markdown
+  control file it writes** — a hand-written file at copy time, a generated
+  one at render time, before the section core is appended
+  (`strip_declarations`, `delivered_bytes`). A block takes the blank line it
+  stood on with it, so a declaration between two paragraphs leaves the
+  separation it was written into rather than a double gap; a block that ends a
+  file closes it with one newline, and trailing blank lines the strip did not
+  create are left alone. **Only these three openers, and only where one opens
+  a line and closes before the next blank one**: a comment written for the
+  *reader* of a delivered file is content and survives, a prose mention of
+  the grammar — `` `<!-- pins:` `` in a sentence — is prose, not a block, and
+  an opener nobody closed is left whole rather than allowed to swallow the
+  paragraphs below it while deleting the evidence. The detector that reports a
+  declaration reaching a consumer shares that anchor, so the two cannot
+  disagree about which openers are in scope, and
+  `test_every_declaration_in_the_source_tree_is_a_block_the_strip_matches`
+  fails in this repository over one the strip could not parse. What
+  a consumer's `.claude/` holds after `--update` is therefore smaller and says
+  exactly what it said before: no rule, no pointer and no shape example moves.
+  One known limit, recorded rather than worked around: the strip is textual, so
+  a declaration inside a fenced code block goes too — a delivered file cannot
+  show its reader the grammar, and the files that do are not files an install
+  writes.
+- **`generated-from` stays in the rendered copy**, and is not in the stripped
+  set. It differs in kind — an instruction to the installer, read from
+  **source** at render time, rather than an assertion about the file — and it
+  is one line that tells a reader of the installed file two things nothing
+  else does: that the body below is generated rather than authored, and which
+  engine section it came from. §7's requirement that a delivered file name the
+  section it delivers is met by the body's prose either way, so keeping the
+  line is a readability call, taken for the reader of the installed file.
+- **The installed skills, rules and always-on page fall from 124,013 to
+  93,347 content bytes — 30,666 B, 24.7%.** Comment bytes in that tree go from
+  32,147 (25.9%) to 1,549 (1.7%), the remainder being the four
+  `generated-from` lines. The worst file, `aide-item-specs`, goes from 17,859
+  to 10,317 B (−42.2%); `aide-document-format` from 6,511 to 3,200
+  (−50.9%). Eleven files shrink; the other nine were already declaration-free
+  and are byte-identical.
+- **The always-on floor moves from 9,333 to 9,005 content bytes** — `.aide/AGENT-CONTEXT.md`
+  unchanged at 5,315 (the engine writes no declarations) and
+  `.claude/rules/aide-command-hygiene.md` from 4,018 to 3,690, its `reach`
+  block being the whole of the −328 B. Paid on every spawn of every role.
+  `FLOOR_PIN` in `tests/test_structural_budget.py` moves with it.
+- **The blocker named in 1.49.1 is resolved by splitting the reading in two.**
+  `tests/test_structural_budget.py` read `reach` from an install on purpose —
+  the reach it checks is a fact about the *delivered* tree. It now reads the
+  declaration from `adapters/claude/`, keeps reading everything it **costs**
+  from the install (the sizes, the floor bytes, the agent specs' `skills:`
+  lists), and pays for the split with the assertion the rule said it would
+  owe: `test_an_installed_control_file_is_its_source_minus_the_declarations`
+  compares every installed markdown control file to its source with the
+  declarations removed — and, for a generated one, with the consumer's own
+  copy of the engine section's core appended. It counts the source control
+  files too, since a loop over the installed tree cannot see a file that
+  stopped being written at all. Declared reach and paid reach stay one claim
+  about one file.
+- **`--check` is unaffected, by construction.** Drift is decided by
+  `.aide/VERSION`, the instruction-file import line and the adapter manifest,
+  which records paths and never content — nothing compares installed adapter
+  bytes to source bytes, so a deliberately-stripped file cannot read as
+  behind. Pinned from the other side now, in
+  `tests/test_install_strips_declarations.py` — 23 tests over the strip's
+  edges: no declaration survives anywhere in an installed tree, a reader's
+  comment and a sentence *naming* the grammar both do, no file gains a blank
+  line its source did not have, an unterminated opener is left whole, and a
+  second `--update` rewrites nothing.
+- **Patch.** Nothing new is installed — no verb, template, `aide.toml` key,
+  agent or skill — and no consumer edits anything: every delivered file is
+  smaller and says exactly what it said before. That is a fix with no
+  interface change, which is what patch is for, whatever the breadth of the
+  diff.
+
 ## [1.49.2] — 2026-09-11
 
 Issue #205's floor row: `core/AGENT-CONTEXT.md` is a compressed copy of nine

@@ -26,11 +26,13 @@ install is `tests/test_fixture_consumer.py`; the grammar itself, as functions,
 is `tests/test_install_generated.py`.
 
 **And the adapter's half stays the adapter's.** The text a generated file
-authors — its frontmatter, its `<!-- reach -->` / `<!-- triggers -->`
-declarations, whatever it has to say about *delivering* the section — sits
-above the render and is checked here too, because that half can drift: it is
-the one place a generated file could still state a rule the engine does not
-have.
+authors — its frontmatter, whatever it has to say about *delivering* the
+section — sits above the render and is checked here too, because that half can
+drift: it is the one place a generated file could still state a rule the
+engine does not have. Its `<!-- reach -->` / `<!-- triggers -->` declarations
+sit there in the source and nowhere else: they address this repository's
+suite, so an install strips them (issue #205) and the equality below composes
+the stripped half.
 
 Stdlib + pytest only.
 """
@@ -50,7 +52,7 @@ sys.path.insert(0, str(_ADAPTER.parents[1] / "tests"))
 import install  # noqa: E402  (path shim above)
 from _delivered import (STRIPS_BOM, generated_from, is_generated,  # noqa: E402
                         label as _label, rendered, rendered_body,
-                        strip_comments)
+                        strip_comments, strip_declarations)
 
 #: The source tree, so the reader that reports on a file behind a BOM rather
 #: than the one that refuses it — `tests/_delivered.py` has the difference.
@@ -108,6 +110,13 @@ def test_the_rendered_file_is_the_adapters_text_then_the_section_core(path: Path
     heading, a bullet dropped because it "reads oddly out of context" — fails
     here. That is the constraint the mechanism trades for retiring the pins:
     if a section cannot be delivered whole, the section is what changes.
+
+    The adapter's text is its source *minus the test declarations* since
+    1.49.3 (issue #205): `reach` and `triggers` are assertions addressed to
+    `tests/test_structural_budget.py`, which a consumer does not install, so
+    they stay in `adapters/claude/` and the render drops them. Nothing else
+    about either half moves, which is what makes the strip expressible as one
+    call on this side of the equality rather than a second render.
     """
     cores = []
     for section in generated_from(path):
@@ -117,7 +126,8 @@ def test_the_rendered_file_is_the_adapters_text_then_the_section_core(path: Path
             f"{section}: no closing `Rationale` heading, so the cut #122 "
             f"defined does not exist in it and there is no core to deliver")
         cores.append(core.rstrip("\n"))
-    expected = "\n\n".join([_read(path).rstrip("\n")] + cores) + "\n"
+    own = strip_declarations(_read(path))
+    expected = "\n\n".join([own.rstrip("\n")] + cores) + "\n"
     assert rendered(path) == expected
 
 
