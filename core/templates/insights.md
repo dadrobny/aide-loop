@@ -48,8 +48,8 @@
   The captured claim is IMMUTABLE — never reworded, reordered or deleted, not
   even when it turns out to be wrong (the wrongness is the record). Ticking the
   checkbox is the one in-place edit. Everything that happens to an entry AFTER
-  triage goes in an appendable status trail: dated lines, indented under the
-  entry, newest last.
+  triage goes in an appendable status trail — conventions.md §1 → insights.md
+  states its rule; this is its shape:
     - [x] framework — <the original claim, never touched> *(2026-08-20)*
       - **2026-08-20** → aide-loop issue #50
       - **2026-10-11** → resolved in engine 1.16.0

@@ -121,6 +121,64 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.49.5] — 2026-09-11
+
+Issue #205's last inventory row — the six template header comments. The row
+already held that **shapes are not a copy** (since #193 a section names the
+template rather than drawing it, so the template is the original) and that
+**mechanism points** at `aide <verb> -h`, done for `progress.md`'s rollup in
+1.49.1. What was outstanding was the general guard, and writing it found four
+more passages restating a section core.
+
+### Changed
+
+- **Four template headers point where they used to copy.**
+  `progress.md` stated §1 → `progress.md`'s Outcome-targets gate in full
+  ("an objective linked to a target that is not ✅ Met cannot roll up to ✅")
+  and now names the section that states it; `progress.md` and `item.md` both
+  repeated §1 → Environment-gated capabilities' definition of a gated
+  capability, parenthetical examples and all, under a pointer at the same
+  section, and now carry the pointer alone; `queue.md` stated §1 →
+  `queue-NNN.md`'s globally-sequential item numbering and now names it;
+  `insights.md` stated §1 → `insights.md`'s status-trail rule in the sentence
+  above the trail it draws, and now points for the rule and keeps the drawing,
+  which is the template's own. No header lost a shape: the drawn shapes — the
+  stage summary row, the Deliverables bullet string, the entry and trail
+  shapes, `### Item NNN: Short Title` — are untouched, because those are what a
+  header is for. The six headers are **191 B larger**, 10,343 → 10,534, and
+  that is the honest price of rung 1 here: a pointer that names its section
+  spells out a path the copied sentence did not. What it buys is a sentence
+  that cannot go stale, which is the whole of what #205 found these headers
+  doing. (10,343 is a fresh measurement of `main`. The inventory row had
+  carried 10,275 since the numbers were taken, and `progress.md`'s header grew
+  68 B at 61b9827 without anyone re-measuring — so the row's figure is now
+  re-measured too, and the sweep that produced it is a step of this pass rather
+  than a quotation of the last one.)
+
+### Added
+
+- **A repo test that fails when a header copies again**, in
+  `tests/test_template_conventions.py` (repo-test-only; no consumer-facing
+  change). It compares each header's ten-word runs against every section core
+  under `core/conventions/**` and every verb's rendered `-h` description
+  block, reusing `install.py --check`'s own comparison — `_contract_words`,
+  `_contract_runs` and `CONTRACT_ECHO_WORDS`, imported rather than restated, so
+  both restatement channels stay tuned together. Ten is also what the
+  measurement chose: against the tree before this pass the headers scored
+  **66 run/source matches (61 distinct runs) at six words, 30 (30) at eight
+  and 13 (13) at ten** — six drowns the signal in ordinary English, and eight
+  flags the fill-in convention a header is required to state. After the pass:
+  zero at ten, 29 matches / 25 distinct at six. There is **no allow-list**,
+  because no shape string in the six headers comes near ten words. Two limits,
+  both deliberate and both stated in the module. The guard reads the **leading
+  header comment only**, so the template *bodies* are outside it — they hold
+  36 shared ten-word runs of their own (`item` 23, `progress` 8, `roadmap` 5),
+  recorded on #205 as a candidate row and not touched here. And it catches
+  copies, not *wrong* copies: the sentence #205 opened with shared no run with
+  anything by the time it was found, which is what was wrong with it — that
+  side is held by `HELP_PINS` and the sections' own pins, and a test records
+  the limit.
+
 ## [1.49.4] — 2026-09-11
 
 Issue #205, the fifth rung of ADAPTER-SPEC's *Copies of engine text* section —
