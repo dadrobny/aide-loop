@@ -139,10 +139,9 @@ current item, merge it.*
 ## Command hygiene
 
 A small set of runtime-general rules keeps shell commands robust and
-failure-localised — one command per call, and no shape a permission policy could
-not have pre-approved. The rules are engine-level and stated once, in
-`conventions.md` §3; this page points there rather than summarising them. *How*
-they're enforced, and any provider-specific command shaping a permission policy
+failure-localised. They are engine-level and stated once, in `conventions.md`
+§3; this page points there rather than summarising them. *How* they're
+enforced, and any provider-specific command shaping a permission policy
 demands, are **adapter** concerns — for Claude, a `PreToolUse` hook plus a permission
 allow-list (see [`../adapters/claude/README.md`](../adapters/claude/README.md)).
 

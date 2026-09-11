@@ -28,11 +28,13 @@ CONSUMER_VISIBLE = ("core/", "adapters/")
 
 #: Subtrees under those paths that are NOT installed, so changing them alone
 #: does not reach a consumer. `adapters/claude/tests/` is this repo's own suite;
-#: ADAPTER-SPEC.md and the adapter READMEs are documentation about the contract.
+#: ADAPTER-SPEC.md is documentation about the contract. Every adapter's README
+#: is too — `install.py` copies only an adapter's control directories, and says
+#: so above `ADAPTER_CONTROL` — so those are excluded by shape, not by name
+#: (`_is_adapter_readme`), and a new adapter's README needs no entry here.
 NOT_INSTALLED = (
     "adapters/claude/tests/",
     "adapters/ADAPTER-SPEC.md",
-    "adapters/claude/README.md",
 )
 
 sys.path.insert(0, str(REPO_ROOT))
@@ -78,8 +80,13 @@ def _changed_paths(base: str) -> set:
     return paths
 
 
+def _is_adapter_readme(path: str) -> bool:
+    parts = path.split("/")
+    return len(parts) == 3 and parts[0] == "adapters" and parts[2] == "README.md"
+
+
 def _reaches_a_consumer(path: str) -> bool:
-    if any(path.startswith(skip) for skip in NOT_INSTALLED):
+    if any(path.startswith(skip) for skip in NOT_INSTALLED) or _is_adapter_readme(path):
         return False
     return any(path.startswith(prefix) for prefix in CONSUMER_VISIBLE)
 
