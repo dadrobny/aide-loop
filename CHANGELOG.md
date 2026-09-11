@@ -121,6 +121,73 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.49.4] — 2026-09-11
+
+Issue #205, the fifth rung of ADAPTER-SPEC's *Copies of engine text* section —
+a prose statement of behaviour the **code** owns is pinned by a test that
+exercises the code against the prose, since there is no second prose copy to
+quote. `aide progress -h`'s rollup sentence has been that since #192; the other
+six description blocks were not, and they are the authoritative statement of
+what a verb does now that the sections point at `-h` rather than restating it.
+Auditing the six against the code found five sentences already wrong, two of
+them the same falsehood #205 found in the `progress.md` template header, one
+copy over.
+
+### Changed
+
+- **One register for all seven `-h` blocks:
+  `core/scripts/tests/test_aide_help_pins.py`.** `HELP_PINS` maps a verb to
+  `(sentence, "module::function")` pairs — 79 of them — and asserts two things
+  per pin: the sentence is still in the help `argparse` renders (normalised for
+  reflow, emphasis and case, so a rewrap passes and a reword does not), and the
+  named guard still resolves. Seventy-seven distinct guards, of which **sixty-one are
+  tests that already existed** and were read before they were named — a guard
+  that merely sits near the behaviour proves nothing — and **sixteen are new**,
+  written where nothing exercised the claim: nine in the harness, where a
+  document tree is enough (the three missing-table errors as three, the summary
+  over-claim measured by the rollup, its mirror warning, the header/summary
+  disagreement, the orphan summary row, an unrecognised Status in either table,
+  a retracted criterion reaching `check`, a warning alone still exiting 0, and
+  the four states `status` promises to print), and seven in the verb's own
+  module, where git is (the spent-item discount on both sides, `claim`'s walk
+  in the queue's own order, its dependency set and its inbox creation, `status`
+  naming a landed 🔍 item, the `gc` skip line, and a derived base preferring
+  `origin/`).
+  `test_progress_help_states_the_rollup_the_code_applies` is the seventh entry
+  and stays where it is — the register names it, it is not moved or copied.
+  The module is self-contained: it reimplements the pin normaliser rather than
+  importing `tests/_delivered.py`, because this directory ships to consumers as
+  `.aide/scripts/tests/`, where `tests/` does not exist. Claims that are
+  rationale for a rule pinned beside them, or a pointer at another verb, are
+  listed as deliberately unpinned in the module docstring with the reason.
+
+### Fixed
+
+- **`aide check -h` stated the stage over-claim as "deliverables not all ✅",
+  and its mirror warning as "deliverables are all ✅".** The check compares
+  `rollup_status`, under which a ❌ bullet counts toward ✅ — so a stage of ✅
+  and ❌ under a ✅ summary row is silent where the help predicted an error,
+  and under a 🚧 row is a warning where the help predicted silence. Both now
+  say "roll up to ✅" and point at `aide progress -h`, which is where the rule
+  is written.
+- **`aide claim -h` said "the lowest-numbered 📋 item".** `_pick_item` walks
+  `queue_item_numbers`, which is the queue document's own order; a queue that
+  lists 028 before 027 is offered 028. Now "the first 📋 item the queue lists —
+  its own order, not the item numbers".
+- **`aide gc -h` quoted the skip line as `skipping <branch>: <reason>`.** The
+  line also names where the branch lives, which is the difference between a
+  local copy and a remote one going. Now `skipping <branch> (local/remote):
+  <reason>`.
+- **`aide insights -h` said `list` prints "the backlog without the closed
+  history around it".** `list` prints every entry in `insights.md`, ticked ones
+  included; `--open` is what narrows to the untriaged, and the closed history
+  the sentence meant is the archive, which is a different file. Now says so.
+
+A consumer's `--update` receives the five corrected help blocks in
+`.aide/scripts/aide.py` and the new pin harness in `.aide/scripts/tests/`,
+which its `pytest .aide/scripts/tests` run picks up with the rest of the
+shipped suite.
+
 ## [1.49.3] — 2026-09-11
 
 Issue #205, the *What an install ships* subsection of ADAPTER-SPEC's *Copies of

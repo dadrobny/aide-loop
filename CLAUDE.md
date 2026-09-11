@@ -57,7 +57,8 @@ belongs on is #78's: would an agent that never saw it make a *different
 decision*? No → tail. Unsure → it is a disambiguator; core. A pinned sentence
 is core by definition, so a delivered file's pins should never point below the
 heading. The style the seventeen share — opener, bullet grammar, `Rationale`
-as `- **Why X.**` bullets, the consumer annotation, verb mechanism in `-h` —
+as `- **Why X.**` bullets, the consumer annotation, verb mechanism in
+`-h` (pinned to the code in `core/scripts/tests/test_aide_help_pins.py`) —
 is stated once, in `conventions.md` after its index table (issue #186); a
 new or reshaped section follows it rather than the file next to it.
 

@@ -216,6 +216,35 @@ def test_pick_item_not_blocked_once_every_multi_item_dependency_is_done(tmp_path
     assert pick is not None and pick[0] == 28  # 027 is still blocked by open 028
 
 
+def test_pick_item_waits_only_for_a_dependency_that_still_blocks(tmp_path: Path):
+    """The parenthetical in `aide claim -h`: \u2705, \u274c or \u23f8\ufe0f have all left the way.
+
+    `_pick_item` asks whether any dependency is in `BLOCKING_STATUSES`
+    (planned, in-progress, in-review), so the three terminal-or-dormant icons
+    are the complement of that set rather than a list kept in step with it by
+    hand. \u23f8\ufe0f is the one worth exercising: it is not spent, and it still does
+    not hold a dependent back \u2014 skipping the deferred item while blocking
+    everything behind it is how a queue stops producing work.
+    """
+    root = _init_repo(tmp_path / "r")
+    (root / "docs" / "aide" / "items" / "027-bounds.md").write_text(
+        "# Item 027 \u2014 Bounds\n\n## Dependencies\n- Item 028 provides X.\n\n## End\n",
+        encoding="utf-8")
+    cfg = aide.load_config(root)
+    ppath = root / "docs" / "aide" / "progress.md"
+
+    ppath.write_text(PROGRESS, encoding="utf-8")
+    assert aide._pick_item(root, cfg, QUEUE, claim_branches=[])[0] == 28
+
+    for icon in ("\u2705", "\u274c", "\u23f8\ufe0f"):
+        ppath.write_text(
+            PROGRESS.replace("- \U0001f4cb Coverage. *(Item 028)*",
+                             f"- {icon} Coverage. *(Item 028)*"),
+            encoding="utf-8")
+        pick = aide._pick_item(root, cfg, QUEUE, claim_branches=[])
+        assert pick is not None and pick[0] == 27, (icon, pick)
+
+
 def test_item_dependencies_is_case_insensitive(tmp_path: Path):
     root = _init_repo(tmp_path / "r")
     (root / "docs" / "aide" / "items" / "027-bounds.md").write_text(
@@ -364,6 +393,24 @@ def _add_next_queue_and_claim_all(root: Path) -> None:
     # Claim branches exist for every open item of queue-003.
     _run(["git", "branch", "aide/027-bounds-rules"], root)
     _run(["git", "branch", "aide/028-coverage-rules"], root)
+
+
+def test_claim_creates_the_missing_inbox_on_the_way_through(tmp_path: Path,
+                                                           capsys):
+    """`aide claim -h`'s last sentence \u2014 the \u00a71 guarantee, kept on this path too.
+
+    `/aide-run-queue` reaches its roles through `sync` and `claim`, never
+    through `check`, so a loop that never ran `check` would otherwise have the
+    roles copying the template by hand. The creation happens on the new branch,
+    after the switch, so the inbox lands with the item rather than on its base.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    inbox = root / "docs" / "aide" / "insights.md"
+    assert not inbox.exists()
+
+    assert aide.main(["--repo", str(root), "claim"]) == 0
+    assert inbox.is_file()
+    assert "created docs/aide/insights.md" in capsys.readouterr().out
 
 
 def test_claim_default_scope_stops_at_live_queue(tmp_path: Path, capsys):
@@ -579,6 +626,27 @@ def test_gc_preview_and_yes_report_the_same_set(tmp_path: Path, capsys):
     previewed = _gc_lines(capsys)
     aide.main(["--repo", str(root), "gc", "--yes"])
     assert _gc_lines(capsys) == previewed
+
+
+def test_a_gc_skip_names_the_branch_where_it_lives_and_why(tmp_path: Path,
+                                                          capsys):
+    """The literal `aide gc -h` quotes, on both paths.
+
+    A skip is the only thing a reader has instead of a deletion, so it has to
+    say which branch, whether the local or the remote copy is meant, and what
+    stopped it. The help quoted the line without `(local/remote)` until 1.49.4.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
+
+    for extra in ([], ["--yes"]):
+        capsys.readouterr()
+        assert aide.main(["--repo", str(root), "gc", *extra]) == 0
+        skips = [l for l in capsys.readouterr().out.splitlines()
+                 if l.startswith("skipping ")]
+        assert skips == ["skipping aide/026-rule-engine-core (local): item 026 "
+                         "is \u2705 but the branch has content not in main; "
+                         "re-check it, or pass --abandon to delete it anyway"], skips
 
 
 def test_gc_preview_does_not_promise_to_delete_the_checked_out_branch(
@@ -1022,6 +1090,26 @@ def test_sync_is_silent_about_a_review_item_still_awaiting_its_merge(
     assert "is 🔍 but its work is now in" not in capsys.readouterr().out
 
 
+def test_status_names_a_review_item_whose_work_has_landed(tmp_path: Path, capsys):
+    """`aide status -h` promises this of `status`, not only of `sync`.
+
+    The sentence names both verbs, and the two call `_landed_review_items`
+    from different places: `status` prints it near the end of its report, with
+    the `aide sync: ` prefix stripped, so a regression in that one line would
+    leave the sync test green and the help wrong.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "27",
+                      "in-review"]) == 0
+    _squash_merge(root, "aide/027-bounds-rules", "squash 027")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
+    out = capsys.readouterr().out
+    assert "item 027 is \U0001f50d but its work is now in main" in out
+    assert "progress set 027 done" in out
+
+
 # --------------------------------------------------------------------------- #
 # The tick reaches origin — regression: it was committed after the only push
 # --------------------------------------------------------------------------- #
@@ -1366,6 +1454,27 @@ def test_check_is_silent_about_claim_branches_in_local_mode(tmp_path: Path, caps
     capsys.readouterr()
     aide.main(["--repo", str(root), "check"])
     assert "unpublished branch" not in capsys.readouterr().out
+
+
+def test_claim_offers_the_first_planned_item_the_queue_lists(tmp_path: Path,
+                                                            capsys):
+    """`aide claim -h` says "the first \U0001f4cb item the queue lists", and means it.
+
+    `_pick_item` walks `queue_item_numbers`, which is document order — a queue
+    is free to list its items out of numeric order, and the pick follows the
+    list rather than sorting it. The help said "lowest-numbered" until 1.49.4,
+    which is what this fixture falsifies.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    (root / "docs" / "aide" / "queue" / "queue-003.md").write_text(
+        "# Demo — Work Queue 003\n\n"
+        "> **Status:** Live · **Created:** 2026-07-01\n\n"
+        "### Item 028: Coverage rules\nCoverage.\n\n"
+        "### Item 027: Bounds rules\nBounds.\n",
+        encoding="utf-8")
+    assert aide.main(["--repo", str(root), "claim", "--dry-run"]) == 0
+    first = capsys.readouterr().out.splitlines()[0]
+    assert first.startswith("would claim item 028"), first
 
 
 def test_none_left_reports_in_the_queues_own_order(tmp_path: Path, capsys):

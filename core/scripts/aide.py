@@ -8231,8 +8231,9 @@ def build_parser() -> argparse.ArgumentParser:
             "\n"
             "Over progress.md's tables, ERRORS: a missing stage summary "
             "table, objective coverage table or stage section; a stage "
-            "summary row marked \u2705 over "
-            "deliverables not all \u2705; an objective marked \u2705 over an "
+            "summary row marked \u2705 over a stage whose deliverables do not "
+            "roll up to \u2705 (`aide progress -h` states the rollup); an "
+            "objective marked \u2705 over an "
             "Outcome target that is \u274c Not met \u2014 the goal-level "
             "mirror of that over-claim; and a row of the stage summary, "
             "objective coverage, Outcome targets or Human gates table that "
@@ -8244,8 +8245,8 @@ def build_parser() -> argparse.ArgumentParser:
             "have fed. Each table is read under its template heading, or, "
             "for a summary or objective table without one, wherever its rows "
             "are found. Warnings, and a warning never moves the exit "
-            "code \u2014 only an error does: a stage whose deliverables are "
-            "all \u2705 under a summary row that is not, a stage header "
+            "code \u2014 only an error does: a stage whose deliverables roll "
+            "up to \u2705 under a summary row that is not, a stage header "
             "disagreeing with its summary row, a summary row with no stage "
             "section, an objective marked \u2705 over a target not yet \u2705 "
             "Met, an Outcome target or human gate whose Status is not one of "
@@ -8365,8 +8366,9 @@ def build_parser() -> argparse.ArgumentParser:
         "insights", help="list / tick / archive / resolve the insight inbox",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "list:    number the entries by position and print the backlog "
-            "without the closed history around it\n"
+            "list:    number the entries by position and print them all, "
+            "ticked ones included; --open narrows to the untriaged, and an "
+            "archived entry is in neither\n"
             "tick:    the one in-place edit — tick entry N with --pointer; on "
             "an entry already ticked, append a dated trail line instead\n"
             "archive: move closed entries older than --before into "
@@ -8419,8 +8421,9 @@ def register_git_subcommands(sub) -> None:
         "claim", help="pick + claim the next unclaimed 📋 item",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "Picks the lowest-numbered 📋 item on the queue whose "
-            "dependencies have all left the way (\u2705, \u274c or "
+            "Picks the first 📋 item the queue lists \u2014 its own "
+            "order, not the item numbers \u2014 whose dependencies have all "
+            "left the way (\u2705, \u274c or "
             "\u23f8\ufe0f) and that no unresolved human gate reaches. It "
             "will not offer a blocked item: where a gate holds the pick, the "
             "report names that gate, what it blocks and who may resolve it, "
@@ -8476,8 +8479,9 @@ def register_git_subcommands(sub) -> None:
             "refuses rather than falling back to a weaker test.\n"
             "\n"
             "Every skip \u2014 checked out, unlanded, git too old \u2014 is decided "
-            "before anything is printed and shown as `skipping <branch>: "
-            "<reason>` on both paths, so the dry run is exactly the set --yes "
+            "before anything is printed and shown as `skipping <branch> "
+            "(local/remote): <reason>` on both paths, so the dry run is "
+            "exactly the set --yes "
             "deletes."))
     p_gc.add_argument("--merged", action="store_true",
                       help="also delete claim branches already merged into the base")
