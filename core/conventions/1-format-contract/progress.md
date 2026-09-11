@@ -4,6 +4,11 @@
 section names it rather than drawing it again, and fixes instead what a shape
 cannot carry — what a cell may hold, and what is mandatory.
 
+**Status is claimed here and nowhere else.** This is the only place the CLI
+reads status. A status claim written anywhere else — a checklist in a spec, a "current
+focus" heading, a summary in a README — is a second truth that will disagree
+with the first. Move it, do not copy it.
+
 Mandatory, in order (consumer in brackets):
 
 1. **Stage summary table** — one row per stage; `Stage` is an integer,
@@ -134,6 +139,13 @@ Semantics
 
 #### Rationale
 
+- **Why a status claim is moved and never copied.** Nothing reconciles a second
+  copy: no verb reads it, so it ages against the document `aide check`, `aide
+  status` and `aide claim` all derive from, and a reader who finds the stale one
+  first acts on a state that stopped holding several items ago. The rule sits on
+  the always-on page for the reason the reading-cold rules do (§1) — it binds a
+  session with no agent spec in play, and a human writing a README as much as a
+  role writing a spec.
 - **Why an unreadable row is an error, not a skip or a warning.** Every check
   that reads the table drops the row, and its cells cannot be trusted to be in
   position — a stray `|` shifts every one after it — so nothing can tell

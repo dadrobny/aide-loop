@@ -16,11 +16,14 @@ git via a repo-override flag on the declared path (§3's carve-out), and the
 `python <sibling>/.aide/scripts/aide.py --repo <sibling> <cmd>` (§3, which
 also says why it is the sibling's install and why `--repo` is not optional).
 
-**A repository's own instructions bind for work inside it.** Before editing,
-committing to, or otherwise acting on a repo that is not the working directory's,
-read that repo's instruction file first. Where two repos' rules disagree about a
-file, the repo that owns the file wins. The rule holds for a person too, and
-for an interactive session with no agent spec in play.
+**A repository's own instructions bind for work inside it.** A runtime loads
+instruction files for the working directory's repo only; a declared sibling —
+the framework clone included — gets nothing, and nothing announces the gap. So
+read that repo's instruction file first, before editing, committing to, or
+otherwise acting on a repo that is not the working directory's. Where two
+repos' rules disagree about a file, the repo that owns the file wins. The rule
+holds for a person too, and for an interactive session with no agent spec in
+play.
 
 **A runtime may automate this.** Where one can inject context on demand, an
 adapter should **point** a session at a declared sibling's instruction file the
@@ -32,10 +35,10 @@ what binds when a runtime has no such mechanism.
 ### Rationale
 
 - **Why a rule and not good manners.** The failure is silent and the cost is
-  real. A runtime loads instruction files for the **working directory's** repo
-  — its root file, and any subdirectory files as it reaches into them. A
-  sibling repo gets nothing: *"declared as an additional working directory"*
-  does not imply *"instructions loaded"*. So an agent editing a sibling is
+  real. The loading stated above is the whole of the runtime's rule — the
+  working directory's root file, and any subdirectory files as it reaches into
+  them; *"declared as an additional working directory"* does not imply
+  *"instructions loaded"*. So an agent editing a sibling is
   working without rules that were written down, that it would have followed,
   and whose absence nothing announces. What is lost is exactly the material
   that cannot be inferred from the code — a versioning rule enforced by that

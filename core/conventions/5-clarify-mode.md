@@ -44,8 +44,9 @@ whatever `loop.clarify` says.** `vision.md` and `roadmap.md` are Steps 1 and 2
 of the loop, and the adapter's create-vision / create-roadmap entry points carry
 the safeguards a free-hand file write skips. Do not write a root document
 directly, however well the template shape is known. Ask until the mandatory
-sections are grounded in their answers, and never fill **Guiding principles**,
-**Out of scope**, or **Success criteria** from assumption.
+sections are grounded in the human's answers, and never fill **Guiding
+principles**, **Out of scope**, or **Success criteria** from assumption.
+Present the result as a draft.
 
 **The duty runs both ways.** When several specs are authored before any is built,
 the *producing* spec must enumerate the shape its declared consumers read — not
@@ -76,8 +77,8 @@ or records appear in a walk, what a strict mode rejects.
   present by construction — the step exists to capture what only they know.
 - **What the entry points guard.** The existing-document check (a vision is
   overwritten only after explicit confirmation; a roadmap is updated
-  incrementally, never regenerated), and the hand-off that presents the result
-  as a draft for review.
+  incrementally, never regenerated), and the draft hand-off the rule above
+  names — a draft is what a human can decline without unpicking anything.
 - **Why the producer pins the serialised form.** Left unpinned, each consumer
   independently codes defensively around it — a tolerant reader plus a
   hand-back clause where a straight assertion belonged — and one of them

@@ -121,6 +121,102 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.49.2] — 2026-09-11
+
+Issue #205's floor row: `core/AGENT-CONTEXT.md` is a compressed copy of nine
+`conventions/` sections on the one page every role reads, and **one** of its
+nine headings was quote-pinned (#194's read-cold block). The other eight were
+guarded by nobody — the condition that drift arose under, the read-cold block
+having been unpinned itself until #203. All nine are now decided: **seven carry
+pins**, and the remaining two restate nothing, so they are pointers (the
+ladder's rung 1) rather than copies waiting for a guard. Reconciling the
+wording is what the pass consisted of — a pin has to be quotable verbatim on both
+sides, so every place the page and its section said one thing in two ways is
+now one wording, and every rule the page delivered that its section's *core*
+did not state has been moved into the core or dropped.
+
+### Changed
+
+- **`FLOOR_PINS` covers every heading that copies a section** — 31 new
+  quotations across §1 → `insights.md`, §1 → `progress.md`, §5, §3, §1 → human
+  gates and §8, each asserted in both the page and the section's core by
+  `tests/test_floor_pins.py`, in both directions. 40 statements in all.
+- **The page and its sections now say each rule once, in one wording.** On the
+  page: the insight inbox's rules take §1 → `insights.md`'s own words
+  ("never lost *and* never acted on out of scope", "the ISO date is the only
+  part that is load-bearing", the trail's "dated lines, indented under the
+  entry, newest last"); the gate paragraph takes the section's rule sentence
+  and names both ways the section forbids resolving one — the verbs
+  (`aide gate approve`/`decline`) and the hand edit; the root-document
+  paragraph adopts §5's imperative ("do not write a root document directly,
+  however well the template shape is known") in place of a paraphrase;
+  command hygiene states §3's rules in §3's words, which brings under the floor
+  the directory-changing wrappers (`git -C`, `GIT_DIR=…`) the old "no `cd`" did
+  not reach **and** the carve-out that lets one through for a *declared* repo —
+  the shape §8 names for acting on a sibling clone, and a stricter floor would
+  have had a session refuse the framework's own documented update workflow; §8
+  leads with the section's rule sentence. In §5:
+  "grounded in **their** answers" had no antecedent and becomes "the human's
+  answers", which is the wording the floor already used.
+- **The always-on floor moves from 4,998 to 5,315 content bytes** — with the
+  always-loaded rule beside it, from 9,016 to 9,333 content bytes, which is
+  +317 B on every spawn of every role. Four headings grew and two shrank:
+  command hygiene +120 B, human gates +104 B, §8 +97 B and the root-document
+  rule +48 B, against −46 B on the insight inbox (a `Rationale` clause dropped)
+  and −6 B on the status rule. Every one of those four was delivering *less*
+  than the section it names — a floor that states a subset is the contract,
+  while one that states a variant is #194 — so the growth is the fix rather
+  than a cost the fix incurred. The pin in `tests/test_structural_budget.py`
+  moves with it.
+- **`adapters/claude/skills/aide-item-specs/SKILL.md`** carries §5's sentence
+  in its body and in a `<!-- pins: -->` block, so the §5 rewording lands in
+  three files at once. That is the mechanism working as designed: the section,
+  the delivered copy and its pin are one edit, and `test_rule_pins.py` fails
+  until all three agree.
+
+### Fixed
+
+- **Two rules the page delivered without a core to deliver them from.**
+  "Status lives in one place" — that `progress.md` is the only place the CLI
+  reads, that a claim written anywhere else is a second truth, that it is moved
+  and never copied — was stated only on the floor; §1 → `progress.md` now
+  states it, with the counterfactual in its `Rationale`. §8's "a declared
+  sibling gets nothing, and nothing announces the gap" sat in that section's
+  `Rationale` while the page delivered it as a rule; it is a disambiguator (an
+  agent that believes declaring a sibling loads its instructions does not read
+  the file) and moves into the core, the tail keeping the elaboration. §5's
+  "present the result as a draft" makes the same move for the same reason.
+- **One reason the page was delivering as a rule is gone**: "and the date
+  cannot stand in for it", which is §1 → `insights.md`'s `Rationale` arguing
+  why an entry records the engine version. The rule — write `engine X.Y.Z`,
+  one read of `.aide/VERSION` — stays.
+
+### Documented
+
+- **Two headings are pointers, and stay that way**, both argued in
+  `tests/test_floor_pins.py`'s docstring and recorded in the inventory row.
+  *Each loop step ends in its own session* names `core/README.md`, but the
+  fresh-session rule is the page's **original** — the seven skills that
+  carried a `## Hand-off` tail had it removed in favour of this page (#161) —
+  so there is no second copy to pin it against, and `README.md` has no
+  `Rationale` heading to cut a core at. *Mechanical actions go through the CLI*
+  names §2, §4 and `README.md` and restates none of them: the verb list is
+  `argparse`'s surface (`aide <verb> -h`, the ladder's fifth rung) and the one
+  sentence under it is the page's own summary. Pinning it would have meant
+  adding §2 and §4 sentences to the page **so that there was something to
+  quote** — widening a floor every spawn pays for, to guard a copy that did not
+  exist. The page's admission test is what must bind *before* anything points
+  anywhere, and where `git.mode` is enforced does not meet it.
+- **§3 is delivered twice to the same session and that is deliberate** — its
+  core is generated whole into `.claude/rules/aide-command-hygiene.md`, while
+  the floor keeps a four-sentence compression for the session that reads the
+  page before any rule loads. The pins are what keep the compression a subset
+  rather than a variant. Noted in the inventory row.
+
+Everything here is installed — the page, three sections and a delivered skill —
+but nothing changes an interface: a consumer's `--update` gets a page that says
+what its sections say, in their words.
+
 ## [1.49.1] — 2026-09-11
 
 Issue #205: engine text is copied into a dozen places — delivered skills,

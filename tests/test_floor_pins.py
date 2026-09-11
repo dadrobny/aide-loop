@@ -35,13 +35,37 @@ the same assertion, which is what covers both directions of drift.
    definition (CLAUDE.md), and the always-on page is the last place a reason
    should pass for a rule; a pin only the tail satisfies fails here.
 
-**What is pinned.** The read-cold block, which #194 measured, and nothing yet
-beyond it. The page carries nine headings; the other eight — §1 →
-`insights.md`, §1 → `progress.md`, `README.md` (each loop step ends in its own
-session), §5, §2/§4/`README.md` (mechanical actions go through the CLI), §3,
-§1 → human gates, §8 — are unguarded exactly as before; each is one more entry
-in `FLOOR_PINS`, and adding one is the moment to reconcile its wording with its
-section.
+**What is pinned.** Seven of the page's nine headings, one `FLOOR_PINS` entry
+per section a heading names — the read-cold block since #194, the other six
+since #205's floor row. What is quoted is each heading's *rules*: the page's
+one-clause reasons are the sections' `Rationale` material and a pin cannot
+reach them, which is the curation this rung is known to cost, not an oversight.
+
+**The other two headings are pointers, not copies**, and a pointer is the
+ladder's rung 1 rather than a gap in this list. Each names where its full
+treatment lives, adds one sentence of the page's own, and restates nothing — so
+there is no second copy to hold it to.
+
+1. **"Each loop step ends in its own session"** names `core/README.md` for the
+   step sequence, but the fresh-session rule is written here and nowhere else:
+   the seven skills that carried a `## Hand-off` tail had it removed in favour
+   of this page (issue #161). `README.md` has no closing `Rationale` heading
+   either, so `install.section_core` returns `None` and the resolve test below
+   would fail on such an entry.
+2. **"Mechanical actions go through the CLI"** names §2, §4 and `README.md` and
+   restates none of the three. The verb list is `argparse`'s surface (`aide
+   <verb> -h`, the ladder's fifth rung), and the sentence under it — prefer the
+   verb; it is what keeps the documents parseable — is the page's own summary.
+   Pinning the heading would mean first *putting* §2 and §4 statements on the
+   page for the pins to quote, which every spawn of every role then pays for.
+   The floor carries what must bind before anything points anywhere, and where
+   `git.mode` is enforced is not that.
+
+**§3 is delivered twice to one session**, and deliberately: its core is
+generated whole into the adapter's always-loaded rule, while the page keeps a
+four-sentence compression of it for the session that reads the floor before any
+rule loads. The pins are what keep the compression a subset rather than a
+variant.
 
 Stdlib + pytest only.
 """
@@ -65,6 +89,7 @@ FLOOR = CORE / "AGENT-CONTEXT.md"
 #: The load-bearing sentences, not every line: a floor copy is allowed to be
 #: shorter than its section (it states a subset), never to say something else.
 FLOOR_PINS = {
+    # Durable artifacts must read cold
     "conventions/1-format-contract.md": [
         "Durable artifacts must read cold",
         "No chat-local identifiers.",
@@ -77,6 +102,60 @@ FLOOR_PINS = {
         "Record the decision and why it holds, not the route to it.",
         '"My earlier lean was wrong", "agreed direction", "settled while '
         'drafting" narrate a process the reader was not part of.',
+    ],
+    # Out-of-scope learning is captured, never acted on
+    "conventions/1-format-contract/insights.md": [
+        "never lost *and* never acted on out of scope",
+        "Any role, at any time, appends **one line** and returns to its task",
+        "the ISO date is the only part that is load-bearing",
+        "`item NNN` from inside an item",
+        "`engine X.Y.Z`, one read of `.aide/VERSION`",
+        "never reworded, reordered, or deleted",
+        "Ticking the checkbox is the one in-place edit",
+        "dated lines, indented under the entry, newest last",
+    ],
+    # Status lives in one place
+    "conventions/1-format-contract/progress.md": [
+        "the single source of truth for status",
+        "the only place the CLI reads",
+        "A status claim written anywhere else",
+        "a second truth that will disagree with the first",
+        "Move it, do not copy it.",
+    ],
+    # Root documents go through their entry point
+    "conventions/5-clarify-mode.md": [
+        "carry the safeguards a free-hand file write skips",
+        "Do not write a root document directly, however well the template "
+        "shape is known",
+        "whatever `loop.clarify` says",
+        "the mandatory sections are grounded in the human's answers",
+        "Present the result as a draft",
+    ],
+    # Mechanical actions go through the CLI: nothing here. The heading is a
+    # pointer, not a copy — see the module docstring.
+    # Command hygiene — also generated whole into the adapter's rule
+    "conventions/3-command-hygiene.md": [
+        "One command per call",
+        "Never chain with `&&`, `||` or `;`",
+        "No `cd` prefix and no directory-changing wrapper",
+        "Unless the repo is declared",
+        "No `2>&1` or other redirections",
+    ],
+    # Only a person resolves a human gate
+    "conventions/1-format-contract/human-gates.md": [
+        "Any role may raise a gate; only a person may resolve one",
+        "No agent may run `aide gate approve`/`decline`",
+        "Resolving is a CLI operation, never a hand edit",
+    ],
+    # Another repository's instructions bind before you edit it
+    "conventions/8-sibling-repos.md": [
+        "A repository's own instructions bind for work inside it",
+        "A runtime loads instruction files for the working directory's repo "
+        "only",
+        "the framework clone included — gets nothing, and nothing announces "
+        "the gap",
+        "read that repo's instruction file first",
+        "the repo that owns the file wins",
     ],
 }
 
