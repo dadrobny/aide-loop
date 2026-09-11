@@ -61,6 +61,16 @@ as `- **Why X.**` bullets, the consumer annotation, verb mechanism in `-h` —
 is stated once, in `conventions.md` after its index table (issue #186); a
 new or reshaped section follows it rather than the file next to it.
 
+**Which copies of engine text exist, and what each one gets, is decided once —
+in [`adapters/ADAPTER-SPEC.md`](adapters/ADAPTER-SPEC.md), its unnumbered
+*Copies of engine text* section** (issue #205). Point, generate, quote-pin, or
+leave advisory; and for a pinned copy, whether the pins live in the copy or in
+the test module, decided by whether the copy's bytes reach a reader unstripped. Do not re-argue it here or at the site of a new copy:
+read it, then add the copy's row to
+[`docs/copies-of-engine-text.md`](docs/copies-of-engine-text.md) in the same
+commit. The rest of this section is what an agent editing *this* repo needs on
+top of that rule — which file is which, and which test fails when.
+
 **Sections are runtime-general; an adapter delivers them, it does not restate
 them.** The Claude adapter's **delivered files** are the one unscoped rule in
 [`adapters/claude/rules/`](adapters/claude/rules/) (§3; loads in every session
@@ -105,10 +115,10 @@ above the `Rationale` heading, **verbatim**: `rules/aide-command-hygiene.md`
 (§3), `aide-test-hygiene` (§6), `aide-off-platform-verification` (§7) and
 `aide-review-and-validation` (§9). Nothing is reflowed, re-headed or trimmed,
 so a section that reads wrongly when delivered whole is a section to fix, never
-a wrapper to fix; and a core several times the size of the copy a role needs is
-a reason to leave the file hand-written and pinned — where the five §1 skills
-sit, their cores 1.5–2.8× the copies. The source tree holds no generated body: it
-holds the file with the declaration in it, which is why the four still read as
+a wrapper to fix. Which files are generated rather than hand-written is rung 2
+of the copies rule; the five §1 skills sit on the other side of it, their cores
+1.5–2.8× the copies. The source tree holds no generated body: it holds the
+file with the declaration in it, which is why the four still read as
 delivered files here. The grammar lives in `install.py` (the installer applies
 it inside a consumer, where `tests/` does not exist);
 [`adapters/claude/tests/test_generated_delivery.py`](adapters/claude/tests/test_generated_delivery.py)
@@ -146,8 +156,9 @@ purpose, and moving it means bumping `VERSION` and editing the pin
 deliberately.
 
 And each **hand-written** delivered file **quotes the statements it delivers**,
-in `<!-- pins: <section file> … -->` blocks — one block per section, each `- ` line a sentence
-lifted from it.
+in `<!-- pins: <section file> … -->` blocks — one block per section, each `- `
+line a sentence lifted from it (rung 3 of the copies rule, with the blocks in
+the copy because the preload strips them).
 [`adapters/claude/tests/test_rule_pins.py`](adapters/claude/tests/test_rule_pins.py)
 asserts every pin still appears in the delivered file *and* in the section it
 names, after a normalisation that absorbs reflow, emphasis and case but nothing
@@ -155,21 +166,20 @@ else. **Both directions**: a file reworded away from its section fails, and so
 does a section rewritten under a file that still quotes the old wording — edit
 both copies, in one commit. Every delivered file must pin at least one
 statement; one that delivers no normative engine statement is a question, not
-an exemption. Curate the pins — the load-bearing sentences, not every line. The
-comments cost the loop nothing: a preload strips them. A **generated** file
-declares no pins and fails the suite if it grows one — the mechanism guards a
-restatement, and there is none there.
+an exemption. A **generated** file declares no pins and fails the suite if it
+grows one — the mechanism guards a restatement, and there is none there.
 
 The engine's own always-on page is a restatement too, and is pinned the same
 way from the other side of the boundary:
 [`tests/test_floor_pins.py`](tests/test_floor_pins.py) holds sentences of
 `core/AGENT-CONTEXT.md` to the **core** of the section their heading names
-(issue #194) — so far the read-cold block alone; the page's other headings are
-unpinned until someone reconciles their wording and adds an entry. Its pins live in that module's `FLOOR_PINS`, **not** in a
-comment on the page — the floor is costed at its whole bytes on every spawn,
-and nothing guarantees an instruction-file import strips comments. Rewording
-a pinned sentence on either side means editing the page, the section and
-`FLOOR_PINS` together.
+(issue #194) — so far the read-cold block alone; the page's other eight headings
+are unpinned until someone reconciles their wording and adds an entry. Its pins
+live in that module's `FLOOR_PINS`, **not** in a comment on the page: an
+instruction-file import is the unstripped side of the copies rule's placement
+criterion, and the page is the criterion's worked case. Rewording a pinned
+sentence on either side means editing the page, the section and `FLOOR_PINS`
+together.
 
 Do not re-inline a contract restatement into an agent spec. Six of them carried
 the command-hygiene block verbatim, one had already drifted, and a test now
