@@ -121,6 +121,34 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.48.3] — 2026-09-11
+
+Corrects a claim 1.48.2 (#193, PR #201) shipped about the human-gates table,
+found while filing #202.
+
+### Fixed
+
+- **A mis-shaped gate row *is* reported.** 1.48.2 said a gates row that is not
+  four cells wide is skipped "and nothing says so" — `aide check` warning about
+  nothing — and that this made gates the one §1 table whose mis-shaping is
+  silent. Both halves were wrong. `aide check` warns and names the row
+  (*"human-gate row has 5 columns, not 4 — it is being SKIPPED"*), and it is
+  the *other* `progress.md` tables whose mis-shaped rows vanish without a word.
+  What stays true is the part an author acts on: such a row is not read as a
+  gate, and a warning never moves the exit code, so until it is fixed the work
+  it was written to hold is claimable. `§1 → human gates` (core and
+  `Rationale`), §1's own `Rationale` and `aide-human-gates` (body and one pin)
+  now say that. Core +18 B.
+- **The 1.48.2 entry's "each of those tables fails loudly when mis-shaped"**
+  holds only when a whole table is missing. One mis-shaped row in the stage
+  summary, objective coverage or Outcome targets table is dropped silently,
+  and takes an **error** with it — the goal-level over-claim, or a ✅ summary
+  row over unfinished work. Making the checks and their documentation
+  consistent across every table is #202; this release corrects only the prose
+  that claimed otherwise — including §1's own `Rationale`, which called the
+  template the shape's executable statement without saying that `aide check`
+  enforces it a table at a time, not a row at a time.
+
 ## [1.48.2] — 2026-09-10
 
 Issue #193: §1 sections stated shapes `.aide/templates/progress.md` already
