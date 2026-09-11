@@ -142,9 +142,12 @@ never re-implement these subcommands.
 Only runtimes with a permission model provide this; most do not. The Claude adapter
 supplies a permission allow/ask-list (`settings.json`), a `PreToolUse`
 command-hygiene guard, and permission logging/review. The **command-hygiene rules**
-themselves (one command per call, no `cd`, no chained `&&`, no `2>&1`) live in
-`conventions.md` §3 and are runtime-general; only the *enforcement mechanism* and
-the "permission allow-list" framing are adapter-local. A runtime with no permission
+themselves live in `conventions.md` §3 and are runtime-general, and this
+document does not summarise them. A guard enforces the section's *mechanical*
+bullets — the shapes a command must not take, carve-out included — while its
+positive-form requirements (which interpreter, which CLI) stay with the prose;
+only the *enforcement mechanism* and the "permission allow-list" framing are
+adapter-local. A runtime with no permission
 model simply omits this section and relies on the hygiene rules being followed.
 
 An adapter whose config is **JSON** survives framework updates deterministically via
