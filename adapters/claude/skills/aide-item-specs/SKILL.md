@@ -136,8 +136,8 @@ paths:
        interactively — whatever `loop.clarify` says
      - Do not write a root document directly, however well the template shape
        is known
-     - ask until the mandatory sections are grounded in their answers, and
-       never fill **Guiding principles**, **Out of scope**, or **Success
+     - ask until the mandatory sections are grounded in the human's answers,
+       and never fill **Guiding principles**, **Out of scope**, or **Success
        criteria** from assumption
 -->
 
@@ -305,5 +305,5 @@ whatever `loop.clarify` says** (`.aide/conventions.md` §5); here that entry poi
 is `/aide-create-vision` / `/aide-create-roadmap`, which carries the
 existing-document check and the draft-for-review hand-off. **Do not write a root
 document directly, however well the template shape is known** — ask until the
-mandatory sections are grounded in their answers, and never fill **Guiding
+mandatory sections are grounded in the human's answers, and never fill **Guiding
 principles**, **Out of scope**, or **Success criteria** from assumption.
