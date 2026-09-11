@@ -37,8 +37,7 @@ paths:
      alone.
      - A **decision only a person can make**, blocking work until they make it
      - | Gate | Blocks | Status | Decision / evidence |
-     - A row of any other width is not read as a gate at all, and nothing
-       says so
+     - A row of any other width is not read as a gate at all
      - **Blocks** — item numbers (any §1 reference form, or bare: `106`,
        `110, 111`, `106–108`), `stage N`, or `all`
      - `⏳ Awaiting`, then `✅ Approved (date)` or `❌ Declined (date)`
@@ -66,8 +65,9 @@ raise a gate and only a person may resolve one is on the floor, in
 
 **A human gate is a decision only a person can make, blocking work until they
 make it** — one row in `progress.md`'s `## Human gates` table, **four cells in
-this order** (**a row of any other width is not read as a gate at all, and
-nothing says so** — the work it was written to hold keeps flowing):
+this order** (**a row of any other width is not read as a gate at all** —
+`aide check` warns, but a warning stops nothing, so the work the row was
+written to hold keeps flowing):
 
 ```
 | Gate | Blocks | Status | Decision / evidence |
