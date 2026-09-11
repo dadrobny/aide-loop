@@ -41,7 +41,7 @@ commit can silently break:
    a rule, the `skills:` lists for a section skill. `aide-living-documents.md`
    shipped in #79 scoped to names every role reads — an unscoped rule wearing
    a `paths:` block, invisible because nothing compared the two.
-   Since 1.50.0 the declaration is read from the **source** file, because an
+   Since 1.49.3 the declaration is read from the **source** file, because an
    install no longer ships it (issue #205): it is an assertion addressed to
    this module, and a consumer installs no copy of this module. What that
    costs is one extra property, asserted here rather than assumed —
@@ -116,7 +116,7 @@ _preloads = _READ.preloads
 # alone too.
 # --------------------------------------------------------------------------- #
 FLOOR_PIN = {
-    "version": "1.50.0",
+    "version": "1.49.3",
     "files": {
         ".aide/AGENT-CONTEXT.md": 5315,
         ".claude/rules/aide-command-hygiene.md": 3690,
@@ -125,7 +125,7 @@ FLOOR_PIN = {
 
 
 # --------------------------------------------------------------------------- #
-# the declaration's source — where `reach` and `triggers` live from 1.50.0 on
+# the declaration's source — where `reach` and `triggers` live from 1.49.3 on
 #
 # An install strips them (`install.strip_declarations`), so the installed file
 # has no declaration to read and the source file is the only copy there is.
@@ -447,15 +447,18 @@ def test_an_installed_control_file_is_its_source_minus_the_declarations(
         consumer: Path):
     """What reading the declaration from source costs, paid here.
 
-    Before 1.50.0 this module read `reach` off the installed file, and the
+    Before 1.49.3 this module read `reach` off the installed file, and the
     declaration was true of the delivered tree because it *was* the delivered
     tree. Stripping the declarations (issue #205) separates the two copies, so
     the equality has to be asserted rather than enjoyed: every markdown control
     file a consumer receives is its source file with the declaration blocks
     removed — and, for a generated one, the engine section's core appended.
     Anything else the installer did to the bytes on the way in would show up
-    here, which is the point: a strip that ate a paragraph, a render that
-    reflowed one, a file that silently stopped being copied at all.
+    here, which is the point: a strip that ate a paragraph, or a render that
+    reflowed one. **And a file that stopped being copied at all**, which this
+    loop cannot see by itself — it iterates the installed tree, so a missing
+    file is simply one it never visits. The count of source control files is
+    therefore the other half of the assertion, and the two have to agree.
 
     The core is read from the consumer's own `.aide/conventions/`, not from
     `core/`, so the two halves of the claim are both taken from the tree under
@@ -493,8 +496,16 @@ def test_an_installed_control_file_is_its_source_minus_the_declarations(
                 f"are two files and the declaration says nothing about the one "
                 f"a consumer loads.")
             checked += 1
-    assert checked, ("no installed markdown control file was compared — the "
-                     "install layout moved and this test verified nothing")
+
+    control = ADAPTER_SOURCE
+    expected = sum(1 for name in install.ADAPTER_CONTROL
+                   for _ in (control / name).rglob("*.md"))
+    assert expected, "no adapter control files — the source layout moved"
+    assert checked == expected, (
+        f"{checked} of {expected} markdown control files reached the install. "
+        f"A file the adapter ships and the installer does not write is a "
+        f"delivered file that binds nobody, and every other assertion in this "
+        f"module passes over it by never seeing it.")
 
 
 def test_a_rules_declared_reach_matches_the_roles_its_globs_arm(
@@ -643,6 +654,13 @@ def test_a_section_skill_that_lost_its_delimiter_reaches_nobody(
     with a `name:` that equals its directory; and that the evaluator reports a
     BOM'd copy as reaching nobody, so a declared reach of `test-writer` would
     fail loudly against it rather than pass by default.
+
+    One asymmetry worth knowing while reading this: a file the strip rewrites
+    is decoded `utf-8-sig` and re-encoded `utf-8`, so a BOM in the source is
+    **normalised away for a declaring file and copied through for any other**.
+    That is a side effect of the strip, not a policy — the assertion above is
+    on the installed bytes either way, so a BOM that survives is caught here
+    whichever kind of file carried it.
     """
     for skill in section_skills:
         raw = skill.read_bytes()

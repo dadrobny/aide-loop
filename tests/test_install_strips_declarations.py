@@ -14,14 +14,26 @@ declaration that exists for the framework's tests does not ship.
 transform goes wrong:
 
 - it removes the three declaration kinds and **nothing else** — a comment
-  written for the *reader* of a delivered file is content, and survives;
+  written for the *reader* of a delivered file is content, and survives, as
+  does a sentence that merely *mentions* the grammar;
 - it takes the blank line a block stood on, so a block between two paragraphs
-  leaves the one blank line that separated them, not two and not none;
+  leaves the one blank line that separated them, not two and not none — and a
+  trailing blank line the strip did not create is left where it was;
 - it leaves a file with no declaration byte-identical, which is what lets the
   installer copy most of the adapter rather than rewrite it;
+- it **refuses to guess**: an opener with no `-->` before the next blank line
+  is not a block, so it survives whole rather than taking the paragraphs below
+  it, and this repository's own source tree is asserted to contain no such
+  thing;
 - and stripping is not **drift**: `--check` after an `--update` says up to
   date, because the installed file is what the installer writes, not what it
   compares.
+
+One behaviour is pinned as **known rather than intended**: the strip is
+textual, so a declaration inside a fenced code block goes too. A delivered file
+therefore cannot show its reader what the grammar looks like — the files that
+do (this repository's READMEs, `ADAPTER-SPEC.md`) are not files an install
+writes.
 
 The two claims about *which* files it applies to live with their own subjects:
 that an installed control file is its source minus the declarations is
@@ -104,6 +116,108 @@ def test_a_block_at_the_end_of_a_file_leaves_one_trailing_newline():
     assert install.strip_declarations(text) == "A paragraph.\n"
 
 
+def test_a_block_ending_a_file_with_no_final_newline_still_closes_it():
+    """The same case with the source's own last newline missing. The blank
+    line the block stood on must not become the file's tail, so the result is
+    normalised to one newline either way — a file ending mid-gap is not a
+    shape worth carrying into a consumer."""
+    text = f"A paragraph.\n\n{MULTILINE_BLOCK}"
+    assert install.strip_declarations(text) == "A paragraph.\n"
+
+
+def test_trailing_blank_lines_the_strip_did_not_create_are_left_alone():
+    """The other side of that fix-up, and the reason it is conditional.
+
+    The blank lines at the end here were in the source and no block ended
+    there. Flattening them would be an edit to the file's content made on the
+    way past — small, invisible in a review, and nothing to do with the rule
+    being applied.
+    """
+    text = "<!-- reach: all -->\n\nbody\n\n\n"
+    assert install.strip_declarations(text) == "body\n\n\n"
+
+
+def test_a_file_that_is_nothing_but_a_declaration_installs_empty():
+    """The degenerate case, stated rather than left to the fix-up: nothing
+    survives, so the result is empty, not a lone newline."""
+    assert install.strip_declarations("<!-- reach: all -->\n") == ""
+
+
+def test_an_unterminated_declaration_is_left_whole():
+    """The failure mode the block pattern is bounded to prevent.
+
+    An opener nobody closed, under a pattern that let `-->` match anywhere
+    below, would take every paragraph down to the next comment in the file
+    with it — and what it deleted would include the evidence. Bounded at the
+    blank line, it matches nothing: the file installs as written, and
+    `test_every_declaration_in_the_source_tree_is_a_block_the_strip_matches`
+    is what makes that a failure in this repository rather than a silent
+    declaration in a consumer's tree.
+    """
+    text = ("---\nname: x\n---\n\n"
+            "<!-- reach: all\n"
+            "\n"
+            "body paragraph that matters\n"
+            "\n"
+            f"{READER_COMMENT}\n"
+            "\n"
+            "tail\n")
+    assert install.strip_declarations(text) == text
+    assert install.DECLARATION_OPENER.search(text), (
+        "the detector has to see what the strip refused, or a mis-shaped "
+        "declaration would pass both")
+
+
+def test_a_fenced_example_is_stripped_too():
+    """Known, not accidental. The strip is textual and knows nothing about
+    markdown, so a delivered file cannot carry a fenced example of the
+    grammar. The files that do explain it — this repository's READMEs and
+    `ADAPTER-SPEC.md` — are not files an install writes, which is why the
+    limitation costs nothing and is recorded here rather than worked around
+    with a markdown parser in the installer."""
+    text = "text\n\n```\n<!-- reach: all -->\n```\n\nmore\n"
+    assert install.strip_declarations(text) == "text\n\n```\n```\n\nmore\n"
+
+
+def test_every_declaration_in_the_source_tree_is_a_block_the_strip_matches():
+    """The strip's premise, asserted over the files it actually runs on.
+
+    Every reading below — "no declaration ships", "the installed file is the
+    source minus the declarations" — is true of a mis-shaped declaration in
+    the uninteresting way: the strip leaves it, and the equality holds on both
+    sides because both sides went through the same strip. This is the
+    assertion that cannot be satisfied that way. Each opener in a control file
+    must begin a block the strip matches, so an unterminated one, or one
+    closed only after a blank line, fails here — in this repository, at the
+    one moment somebody is looking at the file.
+
+    Scoped to the control directories, which is what an install writes. The
+    adapter's `README.md` is deliberately outside it: it explains the grammar
+    to a human and quotes openers on purpose, and it never reaches a consumer.
+    """
+    control = FRAMEWORK_ROOT / "adapters" / install.DEFAULT_ADAPTER
+    sources = [path for name in install.ADAPTER_CONTROL
+               for path in sorted((control / name).rglob("*.md"))]
+    assert sources, "no adapter control files — the source layout moved"
+
+    declared, mis_shaped = 0, []
+    for path in sources:
+        text = install.source_text(path)
+        spans = [m.span() for m in install.DECLARATION_BLOCK.finditer(text)]
+        for opener in install.DECLARATION_OPENER.finditer(text):
+            declared += 1
+            if not any(start <= opener.start() < end for start, end in spans):
+                line = text[:opener.start()].count("\n") + 1
+                mis_shaped.append(f"{path.name}:{line}")
+    assert not mis_shaped, (
+        f"declaration openers the strip does not match, at {mis_shaped}. A "
+        f"declaration is one block: the opener starts a line and `-->` closes "
+        f"it before the next blank line. One that does not parse is left in "
+        f"place and ships to every consumer.")
+    assert declared, ("no declaration found in any control file — the grammar "
+                      "moved, and this test now asserts nothing")
+
+
 def test_a_reader_comment_survives_beside_a_declaration():
     """The rule is about *test* declarations, not about HTML comments. A strip
     that could not tell the two apart would be a licence to delete anything a
@@ -155,6 +269,10 @@ def test_consecutive_blocks_go_together():
 # --------------------------------------------------------------------------- #
 SCRATCH_RULE = Path("rules") / "aide-scratch-declarations.md"
 
+#: A sentence that names the grammar without being one — the shape a
+#: delivered file would use to explain itself to its reader.
+INLINE_MENTION = "A declaration is written `<!-- pins:` and then its sentences."
+
 SCRATCH_TEXT = (
     "<!-- reach: all\n"
     "     A multi-line declaration, so the blank line below it has somewhere\n"
@@ -163,6 +281,8 @@ SCRATCH_TEXT = (
     f"{READER_COMMENT}\n"
     "\n"
     "**A scratch rule.** Written by tests/test_install_strips_declarations.py.\n"
+    "\n"
+    f"{INLINE_MENTION}\n"
     "\n"
     f"{MULTILINE_BLOCK}\n"
     "\n"
@@ -173,6 +293,8 @@ SCRATCH_INSTALLED = (
     f"{READER_COMMENT}\n"
     "\n"
     "**A scratch rule.** Written by tests/test_install_strips_declarations.py.\n"
+    "\n"
+    f"{INLINE_MENTION}\n"
     "\n"
     "The last paragraph.\n"
 )
@@ -248,6 +370,24 @@ def test_a_comment_written_for_the_reader_survives(framework: Path, target: Path
     installed = target / install.ADAPTER_INSTALL_DIR / SCRATCH_RULE
     assert installed.is_file(), "the scratch rule never reached .claude/"
     assert _text(installed) == SCRATCH_INSTALLED
+
+
+def test_a_sentence_naming_the_grammar_survives_and_is_not_reported(
+        framework: Path, target: Path):
+    """Both halves of the same judgement, on a real install.
+
+    The strip leaves an inline mention alone, because a declaration is a block
+    that opens a line. The **detector** has to agree: a reader-facing sentence
+    explaining the grammar would otherwise be reported as a declaration that
+    survived, and the file the installer handled perfectly would read as the
+    bug. One anchor, shared by both patterns, is what keeps them one rule.
+    """
+    assert _install(target) == 0
+    installed = target / install.ADAPTER_INSTALL_DIR / SCRATCH_RULE
+    text = _text(installed)
+    assert INLINE_MENTION in text, "the strip ate a sentence that named it"
+    assert not install.DECLARATION_OPENER.search(text), (
+        "the detector read a sentence about a declaration as a declaration")
 
 
 def test_no_installed_file_gained_a_double_blank_line(framework: Path,

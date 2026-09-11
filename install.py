@@ -959,9 +959,11 @@ def retire_adapter_files(adapter_dir: Path, target: Path, candidates: Iterable[s
 #
 # Only these three openers are removed, never every HTML comment: a comment
 # written for the *reader* of a delivered file is content, and a strip that
-# could not tell the two apart would quietly delete it. And only where one
-# opens a line, which is the only shape a delivered file writes — see
-# `DECLARATION_OPENER`.
+# could not tell the two apart would quietly delete it. And only a block —
+# opening a line, closed before the next blank one — which is the shape every
+# delivered file writes and the only shape that can be removed without
+# guessing at what a stray opener was meant to enclose. See
+# `DECLARATION_OPENER` for how both halves of that are held.
 # --------------------------------------------------------------------------- #
 #: The declaration kinds an install strips. One tuple, so the grammar below and
 #: every failure message name the same set.
@@ -969,25 +971,55 @@ DECLARATION_KINDS = ("pins", "reach", "triggers")
 
 _DECLARATION_OPENER = r"<!--[ \t]*(?:%s):" % "|".join(DECLARATION_KINDS)
 
+#: What makes an opener a *declaration* rather than a mention of one: it opens
+#: a line. Shared by the two patterns below, so the strip and the detector can
+#: never disagree about which openers are in scope.
+_LINE_LEADING = r"^[ \t]*"
+
 #: A declaration block **as the delivered files write one**: the opener at the
-#: start of a line, a body that may run over many lines, and its `-->`. The
+#: start of a line, a body of consecutive non-blank lines, and its `-->`. The
 #: trailing group takes the newline that closes the block *and* the blank line
 #: below it when there is one, so a block between two paragraphs leaves exactly
 #: the one blank line that separated them — not two, and not none.
+#:
+#: **Bounded at a blank line**, which is what the tempered `(?!\n[ \t]*\n)`
+#: buys: a plain `.*?-->` under `re.S` reaches the next `-->` *anywhere* below,
+#: so an opener somebody forgot to close would take every paragraph down to the
+#: next comment in the file with it — silently, since what it deleted included
+#: the evidence. A declaration is one paragraph's worth of lines in every file
+#: that writes one, so an unterminated opener now matches nothing, survives the
+#: install intact, and is caught by name in
+#: `tests/test_install_strips_declarations.py`.
 DECLARATION_BLOCK = re.compile(
-    r"^[ \t]*" + _DECLARATION_OPENER + r".*?-->[ \t]*(?:\n[ \t]*\n|\n|\Z)",
+    _LINE_LEADING + _DECLARATION_OPENER + r"(?:(?!\n[ \t]*\n).)*?-->[ \t]*"
+    r"(?:\n[ \t]*\n|\n|\Z)",
     re.M | re.S | re.I)
 
-#: The opener alone, wherever it sits. Not what the strip removes — it is what
-#: a *test* looks for, to say "no declaration reached the consumer" without
-#: re-deriving the grammar. Deliberately not a strip pattern: `<!-- pins:`
-#: appears in this repo's prose as an inline code span, and a span-hungry
-#: `.*?-->` would run from one of those to the next comment several paragraphs
-#: down and delete the text between. The block form is the only shape a
-#: delivered file writes a declaration in, so it is the only shape removed, and
-#: a declaration written any other way fails a test rather than being guessed
-#: at here.
-DECLARATION_OPENER = re.compile(_DECLARATION_OPENER, re.I)
+#: A declaration *opener* on its own line, with nothing said about how it ends.
+#: Not what the strip removes — it is what a **test** looks for:
+#: `test_no_declaration_reaches_the_consumer` uses it to say no declaration
+#: reached the consumer, and
+#: `test_every_declaration_in_the_source_tree_is_a_block_the_strip_matches`
+#: uses it to say that every opener in a control file starts a block
+#: `DECLARATION_BLOCK` matches — so an unterminated or otherwise mis-shaped
+#: declaration fails in this repository instead of shipping.
+#:
+#: Line-anchored for the same reason the strip is: `<!-- pins:` appears in
+#: prose as an inline code span, and a delivered file may one day explain the
+#: grammar to its reader. The strip correctly leaves such a sentence alone, so
+#: a detector that did not would report a file the installer handled
+#: perfectly. What both patterns share is the anchor; what the detector drops
+#: is the rest of the block, since its whole job is to notice a declaration the
+#: strip could not parse.
+#:
+#: The strip is textual and knows nothing about markdown, so a declaration
+#: inside a **fenced code block** is stripped like any other — a delivered file
+#: therefore cannot show its reader what the grammar looks like, and one that
+#: needs to (this repository's own READMEs, `ADAPTER-SPEC.md`) is not a file an
+#: install writes. Pinned as known rather than accidental by
+#: `test_a_fenced_example_is_stripped_too`.
+DECLARATION_OPENER = re.compile(_LINE_LEADING + _DECLARATION_OPENER,
+                                re.M | re.I)
 
 
 def strip_declarations(text: str) -> str:
@@ -998,15 +1030,30 @@ def strip_declarations(text: str) -> str:
     no declaration is returned unchanged and identical, which is what lets
     `delivered_bytes` say "copy it" for the many adapter files that carry none.
 
-    A block that ends the file would otherwise leave the blank line *above* it
-    as a trailing gap — the one place the pairing above has nothing to absorb —
-    so a stripped file is closed with exactly one newline, the way every other
-    file this installer writes ends.
+    **The one block with nothing below it to pair with is the last**, and only
+    that case is fixed up: a block ending the file would leave the blank line
+    *above* it as a trailing gap, so a file a block was removed from the end of
+    is closed with exactly one newline — whether or not the source ended in
+    one, since a file ending mid-gap is not a shape worth carrying forward.
+    Written as a scan rather than `sub()` for exactly that: a blanket `rstrip`
+    would also flatten trailing blank lines the declaration had nothing to do
+    with, which is an edit to a file's content made on the way past.
     """
-    stripped = DECLARATION_BLOCK.sub("", text)
-    if stripped == text:
+    pieces: List[str] = []
+    cut = 0
+    closes_the_file = False
+    for match in DECLARATION_BLOCK.finditer(text):
+        pieces.append(text[cut:match.start()])
+        cut = match.end()
+        closes_the_file = match.end() == len(text)
+    if not pieces:
         return text
-    return stripped.rstrip("\n") + "\n" if text.endswith("\n") else stripped
+    pieces.append(text[cut:])
+    stripped = "".join(pieces)
+    if closes_the_file:
+        body = stripped.rstrip("\n")
+        stripped = f"{body}\n" if body else ""
+    return stripped
 
 
 # --------------------------------------------------------------------------- #

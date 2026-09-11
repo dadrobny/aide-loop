@@ -112,7 +112,7 @@ def test_the_rendered_file_is_the_adapters_text_then_the_section_core(path: Path
     if a section cannot be delivered whole, the section is what changes.
 
     The adapter's text is its source *minus the test declarations* since
-    1.50.0 (issue #205): `reach` and `triggers` are assertions addressed to
+    1.49.3 (issue #205): `reach` and `triggers` are assertions addressed to
     `tests/test_structural_budget.py`, which a consumer does not install, so
     they stay in `adapters/claude/` and the render drops them. Nothing else
     about either half moves, which is what makes the strip expressible as one

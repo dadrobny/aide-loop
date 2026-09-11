@@ -88,7 +88,7 @@ def delivered(source: Path) -> bytes:
     **generated** delivered file (1.47.0, issue #109) is rendered — its own
     text with the core of the engine section it names appended, so the
     consumer's copy is longer than the source — and any markdown control file
-    loses its `pins` / `reach` / `triggers` declarations (1.50.0, issue #205),
+    loses its `pins` / `reach` / `triggers` declarations (1.49.3, issue #205),
     so most delivered files are shorter. Byte-equality against the *source*
     would be the wrong assertion in both directions; byte-equality against
     what the installer writes is the right one, and is what says the render

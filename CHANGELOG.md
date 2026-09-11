@@ -121,7 +121,7 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
-## [1.50.0] — 2026-09-11
+## [1.49.3] — 2026-09-11
 
 Issue #205, the *What an install ships* subsection of ADAPTER-SPEC's *Copies of
 engine text* section: `pins`, `reach` and `triggers` are declarations for
@@ -140,12 +140,24 @@ in `adapters/claude/`, where the tests read them, and stop at the installer.
   one at render time, before the section core is appended
   (`strip_declarations`, `delivered_bytes`). A block takes the blank line it
   stood on with it, so a declaration between two paragraphs leaves the
-  separation it was written into rather than a double gap. **Only these three
-  openers, and only where one opens a line**: a comment written for the
-  *reader* of a delivered file is content and survives, and a prose mention of
-  the grammar — `` `<!-- pins:` `` in a sentence — is prose, not a block. What
+  separation it was written into rather than a double gap; a block that ends a
+  file closes it with one newline, and trailing blank lines the strip did not
+  create are left alone. **Only these three openers, and only where one opens
+  a line and closes before the next blank one**: a comment written for the
+  *reader* of a delivered file is content and survives, a prose mention of
+  the grammar — `` `<!-- pins:` `` in a sentence — is prose, not a block, and
+  an opener nobody closed is left whole rather than allowed to swallow the
+  paragraphs below it while deleting the evidence. The detector that reports a
+  declaration reaching a consumer shares that anchor, so the two cannot
+  disagree about which openers are in scope, and
+  `test_every_declaration_in_the_source_tree_is_a_block_the_strip_matches`
+  fails in this repository over one the strip could not parse. What
   a consumer's `.claude/` holds after `--update` is therefore smaller and says
   exactly what it said before: no rule, no pointer and no shape example moves.
+  One known limit, recorded rather than worked around: the strip is textual, so
+  a declaration inside a fenced code block goes too — a delivered file cannot
+  show its reader the grammar, and the files that do are not files an install
+  writes.
 - **`generated-from` stays in the rendered copy**, and is not in the stripped
   set. It differs in kind — an instruction to the installer, read from
   **source** at render time, rather than an assertion about the file — and it
@@ -175,22 +187,25 @@ in `adapters/claude/`, where the tests read them, and stop at the installer.
   owe: `test_an_installed_control_file_is_its_source_minus_the_declarations`
   compares every installed markdown control file to its source with the
   declarations removed — and, for a generated one, with the consumer's own
-  copy of the engine section's core appended. Declared reach and paid reach
-  stay one claim about one file.
+  copy of the engine section's core appended. It counts the source control
+  files too, since a loop over the installed tree cannot see a file that
+  stopped being written at all. Declared reach and paid reach stay one claim
+  about one file.
 - **`--check` is unaffected, by construction.** Drift is decided by
   `.aide/VERSION`, the instruction-file import line and the adapter manifest,
   which records paths and never content — nothing compares installed adapter
   bytes to source bytes, so a deliberately-stripped file cannot read as
   behind. Pinned from the other side now, in
-  `tests/test_install_strips_declarations.py`, along with the strip's edges:
-  no declaration survives anywhere in an installed tree, a reader's comment in
-  a scratch control file does survive, no file gains a blank line its source
-  did not have, and a second `--update` rewrites nothing.
-- **Minor, not patch.** No consumer edits its own files and no interface is
-  removed, so it is not major; but what a consumer's tree *contains* changes
-  in every delivered file, and `--update` is how it arrives — a fix with no
-  interface change is what patch is for, and this is a change to the shipped
-  artifacts across the board.
+  `tests/test_install_strips_declarations.py` — 23 tests over the strip's
+  edges: no declaration survives anywhere in an installed tree, a reader's
+  comment and a sentence *naming* the grammar both do, no file gains a blank
+  line its source did not have, an unterminated opener is left whole, and a
+  second `--update` rewrites nothing.
+- **Patch.** Nothing new is installed — no verb, template, `aide.toml` key,
+  agent or skill — and no consumer edits anything: every delivered file is
+  smaller and says exactly what it said before. That is a fix with no
+  interface change, which is what patch is for, whatever the breadth of the
+  diff.
 
 ## [1.49.2] — 2026-09-11
 

@@ -341,7 +341,7 @@ minus the declarations.
 
 The declaration is a comment rather than a frontmatter key on purpose: it
 carries no runtime meaning. **And it does not leave this repository** — since
-1.50.0 (issue #205) `install.py` strips `<!-- reach -->`, `<!-- triggers -->`
+1.49.3 (issue #205) `install.py` strips `<!-- reach -->`, `<!-- triggers -->`
 and `<!-- pins -->` from every markdown control file it writes, because all
 three address the framework's own test suite, which a consumer does not
 install. Write them as a block at the start of a line, which is the shape the

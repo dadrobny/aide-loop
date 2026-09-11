@@ -332,8 +332,9 @@ placement criterion, applied to a delivered file's designed reader.
 *Generate it.* A delivered copy that is **rendered from the section at install
 time** is not a restatement, so it cannot drift and owes no pin. The Claude
 adapter writes `<!-- generated-from: <section file> -->` in the file, and
-`install.py` emits that file's own text — frontmatter, reach declarations, and
-whatever the *adapter* has to say about delivering the section — followed by
+`install.py` emits that file's own text — frontmatter and whatever the
+*adapter* has to say about delivering the section, its test declarations
+stripped (*What an install ships*, below) — followed by
 the section's core, everything above the `Rationale` heading, verbatim. What is
 contractual is the property, not the spelling: a runtime that generates must
 make the generation checkable (the delivered body equals the section core, and
@@ -557,7 +558,7 @@ an argument that the bytes are free everywhere else. Measured on an install of
 1.49.2, HTML comments were 32,147 of the 124,013 bytes of the installed skills,
 rules and `AGENT-CONTEXT.md` — 26% — and 7,528 of `aide-item-specs`'s 17,859.
 That number was never a reason to move pins; it was the case for not shipping the
-declarations at all, which is the next subsection, and which 1.50.0 acted on.
+declarations at all, which is the next subsection, and which 1.49.3 acted on.
 
 **4. Advisory.** A **consumer-owned** file — its instruction file, its
 `docs/aide/**` — is not the framework's to guard. The installer may *report* a
@@ -585,7 +586,7 @@ in files a runtime may hand to a reader whole, describing assertions that live i
 a suite the consumer never installed.
 
 The rule is therefore that **a declaration existing for the framework's tests
-does not ship**, and since 1.50.0 the installer enforces it: every markdown
+does not ship**, and since 1.49.3 the installer enforces it: every markdown
 control file loses its `pins`, `reach` and `triggers` blocks on the way in — a
 hand-written file at copy time, a generated one before the section core is
 appended. A block takes the blank line it stood on with it, and *only* these

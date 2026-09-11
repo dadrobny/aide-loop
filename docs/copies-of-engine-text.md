@@ -24,7 +24,7 @@ The **Rule** column names the rung, then whether the framework is already there
 
 | Copy | Restates | Reader, and channel | Ships? | Guard today | Rule |
 |---|---|---|---|---|---|
-| The 5 hand-written section skills — `aide-document-format`, `aide-human-gates`, `aide-item-specs`, `aide-progress-file`, `aide-queue-and-inbox` | compressed slices of §1 sections (and §5, in `aide-item-specs`) | the roles whose `skills:` name them, by **spawn preload**; a person, by interactive read | the text yes, `.claude/skills/`; the declarations **no** — stripped at install since 1.50.0 | `<!-- pins: -->` in the source copy (22 / 15 / 54 / 30 / 24 statements), `adapters/claude/tests/test_rule_pins.py` in both directions; `<!-- reach: -->` against `tests/test_structural_budget.py`, which reads it from source and asserts the installed file is that file minus the declarations | **quote-pin — in force**, pins in the copy: the designed reader is the preload, which strips them. The **install-strip is in force too** (1.50.0, issue #205) — the pins never leave this repository, which is a stronger version of the same criterion, and they did not move |
+| The 5 hand-written section skills — `aide-document-format`, `aide-human-gates`, `aide-item-specs`, `aide-progress-file`, `aide-queue-and-inbox` | compressed slices of §1 sections (and §5, in `aide-item-specs`) | the roles whose `skills:` name them, by **spawn preload**; a person, by interactive read | the text yes, `.claude/skills/`; the declarations **no** — stripped at install since 1.49.3 | `<!-- pins: -->` in the source copy (22 / 15 / 54 / 30 / 24 statements), `adapters/claude/tests/test_rule_pins.py` in both directions; `<!-- reach: -->` against `tests/test_structural_budget.py`, which reads it from source and asserts the installed file is that file minus the declarations | **quote-pin — in force**, pins in the copy: the designed reader is the preload, which strips them. The **install-strip is in force too** (1.49.3, issue #205) — the pins never leave this repository, which is a stronger version of the same criterion, and they did not move |
 | The 4 generated delivered files — `rules/aide-command-hygiene.md` (§3), `aide-test-hygiene` (§6), `aide-off-platform-verification` (§7), `aide-review-and-validation` (§9) | a whole section core, verbatim | the rule: every session and every sub-agent, by the **always-loaded channel** (`.claude/rules/`, unscoped); the three skills: as above | yes, minus the declarations; `<!-- generated-from: -->` is kept, being an instruction to the installer rather than an assertion | rendered by `install.py`; `adapters/claude/tests/test_generated_delivery.py` and `tests/test_install_generated.py`; a section that will not render **aborts the install** (exit 4); a pins block on one of these fails the suite | **generate — in force** |
 | The 2 workflow skills that carry a contract slice — `aide-create-queue` (11 pins), `aide-review-insights` (13) | §1 → insights triage, insights-maintenance-queue, `queue-NNN.md` | the session running that loop step | yes, minus the pins | pins, checked by the same module, which does not *require* them there | **quote-pin — in force** |
 | The other 8 workflow skills — `aide-create-item`, `-progress`, `-roadmap`, `-vision`, `aide-execute-item`, `aide-feedback-loop`, `aide-spec-queue`, `aide-status-report` | measurably nothing: ≤ 7 contract word-runs each, against 171 and 295 for the two above | as above | yes | none, and none needed | **point — in force.** They point at the template, the section and `-h`; the absence of pins here is the ladder working, not a gap |
@@ -57,16 +57,16 @@ The **Rule** column names the rung, then whether the framework is already there
 
 ## How the numbers were measured
 
-On 2026-09-11, against this working tree at engine 1.50.0 — except the pin
+On 2026-09-11, against this working tree at engine 1.49.3 — except the pin
 counts and the restatement magnitudes, which are 1.49.1's and which 1.49.2 and
-1.50.0 do not touch. Re-measure rather than quote: every figure here moves with
+1.49.3 do not touch. Re-measure rather than quote: every figure here moves with
 the tree.
 
 - **Comment bytes in an install.** `install.main` into a temporary target, then
   every `<!-- … -->` span in the 18 installed skills, the one installed rule and
   `.aide/AGENT-CONTEXT.md`, counted with its delimiters, in UTF-8 bytes.
   **Before the install-strip (1.49.2): 32,147 of 124,013 (25.9%)**; worst file
-  `aide-item-specs`, 7,528 of 17,859. **After it (1.50.0): 1,549 of 93,347
+  `aide-item-specs`, 7,528 of 17,859. **After it (1.49.3): 1,549 of 93,347
   (1.7%)** — the whole remainder being the four `generated-from` lines, the one
   declaration an install keeps — and `aide-item-specs` 0 of 10,317. The tree a
   consumer receives is 30,666 B smaller, 24.7%, and says exactly what it said
@@ -98,6 +98,6 @@ the tree.
   word-runs each against 171 and 295 for the two that do. They are rung 1, not an
   exemption, and no follow-up work falls out of them.
 - The **Ships?** column said "yes" of the declarations as well as the text they
-  annotate. Since 1.50.0 that is only true of the text: `pins`, `reach` and
+  annotate. Since 1.49.3 that is only true of the text: `pins`, `reach` and
   `triggers` are stripped at install, so a row's answer is now about the copy
   and its guard separately.
