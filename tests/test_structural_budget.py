@@ -41,6 +41,13 @@ commit can silently break:
    a rule, the `skills:` lists for a section skill. `aide-living-documents.md`
    shipped in #79 scoped to names every role reads — an unscoped rule wearing
    a `paths:` block, invisible because nothing compared the two.
+   Since 1.50.0 the declaration is read from the **source** file, because an
+   install no longer ships it (issue #205): it is an assertion addressed to
+   this module, and a consumer installs no copy of this module. What that
+   costs is one extra property, asserted here rather than assumed —
+   **the installed file is the source file minus the declarations**, so
+   "reach declared in `adapters/claude/`" and "reach of the file a consumer
+   loads" remain the same claim about the same bytes.
 2. **Frontmatter that stopped parsing fails loudly, in the direction the
    carrier fails.** A BOM from a Windows editor makes the `---` delimiter
    unrecognisable. For a rule the runtime then loads it into every context, so
@@ -56,7 +63,9 @@ commit can silently break:
 Measured against a **real install** — `.claude/rules/`, `.claude/skills/`,
 `.claude/agents/` and `.aide/AGENT-CONTEXT.md` at the paths a consumer's
 runtime actually loads them from — rather than against this repo's source
-layout, which is not what anybody pays for.
+layout, which is not what anybody pays for. The one thing read from source is
+the reach declaration, for the reason above; every byte this module *costs*
+is still the installed byte.
 """
 from __future__ import annotations
 
@@ -107,12 +116,48 @@ _preloads = _READ.preloads
 # alone too.
 # --------------------------------------------------------------------------- #
 FLOOR_PIN = {
-    "version": "1.49.2",
+    "version": "1.50.0",
     "files": {
         ".aide/AGENT-CONTEXT.md": 5315,
-        ".claude/rules/aide-command-hygiene.md": 4018,
+        ".claude/rules/aide-command-hygiene.md": 3690,
     },
 }
+
+
+# --------------------------------------------------------------------------- #
+# the declaration's source — where `reach` and `triggers` live from 1.50.0 on
+#
+# An install strips them (`install.strip_declarations`), so the installed file
+# has no declaration to read and the source file is the only copy there is.
+# The pair of readings is the point: reach is *declared* in `adapters/claude/`
+# and *paid* in `.claude/`, and the equality below is what keeps them one
+# statement rather than two.
+# --------------------------------------------------------------------------- #
+ADAPTER_SOURCE = FRAMEWORK_ROOT / "adapters" / install.DEFAULT_ADAPTER
+
+#: Where the installer puts the adapter's control directories. Read off
+#: `install` rather than spelled again, so a rename reaches this module.
+CLAUDE_DIR = install.ADAPTER_INSTALL_DIR
+
+
+def _source_of(installed: Path) -> Path:
+    """The `adapters/<name>/…` file an installed control file was written from.
+
+    A path walk rather than a table: the installed tree mirrors the source one
+    under the adapter's install directory, so the tail after `.claude/` is the
+    tail after `adapters/claude/`. A file this cannot find is a failure worth
+    raising here — it means the layout moved and every declaration below would
+    otherwise be read off a file that does not exist.
+    """
+    parts = installed.parts
+    assert CLAUDE_DIR in parts, (
+        f"{installed}: not under {CLAUDE_DIR}/ — the install layout moved")
+    tail = parts[len(parts) - parts[::-1].index(CLAUDE_DIR):]
+    source = ADAPTER_SOURCE.joinpath(*tail)
+    assert source.is_file(), (
+        f"{_label(installed)}: no source file at {source} — an installed "
+        f"control file with nothing behind it, or the source layout moved")
+    return source
 
 
 # --------------------------------------------------------------------------- #
@@ -154,6 +199,13 @@ _TRIGGERS = re.compile(r"<!--\s*triggers:[ \t]*(?P<roles>[^\n]*)")
 def _declared_reach(path: Path, roles, pattern=_REACH, what: str = "reach") -> set:
     """The roles a delivered file says it expects to reach, as a set.
 
+    **Read from the source file**, because an install strips the declaration
+    (issue #205): it is a sentence addressed to this module, and shipping it
+    would charge every consumer for a note about a test suite they do not
+    have. The file measured below is still the installed one, and
+    `test_an_installed_control_file_is_its_source_minus_the_declarations`
+    is what holds the two to being one file.
+
     ``all`` is the shorthand for every role — spelling six names out in a file
     that means "everyone" invites one of them to go stale on a rename. The
     same grammar reads a skill's `<!-- triggers: … -->` line when asked, and
@@ -165,11 +217,12 @@ def _declared_reach(path: Path, roles, pattern=_REACH, what: str = "reach") -> s
     become is the reading of a `<!-- reach: … -->` line, where nobody is a
     defect the sibling assertions catch by requiring a preloading spec.
     """
-    match = pattern.search(_text(path))
+    match = pattern.search(_text(_source_of(path)))
     assert match, (
-        f"{_label(path)}: no `<!-- {what}: … -->` declaration. Every delivered "
-        f"file states the roles it expects to reach, so that a change of scope "
-        f"has something to contradict; see this module's docstring.")
+        f"{_label(path)}: no `<!-- {what}: … -->` declaration in "
+        f"{_source_of(path)}. Every delivered file states the roles it expects "
+        f"to reach, so that a change of scope has something to contradict; see "
+        f"this module's docstring.")
     raw = match.group("roles").strip()
     raw = raw[:-3].strip() if raw.endswith("-->") else raw
     assert raw, f"{_label(path)}: empty reach declaration"
@@ -388,6 +441,60 @@ def test_a_delivered_file_declares_the_reach_it_expects(
     """
     for path in rules + section_skills:
         _declared_reach(path, read_sets)  # asserts presence and well-formedness
+
+
+def test_an_installed_control_file_is_its_source_minus_the_declarations(
+        consumer: Path):
+    """What reading the declaration from source costs, paid here.
+
+    Before 1.50.0 this module read `reach` off the installed file, and the
+    declaration was true of the delivered tree because it *was* the delivered
+    tree. Stripping the declarations (issue #205) separates the two copies, so
+    the equality has to be asserted rather than enjoyed: every markdown control
+    file a consumer receives is its source file with the declaration blocks
+    removed — and, for a generated one, the engine section's core appended.
+    Anything else the installer did to the bytes on the way in would show up
+    here, which is the point: a strip that ate a paragraph, a render that
+    reflowed one, a file that silently stopped being copied at all.
+
+    The core is read from the consumer's own `.aide/conventions/`, not from
+    `core/`, so the two halves of the claim are both taken from the tree under
+    test. Text, not raw bytes: an ordinary file is copied with `copy2` and
+    keeps the checkout's line endings, so the windows leg compares the same
+    content the ubuntu leg does (`install.source_text`'s fold, on both sides).
+    """
+    checked = 0
+    for name in install.ADAPTER_CONTROL:
+        directory = consumer / CLAUDE_DIR / name
+        if not directory.is_dir():
+            continue
+        for installed in sorted(directory.rglob("*.md")):
+            source = install.source_text(_source_of(installed))
+            expected = install.strip_declarations(source)
+            sections = install.generated_sections(source)
+            if sections:
+                cores = []
+                for section in sections:
+                    engine = consumer.joinpath(*section.split("/"))
+                    assert engine.is_file(), (
+                        f"{_label(installed)}: names {section}, which the "
+                        f"install did not put in the consumer's engine copy")
+                    core = install.section_core(install.source_text(engine))
+                    assert core is not None, (
+                        f"{section}: no closing `Rationale` heading in the "
+                        f"installed copy, so it has no core to have delivered")
+                    cores.append(core.rstrip("\n"))
+                expected = "\n\n".join([expected.rstrip("\n")] + cores) + "\n"
+            assert _text(installed) == expected, (
+                f"{_label(installed)}: the installed file is not its source "
+                f"minus the declarations. The reach this module asserts is "
+                f"declared in {_source_of(installed)} and paid in {installed}; "
+                f"if the installer now does something else to the bytes, those "
+                f"are two files and the declaration says nothing about the one "
+                f"a consumer loads.")
+            checked += 1
+    assert checked, ("no installed markdown control file was compared — the "
+                     "install layout moved and this test verified nothing")
 
 
 def test_a_rules_declared_reach_matches_the_roles_its_globs_arm(

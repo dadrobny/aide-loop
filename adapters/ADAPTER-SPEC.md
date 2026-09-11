@@ -360,10 +360,13 @@ The **first** obligation has a measurable half too, wherever the channel is
 file-scoped: which roles a given scope actually arms is a fact about the
 delivered tree, and a scope believed to be narrow while arming everyone is a
 cost paid on every spawn that nothing reports. The Claude adapter states the
-expectation in the delivered file itself (`<!-- reach: … -->`) and
+expectation in its **source** copy of the delivered file (`<!-- reach: … -->`,
+stripped on the way into a consumer — see *What an install ships* below) and
 `tests/test_structural_budget.py` compares it — against the agent specs' own
 read-sets for a file-scoped rule, against the roles' `skills:` declarations for
-a role-declared skill. A role-declared channel satisfies the first property
+a role-declared skill, having first asserted that the installed file is that
+source file minus the declarations, so the expectation and the delivered tree
+remain one claim about one file. A role-declared channel satisfies the first property
 fully — it loads because the role was spawned — and has nothing to measure
 behaviourally, only structurally: that every declaration names a section file
 that exists and can be loaded, and that every section file is declared by at
@@ -534,7 +537,10 @@ rules out every placement and decides nothing.
   point of use, and it sits beside the sentence it binds, which is where an
   editor needs to see it. A section skill is this case: it is *shipped to be
   preloaded*, and a person opening the `SKILL.md` in an editor is incidental to
-  the delivery rather than the delivery.
+  the delivery rather than the delivery. "The copy" is the framework's copy of
+  it: the declaration is authored beside the sentence and stripped at install
+  (*What an install ships*, below), so it reaches the editor who needs it and
+  no consumer at all.
 - **In the test module**, when the designed reader gets the bytes **unstripped**
   — an instruction-file import the engine does not own, or a template a consumer
   author opens and copies from. A declaration nobody reads still costs its own
@@ -548,11 +554,10 @@ rules out every placement and decides nothing.
 five hand-written delivered skills sit on the right side of the criterion — their
 designed reader is the preload, so their pins stay in the copy — and that is not
 an argument that the bytes are free everywhere else. Measured on an install of
-1.49.0, HTML comments are 32,141 of the 123,684 bytes of the installed skills,
-rules and `AGENT-CONTEXT.md` — 26% — and 7,522 of `aide-item-specs`'s 17,847.
-That number is not a reason to move pins; it is the case for not shipping the
-declarations at all, which is the next subsection, and which stays recorded
-rather than implemented here.
+1.49.2, HTML comments were 32,147 of the 124,013 bytes of the installed skills,
+rules and `AGENT-CONTEXT.md` — 26% — and 7,528 of `aide-item-specs`'s 17,859.
+That number was never a reason to move pins; it was the case for not shipping the
+declarations at all, which is the next subsection, and which 1.50.0 acted on.
 
 **4. Advisory.** A **consumer-owned** file — its instruction file, its
 `docs/aide/**` — is not the framework's to guard. The installer may *report* a
@@ -580,18 +585,31 @@ in files a runtime may hand to a reader whole, describing assertions that live i
 a suite the consumer never installed.
 
 The rule is therefore that **a declaration existing for the framework's tests
-should not ship**. It is recorded here and deliberately not yet implemented,
-because one reader stands in the way and is named so that a later pass is
-mechanical: `tests/test_structural_budget.py` reads `reach` **from an install**,
-on purpose — the reach it checks is a fact about the *delivered* tree. Stripping
-at install means that module reads the declaration from source instead, and then
-owes a separate assertion that the installed file is the same file.
+does not ship**, and since 1.50.0 the installer enforces it: every markdown
+control file loses its `pins`, `reach` and `triggers` blocks on the way in — a
+hand-written file at copy time, a generated one before the section core is
+appended. A block takes the blank line it stood on with it, and *only* these
+three openers are removed, and only where one opens a line: a comment written
+for the **reader** of a delivered file is content, and a strip that could not
+tell the two apart would be a licence to delete it. The installed skills, rules
+and always-on page fall from 124,013 to 93,347 content bytes — 24.7%.
+
+The one reader that stood in the way was named when the rule was recorded, and
+that is what made the pass mechanical: `tests/test_structural_budget.py` read
+`reach` **from an install**, on purpose — the reach it checks is a fact about
+the *delivered* tree. It now reads the declaration from source, keeps reading
+every byte it **costs** from the install, and pays for the split with the
+assertion foreseen here: the installed file is the source file minus the
+declarations, and for a generated one the section core appended to that. Two
+readings, one claim about one file.
 
 `generated-from` is not in that set and differs in kind: it is an instruction to
 the installer, read from **source** at render time, not an assertion about the
 file. Whether the rendered copy keeps the line is a readability call — what §7
 above requires of a generated file is that it *names the section it delivers*, which
-its body does in prose.
+its body does in prose. This adapter keeps it: one line, and the only thing that
+tells a reader of the installed file that the body below is generated rather
+than authored, and which section it came from.
 
 ### Registering a copy
 

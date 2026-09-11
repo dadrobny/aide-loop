@@ -68,6 +68,23 @@ STUB = (
     "The section below is `.aide/conventions/6-test-hygiene.md` (§6).\n"
 )
 
+#: The adapter's half of `STUB` as an install writes it: the `reach`
+#: declaration gone with the blank line it stood on (issue #205), the
+#: `generated-from` line kept — it is the installer's instruction and the one
+#: line telling a reader of the installed file which section this body is.
+#: Spelled out rather than computed, so the strip is *shown* here and the
+#: render assertion below stays an equality against literal text.
+STUB_DELIVERED = (
+    "---\n"
+    "name: aide-test-hygiene\n"
+    "user-invocable: false\n"
+    "---\n"
+    "\n"
+    "<!-- generated-from: .aide/conventions/6-test-hygiene.md -->\n"
+    "\n"
+    "The section below is `.aide/conventions/6-test-hygiene.md` (§6).\n"
+)
+
 
 @pytest.fixture
 def core_dir(tmp_path: Path) -> Path:
@@ -139,9 +156,12 @@ def test_the_render_is_the_file_then_the_core_verbatim(core_dir: Path):
     Written as an equality against the composition rather than a substring
     check, so a transform introduced anywhere in the middle — a reflow, a
     demoted heading, a trimmed bullet — fails here rather than passing a
-    weaker assertion.
+    weaker assertion. The adapter's half arrives stripped of its test
+    declarations (`STUB_DELIVERED`), which is the one edit the installer makes
+    to it and is why that constant is written out in full.
     """
-    assert install.render_delivered(STUB, core_dir) == STUB.rstrip("\n") + "\n\n" + CORE
+    assert install.render_delivered(STUB, core_dir) == (
+        STUB_DELIVERED.rstrip("\n") + "\n\n" + CORE)
 
 
 def test_the_rendered_core_is_the_section_file_itself(core_dir: Path):
