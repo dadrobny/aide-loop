@@ -69,10 +69,11 @@ reader. A pointer of the form `§1 → insights.md` resolves to
   why guidance must never be written as a slot. The templates' `{{yyyy-mm-dd}}`
   slot spells the date format out so no separate lookup is needed.
 - **Why a section names the template instead of repeating the shape.** The
-  template is the shape's *executable* statement — `aide check` enforces it,
-  and a role writing one of these files has it open — so a section that also
-  draws the table is a second copy of something already checked, free to drift
-  where the checked one cannot. It had drifted: a fourth copy of these shapes,
+  template is the shape's *executable* statement — `aide check` enforces it
+  (a table at a time: one mis-shaped row can still drop out unreported, which
+  is #202), and a role writing one of these files has it open — so a section
+  that also draws the table is a second copy of something already checked,
+  free to drift where the checked one cannot. It had drifted: a fourth copy of these shapes,
   in the runtime instructions that author the file, still named "the five-icon
   legend" — a vocabulary one short since 🔍 was added, and wrong for as long as
   nothing compared it to the template. So a section states what a shape cannot
@@ -82,8 +83,9 @@ reader. A pointer of the form `§1 → insights.md` resolves to
   shorthand-marker bullet, and its correction trail); §1 → `insights.md`'s
   entry line stays for a further reason, that the two rules under it position
   themselves as "before the date" and "after the date"; and §1 → human gates
-  keeps its header row for a third, that a mis-shaped row there yields no gate
-  and is reported only by a warning, which stops nothing.
+  keeps its header row for a third: a mis-shaped row there yields no gate, so
+  work goes ahead past a decision nobody made, and all that notices is a
+  warning, which stops nothing.
 - **Why the reading-cold rules are on the floor.** They bind a session with no
   agent spec in play, so `.aide/AGENT-CONTEXT.md` carries them and they reach
   that session without anything having to point at this file.

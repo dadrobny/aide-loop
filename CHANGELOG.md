@@ -145,7 +145,9 @@ found while filing #202.
   and takes an **error** with it — the goal-level over-claim, or a ✅ summary
   row over unfinished work. Making the checks and their documentation
   consistent across every table is #202; this release corrects only the prose
-  that claimed otherwise.
+  that claimed otherwise — including §1's own `Rationale`, which called the
+  template the shape's executable statement without saying that `aide check`
+  enforces it a table at a time, not a row at a time.
 
 ## [1.48.2] — 2026-09-10
 
