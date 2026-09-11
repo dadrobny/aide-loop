@@ -125,6 +125,8 @@ FLOOR_PINS = {
     # Root documents go through their entry point
     "conventions/5-clarify-mode.md": [
         "carry the safeguards a free-hand file write skips",
+        "Do not write a root document directly, however well the template "
+        "shape is known",
         "whatever `loop.clarify` says",
         "the mandatory sections are grounded in the human's answers",
         "Present the result as a draft",
@@ -136,12 +138,14 @@ FLOOR_PINS = {
         "One command per call",
         "Never chain with `&&`, `||` or `;`",
         "No `cd` prefix and no directory-changing wrapper",
+        "Unless the repo is declared",
         "No `2>&1` or other redirections",
     ],
     # Only a person resolves a human gate
     "conventions/1-format-contract/human-gates.md": [
         "Any role may raise a gate; only a person may resolve one",
         "No agent may run `aide gate approve`/`decline`",
+        "Resolving is a CLI operation, never a hand edit",
     ],
     # Another repository's instructions bind before you edit it
     "conventions/8-sibling-repos.md": [

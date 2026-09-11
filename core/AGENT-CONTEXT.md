@@ -64,11 +64,12 @@ the artefact.
 ## Root documents go through their entry point — §5
 
 `vision.md` and `roadmap.md` are authored via the loop's create-vision /
-create-roadmap entry points, never written by hand — they carry the safeguards a
-free-hand file write skips. Authoring them is interactive whatever
-`loop.clarify` says: ask until the mandatory sections are grounded in the
-human's answers, and present the result as a draft. A wrong assumption at the
-root propagates into every queue and item derived from it.
+create-roadmap entry points, which carry the safeguards a free-hand file write
+skips. **Do not write a root document directly, however well the template shape
+is known.** Authoring them is interactive whatever `loop.clarify` says: ask
+until the mandatory sections are grounded in the human's answers, and present
+the result as a draft. A wrong assumption at the root propagates into every
+queue and item derived from it.
 
 ## Mechanical actions go through the CLI — §2, §4, [`README.md`](README.md)
 
@@ -84,15 +85,16 @@ the documents parseable and an unattended run reproducible.
 ## Command hygiene — §3
 
 One command per call — never chain with `&&`, `||` or `;`. No `cd` prefix and
-no directory-changing wrapper; no `2>&1` or other redirections. A long
-unattended run stalls on a permission prompt for any command shape nothing
-pre-approved.
+no directory-changing wrapper, unless the repo is declared (§3); no `2>&1` or
+other redirections. A long unattended run stalls on a permission prompt for any
+command shape nothing pre-approved.
 
 ## Only a person resolves a human gate — §1 → Human gates
 
 Any role may raise a gate; only a person may resolve one — the worst case of
-raising one is work pausing. No agent may run `aide gate approve`/`decline`: a
-gate exists precisely because the decision is not derivable from the work.
+raising one is work pausing. No agent may run `aide gate approve`/`decline`;
+resolving is a CLI operation, never a hand edit. A gate exists precisely
+because the decision is not derivable from the work.
 
 ## Another repository's instructions bind before you edit it — §8
 

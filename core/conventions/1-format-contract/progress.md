@@ -5,7 +5,7 @@ section names it rather than drawing it again, and fixes instead what a shape
 cannot carry — what a cell may hold, and what is mandatory.
 
 **Status is claimed here and nowhere else.** This is the only place the CLI
-reads. A status claim written anywhere else — a checklist in a spec, a "current
+reads status. A status claim written anywhere else — a checklist in a spec, a "current
 focus" heading, a summary in a README — is a second truth that will disagree
 with the first. Move it, do not copy it.
 

@@ -109,7 +109,7 @@ _preloads = _READ.preloads
 FLOOR_PIN = {
     "version": "1.49.2",
     "files": {
-        ".aide/AGENT-CONTEXT.md": 5171,
+        ".aide/AGENT-CONTEXT.md": 5315,
         ".claude/rules/aide-command-hygiene.md": 4018,
     },
 }

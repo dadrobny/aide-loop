@@ -137,27 +137,37 @@ did not state has been moved into the core or dropped.
 
 ### Changed
 
-- **`FLOOR_PINS` covers every heading that copies a section** — 28 new
+- **`FLOOR_PINS` covers every heading that copies a section** — 31 new
   quotations across §1 → `insights.md`, §1 → `progress.md`, §5, §3, §1 → human
   gates and §8, each asserted in both the page and the section's core by
-  `tests/test_floor_pins.py`, in both directions. 37 statements in all.
+  `tests/test_floor_pins.py`, in both directions. 40 statements in all.
 - **The page and its sections now say each rule once, in one wording.** On the
   page: the insight inbox's rules take §1 → `insights.md`'s own words
   ("never lost *and* never acted on out of scope", "the ISO date is the only
   part that is load-bearing", the trail's "dated lines, indented under the
   entry, newest last"); the gate paragraph takes the section's rule sentence
-  and names the verb it forbids (`aide gate approve`/`decline`) instead of
-  paraphrasing it; command hygiene states §3's four rules in §3's words, which
-  also adds the directory-changing wrappers (`git -C`, `GIT_DIR=…`) the old
-  "no `cd`" did not reach; §8 leads with the section's rule sentence. In §5:
+  and names both ways the section forbids resolving one — the verbs
+  (`aide gate approve`/`decline`) and the hand edit; the root-document
+  paragraph adopts §5's imperative ("do not write a root document directly,
+  however well the template shape is known") in place of a paraphrase;
+  command hygiene states §3's rules in §3's words, which brings under the floor
+  the directory-changing wrappers (`git -C`, `GIT_DIR=…`) the old "no `cd`" did
+  not reach **and** the carve-out that lets one through for a *declared* repo —
+  the shape §8 names for acting on a sibling clone, and a stricter floor would
+  have had a session refuse the framework's own documented update workflow; §8
+  leads with the section's rule sentence. In §5:
   "grounded in **their** answers" had no antecedent and becomes "the human's
   answers", which is the wording the floor already used.
-- **The always-on floor moves from 4,998 to 5,171 content bytes** — with the
-  always-loaded rule beside it, from 9,016 to 9,189 content bytes, which is
-  +173 B on every spawn of every role. It grew rather than shrank because two
-  of its headings were delivering less than the sections they named: §3's rules
-  now reach the directory-changing wrappers, and §8 leads with the rule
-  sentence. The pin in `tests/test_structural_budget.py` moves with it.
+- **The always-on floor moves from 4,998 to 5,315 content bytes** — with the
+  always-loaded rule beside it, from 9,016 to 9,333 content bytes, which is
+  +317 B on every spawn of every role. Four headings grew and two shrank:
+  command hygiene +120 B, human gates +104 B, §8 +97 B and the root-document
+  rule +48 B, against −46 B on the insight inbox (a `Rationale` clause dropped)
+  and −6 B on the status rule. Every one of those four was delivering *less*
+  than the section it names — a floor that states a subset is the contract,
+  while one that states a variant is #194 — so the growth is the fix rather
+  than a cost the fix incurred. The pin in `tests/test_structural_budget.py`
+  moves with it.
 - **`adapters/claude/skills/aide-item-specs/SKILL.md`** carries §5's sentence
   in its body and in a `<!-- pins: -->` block, so the §5 rewording lands in
   three files at once. That is the mechanism working as designed: the section,
