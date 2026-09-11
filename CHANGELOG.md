@@ -137,22 +137,30 @@ copy over.
 
 - **One register for all seven `-h` blocks:
   `core/scripts/tests/test_aide_help_pins.py`.** `HELP_PINS` maps a verb to
-  `(sentence, "module::function")` pairs — 79 of them — and asserts two things
-  per pin: the sentence is still in the help `argparse` renders (normalised for
-  reflow, emphasis and case, so a rewrap passes and a reword does not), and the
-  named guard still resolves. Seventy-seven distinct guards, of which **sixty-one are
-  tests that already existed** and were read before they were named — a guard
-  that merely sits near the behaviour proves nothing — and **sixteen are new**,
-  written where nothing exercised the claim: nine in the harness, where a
-  document tree is enough (the three missing-table errors as three, the summary
-  over-claim measured by the rollup, its mirror warning, the header/summary
-  disagreement, the orphan summary row, an unrecognised Status in either table,
-  a retracted criterion reaching `check`, a warning alone still exiting 0, and
-  the four states `status` promises to print), and seven in the verb's own
-  module, where git is (the spent-item discount on both sides, `claim`'s walk
-  in the queue's own order, its dependency set and its inbox creation, `status`
-  naming a landed 🔍 item, the `gc` skip line, and a derived base preferring
-  `origin/`).
+  `(sentence, guard)` pairs — **102 of them**, where a guard is one
+  `"module::function"` or a tuple of them — and asserts two things per pin: the
+  sentence is still in the help `argparse` renders (normalised for reflow,
+  emphasis and case, so a rewrap passes and a reword does not), and every named
+  guard still resolves. **106 distinct guards**, of which **87 are tests that
+  already existed** and were read before they were named — a guard that merely
+  sits near the behaviour proves nothing — and **19 are new**, written where
+  nothing exercised the claim: eleven in the harness, where a document tree is
+  enough (the three missing-table errors as three, the summary over-claim
+  measured by the rollup, its mirror warning and the ⏸️/❌ carve-out, the
+  header/summary disagreement, the orphan summary row, an unrecognised Status
+  in either table, a retracted criterion reaching `check`, a warning alone
+  still exiting 0, the four states `status` promises to print, `amend`/`retract`
+  refusing `--all` and an unstated reason, and `retract` routing its finding
+  into the inbox), and eight in the verb's own module, where git is (the
+  spent-item discount on both sides, `claim`'s walk in the queue's own order,
+  its dependency set and its inbox creation, `status` naming a landed 🔍 item,
+  the two `gc` skip lines, and a derived base preferring `origin/` for the
+  recorded base as well as for `main_branch`). Where a guard's fit was not
+  obvious it was **mutation-checked** — break the behaviour, and the named test
+  must go red — which is how two of them were replaced: `scope`'s "read from
+  the current claim branch" had been guarded by a test that passes an explicit
+  number, and `archive`'s three-claim sentence by one that asserted only that
+  moved lines were unchanged.
   `test_progress_help_states_the_rollup_the_code_applies` is the seventh entry
   and stays where it is — the register names it, it is not moved or copied.
   The module is self-contained: it reimplements the pin normaliser rather than
@@ -179,14 +187,33 @@ copy over.
   local copy and a remote one going. Now `skipping <branch> (local/remote):
   <reason>`.
 - **`aide insights -h` said `list` prints "the backlog without the closed
-  history around it".** `list` prints every entry in `insights.md`, ticked ones
-  included; `--open` is what narrows to the untriaged, and the closed history
-  the sentence meant is the archive, which is a different file. Now says so.
+  history around it".** That is a true description of `list --open`, which is
+  where `aide-queue-and-inbox` attaches the same phrase — and it had been
+  written against `list`, which prints every entry in `insights.md`, ticked
+  ones included. The two lines now say which verb narrows.
+- **`aide check -h`'s stage comparisons omitted their carve-out.** `run_checks`
+  skips all three — the summary over-claim, its mirror warning and the
+  header/summary disagreement — when the summary row itself is ⏸️ or ❌, so the
+  corrected "roll up to ✅" sentence was still false over a deferred or dropped
+  stage. The block now states the carve-out once, for all three.
+- **`aide gc -h` enumerated three skip reasons and the code has four.** When
+  `_branch_content_landed` returns `None` the run skips saying the landing
+  could not be *determined* — deliberately not the same statement as "has
+  content not in the base", which would be a claim about a ref it never read.
+  The enumeration now names it.
 
-A consumer's `--update` receives the five corrected help blocks in
-`.aide/scripts/aide.py` and the new pin harness in `.aide/scripts/tests/`,
-which its `pytest .aide/scripts/tests` run picks up with the rest of the
-shipped suite.
+Also corrected, one copy over, in the sections that point at these blocks:
+`conventions/2-claim-protocol.md` said `aide claim` picks the first 📋 item
+"whose dependencies are all ✅" (the pick lets ✅, ❌ and ⏸️ through, and it
+also skips a gated item), and `conventions/1-format-contract/progress.md` said
+`aide check` "errors on an objective claimed ✅ over" a target that is not
+`✅ Met` (it errors over `❌ Not met` and warns over any other non-Met). Both
+now state the rule the code applies and point at `-h` for the mechanism.
+
+A consumer's `--update` receives seven corrected sentences across four help
+blocks in `.aide/scripts/aide.py`, the two corrected `conventions/` sections,
+and the new pin harness in `.aide/scripts/tests/`, which its
+`pytest .aide/scripts/tests` run picks up with the rest of the shipped suite.
 
 ## [1.49.3] — 2026-09-11
 

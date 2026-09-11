@@ -577,7 +577,8 @@ second prose copy to quote. `aide progress -h`'s rollup sentence is the model
 transcribes the English as a predicate and compares it to `rollup_status` over
 the whole input space, so the help may be reworded freely and a change to what
 the rollup *does* fails until the sentence moves with it. All seven of this
-engine's `-h` blocks sit on this rung since 1.49.4, registered together in
+engine's `-h` **description blocks** sit on this rung since 1.49.4 — the other
+verbs carry option help only — registered together in
 `core/scripts/tests/test_aide_help_pins.py`: each pinned sentence names the
 test that exercises it, and the register asserts both that the sentence is
 still in the rendered help and that the guard still resolves. The pins live in

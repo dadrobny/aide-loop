@@ -649,6 +649,32 @@ def test_a_gc_skip_names_the_branch_where_it_lives_and_why(tmp_path: Path,
                          "re-check it, or pass --abandon to delete it anyway"], skips
 
 
+def test_a_gc_skip_says_so_when_the_landing_could_not_be_measured(
+        tmp_path: Path, capsys, monkeypatch):
+    """The fourth reason `aide gc -h` enumerates, and the one easiest to lose.
+
+    "Could not be determined" and "has content not in main" are different
+    statements, and this is the one destructive verb: saying the second about a
+    ref the run never read would be a claim it cannot support. The oracle's own
+    half is exercised unmocked; `cmd_gc`'s rendering of that answer needs the
+    oracle forced, since a listed branch whose ref does not resolve is not a
+    state git will let a fixture build.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/026-rule-engine-core", "core.txt")
+    # Unmocked: a ref it cannot read is unmeasurable, never False.
+    assert aide._branch_content_landed(root, "main", "origin/nope") is None
+
+    monkeypatch.setattr(aide, "_branch_content_landed", lambda *a, **k: None)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "gc", "--yes"]) == 0
+    out = capsys.readouterr().out
+    assert "skipping aide/026-rule-engine-core (local):" in out
+    assert "could not be determined" in out
+    assert "has content not in" not in out
+    assert "aide/026-rule-engine-core" in _run(["git", "branch"], root).stdout
+
+
 def test_gc_preview_does_not_promise_to_delete_the_checked_out_branch(
         tmp_path: Path, capsys):
     """The preview used to list a branch `--yes` then silently skipped."""

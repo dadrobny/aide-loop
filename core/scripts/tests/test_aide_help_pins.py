@@ -26,16 +26,28 @@ predicate and compares it to `rollup_status` over the whole input space.
   no existing test exercised a claim, one was written — in this module where a
   document tree is enough, in the verb's own module where git is.
 
-The pins were audited against the code as they were written, and five help
-sentences were corrected in 1.49.4 rather than pinned as they stood. Those are
-in `CHANGELOG.md` under *Fixed*; the comment on each pin below names the code
-that makes the sentence true.
+The pins were audited against the code as they were written, and seven help
+sentences across four blocks were corrected in 1.49.4 rather than pinned as
+they stood. Those are in `CHANGELOG.md` under *Fixed*; the comment on each pin
+below names the code that makes the sentence true.
 
-**Deliberately unpinned**, and why — the rest of the six blocks is here:
+A guard is chosen by reading it, and where the reading was not obvious it was
+**mutation-checked**: break the behaviour, and the named test must go red. Two
+pins moved on that evidence — `scope`'s "read from the current claim branch",
+which had been guarded by a test that passes an explicit number and so
+exercised the other branch, and `archive`'s three-claim sentence, whose one
+guard asserted only that moved lines were unchanged and survived a selection
+that moved everything.
+
+**Deliberately unpinned**, and why — the rest of all seven blocks is here:
 
 * *"a finding against one is an error no later item can clear"* (`check`),
   *"an excluded item is never offered"*, *"whichever builds second inherits the
-  first's edits"* — rationale for a rule pinned beside them, not a second rule.
+  first's edits"*, *"an item awaiting review or deferred has not shipped"* and
+  *"each attestation was made separately and is corrected or withdrawn
+  separately"* (`progress`), *"the stage is deferred or dropped, so its bullets
+  no longer speak for it"* (`check`) — rationale for a rule pinned beside them,
+  not a second rule.
 * *"since the row is dropped from every check it would have fed"*, *"the
   goal-level mirror of that over-claim"*, *"a normal state rather than a
   defect"* (twice), *"that would be recommending the deletion of an open PR's
@@ -43,9 +55,10 @@ that makes the sentence true.
   merge"*, *"so none of them lives only in one commit's diff"*, *"since what it
   blocks is unknown"* — same: the reason a pinned behaviour is what it is.
 * *"left for `aide scope` to judge"*, *"`aide progress -h` states the rollup"*,
-  *"(like `aide sync`)"*, *"the same merge-tree comparison `gc` uses"* —
-  pointers at another verb, rung 1. A pointer names where the rule is; it
-  states none of its own.
+  *"(like `aide sync`)"*, *"the same merge-tree comparison `gc` uses"*, *"The
+  rollup, applied by set and read by `aide check`"* — pointers at another verb,
+  rung 1. A pointer names where the rule is; it states none of its own. The
+  rule each of these points at is pinned where it is written.
 * *"the wrong cell count (a '|' inside a cell, usually), a Stage cell that is
   not an integer, an objective coverage row not starting G<n>, an empty Target
   cell, a summary or objective Status cell with no icon"* (`check`) — the
@@ -119,7 +132,10 @@ def _help_for(verb: str) -> str:
 # --------------------------------------------------------------------------- #
 # the register
 # --------------------------------------------------------------------------- #
-#: verb -> [(sentence quoted from `aide <verb> -h`, "module::function")]
+#: verb -> [(sentence quoted from `aide <verb> -h`, guard)], where a guard is
+#: "module::function" or a tuple of them. A tuple is for a sentence whose halves
+#: are exercised by different tests — the register asserts every one of them, so
+#: a claim is never half-guarded by a test that covers the easier half.
 HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
 
     # ---------------------------------------------------------------- check --
@@ -184,10 +200,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("an objective marked ✅ over an Outcome target that is ❌ Not met",
          "test_aide_core::test_check_flags_objective_complete_over_unmet_target"),
         # `unreadable_row_errors` over `_PROGRESS_TABLES` — all four of them.
+        # …whose `CASES` cover three of the four tables, so the gate table
+        # — the one whose unreadable row also holds every item — is pinned
+        # alongside it rather than assumed.
         ("a row of the stage summary, objective coverage, Outcome targets or "
          "Human gates table that its reader cannot use",
-         "test_aide_table_rows::"
-         "test_a_mis_shaped_row_trades_its_error_for_an_unreadable_row_error"),
+         ("test_aide_table_rows::"
+          "test_a_mis_shaped_row_trades_its_error_for_an_unreadable_row_error",
+          "test_aide_table_rows::"
+          "test_a_mis_shaped_gate_row_is_an_error_under_the_same_rule")),
         # `_table_rows`: the heading's section, plus — for an `anywhere` table
         # whose section holds no readable row — every block a row is taken from.
         ("Each table is read under its template heading, or, for a summary or "
@@ -218,9 +239,19 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("an Outcome target or human gate whose Status is not one of its "
          "table's marks",
          "test_aide_help_pins::test_an_unrecognised_status_in_either_table_is_a_warning"),
-        # `gate_warnings` over `blocking_gates` — every gate that is not ✅.
+        # `gate_warnings` over `blocking_gates` — every gate that is not ✅,
+        # and `run_checks` extends `warnings` with it. The unit test alone
+        # would survive the call being dropped from `run_checks`, so a test
+        # that runs `aide check` over a blocking gate is the second half.
         ("every human gate still blocking",
-         "test_aide_gates::test_awaiting_gate_warns_with_its_reach"),
+         ("test_aide_gates::test_awaiting_gate_warns_with_its_reach",
+          "test_aide_help_pins::test_a_warning_alone_still_exits_zero")),
+        # `if summ in ("deferred", "excluded"): continue` — before all three
+        # of the comparisons above, not just the warning.
+        ("A summary row marked \u23f8\ufe0f or \u274c is left out of all three "
+         "stage comparisons above, deliverables and header alike",
+         "test_aide_help_pins::"
+         "test_a_rolled_up_stage_under_a_lesser_summary_row_is_a_warning"),
         # `_PROGRESS_TABLES` is the whole set, and it is not in it.
         ("The Environment-Gated Capability Verification table is read by no check",
          "test_aide_table_rows::test_the_environment_gated_table_is_read_by_no_check"),
@@ -261,13 +292,115 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
     ],
 
     # ------------------------------------------------------------- progress --
+    # The block #192 pinned one sentence of. The rest of it is code-owned
+    # guarantee too — what `set` desugars, what `reword` refuses, what neither
+    # `amend` nor `retract` will do — and each clause here names the test that
+    # exercises it, at the same bar as the other six blocks.
     "progress": [
+        # `set_item_status` flips the bullet, then `rollup_status` over the
+        # stage's bullets writes the header and the summary row.
+        ("flip an item's deliverable bullet and roll its stage up",
+         "test_aide_core::test_set_item_done_completes_stage_without_touching_acceptance"),
+        # `_split_multi_item_bullets` runs first, then only `num` is flipped.
+        ("a marker naming several items is desugared into one bullet per item "
+         "first, and only the named item moves \u2014 the others keep the "
+         "status they had",
+         ("test_aide_core::test_the_split_keeps_every_item_of_the_marker",
+          "test_aide_core::test_completing_one_item_does_not_complete_its_marker_siblings")),
+        # `criteria = None if args.all_criteria else [args.criterion]`, and
+        # `cmd_progress` refuses neither-or-both.
+        ("tick one acceptance criterion (--criterion N) or every one in the "
+         "stage (--all), with --evidence",
+         ("test_aide_core::test_accept_criteria_ticks_only_the_named_index",
+          "test_aide_core::test_accept_criteria_all_and_evidence",
+          "test_aide_core::test_cli_progress_accept_rejects_criterion_and_all_together")),
+        # `amend_criterion` -> `_append_trail`: a dated line BELOW the box,
+        # with the box and its original annotation untouched.
+        ("append a dated correction under a ticked box; the tick stands",
+         ("test_aide_acceptance_amend::test_amend_appends_a_dated_trail_line_below_the_box",
+          "test_aide_acceptance_amend::test_amend_never_touches_the_original_attestation")),
+        # `retract_criterion` unticks and appends `retracted: <reason>`;
+        # `_route_retraction_to_insights` writes the `gap` line.
+        ("untick a box, keep the original attestation visible, and capture a "
+         "`gap` insight",
+         ("test_aide_acceptance_amend::test_retract_unticks_the_box_and_keeps_the_original_annotation",
+          "test_aide_help_pins::test_retract_routes_its_finding_into_the_inbox")),
+        # `reword_criterion` + `reword_roadmap_bullet`, written together or
+        # not at all.
+        ("change a criterion's text in progress.md and roadmap.md, or in "
+         "neither",
+         ("test_aide_acceptance_amend::test_reword_mirrors_into_the_matching_roadmap_bullet",
+          "test_aide_acceptance_amend::test_a_roadmap_that_cannot_be_lined_up_writes_nothing_and_says_why")),
+        # Three separate refusals, and the third is the one a survey misses:
+        # a box unticked by `retract` still carries its correction trail.
+        ("refuses over a ticked, annotated or corrected box",
+         ("test_aide_acceptance_amend::test_reword_refuses_a_ticked_criterion",
+          "test_aide_acceptance_amend::test_reword_refuses_an_annotated_criterion_even_once_unticked",
+          "test_aide_acceptance_amend::test_reword_refuses_a_criterion_carrying_a_correction_trail")),
+
         # The model (issue #192), and the reason this module exists: the
         # sentence is transcribed as a predicate and compared with
         # `rollup_status` over every combination of the six statuses.
-        ("a stage is ✅ when every deliverable bullet in it is ✅ or "
-         "❌ and at least one is ✅",
+        ("a stage is \u2705 when every deliverable bullet in it is \u2705 or "
+         "\u274c and at least one is \u2705",
          "test_aide_core::test_progress_help_states_the_rollup_the_code_applies"),
+        # The other arm of the same function, and the same whole-input-space
+        # comparison: the model test's predicate encodes both.
+        ("\U0001f6a7 when any bullet is \u2705, \U0001f6a7 or \U0001f50d; "
+         "otherwise \U0001f4cb",
+         "test_aide_core::test_progress_help_states_the_rollup_the_code_applies"),
+        # Neither is in the `("complete", "excluded")` set of the ✅ rule.
+        ("\U0001f50d and \u23f8\ufe0f are both kept out of the \u2705 rule",
+         ("test_aide_core::test_a_deferred_deliverable_keeps_its_stage_open",
+          "test_aide_git::test_in_review_rolls_a_stage_up_to_in_progress_not_complete")),
+        # 🔍 *is* in the `("complete", "in-progress", "in-review")` set of the
+        # 🚧 rule; ⏸️ is in neither, which is the whole difference.
+        ("\U0001f50d also satisfies the \U0001f6a7 rule, so a stage holding "
+         "one is always \U0001f6a7",
+         "test_aide_git::test_in_review_rolls_a_stage_up_to_in_progress_not_complete"),
+        ("a stage whose bullets are only \u23f8\ufe0f, \U0001f4cb and \u274c "
+         "reads \U0001f4cb",
+         "test_aide_core::test_a_deferred_deliverable_keeps_its_stage_open"),
+        # `_set_stage_header`, `_set_summary_row`, `_apply_objective_rollup`.
+        ("The stage header, its summary-table row, and any Objective row "
+         "delivered solely by \u2705 stages follow",
+         ("test_aide_core::test_set_item_done_completes_stage_without_touching_acceptance",
+          "test_aide_core::test_met_target_does_not_block_objective")),
+        # `_apply_objective_rollup` consults `outcome_targets` first.
+        ("an objective linked to an Outcome target that is not \u2705 Met "
+         "never rolls up",
+         "test_aide_core::test_unmet_target_blocks_objective_rollup_not_stage"),
+        # `RANK` guards the write: a lower-ranked status is not applied.
+        ("A status is never downgraded",
+         "test_aide_core::test_set_item_never_downgrades"),
+        # `stage_deliverable_statuses` skips `_CHECKBOX_RE` lines, and nothing
+        # on the rollup path writes one — the attestation is a person's.
+        ("no rollup ever ticks an acceptance box",
+         ("test_aide_core::test_set_item_never_reticks_a_deliberately_unticked_box",
+          "test_aide_core::test_set_item_done_completes_stage_without_touching_acceptance")),
+
+        # `roadmap_acceptance_bullets` drops `_ROADMAP_TARGET_RE` bullets
+        # before the Nth is taken.
+        ("reword matches the Nth box to the Nth non-`Target:` bullet of the "
+         "roadmap stage's Validation / acceptance block",
+         "test_aide_acceptance_amend::test_roadmap_acceptance_bullets_skip_a_target_bullet"),
+        ("if the two cannot be lined up, nothing is written and the message "
+         "says which counts disagreed",
+         "test_aide_acceptance_amend::test_a_roadmap_that_cannot_be_lined_up_writes_nothing_and_says_why"),
+        # `if args.all_criteria: ... return 2` in both `_cmd_progress_amend`
+        # and `_cmd_progress_retract`, before anything is read.
+        ("Neither amend nor retract takes --all",
+         "test_aide_help_pins::test_amend_and_retract_refuse_all_and_refuse_a_missing_reason"),
+        # `--evidence` for amend, `--reason` for retract: both `.strip()`ped,
+        # so a blank string is not a stated reason either.
+        ("Both refuse without a stated reason",
+         "test_aide_help_pins::test_amend_and_retract_refuse_all_and_refuse_a_missing_reason"),
+        # The two surfacing rules `retracted_criteria` feeds — pinned from the
+        # `check` and `status` blocks as well, and the same guards.
+        ("`aide check` warns on every retracted criterion and `aide status` "
+         "prints it",
+         ("test_aide_help_pins::test_a_retracted_criterion_reaches_check_as_a_warning",
+          "test_aide_help_pins::test_status_prints_the_four_states_it_promises")),
     ],
 
     # ------------------------------------------------------------- insights --
@@ -287,11 +420,22 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("on an entry already ticked, append a dated trail line instead",
          "test_aide_insights::"
          "test_ticking_an_already_ticked_entry_appends_a_dated_trail_line"),
-        # `archive_insight_text` + `insight_quarter(date)`; the entry's lines
-        # are moved, not re-rendered.
-        ("move closed entries older than --before into "
-         "insights/archive-YYYY-QN.md, each with its trail, line for line",
-         "test_aide_insights::test_archive_moves_lines_byte_for_byte"),
+        # Three claims in one sentence, and one test covers only the third:
+        # `test_archive_moves_lines_byte_for_byte` asserts that every moved
+        # line was in the original, so a selection that moved every dated entry
+        # would still pass it. Selection, destination and fidelity are
+        # therefore pinned apart.
+        # `archive_insight_text`: ticked, and dated before `--before`.
+        ("move closed entries older than --before",
+         "test_aide_insights::test_archive_moves_only_closed_entries_older_than_the_date"),
+        # `insight_quarter(date)` names the file the entries land in.
+        ("into insights/archive-YYYY-QN.md",
+         ("test_aide_insights::test_archive_yes_moves_entries_into_a_quarter_file",
+          "test_aide_insights::test_archive_groups_by_the_entry_quarter")),
+        # The entry's lines are moved, not re-rendered, trail included.
+        ("each with its trail, line for line",
+         ("test_aide_insights::test_archive_carries_the_status_trail_with_its_entry",
+          "test_aide_insights::test_archive_moves_lines_byte_for_byte")),
         # The undatable closed entries come back as the second return value.
         ("an entry it cannot date is named and left behind",
          "test_aide_insights::test_archive_names_the_entry_it_had_to_leave_behind"),
@@ -395,12 +539,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_aide_git::test_gc_refuses_the_tick_ground_on_git_too_old"),
         # The `protected` sweep moves branches out of `targets` before the
         # first `print`, so the preview cannot overstate.
-        ("Every skip — checked out, unlanded, git too old — is "
-         "decided before anything is printed",
-         "test_aide_git::test_gc_preview_does_not_promise_to_delete_the_checked_out_branch"),
+        ("Every skip \u2014 checked out, unlanded, unmeasurable (a ref the "
+         "oracle could not read), git too old \u2014 is decided before "
+         "anything is printed",
+         ("test_aide_git::test_gc_preview_does_not_promise_to_delete_the_checked_out_branch",
+          "test_aide_git::test_a_gc_skip_says_so_when_the_landing_could_not_be_measured")),
         # `print(f"skipping {br} ({_where(br)}): {skips[br]}")`, above the
         # `--yes` branch, so both paths print it.
-        ("shown as `skipping <branch> (local/remote): <reason>` on both paths",
+        ("shown as `skipping <branch> (local | remote | local+remote): "
+         "<reason>` on both paths",
          "test_aide_git::test_a_gc_skip_names_the_branch_where_it_lives_and_why"),
         # One `targets` dict, printed as "would delete" or "deleted".
         ("the dry run is exactly the set --yes deletes",
@@ -439,8 +586,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "separately",
          "test_aide_scope::test_findings_separate_unauthorised_from_contradiction"),
         # `_branch_item_number(branch, prefix)` when `args.number is None`.
+        # The guard must RUN `aide scope` with no argument: a test that passes
+        # a number exercises the other branch, and leaves `number = None` a
+        # mutation the register cannot see.
         ("With no number the item is read from the current claim branch",
-         "test_aide_scope::test_scope_explicit_number_overrides_the_branch"),
+         ("test_aide_scope::test_scope_ok_when_every_change_is_authorised",
+          "test_aide_scope::test_scope_cannot_guess_the_item_off_an_unrecognised_branch")),
         # `_is_queue_branch(branch, prefix)` -> message and `return 0`.
         ("a queue branch resolves to no item and is skipped",
          "test_aide_scope::test_scope_skips_a_queue_branch"),
@@ -463,16 +614,25 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
     ],
 }
 
-_PINS = [(verb, sentence, guard)
+def _guards(guard) -> Tuple[str, ...]:
+    return (guard,) if isinstance(guard, str) else tuple(guard)
+
+
+#: one entry per pinned sentence — what `test_every_pinned_sentence...` reads.
+_PINS = [(verb, sentence, _guards(guard))
          for verb, pins in HELP_PINS.items() for sentence, guard in pins]
+#: one entry per (sentence, guard) pair — what `test_every_guard_resolves` reads.
+_GUARD_PAIRS = [(verb, sentence, g) for verb, sentence, gs in _PINS for g in gs]
 _IDS = [f"{verb}:{sentence[:48]}" for verb, sentence, _ in _PINS]
+_GUARD_IDS = [f"{verb}:{g.rpartition('::')[2][:56]}"
+              for verb, _, g in _GUARD_PAIRS]
 
 
 # --------------------------------------------------------------------------- #
 # the two obligations of a pin
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("verb,sentence,guard", _PINS, ids=_IDS)
-def test_every_pinned_sentence_is_still_in_the_help(verb, sentence, guard):
+@pytest.mark.parametrize("verb,sentence,guards", _PINS, ids=_IDS)
+def test_every_pinned_sentence_is_still_in_the_help(verb, sentence, guards):
     """Half one: the quotation is still what `argparse` renders.
 
     Without this the register is a comment — a help block could be reworded out
@@ -482,11 +642,12 @@ def test_every_pinned_sentence_is_still_in_the_help(verb, sentence, guard):
     """
     assert _normalise(sentence) in _normalise(_help_for(verb)), (
         f"`aide {verb} -h` no longer states: {sentence}\n"
-        f"Either restore the clause, or reword the pin and re-read {guard} "
-        f"to confirm it still exercises what the new wording claims.")
+        f"Either restore the clause, or reword the pin and re-read "
+        f"{', '.join(guards)} to confirm it still exercises what the new "
+        f"wording claims.")
 
 
-@pytest.mark.parametrize("verb,sentence,guard", _PINS, ids=_IDS)
+@pytest.mark.parametrize("verb,sentence,guard", _GUARD_PAIRS, ids=_GUARD_IDS)
 def test_every_guard_resolves(verb, sentence, guard):
     """Half two: the named test still exists.
 
@@ -550,6 +711,11 @@ def test_every_verb_with_a_description_block_is_registered():
     assert described == set(HELP_PINS), (
         f"described but unpinned: {sorted(described - set(HELP_PINS))}; "
         f"pinned but no longer described: {sorted(set(HELP_PINS) - described)}")
+    # An empty list is a key, not a decision: without this, registering
+    # `"newverb": []` satisfies the equality above while pinning nothing.
+    assert all(HELP_PINS.values()), (
+        f"registered with no pins: "
+        f"{sorted(v for v, pins in HELP_PINS.items() if not pins)}")
 
 
 def _verbs() -> List[str]:
@@ -660,16 +826,34 @@ def test_the_summary_over_claim_is_measured_by_the_rollup(tmp_path: Path):
 
 
 def test_a_rolled_up_stage_under_a_lesser_summary_row_is_a_warning(tmp_path: Path):
-    """The mirror of the error above, and the same measure.
+    """The mirror of the error above, and the same measure — plus the carve-out.
 
     ❌ counts toward the rollup here too: a stage of ✅ and ❌ under a 🚧
     summary row is the warning, and the pre-1.49.4 wording ("deliverables are
     all ✅") predicted silence.
+
+    The second half is `if summ in ("deferred", "excluded"): continue`, which
+    sits above **all three** stage comparisons rather than above this one: a
+    ⏸️ or ❌ summary row is a stage deferred or dropped, and its bullets no
+    longer speak for it, so neither the warning, the error, nor the
+    header-disagreement warning is raised over it.
     """
     text = PROGRESS.replace("- 📋 Bounds. *(Item 027)*", "- ✅ Bounds. *(Item 027)*")
     text = text.replace("- 📋 Coverage. *(Item 028)*", "- ❌ Coverage. *(Item 028)*")
     _, warnings = _checks(_repo(tmp_path, progress=text))
     assert any("all deliverables ✅ but summary shows" in w for w in warnings), warnings
+
+    for icon, name in (("⏸️", "deferred"), ("❌", "excluded")):
+        # Same rolled-up stage, and a header that disagrees with the row as
+        # well, so all three comparisons would have something to say.
+        left_alone = text.replace("| 1 | Rules | G1 | 🚧 |",
+                                  f"| 1 | Rules | G1 | {icon} |")
+        errors, warnings = _checks(
+            _repo(tmp_path, progress=left_alone, name=f"repo-{name}"))
+        assert not any("all deliverables ✅ but summary shows" in w
+                       for w in warnings), (icon, warnings)
+        assert not any("disagrees with summary" in w for w in warnings), (icon, warnings)
+        assert not any("non-complete deliverables" in e for e in errors), (icon, errors)
 
 
 def test_a_stage_header_disagreeing_with_its_summary_row_is_a_warning(
@@ -747,8 +931,66 @@ def test_a_warning_alone_still_exits_zero(tmp_path: Path, capsys):
     repo = _repo(tmp_path, progress=text)
     assert aide.main(["--repo", str(repo), "check"]) == 0
     out = capsys.readouterr().out
-    assert "warning:" in out
-    assert "aide check: OK" in out
+    # The warning this planted, not merely "some warning" — which is also what
+    # makes this the CLI half of `check -h`'s "every human gate still
+    # blocking": `gate_warnings` passing in isolation says nothing about
+    # `run_checks` still calling it.
+    assert "warning: " in out and "Sign off the schema" in out
+    # OK, not FAIL: the run counted warnings and still returned 0.
+    assert "aide check: OK (" in out and "aide check: FAIL" not in out
+
+
+PROGRESS_TICKED = PROGRESS.replace(
+    "- [ ] Rules fire.", "- [x] Rules fire. *(validator, 2026-07-01: eval run)*")
+
+
+def test_amend_and_retract_refuse_all_and_refuse_a_missing_reason(
+        tmp_path: Path, capsys):
+    """Two refusals `aide progress -h` states and nothing else exercised.
+
+    `--all` is offered by `accept` and by no other action: each attestation was
+    made separately, so a correction or a withdrawal that named all of them
+    would be saying nothing about any of them. And both refuse an empty reason
+    — `.strip()`ped, so whitespace is not a stated basis either. Exit 2, the
+    usage code, and `progress.md` untouched on every path.
+    """
+    repo = _repo(tmp_path, progress=PROGRESS_TICKED)
+    before = (repo / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+
+    for action, flag in (("amend", "--evidence"), ("retract", "--reason")):
+        assert aide.main(["--repo", str(repo), "progress", action, "1", "--all",
+                          flag, "why", "--no-commit"]) == 2
+        assert "--all is not offered" in capsys.readouterr().err
+
+        assert aide.main(["--repo", str(repo), "progress", action, "1",
+                          "--criterion", "1", flag, "   ", "--no-commit"]) == 2
+        assert f"{flag} is required" in capsys.readouterr().err
+
+    assert (repo / "docs" / "aide" / "progress.md").read_text(
+        encoding="utf-8") == before
+
+
+def test_retract_routes_its_finding_into_the_inbox(tmp_path: Path, capsys):
+    """A withdrawn attestation is a finding, and the verb routes it itself.
+
+    §1 already says a `❌ Not met` outcome target must be routed to
+    `insights.md`; a retracted acceptance box is the same event one level down.
+    The verb appends the `gap` line rather than asking the caller to remember,
+    because the honest path has to be the cheap one or the quiet path wins.
+    """
+    repo = _repo(tmp_path, progress=PROGRESS_TICKED)
+    assert aide.main(["--repo", str(repo), "progress", "retract", "1",
+                      "--criterion", "1", "--reason", "the host was misread",
+                      "--date", "2026-07-02", "--no-commit"]) == 0
+    assert "captured a gap entry" in capsys.readouterr().out
+
+    inbox = (repo / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert "- [ ] gap — acceptance criterion retracted: the host was misread" in inbox
+    assert "stage 1 criterion 1, 2026-07-02" in inbox
+    # And the box really did open again, so the entry is not describing a
+    # retraction that never happened.
+    progress = (repo / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    assert "- [ ] Rules fire." in progress
 
 
 def test_status_prints_the_four_states_it_promises(tmp_path: Path, capsys):

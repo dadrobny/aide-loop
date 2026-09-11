@@ -130,8 +130,9 @@ Semantics
 
 - A target **never blocks its stage** — the stage closes when its work ships.
   It gates the **Objective coverage rows** instead: an objective linked to a
-  target that is not `✅ Met` cannot roll up to ✅, and `aide check` errors on
-  an objective claimed ✅ over one.
+  target that is not `✅ Met` cannot roll up to ✅. What `aide check` then says
+  about an objective claimed ✅ over one is graded, and `aide check -h` states
+  it: an error over a `❌ Not met` target, a warning over any other non-Met.
 - Marking a target `❌ Not met` is a *finding*, so route it like one: append a
   `- [ ] gap — …` line to `insights.md` in the same edit. The follow-on
   deliverables then enter through the queue, never by retro-editing a closed
