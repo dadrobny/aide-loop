@@ -61,7 +61,7 @@ paths:
        Acceptance box
      - A target **never blocks its stage**
      - its Target cell never empty and its Objective cell naming the `G<n>`
-       objectives it gates
+       objectives it gates — one naming none gates none
      - A table row its reader cannot use is an `aide check` error
      - Marking a target `❌ Not met` is a *finding*, so route it like one:
        append a `- [ ] gap — …` line to `insights.md` in the same edit
@@ -124,7 +124,8 @@ deliverables can guarantee. **A measured outcome the work aims for but cannot
 guarantee by construction (an error-rate target, a benchmark result) must NOT
 be an Acceptance box**: it belongs in the `## Outcome targets` table, one row
 per goal, **its Target cell never empty and its Objective cell naming the
-`G<n>` objectives it gates**. **A target never blocks its stage** — the stage
+`G<n>` objectives it gates — one naming none gates none**. **A target never
+blocks its stage** — the stage
 closes when its work ships, and the target gates the Objective coverage rows
 instead. **Marking a target `❌ Not met` is a *finding*, so route it like one:
 append a `- [ ] gap — …` line to `insights.md` in the same edit.** Write the

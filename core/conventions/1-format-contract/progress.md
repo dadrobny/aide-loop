@@ -23,9 +23,10 @@ Mandatory, in order (consumer in brackets):
 **A table row its reader cannot use is an `aide check` error** in each of the
 four tables the engine reads: the two above, Outcome targets (below) and §1 →
 human gates. Unusable means the wrong number of cells — a `|` inside a cell,
-usually — or a cell that does not hold what this section says it holds. The
-Environment-Gated Capability Verification table is the fifth, and no tool reads
-it.
+usually — a Stage cell that is not an integer, an objective cell not starting
+`G<n>`, a summary or objective `Status` with no icon, or an empty Target cell.
+The Environment-Gated Capability Verification table is the fifth, and no tool
+reads it.
 
 **Item references on a deliverable bullet.** The `*(Item NNN)*` suffix is what
 ties an item to the bullet whose status it moves — `aide progress set NNN` finds
@@ -116,8 +117,8 @@ Acceptance box. Such goals go in the **Outcome targets** table below.
 
 **Outcome targets (optional, additive).** The template's optional
 `## Outcome targets` section, one row per measured goal, its Target cell never
-empty and its Objective cell naming the `G<n>` objectives it gates. Status is
-table-local (like the env-gated verification table's): `❓ Unverified` until
+empty and its Objective cell naming the `G<n>` objectives it gates — one
+naming none gates none. Status is table-local (like the env-gated verification table's): `❓ Unverified` until
 measured, then `✅ Met (date, evidence)` or `❌ Not met (result → follow-up)`.
 Semantics
 *(aide progress, aide check, aide status)*:

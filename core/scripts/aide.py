@@ -655,13 +655,16 @@ class _ProgressTable(NamedTuple):
     reads it, so nothing here can lose a row of it.
     """
     name: str                # how a finding names the table
-    heading: "re.Pattern"    # the section the table sits under
+    heading: "re.Pattern"    # the section the template puts the table under
     width: int               # cells in a data row
     header: str              # the header row's first cell, lower-cased
     #: Why a row of the right width is still unusable, or None.
     cell_problem: Callable[[List[str]], Optional[str]]
     #: What stops being checked while such a row is dropped.
     loses: str
+    #: True for a table whose reader takes rows by shape from anywhere in the
+    #: document rather than from under its heading — see ``_table_rows``.
+    anywhere: bool = False
 
 
 def _summary_row_problem(cells: List[str]) -> Optional[str]:
@@ -680,16 +683,23 @@ def _objective_row_problem(cells: List[str]) -> Optional[str]:
     return None
 
 
+def _target_row_problem(cells: List[str]) -> Optional[str]:
+    """An Objective cell naming no ``G<n>`` is read: such a target gates no
+    objective, which a measured cost or runtime target may mean to (`—`)."""
+    return None if cells[0] else "has an empty Target cell"
+
+
 _STAGE_SUMMARY = _ProgressTable(
     "stage summary", _SUMMARY_HEADING_RE, 4, "stage", _summary_row_problem,
-    "its stage's ✅ is never checked against the deliverables under it")
+    "its stage's ✅ is never checked against the deliverables under it",
+    anywhere=True)
 _OBJECTIVE_COVERAGE = _ProgressTable(
     "objective coverage", _OBJECTIVES_HEADING_RE, 3, "objective",
     _objective_row_problem,
-    "its objective's ✅ is never checked against its Outcome targets")
+    "its objective's ✅ is never checked against its Outcome targets",
+    anywhere=True)
 _OUTCOME_TARGETS = _ProgressTable(
-    "Outcome targets", _TARGETS_HEADING_RE, 5, "target",
-    lambda cells: None if cells[0] else "has an empty Target cell",
+    "Outcome targets", _TARGETS_HEADING_RE, 5, "target", _target_row_problem,
     "no objective is checked against it")
 #: An unrecognised Status is read, and blocks — a typo in the mark must not
 #: open a gate — so width is the only thing that makes a gate row unusable.
@@ -701,59 +711,90 @@ _PROGRESS_TABLES = (_STAGE_SUMMARY, _OBJECTIVE_COVERAGE, _OUTCOME_TARGETS,
                     _HUMAN_GATES)
 
 
+def _reads(table: _ProgressTable, cells: List[str]) -> bool:
+    """Whether *table*'s reader can use a row — the one test every reader of
+    these tables applies, and the one the check reports the failures of."""
+    return len(cells) == table.width and table.cell_problem(cells) is None
+
+
 def _is_separator_row(cells: List[str]) -> bool:
-    """The ``|---|---|`` row. Requires a NON-EMPTY first cell: `set("") <=
-    set("-: ")` is true, so an empty first cell used to read as a separator,
-    and a mis-shaped row like `| | 028 | ⏳ Awaiting | a | pipe |` was skipped
-    without a word."""
-    return bool(cells) and bool(cells[0]) and set(cells[0]) <= set("-: ")
+    """The ``|---|:---:|`` row: every non-empty cell a delimiter, and one at least.
+
+    Every cell, not the first: a gate titled ``-`` is data. And a NON-EMPTY
+    one: `set("") <= set("-: ")` is true, so an empty first cell used to read
+    as a separator, and a mis-shaped row like `| | 028 | ⏳ Awaiting | a | pipe |`
+    was skipped without a word.
+    """
+    return (any(cells)
+            and all(re.fullmatch(r":?-+:?", c) for c in cells if c))
 
 
-def _is_table_furniture(cells: List[str], header: str, next_line: str) -> bool:
+def _is_table_furniture(cells: List[str], header: str) -> bool:
     """True for a table's header or separator row — never for data.
 
-    A header is recognised by its first cell *or* by the separator under it,
-    which is markdown's own definition, so a renamed first column is still
-    furniture rather than a row reported as unreadable.
+    A header is recognised by its first cell alone. Markdown's own rule — the
+    row above the separator — would read the only row of a table written
+    without a header as its header, and drop it unreported: an ``all`` gate
+    raised by hand in a project whose optional section was deleted would
+    then hold nothing.
     """
-    if _is_separator_row(cells):
-        return True
-    if cells and cells[0].lower() == header:
-        return True
-    return (next_line.strip().startswith("|")
-            and _is_separator_row(_split_row(next_line)))
+    return _is_separator_row(cells) or bool(cells) and cells[0].lower() == header
+
+
+def _pipe_blocks(lines: List[str]) -> List[List[int]]:
+    """Indices of each run of consecutive ``|`` lines — each markdown table."""
+    blocks: List[List[int]] = []
+    for i, line in enumerate(lines):
+        if not line.strip().startswith("|"):
+            continue
+        if blocks and blocks[-1][-1] == i - 1:
+            blocks[-1].append(i)
+        else:
+            blocks.append([i])
+    return blocks
 
 
 def _table_rows(lines: List[str], table: _ProgressTable
                 ) -> Iterator[Tuple[int, List[str], Optional[str]]]:
     """``(index, cells, problem)`` for each data row of *table* in *lines*.
 
-    *problem* is None for a row the table's reader can use, and otherwise says
-    why it cannot. Every reader of these tables and the check that reports the
-    rows none of them can use go through here, so "skipped" and "reported" are
-    one decision rather than two that can drift — issue #202 found three
-    behaviours for the one situation, and the rows silently dropped were the
-    ones taking an error with them.
+    *problem* is None for a row the table's reader can use (``_reads``), and
+    otherwise says why it cannot. The rows are those of the section under the
+    table's template heading. An ``anywhere`` table in a document without that
+    heading — a summary under ``## Stages``, say, which its reader still finds
+    by shape — is instead every markdown table the reader takes a row from, so
+    it is checked row by row all the same. (Not always both: with the heading
+    present, a table of the author's own elsewhere that happens to hold one
+    summary-shaped row would have its every other row reported.) "Skipped"
+    and "reported" are thereby one decision rather than two that can drift:
+    issue #202 found three behaviours for the one situation, and the rows
+    silently dropped were the ones taking an error with them.
     """
+    scope: List[int] = []
     in_section = False
     for i, line in enumerate(lines):
         if table.heading.match(line):
             in_section = True
-            continue
-        if not in_section:
-            continue
-        if _ANY_HEADER_RE.match(line):
+        elif in_section and _ANY_HEADER_RE.match(line):
             break  # next section — the table is over
-        if not line.strip().startswith("|"):
+        elif in_section and line.strip().startswith("|"):
+            scope.append(i)
+    if table.anywhere and not in_section:
+        scope = [i for block in _pipe_blocks(lines)
+                 if any(_reads(table, _split_row(lines[j])) for j in block)
+                 for i in block]
+    header = table.header.capitalize()
+    for i in scope:
+        cells = _split_row(lines[i])
+        if _is_table_furniture(cells, table.header):
             continue
-        cells = _split_row(line)
-        next_line = lines[i + 1] if i + 1 < len(lines) else ""
-        if _is_table_furniture(cells, table.header, next_line):
-            continue
-        if len(cells) != table.width:
-            yield i, cells, f"has {len(cells)} cells, not {table.width}"
-        else:
-            yield i, cells, table.cell_problem(cells)
+        problem = (f"has {len(cells)} cells, not {table.width}"
+                   if len(cells) != table.width else table.cell_problem(cells))
+        below = lines[i + 1] if i + 1 < len(lines) else ""
+        if (problem and below.strip().startswith("|")
+                and _is_separator_row(_split_row(below))):
+            problem += f" (a header row's first cell reads '{header}')"
+        yield i, cells, problem
 
 
 def unreadable_row_errors(lines: List[str]) -> List[str]:
@@ -766,15 +807,20 @@ def unreadable_row_errors(lines: List[str]) -> List[str]:
     reading of an unreadable row that cannot pass an over-claim.
     """
     out: List[str] = []
-    for table in _PROGRESS_TABLES:
-        for i, cells, problem in _table_rows(lines, table):
-            if problem is None:
-                continue
-            hint = (" A '|' inside a cell is the usual cause."
-                    if len(cells) != table.width else "")
-            out.append(f"progress.md:{i + 1}: {table.name} row {problem} — it "
-                       f"is not read, so {table.loses}.{hint}")
+    for table, i, cells, problem in _unreadable_rows(lines):
+        hint = (" A '|' inside a cell is the usual cause."
+                if len(cells) != table.width else "")
+        out.append(f"progress.md:{i + 1}: {table.name} row {problem} — it "
+                   f"is not read, so {table.loses}.{hint}")
     return out
+
+
+def _unreadable_rows(lines: List[str]
+                     ) -> List[Tuple[_ProgressTable, int, List[str], str]]:
+    """``(table, index, cells, problem)`` for every row no reader can use."""
+    return [(table, i, cells, problem) for table in _PROGRESS_TABLES
+            for i, cells, problem in _table_rows(lines, table)
+            if problem is not None]
 
 
 def unreadable_gate_rows(lines: List[str]) -> List[Tuple[int, str]]:
@@ -4015,13 +4061,11 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(unattributed_reference_warnings(lines))
     warnings.extend(acceptance_drift_warnings(ddir, lines))
 
-    # Mandatory sections.
-    has_stage_table = any(
-        len(_split_row(l)) == 4 and re.fullmatch(r"\d+", _split_row(l)[0]) for l in lines
-    )
-    has_obj_table = any(
-        len(_split_row(l)) == 3 and re.match(r"G\d+", _split_row(l)[0]) for l in lines
-    )
+    # Mandatory sections. Rows are taken by shape from anywhere in the file,
+    # with the one test `unreadable_row_errors` reports the failures of.
+    table_rows = [_split_row(l) for l in lines if l.strip().startswith("|")]
+    has_stage_table = any(_reads(_STAGE_SUMMARY, c) for c in table_rows)
+    has_obj_table = any(_reads(_OBJECTIVE_COVERAGE, c) for c in table_rows)
     sections = stage_sections(lines)
     if not has_stage_table:
         errors.append("progress.md: missing Stage summary table")
@@ -4032,9 +4076,8 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
 
     # Summary row status vs. section header + rollup consistency.
     summary_status: Dict[str, str] = {}
-    for l in lines:
-        cells = _split_row(l) if l.strip().startswith("|") else []
-        if len(cells) == 4 and re.fullmatch(r"\d+", cells[0]) and _icon_status(cells[3]):
+    for cells in table_rows:
+        if _reads(_STAGE_SUMMARY, cells):
             summary_status[cells[0]] = _icon_status(cells[3])
 
     section_nums = set()
@@ -4065,9 +4108,8 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     # table exists to prevent (issue #14) — the mirror of the deliverable-level
     # error above.
     obj_status: Dict[str, str] = {}
-    for l in lines:
-        cells = _split_row(l) if l.strip().startswith("|") else []
-        if len(cells) == 3 and re.match(r"G\d+", cells[0]) and _icon_status(cells[2]):
+    for cells in table_rows:
+        if _reads(_OBJECTIVE_COVERAGE, cells):
             obj_status[re.match(r"G\d+", cells[0]).group(0)] = _icon_status(cells[2])
     for t in outcome_targets(lines):
         if t.kind is None:
@@ -7756,9 +7798,13 @@ def cmd_status(args: argparse.Namespace) -> int:
             label = {"declined": "❌ declined", "awaiting": "⏳ awaiting a decision"}.get(
                 g.kind, "⚠ unrecognised status")
             print(f"  gate {n}: {g.text} [blocks {reach}] — {label}")
-        for lineno, problem in unreadable_gate_rows(plines):
-            print(f"  gate row progress.md:{lineno}: {problem} — unreadable, "
-                  f"holding every item until it is fixed")
+        # Every table, not only gates: a row no reader can use is missing
+        # from the lines above, and would otherwise be missing from here.
+        for table, i, _, problem in _unreadable_rows(plines):
+            held = (" — holding every item until it is fixed"
+                    if table is _HUMAN_GATES else "")
+            print(f"  unreadable: progress.md:{i + 1}: {table.name} row "
+                  f"{problem}{held}")
         for t in outcome_targets(plines):
             if t.kind == "met":
                 continue
@@ -8178,9 +8224,12 @@ def build_parser() -> argparse.ArgumentParser:
             "objective coverage, Outcome targets or Human gates table that "
             "its reader cannot use \u2014 the wrong cell count (a '|' inside "
             "a cell, usually), a Stage cell that is not an integer, an "
-            "Objective cell not starting G<n>, a Status cell with no icon, an "
-            "empty Target cell \u2014 since the row is dropped from every check "
-            "it would have fed. Warnings, and a warning never moves the exit "
+            "objective coverage row not starting G<n>, an empty Target cell, "
+            "a summary or objective Status cell with no "
+            "icon \u2014 since the row is dropped from every check it would "
+            "have fed. Each table is read under its template heading, or, "
+            "for a summary or objective table without one, wherever its rows "
+            "are found. Warnings, and a warning never moves the exit "
             "code \u2014 only an error does: a stage whose deliverables are "
             "all \u2705 under a summary row that is not, a stage header "
             "disagreeing with its summary row, a summary row with no stage "
@@ -8440,9 +8489,9 @@ def register_git_subcommands(sub) -> None:
             "work has since landed in the base, by the same merge-tree "
             "comparison `gc` uses, and prints the `aide progress set NNN done` "
             "that closes it. Every human gate still blocking, every Outcome "
-            "target not yet \u2705 Met and every retracted acceptance "
-            "criterion is printed too, so none of them lives only in one "
-            "commit's diff."))
+            "target not yet \u2705 Met, every retracted acceptance "
+            "criterion and every progress.md table row no reader can use is "
+            "printed too, so none of them lives only in one commit's diff."))
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
     p_status.add_argument("--base", default=None,
                           help="ref to report ahead/behind against (default: the "
