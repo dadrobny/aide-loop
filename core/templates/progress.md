@@ -11,7 +11,7 @@
   DERIVED from that stage's Deliverables bullets and nothing else (checkbox
   lines are skipped), by one rule `aide progress` applies and `aide check`
   reads. An Objective row then follows the stages that deliver it, subject to
-  the Outcome-targets gate stated below. The derivation itself is stated in
+  the Outcome-targets gate named below. The derivation itself is stated in
   `python .aide/scripts/aide.py progress -h` and nowhere else (conventions.md
   §1 -> progress.md points there too): read it there, and do not restate it
   here. Write the bullets and let the stage follow.
@@ -21,18 +21,21 @@
   back to 📋.
   Stage ✅ means "the planned work shipped", nothing more; a MEASURED goal the
   work cannot guarantee (an error-rate target, a benchmark) belongs in the
-  optional "Outcome targets" table, which gates the Objective rows instead
-  (an objective linked to a target that is not ✅ Met cannot roll up to ✅).
+  optional "Outcome targets" table, which gates the Objective rows instead.
+  How it gates them, and how `aide check` grades an over-claim, are stated in
+  conventions.md §1 -> progress.md: read them there, and do not restate them
+  here.
 
   Optional "Environment-Gated Capability Verification" section: include it
-  ONLY if the project has ANY stage introducing a capability gated behind an
-  optional package or external tool (GPU library, Docker, an optional pip
-  extra, ...). It is deliberately OUTSIDE the stage-summary rollup above — a
-  stage's ✅ still only requires its fallback/skip-clean path to pass; this
-  table is a separate, additive visibility mechanism so a green suite is never
-  mistaken for "the optional dependency was actually exercised." See
-  conventions.md §1 → Environment-gated capabilities; omit this
-  whole section if the project has no such capability.
+  ONLY if the project has ANY stage introducing an environment-gated
+  capability — conventions.md §1 → Environment-gated capabilities defines
+  which capabilities those are, and the definition is not repeated here. The
+  table is
+  deliberately OUTSIDE the stage-summary rollup above — a stage's ✅ still only
+  requires its fallback/skip-clean path to pass; this table is a separate,
+  additive visibility mechanism so a green suite is never mistaken for "the
+  optional dependency was actually exercised." Omit the whole section if the
+  project has no such capability.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
   read then replace. Delete this comment in the generated file.

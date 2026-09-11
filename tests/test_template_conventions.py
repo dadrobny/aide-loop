@@ -1,5 +1,11 @@
 """The templates must obey the template convention they define.
 
+Two properties, both about the leading `<!-- ... -->` header comment: it uses
+the fill-in convention correctly, and it states **shapes and fill-in guidance
+only** — never a rule a `conventions/` section core states, nor mechanism a
+verb's `-h` states. The second half is issue #205's; its banner below carries
+the design.
+
 `CLAUDE.md` and `conventions.md` §1 state it: `{{slot}}` marks a literal value
 to substitute, an _italic line_ marks authoring guidance to read then replace,
 and **guidance must never be written as a slot** — because `aide check` errors
@@ -14,13 +20,24 @@ decays — the same reasoning that put the command-hygiene rules behind a hook.
 """
 from __future__ import annotations
 
+import argparse
+import importlib.util
 import re
+import sys
 from pathlib import Path
+from typing import Dict, List, Set, Tuple
 
 import pytest
 
 _ROOT = Path(__file__).resolve().parents[1]
-_TEMPLATES = sorted((_ROOT / "core" / "templates").glob("*.md"))
+# This module puts the framework root on `sys.path` itself: there is no
+# `conftest.py` in this repository, and adding one would make the dependency on
+# `install` invisible.
+sys.path.insert(0, str(_ROOT))
+import install  # noqa: E402  (path shim above)
+
+_ENGINE_TEMPLATES = sorted((_ROOT / "core" / "templates").glob("*.md"))
+_TEMPLATES = list(_ENGINE_TEMPLATES)
 
 #: The issue template is a template this repo authors under the same convention,
 #: and it sat outside this glob until a slip landed in it. Note the limit: this
@@ -122,3 +139,236 @@ def test_multi_line_guidance_is_covered(tmp_path: Path):
     bad.write_text("_Guidance opens here\nand mentions {{yyyy-mm-dd}} midway\n"
                    "before closing._\n", encoding="utf-8")
     assert [n for n, _ in _guidance_slots(bad)] == [2]
+
+
+# --------------------------------------------------------------------------- #
+# a header states shapes and guidance, and restates no rule (issue #205)
+# --------------------------------------------------------------------------- #
+#: The other half of the template row in `docs/copies-of-engine-text.md`. That
+#: row decides two things about a header comment and this section holds both.
+#:
+#: **Shapes are not a copy.** Since #193 a `conventions/` section *names* the
+#: template rather than drawing it, so for a table header row, a status-icon
+#: legend or a bullet format string the template is the original and the section
+#: is the pointer. A shape is therefore never a finding here — and it never
+#: needs an exemption either, because no shape string in the six headers comes
+#: near ten words: `- <icon> <text>. *(Item NNN)*` is four, the stage summary
+#: row four, `### Item NNN: Short Title` + a description paragraph seven. That
+#: is why there is **no allow-list**: an entry would be dead the day it was
+#: written. If a header ever does need one, it belongs here, one line, with the
+#: reason it is shape rather than rule.
+#:
+#: **Rules and mechanism are.** A rule belongs to the section core that states
+#: it and mechanism to the `-h` block the code renders, and rung 1 of the copies
+#: rule says the header points instead of copying. The rejected alternative is
+#: "copy just the one sentence, it is short", which is how this very row's
+#: header came to ship a two-release-stale rollup.
+#:
+#: The comparison is `install.py --check`'s, reused rather than reinvented: the
+#: ten-word runs of `install._contract_runs` over `install._contract_words`,
+#: after a normalisation that absorbs reflow, emphasis, case and punctuation. A
+#: shared run is a copy. Ten is `install.CONTRACT_ECHO_WORDS` and is imported,
+#: not restated, so both restatement channels stay tuned together — and the
+#: measurement says ten is also right for a header, which is a tenth the size of
+#: the passages that constant was set for. Against this tree before the #205
+#: pass: **66 runs at six words, 30 at eight, 13 at ten**. Six drowns the signal
+#: in ordinary English (`the single source of truth for`, a phrase any document
+#: is entitled to). Eight flags the fill-in convention itself — *authoring
+#: guidance to read then replace with real prose* — which §1 states and a header
+#: is *required* to state, so eight would fail the property it is checking. Ten
+#: left thirteen runs and every one of them was a real copy; all four passages
+#: they fell in now point, and the tree scores zero.
+#:
+#: What ten costs is the short fragment: *ticking the checkbox is the one
+#: in-place edit* is eight words of §1 → `insights.md` and survives. That is the
+#: same known cost rung 3 accepts for an unpinned statement, and it is priced
+#: the same way — a sentence that matters enough to pin is pinned, and the rest
+#: is watched by the threshold.
+
+_AIDE_PATH = _ROOT / "core" / "scripts" / "aide.py"
+_spec = importlib.util.spec_from_file_location("aide_cli_template_guard", _AIDE_PATH)
+aide = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = aide
+_spec.loader.exec_module(aide)  # type: ignore[union-attr]
+
+_HEADER_RE = re.compile(r"\A\s*<!--(.*?)-->", re.S)
+
+
+def _header(path: Path) -> str:
+    """The leading `<!-- … -->` comment of *path*, or `""`.
+
+    Only the leading one: a comment further down is annotation beside the shape
+    it annotates (`vision.md`'s inline MANDATORY markers), and it is the header
+    that carries prose about rules.
+    """
+    match = _HEADER_RE.search(path.read_text(encoding="utf-8-sig"))
+    return match.group(1) if match else ""
+
+
+def _runs(text: str) -> Set[str]:
+    return set(install._contract_runs(install._contract_words(text)))
+
+
+def _sources() -> Dict[str, Set[str]]:
+    """`name -> runs` for everything a header must not restate.
+
+    Two kinds. Every section **core** under `core/conventions/**` — the cut is
+    `install.section_core`, so a section's `Rationale` tail is out: the tail is
+    provenance, and a header echoing it would be a curiosity rather than a rule
+    in two places. And every verb's rendered `-h` **description block**, reached
+    through the `_SubParsersAction` the way `test_aide_help_pins.py` reaches it,
+    so the comparison sees the string a consumer sees.
+
+    Fenced code is dropped from the section side and **not** from the header
+    side. `install.contract_echoes` strips both, and warns that a one-sided
+    strip is what a symmetric comparison cannot survive; the asymmetry here is
+    the row's ruling, not an oversight. A fence in a section is a drawn shape,
+    which the row gives to the template — stripping it is what keeps `insights`'
+    own entry shape from reading as a copy of the section that quotes it. A
+    fence in a *header* would be the header's own prose and must still be
+    compared; no header fences anything today, so the choice is about the next
+    one.
+    """
+    sources: Dict[str, Set[str]] = {}
+    for path in sorted((_ROOT / "core" / "conventions").rglob("*.md")):
+        text = path.read_text(encoding="utf-8-sig")
+        core = install.section_core(text)
+        # A section with no `Rationale` heading is #122's own failure and has
+        # its own guard; comparing the whole file is the honest fallback.
+        body = install._contract_prose(core if core is not None else text)
+        sources[".aide/" + path.relative_to(_ROOT / "core").as_posix()] = _runs(body)
+    for verb, description in _help_descriptions().items():
+        sources[f"aide {verb} -h"] = _runs(description)
+    return sources
+
+
+def _help_descriptions() -> Dict[str, str]:
+    """`verb -> description block`, for every verb that carries one."""
+    parser = aide.build_parser()
+    sub = next(action for action in parser._actions
+               if isinstance(action, argparse._SubParsersAction))
+    return {verb: (choice.description or "").strip()
+            for verb, choice in sub.choices.items()
+            if (choice.description or "").strip()}
+
+
+def _copies(header: str, sources: Dict[str, Set[str]]) -> List[Tuple[str, str]]:
+    """`(source, run)` for every run the header shares with a source.
+
+    The first source carrying a run is the one named, for the reason
+    `install.contract_echoes` gives: the question is "does this already exist
+    upstream", and one name answers it.
+    """
+    found: Dict[str, str] = {}
+    for run in _runs(header):
+        for name, runs in sources.items():
+            if run in runs:
+                found.setdefault(run, name)
+                break
+    return sorted((name, run) for run, name in found.items())
+
+
+def test_there_is_something_to_compare_against():
+    """A guard whose source set silently emptied would pass forever."""
+    sources = _sources()
+    sections = [name for name in sources if name.startswith(".aide/")]
+    helps = [name for name in sources if name.endswith(" -h")]
+    assert len(sections) >= 10, f"only {len(sections)} section cores read: {sections}"
+    assert len(helps) >= 5, f"only {len(helps)} -h description blocks read: {helps}"
+    assert all(sources.values()), (
+        "a source contributed no runs at all: "
+        f"{sorted(name for name, runs in sources.items() if not runs)}")
+
+
+@pytest.mark.parametrize("path", _ENGINE_TEMPLATES, ids=lambda p: p.name)
+def test_no_header_restates_a_rule_or_a_verbs_help(path: Path):
+    header = _header(path)
+    assert header.strip(), f"{path.name}: no leading <!-- … --> header comment"
+    hits = _copies(header, _sources())
+    assert not hits, (
+        f"core/templates/{path.name}: the header comment repeats "
+        f"{len(hits)} ten-word run(s) of engine text —\n"
+        + "\n".join(f"  {source}: “{run}”" for source, run in hits)
+        + "\n\nA header states shapes and fill-in guidance; a rule belongs to "
+          "the section that states it and mechanism to the verb's -h "
+          "(ADAPTER-SPEC.md, 'Copies of engine text', rung 1). Point at the "
+          "source and delete the sentence. If the run really is a shape the "
+          "template owns, say so beside an allow-list entry in this module.")
+
+
+def test_the_guard_catches_a_sentence_planted_from_a_section(tmp_path: Path):
+    """The guard on the guard (conventions.md §6), planted from §1 →
+    `queue-NNN.md` — the sentence `queue.md`'s header actually carried until
+    this pass."""
+    planted = tmp_path / "planted.md"
+    planted.write_text(
+        "<!--\n  AIDE scratch template. Shapes:\n"
+        "    - Each item: \"### Item NNN: Short Title\".\n"
+        "  Item numbers are GLOBALLY SEQUENTIAL across all queues — never restart.\n"
+        "-->\n# {{title}}\n", encoding="utf-8")
+    hits = _copies(_header(planted), _sources())
+    assert hits, "a sentence lifted verbatim from a section core went unreported"
+    assert all(source == ".aide/conventions/1-format-contract/queue-NNN.md"
+               for source, _ in hits), hits
+    assert any("globally sequential across all queues" in run for _, run in hits), hits
+
+
+def test_the_guard_catches_a_sentence_planted_from_a_verbs_help(tmp_path: Path):
+    """The other source, and the one the row calls rung 1's second condition:
+    mechanism the code owns. A whole sentence of `aide progress -h`, planted.
+    """
+    sentence = max(_help_descriptions()["progress"].split("."), key=len)
+    planted = tmp_path / "planted.md"
+    planted.write_text(f"<!--\n  AIDE scratch template.{sentence}.\n-->\n",
+                       encoding="utf-8")
+    hits = _copies(_header(planted), _sources())
+    assert hits, f"a sentence of `aide progress -h` went unreported: {sentence!r}"
+    assert any(source.endswith(" -h") for source, _ in hits), hits
+
+
+#: The sentence `templates/progress.md` shipped until #205 — the drift the whole
+#: row exists for. It restated the stage rollup in two halves, **neither ever
+#: true**: that a ❌ bullet blocks a stage's ✅, and that the rollup then ticks
+#: the stage's Acceptance boxes.
+_THE_205_DRIFT = (
+    "Rollup (aide progress + aide check enforce it): a stage is ✅ iff every\n"
+    "  Deliverables bullet is ✅ -> then its Acceptance boxes are [x] and its\n"
+    "  summary row / header / delivered objectives read ✅. Mixed -> 🚧. None\n"
+    "  started -> 📋.")
+
+
+def test_the_drift_that_opened_205_is_caught_by_its_neighbours_not_by_itself():
+    """**The limit of this guard, stated plainly: it catches copies, not wrong
+    copies.**
+
+    A run comparison finds text two files share. The #205 sentence shared none
+    — that is exactly what was wrong with it. Its rule had moved into
+    `aide progress -h` two releases earlier and the sentence had been left
+    behind, so by the time anyone looked it was no longer a copy of anything.
+    Nothing keyed on similarity can report that; a drifted copy is caught from
+    the other side, by the source's own pins — `HELP_PINS` in
+    `core/scripts/tests/test_aide_help_pins.py` for a verb, a section's
+    `<!-- pins: -->` readers for a section.
+
+    What the guard would have done is still the useful half, and it is asserted
+    here: opened the same file, for the same reason. The header carrying that
+    sentence also restated §1 → `progress.md`'s Outcome-targets gate verbatim,
+    which is a copy and is reported — so a run of this check against the tree
+    of the day names `templates/progress.md`, and whoever reads the header to
+    fix the reported line reads the stale rollup three lines above it.
+    """
+    sources = _sources()
+    assert _copies(_THE_205_DRIFT, sources) == [], (
+        "the drifted sentence now shares a run with a source — if a section or "
+        "an -h block has been reworded back toward it, this test's premise is "
+        "gone and the docstring above is wrong")
+
+    shipped_header = _THE_205_DRIFT + (
+        "\n  Stage ✅ means \"the planned work shipped\", nothing more; a MEASURED"
+        "\n  goal the work cannot guarantee (an error-rate target, a benchmark)"
+        "\n  belongs in the optional \"Outcome targets\" table, which gates the"
+        "\n  Objective rows instead (an objective linked to a target that is not"
+        "\n  ✅ Met cannot roll up to ✅).")
+    hits = _copies(shipped_header, sources)
+    assert any(source == ".aide/conventions/1-format-contract/progress.md"
+               for source, _ in hits), hits

@@ -307,7 +307,13 @@ change, since most copied files are byte-identical no-ops.
 - **Template fill-in conventions**: `{{slot}}` for a literal value to substitute,
   `_italic line_` for authoring guidance to read then replace. `aide check` flags
   any `{{…}}` surviving into a consumer's `docs/aide/**`, which is why guidance
-  must never be written as a slot.
+  must never be written as a slot. A header comment states shapes and that
+  guidance and **nothing else**: since 1.49.5,
+  `test_no_header_restates_a_rule_or_a_verbs_help` in
+  [`tests/test_template_conventions.py`](tests/test_template_conventions.py)
+  fails when one shares a ten-word run with a `conventions/` section core or a
+  verb's `-h`, so a rule stated there belongs in the section and mechanism at
+  `aide <verb> -h` — point, do not copy.
 - **The engine has zero Claude coupling by design.** Nothing under `core/` may
   name Claude, a Claude model, or a `.claude/` primitive. If a change needs that,
   it belongs in the adapter, and probably in
