@@ -15,8 +15,10 @@ identically by every runtime. An adapter re-expresses only the ~18 markdown
 control files (entry-points, roles, orchestrators) plus, optionally, a permission
 policy and a usage probe. Nothing below re-implements engine logic.
 
-A conforming adapter provides all of §1–§4; §5–§7 are optional and only apply to
-runtimes whose feature set supports them.
+A conforming adapter provides all of §1–§4; §5–§8 are optional and only apply to
+runtimes whose feature set supports them. The unnumbered *Copies of engine text*
+section below is not an adapter feature at all: it is the one rule for every copy
+of engine text, of which an adapter's delivered files are one case.
 
 ---
 
@@ -310,15 +312,19 @@ Three properties make a delivery mechanism conformant rather than decorative:
 
 The last two are the ones a commit breaks in silence, since a restatement that
 has drifted still reads as authoritative. **What is contractual is that the two
-copies cannot drift unobserved**; there are two ways to hold that, and an
-adapter may use either per file.
+copies cannot drift unobserved** — the unnumbered *Copies of engine text*
+section below states that rule for every copy of engine text and decides which
+treatment a given copy gets; the two here are how an adapter holds it for a
+delivered file, and it may use either per file.
 
 *Quote it.* A hand-written delivered copy carries `<!-- pins: <section file> …
 -->` blocks quoting the normative statements it delivers, and
 `adapters/claude/tests/test_rule_pins.py` asserts every quoted statement still
 appears in both the delivered copy *and* the section it names, so editing
 either copy alone fails. The known cost is curation: a statement nobody pinned
-drifts freely.
+drifts freely. The blocks sit **in the file** because the channel the file is
+shipped through — the preload — strips comments; that is the copies rule's
+placement criterion, applied to a delivered file's designed reader.
 
 *Generate it.* A delivered copy that is **rendered from the section at install
 time** is not a restatement, so it cannot drift and owes no pin. The Claude
@@ -449,6 +455,153 @@ the `conventions.md` §8 rule being read, the same graceful degradation §5, §6
 
 ---
 
+## Copies of engine text — point, generate, pin, or advise
+
+**Not an adapter feature, and not optional — and unnumbered for that reason.**
+Every numbered section above tells an adapter how to express something. This one
+decides what happens whenever engine text is *copied* — wherever the copy sits,
+in the engine, in an adapter, in this repository's own documents, or in a
+consumer's tree.
+
+§7 above already holds one copy to a property: an adapter's delivered file,
+where **what is contractual is that the two copies cannot drift unobserved**. Every
+other copy got its own answer at the site where somebody noticed it, or none —
+and copies drift exactly where nothing watches them. Two were found wrong within
+two days of each other (issue #205), both shipping to every consumer:
+`templates/progress.md`'s header comment restated the stage rollup in two halves,
+**neither of which was ever true** — that a ❌ bullet blocks a stage's ✅, when an
+excluded bullet has counted toward ✅ since the first commit, and that the rollup
+then ticks that stage's acceptance boxes, which no rollup has ever done. 1.48.1
+is when the *section's* identical restatement was corrected and the rule moved
+into `aide progress -h` (#192); nothing compared the template's copy to either,
+so it shipped on. The second was a workflow skill calling the status legend
+"five-icon" — 🔍 had been the sixth since 1.20.0, forty-eight releases earlier.
+
+### The ladder
+
+Four treatments, in order. Take the first that applies: the earlier rungs cost
+less and have less to go wrong.
+
+**1. Point — the default.** Do not copy. Two conditions license a pointer, and
+both are about the reader already holding the text, or being one step from the
+only authoritative statement of it.
+
+- **The reader already loads the section.** A role whose definition preloads
+  `conventions.md` §6 does not need §6 restated inside it, and a rule the
+  always-loaded channel carries (`conventions.md` §3) is in front of every
+  session and every spawn already. The measurement in §7 above — 164 sub-agent
+  spawns, 5 reads of `conventions.md`, about 3% — is what a pointer is worth to
+  a reader who does *not* have the text. It says nothing against one aimed at a
+  reader who does.
+- **The text is mechanism the code owns.** A rule the CLI applies has exactly one
+  authoritative statement: the help text `argparse` renders. Prose elsewhere
+  describing *what a verb does* is a copy of code, and code moves faster than the
+  prose about it. Point at `aide <verb> -h` and stop.
+
+The rejected alternative is "copy just the one sentence, it is short" — which is
+how a template header came to state a two-release-stale rollup. A sentence is the
+easiest thing to copy and the easiest thing to leave behind.
+
+**2. Generate.** When the copy is a **whole section core** and the channel
+delivers it whole, render it from the section at install time: there is no
+restatement, so nothing can drift and nothing needs pinning. The mechanics, and
+the properties a runtime that generates must make checkable, are in §7 above,
+under *Generate it*. The judgement is about the **section**, not the file — a core several times
+the size of the copy the reader needs is a reason to leave the file hand-written
+and pinned, or to compact the section, never to trim the delivered copy, which
+puts the restatement back.
+
+**3. Quote-pin.** When the copy is a **hand-compressed restatement** — the reader
+needs a third of a section, or a slice assembled out of three — the copy quotes
+the normative statements it delivers, and a test asserts each quotation in *both*
+copies after a normalisation that absorbs reflow, emphasis and case. Both
+directions is the whole point: a copy reworded away from its section fails, and
+so does a section reworded under a copy that still quotes the old wording.
+Curate the quotations — the load-bearing sentences, not every line. A statement
+nobody pinned drifts freely; that is the known and accepted cost of this rung,
+and the reason rungs 1 and 2 come first.
+
+**Where the pins live is decided by the channel the framework ships the copy
+through — its *designed* reader.** Not by every reader it could conceivably have:
+any file can be opened by a person, so a criterion quantified over all readers
+rules out every placement and decides nothing.
+
+- **In the copy**, when the designed reader receives it through a channel that
+  **strips comments** — a spawn preload. There the declaration is free at the
+  point of use, and it sits beside the sentence it binds, which is where an
+  editor needs to see it. A section skill is this case: it is *shipped to be
+  preloaded*, and a person opening the `SKILL.md` in an editor is incidental to
+  the delivery rather than the delivery.
+- **In the test module**, when the designed reader gets the bytes **unstripped**
+  — an instruction-file import the engine does not own, or a template a consumer
+  author opens and copies from. A declaration nobody reads still costs its own
+  size: the always-on floor went *down* at 1.47.0 when a rule's pins block
+  retired, because the block outweighed the rules it quoted.
+  `core/AGENT-CONTEXT.md` is the worked case (issue #194) — its pins are a list
+  in `tests/test_floor_pins.py`, and the failure message names the page rather
+  than the test.
+
+**What the incidental readers do buy is a different decision.** The adapter's
+five hand-written delivered skills sit on the right side of the criterion — their
+designed reader is the preload, so their pins stay in the copy — and that is not
+an argument that the bytes are free everywhere else. Measured on an install of
+1.49.0, HTML comments are 32,141 of the 123,684 bytes of the installed skills,
+rules and `AGENT-CONTEXT.md` — 26% — and 7,522 of `aide-item-specs`'s 17,847.
+That number is not a reason to move pins; it is the case for not shipping the
+declarations at all, which is the next subsection, and which stays recorded
+rather than implemented here.
+
+**4. Advisory.** A **consumer-owned** file — its instruction file, its
+`docs/aide/**` — is not the framework's to guard. The installer may *report* a
+copy it recognises and must never fail over one. The file is the project's;
+rewriting it trades a visible duplicate for a silent one, and seeding contract
+text into it is the same trade with the drift hidden. This is the stance §7 above
+takes on the instruction file, and it generalises to everything a project
+writes.
+
+**A fifth rung, for code.** A prose statement of behaviour the **code** owns,
+which survives rung 1 because it *is* the authoritative statement (a `-h` block)
+or because the reader genuinely needs it in place, is **pinned by a test that
+exercises the code against the prose** — not by a quotation, since there is no
+second prose copy to quote. `aide progress -h`'s rollup sentence is the model
+(`test_progress_help_states_the_rollup_the_code_applies`, issue #192): the test
+transcribes the English as a predicate and compares it to `rollup_status` over
+the whole input space, so the help may be reworded freely and a change to what
+the rollup *does* fails until the sentence moves with it.
+
+### What an install ships
+
+`pins`, `reach` and `triggers` are declarations **for this repository's tests**.
+A consumer's tree is not where they belong: they are bytes a consumer pays for,
+in files a runtime may hand to a reader whole, describing assertions that live in
+a suite the consumer never installed.
+
+The rule is therefore that **a declaration existing for the framework's tests
+should not ship**. It is recorded here and deliberately not yet implemented,
+because one reader stands in the way and is named so that a later pass is
+mechanical: `tests/test_structural_budget.py` reads `reach` **from an install**,
+on purpose — the reach it checks is a fact about the *delivered* tree. Stripping
+at install means that module reads the declaration from source instead, and then
+owes a separate assertion that the installed file is the same file.
+
+`generated-from` is not in that set and differs in kind: it is an instruction to
+the installer, read from **source** at render time, not an assertion about the
+file. Whether the rendered copy keeps the line is a readability call — what §7
+above requires of a generated file is that it *names the section it delivers*, which
+its body does in prose.
+
+### Registering a copy
+
+A copy nobody listed is a copy nobody decided. Every copy of engine text this
+repository makes is one row of
+[`docs/copies-of-engine-text.md`](../docs/copies-of-engine-text.md): what it
+restates, who reads it through which channel, whether it survives an install, its
+guard, and the rung it sits on. Make a copy, add the row, in the same commit —
+that is the last moment at which the ladder above is a question rather than an
+excavation.
+
+---
+
 ## Conformance checklist
 
 - [ ] Seven workflow entry-points, each honouring the `conventions.md` document shapes.
@@ -470,3 +623,9 @@ the `conventions.md` §8 rule being read, the same graceful degradation §5, §6
 - [ ] *(if the runtime can inject context mid-session)* a lazy, non-blocking
       mechanism surfacing a declared sibling repo's instruction file, once, on
       first reach.
+- [ ] *(always)* every copy of engine text the adapter makes decided by
+      *Copies of engine text* — pointed at, generated, quote-pinned with its
+      pins where the channel puts them, left advisory because a project owns
+      the file, or, for prose the code owns, pinned by a test that exercises
+      the code against it — and registered where the runtime's copies are
+      listed.

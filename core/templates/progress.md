@@ -7,13 +7,18 @@
     - One "## Stage N — <title> — <icon>" section per stage, each with:
         Deliverables = FLAT bullets "- <icon> <text>. *(Item NNN)*"  (no nested status bullets)
         Acceptance   = "- [ ]" / "- [x]" checkboxes
-  Rollup (aide progress + aide check enforce it): a stage is ✅ iff every
-  Deliverables bullet is ✅ -> then its Acceptance boxes are [x] and its summary
-  row / header / delivered objectives read ✅. Mixed -> 🚧. None started -> 📋.
-  🔍 = pushed, awaiting a human's merge; it holds a stage at 🚧 and its queue
-  open. ✅ means MERGED and is written by `aide merge`, never claimed ahead of
-  one -- under git.mode = "pr" the item stays 🔍 until the PR lands.
-  Update INCREMENTALLY; never reset a non-planned status back to 📋.
+  Rollup: a stage's icon -- in its section header and in its summary row -- is
+  DERIVED from that stage's Deliverables bullets and nothing else (checkbox
+  lines are skipped), by one rule `aide progress` applies and `aide check`
+  reads. An Objective row then follows the stages that deliver it, subject to
+  the Outcome-targets gate stated below. The derivation itself is stated in
+  `python .aide/scripts/aide.py progress -h` and nowhere else (conventions.md
+  §1 -> progress.md points there too): read it there, and do not restate it
+  here. Write the bullets and let the stage follow.
+  ✅ means MERGED and is written by `aide merge`, never claimed ahead of one
+  -- under git.mode = "pr" an item stays 🔍 (pushed, awaiting a human's merge)
+  until the PR lands. Update INCREMENTALLY; never reset a non-planned status
+  back to 📋.
   Stage ✅ means "the planned work shipped", nothing more; a MEASURED goal the
   work cannot guarantee (an error-rate target, a benchmark) belongs in the
   optional "Outcome targets" table, which gates the Objective rows instead

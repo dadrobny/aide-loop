@@ -132,7 +132,7 @@ aide-loop/
 │   ├── ADAPTER-SPEC.md      the engine↔adapter contract (what any runtime must express)
 │   ├── claude/              LAYER 2 — the reference adapter (agents · skills · commands · rules · hooks · settings.json · usage_probe.py · default-context.json)
 │   └── copilot/ cursor/ gemini/   porting stubs (future work)
-├── docs/                    vision.md · quickstart.md · concepts.md
+├── docs/                    vision.md · quickstart.md · concepts.md · copies-of-engine-text.md
 ├── install.py               the cross-OS installer
 └── README.md · LICENSE
 ```
