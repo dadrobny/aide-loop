@@ -69,12 +69,9 @@ fixture conventions only.
   with no network calls. The `aide-test-hygiene` skill in your context carries
   the specifics; `.aide/conventions/6-test-hygiene.md` is their source, with
   the defect each was earned by.
-- **A test that cannot fail is worse than no test.** Before you assert on
-  anything you derived — a captured stdout, a globbed file list, a parsed
-  field — assert it is non-empty and recognisable *first*. A glob that matched
-  nothing, a capture that came back empty, a slice taken from a failed `find()`:
-  each leaves a value that flows into the assertion and passes while checking
-  nothing at all.
+- **A test that cannot fail is worse than no test.** Before asserting on a
+  captured stdout, a globbed file list or a parsed field, apply the
+  derived-value rule in `aide-test-hygiene`.
 - Match the surrounding test style exactly. No extra imports, no dead code.
 
 ## Out-of-scope insights (compound engineering)

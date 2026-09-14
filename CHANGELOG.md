@@ -121,6 +121,38 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.50.1] — 2026-09-14
+
+### Fixed
+
+- **Agent specs and commands copied engine text with nothing to guard it, and
+  `builder.md` had already drifted (issue #219).** The restatement floor in
+  `adapters/claude/tests/test_rule_pins.py` covered only workflow skills. It
+  fails when a control file with no pins shares twenty or more ten-word runs
+  with the contract. `builder.md` and `spec-reviewer.md` were over that line,
+  and `builder.md` had reworded §5's Decisions-entry sentence ("shipping anyway
+  is a durable, honest note") with no test failing. The floor now covers every
+  agent spec and command too. Each copy was decided by the copies rule:
+  - `builder.md` and `spec-reviewer.md` are quote-pinned, because no section
+    skill preloads §5 into either role. The builder's step 3 again says what
+    §5 says. The spec-reviewer now pins the invariant from §1 →
+    authorised-paths, the batch window from → authorised-paths-proof, and
+    §5's producer duty and its tolerant-reader failure.
+  - `aide-create-vision` pins its one §5 sentence (the sections never filled
+    from assumption), since the session running it has not read §5.
+  - `test-writer.md` points at the derived-value rule in `aide-test-hygiene`,
+    which it already preloads, instead of restating it.
+  - `aide-run-item` drops its gloss of `core/README.md`'s validation/review
+    sentence and sends the spec-author brief to the §5 its role preloads.
+  - `aide-run-roadmap`'s description stops copying `core/README.md`'s
+    orchestrator line.
+
+  The reverse-side check now runs over the hand-written delivered files alone.
+  A small pinned copy is guarded by its pins at any size.
+  ADAPTER-SPEC's *Registering a copy* no longer names this gap. Patch: the
+  agents, commands and skills keep their interface, and none of the new
+  declarations is installed.
+
 ## [1.50.0] — 2026-09-14
 
 ### Added

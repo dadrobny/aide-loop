@@ -45,11 +45,13 @@ here. Source tree, not an install: this is adapter↔engine consistency, and bot
 sides sit in this repo.
 
 **Who may pin.** Every delivered file must (that is the obligation above); any
-other skill may. A **workflow** skill that restates a slice of the contract it
-acts on — `/aide-create-queue` and `/aide-review-insights` each carry the §1
-routing table verbatim, which is the whole point of writing that table once —
-declares the same blocks and is held to them the same way, in both directions.
-It simply owes none, because it delivers no section.
+other skill, agent spec or command may. A **workflow** skill that restates a
+slice of the contract it acts on — `/aide-create-queue` and
+`/aide-review-insights` each carry the §1 routing table verbatim, which is the
+whole point of writing that table once — declares the same blocks and is held
+to them the same way, in both directions; so does an agent spec carrying a
+section its role is not preloaded with (`builder.md`, §5). It simply owes none,
+because it delivers no section.
 
 **What the pin list is not.** It is hand-curated and can go stale — but only
 toward under-checking: a statement nobody pinned is unguarded exactly as it was
@@ -97,6 +99,10 @@ _is_section_skill = STRIPS_BOM.is_section_skill
 
 _RULE_FILES = sorted(_RULES_DIR.glob("*.md"))
 _SKILL_FILES = sorted((_ADAPTER / "skills").glob("*/SKILL.md"))
+#: The other installed markdown control files. Neither delivers a section, so
+#: neither owes a pin; either may declare one, and is then held to it.
+_AGENT_FILES = sorted((_ADAPTER / "agents").glob("*.md"))
+_COMMAND_FILES = sorted((_ADAPTER / "commands").glob("*.md"))
 
 #: The consumer prefix every pinned section path is written with. `.aide/` is
 #: where the engine lands in an install; `core/` is where it lives here.
@@ -134,12 +140,13 @@ _GENERATED = [p for p in _DELIVERING if _is_generated(p)]
 _DELIVERED = [p for p in _DELIVERING if p not in _GENERATED]
 
 #: Every file whose pins are **checked**: the delivered files, plus any other
-#: skill that quotes the contract. A workflow skill owes no pin, but a pin it
-#: does declare binds it exactly as a rule's binds the rule — which is what
-#: makes "one routing table, restated in two skills" a checkable claim rather
-#: than a review note.
-_PINNING = _DELIVERED + [p for p in _SKILL_FILES
-                         if p not in _DELIVERING and _PINS_OPENER.search(_read(p))]
+#: skill, agent spec or command that quotes the contract. None of those owes a
+#: pin, but a pin one does declare binds it exactly as a rule's binds the rule
+#: — which is what makes "one routing table, restated in two skills" a
+#: checkable claim rather than a review note.
+_UNDELIVERING = ([p for p in _SKILL_FILES if p not in _DELIVERING]
+                 + _AGENT_FILES + _COMMAND_FILES)
+_PINNING = _DELIVERED + [p for p in _UNDELIVERING if _PINS_OPENER.search(_read(p))]
 
 
 def _pin_blocks(path: Path) -> list:
@@ -384,43 +391,45 @@ def test_a_markdown_table_row_is_de_piped_but_a_prose_operator_is_not():
 
 
 # --------------------------------------------------------------------------- #
-# a workflow skill that carries no pins restates nothing measurable (issue #205)
+# a control file that carries no pins restates nothing measurable (#205, #219)
 # --------------------------------------------------------------------------- #
 #: The register of a copy is its guard (ADAPTER-SPEC, *Copies of engine text*,
-#: *Registering a copy*). A workflow skill owes no pin — but the licence for
-#: that is that it restates nothing, and "nothing" is measurable: the ten-word
-#: runs it shares with the contract, in **the corpus `install.py --check`
-#: compares a consumer's instruction file against** (`install.contract_echoes`:
-#: `AGENT-CONTEXT.md`, `conventions.md`, every section whole, `core/README.md`),
-#: comments stripped the way the pin check above strips them. Section cores
-#: alone would be narrower than `--check` and would miss the one restatement a
-#: workflow skill has actually shipped before — the `## Hand-off` tail copying
-#: `core/README.md`'s loop sequence (#161). Measured on this tree the two kinds
-#: do not overlap: every file that pins shares at least **53** runs
-#: (`aide-human-gates`) and every workflow skill that does not shares at most
-#: **7** (`aide-create-vision`), so a floor of twenty is a wide gap, not a tuned
-#: one — and the gap is asserted from both sides below, over every pinning file,
-#: so the numbers here are re-measured by the suite rather than quoted. A skill
-#: that crosses the floor has become a copy, and a copy is either pinned or
-#: pointed; without this check the eight sanctioned pointers were a list on a
-#: page, and a ninth unguarded skill was indistinguishable from them.
+#: *Registering a copy*). A workflow skill, an agent spec and a command owe no
+#: pin — but the licence for that is that they restate nothing, and "nothing"
+#: is measurable: the ten-word runs a file shares with the contract, in **the
+#: corpus `install.py --check` compares a consumer's instruction file against**
+#: (`install.contract_echoes`: `AGENT-CONTEXT.md`, `conventions.md`, every
+#: section whole, `core/README.md`), comments stripped the way the pin check
+#: above strips them. Section cores alone would be narrower than `--check` and
+#: would miss the one restatement a workflow skill has actually shipped before
+#: — the `## Hand-off` tail copying `core/README.md`'s loop sequence (#161).
+#: Measured on this tree the two kinds do not overlap: every hand-written
+#: delivered file shares at least **53** runs (`aide-human-gates`) and every
+#: file that pins nothing shares at most **15** (`queue-planner.md`), so a
+#: floor of twenty is a gap, not a tuned value — and the gap is asserted from
+#: both sides below, so the numbers here are re-measured by the suite rather
+#: than quoted. A file that crosses the floor has become a copy, and a copy is
+#: either pinned or pointed.
 #:
-#: Two limits, stated. A skill that declares one pin leaves this floor for the
+#: Until issue #219 the floor iterated skills alone, and two agent specs sat
+#: above it unguarded — `builder.md`, one of its §5 sentences already reworded
+#: away from the section, and `spec-reviewer.md`.
+#:
+#: Two limits, stated. A file that declares one pin leaves this floor for the
 #: pin check, and what it quotes *beyond* its pins is a review question, not a
-#: measured one. And the floor iterates skills: the agent specs and commands
-#: are measured by nothing yet, and three of them cross twenty today — issue
-#: #219 holds that gap.
+#: measured one — which is also why a small pinned copy (`aide-create-vision`
+#: quotes one §5 sentence) is not held above the floor: the floor bounds files
+#: that pin nothing, and a pin is the stronger guard at any size.
 
 WORKFLOW_RESTATEMENT_FLOOR = 20
 
-#: One partition of the workflow skills, derived from `_PINNING` rather than
-#: spelled a second time: a skill that pins is held by its pins, a skill that
-#: does not is held by the floor, and no skill is in neither set.
-_WORKFLOW_PINNING = [p for p in _PINNING if p not in _DELIVERED]
-_WORKFLOW_SKILLS = [p for p in _SKILL_FILES
-                    if p not in _DELIVERING and p not in _WORKFLOW_PINNING]
+#: One partition of the undelivering files, derived from `_PINNING` rather than
+#: spelled a second time: a file that pins is held by its pins, a file that
+#: does not is held by the floor, and no file is in neither set.
+_UNDELIVERING_PINNING = [p for p in _PINNING if p not in _DELIVERED]
+_UNPINNED = [p for p in _UNDELIVERING if p not in _UNDELIVERING_PINNING]
 
-#: Built once: `contract_echoes` walks every contract file, and ten tests read
+#: Built once: `contract_echoes` walks every contract file, and many tests read
 #: the result. Keyed by run, valued by the shipped file that carries it, so a
 #: failure can name the source — a partial second copy of the map
 #: `tests/test_template_conventions.py` builds for the templates, kept here
@@ -436,36 +445,46 @@ def _shared_runs(text: str) -> dict:
             if run in _CONTRACT_RUNS}
 
 
-def test_the_contract_corpus_and_the_skill_partition_are_recognisable():
+def _control_label(path: Path) -> str:
+    """`skills/aide-create-vision`, `agents/builder.md` — the kind is part of
+    the name, since a skill and an agent may one day share one."""
+    if path.name == "SKILL.md":
+        return f"skills/{path.parent.name}"
+    return f"{path.parent.name}/{path.name}"
+
+
+def test_the_contract_corpus_and_the_control_partition_are_recognisable():
     """§6: a derived value is recognisable before anything is asserted about
     it — an empty corpus or an empty partition would pass every case below."""
     assert len(_CONTRACT_RUNS) > 1000, len(_CONTRACT_RUNS)
-    assert len(_WORKFLOW_SKILLS) >= 5, [p.parent.name for p in _WORKFLOW_SKILLS]
-    assert _WORKFLOW_PINNING, "no workflow skill pins — the two-sided gap has one side"
-    assert not set(_WORKFLOW_SKILLS) & set(_WORKFLOW_PINNING)
+    assert _AGENT_FILES and _COMMAND_FILES, "agents/*.md or commands/*.md matched nothing"
+    kinds = {p.parent.name if p.name != "SKILL.md" else "skills" for p in _UNPINNED}
+    assert kinds == {"skills", "agents", "commands"}, kinds
+    assert len(_UNPINNED) >= 15, [_control_label(p) for p in _UNPINNED]
+    assert _UNDELIVERING_PINNING, "no undelivering file pins — the partition has one side"
+    assert not set(_UNPINNED) & set(_UNDELIVERING_PINNING)
 
 
-@pytest.mark.parametrize("path", _WORKFLOW_SKILLS, ids=lambda p: p.parent.name)
-def test_a_workflow_skill_without_pins_restates_nothing_measurable(path: Path):
+@pytest.mark.parametrize("path", _UNPINNED, ids=_control_label)
+def test_a_control_file_without_pins_restates_nothing_measurable(path: Path):
     shared = _shared_runs(_read(path))
     assert len(shared) < WORKFLOW_RESTATEMENT_FLOOR, (
-        f"{path.parent.name}/SKILL.md carries no <!-- pins: --> block but shares "
+        f"{_control_label(path)} carries no <!-- pins: --> block but shares "
         f"{len(shared)} ten-word runs with the contract —\n"
         + "\n".join(f"  {src}: \u201c{run}\u201d" for run, src in sorted(shared.items())[:5])
-        + "\nA workflow skill that restates the contract is a copy: quote-pin the "
-          "statements it delivers (ADAPTER-SPEC, 'Copies of engine text', rung 3) "
+        + "\nA control file that restates the contract is a copy: quote-pin the "
+          "statements it carries (ADAPTER-SPEC, 'Copies of engine text', rung 3) "
           "or point at the source and delete them.")
 
 
-def test_every_pinning_file_sits_above_the_floor():
+def test_every_hand_written_delivered_file_sits_above_the_floor():
     """The gap the floor sits in, asserted from the other side over **every**
-    file that pins — the five hand-written section skills as well as the two
-    workflow skills — so the check separates the two kinds on this tree rather
-    than passing everything, and a section skill compressed to under the floor
-    fails here rather than silently narrowing the gap."""
-    counts = {p.parent.name: len(_shared_runs(_read(p))) for p in _PINNING}
+    hand-written delivered file, so the check separates the two kinds on this
+    tree rather than passing everything, and a section skill compressed to
+    under the floor fails here rather than silently narrowing the gap."""
+    counts = {_label(p): len(_shared_runs(_read(p))) for p in _DELIVERED}
     below = {name: n for name, n in counts.items() if n < WORKFLOW_RESTATEMENT_FLOOR}
-    assert not below, f"a pinning file shares fewer runs than the floor: {below} (all: {counts})"
+    assert not below, f"a delivered file shares fewer runs than the floor: {below} (all: {counts})"
 
 
 def test_a_planted_restatement_crosses_the_floor():

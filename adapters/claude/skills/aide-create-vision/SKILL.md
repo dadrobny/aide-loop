@@ -54,3 +54,11 @@ Requirements:
 
 Save to `docs/aide/vision.md`. Vision changes are framework-level: they land via
 a reviewed PR, never a direct merge.
+
+<!-- pins: .aide/conventions/5-clarify-mode.md
+     *Asking posture*. The session running this skill has not read §5, and which
+     sections may never be assumed is the one decision the posture turns on.
+     - Ask until the mandatory sections are grounded in the human's answers
+     - never fill Guiding principles, Out of scope, or Success criteria from
+       assumption
+-->

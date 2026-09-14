@@ -630,12 +630,13 @@ placement criterion puts there; a generated copy by its `generated-from` line;
 prose the code owns by its entry in the `-h` register (`HELP_PINS`); a
 template by the guard that compares it to the sections. A copy with none of
 these is a pointer or advisory, and a pointer is held too where it can be
-measured: a workflow skill that carries no pins is held by the Claude
-adapter's pins test to restating nothing measurable — a floor on the ten-word
-runs it shares with the contract, in the corpus `--check` uses, asserted from
-both sides so the floor stays in the gap between the two kinds; the constant
-and the measurements live beside the test. That floor iterates skills; an agent
-spec or a command is measured by nothing yet (issue #219). A consumer's own
+measured: a workflow skill, agent spec or command that carries no pins is held
+by the Claude adapter's pins test to restating nothing measurable — a floor on
+the ten-word runs it shares with the contract, in the corpus `--check` uses,
+asserted from both sides so the floor stays in the gap between an unpinned file
+and a hand-written delivered one; the constant and the measurements live beside
+the test. A file under the floor that does copy a sentence is still a copy, and
+takes a pin at any size. A consumer's own
 files are advisory by rung 4. An **explanation** — `README.md`, `docs/`, an
 adapter's README — binds nobody and owes no pin: no role acts on it, so a stale
 copy there misleads a reader without misdirecting a run; it still points rather

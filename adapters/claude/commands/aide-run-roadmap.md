@@ -1,5 +1,5 @@
 ---
-description: Drive the AIDE roadmap across MULTIPLE queues — generate a queue, run it to completion (via /aide-run-queue), then generate the next — until the roadmap is exhausted. Each new queue lands via a human-reviewed PR (the batch checkpoint).
+description: Drive the AIDE roadmap across MULTIPLE queues — author a queue, run it to completion (via /aide-run-queue), author the one after — pausing at every queue PR for a human to review the batch.
 ---
 
 # Run the AIDE roadmap (loop over queues)
