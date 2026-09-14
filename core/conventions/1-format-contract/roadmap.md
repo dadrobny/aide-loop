@@ -10,7 +10,7 @@ Mandatory (consumer in brackets):
 
 1. **Objective → stage coverage table** — one row per vision objective, its
    first cell opening with the `G<n>` code; every G-code in `vision.md` maps
-   to at least one stage. *(aide check, create-progress, queue-planner)*
+   to at least one stage. *(aide check, create-progress)*
 2. **One `## Stage N — Title` section per stage**, numbered from 0, each with
    its Goal, Deliverables, Dependencies and Validation / acceptance blocks.
    The acceptance bullets are the ones `progress.md` mirrors as its boxes; a
