@@ -1212,6 +1212,38 @@ def test_status_still_reports_stacked_work_once_its_queue_landed_and_went(
             in capsys.readouterr().out)
 
 
+def test_status_sees_a_forge_merge_only_once_the_base_is_pulled(
+        tmp_path: Path, capsys):
+    """`status -h` says the landed line reads local bases, not origin/<base>.
+
+    A squash merge on the forge reaches this checkout as `origin/main` after a
+    fetch; local main does not move until it is pulled, and until then the
+    item is not reported — documented, deliberately not changed.
+    """
+    remote = _mkbare(tmp_path / "remote.git")
+    root = _init_repo(tmp_path / "r", mode="local")
+    _run(["git", "remote", "add", "origin", str(remote)], root)
+    _run(["git", "push", "-u", "origin", "main"], root)
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "27",
+                      "in-review"]) == 0
+    # The forge's merge: a squash on a throwaway branch, pushed to origin/main.
+    _run(["git", "switch", "-c", "forge"], root)
+    _run(["git", "merge", "--squash", "aide/027-bounds-rules"], root)
+    _run(["git", "commit", "-m", "squash 027 on the forge"], root)
+    _run(["git", "push", "origin", "forge:main"], root)
+    _run(["git", "switch", "main"], root)
+    _run(["git", "branch", "-D", "forge"], root)
+    _run(["git", "fetch", "origin"], root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
+    assert "is \U0001f50d but its work is now in" not in capsys.readouterr().out
+    _run(["git", "merge", "--ff-only", "origin/main"], root)
+    assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
+    assert ("item 027 is \U0001f50d but its work is now in main"
+            in capsys.readouterr().out)
+
+
 def test_sync_reports_stacked_review_work_landed_in_its_recorded_base(
         tmp_path: Path, capsys):
     root = _init_repo(tmp_path / "r", mode="local")

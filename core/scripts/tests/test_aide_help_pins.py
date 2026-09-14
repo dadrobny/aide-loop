@@ -570,6 +570,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # branch's base (issue #213).
         ("landed in the base that claim recorded (or `--base`)",
          "test_aide_git::test_status_names_stacked_review_work_landed_in_its_recorded_base"),
+        # `_branch_content_landed(repo_root, b, ref)` with `b` the bare base
+        # name — no `_remote_or_local`, so `origin/<base>` is never consulted.
+        ("Those bases are the local branches, never origin/<base>: a merge "
+         "made on the forge is seen once that branch is pulled, not by the "
+         "fetch alone",
+         "test_aide_git::test_status_sees_a_forge_merge_only_once_the_base_is_pulled"),
         # The four loops over `human_gates`, `_unreadable_rows`,
         # `outcome_targets` and `retracted_criteria` in `cmd_status`.
         ("Every human gate still blocking, every Outcome target not yet ✅ "

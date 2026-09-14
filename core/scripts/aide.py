@@ -8531,7 +8531,10 @@ def register_git_subcommands(sub) -> None:
             "work has since landed in the base that claim recorded (or "
             "`--base`), or in main_branch, by the same merge-tree "
             "comparison `gc` uses, and prints the `aide progress set NNN done` "
-            "that closes it. Every human gate still blocking, every Outcome "
+            "that closes it. Those bases are the local branches, never "
+            "origin/<base>: a merge made on the forge is seen once that branch "
+            "is pulled, not by the fetch alone. Every human gate still "
+            "blocking, every Outcome "
             "target not yet \u2705 Met, every retracted acceptance "
             "criterion and every progress.md table row no reader can use is "
             "printed too, so none of them lives only in one commit's diff."))

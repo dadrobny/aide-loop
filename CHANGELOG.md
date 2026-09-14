@@ -142,7 +142,11 @@ instead — that is the bump policy above, and it is enforced by
   again. `status -h`
   says so, pinned in `test_aide_help_pins.py` to a new guard that runs from
   main, where the current branch's base cannot stand in for the claim's;
-  `--base`'s option help now covers the landed line too. `sync` takes no
+  `--base`'s option help now covers the landed line too. `status -h` also
+  states a limit the check always had and keeps: bases are the local
+  branches, never `origin/<base>`, so a merge made on the forge is seen once
+  that branch is pulled, not by the fetch alone — pinned to a test that pushes
+  the merge to a bare origin and pulls it. `sync` takes no
   `--base`, so it uses each claim's record. No interface change.
 
 ## [1.49.6] — 2026-09-14
