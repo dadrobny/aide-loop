@@ -67,12 +67,11 @@ in [`adapters/ADAPTER-SPEC.md`](adapters/ADAPTER-SPEC.md), its unnumbered
 *Copies of engine text* section** (issue #205). Point, generate, quote-pin, or
 leave advisory; and for a pinned copy, whether the pins live in the copy or in
 the test module, decided by whether the copy's bytes reach a reader unstripped. Do not re-argue it here or at the site of a new copy:
-read it, then give the copy its guard in the same commit — a copy is
-registered by the guard that holds it: its `pins` block, its `generated-from`
-line, its entry in `FLOOR_PINS` or `HELP_PINS`, or, for a template, the guard in
-`tests/test_template_conventions.py`. A copy with none is a pointer or advisory,
-and that is checked too: a workflow skill without pins must share fewer than
-twenty ten-word runs with the section cores (`test_rule_pins.py`). The rest of this section
+read it, then give the copy the guard its rung names, in the same commit — a
+copy is registered by its guard, and the rule names which test holds each. The
+one guard on a *pointer* is the restatement floor at the end of
+[`adapters/claude/tests/test_rule_pins.py`](adapters/claude/tests/test_rule_pins.py),
+which fails when a workflow skill without pins starts quoting the contract. The rest of this section
 is what an agent editing *this* repo needs on top of that rule — which file is
 which, and which test fails when.
 
@@ -196,8 +195,10 @@ The engine's own always-on page is a restatement too, and is pinned the same
 way from the other side of the boundary:
 [`tests/test_floor_pins.py`](tests/test_floor_pins.py) holds sentences of
 `core/AGENT-CONTEXT.md` to the **core** of the section their heading names
-(issue #194) — so far the read-cold block alone; the page's other eight headings
-are unpinned until someone reconciles their wording and adds an entry. Its pins
+(issue #194) — seven of its nine headings since 1.49.2; the other two are
+pointers carrying one sentence of the page's own, with no second copy to hold
+them to, and pinning them would mean adding engine sentences to a page every
+spawn pays for. Its pins
 live in that module's `FLOOR_PINS`, **not** in a comment on the page: an
 instruction-file import is the unstripped side of the copies rule's placement
 criterion — the page's designed reader gets the bytes whole — and the page is

@@ -389,69 +389,94 @@ def test_a_markdown_table_row_is_de_piped_but_a_prose_operator_is_not():
 #: The register of a copy is its guard (ADAPTER-SPEC, *Copies of engine text*,
 #: *Registering a copy*). A workflow skill owes no pin — but the licence for
 #: that is that it restates nothing, and "nothing" is measurable: the ten-word
-#: runs it shares with the section cores, comments stripped and fenced commands
-#: dropped, the comparison `install.py --check` runs over a consumer's
-#: instruction file. Measured on this tree the two kinds do not overlap —
-#: every skill that pins shares at least **53** runs (`aide-human-gates`), and
-#: every workflow skill that does not shares at most **6** (`aide-create-vision`)
-#: — so a floor of twenty is a wide gap, not a tuned one. A skill that crosses
-#: it has become a copy, and a copy is either pinned or pointed; without this
-#: check the eight sanctioned pointers were a list on a page, and a ninth
-#: unguarded skill was indistinguishable from them.
+#: runs it shares with the contract, in **the corpus `install.py --check`
+#: compares a consumer's instruction file against** (`install.contract_echoes`:
+#: `AGENT-CONTEXT.md`, `conventions.md`, every section whole, `core/README.md`),
+#: comments stripped the way the pin check above strips them. Section cores
+#: alone would be narrower than `--check` and would miss the one restatement a
+#: workflow skill has actually shipped before — the `## Hand-off` tail copying
+#: `core/README.md`'s loop sequence (#161). Measured on this tree the two kinds
+#: do not overlap: every file that pins shares at least **53** runs
+#: (`aide-human-gates`) and every workflow skill that does not shares at most
+#: **7** (`aide-create-vision`), so a floor of twenty is a wide gap, not a tuned
+#: one — and the gap is asserted from both sides below, over every pinning file,
+#: so the numbers here are re-measured by the suite rather than quoted. A skill
+#: that crosses the floor has become a copy, and a copy is either pinned or
+#: pointed; without this check the eight sanctioned pointers were a list on a
+#: page, and a ninth unguarded skill was indistinguishable from them.
+#:
+#: Two limits, stated. A skill that declares one pin leaves this floor for the
+#: pin check, and what it quotes *beyond* its pins is a review question, not a
+#: measured one. And the floor iterates skills: the agent specs and commands
+#: are measured by nothing yet, and three of them cross twenty today — issue
+#: #219 holds that gap.
 
 WORKFLOW_RESTATEMENT_FLOOR = 20
 
+#: One partition of the workflow skills, derived from `_PINNING` rather than
+#: spelled a second time: a skill that pins is held by its pins, a skill that
+#: does not is held by the floor, and no skill is in neither set.
+_WORKFLOW_PINNING = [p for p in _PINNING if p not in _DELIVERED]
 _WORKFLOW_SKILLS = [p for p in _SKILL_FILES
-                    if p not in _DELIVERING and not _PINS_OPENER.search(_read(p))]
+                    if p not in _DELIVERING and p not in _WORKFLOW_PINNING]
+
+#: Built once: `contract_echoes` walks every contract file, and ten tests read
+#: the result. Keyed by run, valued by the shipped file that carries it, so a
+#: failure can name the source — a partial second copy of the map
+#: `tests/test_template_conventions.py` builds for the templates, kept here
+#: because the two modules must not import each other.
+_CONTRACT_RUNS: dict = install.contract_echoes(_CORE)[0]
 
 
-def _section_core_runs() -> set:
-    """Every ten-word run of every section core under `core/conventions/`."""
-    runs: set = set()
-    for path in sorted((_CORE / "conventions").rglob("*.md")):
-        text = path.read_text(encoding="utf-8-sig")
-        core = install.section_core(text)
-        prose = install._contract_prose(core if core is not None else text)
-        runs.update(install._contract_runs(install._contract_words(prose)))
-    return runs
+def _shared_runs(text: str) -> dict:
+    """`run -> shipped contract file` for every ten-word run *text* shares."""
+    prose = install._contract_prose(_COMMENT.sub(" ", text))
+    return {run: _CONTRACT_RUNS[run]
+            for run in set(install._contract_runs(install._contract_words(prose)))
+            if run in _CONTRACT_RUNS}
 
 
-def _shared_runs(text: str, core_runs: set) -> set:
-    from _delivered import strip_comments
-    prose = install._contract_prose(strip_comments(text))
-    return set(install._contract_runs(install._contract_words(prose))) & core_runs
-
-
-def test_there_are_workflow_skills_without_pins():
+def test_the_contract_corpus_and_the_skill_partition_are_recognisable():
+    """§6: a derived value is recognisable before anything is asserted about
+    it — an empty corpus or an empty partition would pass every case below."""
+    assert len(_CONTRACT_RUNS) > 1000, len(_CONTRACT_RUNS)
     assert len(_WORKFLOW_SKILLS) >= 5, [p.parent.name for p in _WORKFLOW_SKILLS]
+    assert _WORKFLOW_PINNING, "no workflow skill pins — the two-sided gap has one side"
+    assert not set(_WORKFLOW_SKILLS) & set(_WORKFLOW_PINNING)
 
 
 @pytest.mark.parametrize("path", _WORKFLOW_SKILLS, ids=lambda p: p.parent.name)
 def test_a_workflow_skill_without_pins_restates_nothing_measurable(path: Path):
-    shared = _shared_runs(_read(path), _section_core_runs())
+    shared = _shared_runs(_read(path))
     assert len(shared) < WORKFLOW_RESTATEMENT_FLOOR, (
         f"{path.parent.name}/SKILL.md carries no <!-- pins: --> block but shares "
-        f"{len(shared)} ten-word runs with the section cores, e.g. "
-        f"\u201c{sorted(shared)[0]}\u201d. A workflow skill that restates the contract "
-        "is a copy: quote-pin the statements it delivers (ADAPTER-SPEC, 'Copies "
-        "of engine text', rung 3) or point at the section and delete them.")
+        f"{len(shared)} ten-word runs with the contract —\n"
+        + "\n".join(f"  {src}: \u201c{run}\u201d" for run, src in sorted(shared.items())[:5])
+        + "\nA workflow skill that restates the contract is a copy: quote-pin the "
+          "statements it delivers (ADAPTER-SPEC, 'Copies of engine text', rung 3) "
+          "or point at the source and delete them.")
 
 
-def test_the_pinning_skills_would_fail_that_floor():
-    """The gap the floor sits in, asserted from the other side: every skill that
-    does pin shares more than the floor, so the check separates the two kinds
-    on this tree rather than passing everything."""
-    core_runs = _section_core_runs()
-    pinning = [p for p in _SKILL_FILES if p not in _DELIVERING and _PINS_OPENER.search(_read(p))]
-    assert pinning, "no workflow skill pins — the premise of the floor is gone"
-    below = {p.parent.name: len(_shared_runs(_read(p), core_runs))
-             for p in pinning if len(_shared_runs(_read(p), core_runs)) < WORKFLOW_RESTATEMENT_FLOOR}
-    assert not below, f"a pinning skill shares fewer runs than the floor: {below}"
+def test_every_pinning_file_sits_above_the_floor():
+    """The gap the floor sits in, asserted from the other side over **every**
+    file that pins — the five hand-written section skills as well as the two
+    workflow skills — so the check separates the two kinds on this tree rather
+    than passing everything, and a section skill compressed to under the floor
+    fails here rather than silently narrowing the gap."""
+    counts = {p.parent.name: len(_shared_runs(_read(p))) for p in _PINNING}
+    below = {name: n for name, n in counts.items() if n < WORKFLOW_RESTATEMENT_FLOOR}
+    assert not below, f"a pinning file shares fewer runs than the floor: {below} (all: {counts})"
 
 
-def test_a_planted_restatement_crosses_the_floor(tmp_path: Path):
-    """The guard on the guard: a skill that pastes one section core in would be
-    reported."""
-    section = (_CORE / "conventions" / "1-format-contract" / "human-gates.md").read_text(encoding="utf-8-sig")
-    planted = "---\nname: planted\n---\n" + (install.section_core(section) or section)
-    assert len(_shared_runs(planted, _section_core_runs())) >= WORKFLOW_RESTATEMENT_FLOOR
+def test_a_planted_restatement_crosses_the_floor():
+    """The guard on the guard: a skill that pastes one section core in is
+    reported, and the report names the section."""
+    section = _read(_section_path(".aide/conventions/1-format-contract/human-gates.md"))
+    core = install.section_core(section)
+    assert core is not None, "human-gates.md has no Rationale heading — pick another section"
+    shared = _shared_runs("---\nname: planted\n---\n" + core)
+    assert len(shared) >= WORKFLOW_RESTATEMENT_FLOOR, len(shared)
+    # The floor names the *first* contract file carrying a run, and the
+    # always-on page quotes human-gate sentences too — so the section is among
+    # the named sources, not necessarily the only one.
+    assert ".aide/conventions/1-format-contract/human-gates.md" in set(shared.values()), set(shared.values())

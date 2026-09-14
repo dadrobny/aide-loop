@@ -629,18 +629,20 @@ block in the copy, or the entry in the test module (`FLOOR_PINS`) that the
 placement criterion puts there; a generated copy by its `generated-from` line;
 prose the code owns by its entry in the `-h` register (`HELP_PINS`); a
 template by the guard that compares it to the sections. A copy with none of
-these is a pointer or advisory, and each of those is held too: a workflow
-skill that carries no pins is held by `adapters/claude/tests/test_rule_pins.py`
-to restating nothing measurable — fewer than twenty ten-word runs shared with
-the section cores, where the smallest pinned copy shares fifty-three — and a
-consumer's own files are advisory by rung 4. So a copy that is neither guarded
-nor measurably empty is the thing to notice, and the suite notices it. Make a
-copy, give it its guard, in the same commit: that is
-the last moment at which the ladder above is a question rather than an
-excavation. (While #205 was that excavation, an inventory page listed every
-copy with its rung and whether the row was in force; the rows are all in force
-or their own issues, and a page that says which work is done is what this
-repository keeps on its tracker, so the page is gone.)
+these is a pointer or advisory, and a pointer is held too where it can be
+measured: a workflow skill that carries no pins is held by the Claude
+adapter's pins test to restating nothing measurable — a floor on the ten-word
+runs it shares with the contract, in the corpus `--check` uses, asserted from
+both sides so the floor stays in the gap between the two kinds; the constant
+and the measurements live beside the test. That floor iterates skills; an agent
+spec or a command is measured by nothing yet (issue #219). A consumer's own
+files are advisory by rung 4. An **explanation** — `README.md`, `docs/`, an
+adapter's README — binds nobody and owes no pin: no role acts on it, so a stale
+copy there misleads a reader without misdirecting a run; it still points rather
+than glosses, since three of them once glossed §3 without its carve-outs, and
+`--check` still compares `core/README.md` because the ownership rules live
+there. Make a copy, give it its guard, in the same commit: that is the last
+moment at which the ladder above is a question rather than an excavation.
 
 ---
 
