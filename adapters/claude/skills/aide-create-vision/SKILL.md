@@ -36,14 +36,10 @@ into the roadmap and every queue derived from it.
 ### Creating the vision
 
 Write `docs/aide/vision.md` from the template **`.aide/templates/vision.md`** —
-it defines the required structure. The mandatory core sections (do not drop):
-
-- **Guiding principles** — the validator checks every implementation against
-  these.
-- **Goals & objectives** — numbered G-codes; the roadmap and progress tracker
-  trace to them.
-- **Out of scope** — the validator flags work that contradicts this.
-- **Success criteria** — observable statements the roadmap must deliver.
+it defines the required structure. The four sections it marks `MANDATORY` —
+Guiding principles, Goals & objectives, Out of scope, Success criteria — are
+never dropped; what each one is read for is `.aide/conventions.md`
+§1 → vision.md.
 
 Requirements:
 

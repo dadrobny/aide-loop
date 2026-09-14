@@ -121,6 +121,30 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.50.0] — 2026-09-14
+
+### Added
+
+- **`§1 → vision.md` and `§1 → roadmap.md`: the two root-document rules that
+  had no section now have one (issue #217).** Two rules lived only in a
+  template header and a workflow skill. One was that a started roadmap stage
+  is not re-edited, and a criterion nothing has been claimed against changes
+  only via `aide progress reword`. The other was that a vision's Guiding
+  principles, Out of scope and Success criteria are mandatory because the
+  validator and the roadmap read them. The copies rule has a header point at
+  the section that states a rule, and these two had nowhere to point, so they
+  bound only a reader of that one runtime's skill and nothing pinned them.
+  Each is now a
+  `1-format-contract/` file in the core-then-`Rationale` shape, listed in the
+  §1 index. The section also settles a case the old wording left open: a stage
+  is *started* at any icon but 📋 Planned, ⏸️ and ❌ included.
+  `templates/roadmap.md`, `templates/vision.md`, `aide-create-roadmap` and
+  `aide-create-vision` now point at the sections instead of stating the rules,
+  and `tests/test_template_conventions.py` keeps the templates from restating
+  them. No section skill delivers either file: no agent role writes a root
+  document, and both entry points are interactive. The behaviour is unchanged.
+  The bump is minor because the contract gains two sections.
+
 ## [1.49.8] — 2026-09-14
 
 ### Fixed
