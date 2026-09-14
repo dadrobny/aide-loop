@@ -7,11 +7,8 @@
     - One "## Stage N" section per stage with Goal / Deliverables / Dependencies /
       Validation-acceptance                -> the queues are cut from these sections, and
                                               progress.md is generated from them
-  Once the loop starts, only planned stages are re-edited; a criterion of a
-  started stage that nothing has yet been claimed against changes only via
-  `python .aide/scripts/aide.py progress reword`, which writes progress.md
-  and mirrors the change here when this stage has a Validation / acceptance
-  block to mirror into. Concise and specific.
+  Which stages may still be edited once the loop starts is
+  `.aide/conventions.md` §1 → roadmap.md. Concise and specific.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
   read then replace. Delete this comment in the generated file.

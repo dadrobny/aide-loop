@@ -48,6 +48,8 @@ reader. A pointer of the form `§1 → insights.md` resolves to
 
 | `§1 → …` | File | What it fixes |
 |---|---|---|
+| `vision.md` | [`vision.md`](1-format-contract/vision.md) | The root document's four mandatory sections, and what each is read for |
+| `roadmap.md` | [`roadmap.md`](1-format-contract/roadmap.md) | The staged plan: its mandatory shape, and why a started stage is not re-edited |
 | Status icons | [`status-icons.md`](1-format-contract/status-icons.md) | The only six icons, their ranks, and the three structural positions they are read at |
 | `progress.md` | [`progress.md`](1-format-contract/progress.md) | The single source of truth for status — objectives, stages, deliverable bullets, outcome targets |
 | `queue-NNN.md` | [`queue-NNN.md`](1-format-contract/queue-NNN.md) | A batch of one-line items, and how a superseded queue is tidied |
