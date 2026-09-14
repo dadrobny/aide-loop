@@ -121,6 +121,71 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.49.6] — 2026-09-14
+
+Issue #205's two open decisions, taken and implemented. **Quote-pin the
+template headers?** Declined: after 1.49.5 nothing over the threshold was left
+to pin, the one sentence the case rested on is already held to its section by
+`FLOOR_PINS` and three skills, and a consumer's `insights.md` is created from
+the template and never touched by `--update` — a quotation frozen there can
+only drift, while a pointer stays true because the section it names is what
+`--update` refreshes. **Sweep the template bodies?** Taken, with the italic
+guidance in scope: that is where all 36 of the bodies' shared runs sat, and
+"read then replace" is not what happens to it — both local consumers keep
+`progress.md`'s guidance paragraphs verbatim, one reworded.
+
+### Changed
+
+- **Eight template body passages point where they copied.** `item.md`
+  restated §1 → items' measured-equality rule for an AC, its
+  *(closes Stage N criterion M)* rule, its engine-marker re-check form, §1 →
+  Authorised paths' definition of *Asserts against* and §1 →
+  Environment-gated capabilities' definition of a gated capability;
+  `progress.md` restated §1 → Human gates across five paragraphs and the
+  Outcome-targets gate that 1.49.5 had just taken out of its header — sixty
+  lines lower, in the italic paragraph above the table; `roadmap.md` restated
+  the outcome-target definition. Each keeps the shape and the vocabulary of a
+  cell (`⏳ Awaiting`, `stage N`, the annotation string) and names the
+  section for the rule. Every one sat in `_italic_` guidance, which is why
+  the guidance is in scope.
+- **The six header comments say what the artifact is and how to interact
+  with it, and nothing stated elsewhere.** What each keeps: the step, who
+  reads it, the shapes the parsers require, the fill-in convention, and a
+  pointer to the section and `-h` block that hold the rules. What went: the
+  insights header's restatement of the capture rules the always-on floor
+  already delivers to every role (the file it ships in is created once per
+  consumer and never updated, so it is the header that can least afford a
+  rule); `progress.md`'s ✅-means-merged, never-reset and stage-✅ paragraphs
+  (§1 → Status icons and → `progress.md`); `queue.md`'s scope and cap
+  sentence and its definition of the live queue (§1 → `queue-NNN.md`);
+  `item.md`'s note about a `Testing Prerequisites` block enabled via
+  `aide.toml`, which no engine feature backs. `vision.md` is unchanged.
+  10,534 → **6,942 B** across the six. Two rules a header carried that no
+  section states — a started roadmap stage is not re-edited except through
+  `progress reword`, and the mandatory vision sections the validator checks
+  against — stay, since a pointer needs a target; they are a note for a
+  later pass, not a copy.
+- **`aide-create-roadmap` names the `reword` exception.** Its
+  updating-a-roadmap step said a started stage's acceptance criteria are
+  immutable, full stop, while the engine has accepted `progress reword` over
+  an unclaimed criterion since 1.35.0 and the roadmap header now points at
+  it; an agent reading the skill would have refused the supported command.
+  Found by the review of this pass.
+
+### Added
+
+- **The body guard**, `test_no_body_restates_a_rule_or_a_verbs_help` in
+  `tests/test_template_conventions.py` (repo-test-only): the 1.49.5
+  comparison over everything below the header comment, italic guidance and
+  fences included on the template side, section cores and `-h` blocks on the
+  other. A planted copy inside italic guidance proves the scope. Before this
+  pass the bodies scored 36 shared ten-word runs (`item` 23, `progress` 8,
+  `roadmap` 5) and 59 at eight; after, zero and six, the six being example
+  strings (`**Downstream:** item 099`, a quoted `Blocks:` reach) under the
+  same threshold that prices every unpinned fragment. The headers keep zero
+  at ten and, at eight, only the fill-in convention `vision.md` is required
+  to state.
+
 ## [1.49.5] — 2026-09-11
 
 Issue #205's last inventory row — the six template header comments. The row
