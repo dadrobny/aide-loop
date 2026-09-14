@@ -71,7 +71,8 @@ read it, then give the copy the guard its rung names, in the same commit — a
 copy is registered by its guard, and the rule names which test holds each. The
 one guard on a *pointer* is the restatement floor at the end of
 [`adapters/claude/tests/test_rule_pins.py`](adapters/claude/tests/test_rule_pins.py),
-which fails when a workflow skill without pins starts quoting the contract. The rest of this section
+which fails when a workflow skill, agent spec or command without pins starts
+quoting the contract. The rest of this section
 is what an agent editing *this* repo needs on top of that rule — which file is
 which, and which test fails when.
 

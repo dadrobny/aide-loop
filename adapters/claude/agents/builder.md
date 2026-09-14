@@ -62,16 +62,17 @@ project-agnostic; never assume a specific path or package name.
    arbitrate — the tests are your oracle and the criteria are what they were
    derived from — so implementing either reading ships one side of a defect.
    Stop before writing the code, and return the contradiction as its own
-   outcome (step 7), naming the criterion, the test, and exactly what the two
-   disagree about. The spec is corrected first, the tests are then re-derived
-   from the corrected criteria, and you are re-dispatched.
+   outcome (step 7), naming the criterion, the test, and what the two disagree
+   about. The spec is corrected first; the tests are then re-derived from the
+   corrected criteria, and you are re-dispatched.
 
    **A Decisions entry is not this hand-back.** Recording "these two assertions
-   are unsatisfiable under any implementation" and implementing anyway leaves a
-   true note that nothing downstream reads as a signal: the validator checks
-   that the tests pass and that the item stayed in scope, and both are true of
-   a defective criterion faithfully implemented. Record the decision once a
-   role with standing has made it — not instead of handing back.
+   are unsatisfiable under any implementation" and shipping anyway is a
+   durable, honest note — and nothing downstream reads it as a signal. The
+   validator checks that the tests pass and that the item stayed in scope, and
+   both are true of a defective criterion faithfully implemented. Record the
+   decision once a role with standing has made it — not instead of handing
+   back.
 4. **Record decisions** back into the item spec's "Decisions & Trade-offs"
    section. Edit only that section — do **not** add any status field to the item
    header; implementation status lives solely in `progress.md`.
@@ -121,3 +122,17 @@ shape:
 The feedback loop triages the inbox at the queue boundary. Capturing is cheap
 and always in scope; acting out of scope is forbidden. This append is the one
 write allowed outside your edit scope.
+
+<!-- pins: .aide/conventions/5-clarify-mode.md
+     Step 3's contradiction hand-back. No section skill preloads §5 into this
+     role, so the copy stays and is held to the section by quotation.
+     - naming the criterion, the test, and what the two disagree about
+     - The spec is corrected first; the tests are then re-derived from the
+       corrected criteria
+     - A Decisions entry is not this hand-back
+     - Recording "these two assertions are unsatisfiable under any
+       implementation" and shipping anyway is a durable, honest note — and
+       nothing downstream reads it as a signal
+     - The validator checks that the tests pass and that the item stayed in
+       scope, and both are true of a defective criterion faithfully implemented
+-->

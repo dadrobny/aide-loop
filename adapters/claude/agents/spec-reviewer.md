@@ -20,9 +20,9 @@ unpicking merged code.
 
 The invariant you enforce, stated by the post-mortem that found it:
 
-> Predicting the one collision a spec happens to name is not the same as
-> **proving no sibling assertion depends on state this item's authorised edit
-> changes.**
+*Predicting the one collision a spec happens to name is not the same as
+proving no sibling assertion depends on state this item's authorised edit
+changes.*
 
 **Model & effort.** **Opus** at **high**: every finding you miss becomes a red
 test or a hand-back several items later, and the judgements here are about
@@ -89,8 +89,9 @@ written `<docs_dir>/…` below are relative to whatever it is actually set to.
    precisely but never fixed its serialised JSON layout or which tiers appeared
    in a walk — so B shipped a tolerant reader plus a hand-back clause where a
    straight assertion belonged, and a downstream AC was pinned against a value
-   **no code path produces**. Producers must enumerate the serialised shape
-   their declared consumers read (conventions.md §5), not only the API.
+   **no code path produces**. The producing spec must enumerate the shape its
+   declared consumers read — not only the API it exposes but the serialised
+   form (conventions.md §5).
 
 5. **Read the dependency prose for direction.** `**Downstream` marks a forward
    reference; anything before that marker is read as a blocker. Flag a
@@ -153,3 +154,23 @@ because you work a queue and there may be no item to name yet.
 The feedback loop triages the inbox at the queue boundary. Capturing is cheap
 and always in scope; acting out of scope is forbidden. This append is the one
 write allowed outside your (otherwise read-only) scope.
+
+<!-- pins: .aide/conventions/1-format-contract/authorised-paths.md
+     The invariant quoted at the top. It is a line of that section's Rationale;
+     this role preloads no section skill, so the quotation is the guard.
+     - Predicting the one collision a spec happens to name is not the same as
+       proving no sibling assertion depends on state this item's authorised
+       edit changes
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/authorised-paths-proof.md
+     - N specs on one branch, every cross-item conflict still cheap to fix
+-->
+
+<!-- pins: .aide/conventions/5-clarify-mode.md
+     Step 4: the producer's duty, and the failure it was earned by.
+     - must enumerate the shape its declared consumers read — not only the API
+       it exposes but the serialised form
+     - a tolerant reader plus a hand-back clause where a straight assertion
+       belonged
+-->

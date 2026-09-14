@@ -39,8 +39,7 @@ item — never reuse across items. Pass only the **minimum** between agents: the
 item number, the branch name, and (from spec-author) the list of AC.
 
 **Validation and review are two different reads of one diff** (`.aide/conventions.md`
-§9). Validation is spec-relative and gates the merge; review is adversarial and
-produces findings. A green validator is not a review. Read `loop.review` from
+§9), so neither stands in for the other. Read `loop.review` from
 `aide.toml` before dispatching the builder: `"off"` (the default) runs the
 validator alone — no `reviewer` is spawned, and the validator merges as it
 always has; `"background"` runs both, and **the merge waits for both** — a
@@ -91,9 +90,8 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    > the committed tests in contradiction: <criterion>, <test>, <the
    > disagreement>. Decide which side is wrong and correct the spec — an
    > **appended, dated correction**, never a rewrite of the original criterion
-   > (§1 → items.md). Resolve it under `loop.clarify`: `interactive` asks the
-   > user which side is wrong; `assume` takes the most defensible reading and
-   > records it in the Assumptions block. Commit.
+   > (§1 → items.md). Resolve it under `loop.clarify`, as §5 in your context
+   > says. Commit.
    > Return: which side was wrong, and the corrected criterion.
 
    Then re-derive: a fresh `test-writer` (step 2) against the corrected
