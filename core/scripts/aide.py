@@ -7640,8 +7640,14 @@ def cmd_scope(args: argparse.Namespace) -> int:
 
 
 def _landed_review_items(repo_root: Path, config, prefix: str,
-                         base: str) -> List[str]:
-    """Lines naming every 🔍 item whose branch has since landed in *base*.
+                         explicit: Optional[str] = None) -> List[str]:
+    """Lines naming every 🔍 item whose branch has since landed in its base.
+
+    Each claim is measured against its own base, resolved the way every other
+    verb resolves one — *explicit* (``--base``) > the base that claim recorded >
+    ``main_branch`` (issue #213). Measuring every claim against ``main_branch``
+    meant stacked work never came home: an item merged into its queue branch is
+    not in main until the queue lands, so it stayed 🔍 with nothing saying why.
 
     In `pr` mode nothing inside the loop ever observes the merge — the human
     does it on the forge, hours or days later — so 🔍 needs a way home or it is
@@ -7663,6 +7669,7 @@ def _landed_review_items(repo_root: Path, config, prefix: str,
         num = _branch_item_number(br, prefix)
         if num not in reviewing:
             continue
+        base = resolve_base(repo_root, config, explicit, br)
         if _branch_content_landed(repo_root, base, _gc_ref(br, local)) is True:
             lines.append(f"aide sync: item {num:03d} is 🔍 but its work is now in "
                          f"{base} — run 'python .aide/scripts/aide.py progress "
@@ -7744,7 +7751,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
                       f"{why}. The branch is clean and work can start; it may "
                       f"be behind origin.", file=sys.stderr)
 
-    for line in _landed_review_items(repo_root, config, prefix, main):
+    for line in _landed_review_items(repo_root, config, prefix):
         print(line)
 
     print(f"aide sync: OK — on '{branch}', tree clean"
@@ -7862,8 +7869,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     else:
         print("  claims: none")
 
-    for line in _landed_review_items(repo_root, config, prefix,
-                                     str(config["git"].get("main_branch", "main"))):
+    for line in _landed_review_items(repo_root, config, prefix, args.base):
         print("  " + line.replace("aide sync: ", ""))
 
     # Open PRs, best effort — informative only, silently skipped without `gh`.
@@ -8509,7 +8515,8 @@ def register_git_subcommands(sub) -> None:
             "would be recommending the deletion of an open PR's head branch. "
             "Because in `pr` mode nothing inside the loop observes the merge, "
             "status (like `aide sync`) also names any \U0001f50d item whose "
-            "work has since landed in the base, by the same merge-tree "
+            "work has since landed in the base that claim recorded (or "
+            "`--base`), by the same merge-tree "
             "comparison `gc` uses, and prints the `aide progress set NNN done` "
             "that closes it. Every human gate still blocking, every Outcome "
             "target not yet \u2705 Met, every retracted acceptance "
@@ -8517,8 +8524,11 @@ def register_git_subcommands(sub) -> None:
             "printed too, so none of them lives only in one commit's diff."))
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
     p_status.add_argument("--base", default=None,
-                          help="ref to report ahead/behind against (default: the "
-                               "current branch's recorded base, else main_branch)")
+                          help="ref to report ahead/behind against, and to "
+                               "measure every \U0001f50d claim's landed work "
+                               "against (default: the current branch's recorded "
+                               "base for ahead/behind, each claim's own for "
+                               "landed work; else main_branch)")
     p_status.set_defaults(func=cmd_status)
 
     p_scope = sub.add_parser(

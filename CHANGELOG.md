@@ -121,6 +121,25 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.49.7] — 2026-09-14
+
+### Fixed
+
+- **`aide status` and `aide sync` measured landed 🔍 work against
+  `main_branch`, so stacked work was never reported as landed (issue #213).**
+  An item claimed off `aide/queue-003` whose PR merged into that queue branch
+  is not in main until the queue lands, and in `pr` mode nothing else inside
+  the loop observes the merge — the item stayed 🔍 with no
+  `aide progress set NNN done` printed. `status` had meanwhile resolved its
+  ahead/behind base through `resolve_base`, so one report picked a base two
+  ways. Each 🔍 claim is now measured against its own base, resolved as every
+  other verb resolves one: `--base` > the base that claim recorded >
+  `main_branch`, and the line names the base it measured against. `status -h`
+  says so, pinned in `test_aide_help_pins.py` to a new guard that runs from
+  main, where the current branch's base cannot stand in for the claim's;
+  `--base`'s option help now covers the landed line too. `sync` takes no
+  `--base`, so it uses each claim's record. No interface change.
+
 ## [1.49.6] — 2026-09-14
 
 Issue #205's two open decisions, taken and implemented. **Quote-pin the

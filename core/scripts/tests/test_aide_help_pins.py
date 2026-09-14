@@ -565,6 +565,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # stripped — the same `_branch_content_landed` oracle `gc` uses.
         ("names any \U0001f50d item whose work has since landed in the base",
          "test_aide_git::test_status_names_a_review_item_whose_work_has_landed"),
+        # `resolve_base(repo_root, config, explicit, br)` per claim inside
+        # `_landed_review_items` — not `main_branch`, and not the current
+        # branch's base (issue #213).
+        ("landed in the base that claim recorded (or `--base`)",
+         "test_aide_git::test_status_names_stacked_review_work_landed_in_its_recorded_base"),
         # The four loops over `human_gates`, `_unreadable_rows`,
         # `outcome_targets` and `retracted_criteria` in `cmd_status`.
         ("Every human gate still blocking, every Outcome target not yet ✅ "
