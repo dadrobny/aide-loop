@@ -8539,9 +8539,9 @@ def register_git_subcommands(sub) -> None:
     p_status.add_argument("--base", default=None,
                           help="ref to report ahead/behind against, and to "
                                "measure every \U0001f50d claim's landed work "
-                               "against (default: the current branch's recorded "
-                               "base for ahead/behind, each claim's own for "
-                               "landed work; else main_branch)")
+                               "against before main_branch (default: the current "
+                               "branch's recorded base for ahead/behind, each "
+                               "claim's own for landed work; else main_branch)")
     p_status.set_defaults(func=cmd_status)
 
     p_scope = sub.add_parser(
