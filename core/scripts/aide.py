@@ -5079,9 +5079,12 @@ def _cmd_progress_retract(args: argparse.Namespace) -> int:
 def _cmd_progress_reword(args: argparse.Namespace) -> int:
     """``aide progress reword STAGE --criterion N --text TEXT``.
 
-    Both files or neither. The roadmap mirrors the criteria, so a rewording
-    that lands in one document is the drift the verb exists to remove; when the
-    two cannot be lined up, nothing is written and the message says so.
+    Both files or neither wherever the roadmap mirrors the stage. The roadmap
+    mirrors the criteria, so a rewording that lands in one document is the
+    drift the verb exists to remove; when the two cannot be lined up, nothing is
+    written and the message says so. A stage with no roadmap acceptance block —
+    or no roadmap.md at all — has no mirror to drift from, so progress.md alone
+    is written and the message says that too (issue #216).
     """
     if args.all_criteria:
         print("aide progress reword: --all is not offered — criteria are "
@@ -8313,7 +8316,9 @@ def build_parser() -> argparse.ArgumentParser:
             "retract: untick a box, keep the original attestation visible, "
             "and capture a `gap` insight (--reason required)\n"
             "reword:  change a criterion's text in progress.md and roadmap.md, "
-            "or in neither; refuses over a ticked, annotated or corrected box\n"
+            "or in neither; where roadmap.md has no acceptance block for the "
+            "stage, in progress.md alone; refuses over a ticked, annotated or "
+            "corrected box\n"
             "\n"
             "The rollup, applied by set and read by `aide check`: a stage is "
             "\u2705 when every deliverable bullet in it is \u2705 or \u274c "
