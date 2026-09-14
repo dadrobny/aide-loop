@@ -1136,6 +1136,125 @@ def test_status_names_a_review_item_whose_work_has_landed(tmp_path: Path, capsys
     assert "progress set 027 done" in out
 
 
+def _stacked_review_item_landed_in_its_queue(
+        root: Path, recorded: Optional[str] = "aide/queue-003") -> None:
+    """Item 027 claimed off `aide/queue-003`, 🔍, its PR merged into the queue.
+
+    The work is in the queue branch and not in main — the shape stacked work
+    has between an item's merge and its queue's (issue #213). Status is set on
+    main, where the loop records it, and HEAD is left on main. *recorded* is
+    the base the claim remembers; ``None`` is a checkout that never ran the
+    `claim`, so has no record at all.
+    """
+    _run(["git", "branch", "aide/queue-003"], root)
+    aide._record_branch_base(root, "aide/queue-003", "main")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt",
+                      base=recorded)
+    assert aide.main(["--repo", str(root), "progress", "set", "27",
+                      "in-review"]) == 0
+    _run(["git", "switch", "aide/queue-003"], root)
+    _run(["git", "merge", "--squash", "aide/027-bounds-rules"], root)
+    _run(["git", "commit", "-m", "squash 027 into the queue"], root)
+    _run(["git", "switch", "main"], root)
+
+
+def test_status_names_stacked_review_work_landed_in_its_recorded_base(
+        tmp_path: Path, capsys):
+    """Measured against `main_branch`, stacked work was never reported landed.
+
+    Run from main, so the current branch's base is main too: the claim's own
+    record is the only thing that can name the queue branch.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    _stacked_review_item_landed_in_its_queue(root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
+    out = capsys.readouterr().out
+    assert ("item 027 is \U0001f50d but its work is now in aide/queue-003"
+            in out)
+    assert "progress set 027 done" in out
+
+
+def test_status_measures_landed_work_against_an_explicit_base(
+        tmp_path: Path, capsys):
+    """`--base` reaches the landed line, not only the ahead/behind one.
+
+    One command, one resolution. A checkout that never ran the `claim` has no
+    record to find the queue branch by, and `--base` is the way to name it.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    _stacked_review_item_landed_in_its_queue(root, recorded=None)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
+    assert "is \U0001f50d but its work is now in" not in capsys.readouterr().out
+    assert aide.main(["--repo", str(root), "status", "--no-fetch",
+                      "--base", "aide/queue-003"]) == 0
+    assert ("item 027 is \U0001f50d but its work is now in aide/queue-003"
+            in capsys.readouterr().out)
+
+
+def test_status_still_reports_stacked_work_once_its_queue_landed_and_went(
+        tmp_path: Path, capsys):
+    """The recorded base can be deleted; main is still measured then.
+
+    A landed queue branch is a `gc --merged` target. Measured only against its
+    record, a 🔍 item of that queue compared with a ref that no longer exists
+    — which `merge-tree` answers as it answers a conflict — and was never
+    reported again, though its work was in main.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    _stacked_review_item_landed_in_its_queue(root)
+    _squash_merge(root, "aide/queue-003", "squash queue 003")
+    _run(["git", "branch", "-D", "aide/queue-003"], root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
+    assert ("item 027 is \U0001f50d but its work is now in main"
+            in capsys.readouterr().out)
+
+
+def test_status_sees_a_forge_merge_only_once_the_base_is_pulled(
+        tmp_path: Path, capsys):
+    """`status -h` says the landed line reads local bases, not origin/<base>.
+
+    A squash merge on the forge reaches this checkout as `origin/main` after a
+    fetch; local main does not move until it is pulled, and until then the
+    item is not reported — documented, deliberately not changed.
+    """
+    remote = _mkbare(tmp_path / "remote.git")
+    root = _init_repo(tmp_path / "r", mode="local")
+    _run(["git", "remote", "add", "origin", str(remote)], root)
+    _run(["git", "push", "-u", "origin", "main"], root)
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "27",
+                      "in-review"]) == 0
+    # The forge's merge: a squash on a throwaway branch, pushed to origin/main.
+    _run(["git", "switch", "-c", "forge"], root)
+    _run(["git", "merge", "--squash", "aide/027-bounds-rules"], root)
+    _run(["git", "commit", "-m", "squash 027 on the forge"], root)
+    _run(["git", "push", "origin", "forge:main"], root)
+    _run(["git", "switch", "main"], root)
+    _run(["git", "branch", "-D", "forge"], root)
+    _run(["git", "fetch", "origin"], root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
+    assert "is \U0001f50d but its work is now in" not in capsys.readouterr().out
+    _run(["git", "merge", "--ff-only", "origin/main"], root)
+    assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
+    assert ("item 027 is \U0001f50d but its work is now in main"
+            in capsys.readouterr().out)
+
+
+def test_sync_reports_stacked_review_work_landed_in_its_recorded_base(
+        tmp_path: Path, capsys):
+    root = _init_repo(tmp_path / "r", mode="local")
+    _stacked_review_item_landed_in_its_queue(root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "sync"]) == 0
+    out = capsys.readouterr().out
+    assert "item 027 is \U0001f50d but its work is now in aide/queue-003" in out
+    assert "progress set 027 done" in out
+
+
 # --------------------------------------------------------------------------- #
 # The tick reaches origin — regression: it was committed after the only push
 # --------------------------------------------------------------------------- #
