@@ -588,8 +588,9 @@ copy, and the first drifted copy is repaired under it.
   exist for this repository's tests and should not be in a consumer's tree, with
   the one reader in the way named — `tests/test_structural_budget.py` reads
   `reach` *from an install*, deliberately — so a later pass is mechanical.
-- **[`docs/copies-of-engine-text.md`](docs/copies-of-engine-text.md) is the
-  inventory** the rule registers against: twelve rows, each with what it restates, who
+- **`docs/copies-of-engine-text.md` is the inventory** the rule registers
+  against (retired once every row was in force — a copy is registered by its
+  guard since the #205 closing slice; the page is in git history at 1.49.6): twelve rows, each with what it restates, who
   reads it through which channel, whether it survives an install, its guard
   today, and the rung it sits on with *in force* or *follow-up* against it. Two
   corrections to #205's own table fell out of verifying it: `aide-command-hygiene`

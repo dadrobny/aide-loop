@@ -381,3 +381,77 @@ def test_a_markdown_table_row_is_de_piped_but_a_prose_operator_is_not():
     """Both halves of transform 1, since they pull in opposite directions."""
     assert _normalise("| ⏸️ | Deferred | 2 |") == "⏸️ deferred 2"
     assert "||" in _normalise("Never chain with `&&`, `||` or `;`")
+
+
+# --------------------------------------------------------------------------- #
+# a workflow skill that carries no pins restates nothing measurable (issue #205)
+# --------------------------------------------------------------------------- #
+#: The register of a copy is its guard (ADAPTER-SPEC, *Copies of engine text*,
+#: *Registering a copy*). A workflow skill owes no pin — but the licence for
+#: that is that it restates nothing, and "nothing" is measurable: the ten-word
+#: runs it shares with the section cores, comments stripped and fenced commands
+#: dropped, the comparison `install.py --check` runs over a consumer's
+#: instruction file. Measured on this tree the two kinds do not overlap —
+#: every skill that pins shares at least **53** runs (`aide-human-gates`), and
+#: every workflow skill that does not shares at most **6** (`aide-create-vision`)
+#: — so a floor of twenty is a wide gap, not a tuned one. A skill that crosses
+#: it has become a copy, and a copy is either pinned or pointed; without this
+#: check the eight sanctioned pointers were a list on a page, and a ninth
+#: unguarded skill was indistinguishable from them.
+
+WORKFLOW_RESTATEMENT_FLOOR = 20
+
+_WORKFLOW_SKILLS = [p for p in _SKILL_FILES
+                    if p not in _DELIVERING and not _PINS_OPENER.search(_read(p))]
+
+
+def _section_core_runs() -> set:
+    """Every ten-word run of every section core under `core/conventions/`."""
+    runs: set = set()
+    for path in sorted((_CORE / "conventions").rglob("*.md")):
+        text = path.read_text(encoding="utf-8-sig")
+        core = install.section_core(text)
+        prose = install._contract_prose(core if core is not None else text)
+        runs.update(install._contract_runs(install._contract_words(prose)))
+    return runs
+
+
+def _shared_runs(text: str, core_runs: set) -> set:
+    from _delivered import strip_comments
+    prose = install._contract_prose(strip_comments(text))
+    return set(install._contract_runs(install._contract_words(prose))) & core_runs
+
+
+def test_there_are_workflow_skills_without_pins():
+    assert len(_WORKFLOW_SKILLS) >= 5, [p.parent.name for p in _WORKFLOW_SKILLS]
+
+
+@pytest.mark.parametrize("path", _WORKFLOW_SKILLS, ids=lambda p: p.parent.name)
+def test_a_workflow_skill_without_pins_restates_nothing_measurable(path: Path):
+    shared = _shared_runs(_read(path), _section_core_runs())
+    assert len(shared) < WORKFLOW_RESTATEMENT_FLOOR, (
+        f"{path.parent.name}/SKILL.md carries no <!-- pins: --> block but shares "
+        f"{len(shared)} ten-word runs with the section cores, e.g. "
+        f"\u201c{sorted(shared)[0]}\u201d. A workflow skill that restates the contract "
+        "is a copy: quote-pin the statements it delivers (ADAPTER-SPEC, 'Copies "
+        "of engine text', rung 3) or point at the section and delete them.")
+
+
+def test_the_pinning_skills_would_fail_that_floor():
+    """The gap the floor sits in, asserted from the other side: every skill that
+    does pin shares more than the floor, so the check separates the two kinds
+    on this tree rather than passing everything."""
+    core_runs = _section_core_runs()
+    pinning = [p for p in _SKILL_FILES if p not in _DELIVERING and _PINS_OPENER.search(_read(p))]
+    assert pinning, "no workflow skill pins — the premise of the floor is gone"
+    below = {p.parent.name: len(_shared_runs(_read(p), core_runs))
+             for p in pinning if len(_shared_runs(_read(p), core_runs)) < WORKFLOW_RESTATEMENT_FLOOR}
+    assert not below, f"a pinning skill shares fewer runs than the floor: {below}"
+
+
+def test_a_planted_restatement_crosses_the_floor(tmp_path: Path):
+    """The guard on the guard: a skill that pastes one section core in would be
+    reported."""
+    section = (_CORE / "conventions" / "1-format-contract" / "human-gates.md").read_text(encoding="utf-8-sig")
+    planted = "---\nname: planted\n---\n" + (install.section_core(section) or section)
+    assert len(_shared_runs(planted, _section_core_runs())) >= WORKFLOW_RESTATEMENT_FLOOR

@@ -629,10 +629,13 @@ block in the copy, or the entry in the test module (`FLOOR_PINS`) that the
 placement criterion puts there; a generated copy by its `generated-from` line;
 prose the code owns by its entry in the `-h` register (`HELP_PINS`); a
 template by the guard that compares it to the sections. A copy with none of
-these is a pointer or advisory, and the rungs above name those instances one
-by one — the eight workflow skills that restate nothing measurable, the
-consumer's own files — so that a copy that is neither guarded nor named is the
-thing to notice. Make a copy, give it its guard, in the same commit: that is
+these is a pointer or advisory, and each of those is held too: a workflow
+skill that carries no pins is held by `adapters/claude/tests/test_rule_pins.py`
+to restating nothing measurable — fewer than twenty ten-word runs shared with
+the section cores, where the smallest pinned copy shares fifty-three — and a
+consumer's own files are advisory by rung 4. So a copy that is neither guarded
+nor measurably empty is the thing to notice, and the suite notices it. Make a
+copy, give it its guard, in the same commit: that is
 the last moment at which the ladder above is a question rather than an
 excavation. (While #205 was that excavation, an inventory page listed every
 copy with its rung and whether the row was in force; the rows are all in force
