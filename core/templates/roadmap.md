@@ -1,13 +1,15 @@
 <!--
-  AIDE roadmap template. Step 2. Breaks the vision into incremental, demonstrable,
-  locally-deployable stages (~1 week each). Derived from vision.md.
+  AIDE roadmap template. Step 2. Breaks the vision into incremental,
+  demonstrable, locally-deployable stages (~1 week each), numbered from 0.
+  Derived from vision.md.
   Mandatory core:
-    - Objective -> stage coverage table   -> progress mirrors it; every G-code mapped
+    - Objective -> stage coverage table   -> progress.md mirrors it; every G-code mapped
     - One "## Stage N" section per stage with Goal / Deliverables / Dependencies /
-      Validation-acceptance                -> queue-planner scopes a queue to one stage;
+      Validation-acceptance                -> a queue is scoped to one stage;
                                               progress.md is generated from these sections
-  Stages are numbered from 0. Completed/in-progress stages are immutable once the
-  loop starts; only planned stages may be re-edited. Concise and specific.
+  Once the loop starts, only planned stages are re-edited; a criterion of a
+  started stage changes only via `python .aide/scripts/aide.py progress
+  reword`, which writes here and in progress.md together. Concise and specific.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
   read then replace. Delete this comment in the generated file.
@@ -82,11 +84,10 @@ row goes in `progress.md`'s `## Human gates` table, usually with
 **Validation / acceptance.**
 
 _One bullet per observable check **of the built thing** — these become the
-progress.md acceptance boxes for this stage, ticked when the work ships. A
-measured OUTCOME the stage aims for but cannot guarantee by construction (an
-error-rate target, a benchmark result) is not an acceptance bullet: prefix it
-`Target:` and mirror it into progress.md's "Outcome targets" table, where it
-gates the objective rather than the stage._
+progress.md acceptance boxes for this stage. A measured outcome the stage
+cannot guarantee (conventions.md §1 → progress.md says what counts) is not an
+acceptance bullet: prefix it `Target:` and mirror it into progress.md's
+"Outcome targets" table._
 
 - {{observable check that the stage is done}}
 - Target: {{measured result the stage aims for}}  <!-- optional -->

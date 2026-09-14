@@ -1,16 +1,12 @@
 <!--
-  AIDE queue template. Step 4. The next batch of work items — scoped to ONE
-  cohesive roadmap unit (a single stage, or a small phase), capped at
-  loop.queue_cap items, whichever is smaller. Parsed by aide.py (check, queue
-  tidy), aide claim, and the status report.
+  AIDE queue template. Step 4. The next batch of work items, one file per
+  queue. Parsed by aide.py (check, claim, queue tidy) and the status report.
   Mandatory shapes:
     - Each item: "### Item NNN: Short Title" + a description paragraph.
-  Queue state (open/done) is DERIVED from progress.md — no status field is
-  needed; "the live queue" is simply the lowest-numbered queue with open items.
-  A "> **Status:**" note (e.g. the one `aide queue tidy` stamps on completion)
-  is decorative, for human readers only.
-  Item numbering across queues is a rule, not a shape: conventions.md §1 →
-  queue-NNN.md states it, and this comment does not restate it.
+  Queue state is DERIVED from progress.md and never declared here; a
+  "> **Status:**" note is decoration for human readers. What a queue may
+  scope, its cap, item numbering and which queue is live are conventions.md
+  §1 → queue-NNN.md and `loop.queue_cap` in aide.toml.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
   read then replace. Delete this comment in the generated file.

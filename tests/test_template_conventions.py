@@ -1,10 +1,11 @@
 """The templates must obey the template convention they define.
 
-Two properties, both about the leading `<!-- ... -->` header comment: it uses
-the fill-in convention correctly, and it states **shapes and fill-in guidance
-only** — never a rule a `conventions/` section core states, nor mechanism a
-verb's `-h` states. The second half is issue #205's; its banner below carries
-the design.
+Three properties. The leading `<!-- ... -->` header comment uses the fill-in
+convention correctly, and it states **shapes and fill-in guidance only** —
+never a rule a `conventions/` section core states, nor mechanism a verb's
+`-h` states. And the **body** below it — the text a consumer document is
+instantiated from, italic guidance included — restates neither either. The
+last two are issue #205's; the banner below carries the design.
 
 `CLAUDE.md` and `conventions.md` §1 state it: `{{slot}}` marks a literal value
 to substitute, an _italic line_ marks authoring guidance to read then replace,
@@ -183,11 +184,36 @@ def test_multi_line_guidance_is_covered(tmp_path: Path):
 #: all four passages they fell in now point, and the tree scores zero at ten
 #: (29 matches / 25 distinct at six, 6 / 6 at eight).
 #:
-#: What ten costs is the short fragment: *ticking the checkbox is the one
-#: in-place edit* is eight words of §1 → `insights.md` and survives. That is the
-#: same known cost rung 3 accepts for an unpinned statement, and it is priced
-#: the same way — a sentence that matters enough to pin is pinned, and the rest
-#: is watched by the threshold.
+#: What ten costs is the short fragment. After 1.49.6's trim the headers share
+#: nothing at eight words but the fill-in convention `vision.md` is required to
+#: state, and the bodies share six eight-word runs, all example strings (a
+#: `**Downstream:**` aside, a quoted `Blocks:` reach, the human-gate
+#: vocabulary). That is the same known cost rung 3 accepts for an unpinned
+#: statement, and it is priced the same way — a sentence that matters enough
+#: to pin is pinned, and the rest is watched by the threshold. Quote-pinning
+#: the headers instead was weighed on #205 and declined: the sentence the case
+#: was made on is already held to its section by `FLOOR_PINS` and three
+#: skills, and a consumer's `insights.md` is created from the template and
+#: never updated, so a quotation frozen there can only drift while a pointer
+#: stays true.
+#:
+#: **The body is the same guard, and the italic guidance is in scope.** The
+#: first version of this check read the header comment only, and the same file
+#: it had just cleaned still carried §1 → `progress.md`'s Outcome-targets gate
+#: sixty lines lower, in the italic paragraph above the table. Before 1.49.6
+#: the bodies held **36 shared ten-word runs** (`item` 23, `progress` 8,
+#: `roadmap` 5) collapsing to eight passages, every one of them inside
+#: `_italic_` guidance — none in plain text, none in a fence — so a sweep that
+#: excluded the guidance would have found nothing. Guidance is "read then
+#: replace", but it is not replaced in practice: both local consumers keep
+#: `progress.md`'s paragraphs under Outcome targets, Human gates and
+#: Environment-Gated verification verbatim, and one has reworded them. A rule
+#: there ships into `docs/aide/*`, is frozen at the engine that created the
+#: document, and is consumer-owned from then on (rung 4) — so the template, the
+#: seed, is where the copy is caught. Fenced code is kept on the template side
+#: for the body as for the header, and for the same reason. What a body keeps
+#: is shape and the vocabulary of a cell (`⏳ Awaiting`, `stage N`), which the
+#: section names rather than draws; what it points for is the rule.
 
 _AIDE_PATH = _ROOT / "core" / "scripts" / "aide.py"
 _spec = importlib.util.spec_from_file_location("aide_cli_template_guard", _AIDE_PATH)
@@ -207,6 +233,13 @@ def _header(path: Path) -> str:
     """
     match = _HEADER_RE.search(path.read_text(encoding="utf-8-sig"))
     return match.group(1) if match else ""
+
+
+def _body(path: Path) -> str:
+    """Everything after the leading comment — what a consumer document is
+    instantiated from. Italic guidance, slots, shapes and inline annotation
+    comments all stay in: the comparison sees the bytes an author sees."""
+    return _HEADER_RE.sub("", path.read_text(encoding="utf-8-sig"), count=1)
 
 
 def _runs(text: str) -> Set[str]:
@@ -316,24 +349,25 @@ def test_there_is_something_to_compare_against():
     assert not silent, f"a source long enough to have runs contributed none: {silent}"
 
 
-def _failure(name: str, hits: List[Tuple[str, str]]) -> str:
+def _failure(name: str, hits: List[Tuple[str, str]],
+             carrier: str = "header comment") -> str:
     """What a reader of a red run sees — the template, each run, its source.
 
-    One function, so the two planted-copy tests below assert against the text
+    One function, so the planted-copy tests below assert against the text
     that will actually be printed rather than against a private return value.
     A failure message nobody has read is the other half of a guard nobody has
-    seen fail.
+    seen fail. *carrier* names the half of the file the run was found in.
     """
     return (
-        f"core/templates/{name}: the header comment repeats "
+        f"core/templates/{name}: the {carrier} repeats "
         f"{len(hits)} ten-word run(s) of engine text —\n"
         + "\n".join(f"  {source}: “{run}”" for source, run in hits)
-        + "\n\nA header states shapes and fill-in guidance; a rule belongs to "
+        + "\n\nA template states shapes and fill-in guidance; a rule belongs to "
           "the section that states it and mechanism to the verb's -h "
           "(ADAPTER-SPEC.md, 'Copies of engine text', rung 1). Point at the "
           "source and delete the sentence. A run that is genuinely a shape "
           "means the section is drawing a shape it should be naming (#193): "
-          "fix the section, not this header.")
+          "fix the section, not this template.")
 
 
 @pytest.mark.parametrize("path", _ENGINE_TEMPLATES, ids=lambda p: p.name)
@@ -342,6 +376,36 @@ def test_no_header_restates_a_rule_or_a_verbs_help(path: Path):
     assert header.strip(), f"{path.name}: no leading <!-- … --> header comment"
     hits = _copies(header, _sources())
     assert not hits, _failure(path.name, hits)
+
+
+@pytest.mark.parametrize("path", _ENGINE_TEMPLATES, ids=lambda p: p.name)
+def test_no_body_restates_a_rule_or_a_verbs_help(path: Path):
+    """The other half of the file, under the same comparison — italic guidance
+    included, since that is where every body copy sat (banner above)."""
+    body = _body(path)
+    assert body.strip(), f"{path.name}: nothing below the header comment"
+    hits = _copies(body, _sources())
+    assert not hits, _failure(path.name, hits, "body")
+
+
+def test_the_guard_catches_a_sentence_planted_in_italic_guidance(tmp_path: Path):
+    """The body sweep's own guard-on-the-guard, and the point it must hold: a
+    copy inside `_italic_` guidance is reported. Planted from §1 →
+    `progress.md`'s Outcome-targets gate — the sentence `templates/progress.md`'s
+    body carried until 1.49.6, in the italic paragraph above the table."""
+    planted = tmp_path / "planted.md"
+    planted.write_text(
+        "<!--\n  AIDE scratch template.\n-->\n# {{title}}\n\n"
+        "## Outcome targets\n\n"
+        "_One row per target. A target never holds its stage open, but an\n"
+        "objective linked to a target that is not ✅ Met cannot roll up to ✅._\n\n"
+        "| Target | Status |\n|---|---|\n", encoding="utf-8")
+    assert _copies(_header(planted), _sources()) == [], "the header is clean by construction"
+    hits = _copies(_body(planted), _sources())
+    assert hits, "a section sentence inside italic guidance went unreported"
+    message = _failure("planted.md", hits, "body")
+    assert "core/templates/planted.md: the body repeats" in message, message
+    assert ".aide/conventions/1-format-contract/progress.md" in message, message
 
 
 def test_the_guard_catches_a_sentence_planted_from_a_section(tmp_path: Path):
