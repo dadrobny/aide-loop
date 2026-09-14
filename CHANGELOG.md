@@ -165,6 +165,12 @@ guidance in scope: that is where all 36 of the bodies' shared runs sat, and
   `progress reword`, and the mandatory vision sections the validator checks
   against — stay, since a pointer needs a target; they are a note for a
   later pass, not a copy.
+- **`aide-create-roadmap` names the `reword` exception.** Its
+  updating-a-roadmap step said a started stage's acceptance criteria are
+  immutable, full stop, while the engine has accepted `progress reword` over
+  an unclaimed criterion since 1.35.0 and the roadmap header now points at
+  it; an agent reading the skill would have refused the supported command.
+  Found by the review of this pass.
 
 ### Added
 

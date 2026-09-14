@@ -4,7 +4,7 @@ Three properties. The leading `<!-- ... -->` header comment uses the fill-in
 convention correctly, and it states **shapes and fill-in guidance only** —
 never a rule a `conventions/` section core states, nor mechanism a verb's
 `-h` states. And the **body** below it — the text a consumer document is
-instantiated from, italic guidance included — restates neither either. The
+instantiated from, italic guidance included — restates neither of those. The
 last two are issue #205's; the banner below carries the design.
 
 `CLAUDE.md` and `conventions.md` §1 state it: `{{slot}}` marks a literal value

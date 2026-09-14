@@ -11,10 +11,11 @@
     - Testing Strategy                [test-writer]
     - Dependencies                    [aide claim]
     - Decisions & Trade-offs          [builder, as it goes]
-  Optional: Validation, and Environment / Hardware Dependencies (only for an
-  item introducing an environment-gated capability — conventions.md §1 →
-  Environment-gated capabilities). What each section must hold is
-  conventions.md §1 → items and §1 → Authorised paths.
+  Optional: Validation (how to observe the work beyond the tests; the
+  validator executes it when present), and Environment / Hardware
+  Dependencies (only for an item introducing an environment-gated capability
+  — conventions.md §1 → Environment-gated capabilities). What each section
+  must hold is conventions.md §1 → items and §1 → Authorised paths.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
   read then replace. Delete this comment in the generated file.
@@ -84,9 +85,10 @@ list, not by hashing another file's bytes._
 
 _Paths this item's tests pin — read, never changed — including a derived
 artifact recomputed live. Write "None." if the item pins nothing outside what
-it changes. Two things never go here, an always-authorised path and a path
-already under May change; conventions.md §1 → Authorised paths says why, and
-where each belongs instead._
+it changes. Two things never go here, an always-authorised path and the same
+path listed again under May change; conventions.md §1 → Authorised paths says
+why, where each belongs instead, and why pinning one file inside a May-change
+glob is the carve-out rather than a double-listing._
 
 - `{{path}}` — {{which AC pins it, and how}}
 

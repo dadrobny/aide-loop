@@ -32,7 +32,11 @@ rather than assuming, and present the result as a draft for review.
 1. **Read `docs/aide/progress.md` first** to see which stages are completed or in
    progress.
 2. **Completed and in-progress stages are immutable** — never modify their goals,
-   deliverables, dependencies, or acceptance criteria.
+   deliverables, dependencies, or acceptance criteria. The one exception is an
+   acceptance criterion nothing has yet been claimed against, which changes
+   only through `python .aide/scripts/aide.py progress reword` — it writes
+   `roadmap.md` and `progress.md` together, or neither, and refuses over a
+   ticked, annotated or corrected box (`progress -h`).
 3. **Add new stages** at the end to cover new or changed vision features.
 4. **Only planned stages may be edited.**
 
