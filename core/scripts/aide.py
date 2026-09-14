@@ -7649,6 +7649,13 @@ def _landed_review_items(repo_root: Path, config, prefix: str,
     meant stacked work never came home: an item merged into its queue branch is
     not in main until the queue lands, so it stayed 🔍 with nothing saying why.
 
+    ``main_branch`` is still measured when that base does not report the work
+    landed. A queue branch is deleted once it lands (`gc --merged` collects it),
+    and `merge-tree` against a ref that no longer exists exits 1 exactly as a
+    conflict does — so without the second measurement a 🔍 item whose queue
+    had landed *and been cleaned up* was never reported again, though its work
+    was in main. Work in main has landed wherever it was first merged.
+
     In `pr` mode nothing inside the loop ever observes the merge — the human
     does it on the forge, hours or days later — so 🔍 needs a way home or it is
     a state items enter and never leave. This is that way home, and it needs no
@@ -7664,13 +7671,19 @@ def _landed_review_items(repo_root: Path, config, prefix: str,
     if not reviewing or not _has_merge_tree(repo_root):
         return []
     local = _local_branches(repo_root)
+    main = str(config["git"].get("main_branch", "main"))
     lines: List[str] = []
     for br in sorted(_list_claim_branches(repo_root, prefix)):
         num = _branch_item_number(br, prefix)
         if num not in reviewing:
             continue
+        ref = _gc_ref(br, local)
         base = resolve_base(repo_root, config, explicit, br)
-        if _branch_content_landed(repo_root, base, _gc_ref(br, local)) is True:
+        candidates = [base] if base == main else [base, main]
+        landed = next((b for b in candidates
+                       if _branch_content_landed(repo_root, b, ref) is True), None)
+        if landed is not None:
+            base = landed
             lines.append(f"aide sync: item {num:03d} is 🔍 but its work is now in "
                          f"{base} — run 'python .aide/scripts/aide.py progress "
                          f"set {num:03d} done'")
@@ -8516,7 +8529,7 @@ def register_git_subcommands(sub) -> None:
             "Because in `pr` mode nothing inside the loop observes the merge, "
             "status (like `aide sync`) also names any \U0001f50d item whose "
             "work has since landed in the base that claim recorded (or "
-            "`--base`), by the same merge-tree "
+            "`--base`), or in main_branch, by the same merge-tree "
             "comparison `gc` uses, and prints the `aide progress set NNN done` "
             "that closes it. Every human gate still blocking, every Outcome "
             "target not yet \u2705 Met, every retracted acceptance "

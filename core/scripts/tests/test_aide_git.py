@@ -1193,6 +1193,25 @@ def test_status_measures_landed_work_against_an_explicit_base(
             in capsys.readouterr().out)
 
 
+def test_status_still_reports_stacked_work_once_its_queue_landed_and_went(
+        tmp_path: Path, capsys):
+    """The recorded base can be deleted; main is still measured then.
+
+    A landed queue branch is a `gc --merged` target. Measured only against its
+    record, a 🔍 item of that queue compared with a ref that no longer exists
+    — which `merge-tree` answers as it answers a conflict — and was never
+    reported again, though its work was in main.
+    """
+    root = _init_repo(tmp_path / "r", mode="local")
+    _stacked_review_item_landed_in_its_queue(root)
+    _squash_merge(root, "aide/queue-003", "squash queue 003")
+    _run(["git", "branch", "-D", "aide/queue-003"], root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
+    assert ("item 027 is \U0001f50d but its work is now in main"
+            in capsys.readouterr().out)
+
+
 def test_sync_reports_stacked_review_work_landed_in_its_recorded_base(
         tmp_path: Path, capsys):
     root = _init_repo(tmp_path / "r", mode="local")

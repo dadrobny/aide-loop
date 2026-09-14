@@ -134,7 +134,12 @@ instead — that is the bump policy above, and it is enforced by
   ahead/behind base through `resolve_base`, so one report picked a base two
   ways. Each 🔍 claim is now measured against its own base, resolved as every
   other verb resolves one: `--base` > the base that claim recorded >
-  `main_branch`, and the line names the base it measured against. `status -h`
+  `main_branch`, and the line names the base it measured against.
+  `main_branch` is still measured when that base does not report the work
+  landed: a queue branch is deleted once it lands (`gc --merged` collects it),
+  and `merge-tree` answers a missing ref as it answers a conflict, so an item
+  whose queue had landed and been cleaned up would otherwise never be reported
+  again. `status -h`
   says so, pinned in `test_aide_help_pins.py` to a new guard that runs from
   main, where the current branch's base cannot stand in for the claim's;
   `--base`'s option help now covers the landed line too. `sync` takes no
