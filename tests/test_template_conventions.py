@@ -145,8 +145,8 @@ def test_multi_line_guidance_is_covered(tmp_path: Path):
 # --------------------------------------------------------------------------- #
 # a header states shapes and guidance, and restates no rule (issue #205)
 # --------------------------------------------------------------------------- #
-#: The other half of the template row in `docs/copies-of-engine-text.md`. That
-#: row decides two things about a header comment and this section holds both.
+#: The copies rule (`adapters/ADAPTER-SPEC.md`, *Copies of engine text*)
+#: decides two things about a template and this section holds both.
 #:
 #: **Shapes are not a copy.** Since #193 a `conventions/` section *names* the
 #: template rather than drawing it, so for a table header row, a status-icon

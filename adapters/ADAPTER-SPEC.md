@@ -623,13 +623,21 @@ than authored, and which section it came from.
 
 ### Registering a copy
 
-A copy nobody listed is a copy nobody decided. Every copy of engine text this
-repository makes is one row of
-[`docs/copies-of-engine-text.md`](../docs/copies-of-engine-text.md): what it
-restates, who reads it through which channel, whether it survives an install, its
-guard, and the rung it sits on. Make a copy, add the row, in the same commit —
-that is the last moment at which the ladder above is a question rather than an
-excavation.
+A copy nobody decided is a copy nobody guards, and the register of a copy is
+its guard. A quote-pinned copy is registered by its pins — the `<!-- pins: -->`
+block in the copy, or the entry in the test module (`FLOOR_PINS`) that the
+placement criterion puts there; a generated copy by its `generated-from` line;
+prose the code owns by its entry in the `-h` register (`HELP_PINS`); a
+template by the guard that compares it to the sections. A copy with none of
+these is a pointer or advisory, and the rungs above name those instances one
+by one — the eight workflow skills that restate nothing measurable, the
+consumer's own files — so that a copy that is neither guarded nor named is the
+thing to notice. Make a copy, give it its guard, in the same commit: that is
+the last moment at which the ladder above is a question rather than an
+excavation. (While #205 was that excavation, an inventory page listed every
+copy with its rung and whether the row was in force; the rows are all in force
+or their own issues, and a page that says which work is done is what this
+repository keeps on its tracker, so the page is gone.)
 
 ---
 
@@ -658,5 +666,5 @@ excavation.
       *Copies of engine text* — pointed at, generated, quote-pinned with its
       pins where the channel puts them, left advisory because a project owns
       the file, or, for prose the code owns, pinned by a test that exercises
-      the code against it — and registered where the runtime's copies are
-      listed.
+      the code against it — and registered by that guard, so that a copy with
+      no guard is a pointer or advisory the rule names.

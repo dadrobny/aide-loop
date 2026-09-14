@@ -67,10 +67,12 @@ in [`adapters/ADAPTER-SPEC.md`](adapters/ADAPTER-SPEC.md), its unnumbered
 *Copies of engine text* section** (issue #205). Point, generate, quote-pin, or
 leave advisory; and for a pinned copy, whether the pins live in the copy or in
 the test module, decided by whether the copy's bytes reach a reader unstripped. Do not re-argue it here or at the site of a new copy:
-read it, then add the copy's row to
-[`docs/copies-of-engine-text.md`](docs/copies-of-engine-text.md) in the same
-commit. The rest of this section is what an agent editing *this* repo needs on
-top of that rule — which file is which, and which test fails when.
+read it, then give the copy its guard in the same commit — a copy is
+registered by the guard that holds it (its `pins` block, its `generated-from`
+line, its entry in `FLOOR_PINS` or `HELP_PINS`), and a copy with none is a
+pointer or advisory, which the rule names one by one. The rest of this section
+is what an agent editing *this* repo needs on top of that rule — which file is
+which, and which test fails when.
 
 **Sections are runtime-general; an adapter delivers them, it does not restate
 them.** The Claude adapter's **delivered files** are the one unscoped rule in
