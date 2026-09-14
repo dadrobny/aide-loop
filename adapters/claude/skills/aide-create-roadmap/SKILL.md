@@ -35,10 +35,12 @@ rather than assuming, and present the result as a draft for review.
    deliverables, dependencies, or acceptance criteria. The one exception is an
    acceptance criterion nothing has yet been claimed against, which changes
    only through `python .aide/scripts/aide.py progress reword` — it writes
-   `roadmap.md` and `progress.md` together, or neither, and refuses over a
-   ticked, annotated or corrected box (`progress -h`).
+   `progress.md`, mirrors the change into this file when the stage has a
+   Validation / acceptance block (and writes neither when the two cannot be
+   lined up), and refuses over a ticked, annotated or corrected box
+   (`progress -h`).
 3. **Add new stages** at the end to cover new or changed vision features.
-4. **Only planned stages may be edited.**
+4. **Only planned stages may be edited**, that one `reword` case aside.
 
 ### Requirements
 

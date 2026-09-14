@@ -2,7 +2,8 @@
   AIDE insight inbox. Any role appends ONE line here, at any time, when it
   learns something true but out of scope for its task, and returns to that
   task. The engine creates docs/aide/insights.md from this file, byte for
-  byte, the first time a verb finds it missing; nobody copies it by hand.
+  byte, the first time `aide check`, `claim`, `queue start` or `insights
+  list` finds it missing; nobody copies it by hand.
   The rules — what is captured, what is immutable, what each verb does — are
   conventions.md §1 → insights.md and `python .aide/scripts/aide.py insights
   -h`. This comment is the shapes.

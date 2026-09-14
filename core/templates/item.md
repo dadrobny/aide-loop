@@ -15,7 +15,8 @@
   validator executes it when present), and Environment / Hardware
   Dependencies (only for an item introducing an environment-gated capability
   — conventions.md §1 → Environment-gated capabilities). What each section
-  must hold is conventions.md §1 → items and §1 → Authorised paths.
+  must hold is conventions.md §1 → items, §1 → Authorised paths and, for that
+  last one, §1 → Environment-gated capabilities.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
   read then replace. Delete this comment in the generated file.

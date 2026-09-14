@@ -9,8 +9,9 @@
                                               progress.md is generated from these sections
   Once the loop starts, only planned stages are re-edited; a criterion of a
   started stage that nothing has yet been claimed against changes only via
-  `python .aide/scripts/aide.py progress reword`, which writes here and in
-  progress.md together. Concise and specific.
+  `python .aide/scripts/aide.py progress reword`, which writes progress.md
+  and mirrors the change here when this stage has a Validation / acceptance
+  block to mirror into. Concise and specific.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
   read then replace. Delete this comment in the generated file.
