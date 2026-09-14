@@ -127,10 +127,10 @@ instead — that is the bump policy above, and it is enforced by
 
 - **`aide progress reword` was documented as writing both documents or
   neither, but a stage with nothing to mirror gets `progress.md` alone (issue
-  #216).** `reword_roadmap_bullet` returns no error for a stage whose
-  `roadmap.md` section has no Validation / acceptance block — or when there is
-  no `roadmap.md` — and the command writes `progress.md` and prints
-  *nothing to mirror*. `progress -h`, §1 → `progress.md` and
+  #216).** When there is no `roadmap.md`, `_cmd_progress_reword` never reads
+  one; when the stage has no section there, or a section with no Validation /
+  acceptance block, `reword_roadmap_bullet` returns no error. Either way the
+  command writes `progress.md` and prints *nothing to mirror*. `progress -h`, §1 → `progress.md` and
   `aide-progress-file` all named only the other two outcomes, so an agent
   reading them would refuse the verb on a prose-only stage or assume
   `roadmap.md` had changed. The behaviour stands — a stage with no mirror has
