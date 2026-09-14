@@ -9,10 +9,11 @@
         Acceptance   = "- [ ]" / "- [x]" checkboxes
   A stage's icon, its summary row and the Objective rows are DERIVED from the
   Deliverables bullets, never typed. The derivation is stated in
-  `python .aide/scripts/aide.py progress -h`; what each icon asserts, what a
-  stage's ✅ means and how the optional tables gate the Objective rows are
-  conventions.md §1 → progress.md, → Status icons, → Human gates and →
-  Environment-gated capabilities. Read them there; nothing here restates them.
+  `python .aide/scripts/aide.py progress -h`; what a stage's ✅ means and how
+  the Outcome targets table gates the Objective rows are conventions.md §1 →
+  progress.md; what each icon asserts is §1 → Status icons; the two other
+  optional tables are §1 → Human gates and §1 → Environment-gated
+  capabilities. Read them there; nothing here restates them.
   Optional sections, each deleted if the project has no use for it:
   Environment-Gated Capability Verification, Outcome targets, Human gates.
 

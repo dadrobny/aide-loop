@@ -5,8 +5,8 @@
   Mandatory core:
     - Objective -> stage coverage table   -> progress.md mirrors it; every G-code mapped
     - One "## Stage N" section per stage with Goal / Deliverables / Dependencies /
-      Validation-acceptance                -> a queue is scoped to one stage or small phase;
-                                              progress.md is generated from these sections
+      Validation-acceptance                -> the queues are cut from these sections, and
+                                              progress.md is generated from them
   Once the loop starts, only planned stages are re-edited; a criterion of a
   started stage that nothing has yet been claimed against changes only via
   `python .aide/scripts/aide.py progress reword`, which writes progress.md
