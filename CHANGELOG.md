@@ -121,6 +121,27 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.49.8] — 2026-09-14
+
+### Fixed
+
+- **`aide progress reword` was documented as writing both documents or
+  neither, but a stage with nothing to mirror gets `progress.md` alone (issue
+  #216).** When there is no `roadmap.md`, `_cmd_progress_reword` never reads
+  one; when the stage has no section there, or a section with no Validation /
+  acceptance block, `reword_roadmap_bullet` returns no error. Either way the
+  command writes `progress.md` and prints *nothing to mirror*. `progress -h`, §1 → `progress.md` and
+  `aide-progress-file` all named only the other two outcomes, so an agent
+  reading them would refuse the verb on a prose-only stage or assume
+  `roadmap.md` had changed. The behaviour stands — a stage with no mirror has
+  nothing to drift from, and `templates/roadmap.md` already described it — and
+  the three copies now state it: the section's rule reads *both documents or
+  neither wherever `roadmap.md` mirrors the stage*, with the blockless case
+  as its own sentence, pinned in the skill. The `-h` clause is pinned in
+  `test_aide_help_pins.py` to a new guard driving the verb over a prose-only
+  stage and over a repo with no `roadmap.md`; the register previously held the
+  sentence only to tests of the two branches it named. No interface change.
+
 ## [1.49.7] — 2026-09-14
 
 ### Fixed

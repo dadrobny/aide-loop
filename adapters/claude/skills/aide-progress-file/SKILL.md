@@ -73,7 +73,8 @@ paths:
      - A retraction is a finding, so the verb routes it like one
      - `reword` is the one amendment that edits rather than appends
      - refuses over a box that is ticked, annotated, or already carries a correction trail
-     - writes both documents or neither
+     - writes both documents or neither wherever `roadmap.md` mirrors the stage
+     - A stage with no Validation / acceptance block in `roadmap.md` has no mirror to drift from
 -->
 
 # `progress.md`
@@ -144,5 +145,7 @@ stage.** **`retract` unticks, and keeps the original attestation visible**;
 **a retraction is a finding, so the verb routes it like one** into
 `insights.md`. **`reword` is the one amendment that edits rather than
 appends**, so it **refuses over a box that is ticked, annotated, or already
-carries a correction trail**, and it **writes both documents or neither** —
-`roadmap.md` mirrors the criteria.
+carries a correction trail**, and it **writes both documents or neither
+wherever `roadmap.md` mirrors the stage** — **a stage with no Validation /
+acceptance block in `roadmap.md` has no mirror to drift from**, so there it
+writes `progress.md` alone.

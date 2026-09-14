@@ -106,11 +106,13 @@ Three verbs, and **none of them edits the original line**, their flags in
   a box that is ticked, annotated, or already carries a correction trail** —
   the precondition is mechanical, so no role has to remember it.
 
-**`reword` writes both documents or neither.** `roadmap.md` mirrors a stage's
-criteria, so a rewording that lands in one file is precisely the two-file drift
-the verb exists to remove. The two blocks are matched **by position**, so keep
-them in the same order; where they cannot be lined up the verb writes nothing
-rather than guessing.
+**`reword` writes both documents or neither wherever `roadmap.md` mirrors the
+stage.** `roadmap.md` mirrors a stage's criteria, so a rewording that lands in
+one file is precisely the two-file drift the verb exists to remove. The two
+blocks are matched **by position**, so keep them in the same order; where they
+cannot be lined up the verb writes nothing rather than guessing. **A stage with
+no Validation / acceptance block in `roadmap.md` has no mirror to drift from**,
+so there the verb writes `progress.md` alone and says so.
 
 **What a stage's ✅ means — and what it deliberately does not.** The rollup
 makes stage status track exactly one thing: *the planned work shipped*. An

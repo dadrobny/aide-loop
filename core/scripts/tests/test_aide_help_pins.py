@@ -331,6 +331,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "neither",
          ("test_aide_acceptance_amend::test_reword_mirrors_into_the_matching_roadmap_bullet",
           "test_aide_acceptance_amend::test_a_roadmap_that_cannot_be_lined_up_writes_nothing_and_says_why")),
+        # The third outcome (issue #216): `reword_roadmap_bullet` returns
+        # `(None, None)` for a stage with no block, and the command writes
+        # progress.md without it. The two guards above cover the other two
+        # branches only, which is how the sentence stood incomplete.
+        ("where roadmap.md has no acceptance block for the stage, in "
+         "progress.md alone",
+         "test_aide_help_pins::test_reword_with_nothing_to_mirror_writes_progress_alone"),
         # Three separate refusals, and the third is the one a survey misses:
         # a box unticked by `retract` still carries its correction trail.
         ("refuses over a ticked, annotated or corrected box",
@@ -1002,6 +1009,35 @@ def test_retract_routes_its_finding_into_the_inbox(tmp_path: Path, capsys):
     # retraction that never happened.
     progress = (repo / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
     assert "- [ ] Rules fire." in progress
+
+
+def test_reword_with_nothing_to_mirror_writes_progress_alone(
+        tmp_path: Path, capsys):
+    """The outcome `reword`'s both-or-neither sentence left out (issue #216).
+
+    A roadmap stage written as prose, and a repo with no roadmap.md at all,
+    have no acceptance block to drift from: the verb succeeds, changes
+    progress.md, leaves roadmap.md byte for byte, and says there was nothing
+    to mirror — rather than refusing, or implying roadmap.md moved.
+    """
+    prose = "# R\n\n## Stage 1 — Rules\n\nProse only, no acceptance block.\n"
+    for name, roadmap in (("prose", prose), ("absent", None)):
+        repo = _repo(tmp_path, name=name)
+        road = repo / "docs" / "aide" / "roadmap.md"
+        if roadmap is not None:
+            road.write_text(roadmap, encoding="utf-8")
+        assert aide.main(["--repo", str(repo), "progress", "reword", "1",
+                          "--criterion", "1", "--text", "Every rule fires.",
+                          "--no-commit"]) == 0, name
+        out = capsys.readouterr().out
+        assert "nothing to mirror" in out and "mirrored" not in out, (name, out)
+        progress = (repo / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+        assert "- [ ] Every rule fires." in progress, name
+        assert "- [ ] Rules fire." not in progress, name
+        if roadmap is None:
+            assert not road.exists(), name
+        else:
+            assert road.read_text(encoding="utf-8") == roadmap, name
 
 
 def test_status_prints_the_four_states_it_promises(tmp_path: Path, capsys):
