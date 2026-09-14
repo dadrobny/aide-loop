@@ -588,15 +588,17 @@ copy, and the first drifted copy is repaired under it.
   exist for this repository's tests and should not be in a consumer's tree, with
   the one reader in the way named — `tests/test_structural_budget.py` reads
   `reach` *from an install*, deliberately — so a later pass is mechanical.
-- **[`docs/copies-of-engine-text.md`](docs/copies-of-engine-text.md) is the
-  inventory** the rule registers against: twelve rows, each with what it restates, who
+- **`docs/copies-of-engine-text.md` is the inventory** the rule registers
+  against (retired by PR #218 once every row was in force — a copy is
+  registered by its guard; the page's last version is at c2ac167, the merge of
+  PR #215): twelve rows, each with what it restates, who
   reads it through which channel, whether it survives an install, its guard
   today, and the rung it sits on with *in force* or *follow-up* against it. Two
   corrections to #205's own table fell out of verifying it: `aide-command-hygiene`
   is generated, not pinned, and has been since 1.47.0; and the eight workflow
   skills that carry no pins restate nothing worth pinning (≤ 7 contract word-runs
   each, against 171 and 295 for the two that do), so they are rung 1 rather than
-  a gap. The measurement method is on the page, since every figure moves with the
+  a gap. The measurement method was on the page, since every figure moves with the
   tree.
 - **`CLAUDE.md` points at the rule instead of arguing it**, keeping what an
   agent editing this repo cannot infer — which file is which, which test fails when,
