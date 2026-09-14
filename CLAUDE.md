@@ -55,8 +55,9 @@ counterfactual and the rejected alternative. Add a rule to the core and its
 provenance to the tail, in the same commit. The test for which side a sentence
 belongs on is #78's: would an agent that never saw it make a *different
 decision*? No → tail. Unsure → it is a disambiguator; core. A pinned sentence
-is core by definition, so a delivered file's pins should never point below the
-heading. The style the seventeen share — opener, bullet grammar, `Rationale`
+is core by definition, so a delivered file's pins never point below the
+heading (`test_rule_pins.py` fails if one does). An undelivered copy, such as an
+agent spec, may quote the tail; the copies rule says why. The style the seventeen share — opener, bullet grammar, `Rationale`
 as `- **Why X.**` bullets, the consumer annotation, verb mechanism in
 `-h` (pinned to the code in `core/scripts/tests/test_aide_help_pins.py`) —
 is stated once, in `conventions.md` after its index table (issue #186); a
