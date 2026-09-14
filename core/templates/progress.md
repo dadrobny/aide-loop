@@ -7,8 +7,10 @@
     - One "## Stage N — <title> — <icon>" section per stage, each with:
         Deliverables = FLAT bullets "- <icon> <text>. *(Item NNN)*"  (no nested status bullets)
         Acceptance   = "- [ ]" / "- [x]" checkboxes
-  A stage's icon, its summary row and the Objective rows are DERIVED from the
-  Deliverables bullets, never typed. The derivation is stated in
+  A stage's icon, the Status cell of its summary row and the Status cell of
+  each Objective row are DERIVED from the Deliverables bullets, never typed;
+  the rows themselves — which objectives exist, which stages deliver each —
+  are yours to write. The derivation is stated in
   `python .aide/scripts/aide.py progress -h`; what a stage's ✅ means and how
   the Outcome targets table gates the Objective rows are conventions.md §1 →
   progress.md; what each icon asserts is §1 → Status icons; the two other

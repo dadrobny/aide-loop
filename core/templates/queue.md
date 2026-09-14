@@ -4,9 +4,10 @@
   Mandatory shapes:
     - Each item: "### Item NNN: Short Title" + a description paragraph.
   Queue state is DERIVED from progress.md and never declared here; a
-  "> **Status:**" note is decoration for human readers. What a queue may
-  scope, its cap, item numbering and which queue is live are conventions.md
-  §1 → queue-NNN.md and `loop.queue_cap` in aide.toml.
+  "> **Status:**" note is decoration for human readers. What one queue may
+  scope is step 4 of .aide/README.md; its cap is `loop.queue_cap` in
+  aide.toml; item numbering and which queue is live are conventions.md §1 →
+  queue-NNN.md.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
   read then replace. Delete this comment in the generated file.
