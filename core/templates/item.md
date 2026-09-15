@@ -19,8 +19,10 @@
   two optional ones, §1 → Environment-gated capabilities, which names both.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
-  read then replace. Delete this comment in the generated file.
+  read then replace. Delete this comment in the generated file,
+  and keep the aide-template line below it.
 -->
+<!-- aide-template: item 1 -->
 # Item {{nnn}} — {{title}}
 
 > **Created:** {{yyyy-mm-dd}} · status tracked in [`progress.md`](../progress.md)

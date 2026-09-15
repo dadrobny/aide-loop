@@ -10,8 +10,10 @@
   queue-NNN.md.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
-  read then replace. Delete this comment in the generated file.
+  read then replace. Delete this comment in the generated file,
+  and keep the aide-template line below it.
 -->
+<!-- aide-template: queue 1 -->
 # {{project-name}} — Work Queue {{nnn}}
 
 > **Created:** {{yyyy-mm-dd}}

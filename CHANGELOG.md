@@ -121,6 +121,49 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.52.0] — 2026-09-15
+
+### Added
+
+- **A document records which template version it was created from, and
+  `aide check` reports one that is behind (issue #164).** A template gaining a
+  section reached the next document created from it and never an earlier one,
+  and nothing recorded which template a document was built from.
+  - **Every template carries `<!-- aide-template: <name> <N> -->`** on the line
+    below its header comment, above the title — the only place `aide check`
+    reads it, so a marker quoted in a document's body is not taken for its own. `<N>` is the template's own integer version,
+    independent of `core/VERSION`. The four templates that tell the author to
+    delete their header comment now also say to keep this line, and
+    `insights.md` — which the engine copies byte for byte — carries it into
+    every inbox created from now on.
+  - **`aide check` warns** when a document's line records a version other than
+    the installed template's, names a template the engine does not ship, or
+    cannot be read. It reads `vision.md`, `roadmap.md`, `progress.md` and
+    `insights.md`, a queue while it is open, and an item spec until its item is
+    ✅ or ❌. A finished item's spec is a record, and a warning on each one
+    every time a template moves would be permanent noise. The warning never
+    moves the exit code, because `docs/aide/**` is the project's (rung 4 of the
+    copies rule), and a document **without** the line is not reported: every
+    document written before this release has none, and the engine cannot say
+    which template it came from.
+  - **§1** states the line, and `aide-document-format` delivers the rule that a
+    document keeps it, pinned.
+  - **The baseline is version 1 for all six**: `insights template 1`,
+    `item template 1`, `progress template 1`, `queue template 1`,
+    `roadmap template 1`, `vision template 1`. From here on, a change that a
+    document built from the old template would want to follow bumps that
+    template's number, and the entry that bumps it names `<name> template <N>`
+    and says what a consumer edits and whether it is optional.
+    `tests/test_repo_versioning.py` fails when a template's number has no such
+    entry, or moves backward.
+
+**Migration (optional).** Existing documents have no line and stay silent. To
+have `aide check` report future template changes for one, add the line for the
+template it was created from, at version 1, directly below the header comment
+— or, where the comment was deleted, above the title. Version 1 is each
+template as 1.52.0 ships it, so the line claims the document follows that
+shape; compare the two first.
+
 ## [1.51.0] — 2026-09-15
 
 ### Added

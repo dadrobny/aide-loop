@@ -6,7 +6,8 @@
   list` finds it missing; nobody copies it by hand.
   The rules — what is captured, what is immutable, what each verb does — are
   conventions.md §1 → insights.md and `python .aide/scripts/aide.py insights
-  -h`. This comment is the shapes.
+  -h`. This comment is the shapes; the aide-template line below it names
+  the template version this inbox was created from.
 
   Entry:
     - [ ] <type> — <one line> *(<provenance>, YYYY-MM-DD, engine X.Y.Z)*
@@ -31,6 +32,7 @@
       - **2026-08-20** → aide-loop issue #50
       - **2026-10-11** → resolved in engine 1.16.0
 -->
+<!-- aide-template: insights 1 -->
 # Insight Inbox
 
 _Entries below, newest last._

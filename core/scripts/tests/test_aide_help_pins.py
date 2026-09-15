@@ -306,6 +306,30 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `insight_warnings` reads insights.md only; archive-*.md is skipped.
         ("never applied to an archived entry",
          "test_aide_insights::test_an_archive_is_frozen_and_not_shape_checked"),
+        # `template_drift_warnings`: `version < current` and `version >
+        # current` each append, and `current is None` names the template; the
+        # CLI test is the half that proves `run_checks` still calls it.
+        ("a document whose aide-template line above its title records a "
+         "version other than "
+         "the installed template's, names a template this engine does not "
+         "ship, or cannot be read",
+         ("test_aide_template_markers::"
+          "test_a_document_behind_its_template_is_a_warning_naming_the_changelog",
+          "test_aide_template_markers::test_a_document_newer_than_the_install_is_a_warning",
+          "test_aide_template_markers::"
+          "test_an_unknown_template_and_an_unreadable_line_are_warnings",
+          "test_aide_template_markers::"
+          "test_check_reports_drift_as_a_warning_and_still_exits_zero")),
+        # `targets`: the four root documents, `queue_is_open` over the queue
+        # files, and the item specs minus ✅/❌ by `item_status`.
+        ("on a queue while it is open and on an item spec until its item is "
+         "✅ or ❌",
+         "test_aide_template_markers::"
+         "test_a_finished_items_spec_and_a_closed_queue_are_not_read"),
+        # `if marker is None: … continue` — only a mis-shaped opener speaks.
+        ("never on a document with no such line",
+         ("test_aide_template_markers::test_a_document_without_a_marker_is_silent",
+          "test_aide_template_markers::test_a_marker_below_the_title_is_not_read")),
         # The stale-claim-branch warning skips an item whose status is
         # "in-review": its PR is open, and its branch is not litter.
         ("A \U0001f50d item's claim branch is not reported stale",

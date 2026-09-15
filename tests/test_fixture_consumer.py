@@ -645,6 +645,43 @@ def test_check_warns_on_a_root_document_missing_its_mandatory_sections(
     assert "0 warning(s)" not in out
 
 
+def test_check_warns_on_a_document_behind_its_installed_template(
+        aide, consumer: Path, capsys, monkeypatch):
+    """Issue #164: a document keeps the `aide-template` line of the template it
+    was created from. Current, it is silent; once the installed template's
+    number moves past it, `check` says so and still exits 0. The engine reads
+    the templates beside the script it runs, so the copy it reads is pointed
+    at this test's consumer rather than the shared prototype."""
+    monkeypatch.setattr(aide, "_TEMPLATES_DIR", consumer / ".aide" / "templates")
+    template = consumer / ".aide" / "templates" / "progress.md"
+    marker = aide.template_marker(template.read_text(encoding="utf-8"))
+    assert marker is not None and marker[0] == "progress"
+    line = f"<!-- aide-template: progress {marker[1]} -->\n"
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(line + progress.read_text(encoding="utf-8"), encoding="utf-8")
+    _commit(consumer, "progress.md records its template")
+
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "OK (0 warning(s))" in capsys.readouterr().out
+
+    template.write_text(template.read_text(encoding="utf-8").replace(
+        line, f"<!-- aide-template: progress {marker[1] + 1} -->\n"), encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert (f"warning: progress.md: created from progress template {marker[1]}; "
+            f"the installed template is {marker[1] + 1}") in out
+    assert "aide check: OK (1 warning(s))" in out
+
+
+def test_a_created_inbox_carries_its_template_line(aide, consumer: Path):
+    """The inbox is the one document the engine writes from a template, so the
+    line arrives with it and a later template change can be reported."""
+    inbox = _drop_the_inbox(consumer)
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert aide.template_marker(inbox.read_text(encoding="utf-8")) == (
+        "insights", aide.installed_template_versions()["insights"])
+
+
 def test_check_warns_on_roadmap_progress_acceptance_drift(
         aide, consumer: Path, capsys):
     """Issue #142: the roadmap's Validation / acceptance bullets become the

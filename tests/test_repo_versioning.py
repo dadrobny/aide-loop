@@ -14,6 +14,7 @@ no git, no `main` ref, a shallow clone.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -144,3 +145,56 @@ def test_changelog_records_the_current_version():
         f"core/VERSION is {version} but CHANGELOG.md has no '[{version}]' section. "
         "A version a consumer can see must say what changed."
     )
+
+
+# --------------------------------------------------------------------------- #
+# per-template versions (issue #164)
+# --------------------------------------------------------------------------- #
+#: `core/scripts/aide.py`'s `_TEMPLATE_MARKER_RE`, restated rather than
+#: imported: this module stays importable without loading the engine, and the
+#: engine's own tests hold every template to the engine's reading of the line.
+_TEMPLATE_MARKER = r"^<!--\s*aide-template:\s*([a-z][a-z0-9-]*)\s+(\d+)\s*-->\s*$"
+
+
+def _template_versions(text_of) -> dict:
+    """`name -> version` over `core/templates/*.md`, reading each through
+    *text_of(path)*, which returns the file's text or `None`."""
+    versions = {}
+    for path in sorted((REPO_ROOT / "core" / "templates").glob("*.md")):
+        text = text_of(path)
+        match = re.search(_TEMPLATE_MARKER, text or "", re.MULTILINE)
+        if match:
+            versions[match.group(1)] = int(match.group(2))
+    return versions
+
+
+def test_changelog_names_every_template_version():
+    """A template's number is a consumer's cue to open the changelog, and the
+    warning `aide check` prints tells it to search for `<name> template <N>`.
+    A number with no such entry sends the consumer to look for a migration
+    nobody wrote down."""
+    versions = _template_versions(lambda p: p.read_text(encoding="utf-8-sig"))
+    assert len(versions) >= 6, versions
+    changelog = re.sub(r"[`*]", "", (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
+    missing = [f"{name} template {n}" for name, n in sorted(versions.items())
+               if not re.search(rf"\b{re.escape(name)} template {n}\b", changelog)]
+    assert not missing, (
+        f"CHANGELOG.md names no entry for: {missing}. The entry that bumps a "
+        "template's number names '<name> template <N>' and says what a consumer "
+        "edits, and whether it is optional.")
+
+
+def test_template_versions_moved_forward_not_backward():
+    """A number that goes down tells every document built since that it is
+    newer than the template — the opposite of what happened."""
+    base = _merge_base()
+
+    def at_base(path: Path):
+        res = _git("show", f"{base}:{path.relative_to(REPO_ROOT).as_posix()}")
+        return res.stdout if res.returncode == 0 else None
+
+    before = _template_versions(at_base)
+    after = _template_versions(lambda p: p.read_text(encoding="utf-8-sig"))
+    lowered = {name: (n, after[name]) for name, n in before.items()
+               if name in after and after[name] < n}
+    assert not lowered, f"template versions moved backward (before, after): {lowered}"
