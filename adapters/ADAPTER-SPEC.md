@@ -528,6 +528,26 @@ Curate the quotations — the load-bearing sentences, not every line. A statemen
 nobody pinned drifts freely; that is the known and accepted cost of this rung,
 and the reason rungs 1 and 2 come first.
 
+**What a pin may quote depends on whether the copy delivers the section.** A
+**delivered** copy's pins quote the section's **core**, above its `Rationale`
+heading, and nothing below it. A delivered file carries the rule to a reader who
+is given no other copy of it, and a sentence that reader acts on is core by the
+which-side test (would an agent that never saw it decide differently?). So a
+delivered pin in the tail is one of two mistakes: a disambiguator filed on the
+wrong side of the heading, which the *section* should fix, or provenance the
+delivered file should not carry. An **undelivered** copy may quote the tail as
+well. That covers a workflow skill, an agent spec, or a command that carries a
+slice of a section its role is not preloaded with. The core/tail line is drawn
+for the section's own reader, who holds the rule the reasoning is attached to.
+A role that carries one invariant in its own spec sometimes needs the reason
+more than the rule, because the reason is what it applies. `spec-reviewer` hunts
+the defect shape an authorised-paths `Rationale` bullet names, and `builder` is
+told why a Decisions entry does not stand in for the hand-back (issue #224). A
+tail pin binds in both directions exactly as a core pin does. What this does not
+license is moving the sentence above the heading to tidy the copy: that grows a
+core every delivered reader pays for, on behalf of a reader who does not load
+it. The Claude adapter's pins test holds the delivered half.
+
 **Where the pins live is decided by the channel the framework ships the copy
 through — its *designed* reader.** Not by every reader it could conceivably have:
 any file can be opened by a person, so a criterion quantified over all readers

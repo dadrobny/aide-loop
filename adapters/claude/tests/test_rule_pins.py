@@ -51,7 +51,9 @@ slice of the contract it acts on — `/aide-create-queue` and
 whole point of writing that table once — declares the same blocks and is held
 to them the same way, in both directions; so does an agent spec carrying a
 section its role is not preloaded with (`builder.md`, §5). It simply owes none,
-because it delivers no section.
+because it delivers no section. The one difference in what may be quoted: a
+delivered file's pins must sit in the section's core, above its `Rationale`
+heading, while an undelivered copy may quote the tail (issue #224).
 
 **What the pin list is not.** It is hand-curated and can go stale — but only
 toward under-checking: a statement nobody pinned is unguarded exactly as it was
@@ -350,6 +352,53 @@ def test_a_pinned_statement_still_appears_in_the_rule_that_declares_it(case):
         f"{_label(rule)}: declares a pin its own body no longer states\n"
         f"  pinned: {pin}\n"
         f"Drop the pin if the rule deliberately stopped delivering it.")
+
+
+#: The pins a **delivered** file declares — the ones held to the section core.
+_DELIVERED_PINNED = [case for case in _PINNED if case[0] in _DELIVERED]
+
+
+@pytest.mark.parametrize("case", _DELIVERED_PINNED, ids=_id)
+def test_a_delivered_pin_quotes_the_section_core_not_its_rationale(case):
+    """ADAPTER-SPEC, *Copies of engine text*, rung 3 (issue #224).
+
+    A delivered file carries the rule to a reader who has no other copy of it,
+    so every sentence it pins is one that reader acts on — core by the
+    which-side test, and therefore above the `Rationale` heading. A pin that
+    only the tail satisfies is a disambiguator filed on the wrong side, or
+    provenance the delivered file should not carry.
+
+    Scoped to delivered files on purpose: an agent spec or workflow skill
+    carrying a slice of a section its role does not preload may quote the
+    tail (`builder.md`, `spec-reviewer.md`), and is held only by the two
+    both-directions checks above.
+    """
+    rule, declared, pin = case
+    section = _read(_section_path(declared))
+    core = install.section_core(section)
+    assert core is not None, (
+        f"{declared} has no `Rationale` heading, so {_label(rule)}'s pins cannot "
+        f"be told core from tail — every section reads core first, then the tail")
+    assert _normalise(pin) in _normalise(core), (
+        f"{_label(rule)}: pins a sentence that sits below {declared}'s "
+        f"`Rationale` heading\n  pinned: {pin}\n"
+        f"If the delivered reader acts on it, it is core — move it above the "
+        f"heading in the section (and bump core/VERSION). If not, drop it from "
+        f"the delivered file.")
+
+
+def test_the_core_check_can_tell_a_tail_sentence_from_a_core_one():
+    """The guard on the guard: a sentence lifted from below a section's
+    `Rationale` heading is absent from that section's core, so the check above
+    is not satisfied by the whole file."""
+    section = _read(_section_path(".aide/conventions/6-test-hygiene.md"))
+    core = install.section_core(section)
+    assert core is not None, "6-test-hygiene.md has no Rationale heading — pick another section"
+    tail_lines = [line.strip()[2:] for line in section[len(core):].splitlines()
+                  if line.strip().startswith("- ") and len(line.split()) >= 8]
+    assert tail_lines, "the §6 tail has no bullet to plant — pick another section"
+    assert _normalise(tail_lines[0]) not in _normalise(core), tail_lines[0]
+    assert _DELIVERED_PINNED, "no delivered file declares a pin — the check above is vacuous"
 
 
 # --------------------------------------------------------------------------- #
