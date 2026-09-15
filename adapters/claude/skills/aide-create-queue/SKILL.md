@@ -114,8 +114,8 @@ as the reason.
    `Validate stage N: <stage title>`: replay the stage's use cases end-to-end
    (not just the unit suite), and flip any Environment-Gated Capability
    Verification rows the stage introduced to `✅ Verified` where the
-   environment allows (`aide env --profile <name>`), else record why they stay
-   `❓ Unverified`. Validation is planned, numbered work — never an implicit
+   environment allows (`aide env --profile <name>`), else record in the row's
+   Notes cell why it stays `❓ Unverified`. Validation is planned, numbered work — never an implicit
    hope.
 6. **Consistent format** (parsed by `aide claim` / `aide check`):
    ```

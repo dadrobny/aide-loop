@@ -558,6 +558,34 @@ class OutcomeTarget(NamedTuple):
     kind: Optional[str]      # "met" | "not-met" | "unverified" | None (unrecognised)
 
 
+#: The optional Environment-Gated Capability Verification table (§1 →
+#: environment-gated capabilities). Outside the rollup like Outcome targets,
+#: but gating nothing at all: its reader surfaces state, and warns.
+_CAPABILITIES_HEADING_RE = re.compile(
+    r"^#{1,2}\s+Environment-Gated Capability Verification\b", re.IGNORECASE)
+_CAPABILITY_STATUS_KIND = {"✅": "verified", "❓": "unverified"}
+#: A row's link to the `[validation]` profile that would verify it, written in
+#: its Package / Tool cell as `` `gpu` profile `` or `` profile `gpu` ``.
+_PROFILE_LINK_RE = re.compile(
+    r"`([A-Za-z0-9_-]+)`\s+profile\b|\bprofile\s+`([A-Za-z0-9_-]+)`", re.IGNORECASE)
+#: The introducing stage(s): the first `Stage N` / `Stages N, M` / `Stage 3 / 4`
+#: / `Stages 5–7` run in the Introduced by cell. A later "closed by Stage 12"
+#: names a different stage, which is why only the first run counts.
+_INTRODUCED_BY_RE = re.compile(
+    r"\bStages?\s+(\d+(?:\s*(?:,|/|&|\band\b|[-–])\s*\d+)*)", re.IGNORECASE)
+#: A Notes cell holding only a dash records nothing.
+_EMPTY_CELL = {"", "-", "—", "–"}
+
+
+class GatedCapability(NamedTuple):
+    lineno: int              # 1-based line number in progress.md
+    text: str                # the Capability cell
+    profiles: List[str]      # [validation] profiles the Package / Tool cell names
+    stages: List[int]        # the stage(s) the Introduced by cell names first
+    kind: Optional[str]      # "verified" | "unverified" | None (unrecognised)
+    noted: bool              # the Notes cell records something
+
+
 #: The optional `## Human gates` table — a decision only a person can make,
 #: blocking work until they make it. Kept separate from acceptance boxes
 #: deliberately: conventions.md §1 defines those as observable checks OF THE
@@ -649,11 +677,7 @@ _OBJECTIVES_HEADING_RE = re.compile(r"^#{1,2}\s+Objective coverage\b", re.IGNORE
 
 
 class _ProgressTable(NamedTuple):
-    """One of the four ``progress.md`` tables the engine reads.
-
-    The Environment-Gated Capability Verification table is not one: nothing
-    reads it, so nothing here can lose a row of it.
-    """
+    """One of the five ``progress.md`` tables the engine reads."""
     name: str                # how a finding names the table
     heading: "re.Pattern"    # the section the template puts the table under
     width: int               # cells in a data row
@@ -665,6 +689,9 @@ class _ProgressTable(NamedTuple):
     #: True for a table whose reader takes rows by shape from anywhere in the
     #: document rather than from under its heading — see ``_table_rows``.
     anywhere: bool = False
+    #: False for a table no other check gates on, whose unusable row is
+    #: therefore a warning: dropping it takes no error with it (issue #207).
+    error: bool = True
 
 
 def _summary_row_problem(cells: List[str]) -> Optional[str]:
@@ -707,8 +734,13 @@ _HUMAN_GATES = _ProgressTable(
     "human-gate", _GATES_HEADING_RE, 4, "gate", lambda cells: None,
     "what it blocks is unknown, and `aide claim` holds every item until it "
     "is fixed")
+_CAPABILITIES = _ProgressTable(
+    "capability", _CAPABILITIES_HEADING_RE, 5, "capability",
+    lambda cells: None if cells[0] else "has an empty Capability cell",
+    "`aide status` never lists it and no closed stage is checked against it",
+    error=False)
 _PROGRESS_TABLES = (_STAGE_SUMMARY, _OBJECTIVE_COVERAGE, _OUTCOME_TARGETS,
-                    _HUMAN_GATES)
+                    _HUMAN_GATES, _CAPABILITIES)
 
 
 def _reads(table: _ProgressTable, cells: List[str]) -> bool:
@@ -802,9 +834,23 @@ def unreadable_row_errors(lines: List[str]) -> List[str]:
     telling whether it was a ✅ a check exists to catch. The check it would
     have fed cannot run, so the check fails on the row instead: the only
     reading of an unreadable row that cannot pass an over-claim.
+
+    A table no check gates on (``error=False``) is the exception, reported by
+    ``unreadable_row_warnings``: its dropped row carries no over-claim away.
     """
+    return _unreadable_row_findings(lines, error=True)
+
+
+def unreadable_row_warnings(lines: List[str]) -> List[str]:
+    """``unreadable_row_errors``'s findings for the tables that gate nothing."""
+    return _unreadable_row_findings(lines, error=False)
+
+
+def _unreadable_row_findings(lines: List[str], error: bool) -> List[str]:
     out: List[str] = []
     for table, i, cells, problem in _unreadable_rows(lines):
+        if table.error is not error:
+            continue
         below = lines[i + 1] if i + 1 < len(lines) else ""
         if below.strip().startswith("|") and _is_separator_row(_split_row(below)):
             # Header position: most likely a retitled header, possibly the
@@ -926,6 +972,72 @@ def outcome_targets(lines: List[str]) -> List[OutcomeTarget]:
         kind = next((k for icon, k in _TARGET_STATUS_KIND.items()
                      if cells[3].startswith(icon)), None)
         out.append(OutcomeTarget(i + 1, cells[0], re.findall(r"G\d+", cells[1]), kind))
+    return out
+
+
+def _introducing_stages(cell: str) -> List[int]:
+    """Stage numbers in the first ``Stage N`` run of an Introduced by cell."""
+    m = _INTRODUCED_BY_RE.search(cell)
+    if not m:
+        return []
+    stages: List[int] = []
+    for part in re.split(r"\s*(?:,|/|&|\band\b)\s*", m.group(1), flags=re.IGNORECASE):
+        bounds = re.split(r"\s*[-–]\s*", part)
+        lo, hi = int(bounds[0]), int(bounds[-1])
+        stages.extend(range(lo, hi + 1) if lo <= hi else [lo, hi])
+    return stages
+
+
+def gated_capabilities(lines: List[str]) -> List[GatedCapability]:
+    """Rows of the optional Environment-Gated Capability Verification table.
+
+    A row records whether a capability only some environments can exercise has
+    had its gated path run for real — which a skip-clean suite and a ✅ stage
+    never show. The table gates no stage, objective or claim, so every finding
+    about it is a warning (issue #207).
+
+    A row of the wrong width, or with an empty Capability cell, is not read;
+    ``unreadable_row_warnings`` reports it.
+    """
+    out: List[GatedCapability] = []
+    for i, cells, problem in _table_rows(lines, _CAPABILITIES):
+        if problem is not None:
+            continue
+        kind = next((k for icon, k in _CAPABILITY_STATUS_KIND.items()
+                     if cells[3].startswith(icon)), None)
+        profiles = [a or b for a, b in _PROFILE_LINK_RE.findall(cells[1])]
+        out.append(GatedCapability(
+            i + 1, cells[0], list(dict.fromkeys(profiles)),
+            _introducing_stages(cells[2]), kind,
+            cells[4].strip() not in _EMPTY_CELL))
+    return out
+
+
+def capability_warnings(lines: List[str], profiles: Dict[str, object]) -> List[str]:
+    """``aide check``'s findings over the capability table — warnings, all.
+
+    *profiles* is ``[validation]`` from aide.toml: a row linking to a profile
+    that is not there cannot be evaluated by ``aide status --profiles``.
+    """
+    summary: Dict[int, Optional[str]] = {}
+    for line in lines:
+        cells = _split_row(line) if line.strip().startswith("|") else []
+        if cells and _reads(_STAGE_SUMMARY, cells):
+            summary[int(cells[0])] = _icon_status(cells[3])
+    out = unreadable_row_warnings(lines)
+    for c in gated_capabilities(lines):
+        where = f"progress.md:{c.lineno}: capability '{c.text}'"
+        if c.kind is None:
+            out.append(f"{where} has an unrecognised Status (expected "
+                       f"'✅ Verified' or '❓ Unverified')")
+        for name in c.profiles:
+            if name not in profiles:
+                out.append(f"{where} names profile '{name}', which [validation] "
+                           f"in aide.toml does not define")
+        closed = [s for s in c.stages if summary.get(s) == "complete"]
+        if c.kind == "unverified" and closed and not c.noted:
+            out.append(f"{where} is still ❓ Unverified under stage {closed[0]}, "
+                       f"which is ✅, and its Notes cell records no reason")
     return out
 
 
@@ -4054,6 +4166,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     # every check below, including the ones that would have errored on it.
     errors.extend(unreadable_row_errors(lines))
     warnings.extend(gate_warnings(lines))
+    warnings.extend(capability_warnings(lines, config.get("validation") or {}))
     # A withdrawn attestation is normal, not a defect — the point is that it
     # stays visible. Retracting is append-only, so without a surfacing rule the
     # withdrawal would live only in one commit's diff, which is exactly the
@@ -5940,6 +6053,45 @@ def env_status(repo_root: Path, config: Dict[str, Dict[str, object]]) -> str:
     return env_report(repo_root, config)[0]
 
 
+#: Seconds a ``[validation]`` expression may run. Generous — importing a GPU
+#: stack and initialising its driver takes seconds — but finite: a profile is
+#: evaluated inside unattended runs, where a hang stalls the loop silently.
+PROFILE_TIMEOUT = 120
+
+
+def evaluate_profile(repo_root: Path, config: Dict[str, Dict[str, object]],
+                     expr: str, timeout: float = PROFILE_TIMEOUT
+                     ) -> Tuple[bool, str]:
+    """``(satisfied, detail)`` for a ``[validation]`` expression, evaluated in
+    the project venv (this interpreter when there is none).
+
+    It evaluates the expression and nothing else: whether this machine
+    provides the capability, never whether the gated path works. *detail* is
+    the last stderr line, or why the expression could not be evaluated.
+
+    An expression that times out, or an interpreter that cannot be started, is
+    **not satisfied**: the reading under which validation records
+    ``❓ Unverified`` rather than passing. The one evaluation
+    ``aide env --profile`` and ``aide status --profiles`` share, so the two can
+    never disagree about whether this machine has a capability.
+    """
+    vpy = venv_python(repo_root, config)
+    interpreter = str(vpy) if vpy.exists() else sys.executable
+    code = f"import sys\nsys.exit(0 if ({expr}) else 1)"
+    try:
+        # §6: name the codec — a traceback carrying a non-ASCII path decodes
+        # differently under a Windows locale, and this text is reported to a user.
+        res = subprocess.run([interpreter, "-c", code], cwd=str(repo_root),
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             encoding="utf-8", errors="replace", timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, f"timed out after {timeout:g}s"
+    except OSError as exc:
+        return False, f"interpreter '{interpreter}' cannot be run: {exc}"
+    detail = (res.stderr or "").strip().splitlines()
+    return res.returncode == 0, detail[-1] if detail else ""
+
+
 def cmd_env(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
@@ -5953,19 +6105,11 @@ def cmd_env(args: argparse.Namespace) -> int:
             print(f"aide env: unknown profile '{args.profile}' — [validation] defines: {known}",
                   file=sys.stderr)
             return 2
-        vpy = venv_python(repo_root, config)
-        interpreter = str(vpy) if vpy.exists() else sys.executable
-        code = f"import sys\nsys.exit(0 if ({expr}) else 1)"
-        # §6: name the codec — a traceback carrying a non-ASCII path decodes
-        # differently under a Windows locale, and this text is reported to a user.
-        res = subprocess.run([interpreter, "-c", code], cwd=str(repo_root),
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             encoding="utf-8", errors="replace")
-        if res.returncode == 0:
+        satisfied, detail = evaluate_profile(repo_root, config, expr)
+        if satisfied:
             print(f"aide env: profile '{args.profile}' satisfied")
             return 0
-        detail = (res.stderr or "").strip().splitlines()
-        suffix = f" ({detail[-1]})" if detail else ""
+        suffix = f" ({detail})" if detail else ""
         print(f"aide env: profile '{args.profile}' NOT satisfied{suffix} — "
               f"validation gated on it must record '❓ Unverified', never a silent pass")
         return 1
@@ -7849,6 +7993,33 @@ def cmd_status(args: argparse.Namespace) -> int:
                 t.kind, "⚠ unrecognised status")
             objs = f" [{', '.join(t.objectives)}]" if t.objectives else ""
             print(f"  target: {t.text}{objs} — {label}")
+        # Capabilities not yet ✅ Verified (issue #207). Profiles run only on
+        # request, and only for a ❓ Unverified row: an expression is project
+        # code that may import a GPU stack, and a row with any other Status —
+        # `⏸️ Out of scope` — is not one to be told it can be verified now.
+        profiles = {k: str(v) for k, v in (config.get("validation") or {}).items()}
+        verdicts: Dict[str, Tuple[bool, str]] = {}
+        for c in gated_capabilities(plines):
+            if c.kind == "verified":
+                continue
+            label = "❓ unverified" if c.kind == "unverified" else "⚠ unrecognised status"
+            for name in c.profiles:
+                if name not in profiles:
+                    label += f"; profile '{name}' is not defined in [validation]"
+                    continue
+                if not (args.profiles and c.kind == "unverified"):
+                    label += f"; profile '{name}'"
+                    continue
+                if name not in verdicts:
+                    verdicts[name] = evaluate_profile(repo_root, config, profiles[name])
+                satisfied, detail = verdicts[name]
+                label += (f"; profile '{name}' is satisfied here — the gated path "
+                          f"can be run and the row verified" if satisfied
+                          else f"; profile '{name}' is not satisfied here"
+                          + (f" ({detail})" if detail else ""))
+            stages = (f" [stage {', '.join(map(str, c.stages))}]"
+                      if c.stages else "")
+            print(f"  capability: {c.text}{stages} — {label}")
         for stg, cn, cdate, creason in retracted_criteria(plines):
             print(f"  retracted: stage {stg} criterion {cn} ({cdate}) — {creason}")
 
@@ -8276,9 +8447,17 @@ def build_parser() -> argparse.ArgumentParser:
             "normal state rather than a defect. A summary row marked "
             "\u23f8\ufe0f or \u274c is left out of all three stage comparisons "
             "above, deliverables and header alike: the stage is deferred or "
-            "dropped, so its bullets no longer speak for it. The "
-            "Environment-Gated Capability Verification table is read by no "
-            "check.\n"
+            "dropped, so its bullets no longer speak for it.\n"
+            "\n"
+            "Over the Environment-Gated Capability Verification table, "
+            "warnings only, since no other check gates on it: a row its "
+            "reader cannot use (the wrong cell count, or an empty Capability "
+            "cell); a Status that is neither \u2705 Verified nor \u2753 "
+            "Unverified; a profile named in the Package / Tool cell that "
+            "[validation] does not define; and a row still \u2753 Unverified "
+            "with an empty or dash-only Notes cell whose introducing stage "
+            "\u2014 the first `Stage N` run in its Introduced by cell \u2014 "
+            "is \u2705 in the stage summary.\n"
             "\n"
             "Among the other lints over docs/aide, these are warnings: an "
             "Authorised paths bullet whose "
@@ -8485,7 +8664,9 @@ def register_git_subcommands(sub) -> None:
                        help="create + populate the venv if missing/stale, from "
                             "[python] interpreter when set")
     p_env.add_argument("--profile", default=None,
-                       help="evaluate a named [validation] environment profile (exit 0 iff satisfied)")
+                       help="evaluate a named [validation] environment profile "
+                            "(exit 0 iff satisfied; one that runs past "
+                            f"{PROFILE_TIMEOUT}s or cannot start is not satisfied)")
     p_env.set_defaults(func=cmd_env)
 
     p_sync = sub.add_parser("sync", help="preflight: fetch, verify clean tree, land on the right branch")
@@ -8525,7 +8706,8 @@ def register_git_subcommands(sub) -> None:
 
     p_status = sub.add_parser(
         "status", help="one-call roadmap-state report (branch, queues, "
-        "claims, PRs, open gates, unmet targets, retracted criteria)",
+        "claims, PRs, open gates, unmet targets, unverified capabilities, "
+        "retracted criteria)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "A \U0001f50d item's claim branch is reported as awaiting review, "
@@ -8542,8 +8724,20 @@ def register_git_subcommands(sub) -> None:
             "blocking, every Outcome "
             "target not yet \u2705 Met, every retracted acceptance "
             "criterion and every progress.md table row no reader can use is "
-            "printed too, so none of them lives only in one commit's diff."))
+            "printed too, so none of them lives only in one commit's diff. "
+            "So is every environment-gated capability not yet ✅ "
+            "Verified, with the [validation] profile its Package / Tool cell "
+            "names. With --profiles, each profile a ❓ Unverified row names "
+            "is evaluated once, as `aide env --profile` evaluates it (the "
+            "expression only, never the gated tests), and reported satisfied "
+            "or not; one that times out or cannot start is not satisfied — "
+            "a satisfied profile under an unverified row is a row this "
+            "machine can verify now."))
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
+    p_status.add_argument("--profiles", action="store_true",
+                          help="evaluate the [validation] profile each "
+                               "❓ Unverified capability row names (each "
+                               f"bounded by {PROFILE_TIMEOUT}s)")
     p_status.add_argument("--base", default=None,
                           help="ref to report ahead/behind against, and to "
                                "measure every \U0001f50d claim's landed work "

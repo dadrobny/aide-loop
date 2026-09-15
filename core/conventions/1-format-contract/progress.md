@@ -30,8 +30,9 @@ four tables the engine reads: the two above, Outcome targets (below) and §1 →
 human gates. Unusable means the wrong number of cells — a `|` inside a cell,
 usually — a Stage cell that is not an integer, an objective cell not starting
 `G<n>`, a summary or objective `Status` with no icon, or an empty Target cell.
-The Environment-Gated Capability Verification table is the fifth, and no tool
-reads it.
+The Environment-Gated Capability Verification table is the fifth, and gates
+nothing, so an unusable row of it is a warning instead (§1 → environment-gated
+capabilities).
 
 **Item references on a deliverable bullet.** The `*(Item NNN)*` suffix is what
 ties an item to the bullet whose status it moves — `aide progress set NNN` finds

@@ -95,8 +95,8 @@ Agents *read* gates — to know why they must stop — and stop.
   often in a project whose optional section was deleted, so the author has no
   table above it to copy — and a mis-shaped one halts every item until someone
   repairs it. The header row costs a line; the mistake costs the programme.
-  The error itself is one rule across all four tables `aide check` reads
-  (§1 → `progress.md`).
+  The error itself is one rule across the four `progress.md` tables a check
+  gates on (§1 → `progress.md`).
 - **Why `check` warns and `status` prints.** A gate that is still blocking is
   visible on every run instead of buried in a spec's prose; `aide status -h`
   names open gates among what it reports.

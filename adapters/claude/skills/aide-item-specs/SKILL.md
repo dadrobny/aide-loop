@@ -107,6 +107,10 @@ paths:
        rollup rule
      - one row per capability, starting `❓ Unverified`
      - never inferred from the stage's own ✅ status
+     - A row still `❓ Unverified` once its stage is ✅ records why in its
+       Notes cell
+     - A row names the `[validation]` profile that would verify it in its
+       Package / Tool cell, as `` `<name>` profile ``
      - A stage-closing item's Implementation Steps must add/update the row(s)
        for any capability its stage introduced
      - Both mechanisms are opt-in
@@ -271,8 +275,11 @@ template) that the validator must execute**. The stage's own replay is an item
 like any other: **a queue that closes a roadmap stage ends with a `Validate
 stage N` item that replays the stage's use cases end-to-end and updates the
 capability table** — ✅ Verified where the profile is satisfied, else an
-explicit ❓ Unverified with the reason. `queue-planner` names it; this role
-writes its spec.
+explicit ❓ Unverified with the reason: **a row still `❓ Unverified` once its
+stage is ✅ records why in its Notes cell**, and **a row names the
+`[validation]` profile that would verify it in its Package / Tool cell, as
+`` `<name>` profile ``**. `queue-planner` names it; this role writes its
+spec.
 
 ## Clarify mode
 

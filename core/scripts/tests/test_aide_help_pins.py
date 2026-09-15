@@ -50,7 +50,8 @@ that moved everything.
   not a second rule.
 * *"since the row is dropped from every check it would have fed"*, *"the
   goal-level mirror of that over-claim"*, *"a normal state rather than a
-  defect"* (twice), *"that would be recommending the deletion of an open PR's
+  defect"* (twice), *"a satisfied profile under an unverified row is a row
+  this machine can verify now"* (`status`), *"that would be recommending the deletion of an open PR's
   head branch"*, *"Because in `pr` mode nothing inside the loop observes the
   merge"*, *"so none of them lives only in one commit's diff"*, *"since what it
   blocks is unknown"* — same: the reason a pinned behaviour is what it is.
@@ -199,7 +200,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `if t.kind == "not-met"` under an objective whose status is complete.
         ("an objective marked ✅ over an Outcome target that is ❌ Not met",
          "test_aide_core::test_check_flags_objective_complete_over_unmet_target"),
-        # `unreadable_row_errors` over `_PROGRESS_TABLES` — all four of them.
+        # `unreadable_row_errors` over the `_PROGRESS_TABLES` with `error=True`.
         # …whose `CASES` cover three of the four tables, so the gate table
         # — the one whose unreadable row also holds every item — is pinned
         # alongside it rather than assumed.
@@ -252,9 +253,29 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "stage comparisons above, deliverables and header alike",
          "test_aide_help_pins::"
          "test_a_rolled_up_stage_under_a_lesser_summary_row_is_a_warning"),
-        # `_PROGRESS_TABLES` is the whole set, and it is not in it.
-        ("The Environment-Gated Capability Verification table is read by no check",
-         "test_aide_table_rows::test_the_environment_gated_table_is_read_by_no_check"),
+        # `_CAPABILITIES` is `error=False`: `unreadable_row_warnings` reports
+        # its rows, and `unreadable_row_errors` leaves them out (issue #207).
+        ("warnings only, since no other check gates on it: a row its reader "
+         "cannot use",
+         ("test_aide_capabilities::"
+          "test_a_mis_shaped_capability_row_is_a_warning_not_an_error",
+          "test_aide_table_rows::test_a_mis_shaped_environment_gated_row_is_no_error")),
+        # `if c.kind is None` in `capability_warnings`.
+        ("a Status that is neither ✅ Verified nor ❓ Unverified",
+         "test_aide_capabilities::test_an_unrecognised_capability_status_is_a_warning"),
+        # `if name not in profiles` over `_PROFILE_LINK_RE` matches.
+        ("a profile named in the Package / Tool cell that [validation] does "
+         "not define",
+         "test_aide_capabilities::test_an_undefined_profile_is_a_warning"),
+        # `c.kind == "unverified" and closed and not c.noted`, `closed` from
+        # `_introducing_stages` against the summary rows `_reads` accepts.
+        ("a row still ❓ Unverified with an empty or dash-only Notes cell "
+         "whose introducing stage — the first `Stage N` run in its "
+         "Introduced by cell — is ✅ in the stage summary",
+         ("test_aide_capabilities::test_a_closed_stage_row_with_no_reason_is_a_warning",
+          "test_aide_capabilities::"
+          "test_a_reason_an_open_stage_or_a_verified_row_is_not_that_warning",
+          "test_aide_capabilities::test_the_introducing_stages_are_the_first_stage_run")),
 
         # `item_spec_warnings` -> the dropped-span lint, one warning per span.
         ("an Authorised paths bullet whose second backtick span or "
@@ -589,6 +610,25 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "Met, every retracted acceptance criterion and every progress.md "
          "table row no reader can use is printed too",
          "test_aide_help_pins::test_status_prints_the_four_states_it_promises"),
+        # The `gated_capabilities` loop in `cmd_status`: the profile named
+        # always, `evaluate_profile` called only under `args.profiles` and
+        # `c.kind == "unverified"`, memoised per profile.
+        ("So is every environment-gated capability not yet ✅ Verified, with "
+         "the [validation] profile its Package / Tool cell names",
+         "test_aide_capabilities::"
+         "test_status_lists_unverified_capabilities_without_evaluating_profiles"),
+        ("With --profiles, each profile a ❓ Unverified row names is evaluated "
+         "once, as `aide env --profile` evaluates it (the expression only, "
+         "never the gated tests), and reported satisfied or not",
+         ("test_aide_capabilities::"
+          "test_status_profiles_evaluates_the_profiles_of_unverified_rows",
+          "test_aide_capabilities::test_status_evaluates_each_profile_once")),
+        # `evaluate_profile`'s `TimeoutExpired` and `OSError` branches.
+        ("one that times out or cannot start is not satisfied",
+         ("test_aide_capabilities::"
+          "test_a_profile_that_outlives_its_timeout_is_not_satisfied",
+          "test_aide_capabilities::"
+          "test_a_profile_whose_interpreter_cannot_start_is_not_satisfied")),
     ],
 
     # ---------------------------------------------------------------- scope --

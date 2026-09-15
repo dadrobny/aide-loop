@@ -291,11 +291,12 @@ def test_a_target_status_with_no_mark_stays_a_warning(tmp_path: Path):
     assert any("unrecognised Status" in w for w in warnings), warnings
 
 
-def test_the_environment_gated_table_is_read_by_no_check(tmp_path: Path):
-    """§1 says no tool reads it, so a mis-shaped row there costs no check
-    anything — reporting one would make a rule the engine does not have."""
+def test_a_mis_shaped_environment_gated_row_is_no_error(tmp_path: Path):
+    """The fifth table is read (issue #207) but gates no check, so its
+    unusable row is a warning — `test_aide_capabilities.py` holds that half."""
     doc = _progress(env="| GPU | torch | Stage 1 | ❓ Unverified | a | b |")
     assert aide.unreadable_row_errors(doc.splitlines()) == []
+    assert len(aide.unreadable_row_warnings(doc.splitlines())) == 1
 
 
 def test_a_row_under_another_heading_is_not_the_tables_business():

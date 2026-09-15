@@ -62,11 +62,13 @@ _One row per vision objective._
 _One row per environment-gated capability (conventions.md §1 →
 Environment-gated capabilities says which, and what counts as verified).
 Status is `❓ Unverified` until the gated path has run with the dependency
-present, then `✅ Verified (YYYY-MM-DD, host/CI description)`._
+present, then `✅ Verified (YYYY-MM-DD, host/CI description)`. Keep the
+`` (`name` profile) `` part only when a `[validation]` profile checks for
+the dependency._
 
 | Capability | Package / Tool | Introduced by | Status | Notes |
 |------------|-----------------|----------------|--------|-------|
-| {{capability}} | {{package or tool name}} | Stage {{n}} *(Item {{nnn}})* | ❓ Unverified | {{notes}} |
+| {{capability}} | {{package or tool name}} (`{{profile}}` profile) | Stage {{n}} *(Item {{nnn}})* | ❓ Unverified | {{notes}} |
 
 ## Outcome targets  <!-- OPTIONAL: delete if no roadmap stage commits to a measured result -->
 
