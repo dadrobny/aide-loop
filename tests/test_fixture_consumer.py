@@ -728,6 +728,18 @@ def test_check_warns_when_a_bullet_authorises_more_paths_than_scope_reads(
         "src/greeter.py", "tests/test_greeter.py"]
 
 
+def test_check_warns_on_a_spec_no_lookup_finds(aide, consumer: Path, capsys):
+    """Issue #228: a spec named `1-the-greeter.md` is invisible to `aide
+    scope` — which says item 001 has no spec — and `aide check` now says why,
+    naming the rename. Still exit 0: the document is the project's to fix."""
+    items = consumer / "docs" / "aide" / "items"
+    (items / "001-the-greeter.md").rename(items / "1-the-greeter.md")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "rename it to 001-the-greeter.md" in capsys.readouterr().out
+    assert aide.main(["--repo", str(consumer), "scope", "1"]) == 2
+    assert "no spec for item 001" in capsys.readouterr().err
+
+
 def test_check_queue_passes_and_names_the_unspecced_item(aide, consumer: Path, capsys):
     """Item 002 is queued with no spec — a normal mid-queue state, counted and
     reported, never a failure."""

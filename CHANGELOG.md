@@ -121,6 +121,23 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.52.1] — 2026-09-15
+
+### Fixed
+
+- **`aide check` names an item spec that no lookup can find (issue #228).**
+  Every verb that reads a spec — `aide scope`, `aide claim`'s dependency read,
+  the status title, `aide check --queue` — finds it by `items/NNN-*.md`, so a
+  file named `12-foo.md`, `0012-foo.md` or `notes.md` was invisible to all of
+  them. `aide check` said nothing about the last, and linted the first two as
+  item `012` while `check --queue` reported 012 as not yet specced. Such a file
+  now gets one warning, naming the rename (`rename it to 012-foo.md`), and none
+  of the other spec lints; the duplicate-number error and the template-line
+  pass no longer count it as a spec either. The number is confirmed against the
+  lookup's own glob (`item_spec_number`, beside `item_spec_paths`), so the
+  warning and the lookup cannot disagree. A warning, so the exit code is
+  unmoved; `check -h` lists it. No template or consumer edit.
+
 ## [1.52.0] — 2026-09-15
 
 ### Added

@@ -38,7 +38,7 @@ import shlex
 import signal
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Callable, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
 # --------------------------------------------------------------------------- #
@@ -1755,7 +1755,40 @@ def item_spec_paths(idir: Path, number: int) -> List[Path]:
     """
     if not idir.is_dir():
         return []
-    return sorted(idir.glob(f"{number:03d}-*.md"))
+    return sorted(idir.glob(_item_spec_glob(number)))
+
+
+def _item_spec_glob(number: int) -> str:
+    return f"{number:03d}-*.md"
+
+
+def item_spec_number(path: Path) -> Optional[int]:
+    """The item number whose `item_spec_paths` lookup returns *path*, or None.
+
+    A file under ``items/`` is a spec only if a lookup can find it, so the
+    number is read off the filename's leading digits and then **confirmed
+    against the lookup's own glob**, never a second pattern: ``12-foo.md`` and
+    ``0012-foo.md`` both read as 12 and neither answers ``012-*.md``, so both
+    are None, exactly as ``notes.md`` is (issue #228). `PurePath.match` applies
+    the platform's case rule, as the glob does.
+    """
+    m = re.match(r"\d+", path.name)
+    if not m:
+        return None
+    number = int(m.group(0))
+    return number if PurePath(path.name).match(_item_spec_glob(number)) else None
+
+
+def _unfindable_spec_warning(path: Path) -> str:
+    """`aide check`'s warning for a file under ``items/`` no lookup returns."""
+    m = re.match(r"(\d+)[-_ ]*(.*)$", path.name)
+    if m and m.group(2).lower() not in ("", ".md"):
+        fix = f"rename it to {int(m.group(1)):03d}-{m.group(2)}"
+    else:
+        fix = "rename it NNN-<slug>.md, NNN its item number zero-padded to three digits"
+    return (f"items/{path.name}: not named NNN-<slug>.md, so `aide scope`, "
+            f"`aide claim` and `aide check --queue` never find it and no other "
+            f"spec lint reads it — {fix}")
 
 
 # --------------------------------------------------------------------------- #
@@ -3869,8 +3902,8 @@ def template_drift_warnings(ddir: Path, item_status: Dict[int, str],
     idir = ddir / "items"
     if idir.is_dir():
         for ipath in sorted(idir.glob("*.md")):
-            m = re.match(r"0*(\d+)", ipath.name)
-            if m and item_status.get(int(m.group(1)), "planned") in (
+            n = item_spec_number(ipath)
+            if n is not None and item_status.get(n, "planned") in (
                     "complete", "excluded"):
                 continue
             targets.append(ipath)
@@ -4055,6 +4088,11 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide",
     engine it was true for — `- **A8 (engine 1.28.1):** …` — whose engine
     predates the installed one. See `_stale_assumption_pins`.
 
+    None of them reads a file that no lookup finds: one whose name
+    `item_spec_number` rejects gets a single warning naming the rename instead
+    (issue #228), since every verb that reads a spec treats its item as having
+    none, and a number printed off the filename would disagree with them.
+
     *ddir_rel* is the docs dir as specs spell it in their repo-relative paths;
     `run_checks` passes the configured value, and the default matches the
     scaffolded `aide.toml`. *engine* is the installed engine version, as
@@ -4074,10 +4112,10 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide",
     missing_assumptions: List[str] = []
     stale_pins: List[str] = []
     for path in sorted(idir.glob("*.md")):
-        m = re.match(r"0*(\d+)", path.name)
-        if not m:
+        num = item_spec_number(path)
+        if num is None:
+            out.append(_unfindable_spec_warning(path))
             continue
-        num = int(m.group(1))
         text = path.read_text(encoding=_ENCODING)
         if not re.search(rf"^#\s+Item\s+0*{num}\s*[—–-]\s*\S", text, re.MULTILINE):
             out.append(f"items/{path.name}: no '# Item {num:03d} — Title' heading "
@@ -4414,10 +4452,9 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     if idir.is_dir():
         spec_nums: Dict[int, str] = {}
         for ipath in sorted(idir.glob("*.md")):
-            m = re.match(r"0*(\d+)", ipath.name)
-            if not m:
-                continue
-            n = int(m.group(1))
+            n = item_spec_number(ipath)
+            if n is None:
+                continue  # item_spec_warnings names it
             if n in spec_nums:
                 errors.append(f"duplicate item spec number {n:03d}: {spec_nums[n]} and {ipath.name}")
             spec_nums[n] = ipath.name
@@ -8586,8 +8623,10 @@ def build_parser() -> argparse.ArgumentParser:
             "\u2014 the first `Stage N` run in its Introduced by cell \u2014 "
             "is \u2705 in the stage summary.\n"
             "\n"
-            "Among the other lints over docs/aide, these are warnings: an "
-            "Authorised paths bullet whose "
+            "Among the other lints over docs/aide, these are warnings: a "
+            "file under items/ not named NNN-<slug>.md, which `aide scope`, "
+            "`aide claim` and `aide check --queue` never find, reported in "
+            "place of every other spec lint; an Authorised paths bullet whose "
             "second backtick span or continuation line is silently dropped, "
             "named span by span; one path listed under both May change and "
             "Asserts against (the exact double-listing only \u2014 a literal "
