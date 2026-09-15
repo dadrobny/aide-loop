@@ -40,22 +40,27 @@ jobs:
         run: |
           import json, os, re, subprocess, sys
 
-          def run(*args):
-              return subprocess.run(args, check=True, capture_output=True,
-                                    text=True).stdout
+          sys.path.insert(0, os.getcwd())
+          # The installer's reading: a BOM or a "-rc.1" suffix orders, never raises.
+          from install import parse_version as key
 
-          def key(version):
-              return tuple(int(part) for part in version.split("."))
+          def run(*args):
+              result = subprocess.run(args, capture_output=True, text=True)
+              if result.returncode:
+                  sys.exit(f"{' '.join(args)} exited {result.returncode}:\n"
+                           f"{result.stderr}{result.stdout}")
+              return result.stdout
 
           # First commit, oldest first, where core/VERSION held each value.
           first = {}
           for sha in run("git", "log", "--first-parent", "--reverse",
                          "--format=%H", os.environ["GITHUB_SHA"], "--",
                          "core/VERSION").split():
-              try:
-                  version = run("git", "show", f"{sha}:core/VERSION").strip()
-              except subprocess.CalledProcessError:
+              shown = subprocess.run(["git", "show", f"{sha}:core/VERSION"],
+                                     capture_output=True, text=True)
+              if shown.returncode:
                   continue  # the commit that deleted it, if one ever does
+              version = shown.stdout.lstrip("\ufeff").strip()
               first.setdefault(version, sha)
 
           tags = {line.split("refs/tags/", 1)[1]
@@ -66,8 +71,12 @@ jobs:
           changelog = open("CHANGELOG.md", encoding="utf-8").read()
           floor = key(os.environ["RELEASES_FROM"])
 
-          # Read every release body before pushing anything, so a version
-          # without its section fails the job with no tag left behind.
+          # Read every release body before pushing anything. A version with no
+          # section (tests/test_repo_versioning.py guarantees one for the
+          # version that lands, so this is an intermediate version a
+          # rebase-merge left in history) is tagged with a warning and never
+          # fails the job: failing would block every later version for good.
+          # Adding the section later makes its release on the next run.
           todo = []
           for version, sha in first.items():
               tag = f"v{version}"
@@ -80,9 +89,9 @@ jobs:
                       changelog, re.MULTILINE | re.DOTALL)
                   notes = match.group(1).strip() if match else ""
                   if not notes:
-                      print(f"::error::CHANGELOG.md has no non-empty "
-                            f"'## [{version}]' section")
-                      sys.exit(1)
+                      print(f"::warning::CHANGELOG.md has no non-empty "
+                            f"'## [{version}]' section; tagging {tag} only")
+                      notes = None
               if tag not in tags or notes is not None:
                   todo.append((tag, sha, notes))
 
