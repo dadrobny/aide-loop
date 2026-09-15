@@ -6053,22 +6053,41 @@ def env_status(repo_root: Path, config: Dict[str, Dict[str, object]]) -> str:
     return env_report(repo_root, config)[0]
 
 
-def evaluate_profile(repo_root: Path, config: Dict[str, Dict[str, object]],
-                     expr: str) -> Tuple[bool, str]:
-    """``(satisfied, last stderr line)`` for a ``[validation]`` expression,
-    evaluated in the project venv (this interpreter when there is none).
+#: Seconds a ``[validation]`` expression may run. Generous — importing a GPU
+#: stack and initialising its driver takes seconds — but finite: a profile is
+#: evaluated inside unattended runs, where a hang stalls the loop silently.
+PROFILE_TIMEOUT = 120
 
-    The one evaluation ``aide env --profile`` and ``aide status`` share, so
-    the two can never disagree about whether this machine has a capability.
+
+def evaluate_profile(repo_root: Path, config: Dict[str, Dict[str, object]],
+                     expr: str, timeout: float = PROFILE_TIMEOUT
+                     ) -> Tuple[bool, str]:
+    """``(satisfied, detail)`` for a ``[validation]`` expression, evaluated in
+    the project venv (this interpreter when there is none).
+
+    It evaluates the expression and nothing else: whether this machine
+    provides the capability, never whether the gated path works. *detail* is
+    the last stderr line, or why the expression could not be evaluated.
+
+    An expression that times out, or an interpreter that cannot be started, is
+    **not satisfied**: the reading under which validation records
+    ``❓ Unverified`` rather than passing. The one evaluation
+    ``aide env --profile`` and ``aide status --profiles`` share, so the two can
+    never disagree about whether this machine has a capability.
     """
     vpy = venv_python(repo_root, config)
     interpreter = str(vpy) if vpy.exists() else sys.executable
     code = f"import sys\nsys.exit(0 if ({expr}) else 1)"
-    # §6: name the codec — a traceback carrying a non-ASCII path decodes
-    # differently under a Windows locale, and this text is reported to a user.
-    res = subprocess.run([interpreter, "-c", code], cwd=str(repo_root),
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         encoding="utf-8", errors="replace")
+    try:
+        # §6: name the codec — a traceback carrying a non-ASCII path decodes
+        # differently under a Windows locale, and this text is reported to a user.
+        res = subprocess.run([interpreter, "-c", code], cwd=str(repo_root),
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             encoding="utf-8", errors="replace", timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, f"timed out after {timeout:g}s"
+    except OSError as exc:
+        return False, f"interpreter '{interpreter}' cannot be run: {exc}"
     detail = (res.stderr or "").strip().splitlines()
     return res.returncode == 0, detail[-1] if detail else ""
 
@@ -7974,11 +7993,12 @@ def cmd_status(args: argparse.Namespace) -> int:
                 t.kind, "⚠ unrecognised status")
             objs = f" [{', '.join(t.objectives)}]" if t.objectives else ""
             print(f"  target: {t.text}{objs} — {label}")
-        # Capabilities not yet ✅ Verified, each with the verdict of the
-        # profile it names: a satisfied one means this machine could verify
-        # the row now (issue #207). Each profile is evaluated once.
+        # Capabilities not yet ✅ Verified (issue #207). Profiles run only on
+        # request, and only for a ❓ Unverified row: an expression is project
+        # code that may import a GPU stack, and a row with any other Status —
+        # `⏸️ Out of scope` — is not one to be told it can be verified now.
         profiles = {k: str(v) for k, v in (config.get("validation") or {}).items()}
-        verdicts: Dict[str, bool] = {}
+        verdicts: Dict[str, Tuple[bool, str]] = {}
         for c in gated_capabilities(plines):
             if c.kind == "verified":
                 continue
@@ -7987,11 +8007,16 @@ def cmd_status(args: argparse.Namespace) -> int:
                 if name not in profiles:
                     label += f"; profile '{name}' is not defined in [validation]"
                     continue
+                if not (args.profiles and c.kind == "unverified"):
+                    label += f"; profile '{name}'"
+                    continue
                 if name not in verdicts:
-                    verdicts[name] = evaluate_profile(repo_root, config, profiles[name])[0]
+                    verdicts[name] = evaluate_profile(repo_root, config, profiles[name])
+                satisfied, detail = verdicts[name]
                 label += (f"; profile '{name}' is satisfied here — the gated path "
-                          f"can be run and the row verified" if verdicts[name]
-                          else f"; profile '{name}' is not satisfied here")
+                          f"can be run and the row verified" if satisfied
+                          else f"; profile '{name}' is not satisfied here"
+                          + (f" ({detail})" if detail else ""))
             stages = (f" [stage {', '.join(map(str, c.stages))}]"
                       if c.stages else "")
             print(f"  capability: {c.text}{stages} — {label}")
@@ -8699,11 +8724,18 @@ def register_git_subcommands(sub) -> None:
             "criterion and every progress.md table row no reader can use is "
             "printed too, so none of them lives only in one commit's diff. "
             "So is every environment-gated capability not yet ✅ "
-            "Verified, with each [validation] profile its Package / Tool cell "
-            "names evaluated once, as `aide env --profile` evaluates it, and "
-            "reported satisfied or not — a satisfied profile under an "
-            "unverified row is a row this machine can verify now."))
+            "Verified, with the [validation] profile its Package / Tool cell "
+            "names. With --profiles, each profile a ❓ Unverified row names "
+            "is evaluated once, as `aide env --profile` evaluates it (the "
+            "expression only, never the gated tests), and reported satisfied "
+            "or not; one that times out or cannot start is not satisfied — "
+            "a satisfied profile under an unverified row is a row this "
+            "machine can verify now."))
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
+    p_status.add_argument("--profiles", action="store_true",
+                          help="evaluate the [validation] profile each "
+                               "❓ Unverified capability row names (each "
+                               f"bounded by {PROFILE_TIMEOUT}s)")
     p_status.add_argument("--base", default=None,
                           help="ref to report ahead/behind against, and to "
                                "measure every \U0001f50d claim's landed work "

@@ -131,10 +131,18 @@ instead — that is the bump policy above, and it is enforced by
   That crosses `docs/vision.md` commitment 5. The table still gates nothing,
   and every finding about it is a warning:
   - **`aide status`** lists every row not yet `✅ Verified`, with its
-    introducing stage. It also evaluates the `[validation]` profile the row
-    names, once per profile, through the same helper `aide env --profile`
-    now calls (`evaluate_profile`). A satisfied profile under an unverified
-    row is reported as a row this machine can verify now.
+    introducing stage and the profile it names. **`--profiles`** (off by
+    default) also evaluates the profile of each `❓ Unverified` row, once per
+    profile. It uses `evaluate_profile`, the helper `aide env --profile` now
+    calls too. A satisfied profile under an unverified row is reported as a
+    row this machine can verify now. A profile is off by default because it
+    is project code that may import a GPU stack, and `status` is the loop's
+    resume check. A row with any other Status (`⏸️ Out of scope`) is never
+    evaluated, so it is never told it can be verified.
+  - **`evaluate_profile` is bounded** by `PROFILE_TIMEOUT` (120 s). An
+    expression that times out, or a venv interpreter that cannot start, reads
+    as *not satisfied*, with the reason, instead of hanging or raising. This
+    covers `aide env --profile` as well.
   - **`aide check`** warns on a row its reader cannot use (the wrong cell
     count, or an empty Capability cell) and on a Status that is neither
     `✅ Verified` nor `❓ Unverified`. It also warns on a profile that

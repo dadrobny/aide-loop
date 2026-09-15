@@ -2,10 +2,12 @@
 
 §1 → environment-gated capabilities stated rules about the table that no tool
 checked. It now has two readers, both surfacing state and neither gating
-anything: `aide status` lists every row not yet ✅ Verified with the verdict of
-the `[validation]` profile the row names, and `aide check` warns — never errors
-— on the rows. Each test below is one of those findings; the last two drive the
-verbs through `main`, the path a consumer runs.
+anything: `aide status` lists every row not yet ✅ Verified with the
+`[validation]` profile the row names — evaluated only under `--profiles`, and
+only for a ❓ Unverified row — and `aide check` warns, never errors, on the
+rows. The status tests drive the verb through `main`, the path a consumer
+runs; the last two hold `evaluate_profile` to its timeout and to an
+interpreter that cannot start.
 """
 from __future__ import annotations
 
@@ -183,26 +185,47 @@ def test_a_reason_an_open_stage_or_a_verified_row_is_not_that_warning(
 
 
 # --------------------------------------------------------------------------- #
-# aide status — every row not yet verified, with its profile's verdict
+# aide status — every row not yet verified; profiles only with --profiles
 # --------------------------------------------------------------------------- #
-def test_status_lists_unverified_capabilities_with_profile_verdicts(
-        tmp_path: Path, capsys):
-    rows = (
-        ROW,
-        "| Weights | tree (`weights` profile) | Stage 2 | ❓ Unverified | unset |",
-        "| Docker | docker (`docker` profile) | Stage 2 | ⏸️ Out of scope | — |",
-        "| Radiomics | `pyradiomics` (`gpu` profile) | Stage 1 | ✅ Verified (2026-09-01, CI) | — |",
-    )
-    repo = _repo(tmp_path, _progress(*rows),
+STATUS_ROWS = (
+    ROW,
+    "| Weights | tree (`weights` profile) | Stage 2 | ❓ Unverified | unset |",
+    "| Docker | docker (`docker` profile) | Stage 2 | ⏸️ Out of scope | — |",
+    "| Excluded | tool (`gpu` profile) | Stage 2 | ⏸️ Out of scope | — |",
+    "| Radiomics | `pyradiomics` (`gpu` profile) | Stage 1 | ✅ Verified (2026-09-01, CI) | — |",
+)
+
+
+def _status(tmp_path: Path, capsys, *flags: str) -> str:
+    repo = _repo(tmp_path, _progress(*STATUS_ROWS),
                  validation='gpu = "True"\nweights = "False"')
-    assert aide.main(["--repo", str(repo), "status", "--no-fetch"]) == 0
-    out = capsys.readouterr().out
+    assert aide.main(["--repo", str(repo), "status", "--no-fetch", *flags]) == 0
+    return capsys.readouterr().out
+
+
+def test_status_lists_unverified_capabilities_without_evaluating_profiles(
+        tmp_path: Path, monkeypatch, capsys):
+    """A profile is project code that may import a GPU stack; `status` is the
+    loop's resume check, so it names the profile and runs nothing."""
+    monkeypatch.setattr(aide, "evaluate_profile",
+                        lambda *a, **k: pytest.fail("evaluated without --profiles"))
+    out = _status(tmp_path, capsys)
+    assert "capability: GPU path [stage 1] — ❓ unverified; profile 'gpu'\n" in out
+    assert "capability: Weights [stage 2] — ❓ unverified; profile 'weights'\n" in out
+    assert ("capability: Docker [stage 2] — ⚠ unrecognised status; profile "
+            "'docker' is not defined in [validation]") in out
+    assert "Radiomics" not in out
+
+
+def test_status_profiles_evaluates_the_profiles_of_unverified_rows(
+        tmp_path: Path, capsys):
+    out = _status(tmp_path, capsys, "--profiles")
     assert ("capability: GPU path [stage 1] — ❓ unverified; profile 'gpu' is "
             "satisfied here — the gated path can be run and the row verified") in out
     assert ("capability: Weights [stage 2] — ❓ unverified; profile 'weights' is "
             "not satisfied here") in out
-    assert ("capability: Docker [stage 2] — ⚠ unrecognised status; profile "
-            "'docker' is not defined in [validation]") in out
+    # An Out of scope row is not one to be told it can be verified now.
+    assert "capability: Excluded [stage 2] — ⚠ unrecognised status; profile 'gpu'\n" in out
     assert "Radiomics" not in out
 
 
@@ -212,6 +235,29 @@ def test_status_evaluates_each_profile_once(tmp_path: Path, monkeypatch, capsys)
                         lambda root, config, expr: calls.append(expr) or (True, ""))
     rows = (ROW, ROW.replace("GPU path", "GPU training"))
     repo = _repo(tmp_path, _progress(*rows))
-    assert aide.main(["--repo", str(repo), "status", "--no-fetch"]) == 0
+    assert aide.main(["--repo", str(repo), "status", "--no-fetch", "--profiles"]) == 0
     assert calls == ["True"]
     assert capsys.readouterr().out.count("profile 'gpu' is satisfied here") == 2
+
+
+# --------------------------------------------------------------------------- #
+# evaluate_profile — the expression, bounded, and never a pass by accident
+# --------------------------------------------------------------------------- #
+def test_a_profile_that_outlives_its_timeout_is_not_satisfied(tmp_path: Path):
+    repo = _repo(tmp_path, _progress(ROW))
+    satisfied, detail = aide.evaluate_profile(
+        repo, aide.load_config(repo), "__import__('time').sleep(30)", timeout=0.5)
+    assert (satisfied, detail) == (False, "timed out after 0.5s")
+
+
+def test_a_profile_whose_interpreter_cannot_start_is_not_satisfied(
+        tmp_path: Path, monkeypatch):
+    """A venv interpreter that exists but cannot be executed — a stale tree,
+    a non-executable file — reports, rather than crashing `status`."""
+    repo = _repo(tmp_path, _progress(ROW))
+    broken = tmp_path / "not-an-interpreter.txt"
+    broken.write_text("not a program\n", encoding="utf-8")
+    monkeypatch.setattr(aide, "venv_python", lambda root, config: broken)
+    satisfied, detail = aide.evaluate_profile(repo, aide.load_config(repo), "True")
+    assert satisfied is False
+    assert detail.startswith("interpreter ") and "cannot be run" in detail

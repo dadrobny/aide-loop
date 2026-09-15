@@ -610,15 +610,25 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "Met, every retracted acceptance criterion and every progress.md "
          "table row no reader can use is printed too",
          "test_aide_help_pins::test_status_prints_the_four_states_it_promises"),
-        # The `gated_capabilities` loop in `cmd_status`, memoising
-        # `evaluate_profile` — the helper `cmd_env --profile` calls too.
+        # The `gated_capabilities` loop in `cmd_status`: the profile named
+        # always, `evaluate_profile` called only under `args.profiles` and
+        # `c.kind == "unverified"`, memoised per profile.
         ("So is every environment-gated capability not yet ✅ Verified, with "
-         "each [validation] profile its Package / Tool cell names evaluated "
-         "once, as `aide env --profile` evaluates it, and reported satisfied "
-         "or not",
+         "the [validation] profile its Package / Tool cell names",
+         "test_aide_capabilities::"
+         "test_status_lists_unverified_capabilities_without_evaluating_profiles"),
+        ("With --profiles, each profile a ❓ Unverified row names is evaluated "
+         "once, as `aide env --profile` evaluates it (the expression only, "
+         "never the gated tests), and reported satisfied or not",
          ("test_aide_capabilities::"
-          "test_status_lists_unverified_capabilities_with_profile_verdicts",
+          "test_status_profiles_evaluates_the_profiles_of_unverified_rows",
           "test_aide_capabilities::test_status_evaluates_each_profile_once")),
+        # `evaluate_profile`'s `TimeoutExpired` and `OSError` branches.
+        ("one that times out or cannot start is not satisfied",
+         ("test_aide_capabilities::"
+          "test_a_profile_that_outlives_its_timeout_is_not_satisfied",
+          "test_aide_capabilities::"
+          "test_a_profile_whose_interpreter_cannot_start_is_not_satisfied")),
     ],
 
     # ---------------------------------------------------------------- scope --
