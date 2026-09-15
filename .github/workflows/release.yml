@@ -1,12 +1,18 @@
 name: release
 
-# Every core/VERSION that reaches main gets a tag v<VERSION> and a GitHub
-# Release whose body is that version's CHANGELOG.md section (issue #198). A
-# push that moves no version — docs, repo tests, an installer-only change —
-# finds both already there and does nothing, which is the bump policy as the
-# changelog's "Installer (unversioned)" section states it. The section is
-# guaranteed to exist: tests/test_repo_versioning.py refuses a version the
-# changelog does not name.
+# Every core/VERSION that reaches main gets an annotated tag v<VERSION> and,
+# from RELEASES_FROM on, a GitHub Release whose body is that version's
+# CHANGELOG.md section (issue #198). Versions before it are tags only, from a
+# one-time backfill.
+#
+# Each run rebuilds the whole set from main's first-parent history instead of
+# reading the pushed commit: a version's tag goes on the first commit where
+# core/VERSION held it. So a run that was cancelled (a pending run is replaced
+# when a newer one queues in the concurrency group), failed, or covered a push
+# of several merges at once is made good by the next run, and a missing tag can
+# never land on a later docs-only merge. A push that moves no version finds
+# everything present and does nothing, which is the bump policy as the
+# changelog's "Installer (unversioned)" section states it.
 
 on:
   push:
@@ -15,7 +21,6 @@ on:
 permissions:
   contents: write
 
-# Two merges in quick succession must not race each other to the same tag.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -25,41 +30,76 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Tag and release core/VERSION
+        with:
+          fetch-depth: 0
+      - name: Tag and release every core/VERSION on main
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASES_FROM: "1.52.1"
+        shell: python
         run: |
-          set -euo pipefail
-          version="$(tr -d '[:space:]' < core/VERSION)"
-          tag="v${version}"
+          import json, os, re, subprocess, sys
 
-          # The tag and the release are checked separately: a tag that exists
-          # without a release (the one-time backfill made tags only) still
-          # gets its release, on the commit the tag already names.
-          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null; then
-            echo "tag ${tag} exists"
-          else
-            git tag "${tag}" "${GITHUB_SHA}"
-            git push origin "refs/tags/${tag}"
-            echo "created tag ${tag} at ${GITHUB_SHA}"
-          fi
+          def run(*args):
+              return subprocess.run(args, check=True, capture_output=True,
+                                    text=True).stdout
 
-          if gh release view "${tag}" >/dev/null 2>&1; then
-            echo "release ${tag} exists; nothing to do"
-            exit 0
-          fi
+          def key(version):
+              return tuple(int(part) for part in version.split("."))
 
-          # The section runs from its "## [<version>]" heading to the next
-          # "## " heading, both exclusive. index() matches the heading
-          # literally, so the dots and brackets are not a pattern.
-          awk -v head="## [${version}]" '
-            index($0, head) == 1 { found = 1; next }
-            found && /^## / { exit }
-            found { print }
-          ' CHANGELOG.md > notes.md
-          if ! grep -q '[^[:space:]]' notes.md; then
-            echo "::error::CHANGELOG.md has no non-empty '## [${version}]' section"
-            exit 1
-          fi
+          # First commit, oldest first, where core/VERSION held each value.
+          first = {}
+          for sha in run("git", "log", "--first-parent", "--reverse",
+                         "--format=%H", os.environ["GITHUB_SHA"], "--",
+                         "core/VERSION").split():
+              try:
+                  version = run("git", "show", f"{sha}:core/VERSION").strip()
+              except subprocess.CalledProcessError:
+                  continue  # the commit that deleted it, if one ever does
+              first.setdefault(version, sha)
 
-          gh release create "${tag}" --verify-tag --title "${tag}" --notes-file notes.md
+          tags = {line.split("refs/tags/", 1)[1]
+                  for line in run("git", "ls-remote", "--tags", "origin").splitlines()
+                  if not line.endswith("^{}")}
+          releases = {r["tagName"] for r in json.loads(run(
+              "gh", "release", "list", "--limit", "1000", "--json", "tagName"))}
+          changelog = open("CHANGELOG.md", encoding="utf-8").read()
+          floor = key(os.environ["RELEASES_FROM"])
+
+          # Read every release body before pushing anything, so a version
+          # without its section fails the job with no tag left behind.
+          todo = []
+          for version, sha in first.items():
+              tag = f"v{version}"
+              notes = None
+              if key(version) >= floor and tag not in releases:
+                  # The section runs from its "## [<version>]" heading to the
+                  # next "## " heading.
+                  match = re.search(
+                      rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## |\Z)",
+                      changelog, re.MULTILINE | re.DOTALL)
+                  notes = match.group(1).strip() if match else ""
+                  if not notes:
+                      print(f"::error::CHANGELOG.md has no non-empty "
+                            f"'## [{version}]' section")
+                      sys.exit(1)
+              if tag not in tags or notes is not None:
+                  todo.append((tag, sha, notes))
+
+          if todo:
+              run("git", "config", "user.name", "github-actions[bot]")
+              run("git", "config", "user.email",
+                  "41898282+github-actions[bot]@users.noreply.github.com")
+          for tag, sha, notes in todo:
+              if tag not in tags:
+                  run("git", "tag", "-a", tag, sha, "-m", tag)
+                  run("git", "push", "origin", f"refs/tags/{tag}")
+                  print(f"created tag {tag} at {sha}")
+              if notes is not None:
+                  with open("notes.md", "w", encoding="utf-8") as handle:
+                      handle.write(notes + "\n")
+                  run("gh", "release", "create", tag, "--verify-tag",
+                      "--title", tag, "--notes-file", "notes.md")
+                  print(f"created release {tag}")
+          if not todo:
+              print("every version on main is tagged and released; nothing to do")

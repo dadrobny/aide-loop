@@ -141,9 +141,11 @@ def test_changelog_records_the_current_version():
     """Whatever core/VERSION says must be findable in the changelog."""
     version = _read_version(REPO_ROOT / "core" / "VERSION")
     changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert f"[{version}]" in changelog, (
-        f"core/VERSION is {version} but CHANGELOG.md has no '[{version}]' section. "
-        "A version a consumer can see must say what changed."
+    # The heading, not the bracket anywhere: .github/workflows/release.yml
+    # reads the release body from the section under it (issue #198).
+    assert re.search(rf"^## \[{re.escape(version)}\]", changelog, re.MULTILINE), (
+        f"core/VERSION is {version} but CHANGELOG.md has no '## [{version}]' "
+        "section. A version a consumer can see must say what changed."
     )
 
 
