@@ -3792,9 +3792,22 @@ _TEMPLATE_MARKER_RE = re.compile(
 _TEMPLATE_MARKER_OPENER_RE = re.compile(r"^<!--\s*aide-template:", re.MULTILINE)
 
 
+def _above_title(text: str) -> str:
+    """The part of *text* before its first heading line — where the marker lives.
+
+    Every template puts the line between its header comment and its title, and a
+    document whose header comment was deleted keeps it above the title. Reading
+    only that far means a marker quoted in a document's body — an example in an
+    item spec, a note about a template change — is never taken for the
+    document's own.
+    """
+    m = re.search(r"^#", text, re.MULTILINE)
+    return text[:m.start()] if m else text
+
+
 def template_marker(text: str) -> Optional[Tuple[str, int]]:
-    """``(name, version)`` from the first marker line in *text*, or ``None``."""
-    m = _TEMPLATE_MARKER_RE.search(text)
+    """``(name, version)`` from the marker line above *text*'s title, or ``None``."""
+    m = _TEMPLATE_MARKER_RE.search(_above_title(text))
     return (m.group("name"), int(m.group("version"))) if m else None
 
 
@@ -3836,7 +3849,8 @@ def template_drift_warnings(ddir: Path, item_status: Dict[int, str],
       spec is a record, and a warning on every one of them each time a template
       moves is permanent noise over files nobody should edit.
 
-    A document **without** a marker is silent. Every document written before
+    Only the marker above the title counts (``_above_title``). A document
+    **without** one is silent. Every document written before
     the marker existed has none, and the engine cannot say which template it
     came from; a warning that asks the author to guess a version names no
     action, and repeating it on every run is how a real warning gets tuned out.
@@ -3869,7 +3883,7 @@ def template_drift_warnings(ddir: Path, item_status: Dict[int, str],
         rel = path.relative_to(ddir).as_posix()
         marker = template_marker(text)
         if marker is None:
-            if _TEMPLATE_MARKER_OPENER_RE.search(text):
+            if _TEMPLATE_MARKER_OPENER_RE.search(_above_title(text)):
                 out.append(f"{rel}: unreadable aide-template line — expected "
                            f"'<!-- aide-template: <name> <N> -->'")
             continue
@@ -8585,7 +8599,7 @@ def build_parser() -> argparse.ArgumentParser:
             "defect; and an insights entry whose shape is off \u2014 loose "
             "either side of the date, strict about the date, and never "
             "applied to an archived entry; and a document whose aide-template "
-            "line records a version other than the installed template's, "
+            "line above its title records a version other than the installed template's, "
             "names a template this engine does not ship, or cannot be read "
             "\u2014 read on vision.md, roadmap.md, progress.md and "
             "insights.md, on a queue while it is open and on an item spec "

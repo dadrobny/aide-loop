@@ -11,8 +11,8 @@ replace with real prose. `aide check` flags any `{{...}}` left in a generated
 `docs/aide/**.md` file as an unfilled template slot. Dates are always
 **ISO 8601** (`YYYY-MM-DD`).
 
-**Template version line:** below its header comment, each template carries one
-`<!-- aide-template: <name> <N> -->` line, where `<N>` is that template's own
+**Template version line:** between its header comment and its title, each
+template carries one `<!-- aide-template: <name> <N> -->` line, where `<N>` is that template's own
 version and moves independently of the engine's. A document created from a
 template keeps that line unchanged, which is how it records what it was built
 from. When `aide check` reports the installed template as newer, the framework
@@ -86,7 +86,8 @@ reader. A pointer of the form `§1 → insights.md` resolves to
   changelog entry no check pointed at (#164). The number is the template's own,
   not the engine's, so a report names only the templates that actually changed.
   The line sits below the header comment because four templates tell the author
-  to delete that comment. A document without it is silent rather than reported:
+  to delete that comment, and above the title so that a marker quoted in a
+  document's body is never read as the document's own. A document without it is silent rather than reported:
   every document written before the line existed has none, the engine cannot say
   which template it came from, and a warning on every run that names no action
   is how a real warning gets tuned out. It is a warning at all, and never a

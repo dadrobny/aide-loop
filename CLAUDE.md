@@ -322,7 +322,8 @@ change, since most copied files are byte-identical no-ops.
   a verb's `-h`, so a rule stated there belongs in the section and mechanism
   at `aide <verb> -h` — point, do not copy.
 - **Template versions** (issue #164): each template's
-  `<!-- aide-template: <name> <N> -->` line, below its header comment, is the
+  `<!-- aide-template: <name> <N> -->` line, between its header comment and
+  its title, is the
   template's own integer version, and what `aide check` compares a consumer's
   document against. Bump `<N>` when a document built from the old template
   would want to follow the change — not for a typo in guidance — and name

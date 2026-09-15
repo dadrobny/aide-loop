@@ -148,6 +148,27 @@ def test_a_document_without_a_marker_is_silent(tmp_path: Path):
     assert _drift(repo, {"progress": 5}) == []
 
 
+def test_a_marker_below_the_title_is_not_read(tmp_path: Path):
+    """An item spec quoting the line as an example, or a note about a template
+    change, must not be taken for the document's own record — above the title
+    is the one place the line is read, so the real marker still wins."""
+    repo = _repo(tmp_path)
+    ddir = repo / "docs" / "aide"
+    quoted = "\n## Notes\n\n<!-- aide-template: item 1 -->\n"
+    (ddir / "items" / "002-coverage.md").write_text(
+        "# Item 002 — Coverage\n" + quoted, encoding="utf-8")
+    assert _drift(repo, {"item": 2}) == []
+
+    (ddir / "items" / "002-coverage.md").write_text(
+        _marker("item", 2) + "# Item 002 — Coverage\n" + quoted, encoding="utf-8")
+    assert _drift(repo, {"item": 2}) == []
+
+    (ddir / "items" / "002-coverage.md").write_text(
+        "# Item 002 — Coverage\n\n<!-- aide-template: item one -->\n",
+        encoding="utf-8")
+    assert _drift(repo, {"item": 2}) == []
+
+
 def test_a_document_newer_than_the_install_is_a_warning(tmp_path: Path):
     repo = _repo(tmp_path, progress_marker=_marker("progress", 3))
     [warning] = _drift(repo, {"progress": 2})

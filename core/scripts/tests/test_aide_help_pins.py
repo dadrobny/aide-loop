@@ -309,7 +309,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `template_drift_warnings`: `version < current` and `version >
         # current` each append, and `current is None` names the template; the
         # CLI test is the half that proves `run_checks` still calls it.
-        ("a document whose aide-template line records a version other than "
+        ("a document whose aide-template line above its title records a "
+         "version other than "
          "the installed template's, names a template this engine does not "
          "ship, or cannot be read",
          ("test_aide_template_markers::"
@@ -327,7 +328,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_a_finished_items_spec_and_a_closed_queue_are_not_read"),
         # `if marker is None: … continue` — only a mis-shaped opener speaks.
         ("never on a document with no such line",
-         "test_aide_template_markers::test_a_document_without_a_marker_is_silent"),
+         ("test_aide_template_markers::test_a_document_without_a_marker_is_silent",
+          "test_aide_template_markers::test_a_marker_below_the_title_is_not_read")),
         # The stale-claim-branch warning skips an item whose status is
         # "in-review": its PR is open, and its branch is not litter.
         ("A \U0001f50d item's claim branch is not reported stale",

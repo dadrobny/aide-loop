@@ -130,7 +130,8 @@ instead — that is the bump policy above, and it is enforced by
   section reached the next document created from it and never an earlier one,
   and nothing recorded which template a document was built from.
   - **Every template carries `<!-- aide-template: <name> <N> -->`** on the line
-    below its header comment. `<N>` is the template's own integer version,
+    below its header comment, above the title — the only place `aide check`
+    reads it, so a marker quoted in a document's body is not taken for its own. `<N>` is the template's own integer version,
     independent of `core/VERSION`. The four templates that tell the author to
     delete their header comment now also say to keep this line, and
     `insights.md` — which the engine copies byte for byte — carries it into
