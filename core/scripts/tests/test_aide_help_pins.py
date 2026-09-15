@@ -277,6 +277,14 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_a_reason_an_open_stage_or_a_verified_row_is_not_that_warning",
           "test_aide_capabilities::test_the_introducing_stages_are_the_first_stage_run")),
 
+        # `item_spec_number` confirms a name against `item_spec_paths`' own
+        # glob; `item_spec_warnings` appends `_unfindable_spec_warning` and
+        # `continue`s past every other lint for a None.
+        ("a file under items/ not named NNN-<slug>.md, which `aide scope`, "
+         "`aide claim` and `aide check --queue` never find, reported in place "
+         "of every other spec lint",
+         ("test_aide_doc_shape::test_a_spec_no_lookup_finds_is_one_warning_and_nothing_else",
+          "test_aide_naming::test_item_spec_number_agrees_with_the_lookup")),
         # `item_spec_warnings` -> the dropped-span lint, one warning per span.
         ("an Authorised paths bullet whose second backtick span or "
          "continuation line is silently dropped, named span by span",
