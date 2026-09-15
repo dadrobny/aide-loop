@@ -42,7 +42,9 @@ Two additions make the verification *planned* rather than hoped-for:
   deterministic environment checks: `<name> = "<python expression>"`, true iff
   the environment provides the capability (e.g.
   `gpu = "__import__('torch').cuda.is_available()"`). Evaluated by
-  `aide env --profile <name>` (exit 0 iff satisfied) in the project venv.
+  `aide env --profile <name>` (exit 0 iff satisfied) in the project venv, or
+  for every `❓ Unverified` row at once by `aide status --profiles`. Either
+  evaluates the expression only, never the gated path.
 - **Stage-validation items** — a queue that closes a roadmap stage ends with a
   `Validate stage N` item that replays the stage's use cases end-to-end and
   updates the capability table (✅ Verified where the profile is satisfied,

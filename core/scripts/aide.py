@@ -1017,7 +1017,7 @@ def capability_warnings(lines: List[str], profiles: Dict[str, object]) -> List[s
     """``aide check``'s findings over the capability table — warnings, all.
 
     *profiles* is ``[validation]`` from aide.toml: a row linking to a profile
-    that is not there cannot be evaluated by ``aide status``.
+    that is not there cannot be evaluated by ``aide status --profiles``.
     """
     summary: Dict[int, Optional[str]] = {}
     for line in lines:
@@ -8664,7 +8664,9 @@ def register_git_subcommands(sub) -> None:
                        help="create + populate the venv if missing/stale, from "
                             "[python] interpreter when set")
     p_env.add_argument("--profile", default=None,
-                       help="evaluate a named [validation] environment profile (exit 0 iff satisfied)")
+                       help="evaluate a named [validation] environment profile "
+                            "(exit 0 iff satisfied; one that runs past "
+                            f"{PROFILE_TIMEOUT}s or cannot start is not satisfied)")
     p_env.set_defaults(func=cmd_env)
 
     p_sync = sub.add_parser("sync", help="preflight: fetch, verify clean tree, land on the right branch")
