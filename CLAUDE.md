@@ -378,7 +378,10 @@ repo-local (`.claude/` is never installed), so it is outside the version rule.
 ## Merge policy
 
 Work on a branch and land via a reviewed PR — opened as a **draft**, with the
-review folded in before it is marked ready.
+review folded in before it is marked ready. A merge that moves `core/VERSION`
+ends as the tag `v<VERSION>` and a GitHub Release carrying that version's
+`CHANGELOG.md` section, made by
+[`.github/workflows/release.yml`](.github/workflows/release.yml); never tag by hand.
 
 The review contract — severity, what to check, what never to flag — is
 [`REVIEW.md`](REVIEW.md). Copilot code review and Claude Code Review read it
