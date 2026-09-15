@@ -9,10 +9,12 @@
   `aide check` catch anything left unfilled):
     - `{{slot}}`     — a literal value to substitute (title, date, a number).
     - _italic line_  — authoring guidance to read, then replace with real prose.
-  Delete this comment block in the generated file; the inline MANDATORY
-  annotations further down are for framework maintainers and agents, not
-  readers of the finished vision — leave those in place.
+  Delete this comment block in the generated file, and keep the
+  aide-template line below it; the inline MANDATORY annotations further down
+  are for framework maintainers and agents, not readers of the finished
+  vision — leave those in place.
 -->
+<!-- aide-template: vision 1 -->
 # {{project-name}} — Project Vision
 
 > **Status:** Draft v1 · **Created:** {{yyyy-mm-dd}}

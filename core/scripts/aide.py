@@ -3779,6 +3779,118 @@ def root_document_warnings(ddir: Path) -> List[str]:
     return out
 
 
+#: The line every template carries after its header comment, and every document
+#: created from one keeps: ``<!-- aide-template: progress 1 -->``. The name is
+#: the template's file stem and the number its own integer version, which moves
+#: only when the template changes in a way a document built from the old one
+#: would want to follow — independent of ``VERSION`` (issue #164).
+_TEMPLATE_MARKER_RE = re.compile(
+    r"^<!--\s*aide-template:\s*(?P<name>[a-z][a-z0-9-]*)\s+(?P<version>\d+)\s*-->\s*$",
+    re.MULTILINE)
+#: A line that opens like the marker, so one the regex above rejects is reported
+#: rather than taken for a document with no marker at all.
+_TEMPLATE_MARKER_OPENER_RE = re.compile(r"^<!--\s*aide-template:", re.MULTILINE)
+
+
+def template_marker(text: str) -> Optional[Tuple[str, int]]:
+    """``(name, version)`` from the first marker line in *text*, or ``None``."""
+    m = _TEMPLATE_MARKER_RE.search(text)
+    return (m.group("name"), int(m.group("version"))) if m else None
+
+
+def installed_template_versions() -> Dict[str, int]:
+    """``name -> version`` for every template installed beside this script.
+
+    A template without a readable marker is left out, so a document naming it
+    is reported as naming a template this engine does not ship — the truthful
+    reading of an install that lost the line.
+    """
+    versions: Dict[str, int] = {}
+    if not _TEMPLATES_DIR.is_dir():
+        return versions
+    for path in sorted(_TEMPLATES_DIR.glob("*.md")):
+        marker = template_marker(path.read_text(encoding=_ENCODING))
+        if marker and marker[0] == path.stem:
+            versions[marker[0]] = marker[1]
+    return versions
+
+
+def template_drift_warnings(ddir: Path, item_status: Dict[int, str],
+                            installed: Optional[Dict[str, int]] = None) -> List[str]:
+    """Documents whose template marker disagrees with the installed template.
+
+    Rung 4 of the copies rule (``ADAPTER-SPEC.md``, *Copies of engine text*):
+    ``docs/aide/**`` is the project's, so the engine *reports* a document that
+    predates its template and never fails a run over one. A template gaining a
+    section reaches the next document created from it and no earlier one;
+    before the marker, nothing recorded which template a document was built
+    from, and the only signal was a changelog entry nobody was pointed at.
+
+    Which documents are read, and why:
+
+    * ``vision.md``, ``roadmap.md``, ``progress.md`` and ``insights.md`` —
+      long-lived, edited for the life of the project, so a newer template is
+      something their author may still act on.
+    * A queue while it is open, and an item spec while its item is not ✅ or
+      ❌ — the same measure ``--queue`` uses for "spent". A finished item's
+      spec is a record, and a warning on every one of them each time a template
+      moves is permanent noise over files nobody should edit.
+
+    A document **without** a marker is silent. Every document written before
+    the marker existed has none, and the engine cannot say which template it
+    came from; a warning that asks the author to guess a version names no
+    action, and repeating it on every run is how a real warning gets tuned out.
+    A line that opens like the marker but does not parse is reported, since
+    that one the author wrote and can fix.
+    """
+    if installed is None:
+        installed = installed_template_versions()
+    targets = [ddir / name for name in
+               ("vision.md", "roadmap.md", "progress.md", "insights.md")]
+    qdir = ddir / "queue"
+    if qdir.is_dir():
+        for qpath in iter_queue_paths(qdir):
+            if queue_is_open(qpath.read_text(encoding=_ENCODING), item_status):
+                targets.append(qpath)
+    idir = ddir / "items"
+    if idir.is_dir():
+        for ipath in sorted(idir.glob("*.md")):
+            m = re.match(r"0*(\d+)", ipath.name)
+            if m and item_status.get(int(m.group(1)), "planned") in (
+                    "complete", "excluded"):
+                continue
+            targets.append(ipath)
+
+    out: List[str] = []
+    for path in targets:
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding=_ENCODING)
+        rel = path.relative_to(ddir).as_posix()
+        marker = template_marker(text)
+        if marker is None:
+            if _TEMPLATE_MARKER_OPENER_RE.search(text):
+                out.append(f"{rel}: unreadable aide-template line — expected "
+                           f"'<!-- aide-template: <name> <N> -->'")
+            continue
+        name, version = marker
+        current = installed.get(name)
+        if current is None:
+            out.append(f"{rel}: names template '{name}', which this engine "
+                       f"does not ship")
+        elif version < current:
+            out.append(f"{rel}: created from {name} template {version}; the "
+                       f"installed template is {current} — the framework "
+                       f"CHANGELOG entry naming '{name} template {current}' "
+                       f"says what changed and what, if anything, to edit; "
+                       f"then set the line to {current}")
+        elif version > current:
+            out.append(f"{rel}: created from {name} template {version}, newer "
+                       f"than the installed {current} — this checkout runs an "
+                       f"older engine than the document was written under")
+    return out
+
+
 #: An assumption bullet that names the engine it was true for — the §1 marker
 #: ``- **A8 (engine 1.28.1):** …``. The engine version goes in the bold label,
 #: beside the assumption's own code, because that is where a reader looking for
@@ -4180,6 +4292,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(identical_deliverable_warnings(lines))
     warnings.extend(unattributed_reference_warnings(lines))
     warnings.extend(acceptance_drift_warnings(ddir, lines))
+    warnings.extend(template_drift_warnings(ddir, _parse_item_status(lines)[2]))
 
     # Mandatory sections. Rows are taken by shape from anywhere in the file,
     # with the one test `unreadable_row_errors` reports the failures of.
@@ -8471,7 +8584,13 @@ def build_parser() -> argparse.ArgumentParser:
             "retracted acceptance criterion, a normal state rather than a "
             "defect; and an insights entry whose shape is off \u2014 loose "
             "either side of the date, strict about the date, and never "
-            "applied to an archived entry. A \U0001f50d item's claim branch "
+            "applied to an archived entry; and a document whose aide-template "
+            "line records a version other than the installed template's, "
+            "names a template this engine does not ship, or cannot be read "
+            "\u2014 read on vision.md, roadmap.md, progress.md and "
+            "insights.md, on a queue while it is open and on an item spec "
+            "until its item is \u2705 or \u274c, and never on a document with "
+            "no such line. A \U0001f50d item's claim branch "
             "is not reported stale."))
     p_check.add_argument("--queue", type=int, default=None,
                          help="also check this queue's specs against each other "

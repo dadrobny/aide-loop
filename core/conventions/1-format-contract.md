@@ -11,6 +11,16 @@ replace with real prose. `aide check` flags any `{{...}}` left in a generated
 `docs/aide/**.md` file as an unfilled template slot. Dates are always
 **ISO 8601** (`YYYY-MM-DD`).
 
+**Template version line:** below its header comment, each template carries one
+`<!-- aide-template: <name> <N> -->` line, where `<N>` is that template's own
+version and moves independently of the engine's. A document created from a
+template keeps that line unchanged, which is how it records what it was built
+from. When `aide check` reports the installed template as newer, the framework
+changelog entry naming `<name> template <N>` says what changed; act on it or
+not, then set the line to the new number. The report is a warning and never an
+error, because the document belongs to the project, and a document without the
+line is not reported at all.
+
 **Durable artifacts must read cold.** Everything the loop produces outlives
 the session that produced it — item specs, `insights.md` entries, commit
 messages, issue bodies, roadmap and progress prose — and is written to be
@@ -70,6 +80,19 @@ reader. A pointer of the form `§1 → insights.md` resolves to
   `aide check` flag a surviving slot without ever flagging guidance. It is also
   why guidance must never be written as a slot. The templates' `{{yyyy-mm-dd}}`
   slot spells the date format out so no separate lookup is needed.
+- **Why a document carries its template's version.** A template gaining a
+  section reached the next document created from it and no earlier one, and
+  nothing recorded which template a document came from, so the only signal was a
+  changelog entry no check pointed at (#164). The number is the template's own,
+  not the engine's, so a report names only the templates that actually changed.
+  The line sits below the header comment because four templates tell the author
+  to delete that comment. A document without it is silent rather than reported:
+  every document written before the line existed has none, the engine cannot say
+  which template it came from, and a warning on every run that names no action
+  is how a real warning gets tuned out. It is a warning at all, and never a
+  contract error even after a grace period, because a consumer's `docs/aide/**`
+  is the project's, which the framework may report on and never fails over
+  (`ADAPTER-SPEC.md`, *Copies of engine text*, rung 4).
 - **Why a section names the template instead of repeating the shape.** The
   template is the shape's *executable* statement — `aide check` enforces it
   (in the `progress.md` tables it reads, row by row since #202), and a role

@@ -320,7 +320,15 @@ change, since most copied files are byte-identical no-ops.
   [`tests/test_template_conventions.py`](tests/test_template_conventions.py)
   fail when either shares a ten-word run with a `conventions/` section core or
   a verb's `-h`, so a rule stated there belongs in the section and mechanism
-  at `aide <verb> -h` — point, do not copy. A header says what the artifact is
+  at `aide <verb> -h` — point, do not copy.
+- **Template versions** (issue #164): each template's
+  `<!-- aide-template: <name> <N> -->` line, below its header comment, is the
+  template's own integer version, and what `aide check` compares a consumer's
+  document against. Bump `<N>` when a document built from the old template
+  would want to follow the change — not for a typo in guidance — and name
+  `<name> template <N>` in that release's `CHANGELOG.md` entry with what a
+  consumer edits; `tests/test_repo_versioning.py` fails on a number with no
+  entry, or one that moved backward. A header says what the artifact is
   and how to interact with it; whatever is stated elsewhere is a pointer.
 - **The engine has zero Claude coupling by design.** Nothing under `core/` may
   name Claude, a Claude model, or a `.claude/` primitive. If a change needs that,

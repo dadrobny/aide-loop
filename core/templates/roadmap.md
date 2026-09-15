@@ -11,8 +11,10 @@
   `.aide/conventions.md` §1 → roadmap.md. Concise and specific.
 
   Fill-in conventions: `{{slot}}` = literal value; _italic line_ = guidance to
-  read then replace. Delete this comment in the generated file.
+  read then replace. Delete this comment in the generated file,
+  and keep the aide-template line below it.
 -->
+<!-- aide-template: roadmap 1 -->
 # {{project-name}} — Development Roadmap
 
 > **Status:** Draft v1 · **Created:** {{yyyy-mm-dd}}

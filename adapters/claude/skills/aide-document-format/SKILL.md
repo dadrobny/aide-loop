@@ -45,6 +45,8 @@ paths:
      - authoring guidance to read then replace
      - left in a generated `docs/aide/**.md` file as an unfilled template slot
      - Dates are always **ISO 8601** (`YYYY-MM-DD`)
+     - A document created from a template keeps that line unchanged, which is
+       how it records what it was built from
      - every living document opens with one, carrying its step number in the
        loop, what it derives from, and what derives from it
      - Keep the line current when a document's relationships change
@@ -113,6 +115,11 @@ and leaves ✅ to the verb.
 guidance to read then replace.** `aide check` flags any `{{...}}` left in a
 generated `docs/aide/**.md` file as an unfilled template slot, so guidance must
 never be written as a slot. Dates are always **ISO 8601** (`YYYY-MM-DD`).
+
+**Keep the template version line.** Each template carries one
+`<!-- aide-template: <name> <N> -->` line below its header comment. A document
+created from a template keeps that line unchanged, which is how it records what
+it was built from — delete the header comment, never that line.
 
 **Header blockquote** — every living document opens with one, carrying its step
 number in the loop, what it derives from, and what derives from it. Keep the
