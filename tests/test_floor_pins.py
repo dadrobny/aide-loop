@@ -61,6 +61,13 @@ there is no second copy to hold it to.
    The floor carries what must bind before anything points anywhere, and where
    `git.mode` is enforced is not that.
 
+   The list itself is held to the parser instead, by
+   `test_the_verb_list_names_every_verb_and_action_the_cli_accepts`: it reads
+   as the complete set, and 1.43.0's `insights resolve` shipped without it
+   (issue #231) — on the page a role reads when `aide merge` has just told it
+   to run that verb. Verbs and their positional actions only; a flag such as
+   `status --profiles` is `-h` material and is not listed.
+
 **§3 is delivered twice to one session**, and deliberately: its core is
 generated whole into the adapter's always-loaded rule, while the page keeps a
 four-sentence compression of it for the session that reads the floor before any
@@ -71,6 +78,9 @@ Stdlib + pytest only.
 """
 from __future__ import annotations
 
+import argparse
+import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -250,3 +260,56 @@ def test_the_pins_catch_the_drift_that_earned_them():
     assert drifted != page, "the fixed wording is gone from the page"
     missing = [pin for _, pin in _PINNED if normalise(pin) not in drifted]
     assert missing, "the pre-#194 wording satisfies every pin"
+
+
+# --------------------------------------------------------------------------- #
+# the verb list — held to the parser, not to a section
+# --------------------------------------------------------------------------- #
+def _cli_surface() -> dict:
+    """`{verb: {action, …}}` as `build_parser` defines it; an empty set for a
+    verb with no positional `action` choices."""
+    path = CORE / "scripts" / "aide.py"
+    spec = importlib.util.spec_from_file_location("aide_cli_floor_verbs", path)
+    aide = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = aide
+    spec.loader.exec_module(aide)  # type: ignore[union-attr]
+    parser = aide.build_parser()
+    (sub,) = [a for a in parser._actions
+              if isinstance(a, argparse._SubParsersAction)]
+    surface = {}
+    for verb, verb_parser in sub.choices.items():
+        actions = [a for a in verb_parser._actions if a.dest == "action"]
+        surface[verb] = set(actions[0].choices) if actions else set()
+    return surface
+
+
+def _page_verbs(text: str) -> dict:
+    """`{verb: {action, …}}` as the page's fenced block under the "Mechanical
+    actions" heading lists them: `|`-separated, `verb a/b/c`."""
+    match = re.search(r"^## Mechanical actions.*?^```\n(.*?)^```", text,
+                      re.S | re.M)
+    assert match, "core/AGENT-CONTEXT.md: no fenced verb list under the " \
+        "\"Mechanical actions\" heading"
+    listing = match.group(1).replace("python .aide/scripts/aide.py", "", 1)
+    verbs = {}
+    for entry in listing.split("|"):
+        verb, _, actions = entry.strip().partition(" ")
+        verbs[verb] = set(actions.split("/")) if actions else set()
+    return verbs
+
+
+def test_the_verb_list_names_every_verb_and_action_the_cli_accepts():
+    """The block reads as the whole CLI, so it has to be the whole CLI.
+
+    Both directions: a verb or action added to `aide.py` without the page is
+    #231's shape, and one listed on the page that the parser refuses sends a
+    role to a command that exits 2.
+    """
+    page = _page_verbs(_floor_text())
+    cli = _cli_surface()
+    assert page == cli, (
+        f"core/AGENT-CONTEXT.md's verb list and `build_parser` disagree\n"
+        f"  page: {sorted((v, sorted(a)) for v, a in page.items())}\n"
+        f"  cli:  {sorted((v, sorted(a)) for v, a in cli.items())}\n"
+        f"Update the fenced block under \"Mechanical actions go through the "
+        f"CLI\" in the same commit as the parser.")
