@@ -121,6 +121,28 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.53.1] — 2026-09-16
+
+### Fixed
+
+- **`AGENT-CONTEXT.md`'s verb list names every verb and action the CLI
+  accepts (issue #231).** The block under "Mechanical actions go through the
+  CLI" reads as the complete set, and had not moved since before
+  `insights resolve` (1.43.0) and `progress amend`/`retract`/`reword`
+  existed. The first is the one that cost: a role that meets an `insights.md`
+  merge conflict is sent to `aide insights resolve` by §1 → insights.md and
+  by `aide merge`'s refusal, while the one page every session reads said the
+  inbox had three verbs — and a hand-resolved conflict is exactly the
+  hand-edit the sentence under the block tells it not to make. Verbs and
+  positional actions only; a flag such as `status --profiles` stays `-h`
+  material. `tests/test_floor_pins.py` now holds the block to `build_parser`
+  in both directions
+  (`test_the_verb_list_names_every_verb_and_action_the_cli_accepts`), so the
+  next action added to the parser fails the suite until the page names it.
+- **The always-on floor moves from 9,005 to 9,038 content bytes** —
+  `.aide/AGENT-CONTEXT.md` from 5,315 to 5,348, the rule unchanged at 3,690.
+  `FLOOR_PIN` in `tests/test_structural_budget.py` moves with it.
+
 ## [1.53.0] — 2026-09-16
 
 ### Changed
