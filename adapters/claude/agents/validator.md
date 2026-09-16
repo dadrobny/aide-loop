@@ -185,9 +185,10 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      **Run this in the foreground** (see step 1) — under `auto-merge` it
      re-runs the full suite and takes as long as the test run did.
 
-     **A non-zero exit means the item did not land as done.** That re-run is a
-     gate: a red one leaves the merge on the base locally, the item 🔍, and
-     nothing pushed — it says which. Fix the failures on the base and run the
+     **A non-zero exit means the item did not land as done.** That re-run,
+     and the `aide check` beside it, is a gate: a failure or a document error
+     leaves the merge on the base locally, the item 🔍, and nothing pushed — it
+     says which. Fix the failures on the base and run the
      same command again (it is re-runnable by design; it skips the merge it
      already did), or hand back. Never tick the item by hand to close the gap.
 

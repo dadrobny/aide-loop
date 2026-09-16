@@ -1262,6 +1262,60 @@ def test_a_red_post_merge_run_blocks_the_tick_and_leaves_a_re_runnable_state(
     assert "aide/001-the-greeter" not in _branches(consumer)
 
 
+def test_a_document_error_blocks_the_tick_and_the_push_like_a_red_run(
+        aide, consumer: Path, tmp_path: Path):
+    """#232: nothing in the loop ran `aide check`, so a living-document error
+    landed and sat on a consumer's base until a human happened to run it.
+    `merge` now runs the checks beside the test gate, and an error refuses the
+    same two things a red run does — `--no-test` included, since the checks
+    are not the project's test command."""
+    origin = tmp_path / "origin.git"
+    _git(["init", "--bare", "-b", "main", str(origin)], tmp_path)
+    _git(["remote", "add", "origin", str(origin)], consumer)
+    _git(["push", "-u", "origin", "main"], consumer)
+    toml = consumer / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        'mode = "local"', 'mode = "auto-merge"'), encoding="utf-8")
+    _commit(consumer, "chore: auto-merge mode")
+    _git(["push"], consumer)
+
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    note = consumer / "docs" / "aide" / "note.md"
+    note.write_text("Owner: {{owner}}\n", encoding="utf-8")
+    _commit(consumer, "docs: a note with a slot left in")
+    pushed = _git(["rev-parse", "main"], origin).stdout.strip()
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    assert _item_status(aide, consumer, 1) != "complete"
+    assert _git(["rev-parse", "main"], origin).stdout.strip() == pushed
+    assert (consumer / "src" / "greeter.py").is_file()     # the merge itself stands
+    assert "aide/001-the-greeter" in _branches(consumer)   # and the retry has a branch
+
+    note.write_text("Owner: the greeter team\n", encoding="utf-8")
+    _commit(consumer, "docs: fill the slot")
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 0
+    assert _item_status(aide, consumer, 1) == "complete"
+    assert _git(["rev-parse", "main"], origin).stdout.strip() == _git(
+        ["rev-parse", "main"], consumer).stdout.strip()
+    assert "aide/001-the-greeter" not in _branches(consumer)
+
+
+def test_a_document_warning_does_not_block_the_merge(aide, consumer: Path):
+    """#232's other half: a warning is reported and never refuses, or a
+    consumer carrying one (#152's retraction warning is permanent by design)
+    could never land an item again."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    (consumer / "docs" / "aide" / "items" / "notes.md").write_text(
+        "# not a spec any lookup finds\n", encoding="utf-8")
+    _commit(consumer, "docs: a file in items/ that is a warning, not an error")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 0
+    assert _item_status(aide, consumer, 1) == "complete"
+
+
 # --------------------------------------------------------------------------- #
 # gc — deletes only what landed, and never by default
 # --------------------------------------------------------------------------- #

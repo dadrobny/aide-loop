@@ -121,6 +121,28 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.53.0] — 2026-09-16
+
+### Changed
+
+- **`aide merge` runs `aide check`, and an error refuses the tick and the push
+  (issue #232).** Nothing in the item loop ran the check mechanically:
+  `run_checks` had one caller, `aide check` itself, and the validator runs
+  `aide scope` only. So a living-document error landed and stayed — a
+  consumer's ✅ stage over ⏸️ deliverables sat on its base for two weeks until
+  an engine update surfaced it, and only a test the consumer had written for
+  itself would have caught it sooner. `merge` now runs the checks in-process
+  beside the post-merge test run, in `auto-merge` and `local` mode, and treats
+  an error exactly as a red run: item 🔍, nothing pushed, the claim branch back
+  with its base, and the errors listed. A warning is counted and never blocks,
+  since some are permanent by design (#152). The check reads the whole document
+  set, so an error already on the base blocks too; fix it there and re-run the
+  command the message names. `--no-test` does not skip it (`merge -h`). `pr`
+  mode is unchanged: it pushes the claim branch and stops before any gate.
+  §4 states the gate and its rationale; the validator's merge step names it. No
+  template or consumer edit — a consumer whose documents already carry an
+  `aide check` error will see its next merge refused until that error is fixed.
+
 ## [1.52.1] — 2026-09-15
 
 ### Fixed
