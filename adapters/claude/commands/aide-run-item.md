@@ -167,7 +167,8 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
        ```
        It honours `git.mode` and writes the ✅ itself. **A non-zero exit means
        the item did not land** — under `auto-merge` it re-runs the full suite and
-       a red re-run leaves the item 🔍 with nothing pushed; report it and stop
+       `aide check`, and a red re-run or a document error leaves the item 🔍
+       with nothing pushed; report it and stop
        rather than ticking anything by hand. Under `pr` it pushes and stops:
        leave the item 🔍 and report that it awaits review.
 

@@ -7048,6 +7048,12 @@ def _promote_item_to_complete(repo_root: Path, config, number: int,
     merge itself is the thing that succeeded. It is *not* quiet about a missing
     progress.md, which is a real misconfiguration — but even that must not fail
     a merge that has already landed.
+
+    Since 1.53.0 `cmd_merge`'s document gate reaches a lost progress.md first:
+    with `docs_dir` present it is an `aide check` error, and the merge is
+    refused before this runs (issue #232). The branch below is left for a repo
+    with no document set at all, where the check passes and there is nothing
+    to tick.
     """
     progress_path = docs_dir(repo_root, config) / "progress.md"
     if not progress_path.is_file():
@@ -7268,6 +7274,32 @@ def cmd_merge(args: argparse.Namespace) -> int:
                           f"pushes.", file=sys.stderr)
                     return 1
 
+            # The document gate, beside the test run and refusing the same two
+            # things: the tick and the push, so the item stays 🔍. Nothing else
+            # in the loop ran `aide check` mechanically — a consumer's ✅ stage
+            # over ⏸️ deliverables sat on its base for two weeks until an
+            # engine update surfaced it, and one without its own test pinning
+            # `run_checks` would never have seen it (issue #232). In-process,
+            # and not skipped by --no-test: it is not the project's tests.
+            doc_errors, doc_warnings = run_checks(repo_root, config)
+            if doc_errors:
+                _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
+                listed = "".join(f"\nerror: {e}" for e in doc_errors)
+                print(f"aide merge: `aide check` reports {len(doc_errors)} "
+                      f"error(s) after the merge, so item {args.number:03d} "
+                      f"is NOT ✅ and nothing was pushed. {branch} is merged "
+                      f"into {main} in THIS repository only, and the claim "
+                      f"branch is back with its base. The check reads the "
+                      f"whole document set, so an error may predate this "
+                      f"item. Fix the documents on {main}, commit, then re-run "
+                      f"'merge {args.number:03d} --base {main}'.{listed}",
+                      file=sys.stderr)
+                return 1
+            if doc_warnings:
+                print(f"aide merge: `aide check` reports {len(doc_warnings)} "
+                      f"warning(s), which do not block a merge; "
+                      f"'python .aide/scripts/aide.py check' lists them.")
+
             # ✅ is set HERE, by the process that just did the merge, so it always means
             # "merged" — not "an agent said so before attempting one". The validator
             # marks the item 🔍 before this call; whether it becomes ✅ is a fact about
@@ -7279,6 +7311,7 @@ def cmd_merge(args: argparse.Namespace) -> int:
             # under-reported — and on a queue's last item nothing would ever push it.
             _promote_item_to_complete(repo_root, config, args.number,
                                       getattr(args, "no_commit", False))
+
             remote_gone = True
             if mode != "local":
                 push_res = git(["push"], repo_root, check=False)
@@ -8825,7 +8858,10 @@ def register_git_subcommands(sub) -> None:
     p_merge.add_argument("--base", default=None,
                          help="merge into this ref (default: what the claim "
                               "recorded, else main_branch)")
-    p_merge.add_argument("--no-test", action="store_true", help="skip the post-merge test run")
+    p_merge.add_argument("--no-test", action="store_true",
+                         help="skip the post-merge test run; the aide check "
+                              "gate beside it still runs, and an error in it "
+                              "still refuses the tick and the push")
     p_merge.add_argument("--no-commit", action="store_true",
                          help="do not commit the progress.md status the merge records")
     p_merge.set_defaults(func=cmd_merge)
