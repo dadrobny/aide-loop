@@ -142,6 +142,11 @@ instead — that is the bump policy above, and it is enforced by
   §4 states the gate and its rationale; the validator's merge step names it. No
   template or consumer edit — a consumer whose documents already carry an
   `aide check` error will see its next merge refused until that error is fixed.
+  One tolerance narrows with it: a claim branch that loses `progress.md` used
+  to land with only the tick skipped, and is now refused like any other
+  document error, since the file it deleted is the loop's one record of what
+  shipped. A repo with no `docs_dir` at all still merges untouched. The
+  orchestrator command's merge step names the check beside the validator's.
 
 ## [1.52.1] — 2026-09-15
 

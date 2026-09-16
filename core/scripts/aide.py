@@ -7048,6 +7048,12 @@ def _promote_item_to_complete(repo_root: Path, config, number: int,
     merge itself is the thing that succeeded. It is *not* quiet about a missing
     progress.md, which is a real misconfiguration — but even that must not fail
     a merge that has already landed.
+
+    Since 1.53.0 `cmd_merge`'s document gate reaches a lost progress.md first:
+    with `docs_dir` present it is an `aide check` error, and the merge is
+    refused before this runs (issue #232). The branch below is left for a repo
+    with no document set at all, where the check passes and there is nothing
+    to tick.
     """
     progress_path = docs_dir(repo_root, config) / "progress.md"
     if not progress_path.is_file():

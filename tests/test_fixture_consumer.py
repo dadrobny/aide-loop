@@ -1301,6 +1301,19 @@ def test_a_document_error_blocks_the_tick_and_the_push_like_a_red_run(
     assert "aide/001-the-greeter" not in _branches(consumer)
 
 
+def test_a_claim_branch_that_loses_progress_is_refused_not_landed(
+        aide, consumer: Path):
+    """#232's review: the tick tolerated a lost progress.md and landed the work
+    untracked. With a document set present that is an `aide check` error, so
+    the gate refuses it before the tick is reached."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    (consumer / "docs" / "aide" / "progress.md").unlink()
+    _commit(consumer, "docs: progress.md lost on the claim branch")
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    assert "aide/001-the-greeter" in _branches(consumer)
+
 def test_a_document_warning_does_not_block_the_merge(aide, consumer: Path):
     """#232's other half: a warning is reported and never refuses, or a
     consumer carrying one (#152's retraction warning is permanent by design)
