@@ -99,8 +99,8 @@ made under** — the body's first line, before the observation
 (`.aide/conventions.md` §1 → `insights-triage.md`):
 
 ```
-**Project:** <this repo> (consumer). **Observed under engine X.Y.Z**
-(<item ref>, YYYY-MM-DD).
+**Project:** <consumer repo, or "a private consumer"> (consumer). **Observed
+under engine X.Y.Z** (<item ref>, YYYY-MM-DD).
 ```
 
 **Writing that header is the filing role's job; a form on the destination cannot
@@ -111,6 +111,30 @@ entry's own marker (`*(item 042, 2026-08-29, engine 1.22.0)*`). If the entry
 carries none, read `.aide/VERSION` and write it as *the version at triage time,
 not at capture* — and say so in the body. The framework repo cannot see this
 one, so an unmarked guess reads there as an observed fact.
+
+**The body carries what the framework can act on and nothing that identifies
+the consumer** — it should read the same had any other consumer raised it. You
+hold this project's whole working tree in context, so the line has to be drawn
+before you compose:
+
+- **Name the consumer by the least triage needs** — a public repo as
+  `owner/repo`, a private one as *a private consumer*: never its name, its
+  organisation, its URL, or a path that contains any of them.
+- **Speak in framework terms** — the verb, the lint, the `§N` section, the
+  template, the installed paths (`.aide/…`, `docs/aide/…`). **Describe
+  consumer-owned material by shape, never by copy** — source paths, module and
+  item titles, domain vocabulary, people, branch names, hostnames, commit
+  hashes.
+- **Never abstract the evidence** — the verb's output, the error text, the
+  document line that tripped a lint go in verbatim, with only the identifying
+  tokens replaced. **Prefer a fixture reproduction** — a minimal `docs/aide/*`
+  shape of a few lines — over "run it on our repo".
+- **One observation per issue.** The title is framework-facing — the verb or
+  section, then the symptom — and provenance is the insight entry's number and
+  date, not a URL into the consumer.
+- **The human sees the composed body whole before it is filed.** Print it in
+  full at the `ask` gate rather than summarising it: that gate is the last
+  point a leak can be caught, so it is the redaction check.
 
 ### 5. Tick what you routed here, with the verb
 
@@ -172,6 +196,16 @@ open is what the next queue author is about to read.
        was made under
      - Writing that header is the filing role's job; a form on the destination
        cannot reach it
+     - The body carries what the framework can act on and nothing that
+       identifies the consumer
+     - Name the consumer by the least triage needs
+     - a private one as *a private consumer*: never its name, its
+       organisation, its URL, or a path that contains any of them
+     - Describe consumer-owned material by shape, never by copy
+     - Never abstract the evidence
+     - Prefer a fixture reproduction
+     - One observation per issue
+     - The human sees the composed body whole before it is filed
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/insights.md
