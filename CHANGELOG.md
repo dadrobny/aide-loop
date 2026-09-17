@@ -142,7 +142,9 @@ instead — that is the bump policy above, and it is enforced by
   provenance is an entry number and date; the title is framework-facing; and
   the `ask` gate the hand-over already passes through is the redaction check,
   so the human sees the composed body whole. The `aide-review-insights` skill
-  restates the rules under step 4 and pins them; the header shape moves to
+  restates the rules under step 4 and pins them, and `gh issue create` joins
+  `gh pr create` on `settings.json`'s `ask` list so the gate the skill names
+  is one the runtime enforces rather than one a permissive mode can skip; the header shape moves to
   `<consumer repo, or "a private consumer">` in both copies. The repository's
   own `consumer-report` issue template, the human path, says the same and
   points at the section; its provenance footer no longer asks for

@@ -26,17 +26,13 @@ reports say it inline — "re-verified present at 1.28.1", or "the lint shipped 
 
 ## Observation
 
-_What happened, in the consumer, with the evidence. Name the verb, the lint,
-the `§N` section, the installed path — the framework's own terms, identical in
-every install. Consumer-owned detail (source paths, module and item titles,
-domain vocabulary, people, branches, hosts, hashes) is described by its shape,
-not copied. But the evidence itself — the verb's output, the error text, the
-document line that tripped a lint — goes in verbatim with only the identifying
-tokens replaced; a redacted error cannot be acted on. A few-line `docs/aide/*`
-shape that reproduces it beats "run it on our repo". If several items
-reproduced it independently, say how many — that is the signature of a missing
-rule rather than a careless author, and it is the strongest signal this tracker
-carries. One observation per issue; a second finding is a second issue._
+_What happened, in the consumer, with the evidence, written to the body rule
+above: framework terms quoted, consumer-owned detail by shape, the evidence
+itself verbatim with its consumer-owned tokens replaced. A few-line
+`docs/aide/*` shape that reproduces it beats "run it on our repo". If several
+items reproduced it independently, say how many — that is the signature of a
+missing rule rather than a careless author, and it is the strongest signal
+this tracker carries. One observation per issue._
 
 ## Why it is the engine's
 
