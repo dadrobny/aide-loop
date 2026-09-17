@@ -1146,10 +1146,13 @@ def accept_criteria(text: str, stage: str, criteria: Optional[List[int]],
         if m.group("mark") != " ":
             messages.append(f"criterion {n}: already ticked, unchanged")
             continue
-        post = m.group("post")
+        lines[i] = m.group("pre") + "x" + m.group("post")
         if evidence:
-            post = post.rstrip() + f" *({evidence})*"
-        lines[i] = m.group("pre") + "x" + post
+            # On the box's LAST line, which is its first only when it does not
+            # wrap: an annotation dropped mid-criterion splits the sentence it
+            # attests (issue #237).
+            last = acceptance_box_last(lines, i, end)
+            lines[last] = lines[last].rstrip() + f" *({evidence})*"
         messages.append(f"criterion {n}: accepted")
     return "\n".join(lines) + ("\n" if text.endswith("\n") else ""), messages
 
@@ -1174,15 +1177,41 @@ _RETRACTED_PREFIX = "retracted: "
 _ACCEPT_EVIDENCE_RE = re.compile(r"\*\(.*\)\*\s*$")
 
 
+#: A continuation line of a wrapped box: indented, non-blank, and not a bullet
+#: — a bullet under a box is its trail (or a malformed one), never its text.
+_BOX_CONTINUATION_RE = re.compile(r"^\s+(?![-*+]\s)\S")
+
+
+def acceptance_box_last(lines: List[str], box: int, end: int) -> int:
+    """Index of the last physical line of the acceptance box at *box*.
+
+    A criterion is one sentence, and a hand- or template-authored file wraps
+    it at a column: the box is its checkbox line **plus** every indented
+    non-bullet line that follows, up to the next box, trail line, blank or
+    section end (issue #237). Every writer that appends to a box or inserts
+    under it starts from here — `accept --evidence`, `amend`, `retract`,
+    `reword` — so a wrapped criterion keeps its sentence in one piece.
+    """
+    last = box
+    for i in range(box + 1, end):
+        if _BOX_CONTINUATION_RE.match(lines[i]) and not _ACCEPT_TRAIL_RE.match(lines[i]):
+            last = i
+            continue
+        break
+    return last
+
+
 def acceptance_box_trail(lines: List[str], box: int, end: int) -> List[int]:
     """Line indices of the correction trail under the acceptance box at *box*.
 
     A box owns every indented trail line between it and the next box, header,
     or the end of its section. Returned in file order, so the last element is
-    where the newest correction goes after.
+    where the newest correction goes after. The scan starts below the box's
+    last wrapped line, so a trail under a wrapped box is found, not mistaken
+    for prose that ends it.
     """
     out: List[int] = []
-    for i in range(box + 1, end):
+    for i in range(acceptance_box_last(lines, box, end) + 1, end):
         if _ACCEPT_TRAIL_RE.match(lines[i]):
             out.append(i)
             continue
@@ -1229,7 +1258,8 @@ def _append_trail(lines: List[str], box: int, end: int, date: str, note: str) ->
         last = lines[trail[-1]]
         indent = last[: len(last) - len(last.lstrip())]
     written = f"{indent}- **{date}** → {note}"
-    lines.insert((trail[-1] if trail else box) + 1, written)
+    lines.insert((trail[-1] if trail else acceptance_box_last(lines, box, end)) + 1,
+                 written)
     return written
 
 
@@ -1300,7 +1330,11 @@ def reword_criterion(text: str, stage: str, n: int, new_text: str) -> Tuple[str,
             "criterion into two and renumber every box below it")
     lines, end, box = _resolve_box(text, stage, n)
     m = _CHECKBOX_RE.match(lines[box])
-    body = m.group("post")[1:]
+    last = acceptance_box_last(lines, box, end)
+    # The wording is the whole box, continuation lines included: an annotation
+    # sits on its last line, and the rewrite replaces every line of it.
+    body = " ".join([m.group("post")[1:].strip()]
+                    + [lines[i].strip() for i in range(box + 1, last + 1)])
     if m.group("mark") != " ":
         raise ValueError(
             f"Stage {stage} criterion {n} is ticked; its wording is what an "
@@ -1318,6 +1352,7 @@ def reword_criterion(text: str, stage: str, n: int, new_text: str) -> Tuple[str,
             f"something has already been recorded against this wording")
     old = body.strip()
     lines[box] = m.group("pre") + m.group("mark") + "] " + new_text.strip()
+    del lines[box + 1:last + 1]
     return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""), old)
 
 
@@ -2167,7 +2202,7 @@ def _find_entry(entries: List[InsightEntry], ordinal: int) -> InsightEntry:
 
 
 def tick_insight_text(text: str, ordinal: int, pointer: str,
-                      date: str) -> Tuple[str, str]:
+                      date: str, trail_only: bool = False) -> Tuple[str, str]:
     """Tick entry *ordinal*, or append a dated trail line if already ticked.
 
     The two halves of conventions.md §1's lifecycle, chosen by the entry's own
@@ -2175,6 +2210,12 @@ def tick_insight_text(text: str, ordinal: int, pointer: str,
     records where the claim landed on the entry line; **everything after** it —
     a re-route, a resolution, a premise that decayed — is bookkeeping and goes
     in the appendable status trail underneath.
+
+    *trail_only* is the third case §1 → insights-triage.md names — a judgement
+    that leaves the entry **open** (a duplicate, a reason it stays untriaged)
+    and is still recorded as a dated trail line under it (issue #236). The
+    checkbox is not touched; on an entry already ticked it is the ordinary
+    second-update path.
 
     The captured claim is never touched by either path. Returns
     ``(new_text, message)``; raises ``ValueError`` if the ordinal does not
@@ -2190,7 +2231,13 @@ def tick_insight_text(text: str, ordinal: int, pointer: str,
     lines = text.splitlines()
     trailing_newline = text.endswith("\n")
 
-    if entry.ticked:
+    if entry.ticked or trail_only:
+        if not entry.ticked and entry.type is None:
+            raise ValueError(
+                f"entry {ordinal} does not parse as an inbox entry, so there "
+                f"is no entry to write a trail line under safely: "
+                f"{entry.raw!r}. Fix the line's shape first (`aide check` "
+                f"names the rule)")
         # end_lineno is 1-based, so as a 0-based list index it is the slot
         # just past the entry's last line — where the next trail line goes.
         insert_at = entry.end_lineno
@@ -2198,7 +2245,10 @@ def tick_insight_text(text: str, ordinal: int, pointer: str,
         if entry.trail:
             indent = entry.trail[-1][: len(entry.trail[-1]) - len(entry.trail[-1].lstrip())]
         lines.insert(insert_at, f"{indent}- **{date}** {_INSIGHT_POINTER.strip()} {pointer}")
-        message = f"entry {ordinal}: already ticked — appended a {date} trail line"
+        if entry.ticked:
+            message = f"entry {ordinal}: already ticked — appended a {date} trail line"
+        else:
+            message = f"entry {ordinal}: left open — appended a {date} trail line"
     else:
         if entry.type is None:
             raise ValueError(
@@ -5795,7 +5845,8 @@ def _cmd_insights_tick(path: Path, text: str, ddir_rel: str, repo_root: Path,
         return 2
     try:
         updated, message = tick_insight_text(text, args.number, args.pointer.strip(),
-                                             args.date or today)
+                                             args.date or today,
+                                             trail_only=args.trail)
     except ValueError as exc:
         print(f"aide insights tick: {exc}", file=sys.stderr)
         return 1
@@ -6945,15 +6996,18 @@ def _unsafe_tree_state(repo_root: Path,
     return f"the working tree has uncommitted changes: {shown}{more}"
 
 
-def _has_unpushed_merge(repo_root: Path) -> bool:
+def _has_unpushed_merge(repo_root: Path, upstream: str = "@{u}") -> bool:
     """Does HEAD carry a merge commit its upstream has not seen?
 
     The one shape `git pull --rebase` must not run over: rebasing DROPS the
     merge and replays both parents' commits individually, so a conflict a human
     resolved by hand inside that merge comes back (issue #133). No upstream
-    means nothing to rebase against, which is not this shape.
+    means nothing to rebase against, which is not this shape. *upstream* names
+    the ref to compare against when the branch has no tracking ref of its own
+    — `sync --item` pulls `origin/<claim>` by name, so it asks about that ref
+    (issue #235).
     """
-    res = git(["rev-list", "--merges", "@{u}..HEAD"], repo_root, check=False)
+    res = git(["rev-list", "--merges", f"{upstream}..HEAD"], repo_root, check=False)
     return res.returncode == 0 and bool(res.stdout.strip())
 
 
@@ -8088,7 +8142,26 @@ def cmd_sync(args: argparse.Namespace) -> int:
                 return 1
             branch = claim
         if mode != "local" and _has_origin(repo_root) and claim in _remote_branches(repo_root):
-            pulled = git(["pull", "--rebase", "origin", claim], repo_root, check=False)
+            if _has_unpushed_merge(repo_root, f"origin/{claim}"):
+                # The same guard the bookkeeping and post-merge pulls have
+                # (issue #235): `pull --rebase` over a local merge commit
+                # linearises it silently, or stops mid-rebase on the conflict
+                # the merge resolved — on a checkout other roles may share.
+                # `--ff-only` refuses instead of rewriting.
+                ff = git(["pull", "--ff-only", "origin", claim], repo_root, check=False)
+                if ff.returncode != 0:
+                    print(f"aide sync: {claim} carries a merge commit origin "
+                          f"has not seen, and origin/{claim} has moved on. "
+                          f"Rebasing over it would linearise the merge and "
+                          f"bring back the conflicts it resolved, so this verb "
+                          f"stops rather than choosing for you: push the claim "
+                          f"branch first ('git push origin {claim}'), or "
+                          f"integrate origin by hand, then re-run.\n"
+                          f"{ff.stdout}{ff.stderr}", file=sys.stderr)
+                    return 1
+                pulled = ff
+            else:
+                pulled = git(["pull", "--rebase", "origin", claim], repo_root, check=False)
             stalled = _stalled_pull(repo_root, config, pulled)
             if stalled is not None:
                 print(f"aide sync: {stalled}\n"
@@ -8782,7 +8855,10 @@ def build_parser() -> argparse.ArgumentParser:
             "ticked ones included; --open narrows to the untriaged, and an "
             "archived entry is in neither\n"
             "tick:    the one in-place edit — tick entry N with --pointer; on "
-            "an entry already ticked, append a dated trail line instead\n"
+            "an entry already ticked, append a dated trail line instead; "
+            "with --trail, append the dated line under entry N and leave "
+            "its checkbox as it is, which is how a judgement that keeps an "
+            "entry open (a duplicate, a reason it stays) is recorded\n"
             "archive: move closed entries older than --before into "
             "insights/archive-YYYY-QN.md, each with its trail, line for line; "
             "an entry it cannot date is named and left behind; the archive is "
@@ -8808,7 +8884,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_ins.add_argument("--type", default=None,
                        help="list: one of " + ", ".join(_INSIGHT_TYPES))
     p_ins.add_argument("--trail", action="store_true",
-                       help="list: also print each entry's status trail")
+                       help="list: also print each entry's status trail; "
+                            "tick: append the dated --pointer line under entry N "
+                            "without ticking it")
     p_ins.add_argument("--pointer", default=None,
                        help="tick: where the claim landed (a doc, item, or issue)")
     p_ins.add_argument("--before", default=None,

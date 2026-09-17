@@ -121,6 +121,55 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.54.0] — 2026-09-17
+
+### Added
+
+- **`aide insights tick N --trail --pointer P` appends a dated trail line
+  under an entry and leaves its checkbox alone (issue #236).** `tick` chose
+  its path from the entry's state: an open entry was always ticked and given
+  an undated pointer on its line, a ticked one got a dated trail line. §1 →
+  insights-triage.md names judgements that leave an entry **open** and record
+  why underneath — a duplicate, a reason it stays untriaged — and those lines
+  could only be written by hand, which is the one edit the verb exists to
+  own. A consumer's insight-triage item recorded exactly that hand edit. With
+  `--trail` the dated `- **DATE** → P` line goes under entry N whether it is
+  ticked or not; on a ticked entry it is the ordinary second-update path, so
+  the flag is never wrong to pass. The flag already existed on `list`, and
+  `insights -h` and the section's verb block now say what it does on `tick`.
+  The first-tick pointer stays undated, as §1 → insights.md shows it.
+
+### Fixed
+
+- **`aide sync --item` no longer rebases away an unpushed merge commit on the
+  claim branch (issue #235).** The claim-branch pull ran `git pull --rebase
+  origin <claim>` with no `_has_unpushed_merge` guard, which the bookkeeping
+  pull (1.31.0, #133) and the post-merge pull already had. Over a local merge
+  commit the rebase either linearises it silently — nothing reported it — or
+  stops mid-way on the conflict the merge resolved, and a consumer saw both,
+  the second on a checkout its validator and reviewer were running on. The
+  verb now does what `merge` does: `pull --ff-only`, which integrates origin
+  where it can, and where origin/<claim> has moved on it refuses before
+  pulling, naming the fix (`git push origin <claim>`, or integrate by hand).
+  The guard asks about `origin/<claim>` by name rather than `@{u}`, since a
+  claim branch pushed without `-u` has no tracking ref.
+- **`aide progress accept --evidence`, `amend` and `retract` treat a wrapped
+  acceptance box as its first line plus its continuation lines (issue
+  #237).** A criterion wrapped at a column is the ordinary shape of a
+  hand-authored or template-authored box, and §1 → progress.md already speaks
+  of a bullet's "last wrapped line". `accept` appended the evidence to the
+  box's first physical line, mid-sentence; `_append_trail` inserted the dated
+  line between that line and its continuation, after which the box's own
+  trail reader stopped at the bullet and never saw the continuation — so a
+  retraction under a wrapped box was invisible to `check` and `status`, and
+  `reword` would have rewritten the first line and left the tail behind. One
+  helper, `acceptance_box_last`, now resolves a box to its last line
+  (indented, non-blank, non-bullet lines up to the next box, trail line or
+  blank), and every writer starts from it: evidence lands on the last line,
+  a trail line goes below it, the trail scan starts after it, and `reword`
+  replaces every line of the box and checks the annotation on its last. A
+  box that does not wrap is unchanged byte for byte.
+
 ## [1.53.1] — 2026-09-16
 
 ### Fixed

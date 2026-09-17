@@ -1905,6 +1905,38 @@ def test_sync_refuses_a_start_point_whose_rebase_stopped(
     assert "tree clean" not in captured.out       # the line it used to print
 
 
+def test_sync_refuses_to_rebase_an_unpushed_merge_on_the_claim_branch(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    """Issue #235: the claim-branch pull had no unpushed-merge guard, so a
+    local merge commit was silently linearised on one run and the next left
+    the shared checkout mid-rebase. Refuse before pulling, name the push."""
+    _with_origin(consumer, tmp_path)
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    _git(["push", "-u", "origin", "aide/001-the-greeter"], consumer)
+    _git(["switch", "-c", "gate/approved", "main"], consumer)
+    (consumer / "approved.txt").write_text("approved\n", encoding="utf-8")
+    _commit(consumer, "feat: gate-approved work")
+    _git(["switch", "aide/001-the-greeter"], consumer)
+    _git(["merge", "--no-ff", "-m", "merge gate/approved", "gate/approved"], consumer)
+    sha = _git(["rev-parse", "HEAD"], consumer).stdout.strip()
+    # origin/<claim> moves on WITHOUT the merge: the other machine's commit
+    # sits on what was pushed, and is pushed from a branch of its own.
+    _git(["switch", "-c", "other-machine", "origin/aide/001-the-greeter"], consumer)
+    (consumer / "approved.txt").write_text("the other machine's version\n", encoding="utf-8")
+    _commit(consumer, "feat: the other machine's commit")
+    _git(["push", "origin", "other-machine:aide/001-the-greeter"], consumer)
+    _git(["switch", "aide/001-the-greeter"], consumer)
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(consumer), "sync", "--item", "1"]) == 1
+    err = capsys.readouterr().err
+    assert "merge commit origin has not seen" in err
+    assert "git push origin aide/001-the-greeter" in err
+    assert _git(["rev-parse", "HEAD"], consumer).stdout.strip() == sha
+    assert not (consumer / ".git" / "rebase-merge").exists()
+
+
 def test_sync_says_a_claim_branch_was_not_refreshed_and_still_starts(
         aide, consumer: Path, tmp_path: Path, capsys, monkeypatch):
     """The other half of the discriminator, and the one that must NOT refuse.
