@@ -71,7 +71,8 @@ entire loop, indefinitely.
   Testing Strategy gave the case — so the link is readable without the spec.
   Depth is the spec author's decision, made where the deliverable and the
   posture (§1 → vision.md) are known; a test with no criterion and no named
-  case behind it is a test nobody asked for.
+  case behind it is a test nobody asked for — `aide scope` warns on one
+  (`aide scope -h` states the grammar).
 - **A consumer test never hand-builds a producer's serialised form.** It
   obtains the form from the producer's code, or from a fixture the producer's
   item ships, and asserts on what it reads — so when the shape changes, one
@@ -177,9 +178,10 @@ silence as partial throughout — not only on the pin.
   engine ≤ 1.54.1 (issue #242): suites in the thousands within a few queues,
   most of them pinning behaviour no criterion named. Naming the case in the
   spec moves the decision to the role that knows what the deliverable is for,
-  and the name rule is what makes "no other" checkable: the counter-gate to
-  follow it is a lint over the names an item adds, against the criteria and
-  cases its spec names, reported as a warning first.
+  and the name rule is what makes "no other" checkable: `aide scope` warns
+  on a test the branch added whose name carries neither, the counter-gate the
+  loop lacked, reported as a warning first so a consumer lives with it
+  before it gates anything.
 - **The hand-built form.** Consumers on the same engines saw one item's tests
   invalidated by the next: the consumer's test carried a literal of the
   producer's JSON, so every legitimate change to the producer went red in a
