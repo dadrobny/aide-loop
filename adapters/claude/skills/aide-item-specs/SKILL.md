@@ -13,7 +13,10 @@ paths:
      one document and these four fix its parts: the spec itself, its
      `## Authorised paths`, the environment section the item template points
      at, and the setting that decides how an ambiguous queued item is
-     resolved. §5 says of itself that it "governs `spec-author` and nothing
+     resolved. Since 1.55.0 (issue #241) one statement of a fifth reaches it
+     the same way — §1 → vision.md's build posture, which bounds how much any
+     of those parts asks for; the rest of that section belongs to the roles
+     that write and check the vision itself. §5 says of itself that it "governs `spec-author` and nothing
      else"; `1-format-contract/environment-gated-capabilities.md` reached this
      role only through the item template's pointer, and
      `1-format-contract/authorised-paths.md` only through the spec's own
@@ -40,8 +43,8 @@ paths:
 
 <!-- pins: .aide/conventions/1-format-contract/items.md
      Quoted from that section; `test_rule_pins.py` fails if either copy moves
-     alone. One block per section file, so five blocks follow — four
-     sections delivered, and the pointed-at half of the fifth.
+     alone. One block per section file, so six blocks follow — four
+     sections delivered, and the pointed-at half of two more.
      - Filename begins with the zero-padded number
      - First `#` heading is `# Item NNN — Title`
      - **No status field** in the header — status lives only in `progress.md`
@@ -121,6 +124,21 @@ paths:
        item template) that the validator must execute
 -->
 
+<!-- pins: .aide/conventions/1-format-contract/vision.md
+     The pointed-at half of a sixth section: only the build posture, which
+     bounds what this role writes into an item spec. The rest of §1 →
+     vision.md — the four mandatory sections and what each is read for — is
+     the create-vision entry point's and the validator's, and is not
+     delivered here.
+     - a vision carrying no posture line is read as `prototype`
+     - Each of the three applies its own row and nothing beyond it
+     - acceptance criteria for the item's own deliverable only, adversarial
+       cases only where the Testing Strategy names a failure mode, and
+       Implementation Steps that reuse an existing helper before writing one
+       and add no dependency
+     - interfaces may be pinned ahead of need, and broader cases named
+-->
+
 <!-- pins: .aide/conventions/5-clarify-mode.md
      - **`interactive`** — ask ≤3 targeted questions before writing the spec
      - pick the most defensible default and record each choice in the spec's
@@ -151,7 +169,9 @@ paths:
 environment-gated capabilities and §5 are the sources of truth; this file is
 how the four reach `spec-author`, preloaded at spawn, because they fix the
 parts of the one document it writes. It is **delivery, not a second source of
-truth**. Proving a declaration once the branch exists is §1 →
+truth**. §1 → vision.md reaches this role the same way for one statement only,
+its build posture, because how much a spec asks for is a property of the vision
+rather than of the item. Proving a declaration once the branch exists is §1 →
 authorised-paths-proof, another role's job and not delivered here — only the
 handful of its statements you decide against while writing the spec.
 
@@ -280,6 +300,20 @@ stage is ✅ records why in its Notes cell**, and **a row names the
 `[validation]` profile that would verify it in its Package / Tool cell, as
 `` `<name>` profile ``**. `queue-planner` names it; this role writes its
 spec.
+
+## The vision's build posture
+
+**`vision.md`'s optional `**Posture:**` line bounds the spec you write** (§1 →
+vision.md): **a vision carrying no posture line is read as `prototype`**, and
+**each of the three applies its own row and nothing beyond it** — the roadmap's
+staging and the queue's contents are the other two, decided before this item
+reached you. Under `prototype`, write **acceptance criteria for the item's own
+deliverable only, adversarial cases only where the Testing Strategy names a
+failure mode, and Implementation Steps that reuse an existing helper before
+writing one and add no dependency**. Under `durable`, **interfaces may be
+pinned ahead of need, and broader cases named**. The posture changes nothing
+about what an acceptance criterion may *claim* — that is above, and it holds
+under both.
 
 ## Clarify mode
 

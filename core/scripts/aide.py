@@ -3810,6 +3810,50 @@ def _has_g_code_row(lines: List[str]) -> bool:
     return False
 
 
+#: The two build postures `vision.md`'s optional header line may name
+#: (conventions.md §1 → vision.md, issue #241). A closed set: the line says how
+#: much to build, and a value nobody defined is a value no role can apply.
+_VISION_POSTURES = ("prototype", "durable")
+
+
+#: The separators a header blockquote line folds several labelled fields with.
+#: `templates/vision.md` writes `**Status:** … · **Created:** …` on one line, so
+#: a posture folded onto it is a field of that line rather than a line of its
+#: own — read by field, or an explicit `durable` reads as no posture at all.
+_HEADER_FIELD_SEP_RE = re.compile(r"[\u00b7|]")
+
+
+def vision_posture(text: str) -> Optional[str]:
+    """The value of `vision.md`'s optional `**Posture:** …` header field, or ``None``.
+
+    The scan window is every line above the first `##` heading that starts with
+    `>`; each such line is split into fields on `·` and `|`, and each field has
+    its quote marker and emphasis removed before its label is read. So the line
+    of its own the template writes, the plain `> Posture: durable`, and a
+    posture folded onto the `**Status:** … · **Created:** …` line with the
+    template's own separator are one shape. The first field labelled `posture`
+    wins. The value is returned exactly as written, including an unknown or
+    empty one: deciding what it means is the caller's, and the check below
+    warns rather than correcting it.
+
+    ``None`` means the document carries no such field, which §1 → vision.md
+    reads as ``prototype``. This returns ``None`` rather than that default so
+    the two states stay distinguishable — the check must not warn about an
+    absent line, and a role that wants the default applies it itself.
+    """
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("##"):
+            break
+        if not stripped.startswith(">"):
+            continue
+        for field in _HEADER_FIELD_SEP_RE.split(stripped[1:]):
+            plain = field.replace("*", "").replace("`", "").strip()
+            if plain.lower().startswith("posture:"):
+                return plain.split(":", 1)[1].strip()
+    return None
+
+
 def root_document_warnings(ddir: Path) -> List[str]:
     """Root documents missing the sections their templates mark MANDATORY.
 
@@ -3823,6 +3867,11 @@ def root_document_warnings(ddir: Path) -> List[str]:
     Headings are matched tolerantly (any level, the template's `2.` numbering
     optional, case-insensitive): the lint is for a *dropped* section, and a
     renumbered heading is not a dropped section.
+
+    The vision's optional build posture is read here too (issue #241): a value
+    that is neither `prototype` nor `durable` is warned about by name, while an
+    absent line is not — absence is the default, and warning about it would ask
+    every vision to state the value it already has.
 
     Warnings, not errors, matching the item specs' mandatory-Assumptions lint:
     root documents predating this check exist in real consumers, and an
@@ -3840,6 +3889,16 @@ def root_document_warnings(ddir: Path) -> List[str]:
                              re.MULTILINE | re.IGNORECASE):
                 out.append(f"vision.md: no '{title}' section — the template "
                            f"marks it MANDATORY: {why}")
+        posture = vision_posture(vtext)
+        if posture is not None and posture.lower() not in _VISION_POSTURES:
+            # Named, not corrected, and never silently defaulted: a typo that
+            # meant `durable` would otherwise build less than the human asked
+            # for and say nothing. An absent line is the default and is silent.
+            out.append(f"vision.md: the header's Posture line reads "
+                       f"'{posture}', which is neither 'prototype' nor "
+                       f"'durable' — no role applies an unknown posture, and "
+                       f"a vision with no Posture line at all is read as "
+                       f"'prototype'")
         if not _has_g_code_row(vtext.splitlines()):
             out.append("vision.md: no G-code objectives table (rows opening "
                        "'| G1 |…') — the template marks it MANDATORY: the "

@@ -130,6 +130,21 @@ Follow the `aide-create-queue` skill in full. In brief:
    front, or per-item during `/aide-run-queue NNN`) in the summary — the
    orchestrator carries it into the queue-PR body.
 
+## The vision's build posture
+
+`vision.md`'s header blockquote may carry an optional `**Posture:**` line, and
+it bounds what belongs in the batch (`.aide/conventions.md` §1 → vision.md).
+**A vision carrying no posture line is read as `prototype`.** Apply this role's
+row and nothing else in that table:
+
+- `prototype` — **no preparatory or "for later" items: an item is queued only
+  where a success criterion, a deliverable, or a justified sibling in the same
+  queue needs it**.
+- `durable` — **foundations a later stage will use may be queued**.
+
+An insight entry you pass over because the posture does not warrant the work is
+passed over out loud, like any other, in step 8's summary.
+
 ## Human gates
 
 If the roadmap stage you are queueing declares a **Human gate** — a decision or
@@ -183,3 +198,15 @@ its open `defect`, `gap` and `automation` entries are an input to step 1 rather
 than a pile nobody reads. Capturing is cheap and always in scope; acting out of
 scope is forbidden. This append, and the `insights tick` of step 7, are the
 only writes allowed outside your edit scope.
+
+<!-- pins: .aide/conventions/1-format-contract/vision.md
+     Quoted from that section; `test_rule_pins.py` fails if either copy moves
+     alone. This spec carries a slice of a section its role is not preloaded
+     with — the posture's default and the one row this role applies. The other
+     two rows are the create-roadmap skill's and the spec-author's.
+     - a vision carrying no posture line is read as `prototype`
+     - no preparatory or "for later" items: an item is queued only where a
+       success criterion, a deliverable, or a justified sibling in the same
+       queue needs it
+     - foundations a later stage will use may be queued
+-->

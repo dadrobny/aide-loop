@@ -41,9 +41,32 @@ Guiding principles, Goals & objectives, Out of scope, Success criteria — are
 never dropped; what each one is read for is `.aide/conventions.md`
 §1 → vision.md.
 
+### The build posture
+
+The header blockquote carries one optional line, `> **Posture:** prototype` or
+`> **Posture:** durable`, and it decides how much the roadmap, the queue and
+every item spec downstream build (`.aide/conventions.md` §1 → vision.md). The
+line is optional and the two values are the whole set, never a spectrum, and
+**a vision carrying no posture line is read as `prototype`** — so ask which one
+this project wants once the mandatory four are grounded, and write the answer
+into the header rather than leaving the default to stand unspoken. Write one of
+the two exactly: a value outside the two is an `aide check` warning naming the
+line rather than a silent fall back to the default.
+
+Then apply the answer to this document's own optional sections as you draft
+them — Technical architecture and Non-functional requirements. **Under
+`prototype`, a Technical architecture or Non-functional requirements section is
+written only where the human has committed to something it would record, and is
+otherwise left out rather than drafted**; under `durable`, the project earns
+those sections as it earns any other narrative. An empty heading is not the
+smaller answer: leave the section out.
+
 Requirements:
 
-1. **Be exhaustive** — cover the full project scope.
+1. **Cover the scope, not the ceiling** — every objective, exclusion and
+   success criterion the project actually has. The vision is the floor a build
+   must meet; how much to build on top of it is the posture above, not the
+   length of this document.
 2. **Explain reasoning** — justify what is included and why.
 3. **Document exclusions** — state what is out of scope and why.
 4. **Be specific** — technology choices, constraints, and assumptions.
@@ -54,6 +77,21 @@ Requirements:
 
 Save to `docs/aide/vision.md`. Vision changes are framework-level: they land via
 a reviewed PR, never a direct merge.
+
+<!-- pins: .aide/conventions/1-format-contract/vision.md
+     *The build posture*. This skill writes the line, so the shape, the
+     default and the check on an unknown value are quoted; what each value
+     asks of the roles downstream is theirs and stays in the section.
+     - The line is optional and the two values are the whole set, never a
+       spectrum
+     - a vision carrying no posture line is read as `prototype`
+     - a value outside the two is an `aide check` warning naming the line
+       rather than a silent fall back to the default
+     - Under `prototype`, a Technical architecture or Non-functional
+       requirements section is written only where the human has committed to
+       something it would record, and is otherwise left out rather than
+       drafted
+-->
 
 <!-- pins: .aide/conventions/5-clarify-mode.md
      *Asking posture*. The session running this skill has not read §5, and which

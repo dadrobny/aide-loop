@@ -27,6 +27,18 @@ the vision leaves a sequencing decision open — what to build first, where a
 phase boundary falls, which objective a stage prioritises — ask the human
 rather than assuming, and present the result as a draft for review.
 
+### The vision's build posture
+
+Read the header blockquote's optional `**Posture:**` line before staging
+(`.aide/conventions.md` §1 → vision.md). **The posture says how much to build,
+and the roles that read it are the three that author a document from the
+vision** — this one among them, and **a vision carrying no posture line is read
+as `prototype`**. Apply this role's row and nothing else in the table:
+
+- `prototype` — **fewer stages: a stage only where a success criterion needs
+  one**.
+- `durable` — **stages and sections as the vision earns them**.
+
 ### Updating an existing roadmap
 
 Which stages may change, and how, is `.aide/conventions.md` §1 → roadmap.md —
@@ -57,3 +69,16 @@ read it before editing. In practice:
 
 Save to `docs/aide/roadmap.md`. Roadmap changes are framework-level: reviewed PR,
 never a direct merge.
+
+<!-- pins: .aide/conventions/1-format-contract/vision.md
+     Quoted from that section; `test_rule_pins.py` fails if either copy moves
+     alone. This skill is not preloaded with §1 → vision.md, so it carries the
+     one row it applies and the default that decides which row that is — the
+     other two rows are the queue-planner's and the spec-author's, and stay
+     where every reader of them looks.
+     - The posture says how much to build, and the roles that read it are the
+       three that author a document from the vision
+     - a vision carrying no posture line is read as `prototype`
+     - fewer stages: a stage only where a success criterion needs one
+     - stages and sections as the vision earns them
+-->
