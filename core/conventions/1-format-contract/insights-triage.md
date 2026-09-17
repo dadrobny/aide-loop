@@ -85,7 +85,7 @@ other consumer raised it.
   token in it is replaced by a placeholder that keeps its shape, so
   `docs/aide/queue-018.md:42: item title "Migrate billing-importer to
   Postgres" exceeds 80 chars` is filed as `docs/aide/queue-018.md:42: item
-  title "<verb> <module> to <store>" exceeds 80 chars`.
+  title "<action> <module> to <store>" exceeds 80 chars`.
 - **Prefer a fixture reproduction** — a minimal `docs/aide/*` shape of a few
   lines — over "run it on our repo", which the framework cannot do.
 - **One observation per issue**; a second finding is a second issue.

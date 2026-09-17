@@ -131,7 +131,7 @@ before you compose:
   applies inside the evidence, token by token**: the line's structure is what
   is verbatim, and each consumer-owned token in it is replaced by a
   placeholder that keeps its shape (`"Migrate billing-importer to Postgres"`
-  becomes `"<verb> <module> to <store>"`). **Prefer a fixture reproduction** — a minimal `docs/aide/*`
+  becomes `"<action> <module> to <store>"`). **Prefer a fixture reproduction** — a minimal `docs/aide/*`
   shape of a few lines — over "run it on our repo".
 - **One observation per issue.** The title is framework-facing — the verb or
   section, then the symptom — and provenance is the insight entry's number and
