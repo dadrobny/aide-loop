@@ -97,12 +97,15 @@ the item's own deliverable, or a declared consumer in the batch that reads what
 it pins.** *(spec-author, spec-reviewer)* One test per criterion is the floor
 and the ceiling of what the item's tests cover (§6), so a criterion that
 neither the deliverable nor a consumer needs buys a test and nothing else. A
-criterion with neither is not written. **What was deliberately left undecided
-goes in one short `Left open` note under Decisions & Trade-offs** — the
-question, and why this item did not settle it — so the next item finds the
-decision deferred rather than forgotten. The same rule bounds the queue: an
-item is queued only where a success criterion, a deliverable, or a justified
-sibling needs it (§1 → vision.md's posture table, the `queue-planner` row).
+criterion with neither is not written. **Under `durable` (§1 → vision.md) a
+consumer a later stage will have counts as one; under `prototype`, the
+default, only a consumer declared in the batch does.** The posture changes
+which consumers count, never what a criterion may claim. **What was
+deliberately left undecided goes in one short `Left open` note under Decisions
+& Trade-offs** — one line, `- **Left open:** <the question, and why this item
+did not settle it>` — so the next item finds the decision deferred rather than
+forgotten. The queue is bounded the same way, by the posture table's
+`queue-planner` row.
 
 #### Rationale
 

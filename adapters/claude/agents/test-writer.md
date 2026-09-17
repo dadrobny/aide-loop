@@ -34,8 +34,8 @@ fixture conventions only.
 2. **Read existing tests** to understand the project's test style: `tmp_path`
    usage, parametrize patterns, naming conventions, import style.
 3. **Write tests** in `tests_dir` covering:
-   - Every AC as at least one direct, clearly-named test — include the AC number
-     or a keyword in the test name so the link is obvious. Where the AC asserts
+   - Every AC as one direct test, named with the AC's number (`ac3`) so the
+     link is readable without the spec. Where the AC asserts
      a fact about live state, satisfy it the way §1 → items.md requires, and
      hand back rather than settling for a check the subject can pass while the
      claim is false.

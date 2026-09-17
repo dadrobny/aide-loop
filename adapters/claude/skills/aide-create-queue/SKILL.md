@@ -109,11 +109,15 @@ as the reason.
 3. **Sequential numbering** — item numbers are sequential across **all** queues;
    find the highest existing number and continue from it. Never restart.
 4. **Testable, justified items** — each item must be testable locally, and
-   each is queued for a reason a reader can follow: a vision success criterion
-   or a roadmap deliverable fails without it, or a sibling in this queue
-   declares a dependency on it and is itself justified; under `durable` (§1 →
-   vision.md) a foundation a later stage will use also qualifies. A candidate
-   with neither is not queued, and the pass-over is named in the summary
+   each is queued for a reason the vision's posture row admits (§1 →
+   vision.md; a vision carrying no posture line is read as `prototype`):
+   under `prototype`, no preparatory or "for later" items: an item is queued
+   only where a success criterion, a deliverable, or a justified sibling in
+   the same queue needs it; under `durable`, foundations a later stage will
+   use may be queued. A justified sibling is one the row admits on its own
+   account, so a chain of dependencies ends at a criterion, a deliverable or a
+   foundation, never at another unjustified item. A candidate the row does
+   not admit is not queued, and the pass-over is named in the summary
    (below), like an inbox entry passed over.
 5. **A stage-closing queue ends with a stage-validation item** — when this
    queue completes a roadmap stage, its final item must be
@@ -260,6 +264,17 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
        prose that mandates it | the queue that absorbs it |
      - | `framework` | an issue on `[framework] repo` from `aide.toml`; unset or
        offline, it stays pending | the filing role, on the hand-over |
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/vision.md
+     Requirement 4 quotes the `queue-planner` row of the posture table, both
+     cells, and the default — the same slice `queue-planner.md` pins, since
+     the two deliver one rule to one operation.
+     - a vision carrying no posture line is read as `prototype`
+     - no preparatory or "for later" items: an item is queued only where a
+       success criterion, a deliverable, or a justified sibling in the same
+       queue needs it
+     - foundations a later stage will use may be queued
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/queue-NNN.md

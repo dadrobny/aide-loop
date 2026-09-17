@@ -100,10 +100,14 @@ written `<docs_dir>/…` below are relative to whatever it is actually set to.
 
    **Economy is a batch-only lens, and it is yours here.** With every spec in
    view, flag an AC no deliverable in the batch needs, an AC pinning a shape no
-   declared consumer reads, and a Testing Strategy case with no failure mode
-   behind it (conventions.md §1 → items.md, §6). Per-item authoring has no
-   review at this point, so the rule binds the spec-author in both modes; you
-   are the second reading it gets when there is a batch.
+   consumer reads, and a Testing Strategy case with no failure mode behind it
+   (conventions.md §1 → items.md, §6). Read `vision.md`'s header first: under
+   `> **Posture:** durable` a consumer a later stage will have counts, so an
+   interface pinned ahead of need is not a finding there; under `prototype`
+   (the default when the line is absent) only a consumer declared in the batch
+   does. That line is the one thing you read the vision for. Per-item
+   authoring has no review at this point, so the rule binds the spec-author in
+   both modes; you are the second reading it gets when there is a batch.
 
 5. **Read the dependency prose for direction.** `**Downstream` marks a forward
    reference; anything before that marker is read as a blocker. Flag a

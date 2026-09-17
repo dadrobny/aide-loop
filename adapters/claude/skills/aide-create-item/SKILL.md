@@ -64,8 +64,8 @@ with its downstream consumer):
   it is *not*.
 - **Acceptance Criteria** — each atomic, observable, directly testable; split
   compound criteria. Each one justified by the deliverable or a declared
-  consumer, else not written — a deferred question is a `Left open` line under
-  Decisions (`.aide/conventions.md` §1 → items).
+  consumer, else not written — a deferred question is a `**Left open:**` line
+  under Decisions (`.aide/conventions.md` §1 → items).
 - **Assumptions** — every clarify-mode default and every interface pinned before
   its dependency is implemented. "None." if fully specified.
 - **Implementation Steps** — the intended code path in `project.source_dir`
@@ -82,7 +82,8 @@ with its downstream consumer):
   included; declaring one is how an item that pins what a sibling produces
   records that order.
 - **Decisions & Trade-offs** — initialise with "To be updated during
-  implementation."
+  implementation.", plus one `**Left open:**` line per question this item
+  deliberately defers; the builder appends below those.
 
 Add project-specific sections only when the project genuinely needs them (e.g. a
 services checklist for a system with external services) — not by default.

@@ -10,7 +10,7 @@
     - Authorised paths                [builder, validator, aide scope]
     - Testing Strategy                [test-writer]
     - Dependencies                    [aide claim]
-    - Decisions & Trade-offs          [builder, as it goes]
+    - Decisions & Trade-offs          [spec-author: Left open; builder, as it goes]
   Optional: Validation (how to observe the work beyond the tests; the
   validator executes it when present), and Environment / Hardware
   Dependencies (only for an item introducing an environment-gated capability

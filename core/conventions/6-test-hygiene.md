@@ -177,9 +177,9 @@ silence as partial throughout — not only on the pin.
   engine ≤ 1.54.1 (issue #242): suites in the thousands within a few queues,
   most of them pinning behaviour no criterion named. Naming the case in the
   spec moves the decision to the role that knows what the deliverable is for,
-  and the name rule is what makes "no other" checkable — a lint over the
-  names an item adds, against the criteria and cases its spec names, is the
-  counter-gate, reported as a warning first.
+  and the name rule is what makes "no other" checkable: the counter-gate to
+  follow it is a lint over the names an item adds, against the criteria and
+  cases its spec names, reported as a warning first.
 - **The hand-built form.** Consumers on the same engines saw one item's tests
   invalidated by the next: the consumer's test carried a literal of the
   producer's JSON, so every legitimate change to the producer went red in a

@@ -58,13 +58,15 @@ is pinned only where a consumer genuinely parses the file. A consumer that
 needs one field does not pin the layout around it.
 
 **A pinned interface is re-checked at claim once its dependency has merged.**
-An item claimed after a dependency its Assumptions pin has merged since the
-spec was written has its Assumptions re-checked against the real code — by
-`spec-author`, **before** any test is written from them — as the append-only
-amendment above: a re-check that agrees is appended to the assumption, and one
-that does not corrects it, dated, with the original left standing. The
-dependency's merge is the signal; a spec whose Assumptions pin no dependency
-is not re-checked.
+An item whose Assumptions pin the interface of an item under its
+`## Dependencies` has those Assumptions re-checked against the real code when
+it is claimed — by `spec-author`, **before** any test is written from them —
+as the append-only amendment above: a re-check that agrees is appended to the
+assumption, and one that does not corrects it, dated, with the original left
+standing. **The pin itself is the signal**: a spec pins a dependency's
+interface only when written before that dependency was built, and a claim
+happens only once it has merged, so no date is compared. A spec whose
+Assumptions pin no dependency is not re-checked.
 
 ### Rationale
 

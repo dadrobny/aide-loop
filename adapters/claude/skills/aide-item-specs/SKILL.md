@@ -74,6 +74,9 @@ paths:
        it: the item's own deliverable, or a declared consumer in the batch that
        reads what it pins
      - A criterion with neither is not written
+     - Under `durable` (§1 → vision.md) a consumer a later stage will have
+       counts as one; under `prototype`, the default, only a consumer declared
+       in the batch does
      - What was deliberately left undecided goes in one short `Left open` note
        under Decisions & Trade-offs
 -->
@@ -164,6 +167,7 @@ paths:
      - A pinned interface is re-checked at claim once its dependency has
        merged
      - by `spec-author`, **before** any test is written from them
+     - The pin itself is the signal
      - Root documents are authored through their loop entry point,
        interactively — whatever `loop.clarify` says
      - Do not write a root document directly, however well the template shape
@@ -237,11 +241,14 @@ evidence names the check and says the mapping was made at attestation time.
 item's own deliverable, or a declared consumer in the batch that reads what it
 pins.** One test per criterion is the floor and the ceiling of what the item's
 tests cover (§6), so a criterion neither needs buys a test and nothing else —
-**a criterion with neither is not written**. **What was deliberately left
-undecided goes in one short `Left open` note under Decisions & Trade-offs**,
-the question and why this item did not settle it, so the next item finds the
-decision deferred rather than forgotten. The queue was bounded by the same
-rule before the item reached you.
+**a criterion with neither is not written**. **Under `durable` (§1 →
+vision.md) a consumer a later stage will have counts as one; under
+`prototype`, the default, only a consumer declared in the batch does.**
+**What was deliberately left undecided goes in one short `Left open` note
+under Decisions & Trade-offs** — `- **Left open:** <the question, and why
+this item did not settle it>` — so the next item finds the decision deferred
+rather than forgotten. The queue was bounded the same way before the item
+reached you.
 
 ## Authorised paths
 
@@ -331,9 +338,10 @@ reached you. Under `prototype`, write **acceptance criteria for the item's own
 deliverable only, adversarial cases only where the Testing Strategy names a
 failure mode, and Implementation Steps that reuse an existing helper before
 writing one and add no dependency**. Under `durable`, **interfaces may be
-pinned ahead of need, and broader cases named**. The posture changes nothing
-about what an acceptance criterion may *claim* — that is above, and it holds
-under both.
+pinned ahead of need, and broader cases named** — which is the criterion
+rule above read with a later stage's consumer counting. The posture changes
+nothing about what an acceptance criterion may *claim*: the equality wording
+and the stage annotation hold under both.
 
 ## Clarify mode
 
@@ -366,11 +374,13 @@ consumer genuinely parses the file**. A consumer that needs one field does not
 pin the layout around it.
 
 **A pinned interface is re-checked at claim once its dependency has merged**:
-when the item is claimed after a dependency its Assumptions pin has landed
-since the spec was written, you re-check those Assumptions against the real
-code — **by `spec-author`, before any test is written from them** — as the
+an item whose Assumptions pin the interface of an item under its
+`## Dependencies` has them re-checked against the real code when it is
+claimed — **by `spec-author`, before any test is written from them** — as the
 append-only amendment above: a re-check that agrees is appended to the
 assumption, one that does not corrects it, dated, with the original standing.
+**The pin itself is the signal**: a spec pins a dependency only when written
+before it was built, and a claim happens only once it has merged.
 
 **Root documents are authored through their loop entry point, interactively —
 whatever `loop.clarify` says** (`.aide/conventions.md` §5); here that entry point

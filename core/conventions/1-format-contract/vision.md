@@ -37,7 +37,7 @@ whole set, never a spectrum; **a vision carrying no posture line is read as
 `prototype`**, and a value outside the two is an `aide check` warning naming
 the line rather than a silent fall back to the default. The create-vision entry
 point asks for it once the mandatory four are grounded. *(aide check,
-create-vision, create-roadmap, queue-planner, spec-author)*
+create-vision, create-roadmap, queue-planner, spec-author, spec-reviewer)*
 
 **The posture also bounds the vision's own optional sections.** Under
 `prototype`, a Technical architecture or Non-functional requirements section is
@@ -47,9 +47,10 @@ sections as it earns any other narrative. This one is the vision's own rule
 rather than a row of the table below: the create-vision entry point asks for the
 posture, it does not read one.
 
-**The posture says how much to build, and the roles that read it are the three
-that author a document from the vision.** It is not a guiding principle and no
-verb branches on it: the validator's vision-fit check measures against Guiding
+**The posture says how much to build, and the roles that apply it are the
+three that author a document from the vision.** `spec-reviewer` reads the line
+too, only to hold a batch of specs it did not write to the `spec-author` row.
+It is not a guiding principle and no verb branches on it: the validator's vision-fit check measures against Guiding
 principles and Out of scope, so it is unchanged, and `builder` and `test-writer`
 never read the posture at all — the item spec carries its consequences. Each of
 the three applies its own row and nothing beyond it:

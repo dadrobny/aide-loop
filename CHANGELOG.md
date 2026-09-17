@@ -153,7 +153,11 @@ instead — that is the bump policy above, and it is enforced by
   Criteria, Assumptions, Implementation Steps, Testing Strategy and Decisions
   guidance changed; a consumer built from template 1 changes nothing in a
   merged spec, and `aide check` names the template version until a spec
-  authored from the old shape is amended or the number bumped.
+  authored from the old shape is amended or the number bumped. **One edit is
+  not optional**: an authored, unbuilt spec (the batch case) whose Testing
+  Strategy lists adversarial cases loosely, with no label and no failure
+  mode, gets its AC tests and nothing else from this release's test-writer —
+  relabel each case it still wants before running the item.
 
 ### Changed
 
@@ -171,12 +175,17 @@ instead — that is the bump policy above, and it is enforced by
   test-writer through the generated `aide-test-hygiene`. And the timing half:
   an item claimed after a dependency its Assumptions pin has merged since the
   spec was written has those Assumptions re-checked by `spec-author`, before
-  any test is written, as the append-only amendment §5 already defines —
-  `/aide-run-item` step 1 briefs it when a `## Dependencies` item is ✅ and
-  the spec's Assumptions pin it. `aide claim` does not yet say when this
-  applies; the orchestrator reads it from the spec and `progress.md`. Pins
-  moved with the wording in `aide-item-specs`, `spec-reviewer` (step 4 now
-  checks both directions) and `aide-spec-queue` step 4.
+  any test is written, as the append-only amendment §5 already defines. The
+  pin itself is the signal, and no date is compared: a spec pins a
+  dependency's interface only when written before it was built, and a claim
+  happens only once it has merged. `spec-author` gains the step (a spec that
+  exists is re-checked, never rewritten) and `/aide-run-item` step 1 briefs
+  it; `aide claim` does not yet print the case. `spec-reviewer` now reads the
+  posture line, only to hold a batch to the `spec-author` row, and §1 →
+  vision.md says so. Pins moved with the wording in `aide-item-specs`,
+  `spec-reviewer` (step 4 now checks both directions), `aide-create-queue`
+  (which now pins the `queue-planner` row it quotes) and `aide-spec-queue`
+  step 4.
 
 ## [1.55.0] — 2026-09-17
 

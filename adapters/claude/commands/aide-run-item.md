@@ -27,7 +27,7 @@ pin the session model, so `/model sonnet` first if you're on Opus.
 
 | Step | Task | Sub-agent | Model | Notes |
 |---|---|---|---|---|
-| 0 | **Author the item spec** | `spec-author` | **Opus** | writes `docs/aide/items/NNN-*.md` (Description, atomic AC, steps, testing strategy, deps, decisions), commits. **No code, no tests.** Skip only if the spec file already exists and is complete. |
+| 0 | **Author the item spec** | `spec-author` | **Opus** | writes `docs/aide/items/NNN-*.md` (Description, atomic AC, steps, testing strategy, deps, decisions), commits. **No code, no tests.** Skip only if the spec file already exists and is complete — and its Assumptions pin no dependency's interface; if they do, it re-checks them (step 1). |
 | 1 | **Write tests** for the item | `test-writer` | Sonnet | reads spec + AC + existing test style, writes one test per AC plus the cases the Testing Strategy names, commits. **No production code, no pytest.** |
 | 2 | **Implement** production code | `builder` | Sonnet (→ Opus on 3rd attempt) | checkout branch, implement `source_dir` per every AC, record decisions, set progress in-progress (`aide progress set NNN in-progress`), commit. **No tests, no pytest.** |
 | 2b | **Review** the diff | `reviewer` | Sonnet | **only when `aide.toml` sets `loop.review = "background"`** (default `"off"`). Dispatched in the background the moment builder returns, concurrent with step 3 over the same branch. Reads the diff adversarially and reports findings; writes nothing, merges nothing. |
@@ -63,19 +63,21 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    > Return: spec path + the list of Acceptance Criteria.
 
    **A spec that already exists may be stale on one point** (`.aide/conventions.md`
-   §5): when its Assumptions pin the interface of an item under `## Dependencies`
-   that has merged (✅ in `progress.md`) since the spec's `Created` date — the
-   batch-authored case — brief the `spec-author` to re-check instead of
-   returning the criteria unread:
-   > The spec for AIDE item NNN exists on branch `aide/NNN-short-name` and was
-   > written before item(s) <MMM> merged. Re-check every Assumption that pins
-   > their interface against the real code now on the base branch. Append a
-   > dated re-check to each — agreeing, or correcting it with the original
-   > left standing (§1 → items.md); never rewrite. Commit.
+   §5): an Assumption that pins the interface of an item under
+   `## Dependencies`. Such a pin was written before that item was built (the
+   batch-authored case), and the item is claimed now, so the dependency has
+   merged since — the pin is the whole signal, and no date is compared. Read
+   the spec's Assumptions and Dependencies; where one names the other, brief
+   the `spec-author` to re-check instead of returning the criteria unread:
+   > The spec for AIDE item NNN exists on branch `aide/NNN-short-name` and its
+   > Assumptions pin item(s) <MMM>, which have since merged. Re-check every
+   > Assumption that pins their interface against the real code now on the
+   > base branch. Append a dated re-check to each — agreeing, or correcting it
+   > with the original left standing (§1 → items.md); never rewrite. Commit.
    > Return: the Acceptance Criteria, and which Assumptions changed.
 
-   This runs **before** step 2, so no test is written from a stale pin. A spec
-   whose Assumptions pin no dependency is not re-checked.
+   This runs **before** step 2, so no test is written from a stale pin; §5
+   says which specs are exempt (no pin, no re-check).
 
 2. **Write tests → spawn a fresh `test-writer`.** Brief:
    > Write tests for AIDE item NNN on branch `aide/NNN-short-name`. The spec
