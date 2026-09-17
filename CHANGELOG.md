@@ -130,23 +130,29 @@ instead — that is the bump policy above, and it is enforced by
   and the ceiling unless the Testing Strategy names the case, and that a
   test's name says which it covers; nothing checked it. Now every test
   function the branch added under `tests_dir` — present in the working tree,
-  absent from the file at the merge-base, so an edit to an existing test is
-  never reported — must carry an AC number the spec's `## Acceptance
-  Criteria` names (`ac3`, bounded on both sides) or a case label its
-  `## Testing Strategy` names (the first word of a bullet, closed by a colon,
-  backticks or bold around it ignored: `` `empty-input: …` ``). One naming
-  neither is a `warning:` line naming the test and the spec, counted on the
-  OK line; the exit code is unchanged, so a consumer lives with the report
-  before it gates anything. `aide scope -h` states the grammar.
+  absent from the file at the merge-base (a renamed file is read under its
+  old name), so an edit to an existing test is never reported — must carry
+  an AC number the spec's `## Acceptance Criteria` names (`ac3`, bounded on
+  both sides) or a case label its `## Testing Strategy` names (the first
+  word of a bullet, closed by a colon, backticks or bold around it ignored:
+  `` `empty-input: …` ``; a fenced block is never read, and both headings
+  match case-insensitively). One naming neither is a `warning:` line naming
+  the test and the spec, counted on the OK or FAIL line; the exit code is
+  unchanged, so a consumer lives with the report before it gates anything.
+  A spec with no `## Acceptance Criteria` heading, or a `tests_dir` outside
+  the repository, is one `notice:` and no warnings. `aide scope -h` states
+  the grammar.
 - **`aide claim` names the Assumptions that pin a dependency's interface
   (issue #243).** When the claimed item's spec exists and an Assumption
   names an item under its `## Dependencies`, the claim prints one line
   listing each such assumption and its dependency — the re-check signal §5
   defines, read from the documents rather than from a date. The three
   shapes §5 excludes are excluded here: an engine-marked audit entry and an
-  assumption already carrying a re-check are not named, and a dependency
-  that left the queue as ❌ or ⏸️ is named as having no code to check
-  against. `--dry-run` prints it too. `/aide-run-item` step 1 reads the
+  assumption already carrying a *recorded* re-check (one naming a version or
+  a date — "to be re-checked before tests" is a request, and is surfaced)
+  are not named, and a dependency that left the queue as ❌ or ⏸️ is named
+  as having no code to check against. The count is per assumption bullet,
+  however many dependencies one names. `--dry-run` prints it too. `/aide-run-item` step 1 reads the
   claim's line where it has it, and the spec otherwise. This closes #243.
 
 ## [1.56.0] — 2026-09-17

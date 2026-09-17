@@ -6799,9 +6799,9 @@ def cmd_claim(args: argparse.Namespace) -> int:
 
 
 def interface_pins(spec_text: str, deps: List[int],
-                   item_status: Dict[int, str]) -> List[Tuple[str, int, str]]:
-    """``(label, dependency, status)`` for each Assumption that pins a
-    dependency's interface — the re-check signal of conventions.md §5.
+                   item_status: Dict[int, str]) -> List[Tuple[int, str, int, str]]:
+    """``(bullet index, label, dependency, status)`` for each Assumption that
+    pins a dependency's interface — the re-check signal of conventions.md §5.
 
     An Assumption naming an item under ``## Dependencies`` was written before
     that item was built, and a claim happens only once it has left the way, so
@@ -6811,20 +6811,21 @@ def interface_pins(spec_text: str, deps: List[int],
     reported rather than skipped — a dependency that left the queue as ❌/⏸️,
     which has no code to check against.
     """
-    out: List[Tuple[str, int, str]] = []
-    for bullet in _assumption_bullets(spec_text):
+    out: List[Tuple[int, str, int, str]] = []
+    for index, bullet in enumerate(_assumption_bullets(spec_text), 1):
         named = [d for d in _referenced_item_numbers(bullet) if d in deps]
         if not named or assumption_engine_pin(bullet) is not None:
             continue
-        # A *recorded* re-check carries a version or a date; "to be re-checked"
-        # is a request, and exactly the bullet to surface.
-        if re.search(r"re-?checked[^.\n]{0,24}(\d+\.\d+\.\d+|\d{4}-\d{2}-\d{2})",
-                     bullet, re.IGNORECASE):
+        # A *recorded* re-check carries a version or a date somewhere in the
+        # bullet; "to be re-checked before tests" carries neither, and is
+        # exactly the bullet to surface.
+        if (re.search(r"re-?checked", bullet, re.IGNORECASE)
+                and re.search(r"\d+\.\d+\.\d+|\d{4}-\d{2}-\d{2}", bullet)):
             continue
         m = re.match(r"^\s*[-*]\s+\**\s*([^:*]{1,40}?)\s*(?:\(|:|\*\*)", bullet)
-        label = m.group(1).strip() if m else "an unlabelled assumption"
+        label = m.group(1).strip() if m else f"assumption #{index}"
         for dep in named:
-            out.append((label, dep, item_status.get(dep, "unknown")))
+            out.append((index, label, dep, item_status.get(dep, "unknown")))
     return out
 
 
@@ -6843,8 +6844,8 @@ def _interface_pin_report(repo_root: Path, config, number: int) -> Optional[str]
     absent = {"excluded", "deferred"}
     parts = [f"{label} (item {dep:03d}"
              + (", no code to check against" if st in absent else "") + ")"
-             for label, dep, st in pins]
-    distinct = len({label for label, _, _ in pins})
+             for _, label, dep, st in pins]
+    distinct = len({index for index, _, _, _ in pins})
     return (f"aide claim: {distinct} assumption(s) pin a dependency's interface "
             f"— re-check before tests are written (conventions.md §5): "
             + "; ".join(parts))
@@ -8061,18 +8062,21 @@ _TESTING_HEADING_RE = re.compile(r"^##\s+Testing Strategy\b", re.MULTILINE | re.
 _CASE_LABEL_RE = re.compile(r"^\s*[-*]\s+[`*_]*([A-Za-z][A-Za-z0-9_-]*)[`*_]*\s*:")
 
 
+_FENCE_RE = re.compile(r"^[ \t]*(```|~~~).*?^[ \t]*\1[^\n]*$", re.MULTILINE | re.DOTALL)
+
+
 def _section_text(text: str, heading: "re.Pattern") -> str:
-    m = heading.search(text)
-    if m is None:
-        return ""
-    # A fenced block inside the section is code, not a bullet list.
-    text = re.sub(r"^```.*?^```[^\n]*$", "", text, flags=re.MULTILINE | re.DOTALL)
+    """The body under *heading*, up to the next `## `, with every fenced block
+    inside that slice removed — a fence is code, not a bullet list. The slice
+    is cut first, so a fence left open in an earlier section cannot swallow
+    this one."""
     m = heading.search(text)
     if m is None:
         return ""
     rest = text[m.end():]
     nxt = re.search(r"^##\s", rest, re.MULTILINE)
-    return rest if nxt is None else rest[: nxt.start()]
+    section = rest if nxt is None else rest[: nxt.start()]
+    return _FENCE_RE.sub("", section)
 
 
 def spec_acceptance_numbers(text: str) -> List[int]:
@@ -8109,15 +8113,32 @@ def _under_dir(rel: str, directory: str) -> bool:
     return PurePosixPath(rel).parts[: len(root)] == root
 
 
+def _tests_dir_rel(repo_root: Path, config) -> Optional[str]:
+    """`tests_dir` as a path relative to the repo, whatever `aide.toml`
+    spelled; None when an absolute value points outside the repository, where
+    no git-relative path can match it."""
+    raw = str(config["project"].get("tests_dir", "tests"))
+    path = Path(raw)
+    if not path.is_absolute():
+        return raw
+    try:
+        return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        return None
+
+
 def renamed_paths(repo_root: Path, merge_base: str) -> Dict[str, str]:
     """``{new path: old path}`` for every rename git detects vs *merge_base*."""
-    status = git(["diff", "--name-status", "-M", merge_base], repo_root, check=False)
+    # `core.quotePath=false`: with the default, a non-ASCII OLD path comes back
+    # quoted and octal-escaped, and `git show <mb>:"…"` then finds nothing.
+    status = git(["-c", "core.quotePath=false", "diff", "--name-status", "-M",
+                  merge_base], repo_root, check=False)
     out: Dict[str, str] = {}
     if status.returncode != 0:
         return out
     for line in status.stdout.splitlines():
         cells = line.split("\t")
-        if len(cells) == 3 and cells[0].startswith("R"):
+        if len(cells) == 3 and cells[0][:1] in ("R", "C"):
             out[cells[2].strip()] = cells[1].strip()
     return out
 
@@ -8133,9 +8154,11 @@ def added_test_functions(repo_root: Path, config, changed: List[str],
     reconcile the spec listed, §6) and is not the item's own. A file that did
     not exist at the base contributes every test in it.
     """
-    tests_dir = str(config["project"].get("tests_dir", "tests"))
+    tests_dir = _tests_dir_rel(repo_root, config)
     renamed = renamed or {}
     out: List[Tuple[str, str]] = []
+    if tests_dir is None:
+        return out
     for rel in changed:
         if not rel.endswith(".py") or not _under_dir(rel, tests_dir):
             continue
@@ -8265,15 +8288,18 @@ def cmd_scope(args: argparse.Namespace) -> int:
     unauthorised, contradictions = scope_findings(changed, authorised, always)
 
     traced: List[str] = []
-    if _AC_HEADING_RE.search(spec_text) is None:
+    added = added_test_functions(repo_root, config, changed, mb.stdout.strip(),
+                                 renamed_paths(repo_root, mb.stdout.strip()))
+    if _tests_dir_rel(repo_root, config) is None:
+        print("notice: tests_dir lies outside the repository — traceability "
+              "not checked")
+    elif added and _AC_HEADING_RE.search(spec_text) is None:
         print(f"notice: {rel_spec} has no '## Acceptance Criteria' heading — "
               "traceability not checked")
-    else:
+    elif added:
         traced = traceability_warnings(
-            added_test_functions(repo_root, config, changed, mb.stdout.strip(),
-                                 renamed_paths(repo_root, mb.stdout.strip())),
-            spec_acceptance_numbers(spec_text), testing_strategy_labels(spec_text),
-            rel_spec)
+            added, spec_acceptance_numbers(spec_text),
+            testing_strategy_labels(spec_text), rel_spec)
     for line in traced:
         print(line)
     note = f", {len(traced)} traceability warning(s)" if traced else ""

@@ -177,6 +177,15 @@ def test_a_prose_line_or_a_fenced_block_is_not_a_label():
     assert aide.testing_strategy_labels(text) == ["boundary"]
 
 
+def test_a_fence_is_stripped_from_the_section_only():
+    """A bullet inside a fence is code (both spellings, indented too); a fence
+    left open in an EARLIER section must not swallow this one."""
+    text = ("## Implementation Steps\n\n```python\nopen and never closed\n\n"
+            "## Testing Strategy\n\n- real: the row\n\n    ```\n    - fake: x\n    ```\n"
+            "~~~\n- fake2: y\n~~~\n- also: z\n\n## Dependencies\n\n```\n")
+    assert aide.testing_strategy_labels(text) == ["real", "also"]
+
+
 def test_headings_match_case_insensitively():
     assert aide.spec_acceptance_numbers("## Acceptance criteria\n\n- [ ] AC4: x\n") == [4]
 
@@ -186,6 +195,13 @@ def test_under_dir_accepts_every_spelling_of_tests_dir():
         assert aide._under_dir("tests/unit/test_a.py", spelling), spelling
     assert not aide._under_dir("src/tests_helpers.py", "tests")
     assert not aide._under_dir("tests/test_a.py", "tests/unit")
+
+
+def test_an_absolute_tests_dir_inside_the_repo_is_relativised(tmp_path: Path):
+    config = {"project": {"tests_dir": str(tmp_path / "tests")}}
+    assert aide._tests_dir_rel(tmp_path, config) == "tests"
+    config = {"project": {"tests_dir": str(tmp_path.parent / "elsewhere")}}
+    assert aide._tests_dir_rel(tmp_path, config) is None
 
 
 def test_a_bom_at_the_base_does_not_hide_the_existing_tests():
@@ -291,15 +307,23 @@ def test_interface_pins_skip_the_three_shapes_that_are_not_the_signal():
     re-checked" is a request, not a record, and stays."""
     status = {41: "complete", 40: "deferred", 39: "excluded"}
     got = aide.interface_pins(SPEC_WITH_PINS, [41, 40, 39], status)
-    assert [(label, dep) for label, dep, _ in got] == [("A1", 41), ("A4", 40), ("A5", 39)]
-    assert [st for _, _, st in got] == ["complete", "deferred", "excluded"]
+    assert [(label, dep) for _, label, dep, _ in got] == [("A1", 41), ("A4", 40), ("A5", 39)]
+    assert [st for _, _, _, st in got] == ["complete", "deferred", "excluded"]
 
 
-def test_one_bullet_naming_two_dependencies_counts_once():
+def test_a_recorded_re_check_in_prose_is_skipped_too():
+    text = ("## Assumptions\n\n- **A7:** item 041's shape; re-checked against the "
+            "real code in 1.36.0 and agrees.\n")
+    assert aide.interface_pins(text, [41], {}) == []
+
+
+def test_one_bullet_naming_two_dependencies_counts_once_and_two_unlabelled_count_twice():
     text = "## Assumptions\n\n- **A1:** items 041, 040's rows are dicts.\n"
     got = aide.interface_pins(text, [41, 40], {})
-    assert [dep for _, dep, _ in got] == [41, 40]
-    assert len({label for label, _, _ in got}) == 1
+    assert [(i, dep) for i, _, dep, _ in got] == [(1, 41), (1, 40)]
+    text = "## Assumptions\n\n- item 041 is a dict.\n- item 040 is CSV.\n"
+    got = aide.interface_pins(text, [41, 40], {})
+    assert [(i, label) for i, label, _, _ in got] == [(1, "assumption #1"), (2, "assumption #2")]
 
 
 def test_interface_pins_are_empty_without_a_dependency():
