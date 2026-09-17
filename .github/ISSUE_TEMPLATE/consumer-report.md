@@ -11,21 +11,28 @@ a report triaged against the wrong engine version gets closed as already-fixed
 when it is not, or re-fixed when it is. `cat .aide/VERSION` in the consumer.
 -->
 
-**Project:** {{consumer repo}} (consumer). **Observed under engine {{X.Y.Z}}**
-({{item ref}}, {{YYYY-MM-DD}}).
+**Project:** {{consumer repo, or "a private consumer"}} (consumer). **Observed
+under engine {{X.Y.Z}}** ({{item ref}}, {{YYYY-MM-DD}}).
 
-_The item ref is whatever locates it in the consumer — `queue-018`, `item 134`.
-Then say, in the same line, what the **current** engine version does: check it
+_Name a public consumer as `owner/repo`; a private one is "a private consumer"
+and nothing else — not its name, organisation, URL, or a path that contains
+them. Everything below follows the body rule in the engine's §1 →
+`insights-triage.md`, *Handing a `framework` entry over*: the issue should read
+the same had any other consumer raised it. The item ref is whatever locates it
+in the consumer — `queue-018`, `item 134`. Then say, in the same line, what the **current** engine version does: check it
 against a current checkout rather than assuming the defect survived. The real
 reports say it inline — "re-verified present at 1.28.1", or "the lint shipped in
 1.19.0 and is unchanged through 1.28.1"._
 
 ## Observation
 
-_What happened, in the consumer, with the evidence. Name the file, the verb, the
-lint, or the rule. If several items reproduced it independently, say how many —
-that is the signature of a missing rule rather than a careless author, and it is
-the strongest signal this tracker carries._
+_What happened, in the consumer, with the evidence, written to the body rule
+above: framework terms quoted, consumer-owned detail by shape, the evidence
+itself verbatim with its consumer-owned tokens replaced. A few-line
+`docs/aide/*` shape that reproduces it beats "run it on our repo". If several
+items reproduced it independently, say how many — that is the signature of a
+missing rule rather than a careless author, and it is the strongest signal
+this tracker carries. One observation per issue._
 
 ## Why it is the engine's
 
@@ -46,7 +53,8 @@ _Optional. The nearest existing behaviour this is **not**, so triage does not
 close it as a duplicate._
 
 <!--
-Provenance, when it came from an insight entry:
-**Provenance** — `owner/repo` `docs/aide/insights.md`, entry dated YYYY-MM-DD
-(item NNN), typed `<type>`.
+Provenance, when it came from an insight entry — the entry's number and date,
+never a URL into the consumer:
+**Provenance** — `docs/aide/insights.md` entry N, dated YYYY-MM-DD (item NNN),
+typed `<type>`.
 -->

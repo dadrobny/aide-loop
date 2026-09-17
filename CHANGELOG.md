@@ -121,6 +121,35 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.54.1] — 2026-09-17
+
+### Changed
+
+- **A `framework` issue filed from a consumer carries what the framework can
+  act on and nothing that identifies the consumer (issue #239).** §1 →
+  insights-triage.md's *Handing a `framework` entry over* said what the
+  body's first line is and nothing about the rest, and its header shape
+  (`**Project:** <consumer repo>`) asked for the consumer's name — which, for
+  the private repositories that have run the loop so far, is a name in a
+  tracker that outlives the consumer and cannot see it. The core now states
+  the body rule in one line — the issue reads the same had any other consumer
+  raised it — and the cases that decide it: a private consumer is named as
+  *a private consumer* and nothing else; framework terms (the verb, the lint,
+  the `§N` section, installed paths) are quoted and consumer-owned material
+  (source paths, item titles, domain vocabulary, people, branches, hosts,
+  hashes) is described by shape; the evidence itself is never abstracted; a
+  few-line `docs/aide/*` reproduction is preferred; one observation per issue;
+  provenance is an entry number and date; the title is framework-facing; and
+  the `ask` gate the hand-over already passes through is the redaction check,
+  so the human sees the composed body whole. The `aide-review-insights` skill
+  restates the rules under step 4 and pins them, and `gh issue create` joins
+  `gh pr create` on `settings.json`'s `ask` list so the gate the skill names
+  is one the runtime enforces rather than one a permissive mode can skip; the header shape moves to
+  `<consumer repo, or "a private consumer">` in both copies. The repository's
+  own `consumer-report` issue template, the human path, says the same and
+  points at the section; its provenance footer no longer asks for
+  `owner/repo`. Nothing a consumer edits: the rule binds the filing role.
+
 ## [1.54.0] — 2026-09-17
 
 ### Added
