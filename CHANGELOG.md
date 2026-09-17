@@ -161,7 +161,8 @@ instead — that is the bump policy above, and it is enforced by
     item that hit the validation-round cap and never merged. It derives what it
     can, blanks the two diff cells where the claim branch is gone, requires
     `--rounds` (exit 2 without it), and touches nothing but the ledger —
-    `progress.md` keeps whatever status the run left it.
+    `progress.md` keeps whatever status the run left it. Run twice for one
+    item, it appends nothing the second time.
   - **`aide check` shape-checks the rows** — the cell count, the Item cell, an
     Outcome outside `merged`/`abandoned`, and a count cell that is neither an
     integer nor blank — as **warnings**,

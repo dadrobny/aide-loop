@@ -547,6 +547,20 @@ def test_abandon_without_rounds_exits_two_and_writes_nothing(tmp_path: Path, cap
     assert not (repo / "docs" / "aide" / "ledger.md").exists()
 
 
+def test_abandon_run_twice_records_the_item_once(tmp_path: Path, capsys):
+    """A retried orchestrator step must not count one abandonment as two."""
+    repo = _init_repo(tmp_path / "repo")
+    assert aide.main(["--repo", str(repo), "ledger", "abandon", "27",
+                      "--rounds", "3"]) == 0
+    before = (repo / "docs" / "aide" / "ledger.md").read_bytes()
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "ledger", "abandon", "27",
+                      "--rounds", "3"]) == 0
+    assert "already recorded as abandoned" in capsys.readouterr().out
+    assert (repo / "docs" / "aide" / "ledger.md").read_bytes() == before
+    assert len(_rows(repo)) == 1
+
+
 def test_abandon_with_no_branch_left_blanks_the_two_diff_cells(tmp_path: Path):
     repo = _init_repo(tmp_path / "repo")
     assert aide.main(["--repo", str(repo), "ledger", "abandon", "27",

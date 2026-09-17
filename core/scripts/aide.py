@@ -6436,6 +6436,20 @@ def cmd_ledger(args: argparse.Namespace) -> int:
               f"count recorded is indistinguishable from one nobody wrote "
               f"down.", file=sys.stderr)
         return 2
+    ddir = docs_dir(repo_root, config)
+    path = ledger_path(ddir)
+    if path.is_file():
+        for lineno, cells in ledger_rows(path.read_text(encoding=_ENCODING)):
+            row = dict(zip(LEDGER_COLUMNS, cells))
+            if (row.get("Item") == f"{args.number:03d}"
+                    and row.get("Outcome") == "abandoned"):
+                # A retried orchestrator step is the ordinary way to arrive
+                # here twice; a second row would count one abandonment as
+                # two in every ratio read from the file.
+                print(f"aide ledger {args.action}: item {args.number:03d} is "
+                      f"already recorded as abandoned ({path.name}:{lineno}); "
+                      f"nothing appended")
+                return 0
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     branch = _find_claim_branch(repo_root, prefix, args.number)
     base = _recorded_branch_base(repo_root, branch) if branch else None
@@ -9648,7 +9662,9 @@ def build_parser() -> argparse.ArgumentParser:
             "--rounds is required and the verb exits 2 without it: the round "
             "count is why the row exists, and an abandoned item recorded "
             "without one says nothing a reader can use. --findings is "
-            "optional, and a rank left out of it is a blank cell.\n"
+            "optional, and a rank left out of it is a blank cell. An item "
+            "already recorded as abandoned is not recorded twice: a re-run "
+            "appends nothing and exits 0.\n"
             "\n"
             "It writes the ledger and nothing else: progress.md keeps "
             "whatever status the run left it, since what becomes of an "
