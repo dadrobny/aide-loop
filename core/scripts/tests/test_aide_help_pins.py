@@ -480,6 +480,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("on an entry already ticked, append a dated trail line instead",
          "test_aide_insights::"
          "test_ticking_an_already_ticked_entry_appends_a_dated_trail_line"),
+        # Same function, `trail_only`: the line goes under an OPEN entry and the
+        # checkbox is left alone (issue #236).
+        ("with --trail, append the dated line under entry N and leave its "
+         "checkbox as it is",
+         "test_aide_insights::test_tick_trail_appends_a_dated_line_and_leaves_the_box_open"),
         # Three claims in one sentence, and one test covers only the third:
         # `test_archive_moves_lines_byte_for_byte` asserts that every moved
         # line was in the original, so a selection that moved every dated entry

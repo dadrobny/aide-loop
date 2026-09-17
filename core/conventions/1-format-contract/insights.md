@@ -40,7 +40,7 @@ without one stays as captured.
 
 ```
 python .aide/scripts/aide.py insights list [--open] [--type T] [--trail]
-python .aide/scripts/aide.py insights tick N --pointer "<where it landed>"
+python .aide/scripts/aide.py insights tick N --pointer "<where it landed>" [--trail]
 python .aide/scripts/aide.py insights archive --before YYYY-MM-DD [--yes]
 python .aide/scripts/aide.py insights resolve [--dry-run]
 ```
@@ -69,7 +69,10 @@ status trail** — dated lines, indented under the entry, newest last:
 
 A single routing pointer may still be appended to the entry line itself
 (`- [x] … → <where it landed>`); the trail is what a *second* update goes in,
-and what an entry whose premise decayed needs.
+and what an entry whose premise decayed needs. An entry that **stays open**
+can carry a trail too — `tick N --trail --pointer` writes the dated line and
+leaves the checkbox alone, which is how a judgement that routes nothing (a
+duplicate, a reason it stays) is recorded without a hand edit.
 
 **What happens to a captured entry is two sections, read by the roles that
 perform them.** §1 → `insights-triage.md` fixes how an entry is routed and
