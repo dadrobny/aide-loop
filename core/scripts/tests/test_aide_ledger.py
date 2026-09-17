@@ -561,6 +561,17 @@ def test_abandon_run_twice_records_the_item_once(tmp_path: Path, capsys):
     assert len(_rows(repo)) == 1
 
 
+def test_abandon_with_different_counts_is_a_second_abandonment(tmp_path: Path):
+    """An item resumed after the cap and stopped again is a new fact."""
+    repo = _init_repo(tmp_path / "repo")
+    assert aide.main(["--repo", str(repo), "ledger", "abandon", "27",
+                      "--rounds", "3"]) == 0
+    assert aide.main(["--repo", str(repo), "ledger", "abandon", "27",
+                      "--rounds", "2", "--findings", "minor=1"]) == 0
+    rows = _rows(repo)
+    assert [(r["Rounds"], r["Minor"]) for r in rows] == [("3", ""), ("2", "1")]
+
+
 def test_abandon_with_no_branch_left_blanks_the_two_diff_cells(tmp_path: Path):
     repo = _init_repo(tmp_path / "repo")
     assert aide.main(["--repo", str(repo), "ledger", "abandon", "27",

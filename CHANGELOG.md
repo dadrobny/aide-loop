@@ -162,7 +162,8 @@ instead — that is the bump policy above, and it is enforced by
     can, blanks the two diff cells where the claim branch is gone, requires
     `--rounds` (exit 2 without it), and touches nothing but the ledger —
     `progress.md` keeps whatever status the run left it. Run twice for one
-    item, it appends nothing the second time.
+    item with the same counts, it appends nothing the second time; a
+    different count is a second abandonment and a second row.
   - **`aide check` shape-checks the rows** — the cell count, the Item cell, an
     Outcome outside `merged`/`abandoned`, and a count cell that is neither an
     integer nor blank — as **warnings**,

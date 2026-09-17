@@ -6303,14 +6303,27 @@ def ledger_cells(repo_root: Path, config, number: int, outcome: str,
         "ACs": criteria,
         "Tests": tests,
         "Files": files,
-        "Rounds": "" if rounds is None else str(rounds),
         "Engine": installed_engine_version() or "",
         "Date": date or _dt.date.today().isoformat(),
     }
+    cells.update(zip(LEDGER_COUNT_COLUMNS,
+                     _ledger_count_cells(rounds=rounds, findings=findings)))
+    return [cells[column] for column in LEDGER_COLUMNS]
+
+
+#: The caller-supplied cells, in the order `_ledger_count_cells` renders them.
+LEDGER_COUNT_COLUMNS = ("Rounds",) + tuple(r.capitalize() for r in LEDGER_FINDING_RANKS)
+
+
+def _ledger_count_cells(rounds: Optional[int],
+                        findings: Optional[Dict[str, int]]) -> List[str]:
+    """Render the caller's counts — a count nobody passed is `""`, never `0`."""
+    findings = findings or {}
+    out = ["" if rounds is None else str(rounds)]
     for rank in LEDGER_FINDING_RANKS:
         got = findings.get(rank)
-        cells[rank.capitalize()] = "" if got is None else str(got)
-    return [cells[column] for column in LEDGER_COLUMNS]
+        out.append("" if got is None else str(got))
+    return out
 
 
 def ledger_row(cells: List[str]) -> str:
@@ -6439,16 +6452,20 @@ def cmd_ledger(args: argparse.Namespace) -> int:
     ddir = docs_dir(repo_root, config)
     path = ledger_path(ddir)
     if path.is_file():
+        counts = _ledger_count_cells(rounds=args.rounds, findings=args.findings)
         for lineno, cells in ledger_rows(path.read_text(encoding=_ENCODING)):
             row = dict(zip(LEDGER_COLUMNS, cells))
             if (row.get("Item") == f"{args.number:03d}"
-                    and row.get("Outcome") == "abandoned"):
+                    and row.get("Outcome") == "abandoned"
+                    and [row.get(c) for c in LEDGER_COUNT_COLUMNS] == counts):
                 # A retried orchestrator step is the ordinary way to arrive
                 # here twice; a second row would count one abandonment as
-                # two in every ratio read from the file.
+                # two in every ratio read from the file. Different counts are
+                # a different abandonment — an item resumed after the cap and
+                # stopped again — and that row is appended like any other.
                 print(f"aide ledger {args.action}: item {args.number:03d} is "
-                      f"already recorded as abandoned ({path.name}:{lineno}); "
-                      f"nothing appended")
+                      f"already recorded as abandoned with these counts "
+                      f"({path.name}:{lineno}); nothing appended")
                 return 0
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     branch = _find_claim_branch(repo_root, prefix, args.number)
@@ -9663,8 +9680,9 @@ def build_parser() -> argparse.ArgumentParser:
             "count is why the row exists, and an abandoned item recorded "
             "without one says nothing a reader can use. --findings is "
             "optional, and a rank left out of it is a blank cell. An item "
-            "already recorded as abandoned is not recorded twice: a re-run "
-            "appends nothing and exits 0.\n"
+            "already recorded as abandoned with the same counts is not "
+            "recorded twice: a re-run appends nothing and exits 0, while a "
+            "different count is a new abandonment and a new row.\n"
             "\n"
             "It writes the ledger and nothing else: progress.md keeps "
             "whatever status the run left it, since what becomes of an "

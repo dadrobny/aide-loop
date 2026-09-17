@@ -825,9 +825,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_abandon_records_the_round_count_and_leaves_progress_alone"),
         # `cmd_ledger` scans `ledger_rows` for an abandoned row of this item
         # before deriving anything, and returns 0 without appending.
-        ("An item already recorded as abandoned is not recorded twice: a "
-         "re-run appends nothing and exits 0",
-         "test_aide_ledger::test_abandon_run_twice_records_the_item_once"),
+        ("An item already recorded as abandoned with the same counts is not "
+         "recorded twice: a re-run appends nothing and exits 0, while a "
+         "different count is a new abandonment and a new row",
+         ("test_aide_ledger::test_abandon_run_twice_records_the_item_once",
+          "test_aide_ledger::"
+          "test_abandon_with_different_counts_is_a_second_abandonment")),
         # `cmd_ledger` calls neither `set_item_status` nor `_promote_…`.
         ("It writes the ledger and nothing else: progress.md keeps whatever "
          "status the run left it",
