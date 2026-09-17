@@ -81,6 +81,7 @@ PROGRESS = """\
 **Deliverables.**
 - ✅ The parser. *(Item 041)*
 - ⏸️ The exporter. *(Item 040)*
+- ❌ The importer. *(Item 039)*
 - 📋 The walker. *(Item 042)*
 
 **Acceptance.**
@@ -99,11 +100,12 @@ SPEC_WITH_PINS = SPEC.replace("- None.\n", """\
 - **A2 (engine 1.56.0):** `aide check` warns on a missing Assumptions block.
 - **A3:** item 041's dict is ordered — re-checked 2026-09-10, agrees.
 - **A4:** item 040's export format is CSV.
+- **A5:** item 039's importer accepts a path; to be re-checked before tests.
 - Whitespace is stripped (clarify default).
 """) + """
 ## Dependencies
 
-- Item 041 (the parser), Item 040 (the exporter).
+- Item 041 (the parser), Item 040 (the exporter), Item 039 (the importer).
 
 **Downstream:** item 043 reads the walk.
 """
@@ -139,7 +141,10 @@ def _init_repo(path: Path, spec: str = SPEC) -> Path:
 
 def _work(repo: Path, test_source: str) -> None:
     _run(["git", "switch", "-c", "aide/042-demo-item"], repo)
-    (repo / "src" / "demo" / "rules.py").write_text("x = 2\n", encoding="utf-8")
+    # A `def test_…` outside tests_dir: the tests_dir filter must be
+    # load-bearing, so this one is never reported.
+    (repo / "src" / "demo" / "rules.py").write_text(
+        "x = 2\n\ndef test_helper_in_source():\n    pass\n", encoding="utf-8")
     (repo / "tests" / "test_rules.py").write_text(test_source, encoding="utf-8")
     _run(["git", "add", "-A"], repo)
     _run(["git", "commit", "-m", "work"], repo)
@@ -162,6 +167,29 @@ def test_labels_are_the_first_word_of_a_bullet_closed_by_a_colon():
 def test_labels_ignore_a_module_path_and_stop_at_the_next_heading():
     text = "## Testing Strategy\n\n- tests/test_x.py: the module\n\n## Dependencies\n\n- boundary: no\n"
     assert aide.testing_strategy_labels(text) == []
+
+
+def test_a_prose_line_or_a_fenced_block_is_not_a_label():
+    """`Note: …` in prose would trace every `test_notes_*`; a fenced block is
+    code. Only a bullet's first word is a case."""
+    text = ("## Testing strategy\n\nNote: the parser is shared.\n\n```\nfoo: bar\n```\n"
+            "\n- boundary: the last row\n")
+    assert aide.testing_strategy_labels(text) == ["boundary"]
+
+
+def test_headings_match_case_insensitively():
+    assert aide.spec_acceptance_numbers("## Acceptance criteria\n\n- [ ] AC4: x\n") == [4]
+
+
+def test_under_dir_accepts_every_spelling_of_tests_dir():
+    for spelling in ("tests", "tests/", "./tests", "tests\\unit", "."):
+        assert aide._under_dir("tests/unit/test_a.py", spelling), spelling
+    assert not aide._under_dir("src/tests_helpers.py", "tests")
+    assert not aide._under_dir("tests/test_a.py", "tests/unit")
+
+
+def test_a_bom_at_the_base_does_not_hide_the_existing_tests():
+    assert aide._test_function_names("\ufeffdef test_legacy():\n    pass\n") == ["test_legacy"]
 
 
 # --------------------------------------------------------------------------- #
@@ -224,6 +252,30 @@ def test_scope_ignores_an_edited_existing_test(tmp_path: Path, capsys):
     assert "warning" not in out
 
 
+def test_a_renamed_test_file_is_read_under_its_old_name(tmp_path: Path, capsys):
+    """`git diff --name-only` lists only the new path of a rename; without the
+    rename map every pre-existing test in the moved file would be "added"."""
+    repo = _init_repo(tmp_path / "repo",
+                      spec=SPEC.replace("`tests/test_rules.py`", "`tests/*.py`"))
+    _run(["git", "switch", "-c", "aide/042-demo-item"], repo)
+    _run(["git", "mv", "tests/test_rules.py", "tests/test_walker.py"], repo)
+    _run(["git", "commit", "-m", "rename"], repo)
+    rc = aide.main(["--repo", str(repo), "scope"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "warning" not in out, out
+
+
+def test_a_spec_without_criteria_is_one_notice_not_n_warnings(tmp_path: Path, capsys):
+    spec = SPEC.replace("## Acceptance Criteria", "## Criteria")
+    repo = _init_repo(tmp_path / "repo", spec=spec)
+    _work(repo, "def test_a():\n    pass\n\ndef test_b():\n    pass\n")
+    assert aide.main(["--repo", str(repo), "scope"]) == 0
+    out = capsys.readouterr().out
+    assert "notice:" in out and "traceability not checked" in out
+    assert "warning" not in out
+
+
 def test_the_warning_never_turns_a_pass_into_a_fail(tmp_path: Path, capsys):
     repo = _init_repo(tmp_path / "repo")
     _work(repo, "def test_a():\n    pass\n\ndef test_b():\n    pass\n")
@@ -235,10 +287,19 @@ def test_the_warning_never_turns_a_pass_into_a_fail(tmp_path: Path, capsys):
 # claim: the interface-pin line
 # --------------------------------------------------------------------------- #
 def test_interface_pins_skip_the_three_shapes_that_are_not_the_signal():
-    status = {41: "complete", 40: "deferred"}
-    got = aide.interface_pins(SPEC_WITH_PINS, [41, 40], status)
-    assert [(label, dep) for label, dep, _ in got] == [("A1", 41), ("A4", 40)]
-    assert got[1][2] == "deferred"
+    """A2 is engine-marked, A3 carries a dated re-check; A5's "to be
+    re-checked" is a request, not a record, and stays."""
+    status = {41: "complete", 40: "deferred", 39: "excluded"}
+    got = aide.interface_pins(SPEC_WITH_PINS, [41, 40, 39], status)
+    assert [(label, dep) for label, dep, _ in got] == [("A1", 41), ("A4", 40), ("A5", 39)]
+    assert [st for _, _, st in got] == ["complete", "deferred", "excluded"]
+
+
+def test_one_bullet_naming_two_dependencies_counts_once():
+    text = "## Assumptions\n\n- **A1:** items 041, 040's rows are dicts.\n"
+    got = aide.interface_pins(text, [41, 40], {})
+    assert [dep for _, dep, _ in got] == [41, 40]
+    assert len({label for label, _, _ in got}) == 1
 
 
 def test_interface_pins_are_empty_without_a_dependency():
@@ -251,9 +312,10 @@ def test_claim_names_the_assumptions_that_pin_a_dependency(tmp_path: Path, capsy
     out = capsys.readouterr().out
     assert rc == 0, out
     assert "claimed item 042" in out
-    assert "2 assumption(s) pin a dependency's interface" in out
+    assert "3 assumption(s)" in out
     assert "A1 (item 041)" in out
     assert "A4 (item 040, no code to check against)" in out
+    assert "A5 (item 039, no code to check against)" in out
 
 
 def test_claim_says_nothing_about_pins_when_there_are_none(tmp_path: Path, capsys):

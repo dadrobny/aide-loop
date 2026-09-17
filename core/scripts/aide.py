@@ -38,7 +38,7 @@ import shlex
 import signal
 import subprocess
 import sys
-from pathlib import Path, PurePath
+from pathlib import Path, PurePosixPath, PurePath
 from typing import Callable, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
 # --------------------------------------------------------------------------- #
@@ -6816,10 +6816,13 @@ def interface_pins(spec_text: str, deps: List[int],
         named = [d for d in _referenced_item_numbers(bullet) if d in deps]
         if not named or assumption_engine_pin(bullet) is not None:
             continue
-        if re.search(r"re-?checked", bullet, re.IGNORECASE):
+        # A *recorded* re-check carries a version or a date; "to be re-checked"
+        # is a request, and exactly the bullet to surface.
+        if re.search(r"re-?checked[^.\n]{0,24}(\d+\.\d+\.\d+|\d{4}-\d{2}-\d{2})",
+                     bullet, re.IGNORECASE):
             continue
         m = re.match(r"^\s*[-*]\s+\**\s*([^:*]{1,40}?)\s*(?:\(|:|\*\*)", bullet)
-        label = (m.group(1).strip() if m else bullet[2:40].strip()) or "assumption"
+        label = m.group(1).strip() if m else "an unlabelled assumption"
         for dep in named:
             out.append((label, dep, item_status.get(dep, "unknown")))
     return out
@@ -6841,7 +6844,8 @@ def _interface_pin_report(repo_root: Path, config, number: int) -> Optional[str]
     parts = [f"{label} (item {dep:03d}"
              + (", no code to check against" if st in absent else "") + ")"
              for label, dep, st in pins]
-    return (f"aide claim: {len(pins)} assumption(s) pin a dependency's interface "
+    distinct = len({label for label, _, _ in pins})
+    return (f"aide claim: {distinct} assumption(s) pin a dependency's interface "
             f"— re-check before tests are written (conventions.md §5): "
             + "; ".join(parts))
 
@@ -8046,16 +8050,23 @@ def scope_findings(changed: List[str], authorised: AuthorisedPaths,
 #: `AC3`, `ac3` — the criterion number a test name carries. Not `mac3` or
 #: `ac30` for AC3: the token is bounded on both sides.
 _AC_TOKEN_RE = re.compile(r"(?<![a-z0-9])ac(\d+)(?![0-9])")
-_AC_HEADING_RE = re.compile(r"^##\s+Acceptance Criteria\b", re.MULTILINE)
-_TESTING_HEADING_RE = re.compile(r"^##\s+Testing Strategy\b", re.MULTILINE)
-#: A case label: the first token of a Testing Strategy bullet, closed by a
+_AC_HEADING_RE = re.compile(r"^##\s+Acceptance Criteria\b", re.MULTILINE | re.IGNORECASE)
+_TESTING_HEADING_RE = re.compile(r"^##\s+Testing Strategy\b", re.MULTILINE | re.IGNORECASE)
+#: A case label: the first token of a Testing Strategy **bullet**, closed by a
 #: colon — `- empty-input: the walker yields nothing`, with or without
 #: backticks or bold around the token. One word, so "existing tests to
-#: reconcile:" and a `tests/test_x.py:` module name are prose, not labels.
-_CASE_LABEL_RE = re.compile(r"^\s*(?:[-*]\s+)?[`*_]*([A-Za-z][A-Za-z0-9_-]*)[`*_]*\s*:")
+#: reconcile:" and a `tests/test_x.py:` module name are prose, not labels;
+#: and a bullet, so a prose "Note: …" line in the section is not one either
+#: (a generic label would silence every test whose name contains it).
+_CASE_LABEL_RE = re.compile(r"^\s*[-*]\s+[`*_]*([A-Za-z][A-Za-z0-9_-]*)[`*_]*\s*:")
 
 
 def _section_text(text: str, heading: "re.Pattern") -> str:
+    m = heading.search(text)
+    if m is None:
+        return ""
+    # A fenced block inside the section is code, not a bullet list.
+    text = re.sub(r"^```.*?^```[^\n]*$", "", text, flags=re.MULTILINE | re.DOTALL)
     m = heading.search(text)
     if m is None:
         return ""
@@ -8082,7 +8093,7 @@ def testing_strategy_labels(text: str) -> List[str]:
 
 def _test_function_names(source: str) -> List[str]:
     try:
-        tree = ast.parse(source)
+        tree = ast.parse(source.lstrip("\ufeff"))
     except SyntaxError:
         return []
     return [n.name for n in ast.walk(tree)
@@ -8090,19 +8101,43 @@ def _test_function_names(source: str) -> List[str]:
             and n.name.startswith("test")]
 
 
+def _under_dir(rel: str, directory: str) -> bool:
+    """*rel* (a posix path git printed) sits under *directory* (whatever
+    `aide.toml` spelled: `tests`, `./tests`, `tests\\unit`, `.`)."""
+    root = tuple(p for p in PurePosixPath(directory.replace("\\", "/")).parts
+                 if p not in (".", ""))
+    return PurePosixPath(rel).parts[: len(root)] == root
+
+
+def renamed_paths(repo_root: Path, merge_base: str) -> Dict[str, str]:
+    """``{new path: old path}`` for every rename git detects vs *merge_base*."""
+    status = git(["diff", "--name-status", "-M", merge_base], repo_root, check=False)
+    out: Dict[str, str] = {}
+    if status.returncode != 0:
+        return out
+    for line in status.stdout.splitlines():
+        cells = line.split("\t")
+        if len(cells) == 3 and cells[0].startswith("R"):
+            out[cells[2].strip()] = cells[1].strip()
+    return out
+
+
 def added_test_functions(repo_root: Path, config, changed: List[str],
-                         merge_base: str) -> List[Tuple[str, str]]:
+                         merge_base: str,
+                         renamed: Optional[Dict[str, str]] = None) -> List[Tuple[str, str]]:
     """``(path, name)`` for every test function the branch added.
 
     A test file among *changed* is read from the working tree and compared to
-    its version at *merge_base*; a name present in both is an edit to an
-    existing test (a reconcile the spec listed, §6) and is not the item's own.
-    A file that did not exist at the base contributes every test in it.
+    its version at *merge_base* — under its old name where *renamed* says the
+    branch moved it; a name present in both is an edit to an existing test (a
+    reconcile the spec listed, §6) and is not the item's own. A file that did
+    not exist at the base contributes every test in it.
     """
-    tests_dir = str(config["project"].get("tests_dir", "tests")).strip("/")
+    tests_dir = str(config["project"].get("tests_dir", "tests"))
+    renamed = renamed or {}
     out: List[Tuple[str, str]] = []
     for rel in changed:
-        if not rel.endswith(".py") or not (rel == tests_dir or rel.startswith(tests_dir + "/")):
+        if not rel.endswith(".py") or not _under_dir(rel, tests_dir):
             continue
         path = repo_root / rel
         if not path.is_file():
@@ -8111,7 +8146,7 @@ def added_test_functions(repo_root: Path, config, changed: List[str],
             new = _test_function_names(path.read_text(encoding=_ENCODING))
         except (OSError, UnicodeDecodeError):
             continue
-        shown = git(["show", f"{merge_base}:{rel}"], repo_root, check=False)
+        shown = git(["show", f"{merge_base}:{renamed.get(rel, rel)}"], repo_root, check=False)
         old = set(_test_function_names(shown.stdout)) if shown.returncode == 0 else set()
         out.extend((rel, name) for name in new if name not in old)
     return out
@@ -8201,7 +8236,8 @@ def cmd_scope(args: argparse.Namespace) -> int:
     spec = specs[0]
     rel_spec = spec.relative_to(repo_root).as_posix()
 
-    authorised = parse_authorised_paths(spec.read_text(encoding=_ENCODING))
+    spec_text = spec.read_text(encoding=_ENCODING)
+    authorised = parse_authorised_paths(spec_text)
     if declares_nothing(authorised):
         what = ("has no '## Authorised paths' section" if authorised is None
                 else "declares no path under '## Authorised paths'")
@@ -8228,13 +8264,19 @@ def cmd_scope(args: argparse.Namespace) -> int:
     always = _always_authorised_paths(ddir_rel) + (rel_spec,)
     unauthorised, contradictions = scope_findings(changed, authorised, always)
 
-    spec_text = spec.read_text(encoding=_ENCODING)
-    traced = traceability_warnings(
-        added_test_functions(repo_root, config, changed, mb.stdout.strip()),
-        spec_acceptance_numbers(spec_text), testing_strategy_labels(spec_text),
-        rel_spec)
+    traced: List[str] = []
+    if _AC_HEADING_RE.search(spec_text) is None:
+        print(f"notice: {rel_spec} has no '## Acceptance Criteria' heading — "
+              "traceability not checked")
+    else:
+        traced = traceability_warnings(
+            added_test_functions(repo_root, config, changed, mb.stdout.strip(),
+                                 renamed_paths(repo_root, mb.stdout.strip())),
+            spec_acceptance_numbers(spec_text), testing_strategy_labels(spec_text),
+            rel_spec)
     for line in traced:
         print(line)
+    note = f", {len(traced)} traceability warning(s)" if traced else ""
 
     for path in contradictions:
         print(f"error: {path} changed, but {rel_spec} lists it under "
@@ -8245,9 +8287,8 @@ def cmd_scope(args: argparse.Namespace) -> int:
     total = len(unauthorised) + len(contradictions)
     if total:
         print(f"aide scope: FAIL (item {number:03d}, {total} of {len(changed)} "
-              f"changed file(s) outside scope, vs {base})")
+              f"changed file(s) outside scope, vs {base}{note})")
         return 1
-    note = f", {len(traced)} traceability warning(s)" if traced else ""
     print(f"aide scope: OK (item {number:03d}, {len(changed)} changed file(s) "
           f"all authorised, vs {base}{note})")
     return 0
@@ -9274,7 +9315,9 @@ def register_git_subcommands(sub) -> None:
             "## Testing Strategy names (the first word of a bullet, closed by a "
             "colon: `empty-input: ...`); a test naming neither is reported as "
             "one the spec did not ask for. A function present in the file at "
-            "the base is an edit, not an addition, and is not checked.\n"
+            "the base is an edit, not an addition, and is not checked, a "
+            "renamed file being read under its old name; a spec with no "
+            "## Acceptance Criteria heading is a notice and no warnings.\n"
             "\n"
             "Exit 0: in scope, or nothing to check (a queue branch). 1: "
             "something changed outside it. 2: could not check (no spec, no "

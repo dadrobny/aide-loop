@@ -71,7 +71,8 @@ entire loop, indefinitely.
   Testing Strategy gave the case — so the link is readable without the spec.
   Depth is the spec author's decision, made where the deliverable and the
   posture (§1 → vision.md) are known; a test with no criterion and no named
-  case behind it is a test nobody asked for.
+  case behind it is a test nobody asked for — `aide scope` warns on one
+  (`aide scope -h` states the grammar).
 - **A consumer test never hand-builds a producer's serialised form.** It
   obtains the form from the producer's code, or from a fixture the producer's
   item ships, and asserts on what it reads — so when the shape changes, one
@@ -180,7 +181,7 @@ silence as partial throughout — not only on the pin.
   and the name rule is what makes "no other" checkable: `aide scope` warns
   on a test the branch added whose name carries neither, the counter-gate the
   loop lacked, reported as a warning first so a consumer lives with it
-  before it gates anything (`aide scope -h` states the grammar).
+  before it gates anything.
 - **The hand-built form.** Consumers on the same engines saw one item's tests
   invalidated by the next: the consumer's test carried a literal of the
   producer's JSON, so every legitimate change to the producer went red in a

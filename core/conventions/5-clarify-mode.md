@@ -73,8 +73,7 @@ left the queue's way as ❌ or ⏸️ has no code to check against, so the
 re-check records the interface as absent, corrects the assumption, and the
 divergence is raised in the return rather than agreed to. A spec whose
 Assumptions pin no dependency is not re-checked. `aide claim` names the pins
-it finds as it claims, and which of them have no code behind them (`aide
-claim -h`).
+it finds as it claims (`aide claim -h`).
 
 ### Rationale
 

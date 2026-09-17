@@ -149,6 +149,7 @@ instead — that is the bump policy above, and it is enforced by
   against. `--dry-run` prints it too. `/aide-run-item` step 1 reads the
   claim's line where it has it, and the spec otherwise. This closes #243.
 
+## [1.56.0] — 2026-09-17
 
 ### Added
 

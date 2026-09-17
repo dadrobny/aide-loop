@@ -580,7 +580,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("an engine-marked assumption and one already carrying a re-check are "
          "not named, and a dependency that left the queue as ❌ or ⏸️ is named "
          "as having no code to check against",
-         "test_aide_traceability::test_interface_pins_skip_the_three_shapes_that_are_not_the_signal"),
+         ("test_aide_traceability::test_interface_pins_skip_the_three_shapes_that_are_not_the_signal",
+          "test_aide_traceability::test_claim_names_the_assumptions_that_pin_a_dependency")),
     ],
 
     # ------------------------------------------------------------------- gc --
@@ -719,7 +720,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("every test function the branch added under tests_dir must name an AC "
          "number the spec's ## Acceptance Criteria carries (ac3) or a case "
          "label its ## Testing Strategy names",
-         "test_aide_traceability::test_scope_warns_on_a_test_naming_neither"),
+         ("test_aide_traceability::test_scope_warns_on_a_test_naming_neither",
+          "test_aide_traceability::test_scope_is_silent_when_every_added_test_is_traced")),
         # Warns, never fails: exit 0 with warnings printed.
         ("Also warns, never fails, on traceability",
          "test_aide_traceability::test_the_warning_never_turns_a_pass_into_a_fail"),
@@ -727,6 +729,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("A function present in the file at the base is an edit, not an "
          "addition, and is not checked",
          "test_aide_traceability::test_scope_ignores_an_edited_existing_test"),
+        # `renamed_paths` feeds the old name to `git show`.
+        ("a renamed file being read under its old name",
+         "test_aide_traceability::test_a_renamed_test_file_is_read_under_its_old_name"),
+        # `if _AC_HEADING_RE.search(spec_text) is None: notice`.
+        ("a spec with no ## Acceptance Criteria heading is a notice and no "
+         "warnings",
+         "test_aide_traceability::test_a_spec_without_criteria_is_one_notice_not_n_warnings"),
     ],
 }
 
