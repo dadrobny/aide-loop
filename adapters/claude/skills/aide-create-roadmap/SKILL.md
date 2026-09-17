@@ -31,7 +31,7 @@ rather than assuming, and present the result as a draft for review.
 
 Read the header blockquote's optional `**Posture:**` line before staging
 (`.aide/conventions.md` §1 → vision.md). **The posture says how much to build,
-and the roles that read it are the three that author a document from the
+and the roles that apply it are the three that author a document from the
 vision** — this one among them, and **a vision carrying no posture line is read
 as `prototype`**. Apply this role's row and nothing else in the table:
 
@@ -76,8 +76,8 @@ never a direct merge.
      one row it applies and the default that decides which row that is — the
      other two rows are the queue-planner's and the spec-author's, and stay
      where every reader of them looks.
-     - The posture says how much to build, and the roles that read it are the
-       three that author a document from the vision
+     - The posture says how much to build, and the roles that apply it are
+       the three that author a document from the vision
      - a vision carrying no posture line is read as `prototype`
      - fewer stages: a stage only where a success criterion needs one
      - stages and sections as the vision earns them

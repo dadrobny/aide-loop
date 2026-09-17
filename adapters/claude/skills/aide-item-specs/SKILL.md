@@ -70,6 +70,15 @@ paths:
      - a criterion that closes a stage acceptance criterion names which one
      - recomputes that fact from the primary source and compares
      - An AC that names none closes none
+     - An acceptance criterion is written only when something fails without
+       it: the item's own deliverable, or a declared consumer in the batch that
+       reads what it pins
+     - A criterion with neither is not written
+     - Under `durable` (§1 → vision.md) a consumer a later stage will have
+       counts as one; under `prototype`, the default, only a consumer declared
+       in the batch does
+     - What was deliberately left undecided goes in one short `Left open` note
+       under Decisions & Trade-offs
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/authorised-paths.md
@@ -152,8 +161,18 @@ paths:
      - The spec is corrected first; the tests are then re-derived from the
        corrected criteria; only then does the builder implement
      - The correction is an **amendment, never a rewrite**
-     - the *producing* spec must enumerate the shape its declared consumers
-       read
+     - the *producing* spec pins what its declared consumers read, **in the
+       form they read it, and nothing more**
+     - is pinned only where a consumer genuinely parses the file
+     - A pinned interface is re-checked at claim once its dependency has
+       merged
+     - by `spec-author`, **before** any test is written from them
+     - The pin itself is the signal
+     - an Assumption recording a defensible default, or naming an engine
+       version, is an audit entry and not an interface pin
+     - an Assumption already carrying a re-check is not re-checked again
+     - the re-check records the interface as absent, corrects the assumption,
+       and the divergence is raised in the return rather than agreed to
      - Root documents are authored through their loop entry point,
        interactively — whatever `loop.clarify` says
      - Do not write a root document directly, however well the template shape
@@ -222,6 +241,19 @@ means no stage criterion is closed. The one transitional exception declares
 itself — a merged spec predating the annotation is not rewritten to carry it,
 and its stage may still be attested on the criterion's own subject where the
 evidence names the check and says the mapping was made at attestation time.
+
+**An acceptance criterion is written only when something fails without it: the
+item's own deliverable, or a declared consumer in the batch that reads what it
+pins.** One test per criterion is the floor and the ceiling of what the item's
+tests cover (§6), so a criterion neither needs buys a test and nothing else —
+**a criterion with neither is not written**. **Under `durable` (§1 →
+vision.md) a consumer a later stage will have counts as one; under
+`prototype`, the default, only a consumer declared in the batch does.**
+**What was deliberately left undecided goes in one short `Left open` note
+under Decisions & Trade-offs** — `- **Left open:** <the question, and why
+this item did not settle it>` — so the next item finds the decision deferred
+rather than forgotten. The queue was bounded the same way before the item
+reached you.
 
 ## Authorised paths
 
@@ -311,9 +343,10 @@ reached you. Under `prototype`, write **acceptance criteria for the item's own
 deliverable only, adversarial cases only where the Testing Strategy names a
 failure mode, and Implementation Steps that reuse an existing helper before
 writing one and add no dependency**. Under `durable`, **interfaces may be
-pinned ahead of need, and broader cases named**. The posture changes nothing
-about what an acceptance criterion may *claim* — that is above, and it holds
-under both.
+pinned ahead of need, and broader cases named** — which is the criterion
+rule above read with a later stage's consumer counting. The posture changes
+nothing about what an acceptance criterion may *claim*: the equality wording
+and the stage annotation hold under both.
 
 ## Clarify mode
 
@@ -336,10 +369,30 @@ The correction is an **amendment, never a rewrite** (§1 → `items.md`): a
 dated correction appended to the spec, because the original criterion is the
 record of what the item was built from.
 
-**The duty runs both ways.** When several specs are authored before any is
-built, the *producing* spec must enumerate the shape its declared consumers
-read — not only the API it exposes but the **serialised form**: the JSON
-layout, which tiers or records appear in a walk, what a strict mode rejects.
+**The duty runs both ways, and it pins at the level a consumer reads.** When
+several specs are authored before any is built, the *producing* spec pins what
+its declared consumers read, **in the form they read it, and nothing more**: a
+consumer reads through the producer's function or a fixture its item ships
+wherever one exists, and a serialised layout — the JSON layout, which records
+appear in a walk, what a strict mode rejects — **is pinned only where a
+consumer genuinely parses the file**. A consumer that needs one field does not
+pin the layout around it.
+
+**A pinned interface is re-checked at claim once its dependency has merged**:
+an item whose Assumptions pin the interface of an item under its
+`## Dependencies` has them re-checked against the real code when it is
+claimed — **by `spec-author`, before any test is written from them** — as the
+append-only amendment above: a re-check that agrees is appended to the
+assumption, one that does not corrects it, dated, with the original standing.
+**The pin itself is the signal**: a spec pins a dependency only when written
+before it was built, and a claim happens only once it has merged. Three shapes
+are not that signal: **an Assumption recording a defensible default, or naming
+an engine version, is an audit entry and not an interface pin**; **an
+Assumption already carrying a re-check is not re-checked again**; and a
+dependency that left the queue's way as ❌ or ⏸️ has no code to check
+against, so **the re-check records the interface as absent, corrects the
+assumption, and the divergence is raised in the return rather than agreed
+to**.
 
 **Root documents are authored through their loop entry point, interactively —
 whatever `loop.clarify` says** (`.aide/conventions.md` §5); here that entry point
