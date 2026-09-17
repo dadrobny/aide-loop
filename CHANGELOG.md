@@ -121,7 +121,34 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
-## [1.56.0] — 2026-09-17
+## [1.57.0] — 2026-09-17
+
+### Added
+
+- **`aide scope` warns on a test the spec did not ask for (issue #242, part
+  two).** §6 has said since 1.56.0 that one test per criterion is the floor
+  and the ceiling unless the Testing Strategy names the case, and that a
+  test's name says which it covers; nothing checked it. Now every test
+  function the branch added under `tests_dir` — present in the working tree,
+  absent from the file at the merge-base, so an edit to an existing test is
+  never reported — must carry an AC number the spec's `## Acceptance
+  Criteria` names (`ac3`, bounded on both sides) or a case label its
+  `## Testing Strategy` names (the first word of a bullet, closed by a colon,
+  backticks or bold around it ignored: `` `empty-input: …` ``). One naming
+  neither is a `warning:` line naming the test and the spec, counted on the
+  OK line; the exit code is unchanged, so a consumer lives with the report
+  before it gates anything. `aide scope -h` states the grammar.
+- **`aide claim` names the Assumptions that pin a dependency's interface
+  (issue #243).** When the claimed item's spec exists and an Assumption
+  names an item under its `## Dependencies`, the claim prints one line
+  listing each such assumption and its dependency — the re-check signal §5
+  defines, read from the documents rather than from a date. The three
+  shapes §5 excludes are excluded here: an engine-marked audit entry and an
+  assumption already carrying a re-check are not named, and a dependency
+  that left the queue as ❌ or ⏸️ is named as having no code to check
+  against. `--dry-run` prints it too. `/aide-run-item` step 1 reads the
+  claim's line where it has it, and the spec otherwise. This closes #243.
+
 
 ### Added
 

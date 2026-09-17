@@ -808,6 +808,25 @@ def test_claim_creates_switches_to_and_records_the_branch(aide, consumer: Path):
     assert recorded == "main"
 
 
+def test_claim_names_an_assumption_pinning_a_merged_dependency(aide, consumer: Path, capsys):
+    """Item 002's spec pins item 001's interface; once 001 is ✅ the claim of
+    002 says so (issue #243), on the installed verb."""
+    ddir = consumer / "docs" / "aide"
+    progress = (ddir / "progress.md").read_text(encoding="utf-8")
+    (ddir / "progress.md").write_text(
+        progress.replace("- 📋 The greeter. *(Item 001)*", "- ✅ The greeter. *(Item 001)*"),
+        encoding="utf-8")
+    (ddir / "items" / "002-the-farewell.md").write_text(
+        "# Item 002 — The farewell\n\n## Assumptions\n\n"
+        "- **A1:** item 001's `greet` takes one positional name.\n\n"
+        "## Dependencies\n\n- Item 001.\n", encoding="utf-8")
+    _commit(consumer, "docs: spec 002")
+    assert _claim(aide, consumer) == 0
+    out = capsys.readouterr().out
+    assert "claimed item 002" in out
+    assert "A1 (item 001)" in out
+
+
 def test_claim_creates_a_missing_inbox_on_the_claim_branch(aide, consumer: Path):
     """`/aide-run-queue` reaches its roles through `sync` and `claim`, never
     `check` — and `sync` refuses a dirty tree, so the file must arrive
@@ -968,6 +987,26 @@ def test_scope_fails_for_one_file_outside_them(aide, consumer: Path, capsys):
     _commit(consumer, "chore: stray")
     assert aide.main(["--repo", str(consumer), "scope"]) == 1
     assert "README.md" in capsys.readouterr().out
+
+
+def test_scope_warns_on_a_test_the_spec_did_not_ask_for(aide, consumer: Path, capsys):
+    """`test_greet` names neither AC1 nor a Testing Strategy case: a warning
+    on the installed verb, and still exit 0 (issue #242)."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "scope"]) == 0
+    out = capsys.readouterr().out
+    assert "warning: tests/test_greeter.py::test_greet names no AC number" in out
+
+
+def test_scope_is_quiet_for_a_test_named_for_its_ac(aide, consumer: Path, capsys):
+    assert _claim(aide, consumer) == 0
+    (consumer / "src" / "greeter.py").write_text("def greet(n):\n    return n\n", encoding="utf-8")
+    (consumer / "tests" / "test_greeter.py").write_text(
+        "def test_ac1_greet():\n    assert True\n", encoding="utf-8")
+    _commit(consumer, "feat: greeter")
+    assert aide.main(["--repo", str(consumer), "scope"]) == 0
+    assert "warning" not in capsys.readouterr().out
 
 
 def test_scope_cannot_check_an_unspecced_item(aide, consumer: Path):

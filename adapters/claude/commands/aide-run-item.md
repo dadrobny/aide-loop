@@ -66,9 +66,11 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    §5): an Assumption that pins the interface of an item under
    `## Dependencies`. Such a pin was written before that item was built (the
    batch-authored case), and the item is claimed now, so the dependency has
-   merged since — the pin is the whole signal, and no date is compared. Read
-   the spec's Assumptions and Dependencies; where one names the other, brief
-   the `spec-author` to re-check instead of returning the criteria unread:
+   merged since — the pin is the whole signal, and no date is compared. `aide
+   claim` printed the pins when the item was claimed (`aide claim --dry-run
+   NNN` is not it: read the spec's Assumptions and Dependencies yourself if
+   the claim output is gone); where one names the other, brief the
+   `spec-author` to re-check instead of returning the criteria unread:
    > The spec for AIDE item NNN exists on branch `aide/NNN-short-name` and its
    > Assumptions pin item(s) <MMM>, which have since merged. Re-check every
    > Assumption that pins their interface against the real code now on the

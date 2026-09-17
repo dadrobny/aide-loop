@@ -572,6 +572,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `ensure_insights_inbox(repo_root, config, verb="claim")` in `cmd_claim`.
         ("A missing insights.md is created from the template on the way through",
          "test_aide_git::test_claim_creates_the_missing_inbox_on_the_way_through"),
+        # `_interface_pin_report` -> `interface_pins` over the Assumptions
+        # bullets that reference a `## Dependencies` item (issue #243).
+        ("the claim names that assumption as pinning a dependency's interface",
+         "test_aide_traceability::test_claim_names_the_assumptions_that_pin_a_dependency"),
+        # The three exclusions of `interface_pins`, in the order §5 lists them.
+        ("an engine-marked assumption and one already carrying a re-check are "
+         "not named, and a dependency that left the queue as ❌ or ⏸️ is named "
+         "as having no code to check against",
+         "test_aide_traceability::test_interface_pins_skip_the_three_shapes_that_are_not_the_signal"),
     ],
 
     # ------------------------------------------------------------------- gc --
@@ -706,6 +715,18 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # The three `return 2` paths: no spec, `declares_nothing`, no merge-base.
         ("2: could not check (no spec, no section, or no base to diff against)",
          "test_aide_scope::test_scope_reports_a_missing_section_rather_than_passing"),
+        # `traceability_warnings` over `added_test_functions` (issue #242).
+        ("every test function the branch added under tests_dir must name an AC "
+         "number the spec's ## Acceptance Criteria carries (ac3) or a case "
+         "label its ## Testing Strategy names",
+         "test_aide_traceability::test_scope_warns_on_a_test_naming_neither"),
+        # Warns, never fails: exit 0 with warnings printed.
+        ("Also warns, never fails, on traceability",
+         "test_aide_traceability::test_the_warning_never_turns_a_pass_into_a_fail"),
+        # `added_test_functions` subtracts the names at `merge_base`.
+        ("A function present in the file at the base is an edit, not an "
+         "addition, and is not checked",
+         "test_aide_traceability::test_scope_ignores_an_edited_existing_test"),
     ],
 }
 
