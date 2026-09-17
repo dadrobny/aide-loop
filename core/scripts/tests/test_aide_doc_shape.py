@@ -970,6 +970,28 @@ def test_a_known_posture_is_read_and_is_silent(tmp_path: Path, line: str, value:
     assert aide.root_document_warnings(d) == []
 
 
+@pytest.mark.parametrize("status_line, value, warnings", [
+    ("> **Status:** Draft v1 · **Created:** 2026-01-01 · **Posture:** durable",
+     "durable", 0),
+    ("> **Status:** Draft v1 · **Posture:** prototype", "prototype", 0),
+    ("> **Status:** Draft v1 · **Posture:** balanced", "balanced", 1),
+    ("> **Status:** Draft v1 | **Posture:** durable", "durable", 0),
+])
+def test_a_posture_folded_onto_the_status_line_is_still_read(
+        tmp_path: Path, status_line: str, value: str, warnings: int):
+    """The template writes `**Status:** … · **Created:** …` on one line, so an
+    author who adds the posture to it is following the document's own shape. A
+    line-prefix reader returned None there — an explicit `durable` silently
+    became `prototype`, with no warning either: the one failure the line exists
+    to prevent, reintroduced by the reader."""
+    repo = _repo(tmp_path)
+    d = repo / "docs" / "aide"
+    text = GOOD_VISION.replace("> **Status:** Draft v1", status_line)
+    (d / "vision.md").write_text(text, encoding="utf-8")
+    assert aide.vision_posture(text) == value
+    assert len(aide.root_document_warnings(d)) == warnings
+
+
 def test_an_unknown_posture_is_a_warning_naming_the_line(tmp_path: Path):
     """The one failure the line itself cannot show: a typo taken for the
     default would build less than the human asked for, silently."""

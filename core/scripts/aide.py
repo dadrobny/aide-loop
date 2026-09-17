@@ -3816,29 +3816,41 @@ def _has_g_code_row(lines: List[str]) -> bool:
 _VISION_POSTURES = ("prototype", "durable")
 
 
+#: The separators a header blockquote line folds several labelled fields with.
+#: `templates/vision.md` writes `**Status:** … · **Created:** …` on one line, so
+#: a posture folded onto it is a field of that line rather than a line of its
+#: own — read by field, or an explicit `durable` reads as no posture at all.
+_HEADER_FIELD_SEP_RE = re.compile(r"[\u00b7|]")
+
+
 def vision_posture(text: str) -> Optional[str]:
-    """The value of `vision.md`'s optional `> **Posture:** …` line, or ``None``.
+    """The value of `vision.md`'s optional `**Posture:** …` header field, or ``None``.
 
-    Read off the header blockquote — the lines above the first `##` heading —
-    with the quote marker and any emphasis removed, so `> **Posture:** durable`
-    and `> Posture: durable` are one line. The value is returned exactly as
-    written, including an unknown or empty one: deciding what it means is the
-    caller's, and the check below warns rather than correcting it.
+    The scan window is every line above the first `##` heading that starts with
+    `>`; each such line is split into fields on `·` and `|`, and each field has
+    its quote marker and emphasis removed before its label is read. So the line
+    of its own the template writes, the plain `> Posture: durable`, and a
+    posture folded onto the `**Status:** … · **Created:** …` line with the
+    template's own separator are one shape. The first field labelled `posture`
+    wins. The value is returned exactly as written, including an unknown or
+    empty one: deciding what it means is the caller's, and the check below
+    warns rather than correcting it.
 
-    ``None`` means the document carries no such line, which §1 → vision.md
+    ``None`` means the document carries no such field, which §1 → vision.md
     reads as ``prototype``. This returns ``None`` rather than that default so
     the two states stay distinguishable — the check must not warn about an
     absent line, and a role that wants the default applies it itself.
     """
     for line in text.splitlines():
-        if line.lstrip().startswith("##"):
-            break
         stripped = line.lstrip()
+        if stripped.startswith("##"):
+            break
         if not stripped.startswith(">"):
             continue
-        plain = stripped[1:].replace("*", "").replace("`", "").strip()
-        if plain.lower().startswith("posture:"):
-            return plain.split(":", 1)[1].strip()
+        for field in _HEADER_FIELD_SEP_RE.split(stripped[1:]):
+            plain = field.replace("*", "").replace("`", "").strip()
+            if plain.lower().startswith("posture:"):
+                return plain.split(":", 1)[1].strip()
     return None
 
 

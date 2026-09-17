@@ -24,8 +24,9 @@
 > Step 1 of the AIDE loop · the root document: [`roadmap.md`](roadmap.md),
 > [`progress.md`](progress.md), every queue and every work item derive from this.
 
-_The Posture line above is optional and takes `prototype` or `durable`; drop it
-and a reader takes `prototype`. See `.aide/conventions.md` §1 → vision.md._
+_Delete this line. Posture: `prototype` or `durable`, or omit the line;
+`.aide/conventions.md` §1 → vision.md says what each asks of the roadmap, the
+queues and the item specs._
 
 ---
 
