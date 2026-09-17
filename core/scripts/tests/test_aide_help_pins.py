@@ -314,6 +314,18 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `insight_warnings` reads insights.md only; archive-*.md is skipped.
         ("never applied to an archived entry",
          "test_aide_insights::test_an_archive_is_frozen_and_not_shape_checked"),
+        # `ledger_warnings` over `ledger_rows`: the cell count, the Item cell
+        # and each of `LEDGER_INTEGER_COLUMNS`, appended to `warnings` and
+        # never to `errors`.
+        ("a ledger row no reader can use \u2014 the wrong cell count, an Item "
+         "cell that is not an item number, an Outcome that is neither merged "
+         "nor abandoned, or a count cell that is neither an integer nor blank",
+         "test_aide_ledger::"
+         "test_a_row_no_reader_can_use_is_a_warning_and_never_an_error"),
+        # `ledger_warnings` returns [] for a missing file, and no check writes
+        # one: `ensure_insights_inbox` has no counterpart here.
+        ("reported only where ledger.md exists, since a check never creates it",
+         "test_aide_ledger::test_check_never_creates_the_ledger"),
         # `template_drift_warnings`: `version < current` and `version >
         # current` each append, and `current is None` names the template; the
         # CLI test is the half that proves `run_checks` still calls it.
@@ -328,8 +340,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_an_unknown_template_and_an_unreadable_line_are_warnings",
           "test_aide_template_markers::"
           "test_check_reports_drift_as_a_warning_and_still_exits_zero")),
-        # `targets`: the four root documents, `queue_is_open` over the queue
+        # `targets`: the five root documents, `queue_is_open` over the queue
         # files, and the item specs minus ✅/❌ by `item_status`.
+        ("read on vision.md, roadmap.md, progress.md, insights.md and "
+         "ledger.md",
+         "test_aide_ledger::"
+         "test_a_ledger_from_an_older_template_is_reported_like_every_document"),
         ("on a queue while it is open and on an item spec until its item is "
          "✅ or ❌",
          "test_aide_template_markers::"
@@ -736,6 +752,86 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("a spec with no ## Acceptance Criteria heading is a notice and no "
          "warnings",
          "test_aide_traceability::test_a_spec_without_criteria_is_one_notice_not_n_warnings"),
+    ],
+
+    # ---------------------------------------------------------------- merge --
+    # The ledger row (issue #244); everything else `merge` does is stated in
+    # its option help, which this register does not read.
+    "merge": [
+        # `pending_row` -> `append_ledger_row`, one row, `ledger_path(ddir)`.
+        ("The row is one per item, in docs/aide/ledger.md",
+         "test_aide_ledger::"
+         "test_merge_writes_the_row_in_the_commit_that_ticks_the_item"),
+        # `append_ledger_row`: `path.write_bytes(template.read_bytes())`.
+        ("created from .aide/templates/ledger.md the first time there is a "
+         "row to write",
+         "test_aide_ledger::test_the_first_row_creates_the_ledger_from_the_template"),
+        # `_promote_item_to_complete(..., extra_rels=...)` -> one
+        # `_commit_docs_files` over both paths.
+        ("committed together with the \u2705 so the two can never disagree",
+         "test_aide_ledger::"
+         "test_merge_writes_the_row_in_the_commit_that_ticks_the_item"),
+        # `_ledger_diff_cells`: `added_test_functions(..., ref=branch)` and
+        # the changed-path count, both against `merge-base(main, branch)`.
+        ("how many test functions and files the branch added against the base "
+         "this run resolved",
+         "test_aide_ledger::"
+         "test_merge_writes_the_row_in_the_commit_that_ticks_the_item"),
+        # `item_kind`: the title regex, then the inbox pointers, else normal.
+        ("its kind \u2014 validate-stage from an item titled `Validate stage "
+         "N`, maintenance from an inbox entry ticked with this item's number, "
+         "else normal",
+         ("test_aide_ledger::test_a_validate_stage_item_is_its_own_kind",
+          "test_aide_ledger::test_an_item_an_insight_was_routed_to_is_maintenance")),
+        # `ledger_cells`: `"" if rounds is None else str(rounds)`, and the same
+        # for each rank — so a rank passed as 0 stays a 0.
+        ("A count nobody passed is a blank cell and never a 0",
+         ("test_aide_ledger::"
+          "test_a_count_nobody_passed_is_a_blank_cell_never_a_zero",
+          "test_aide_ledger::"
+          "test_merge_without_the_flags_writes_the_row_with_blank_counts")),
+        # Every derivation in `ledger_cells` degrades to "".
+        ("a cell nothing could measure is blank for the same reason, so an "
+         "item whose spec or branch has gone still gets its row",
+         "test_aide_ledger::"
+         "test_a_cell_nothing_could_measure_is_blank_and_costs_only_itself"),
+        # The `mode == "pr"` arm returns before both writes.
+        ("Under pr mode this verb pushes and stops, so it writes neither the "
+         "tick nor a row",
+         "test_aide_ledger::test_pr_mode_writes_neither_the_tick_nor_a_row"),
+        # `append_ledger_row` prints and returns None; the merge has already
+        # landed and `cmd_merge` reads no return code from it.
+        ("A ledger write that fails is reported after the merge and never "
+         "changes the exit code",
+         "test_aide_ledger::"
+         "test_a_ledger_that_cannot_be_written_does_not_fail_the_merge"),
+    ],
+
+    # --------------------------------------------------------------- ledger --
+    "ledger": [
+        # `cmd_ledger`: `if args.rounds is None: … return 2`, before any write.
+        ("--rounds is required and the verb exits 2 without it",
+         "test_aide_ledger::"
+         "test_abandon_without_rounds_exits_two_and_writes_nothing"),
+        # `_ledger_diff_cells` returns ("", "") with no branch; every other
+        # cell is read from the documents.
+        ("a branch already gone costs the two diff cells and nothing else on "
+         "the row",
+         "test_aide_ledger::"
+         "test_abandon_with_no_branch_left_blanks_the_two_diff_cells"),
+        # `ledger_cells`: a rank absent from `findings` renders "".
+        ("--findings is optional, and a rank left out of it is a blank cell",
+         "test_aide_ledger::"
+         "test_abandon_records_the_round_count_and_leaves_progress_alone"),
+        # `cmd_ledger` calls neither `set_item_status` nor `_promote_…`.
+        ("It writes the ledger and nothing else: progress.md keeps whatever "
+         "status the run left it",
+         "test_aide_ledger::"
+         "test_abandon_records_the_round_count_and_leaves_progress_alone"),
+        # `append_ledger_row`, shared with `merge`.
+        ("The file is created from .aide/templates/ledger.md when this is the "
+         "first row",
+         "test_aide_ledger::test_the_first_row_creates_the_ledger_from_the_template"),
     ],
 }
 

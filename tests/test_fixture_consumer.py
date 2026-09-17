@@ -287,6 +287,7 @@ def _land_by_squash(repo: Path, branch: str) -> None:
     ".aide/conventions.md",
     ".aide/AGENT-CONTEXT.md",
     ".aide/templates/item.md",
+    ".aide/templates/ledger.md",
     ".claude/settings.json",
     "aide.toml",
     "CLAUDE.md",
@@ -1483,6 +1484,63 @@ def test_status_reports_a_finished_queue_as_done(aide, consumer: Path, capsys):
     capsys.readouterr()
     assert aide.main(["--repo", str(consumer), "status"]) == 0
     assert "queue-001.md: done" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
+# ledger — the row the verbs write, in a real install (issue #244)
+# --------------------------------------------------------------------------- #
+def _ledger_rows(aide, repo: Path) -> list:
+    """Every data row of the consumer's ledger, as `{column: cell}` dicts."""
+    text = (repo / "docs" / "aide" / "ledger.md").read_text(encoding="utf-8")
+    return [dict(zip(aide.LEDGER_COLUMNS, cells))
+            for _, cells in aide.ledger_rows(text)]
+
+
+def test_merge_creates_the_ledger_from_the_installed_template_and_appends_a_row(
+        aide, consumer: Path):
+    """The whole path a consumer runs: no ledger, then one merge, then a row —
+    with the file created from `.aide/templates/ledger.md` beside the script,
+    not from this repository's copy."""
+    assert not (consumer / "docs" / "aide" / "ledger.md").exists()
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test",
+                      "--rounds", "2", "--findings", "blocking=1"]) == 0
+
+    ledger = consumer / "docs" / "aide" / "ledger.md"
+    template = (consumer / ".aide" / "templates" / "ledger.md").read_bytes()
+    assert ledger.read_bytes().startswith(template)
+    (row,) = _ledger_rows(aide, consumer)
+    assert row["Item"] == "001"
+    assert row["Queue"] == "001"
+    assert row["Kind"] == "normal"
+    assert row["Outcome"] == "merged"
+    assert row["ACs"] == "1"
+    assert (row["Tests"], row["Files"]) == ("1", "2")
+    assert row["Rounds"] == "2"
+    # The ranks the caller left out are blank cells, not zeros.
+    assert (row["Blocking"], row["Minor"], row["Nit"]) == ("1", "", "")
+    assert row["Engine"] == (consumer / ".aide" / "VERSION").read_text(
+        encoding=install.CONSUMER_ENCODING).strip()
+    # One commit carries the row and the tick, so neither can be lost alone.
+    shown = _git(["show", "--name-only", "--format=", "HEAD"], consumer).stdout
+    assert "docs/aide/ledger.md" in shown and "docs/aide/progress.md" in shown
+
+
+def test_ledger_abandon_records_an_item_no_merge_will(aide, consumer: Path):
+    """Item 002 has no spec and no claim branch here, which is also the point:
+    every cell nothing can measure is blank and the row still stands."""
+    assert aide.main(["--repo", str(consumer), "ledger", "abandon", "2",
+                      "--rounds", "3"]) == 0
+    (row,) = _ledger_rows(aide, consumer)
+    assert row["Item"] == "002" and row["Outcome"] == "abandoned"
+    assert row["Rounds"] == "3"
+    assert (row["Stage"], row["ACs"], row["Tests"], row["Files"]) == \
+        ("", "", "", "")
+    assert row["Queue"] == "001"
+    assert _item_status(aide, consumer, 2) == "planned"
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
 
 
 # --------------------------------------------------------------------------- #
