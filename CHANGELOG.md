@@ -121,6 +121,42 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.55.0] — 2026-09-17
+
+### Added
+
+- **An optional build posture in `vision.md`, read by the three roles that
+  author a document from it (issue #241).** Nothing in the loop said *how much*
+  to build, so every downstream role read the vision as a ceiling to reach:
+  consumers on 1.54.1 and earlier grew exhaustive visions, item specs whose
+  acceptance criteria pinned more than the deliverable needed, and suites in
+  the thousands within a few queues. The header blockquote now carries one
+  optional line — `> **Posture:** prototype` or `> **Posture:** durable`, two
+  values and no spectrum — and §1 → vision.md states what each asks of
+  create-roadmap (fewer stages, and no non-functional requirements section
+  unless the human asks for one), `queue-planner` (no preparatory or "for
+  later" items) and `spec-author` (acceptance criteria for the item's own
+  deliverable only, adversarial cases only where the Testing Strategy names a
+  failure mode, Implementation Steps that reuse before writing and add no
+  dependency). `builder`, `test-writer` and the validator never read the
+  posture — the item spec carries its consequences — and the vision-fit check
+  is unchanged, since a posture is neither a guiding principle nor an
+  exclusion. `aide check` warns on a value outside the two, naming the line, so
+  a typo cannot quietly mean `prototype`; an absent line is silent. The
+  create-vision skill asks for the posture once the mandatory four are grounded
+  and writes the line, and its first requirement is no longer "be exhaustive" —
+  the vision is the floor a build must meet. **vision template 2**: a consumer
+  built from template 1 adds the `**Posture:**` line to its header blockquote
+  (or leaves it out and takes the default), and `aide check` names the template
+  version until it does.
+  **The default is a change of behaviour delivered as prose.** Today's loop
+  behaves as `durable`; from this release a vision with no posture line is read
+  as `prototype`, so a consumer that runs `install.py --update` and changes
+  nothing gets the smaller build on its next roadmap, queue and spec. That flip
+  is the intent. A consumer that wants what it had writes
+  `> **Posture:** durable` into its vision. No verb's behaviour changes with
+  the value; only the authoring roles read it.
+
 ## [1.54.1] — 2026-09-17
 
 ### Changed

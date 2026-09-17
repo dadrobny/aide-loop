@@ -1,9 +1,10 @@
 ### `vision.md` (the root document every other one derives from)
 
-Governs `docs/aide/vision.md`: the four sections the loop reads, and what each
-one is read for. It is authored only through the create-vision entry point,
-interactively (§5); `validator`, `spec-author` and `queue-planner` read it, and
-`aide check` lints it. `.aide/templates/vision.md` draws its shape and marks
+Governs `docs/aide/vision.md`: the four sections the loop reads, what each one
+is read for, and the optional build posture. It is authored only through the
+create-vision entry point, interactively (§5); the create-roadmap entry point,
+`queue-planner`, `spec-author` and `validator` read it, and `aide check` lints
+it. `.aide/templates/vision.md` draws its shape and marks
 the four `MANDATORY`; everything else in it is project narrative.
 
 Mandatory — a vision without any of these gives a downstream role nothing to
@@ -30,6 +31,27 @@ repository may carry a vision older than the check.
 asking posture; a section the human has not grounded stays open and is asked
 about, not drafted.
 
+**The header blockquote may carry a build posture — `> **Posture:** prototype`
+or `> **Posture:** durable`.** The line is optional and the two values are the
+whole set, never a spectrum; **a vision carrying no posture line is read as
+`prototype`**, and a value outside the two is an `aide check` warning naming
+the line rather than a silent fall back to the default. The create-vision entry
+point asks for it once the mandatory four are grounded. *(aide check,
+create-vision, create-roadmap, queue-planner, spec-author)*
+
+**The posture says how much to build, and the roles that read it are the three
+that author a document from the vision.** It is not a guiding principle and no
+verb branches on it: the validator's vision-fit check measures against Guiding
+principles and Out of scope, so it is unchanged, and `builder` and `test-writer`
+never read the posture at all — the item spec carries its consequences. Each of
+the three applies its own row and nothing beyond it:
+
+| Role | `prototype` (the default) | `durable` |
+|---|---|---|
+| create-roadmap | fewer stages, and no non-functional requirements section unless the human asks for one | stages and sections as the vision earns them |
+| queue-planner | no preparatory or "for later" items: an item is queued only where a success criterion, a deliverable, or a justified sibling in the same queue needs it | foundations a later stage will use may be queued |
+| spec-author | acceptance criteria for the item's own deliverable only, adversarial cases only where the Testing Strategy names a failure mode, and Implementation Steps that reuse an existing helper before writing one and add no dependency | interfaces may be pinned ahead of need, and broader cases named |
+
 #### Rationale
 
 - **Why these four and not the rest.** They are the only sections a role reads
@@ -42,3 +64,24 @@ about, not drafted.
 - **Why a warning.** Root documents predating the check exist in real
   consumers, and an unattended run must not start failing over a document
   none of its items touch — the queue-boundary human reads warnings.
+- **Why a posture line at all.** Nothing in the loop said *how much* to build,
+  so every downstream role read the vision as a ceiling to reach rather than a
+  floor to meet. Measured across consumers on engine ≤ 1.54.1 (issue #241):
+  exhaustive visions, item specs whose acceptance criteria pinned more than the
+  deliverable needed, and suites in the thousands within a few queues. The
+  create-vision entry point asked to *be exhaustive*, and the template invited
+  an architecture and a non-functional-requirements section whatever the
+  project was, so the pressure was in the loop's own text. One line in the
+  document every other one derives from is where a role already looks.
+- **Why two values, and why `prototype` is the default.** Current behaviour is
+  effectively `durable`, so absence had to mean the other value for the default
+  to do any work: a consumer whose vision carries no line gets the smaller
+  build on its next update, through prose alone — no verb changes behaviour,
+  and adding the line restores what it had. A spectrum, or a third value, is a
+  number each role would read differently; two values map onto rows a role can
+  act on, which is the only thing the posture is for.
+- **Why an unknown value is a warning and an absent line is not.** A typo
+  silently meaning `prototype` would build less than the human asked for and
+  say nothing, which is the one failure the line itself cannot show; absence is
+  the default and warning about it would ask every vision to state the value it
+  already has.

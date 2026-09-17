@@ -2,7 +2,9 @@
   AIDE vision template. Step 1 of the loop. The single source of truth the
   roadmap, progress tracker, and every work item derive from.
   Mandatory core: the four sections marked MANDATORY below. What each is read
-  for is `.aide/conventions.md` §1 → vision.md. Everything else is project
+  for is `.aide/conventions.md` §1 → vision.md, which also fixes the optional
+  `**Posture:**` line of the header blockquote — `prototype` or `durable`, and
+  what each one asks of the roles downstream. Everything else is project
   narrative: keep it concise and specific, no filler.
 
   Two fill-in conventions (both keep the rendered file readable AND let
@@ -14,12 +16,16 @@
   are for framework maintainers and agents, not readers of the finished
   vision — leave those in place.
 -->
-<!-- aide-template: vision 1 -->
+<!-- aide-template: vision 2 -->
 # {{project-name}} — Project Vision
 
 > **Status:** Draft v1 · **Created:** {{yyyy-mm-dd}}
+> **Posture:** prototype
 > Step 1 of the AIDE loop · the root document: [`roadmap.md`](roadmap.md),
 > [`progress.md`](progress.md), every queue and every work item derive from this.
+
+_The Posture line above is optional and takes `prototype` or `durable`; drop it
+and a reader takes `prototype`. See `.aide/conventions.md` §1 → vision.md._
 
 ---
 
