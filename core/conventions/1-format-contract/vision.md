@@ -39,6 +39,14 @@ the line rather than a silent fall back to the default. The create-vision entry
 point asks for it once the mandatory four are grounded. *(aide check,
 create-vision, create-roadmap, queue-planner, spec-author)*
 
+**The posture also bounds the vision's own optional sections.** Under
+`prototype`, a Technical architecture or Non-functional requirements section is
+written only where the human has committed to something it would record, and is
+otherwise left out rather than drafted; under `durable`, the project earns those
+sections as it earns any other narrative. This one is the vision's own rule
+rather than a row of the table below: the create-vision entry point asks for the
+posture, it does not read one.
+
 **The posture says how much to build, and the roles that read it are the three
 that author a document from the vision.** It is not a guiding principle and no
 verb branches on it: the validator's vision-fit check measures against Guiding
@@ -48,7 +56,7 @@ the three applies its own row and nothing beyond it:
 
 | Role | `prototype` (the default) | `durable` |
 |---|---|---|
-| create-roadmap | fewer stages, and no non-functional requirements section unless the human asks for one | stages and sections as the vision earns them |
+| create-roadmap | fewer stages: a stage only where a success criterion needs one | stages and sections as the vision earns them |
 | queue-planner | no preparatory or "for later" items: an item is queued only where a success criterion, a deliverable, or a justified sibling in the same queue needs it | foundations a later stage will use may be queued |
 | spec-author | acceptance criteria for the item's own deliverable only, adversarial cases only where the Testing Strategy names a failure mode, and Implementation Steps that reuse an existing helper before writing one and add no dependency | interfaces may be pinned ahead of need, and broader cases named |
 
@@ -73,6 +81,12 @@ the three applies its own row and nothing beyond it:
   an architecture and a non-functional-requirements section whatever the
   project was, so the pressure was in the loop's own text. One line in the
   document every other one derives from is where a role already looks.
+- **Why the optional sections are the vision's own rule.** The sections the
+  posture bounds — architecture, non-functional requirements — exist only in
+  this document, so a row of the table would name a reader that has none: the
+  three roles in it read a vision they did not write. The restraint has to bind
+  where the section is authored, and drafting one nobody committed to is the
+  same defect as filling a mandatory section from assumption, two paragraphs up.
 - **Why two values, and why `prototype` is the default.** Current behaviour is
   effectively `durable`, so absence had to mean the other value for the default
   to do any work: a consumer whose vision carries no line gets the smaller

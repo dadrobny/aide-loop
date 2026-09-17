@@ -133,9 +133,9 @@ instead — that is the bump policy above, and it is enforced by
   the thousands within a few queues. The header blockquote now carries one
   optional line — `> **Posture:** prototype` or `> **Posture:** durable`, two
   values and no spectrum — and §1 → vision.md states what each asks of
-  create-roadmap (fewer stages, and no non-functional requirements section
-  unless the human asks for one), `queue-planner` (no preparatory or "for
-  later" items) and `spec-author` (acceptance criteria for the item's own
+  create-roadmap (fewer stages: a stage only where a success criterion needs
+  one), `queue-planner` (no preparatory or "for later" items) and
+  `spec-author` (acceptance criteria for the item's own
   deliverable only, adversarial cases only where the Testing Strategy names a
   failure mode, Implementation Steps that reuse before writing and add no
   dependency). `builder`, `test-writer` and the validator never read the
@@ -145,7 +145,12 @@ instead — that is the bump policy above, and it is enforced by
   a typo cannot quietly mean `prototype`; an absent line is silent. The
   create-vision skill asks for the posture once the mandatory four are grounded
   and writes the line, and its first requirement is no longer "be exhaustive" —
-  the vision is the floor a build must meet. **vision template 2**: a consumer
+  the vision is the floor a build must meet. The posture also bounds the
+  vision's own optional sections: under `prototype` a Technical architecture or
+  Non-functional requirements section is written only where the human has
+  committed to something it would record. That one is the vision's own rule
+  rather than a row of the table, since the three roles in the table read a
+  vision they did not write. **vision template 2**: a consumer
   built from template 1 adds the `**Posture:**` line to its header blockquote
   (or leaves it out and takes the default), and `aide check` names the template
   version until it does.

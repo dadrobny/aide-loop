@@ -59,12 +59,14 @@ _The capabilities that deliver the objectives. Group by area; be specific._
 ## 6. Technical architecture
 
 _Language/runtime, key libraries, packaging/deployment, data formats, the
-high-level data flow._
+high-level data flow. Whether this section is written at all follows the
+Posture above — `.aide/conventions.md` §1 → vision.md._
 
 ## 7. Non-functional requirements
 
 _Portability, determinism, performance, reproducibility, maintainability —
-whichever the project actually commits to._
+whichever the project actually commits to. Written or omitted per the Posture
+above — `.aide/conventions.md` §1 → vision.md._
 
 ## 8. Constraints & assumptions
 

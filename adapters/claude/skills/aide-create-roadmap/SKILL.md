@@ -35,8 +35,8 @@ and the roles that read it are the three that author a document from the
 vision** — this one among them, and **a vision carrying no posture line is read
 as `prototype`**. Apply this role's row and nothing else in the table:
 
-- `prototype` — **fewer stages, and no non-functional requirements section
-  unless the human asks for one**.
+- `prototype` — **fewer stages: a stage only where a success criterion needs
+  one**.
 - `durable` — **stages and sections as the vision earns them**.
 
 ### Updating an existing roadmap
@@ -79,7 +79,6 @@ never a direct merge.
      - The posture says how much to build, and the roles that read it are the
        three that author a document from the vision
      - a vision carrying no posture line is read as `prototype`
-     - fewer stages, and no non-functional requirements section unless the
-       human asks for one
+     - fewer stages: a stage only where a success criterion needs one
      - stages and sections as the vision earns them
 -->

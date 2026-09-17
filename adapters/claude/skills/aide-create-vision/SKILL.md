@@ -53,6 +53,14 @@ into the header rather than leaving the default to stand unspoken. Write one of
 the two exactly: a value outside the two is an `aide check` warning naming the
 line rather than a silent fall back to the default.
 
+Then apply the answer to this document's own optional sections as you draft
+them — Technical architecture and Non-functional requirements. **Under
+`prototype`, a Technical architecture or Non-functional requirements section is
+written only where the human has committed to something it would record, and is
+otherwise left out rather than drafted**; under `durable`, the project earns
+those sections as it earns any other narrative. An empty heading is not the
+smaller answer: leave the section out.
+
 Requirements:
 
 1. **Cover the scope, not the ceiling** — every objective, exclusion and
@@ -79,6 +87,10 @@ a reviewed PR, never a direct merge.
      - a vision carrying no posture line is read as `prototype`
      - a value outside the two is an `aide check` warning naming the line
        rather than a silent fall back to the default
+     - Under `prototype`, a Technical architecture or Non-functional
+       requirements section is written only where the human has committed to
+       something it would record, and is otherwise left out rather than
+       drafted
 -->
 
 <!-- pins: .aide/conventions/5-clarify-mode.md
