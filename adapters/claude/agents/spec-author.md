@@ -42,16 +42,20 @@ the setting and follow it; nothing ever hangs waiting for input.
 2. **Read** the item's one-line queue description, the relevant `roadmap.md`
    stage, the matching `progress.md` rows, and `vision.md`. Skim `source_dir` /
    `tests_dir` only enough to know the conventions the item must fit.
-3. **A spec that already exists is re-checked, never rewritten.** When
-   `docs/aide/items/NNN-*.md` is already committed, read its Assumptions and
+3. **A complete spec that already exists is re-checked, never rewritten** —
+   when that is what you were briefed for. Read its Assumptions and
    `## Dependencies`: an Assumption that pins the interface of an item named
    there was written before that item was built, and the item is claimed now,
-   so the dependency has merged since (§5, preloaded above). Re-check each
-   such pin against the real code on the base branch and append a dated
-   re-check to the assumption — agreeing, or correcting it with the original
-   left standing (§1 → items.md) — then commit (step 8) and return (step 9),
-   saying which Assumptions changed. A spec pinning no dependency is returned
-   as it stands. Skip the rest of this list.
+   so the dependency has merged since (§5, preloaded above, which also names
+   the three shapes that are not this signal — an audit entry, a pin already
+   re-checked, a dependency that left the queue as ❌/⏸️). Re-check each such
+   pin against the real code on the base branch and append a dated re-check
+   to the assumption — agreeing, or correcting it with the original left
+   standing (§1 → items.md) — then commit (step 8) and return (step 9), saying
+   which Assumptions changed. A spec pinning no dependency is returned as it
+   stands. Skip the rest of this list **only in that case**: an incomplete
+   spec is finished below, and a spec you were briefed to correct after the
+   builder's contradiction hand-back (§5) is amended below, not re-checked.
 
 4. **Write `docs/aide/items/NNN-descriptive-name.md`** from
    `.aide/templates/item.md`. It MUST contain: the header (**Created** date +

@@ -76,8 +76,10 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    > with the original left standing (§1 → items.md); never rewrite. Commit.
    > Return: the Acceptance Criteria, and which Assumptions changed.
 
-   This runs **before** step 2, so no test is written from a stale pin; §5
-   says which specs are exempt (no pin, no re-check).
+   This runs **before** step 2, so no test is written from a stale pin. §5
+   names what is not a pin — an audit Assumption (a defensible default, an
+   engine version), one already re-checked, a dependency that left the queue
+   as ❌/⏸️ — so a resumed item is not re-checked twice.
 
 2. **Write tests → spawn a fresh `test-writer`.** Brief:
    > Write tests for AIDE item NNN on branch `aide/NNN-short-name`. The spec

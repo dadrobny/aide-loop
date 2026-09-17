@@ -65,7 +65,13 @@ as the append-only amendment above: a re-check that agrees is appended to the
 assumption, and one that does not corrects it, dated, with the original left
 standing. **The pin itself is the signal**: a spec pins a dependency's
 interface only when written before that dependency was built, and a claim
-happens only once it has merged, so no date is compared. A spec whose
+happens only once it has merged, so no date is compared. Three shapes are
+not that signal: an Assumption recording a defensible default, or naming an
+engine version, is an audit entry and not an interface pin; an Assumption
+already carrying a re-check is not re-checked again; and a dependency that
+left the queue's way as ❌ or ⏸️ has no code to check against, so the
+re-check records the interface as absent, corrects the assumption, and the
+divergence is raised in the return rather than agreed to. A spec whose
 Assumptions pin no dependency is not re-checked.
 
 ### Rationale

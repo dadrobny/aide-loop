@@ -61,6 +61,9 @@ the three applies its own row and nothing beyond it:
 | queue-planner | no preparatory or "for later" items: an item is queued only where a success criterion, a deliverable, or a justified sibling in the same queue needs it | foundations a later stage will use may be queued |
 | spec-author | acceptance criteria for the item's own deliverable only, adversarial cases only where the Testing Strategy names a failure mode, and Implementation Steps that reuse an existing helper before writing one and add no dependency | interfaces may be pinned ahead of need, and broader cases named |
 
+What the `spec-author` row means for a single criterion — which consumers
+count under each value — is §1 → items.md, read with this table, not beyond it.
+
 #### Rationale
 
 - **Why these four and not the rest.** They are the only sections a role reads

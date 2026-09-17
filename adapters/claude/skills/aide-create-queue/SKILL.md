@@ -114,9 +114,10 @@ as the reason.
    under `prototype`, no preparatory or "for later" items: an item is queued
    only where a success criterion, a deliverable, or a justified sibling in
    the same queue needs it; under `durable`, foundations a later stage will
-   use may be queued. A justified sibling is one the row admits on its own
-   account, so a chain of dependencies ends at a criterion, a deliverable or a
-   foundation, never at another unjustified item. A candidate the row does
+   use may be queued. A justified sibling is one the row admits, itself or
+   through a sibling in turn, so a chain of dependencies of any length ends at
+   a criterion, a deliverable or a foundation, never at an unjustified item.
+   A candidate the row does
    not admit is not queued, and the pass-over is named in the summary
    (below), like an inbox entry passed over.
 5. **A stage-closing queue ends with a stage-validation item** — when this

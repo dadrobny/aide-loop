@@ -142,9 +142,10 @@ row and nothing else in that table:
   queue needs it**.
 - `durable` — **foundations a later stage will use may be queued**.
 
-A **justified sibling** is one your row admits on its own account, so the chain
-ends at a success criterion, a deliverable or — under `durable` — a foundation,
-never at another item queued only because something depends on it. A candidate
+A **justified sibling** is one the row admits, itself or through a sibling in
+turn, so a chain of dependencies of any length ends at a success criterion, a
+deliverable or — under `durable` — a foundation, never at an unjustified item.
+A candidate
 your row does not admit is not queued, and step 8's summary says so, by name —
 like an insight entry you pass over because the posture does not warrant the
 work.

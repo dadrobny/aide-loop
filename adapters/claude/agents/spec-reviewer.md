@@ -98,14 +98,16 @@ written `<docs_dir>/…` below are relative to whatever it is actually set to.
    field through a pinned layout, and a consumer whose Testing Strategy says
    it will assert on a hand-built copy rather than the producer's fixture (§6).
 
-   **Economy is a batch-only lens, and it is yours here.** With every spec in
-   view, flag an AC no deliverable in the batch needs, an AC pinning a shape no
-   consumer reads, and a Testing Strategy case with no failure mode behind it
-   (conventions.md §1 → items.md, §6). Read `vision.md`'s header first: under
-   `> **Posture:** durable` a consumer a later stage will have counts, so an
-   interface pinned ahead of need is not a finding there; under `prototype`
-   (the default when the line is absent) only a consumer declared in the batch
-   does. That line is the one thing you read the vision for. Per-item
+   **Economy is a batch-only lens, and it is yours here.** An acceptance
+   criterion is written only when something fails without it (conventions.md
+   §1 → items.md), so with every spec in view, flag an AC no deliverable in
+   the batch needs, an AC pinning a shape no consumer reads, and a Testing
+   Strategy case with no failure mode behind it (§6). Read `vision.md`'s
+   header first, because the posture decides which consumers count: under
+   `durable` (§1 → vision.md) a consumer a later stage will have counts as
+   one; under `prototype`, the default, only a consumer declared in the batch
+   does — so an interface pinned ahead of need is not a finding on a `durable`
+   project. That line is the one thing you read the vision for. Per-item
    authoring has no review at this point, so the rule binds the spec-author in
    both modes; you are the second reading it gets when there is a batch.
 
@@ -181,6 +183,15 @@ write allowed outside your (otherwise read-only) scope.
 
 <!-- pins: .aide/conventions/1-format-contract/authorised-paths-proof.md
      - N specs on one branch, every cross-item conflict still cheap to fix
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/items.md
+     Step 4's economy lens: the criterion rule and which consumers count.
+     - An acceptance criterion is written only when something fails without
+       it
+     - Under `durable` (§1 → vision.md) a consumer a later stage will have
+       counts as one; under `prototype`, the default, only a consumer declared
+       in the batch does
 -->
 
 <!-- pins: .aide/conventions/5-clarify-mode.md

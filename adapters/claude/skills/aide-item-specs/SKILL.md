@@ -168,6 +168,11 @@ paths:
        merged
      - by `spec-author`, **before** any test is written from them
      - The pin itself is the signal
+     - an Assumption recording a defensible default, or naming an engine
+       version, is an audit entry and not an interface pin
+     - an Assumption already carrying a re-check is not re-checked again
+     - the re-check records the interface as absent, corrects the assumption,
+       and the divergence is raised in the return rather than agreed to
      - Root documents are authored through their loop entry point,
        interactively — whatever `loop.clarify` says
      - Do not write a root document directly, however well the template shape
@@ -380,7 +385,14 @@ claimed — **by `spec-author`, before any test is written from them** — as th
 append-only amendment above: a re-check that agrees is appended to the
 assumption, one that does not corrects it, dated, with the original standing.
 **The pin itself is the signal**: a spec pins a dependency only when written
-before it was built, and a claim happens only once it has merged.
+before it was built, and a claim happens only once it has merged. Three shapes
+are not that signal: **an Assumption recording a defensible default, or naming
+an engine version, is an audit entry and not an interface pin**; **an
+Assumption already carrying a re-check is not re-checked again**; and a
+dependency that left the queue's way as ❌ or ⏸️ has no code to check
+against, so **the re-check records the interface as absent, corrects the
+assumption, and the divergence is raised in the return rather than agreed
+to**.
 
 **Root documents are authored through their loop entry point, interactively —
 whatever `loop.clarify` says** (`.aide/conventions.md` §5); here that entry point
