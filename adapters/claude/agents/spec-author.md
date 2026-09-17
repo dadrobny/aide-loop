@@ -49,10 +49,19 @@ the setting and follow it; nothing ever hangs waiting for input.
    Acceptance Criteria, in none of the shapes §1 → items.md rules out — one
    test per AC, no compound and/or, no factual claim worded so a shape check
    could satisfy it, and the *(closes Stage N criterion M)* annotation on any
-   AC that closes a stage criterion, since position is not a mapping; the
-   mandatory **Assumptions** block; Implementation Steps (the code path in
-   `source_dir`);
-   **Authorised paths**; Testing Strategy (incl. adversarial/edge cases);
+   AC that closes a stage criterion, since position is not a mapping — and
+   **each one justified**: written only where the deliverable, or a declared
+   consumer in the batch, fails without it (§1 → items.md, preloaded above);
+   a question you deliberately leave undecided is one `**Left open:**` line
+   under Decisions & Trade-offs, never a criterion; the
+   mandatory **Assumptions** block, each pinned interface at the level this
+   item reads it (§5, preloaded above); Implementation Steps (the code path in
+   `source_dir`, naming the existing helper each step reuses rather than
+   re-implements, and adding no dependency);
+   **Authorised paths**; Testing Strategy — **you own the suite's depth**:
+   beyond the one test per AC, name each adversarial case with the failure
+   mode it guards, and the test-writer writes those and no others (§6), so a
+   case you cannot name a failure mode for is left out;
    Dependencies (item numbers this relies on — a queue-mate still 📋
    included, which is how an item that pins what a sibling produces records
    that order); and a Decisions & Trade-offs

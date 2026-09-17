@@ -108,7 +108,13 @@ as the reason.
    re-queuing completed or already-queued items.
 3. **Sequential numbering** — item numbers are sequential across **all** queues;
    find the highest existing number and continue from it. Never restart.
-4. **Testable items** — each item must be testable locally.
+4. **Testable, justified items** — each item must be testable locally, and
+   each is queued for a reason a reader can follow: a vision success criterion
+   or a roadmap deliverable fails without it, or a sibling in this queue
+   declares a dependency on it and is itself justified; under `durable` (§1 →
+   vision.md) a foundation a later stage will use also qualifies. A candidate
+   with neither is not queued, and the pass-over is named in the summary
+   (below), like an inbox entry passed over.
 5. **A stage-closing queue ends with a stage-validation item** — when this
    queue completes a roadmap stage, its final item must be
    `Validate stage N: <stage title>`: replay the stage's use cases end-to-end

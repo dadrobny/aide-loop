@@ -70,6 +70,12 @@ paths:
      - a criterion that closes a stage acceptance criterion names which one
      - recomputes that fact from the primary source and compares
      - An AC that names none closes none
+     - An acceptance criterion is written only when something fails without
+       it: the item's own deliverable, or a declared consumer in the batch that
+       reads what it pins
+     - A criterion with neither is not written
+     - What was deliberately left undecided goes in one short `Left open` note
+       under Decisions & Trade-offs
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/authorised-paths.md
@@ -152,8 +158,12 @@ paths:
      - The spec is corrected first; the tests are then re-derived from the
        corrected criteria; only then does the builder implement
      - The correction is an **amendment, never a rewrite**
-     - the *producing* spec must enumerate the shape its declared consumers
-       read
+     - the *producing* spec pins what its declared consumers read, **in the
+       form they read it, and nothing more**
+     - is pinned only where a consumer genuinely parses the file
+     - A pinned interface is re-checked at claim once its dependency has
+       merged
+     - by `spec-author`, **before** any test is written from them
      - Root documents are authored through their loop entry point,
        interactively — whatever `loop.clarify` says
      - Do not write a root document directly, however well the template shape
@@ -222,6 +232,16 @@ means no stage criterion is closed. The one transitional exception declares
 itself — a merged spec predating the annotation is not rewritten to carry it,
 and its stage may still be attested on the criterion's own subject where the
 evidence names the check and says the mapping was made at attestation time.
+
+**An acceptance criterion is written only when something fails without it: the
+item's own deliverable, or a declared consumer in the batch that reads what it
+pins.** One test per criterion is the floor and the ceiling of what the item's
+tests cover (§6), so a criterion neither needs buys a test and nothing else —
+**a criterion with neither is not written**. **What was deliberately left
+undecided goes in one short `Left open` note under Decisions & Trade-offs**,
+the question and why this item did not settle it, so the next item finds the
+decision deferred rather than forgotten. The queue was bounded by the same
+rule before the item reached you.
 
 ## Authorised paths
 
@@ -336,10 +356,21 @@ The correction is an **amendment, never a rewrite** (§1 → `items.md`): a
 dated correction appended to the spec, because the original criterion is the
 record of what the item was built from.
 
-**The duty runs both ways.** When several specs are authored before any is
-built, the *producing* spec must enumerate the shape its declared consumers
-read — not only the API it exposes but the **serialised form**: the JSON
-layout, which tiers or records appear in a walk, what a strict mode rejects.
+**The duty runs both ways, and it pins at the level a consumer reads.** When
+several specs are authored before any is built, the *producing* spec pins what
+its declared consumers read, **in the form they read it, and nothing more**: a
+consumer reads through the producer's function or a fixture its item ships
+wherever one exists, and a serialised layout — the JSON layout, which records
+appear in a walk, what a strict mode rejects — **is pinned only where a
+consumer genuinely parses the file**. A consumer that needs one field does not
+pin the layout around it.
+
+**A pinned interface is re-checked at claim once its dependency has merged**:
+when the item is claimed after a dependency its Assumptions pin has landed
+since the spec was written, you re-check those Assumptions against the real
+code — **by `spec-author`, before any test is written from them** — as the
+append-only amendment above: a re-check that agrees is appended to the
+assumption, one that does not corrects it, dated, with the original standing.
 
 **Root documents are authored through their loop entry point, interactively —
 whatever `loop.clarify` says** (`.aide/conventions.md` §5); here that entry point

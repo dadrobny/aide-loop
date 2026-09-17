@@ -142,8 +142,12 @@ row and nothing else in that table:
   queue needs it**.
 - `durable` — **foundations a later stage will use may be queued**.
 
-An insight entry you pass over because the posture does not warrant the work is
-passed over out loud, like any other, in step 8's summary.
+**An item is justified by a chain or not queued**: a success criterion or a
+roadmap deliverable fails without it, or a sibling in the same queue declares a
+dependency on it and is itself justified (§1 → items.md states the same rule
+for a criterion). A candidate with neither is not queued, and step 8's summary
+says so, by name — like an insight entry you pass over because the posture does
+not warrant the work.
 
 ## Human gates
 

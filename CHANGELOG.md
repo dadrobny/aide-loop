@@ -121,6 +121,63 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.56.0] — 2026-09-17
+
+### Added
+
+- **A criterion, and an item, is written for a reason, and the spec owns the
+  suite's depth (issue #242, part one).** Every gate in the item loop pushed
+  toward more and none toward less: the validator FAILs an uncovered criterion,
+  a superfluous one fails nothing, and the test-writer — the one role that
+  never reads the vision — was told to add four categories of adversarial
+  input on its own judgement. Measured across consumers on engine ≤ 1.54.1:
+  item specs whose criteria outran the deliverable, suites in the thousands
+  within a few queues. Three rules, the same shape at two levels. §1 →
+  items.md: an acceptance criterion is written only when something fails
+  without it — the item's own deliverable, or a declared consumer in the batch
+  that reads what it pins — and a question deliberately left undecided is one
+  `Left open` note under Decisions & Trade-offs, so the next item finds it
+  deferred rather than forgotten; the queue is bounded by the same chain
+  (`aide-create-queue`, `queue-planner`: a success criterion, a deliverable,
+  or a justified sibling, else not queued and said so in the summary). §6:
+  one test per criterion is the floor and the ceiling unless the spec's
+  Testing Strategy names the case, each with the failure mode it guards, and
+  a test's name says which it covers (`ac3`, or the case's label); the
+  `test-writer` writes those and no others — its four-category list is gone,
+  and a case it thinks is missing is an `insights.md` line. Reuse is stated in
+  the spec's Implementation Steps (the helper a step calls, no new
+  dependency); `builder` is not edited. `spec-reviewer` gets economy as a
+  batch-only second reading. The name rule is stated ahead of its lint: the
+  traceability warning over the test names an item adds is part two, on
+  `aide scope`, in a later release. **item template 2**: the Acceptance
+  Criteria, Assumptions, Implementation Steps, Testing Strategy and Decisions
+  guidance changed; a consumer built from template 1 changes nothing in a
+  merged spec, and `aide check` names the template version until a spec
+  authored from the old shape is amended or the number bumped.
+
+### Changed
+
+- **A producer pins what its consumers read, in the form they read it, and a
+  pinned interface is re-checked at claim (issue #243).** §5's producer duty
+  was earned by a consumer asserting a value no code path produced, and fixed
+  it by pinning *more* — the whole serialised form — which is what turned every
+  change to a producer into a red test in a consumer that had read one field.
+  Now: the producing spec pins what its declared consumers read, in the form
+  they read it, and nothing more; a consumer reads through the producer's
+  function or a fixture its item ships where one exists, and a serialised
+  layout is pinned only where a consumer genuinely parses the file. §6's
+  test-side half: a consumer test never hand-builds a producer's serialised
+  form, so when the shape changes, one test changes — delivered to the
+  test-writer through the generated `aide-test-hygiene`. And the timing half:
+  an item claimed after a dependency its Assumptions pin has merged since the
+  spec was written has those Assumptions re-checked by `spec-author`, before
+  any test is written, as the append-only amendment §5 already defines —
+  `/aide-run-item` step 1 briefs it when a `## Dependencies` item is ✅ and
+  the spec's Assumptions pin it. `aide claim` does not yet say when this
+  applies; the orchestrator reads it from the spec and `progress.md`. Pins
+  moved with the wording in `aide-item-specs`, `spec-reviewer` (step 4 now
+  checks both directions) and `aide-spec-queue` step 4.
+
 ## [1.55.0] — 2026-09-17
 
 ### Added
