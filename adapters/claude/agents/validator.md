@@ -1,7 +1,7 @@
 ---
 name: validator
 description: >-
-  Independent quality gate on Sonnet. Runs after builder and test-writer have
+  Independent quality gate. Runs after builder and test-writer have
   committed their work on the item branch. Confirms pytest passes, checks that
   tests cover every Acceptance Criterion, and verifies the implementation stays
   within the work item's scope. Does NOT write or modify tests. Returns a

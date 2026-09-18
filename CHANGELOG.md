@@ -121,6 +121,50 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.59.1] — 2026-09-18
+
+### Changed
+
+- **`ADAPTER-SPEC.md` §2's role table gains an effort axis and a Claude column,
+  and is pinned to the agent specs both ways (issue #156).** The table recorded
+  a tier and a reason per role and bound Claude in one prose sentence, so the
+  **effort** each role runs at was recorded nowhere, `reviewer` and
+  `spec-reviewer` had no row at all, and a spec silently retiered or given a
+  different effort failed nothing. §2 now carries a `Claude` cell per role —
+  one folded token, `Opus, xhigh`, which each runtime maps to its own
+  frontmatter keys — across two tables: the five item roles, and the two
+  optional definitions an adapter may omit entirely. The tiers stay the
+  cross-adapter abstraction and the reasons stay beside them as prose the pin
+  does not reach; **only the Claude column is compared**, by
+  `adapters/claude/tests/test_agent_definitions.py`, in both directions (a spec
+  with no row, a row with no spec and a disagreeing cell all fail), plus the
+  `T3→Opus, T2→Sonnet` binding the section states in prose. A second adapter
+  adds one further column the day it ships agents, held by a test in its own
+  `tests/`; a column of empty cells for a runtime with no agents yet would
+  encode this one example as the contract (issue #64). `adapters/claude/README.md`
+  points at the table instead of restating it in two tables of its own, and
+  mentions `reviewer` where it previously listed only `spec-reviewer`.
+- **The agent specs no longer argue for their own model (issue #156).** Four of
+  the seven carried a `**Model & effort.**` paragraph, and `queue-planner`
+  repeated its justification in the opening sentence; an agent spec body *is*
+  the sub-agent's system prompt, so every spawn of those roles paid for text
+  about a choice the agent cannot change. The substance moves into §2's
+  rationale column — including the two reasons recorded nowhere before, why
+  `queue-planner` is `xhigh` rather than `high` and a why for each reviewer.
+  What changes a decision stays: `builder` keeps the situational fact that the
+  orchestrator says so explicitly when it has escalated this attempt, and
+  `reviewer` and `spec-reviewer`
+  keep "every judgement you make is about meaning, not about matching strings"
+  as role guidance under no model heading. `test_agent_definitions.py` fails if
+  a `Model & effort` opener returns to any spec, the same shape as the
+  command-hygiene and `## Hand-off` guards. **A consumer edits nothing** —
+  `--update` re-copies the specs.
+- **A `description:` no longer names the model (issue #156).** Six of the seven
+  specs opened with "on Sonnet" or "on Opus" and `test-writer` did not. The
+  description is what an orchestrator routes on, and `model:` sits two lines
+  below it in the same block, so the mention is now absent from all seven
+  rather than added to the odd one out. Nothing pins these strings.
+
 ## [1.59.0] — 2026-09-18
 
 ### Added
