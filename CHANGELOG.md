@@ -121,6 +121,66 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.58.0] — 2026-09-17
+
+### Added
+
+- **A run ledger the verbs write: one row per item worked (issue #244, part
+  one).** Nothing about *how* an item was worked survived the run. Validation
+  rounds lived in the orchestrator's session, `progress.md` records status and
+  no history — across 69 items in one consumer there is exactly one
+  `progress(aide): item NNN -> in-progress` commit per item, because a
+  re-dispatched builder never re-sets a row that is already 🚧 — and review
+  findings existed only in the reviewer's returned text. So "how many
+  build↔validate rounds did this queue cost" and "how many tests per criterion
+  are we adding" had no answer. Now `docs/aide/ledger.md` carries one row per
+  item, appended by the verb that ends it:
+  - **A new §1 shape, `§1 → ledger.md`**, with a row in the §1 sub-index. It
+    fixes what the file is, who writes it (`aide merge`, `aide ledger
+    abandon`), who reads it (nobody at spawn — a person at a queue boundary and
+    the feedback-loop pass), that a caller's absent count is a blank cell and
+    never a zero, and that two rows appended at one tail are a union: keep
+    both.
+  - **A new template, `ledger template 1`** (`.aide/templates/ledger.md`).
+    Fourteen columns: Item, Queue, Stage, Kind, Outcome, ACs, Tests, Files,
+    Rounds, Blocking, Minor, Nit, Engine, Date. **A consumer edits nothing** —
+    the engine creates `docs/aide/ledger.md` from the template, byte for byte,
+    the first time a verb has a row to write, and `aide check` never creates
+    it.
+  - **`aide merge NNN [--rounds N] [--findings blocking=A,minor=B,nit=C]`.**
+    Every cell but those two is derived: the item, its queue, its stage, its
+    `kind` (`normal`, `maintenance` or `validate-stage`), the acceptance
+    criteria its spec carries, the test functions and files the branch added
+    against the base this run resolved (`aide scope`'s counting, read from the
+    branch tip), the engine version and the date. The row is written in the
+    same commit as the ✅, so neither can be lost alone; under `pr` mode the
+    verb writes neither. `--findings` is parsed strictly — an unknown rank, a
+    duplicate or a non-integer is a usage error — and a ledger write that fails
+    is a warning after the merge, never an exit code.
+  - **`aide ledger abandon NNN --rounds N [--findings …]`**, a new verb for the
+    item that hit the validation-round cap and never merged. It derives what it
+    can, blanks the two diff cells where the claim branch is gone, requires
+    `--rounds` (exit 2 without it), and touches nothing but the ledger —
+    `progress.md` keeps whatever status the run left it. Run twice for one
+    item with the same counts, it appends nothing the second time; a
+    different count is a second abandonment and a second row.
+  - **`aide check` shape-checks the rows** — the cell count, the Item cell, an
+    Outcome outside `merged`/`abandoned`, and a count cell that is neither an
+    integer nor blank — as **warnings**,
+    never errors, and compares the template version as it does for every other
+    long-lived document. An absent file is silent, and the template's own
+    example row, inside the header comment a consumer keeps, is never read as
+    an item.
+  - **The floor's verb list gains `ledger abandon`**, so the always-on floor
+    moves from 9,038 to 9,055 content bytes.
+  - **The adapter's two callers pass the count they already keep**:
+    `validator`'s merge call becomes `merge NNN --rounds <from your brief>`,
+    `/aide-run-item`'s validator brief carries the round number, its own merge
+    under `loop.review = "background"` passes `--rounds`, and its round-cap
+    step runs `aide ledger abandon NNN --rounds 3`. No severity scale and no
+    `--findings` anywhere in the adapter: the §9 scale and the orchestrator's
+    classification are part two of #244.
+
 ## [1.57.0] — 2026-09-17
 
 ### Added

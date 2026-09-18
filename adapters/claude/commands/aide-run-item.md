@@ -148,7 +148,7 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    > tests.**
    > PASS: reconcile + merge via the CLI —
    > `python .aide/scripts/aide.py progress set NNN in-review` then
-   > `python .aide/scripts/aide.py merge NNN` (honours git.mode: direct-merge +
+   > `python .aide/scripts/aide.py merge NNN --rounds R` (honours git.mode: direct-merge +
    > branch cleanup + re-test for auto-merge, where a red re-test blocks the ✅
    > and the push and exits non-zero; push-and-stop for pr; local merge for
    > local). **`in-review`, never `done`** — ✅ means merged and is written by
@@ -156,6 +156,12 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    > marking it done here is what once let the exhaustion sweep target an open
    > PR's head branch. FAIL: report which check failed and whether builder or test-writer
    > must fix it. Do not merge.
+
+   Substitute **R** with this dispatch's round number — 1 the first time,
+   and the count you are already keeping for the cap in step 6 on every
+   re-dispatch. The flag is what puts the round count in the ledger row
+   (`merge -h`); a brief that leaves R unsubstituted is a brief the validator
+   cannot act on.
 
    **Under `loop.review = "background"`, add to that brief:**
    > A `reviewer` is reading this same diff concurrently. **The merge is held**:
@@ -170,8 +176,14 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    - **FAIL — missing AC coverage** → fresh `test-writer`; then a fresh `validator`.
    - **FAIL — out-of-scope / vision conflict** → fresh `builder` to revert/fix;
      then a fresh `validator`.
-   - Cap at **3 validation rounds**. Still failing after round 3 → stop, document
-     the blocker in the item file, ask the user.
+   - Cap at **3 validation rounds**. Still failing after round 3 → record what
+     the item cost, stop, document the blocker in the item file, ask the user:
+     ```
+     python .aide/scripts/aide.py ledger abandon NNN --rounds 3
+     ```
+     No merge will ever write a row for this item, and this is the one a reader
+     at the queue boundary is looking for (`ledger -h`). It records; it decides
+     nothing about the item's status.
    - **Round-3 builder** (validator FAILed twice): spawn with `model: opus` and say
      "attempt 3, validator failed twice — hard defect, deeper analysis on Opus."
    - **PASS**, `loop.review = "off"` → the validator has reconciled progress and
@@ -186,9 +198,10 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
      - **Nothing in scope left** → the review is discharged and both gates have
        passed, so merge deterministically yourself:
        ```
-       python .aide/scripts/aide.py merge NNN
+       python .aide/scripts/aide.py merge NNN --rounds <rounds this item took>
        ```
-       It honours `git.mode` and writes the ✅ itself. **A non-zero exit means
+       It honours `git.mode` and writes the ✅ itself; `--rounds` is the
+       count you kept for the cap. **A non-zero exit means
        the item did not land** — under `auto-merge` it re-runs the full suite and
        `aide check`, and a red re-run or a document error leaves the item 🔍
        with nothing pushed; report it and stop

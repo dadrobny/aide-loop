@@ -3983,9 +3983,9 @@ def template_drift_warnings(ddir: Path, item_status: Dict[int, str],
 
     Which documents are read, and why:
 
-    * ``vision.md``, ``roadmap.md``, ``progress.md`` and ``insights.md`` —
-      long-lived, edited for the life of the project, so a newer template is
-      something their author may still act on.
+    * ``vision.md``, ``roadmap.md``, ``progress.md``, ``insights.md`` and
+      ``ledger.md`` — long-lived, appended to or edited for the life of the
+      project, so a newer template is something their author may still act on.
     * A queue while it is open, and an item spec while its item is not ✅ or
       ❌ — the same measure ``--queue`` uses for "spent". A finished item's
       spec is a record, and a warning on every one of them each time a template
@@ -4002,7 +4002,8 @@ def template_drift_warnings(ddir: Path, item_status: Dict[int, str],
     if installed is None:
         installed = installed_template_versions()
     targets = [ddir / name for name in
-               ("vision.md", "roadmap.md", "progress.md", "insights.md")]
+               ("vision.md", "roadmap.md", "progress.md", "insights.md",
+                "ledger.md")]
     qdir = ddir / "queue"
     if qdir.is_dir():
         for qpath in iter_queue_paths(qdir):
@@ -4394,6 +4395,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     errors.extend(conflict_marker_errors(ddir))
     warnings.extend(stray_icon_warnings(ddir))
     warnings.extend(insight_warnings(ddir))
+    warnings.extend(ledger_warnings(ddir))
     warnings.extend(absolute_path_test_warnings(repo_root, config))
     warnings.extend(separator_dependent_test_warnings(repo_root, config))
     warnings.extend(cli_subprocess_test_warnings(repo_root, config))
@@ -6077,6 +6079,419 @@ def _cmd_insights_resolve(path: Path, text: str, ddir_rel: str, repo_root: Path,
     return 0
 
 
+# --------------------------------------------------------------------------- #
+# ledger — one row per item worked (§1 → ledger.md)
+# --------------------------------------------------------------------------- #
+#: The row, in the order `.aide/templates/ledger.md` draws it. The template is
+#: the shape's executable statement (§1) and this tuple is what writes it, so
+#: the two move together: a column added here is a column added there, and
+#: `test_aide_ledger.py` holds the pair.
+LEDGER_COLUMNS = ("Item", "Queue", "Stage", "Kind", "Outcome", "ACs", "Tests",
+                  "Files", "Rounds", "Blocking", "Minor", "Nit", "Engine",
+                  "Date")
+#: Cells whose value is an integer or nothing at all — what `ledger_warnings`
+#: reads, and the blank-cell rule's whole surface.
+LEDGER_INTEGER_COLUMNS = ("ACs", "Tests", "Files", "Rounds", "Blocking",
+                          "Minor", "Nit")
+#: The three ranks `--findings` accepts, in the order they are written.
+LEDGER_FINDING_RANKS = ("blocking", "minor", "nit")
+#: How an item left the loop: `merge` writes one, `ledger abandon` the other.
+LEDGER_OUTCOMES = ("merged", "abandoned")
+#: An item cell: the zero-padded number the verbs write, and anything a reader
+#: can resolve to an item.
+_LEDGER_ITEM_RE = re.compile(r"^0*\d+$")
+#: A `Validate stage N` item — test-heavy by design, so it is its own `kind`
+#: (§1 → ledger.md). Read off the item's title, which is the only place the
+#: engine ever learns what an item is: the spec's `# Item NNN — <title>` line,
+#: or the queue's `### Item NNN: <title>` where no spec is left.
+_VALIDATE_STAGE_TITLE_RE = re.compile(r"^\s*validate\s+stage\b", re.IGNORECASE)
+#: The three insight types that become a maintenance item (§1 → the
+#: maintenance queue); a `knowledge` or `framework` entry never does.
+_LEDGER_MAINTENANCE_TYPES = ("defect", "gap", "automation")
+
+
+def ledger_path(ddir: Path) -> Path:
+    """The run ledger. One name, one place — see ``insights_path``."""
+    return ddir / "ledger.md"
+
+
+def parse_findings(value: str) -> Dict[str, int]:
+    """``"blocking=1,minor=2"`` -> ``{"blocking": 1, "minor": 2}``.
+
+    Strict, and strict on purpose: the counts are a claim the caller makes
+    about work the engine cannot see (§1 → `ledger.md`), so the one thing this
+    must never do is guess. Every rank is optional and the order is free; an
+    unknown rank, a repeated one, a missing `=` and a value that is not a
+    non-negative integer are each a usage error naming what was wrong, because
+    a mistyped rank silently dropped would record a blank where a count was
+    passed. Raises ``ValueError``; the parser turns it into argparse's usage
+    error.
+    """
+    counts: Dict[str, int] = {}
+    ranks = ", ".join(LEDGER_FINDING_RANKS)
+    for part in value.split(","):
+        part = part.strip()
+        if not part:
+            raise ValueError(
+                f"empty entry in '{value}' — write <rank>=<count> pairs "
+                f"separated by commas, with the ranks you have ({ranks})")
+        rank, sep, count = part.partition("=")
+        rank = rank.strip().lower()
+        if not sep:
+            raise ValueError(f"'{part}' is not <rank>=<count>")
+        if rank not in LEDGER_FINDING_RANKS:
+            raise ValueError(f"unknown rank '{rank}' — one of {ranks}")
+        if rank in counts:
+            raise ValueError(f"rank '{rank}' given twice")
+        count = count.strip()
+        if not re.fullmatch(r"[0-9]+", count):
+            raise ValueError(
+                f"'{rank}={count}' is not a non-negative integer")
+        counts[rank] = int(count)
+    return counts
+
+
+def _findings_argument(value: str) -> Dict[str, int]:
+    try:
+        return parse_findings(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+
+
+def _non_negative_argument(value: str) -> int:
+    if not re.fullmatch(r"[0-9]+", value.strip()):
+        raise argparse.ArgumentTypeError(
+            f"'{value}' is not a non-negative integer")
+    return int(value.strip())
+
+
+def _item_queue_number(repo_root: Path, config, number: int) -> Optional[int]:
+    """The queue whose file lists item *number*, or ``None``."""
+    qdir = docs_dir(repo_root, config) / "queue"
+    if not qdir.is_dir():
+        return None
+    for qpath in iter_queue_paths(qdir):
+        try:
+            text = qpath.read_text(encoding=_ENCODING)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if number in queue_item_numbers(text):
+            return queue_number(qpath)
+    return None
+
+
+def _queue_item_title(repo_root: Path, config, number: int) -> Optional[str]:
+    """The item's title as its queue file writes it, or ``None``."""
+    qdir = docs_dir(repo_root, config) / "queue"
+    if not qdir.is_dir():
+        return None
+    for qpath in iter_queue_paths(qdir):
+        try:
+            title = _queue_titles(qpath.read_text(encoding=_ENCODING)).get(number)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if title:
+            return title
+    return None
+
+
+def _insight_derived_item(repo_root: Path, config, number: int) -> bool:
+    """Did an insight become item *number*?
+
+    §1 → the maintenance queue: the author who queues an open `defect`, `gap`
+    or `automation` entry ticks it with the item number it became
+    (`insights tick N --pointer "item NNN"`), so the inbox is where the engine
+    can read that an item is insight-derived. The pointer and the entry's trail
+    are read; its **provenance** deliberately is not — that names the item the
+    insight was captured *in*, which is the opposite claim.
+    """
+    path = insights_path(docs_dir(repo_root, config))
+    if not path.is_file():
+        return False
+    try:
+        entries = parse_insights(path.read_text(encoding=_ENCODING))
+    except (OSError, UnicodeDecodeError):
+        return False
+    for entry in entries:
+        if entry.type not in _LEDGER_MAINTENANCE_TYPES:
+            continue
+        for text in ([entry.pointer] if entry.pointer else []) + list(entry.trail):
+            if _references_item(text, number):
+                return True
+    return False
+
+
+def item_kind(repo_root: Path, config, number: int,
+              title: Optional[str] = None) -> str:
+    """The item's `kind` cell: one of `validate-stage`, `maintenance`, `normal`.
+
+    `validate-stage` wins over `maintenance`, because it is the reading that
+    changes how every other cell on the row is read: such an item exists to
+    add tests, so its tests-per-criterion is not comparable with anything
+    else's whatever else the item also is.
+    """
+    if title is None:
+        title = (_spec_stage_and_title(repo_root, config, number)[1]
+                 or _queue_item_title(repo_root, config, number))
+    if title and _VALIDATE_STAGE_TITLE_RE.match(title):
+        return "validate-stage"
+    if _insight_derived_item(repo_root, config, number):
+        return "maintenance"
+    return "normal"
+
+
+def _ledger_diff_cells(repo_root: Path, config, branch: Optional[str],
+                       base: Optional[str]) -> Tuple[str, str]:
+    """``(tests added, files changed)`` for *branch* against *base*.
+
+    Both blank when the diff cannot be taken — no branch left, no base
+    recorded, a ref git cannot resolve. The counting is `aide scope`'s
+    (`added_test_functions`), read from the branch tip rather than the working
+    tree so the answer does not depend on what happens to be checked out.
+    """
+    if not branch or not base:
+        return "", ""
+    mb = git(["merge-base", base, branch], repo_root, check=False)
+    if mb.returncode != 0:
+        return "", ""
+    merge_base = mb.stdout.strip()
+    diff = git(["-c", "core.quotePath=false", "diff", "--name-only",
+                merge_base, branch], repo_root, check=False)
+    if diff.returncode != 0:
+        return "", ""
+    changed = [line.strip() for line in diff.stdout.splitlines() if line.strip()]
+    added = added_test_functions(repo_root, config, changed, merge_base,
+                                 renamed_paths(repo_root, merge_base), ref=branch)
+    return str(len(added)), str(len(changed))
+
+
+def ledger_cells(repo_root: Path, config, number: int, outcome: str,
+                 rounds: Optional[int] = None,
+                 findings: Optional[Dict[str, int]] = None,
+                 branch: Optional[str] = None,
+                 base: Optional[str] = None,
+                 date: Optional[str] = None) -> List[str]:
+    """One row's cells, in `LEDGER_COLUMNS` order.
+
+    Everything but *rounds* and *findings* is derived here, from the documents,
+    the branch and `.aide/VERSION`; those two are the caller's, and an absent
+    one is a blank cell rather than a zero (§1 → `ledger.md`). Every derivation
+    degrades to a blank: a spec that is gone, a queue that never listed the
+    item, a stage the spec header does not name and a diff with no branch to
+    take it from each cost one cell, never the row.
+    """
+    import datetime as _dt
+    findings = findings or {}
+    stage, title = _spec_stage_and_title(repo_root, config, number)
+    specs = item_spec_paths(docs_dir(repo_root, config) / "items", number)
+    criteria = ""
+    if specs:
+        try:
+            spec_text = specs[0].read_text(encoding=_ENCODING)
+        except (OSError, UnicodeDecodeError):
+            spec_text = ""
+        if _AC_HEADING_RE.search(spec_text):
+            criteria = str(len(spec_acceptance_numbers(spec_text)))
+    queue = _item_queue_number(repo_root, config, number)
+    tests, files = _ledger_diff_cells(repo_root, config, branch, base)
+    cells = {
+        "Item": f"{number:03d}",
+        "Queue": f"{queue:03d}" if queue is not None else "",
+        "Stage": stage or "",
+        "Kind": item_kind(repo_root, config, number, title),
+        "Outcome": outcome,
+        "ACs": criteria,
+        "Tests": tests,
+        "Files": files,
+        "Engine": installed_engine_version() or "",
+        "Date": date or _dt.date.today().isoformat(),
+    }
+    cells.update(zip(LEDGER_COUNT_COLUMNS,
+                     _ledger_count_cells(rounds=rounds, findings=findings)))
+    return [cells[column] for column in LEDGER_COLUMNS]
+
+
+#: The caller-supplied cells, in the order `_ledger_count_cells` renders them.
+LEDGER_COUNT_COLUMNS = ("Rounds",) + tuple(r.capitalize() for r in LEDGER_FINDING_RANKS)
+
+
+def _ledger_count_cells(rounds: Optional[int],
+                        findings: Optional[Dict[str, int]]) -> List[str]:
+    """Render the caller's counts — a count nobody passed is `""`, never `0`."""
+    findings = findings or {}
+    out = ["" if rounds is None else str(rounds)]
+    for rank in LEDGER_FINDING_RANKS:
+        got = findings.get(rank)
+        out.append("" if got is None else str(got))
+    return out
+
+
+def ledger_row(cells: List[str]) -> str:
+    """The cells as the one line appended to the ledger."""
+    return "| " + " | ".join(cells) + " |"
+
+
+def append_ledger_row(repo_root: Path, config, cells: List[str],
+                      verb: str) -> Optional[str]:
+    """Append one row, creating the ledger from the template if it is missing.
+
+    Returns the repo-relative path of the file written, so the caller can put
+    it in the commit that records the item — or ``None`` when there is nowhere
+    to write: a repo with no ``docs_dir`` (a project may adopt the CLI without
+    the loop) or an install whose template is gone. Both say why. Raises
+    nothing else on purpose: every caller is a verb whose real work has
+    already succeeded.
+    """
+    ddir = docs_dir(repo_root, config)
+    if not ddir.is_dir():
+        print(f"aide {verb}: no {_rel_display(ddir, repo_root)} directory, so "
+              f"no ledger row was recorded", file=sys.stderr)
+        return None
+    path = ledger_path(ddir)
+    rel = _rel_display(path, repo_root)
+    if not path.exists():
+        template = _TEMPLATES_DIR / "ledger.md"
+        if not template.is_file():
+            print(f"aide {verb}: {rel} is missing and could not be created — "
+                  f"{_rel_display(template, repo_root)} is not there, so the "
+                  f"install is incomplete (`python install.py --into . --check` "
+                  f"from a framework checkout says how)", file=sys.stderr)
+            return None
+        path.write_bytes(template.read_bytes())
+        print(f"notice: created {rel} from .aide/templates/ledger.md — the run "
+              f"ledger, one row per item worked (conventions.md §1)")
+    text = path.read_text(encoding=_ENCODING)
+    if text and not text.endswith("\n"):
+        text += "\n"
+    path.write_text(text + ledger_row(cells) + "\n", encoding="utf-8")
+    return rel
+
+
+def ledger_rows(text: str) -> List[Tuple[int, List[str]]]:
+    """``(lineno, cells)`` for every data row of a ledger — the one reader.
+
+    Table furniture is skipped, and so is **everything inside an HTML
+    comment**: the document is created as a byte-exact copy of the template,
+    whose header comment draws the row it is about to write, so a reader that
+    took any `|` line for data would read that example as an item. The
+    comment is the author's to delete and most never do, which makes this the
+    ordinary case rather than the odd one.
+    """
+    out: List[Tuple[int, List[str]]] = []
+    in_comment = False
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        rest = line
+        while rest:
+            if in_comment:
+                _, sep, rest = rest.partition("-->")
+                if not sep:
+                    rest = ""
+                in_comment = bool(not sep)
+            else:
+                before, sep, rest = rest.partition("<!--")
+                if not sep:
+                    rest = ""
+                else:
+                    in_comment = True
+                if before.strip().startswith("|"):
+                    cells = _split_row(before)
+                    if not _is_table_furniture(cells, LEDGER_COLUMNS[0].lower()):
+                        out.append((lineno, cells))
+                if not sep:
+                    break
+    return out
+
+
+def ledger_warnings(ddir: Path) -> List[str]:
+    """Rows of `ledger.md` no reader can use — warnings, never errors.
+
+    Capture has to stay cheap: the file records work that is already finished,
+    so a mis-shaped row is worth reporting and never worth failing a run over
+    — and a row nobody can fix without rewriting a record is exactly the kind
+    of finding that teaches a reader to skim (§1 → `ledger.md`, and rung 4 of
+    the copies rule: `docs/aide/**` is the project's). An absent file is
+    silent: a project that has not merged an item through the engine has no
+    ledger, and that is not a defect.
+    """
+    path = ledger_path(ddir)
+    if not path.is_file():
+        return []
+    out: List[str] = []
+    for lineno, cells in ledger_rows(path.read_text(encoding=_ENCODING)):
+        if len(cells) != len(LEDGER_COLUMNS):
+            out.append(f"ledger.md:{lineno}: {len(cells)} cell(s), not "
+                       f"{len(LEDGER_COLUMNS)} — the columns "
+                       f"`.aide/templates/ledger.md` draws")
+            continue
+        row = dict(zip(LEDGER_COLUMNS, cells))
+        if not _LEDGER_ITEM_RE.match(row["Item"]):
+            out.append(f"ledger.md:{lineno}: Item cell '{row['Item']}' is not "
+                       f"an item number")
+        if row["Outcome"] not in LEDGER_OUTCOMES:
+            out.append(f"ledger.md:{lineno}: Outcome cell "
+                       f"'{row['Outcome']}' is not one of "
+                       f"{', '.join(LEDGER_OUTCOMES)}")
+        for column in LEDGER_INTEGER_COLUMNS:
+            value = row[column]
+            if value and not re.fullmatch(r"[0-9]+", value):
+                out.append(f"ledger.md:{lineno}: {column} cell '{value}' is "
+                           f"neither an integer nor blank")
+    return out
+
+
+def cmd_ledger(args: argparse.Namespace) -> int:
+    """Write a ledger row for an item no merge will ever write one for."""
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    if args.rounds is None:
+        print(f"aide ledger {args.action}: --rounds is required — the round "
+              f"count is why this row exists, and an abandoned item with no "
+              f"count recorded is indistinguishable from one nobody wrote "
+              f"down.", file=sys.stderr)
+        return 2
+    ddir = docs_dir(repo_root, config)
+    path = ledger_path(ddir)
+    if path.is_file():
+        counts = _ledger_count_cells(rounds=args.rounds, findings=args.findings)
+        for lineno, cells in ledger_rows(path.read_text(encoding=_ENCODING)):
+            row = dict(zip(LEDGER_COLUMNS, cells))
+            if (row.get("Item") == f"{args.number:03d}"
+                    and row.get("Outcome") == "abandoned"
+                    and [row.get(c) for c in LEDGER_COUNT_COLUMNS] == counts):
+                # A retried orchestrator step is the ordinary way to arrive
+                # here twice; a second row would count one abandonment as
+                # two in every ratio read from the file. Different counts are
+                # a different abandonment — an item resumed after the cap and
+                # stopped again — and that row is appended like any other.
+                print(f"aide ledger {args.action}: item {args.number:03d} is "
+                      f"already recorded as abandoned with these counts "
+                      f"({path.name}:{lineno}); nothing appended")
+                return 0
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    branch = _find_claim_branch(repo_root, prefix, args.number)
+    base = _recorded_branch_base(repo_root, branch) if branch else None
+    cells = ledger_cells(repo_root, config, args.number, "abandoned",
+                         rounds=args.rounds, findings=args.findings,
+                         branch=branch, base=base)
+    rel = append_ledger_row(repo_root, config, cells, f"ledger {args.action}")
+    if rel is None:
+        return 1
+    print(f"aide ledger {args.action}: item {args.number:03d} recorded in {rel} "
+          f"as abandoned after {args.rounds} round(s)")
+    if not args.no_commit and (repo_root / ".git").exists():
+        # No pull: this is an append to a file the loop owns, on whatever
+        # branch the cap was hit on, and a verb that only records must not
+        # fetch on the caller's behalf (`ensure_insights_inbox` reasons the
+        # same way).
+        _commit_docs_files(repo_root, config,
+                           f"docs(aide): ledger row for item {args.number:03d} "
+                           f"(abandoned)", [rel], pull=False)
+    print(f"aide ledger {args.action}: progress.md is untouched — this verb "
+          f"records what the run cost and decides nothing about the item's "
+          f"status")
+    return 0
+
+
 def cmd_queue(args: argparse.Namespace) -> int:
     if args.action == "start":
         return _queue_start(args)
@@ -7211,7 +7626,8 @@ def _restore_claim_branch(repo_root: Path, branch: str, tip: str,
 
 
 def _promote_item_to_complete(repo_root: Path, config, number: int,
-                              no_commit: bool = False) -> None:
+                              no_commit: bool = False,
+                              extra_rels: Tuple[str, ...] = ()) -> None:
     """Record item *number* as ✅ in progress.md — best effort, never fatal.
 
     Deliberately quiet about a no-op: the item may already be ✅ (a re-run, or a
@@ -7225,22 +7641,32 @@ def _promote_item_to_complete(repo_root: Path, config, number: int,
     refused before this runs (issue #232). The branch below is left for a repo
     with no document set at all, where the check passes and there is nothing
     to tick.
+
+    *extra_rels* are paths the same commit carries — the ledger row `merge`
+    has just appended (§1 → `ledger.md`). One commit, because the row and the
+    ✅ are one fact about one item: two would let a run land the tick and lose
+    the row, leaving a ledger a reader has to reconcile against progress.md.
+    They are committed even where the tick itself is a no-op (a re-run over an
+    item already ✅), since the row is new either way.
     """
     progress_path = docs_dir(repo_root, config) / "progress.md"
+    rels = list(extra_rels)
     if not progress_path.is_file():
         print(f"aide merge: item {number:03d} merged, but {progress_path} was "
               f"not found, so its status was NOT recorded", file=sys.stderr)
-        return
-    text = progress_path.read_text(encoding=_ENCODING)
-    splits: List[BulletSplit] = []
-    updated = set_item_status(text, number, "complete", splits)
-    if updated == text:
-        return
-    progress_path.write_text(updated, encoding="utf-8")
-    print(f"item {number:03d}: set to done (merged)")
-    _report_bullet_splits(number, updated.splitlines(), splits)
-    if not no_commit and (repo_root / ".git").exists():
-        _commit_progress(repo_root, config, number, "done")
+    else:
+        text = progress_path.read_text(encoding=_ENCODING)
+        splits: List[BulletSplit] = []
+        updated = set_item_status(text, number, "complete", splits)
+        if updated != text:
+            progress_path.write_text(updated, encoding="utf-8")
+            print(f"item {number:03d}: set to done (merged)")
+            _report_bullet_splits(number, updated.splitlines(), splits)
+            rels.insert(0, str(config["project"].get("docs_dir", "docs/aide"))
+                        + "/progress.md")
+    if rels and not no_commit and (repo_root / ".git").exists():
+        _commit_docs_files(repo_root, config,
+                           f"progress(aide): item {number:03d} -> done", rels)
 
 
 def cmd_merge(args: argparse.Namespace) -> int:
@@ -7335,6 +7761,24 @@ def cmd_merge(args: argparse.Namespace) -> int:
                 f"resolved brings it back on the next attempt.",
               file=sys.stderr)
         return 1
+
+    # The ledger's derived cells, taken while the claim branch still exists:
+    # the run is about to merge it and delete it, and the row's counts are a
+    # diff of that branch against the base this run resolved (§1 →
+    # `ledger.md`). Derived here, written after the tick — a row records a
+    # merge that happened, so nothing is written where nothing lands. A
+    # failure to derive costs the row and never the merge.
+    pending_row: Optional[List[str]] = None
+    try:
+        pending_row = ledger_cells(
+            repo_root, config, args.number, "merged",
+            rounds=getattr(args, "rounds", None),
+            findings=getattr(args, "findings", None),
+            branch=branch, base=main)
+    except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as exc:
+        print(f"aide merge: the ledger row could not be derived "
+              f"({type(exc).__name__}: {exc}), so item {args.number:03d} "
+              f"will land with no row in the ledger", file=sys.stderr)
 
     git(["switch", main], repo_root)
 
@@ -7480,8 +7924,22 @@ def cmd_merge(args: argparse.Namespace) -> int:
             # single `git push` below is the only one that carries `main` to origin.
             # Recording it afterwards stranded it locally, so origin's progress.md
             # under-reported — and on a queue's last item nothing would ever push it.
+            # Beside the tick and in the same commit as it: one item, one
+            # row, whatever it took to get there (§1 → `ledger.md`). A ledger
+            # write that fails is a warning after the merge and never an exit
+            # code — capture is worth a sentence, never a landed item.
+            ledger_rel = None
+            if pending_row is not None:
+                try:
+                    ledger_rel = append_ledger_row(repo_root, config,
+                                                   pending_row, "merge")
+                except (OSError, UnicodeDecodeError) as exc:
+                    print(f"aide merge: item {args.number:03d} merged, but its "
+                          f"ledger row could not be written "
+                          f"({type(exc).__name__}: {exc})", file=sys.stderr)
             _promote_item_to_complete(repo_root, config, args.number,
-                                      getattr(args, "no_commit", False))
+                                      getattr(args, "no_commit", False),
+                                      (ledger_rel,) if ledger_rel else ())
 
             remote_gone = True
             if mode != "local":
@@ -8145,7 +8603,8 @@ def renamed_paths(repo_root: Path, merge_base: str) -> Dict[str, str]:
 
 def added_test_functions(repo_root: Path, config, changed: List[str],
                          merge_base: str,
-                         renamed: Optional[Dict[str, str]] = None) -> List[Tuple[str, str]]:
+                         renamed: Optional[Dict[str, str]] = None,
+                         ref: Optional[str] = None) -> List[Tuple[str, str]]:
     """``(path, name)`` for every test function the branch added.
 
     A test file among *changed* is read from the working tree and compared to
@@ -8153,6 +8612,13 @@ def added_test_functions(repo_root: Path, config, changed: List[str],
     branch moved it; a name present in both is an edit to an existing test (a
     reconcile the spec listed, §6) and is not the item's own. A file that did
     not exist at the base contributes every test in it.
+
+    *ref* reads the new side from a ref instead of the working tree, for a
+    caller that must count a branch it is not standing on — `aide merge`
+    writing a ledger row (§1 → `ledger.md`) is about to merge the branch and
+    delete it, and a count that depended on the checkout would be a different
+    number on either side of that. A path the ref does not carry contributes
+    nothing, exactly as a path missing from the working tree does.
     """
     tests_dir = _tests_dir_rel(repo_root, config)
     renamed = renamed or {}
@@ -8162,13 +8628,19 @@ def added_test_functions(repo_root: Path, config, changed: List[str],
     for rel in changed:
         if not rel.endswith(".py") or not _under_dir(rel, tests_dir):
             continue
-        path = repo_root / rel
-        if not path.is_file():
-            continue
-        try:
-            new = _test_function_names(path.read_text(encoding=_ENCODING))
-        except (OSError, UnicodeDecodeError):
-            continue
+        if ref is None:
+            path = repo_root / rel
+            if not path.is_file():
+                continue
+            try:
+                new = _test_function_names(path.read_text(encoding=_ENCODING))
+            except (OSError, UnicodeDecodeError):
+                continue
+        else:
+            at_ref = git(["show", f"{ref}:{rel}"], repo_root, check=False)
+            if at_ref.returncode != 0:
+                continue
+            new = _test_function_names(at_ref.stdout)
         shown = git(["show", f"{merge_base}:{renamed.get(rel, rel)}"], repo_root, check=False)
         old = set(_test_function_names(shown.stdout)) if shown.returncode == 0 else set()
         out.extend((rel, name) for name in new if name not in old)
@@ -9026,11 +9498,17 @@ def build_parser() -> argparse.ArgumentParser:
             "retracted acceptance criterion, a normal state rather than a "
             "defect; and an insights entry whose shape is off \u2014 loose "
             "either side of the date, strict about the date, and never "
-            "applied to an archived entry; and a document whose aide-template "
+            "applied to an archived entry; a ledger row no reader can "
+            "use \u2014 the wrong cell count, an Item cell that is not an "
+            "item number, an Outcome that is neither merged nor abandoned, "
+            "or a count cell that is neither an integer nor "
+            "blank \u2014 reported only where ledger.md exists, since a "
+            "check never creates it; and a document whose aide-template "
             "line above its title records a version other than the installed template's, "
             "names a template this engine does not ship, or cannot be read "
-            "\u2014 read on vision.md, roadmap.md, progress.md and "
-            "insights.md, on a queue while it is open and on an item spec "
+            "\u2014 read on vision.md, roadmap.md, progress.md, "
+            "insights.md and ledger.md, on a queue while it is open and on an "
+            "item spec "
             "until its item is \u2705 or \u274c, and never on a document with "
             "no such line. A \U0001f50d item's claim branch "
             "is not reported stale."))
@@ -9184,6 +9662,45 @@ def build_parser() -> argparse.ArgumentParser:
     p_ins.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
     p_ins.set_defaults(func=cmd_insights)
 
+    p_ledger = sub.add_parser(
+        "ledger", help="record what an item cost where no merge will "
+        "(one row per item, docs/aide/ledger.md)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "abandon: the row for an item that never merged \u2014 one "
+            "stopped at the validation-round cap, which is exactly the item a "
+            "reader at a queue boundary is looking for and the one `aide "
+            "merge` never sees.\n"
+            "\n"
+            "The cells are derived as `merge` derives them, from the "
+            "documents and \u2014 where the claim branch is still there "
+            "\u2014 a diff against the base it recorded; a branch already "
+            "gone costs the two diff cells and nothing else on the row. "
+            "--rounds is required and the verb exits 2 without it: the round "
+            "count is why the row exists, and an abandoned item recorded "
+            "without one says nothing a reader can use. --findings is "
+            "optional, and a rank left out of it is a blank cell. An item "
+            "already recorded as abandoned with the same counts is not "
+            "recorded twice: a re-run appends nothing and exits 0, while a "
+            "different count is a new abandonment and a new row.\n"
+            "\n"
+            "It writes the ledger and nothing else: progress.md keeps "
+            "whatever status the run left it, since what becomes of an "
+            "abandoned item is a decision, not a record. The file is created "
+            "from .aide/templates/ledger.md when this is the first row, and "
+            "committed on the branch the run is standing on, with no pull."))
+    p_ledger.add_argument("action", choices=["abandon"])
+    p_ledger.add_argument("number", type=int)
+    p_ledger.add_argument("--rounds", type=_non_negative_argument, default=None,
+                          help="build\u2194validate rounds the item took "
+                               "before it was abandoned (required)")
+    p_ledger.add_argument("--findings", type=_findings_argument, default=None,
+                          help="findings by rank: blocking=A,minor=B,nit=C "
+                               "\u2014 any subset, any order")
+    p_ledger.add_argument("--no-commit", action="store_true",
+                          help="write the row, do not git commit")
+    p_ledger.set_defaults(func=cmd_ledger)
+
     register_git_subcommands(sub)  # claim / merge / env (git layer)
     return parser
 
@@ -9220,7 +9737,37 @@ def register_git_subcommands(sub) -> None:
     p_claim.add_argument("--dry-run", action="store_true", help="print the pick, do not create/push a branch")
     p_claim.set_defaults(func=cmd_claim)
 
-    p_merge = sub.add_parser("merge", help="merge a validated item per git.mode")
+    p_merge = sub.add_parser(
+        "merge", help="merge a validated item per git.mode",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Lands the item's claim branch on its base per git.mode, re-runs "
+            "the suite and `aide check`, writes the \u2705 and appends one "
+            "ledger row.\n"
+            "\n"
+            "The row is one per item, in docs/aide/ledger.md \u2014 created "
+            "from .aide/templates/ledger.md the first time there is a row to "
+            "write, and committed together with the \u2705 so the two can "
+            "never disagree. Every cell is derived here: the item, its queue, "
+            "its stage, its kind \u2014 validate-stage from an item titled "
+            "`Validate stage N`, maintenance from an inbox entry ticked with "
+            "this item's number, else normal \u2014 how many acceptance "
+            "criteria its spec "
+            "carries, how many test functions and files the branch added "
+            "against the base this run resolved, the engine version and "
+            "today's date. The exceptions are --rounds and --findings, which "
+            "no document holds and only the caller has.\n"
+            "\n"
+            "A count nobody passed is a blank cell and never a 0 \u2014 an "
+            "unrecorded run must not read as a cheap one \u2014 and a cell "
+            "nothing could measure is blank for the same reason, so an item "
+            "whose spec or branch has gone still gets its row. Under pr mode "
+            "this verb pushes and stops, so it writes neither the tick nor a "
+            "row. A ledger write that fails is reported after the merge and "
+            "never changes the exit code: the merge landed, and capture is "
+            "worth a sentence rather than an item. An item stopped at the "
+            "validation-round cap never reaches this verb, and "
+            "`aide ledger abandon` writes its row instead."))
     p_merge.add_argument("number", type=int)
     p_merge.add_argument("branch", nargs="?", default=None, help="claim branch (default: found from number)")
     p_merge.add_argument("--base", default=None,
@@ -9231,7 +9778,15 @@ def register_git_subcommands(sub) -> None:
                               "gate beside it still runs, and an error in it "
                               "still refuses the tick and the push")
     p_merge.add_argument("--no-commit", action="store_true",
-                         help="do not commit the progress.md status the merge records")
+                         help="do not commit the progress.md status the merge "
+                              "records, nor the ledger row beside it")
+    p_merge.add_argument("--rounds", type=_non_negative_argument, default=None,
+                         help="build\u2194validate rounds this item took, for "
+                              "the ledger row (absent: a blank cell)")
+    p_merge.add_argument("--findings", type=_findings_argument, default=None,
+                         help="review findings by rank for the ledger row: "
+                              "blocking=A,minor=B,nit=C \u2014 any subset, "
+                              "any order")
     p_merge.set_defaults(func=cmd_merge)
 
     p_env = sub.add_parser("env", help="venv health (exists, bootstrap finished, "

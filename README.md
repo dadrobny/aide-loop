@@ -124,7 +124,7 @@ aide-loop/
 │   ├── conventions.md       the index: §N -> conventions/N-*.md
 │   ├── conventions/         format contract · claim protocol · command hygiene · git/clarify modes · test hygiene · off-platform · sibling repos
 │   ├── AGENT-CONTEXT.md     the page that must bind before anything points anywhere
-│   ├── templates/           vision · roadmap · progress · queue · item
+│   ├── templates/           vision · roadmap · progress · queue · item · insights · ledger
 │   ├── scripts/aide.py      the stdlib CLI (+ tests/)
 │   ├── loop/loop.py         the usage-gated supervisor (+ a pluggable probe seam)
 │   └── VERSION

@@ -180,8 +180,11 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      the base its claim recorded, which is the queue branch when the item was
      claimed from one:
      ```
-     python .aide/scripts/aide.py merge NNN
+     python .aide/scripts/aide.py merge NNN --rounds <the round number your brief gives>
      ```
+     Pass the round number your brief names — it is what the ledger row
+     records (`merge -h`). If the brief does not give one, merge without the
+     flag rather than guessing at a count.
      **Run this in the foreground** (see step 1) — under `auto-merge` it
      re-runs the full suite and takes as long as the test run did.
 
