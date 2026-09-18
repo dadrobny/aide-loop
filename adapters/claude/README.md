@@ -58,29 +58,26 @@ contract obligations:
 
 The five roles ([spec §2](../ADAPTER-SPEC.md)) are Claude Code **sub-agents** —
 fresh, role-scoped instances with `model:`/`effort:` frontmatter. The contract names
-capability *tiers*; this adapter binds **T3 → Opus, T2 → Sonnet**:
-
-| Role (`agents/…`) | Tier | `model:` | `effort:` |
-|---|---|---|---|
-| `queue-planner` | T3 | `opus` | `xhigh` |
-| `spec-author` | T3 | `opus` | `high` |
-| `test-writer` | T2 | `sonnet` | `medium` |
-| `builder` | T2 (escalates to Opus on a late retry) | `sonnet` | `medium` |
-| `validator` | T2 | `sonnet` | `medium` |
+capability *tiers*; this adapter binds **T3 → Opus, T2 → Sonnet**, and the
+per-role binding is **[spec §2's table](../ADAPTER-SPEC.md)**, whose *Claude*
+cell (`Opus, xhigh`) is this adapter's `model:` + `effort:` pair and is held to
+every `agents/*.md` in both directions by
+[`tests/test_agent_definitions.py`](tests/test_agent_definitions.py). It is not
+restated here: a second copy is a copy that drifts.
 
 Recon/claim is **not** an agent — it is deterministic `aide claim`, so no `agents/`
 file and no tier. No role signs off its own work; each item gets a fresh instance.
 
-One further agent sits **outside** the five item roles, at the queue boundary:
+Two further agents sit **outside** the five item roles — `reviewer`, dispatched
+over one item's diff alongside the `validator` under `loop.review`, and
+`spec-reviewer`, at the queue boundary: once per queue, after `/aide-spec-queue`
+authors every spec and **before any is built**.
 
-| Agent | Tier | `model:` | `effort:` | When |
-|---|---|---|---|---|
-| `spec-reviewer` | T3 | `opus` | `high` | once per queue, after `/aide-spec-queue` authors every spec and **before any is built** |
-
-It is not a sixth role — it never touches one item's lifecycle. It reads the
-whole batch at once and reports the cross-item conflicts `aide check --queue`
-cannot decide, because they turn on what a criterion *means*. It reviews only:
-every finding is handed to the human, who decides which side was wrong.
+`spec-reviewer` is not a sixth role — it never touches one item's lifecycle. It
+reads the whole batch at once and reports the cross-item conflicts
+`aide check --queue` cannot decide, because they turn on what a criterion
+*means*. It reviews only: every finding is handed to the human, who decides
+which side was wrong.
 
 ## Orchestrators → **commands** (`commands/aide-*.md`)
 
