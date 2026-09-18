@@ -60,10 +60,22 @@ The five roles ([spec §2](../ADAPTER-SPEC.md)) are Claude Code **sub-agents** �
 fresh, role-scoped instances with `model:`/`effort:` frontmatter. The contract names
 capability *tiers*; this adapter binds **T3 → Opus, T2 → Sonnet**, and the
 per-role binding is **[spec §2's table](../ADAPTER-SPEC.md)**, whose *Claude*
-cell (`Opus, xhigh`) is this adapter's `model:` + `effort:` pair and is held to
-every `agents/*.md` in both directions by
+cell (`claude-opus-5, xhigh`) is this adapter's `model:` + `effort:` pair and
+is held to every `agents/*.md` in both directions by
 [`tests/test_agent_definitions.py`](tests/test_agent_definitions.py). It is not
 restated here: a second copy is a copy that drifts.
+
+Every `model:` is an **exact model ID, never an alias** (`opus`, `sonnet`): an
+alias resolves to whatever the runtime currently maps it to, so a role's model
+could change with no framework release, and the same test fails on one. A full
+ID is also what the alias-remapping environment variables
+(`ANTHROPIC_DEFAULT_OPUS_MODEL` and its siblings) leave alone. Two costs come
+with it: a provider that spells its IDs differently (Amazon Bedrock's
+`us.anthropic.…`) cannot run these specs as shipped, where an alias would have
+gone through its mapping; and a retired ID fails the spawn until the consumer
+updates. Two models stay unpinned, and §2 names both — the orchestrating
+session's own, and the builder's third-attempt escalation, because the
+per-dispatch `model` override accepts aliases only.
 
 Recon/claim is **not** an agent — it is deterministic `aide claim`, so no `agents/`
 file and no tier. No role signs off its own work; each item gets a fresh instance.

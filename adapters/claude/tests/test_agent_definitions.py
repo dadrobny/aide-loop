@@ -28,8 +28,13 @@ import pytest
 _AGENTS_DIR = Path(__file__).resolve().parents[1] / "agents"
 _ADAPTER_SPEC = Path(__file__).resolve().parents[2] / "ADAPTER-SPEC.md"
 
-# The tiers the adapter README binds: T3 -> opus, T2 -> sonnet.
-_MODELS = {"opus", "sonnet", "haiku"}
+#: An exact model ID — `claude-<family>` and then numeric segments only, so a
+#: moving tag (`claude-opus-5-latest`) is no more an ID than one of the aliases
+#: below, which the runtime is free to re-point between two installs of
+#: the same framework version (issue #250). The family is what §2's tier binding
+#: is read from: T3 -> opus, T2 -> sonnet.
+_MODEL_ID = re.compile(r"^claude-(opus|sonnet|haiku)(?:-[0-9]+)+$")
+_ALIASES = {"opus", "sonnet", "haiku", "fable", "inherit", "default", "best"}
 _EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 
 _AGENT_FILES = sorted(_AGENTS_DIR.glob("*.md"))
@@ -94,7 +99,13 @@ def test_description_is_present_and_substantial(path: Path):
 @pytest.mark.parametrize("path", _AGENT_FILES, ids=lambda p: p.stem)
 def test_model_and_effort_are_recognised(path: Path):
     fm = _frontmatter(path)
-    assert fm.get("model") in _MODELS, f"{path.name}: model={fm.get('model')!r}"
+    model = fm.get("model", "")
+    assert model not in _ALIASES, (
+        f"{path.name}: model={model!r} is an alias. An alias resolves to "
+        f"whatever the runtime maps it to today, so one installed version would "
+        f"stop meaning one model set — write the exact ID, here and in "
+        f"ADAPTER-SPEC.md §2's cell.")
+    assert _MODEL_ID.match(model), f"{path.name}: model={model!r}"
     assert fm.get("effort") in _EFFORTS, f"{path.name}: effort={fm.get('effort')!r}"
 
 
@@ -129,10 +140,9 @@ def test_split_rejects_a_file_with_no_frontmatter(tmp_path: Path):
 _SECTION_2 = re.compile(r"^## 2\. .*$", re.M)
 _NEXT_SECTION = re.compile(r"^## ", re.M)
 
-#: A Claude cell: one folded token per the spec's own example, `Opus, xhigh`.
-#: Case-insensitive on the model because the table writes it as prose
-#: (`Opus`) and the frontmatter as a value (`opus`).
-_CLAUDE_CELL = re.compile(r"^`([A-Za-z]+),\s*([A-Za-z]+)`$")
+#: A Claude cell: one folded token per the spec's own example,
+#: `claude-opus-5, xhigh` — the frontmatter's two values, as written there.
+_CLAUDE_CELL = re.compile(r"^`([A-Za-z][A-Za-z0-9.\-]*),\s*([A-Za-z]+)`$")
 
 #: The tier the row claims, read from the first `T<n>` token in its cell, so
 #: builder's "**T2** (may escalate to **T3** on a late retry)" reads as T2.
@@ -219,7 +229,11 @@ def test_the_tier_binding_is_the_one_the_section_states(role: str):
     disagree makes the prose and the table two different contracts."""
     model, _, tier = _TABLE_ROWS[role]
     assert tier in _TIER_MODEL, f"{role}: no T2/T3 tier cell beside its Claude cell"
-    assert model == _TIER_MODEL[tier], (
+    exact = _MODEL_ID.match(model)
+    assert exact, (
+        f"{role}: §2's Claude cell says {model!r} — an exact model ID, never "
+        f"an alias (issue #250)")
+    assert exact.group(1) == _TIER_MODEL[tier], (
         f"{role}: §2 binds {tier}→{_TIER_MODEL[tier]}, but its Claude cell "
         f"says {model!r}")
 
@@ -228,10 +242,25 @@ def test_the_cell_parser_rejects_a_cell_that_is_not_a_binding():
     """The guard on the guard. If `_CLAUDE_CELL` ever loosened enough to match
     a tier or a rationale cell, `_table_rows` would read the wrong column and
     the comparisons above would fail for the wrong reason — or, worse, pass."""
-    assert _CLAUDE_CELL.match("`Opus, xhigh`")
+    assert _CLAUDE_CELL.match("`claude-opus-5, xhigh`")
+    assert _CLAUDE_CELL.match("`claude-haiku-4-5-20251001, low`")
     for not_a_binding in ("**T3 (strongest)**", "one plan cascades into ~10 items",
-                          "`Opus`", "Opus, xhigh", "`Opus, xhigh` (late retry)"):
+                          "`claude-opus-5`", "claude-opus-5, xhigh",
+                          "`claude-opus-5, xhigh` (late retry)"):
         assert not _CLAUDE_CELL.match(not_a_binding), not_a_binding
+
+
+def test_an_alias_is_not_a_model_id():
+    """The guard on #250's guard: every alias the runtime resolves is refused
+    by the ID pattern too, so a new alias missing from `_ALIASES` still fails —
+    with the less helpful message, but it fails."""
+    for alias in sorted(_ALIASES) + ["claude-opus", "opus-5", "claude-opus-latest",
+                                     "claude-opus-5-latest", "claude-sonnet-5[1m]",
+                                     "Claude-Opus-5"]:
+        assert not _MODEL_ID.match(alias), alias
+    for exact in ("claude-opus-5", "claude-sonnet-5", "claude-opus-4-8",
+                  "claude-haiku-4-5-20251001"):
+        assert _MODEL_ID.match(exact), exact
 
 
 # --------------------------------------------------------------------------- #

@@ -7,7 +7,7 @@ description: >-
   within the work item's scope. Does NOT write or modify tests. Returns a
   PASS/FAIL verdict: on PASS reconciles progress.md via the aide CLI and merges;
   on FAIL hands back with specifics.
-model: sonnet
+model: claude-sonnet-5
 effort: medium
 skills:
   - aide-review-and-validation

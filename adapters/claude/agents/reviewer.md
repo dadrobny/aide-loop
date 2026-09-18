@@ -7,7 +7,7 @@ description: >-
   against the repo's own review contract when it has one. Produces findings —
   writes no code, modifies no tests, does not merge, does not touch
   progress.md.
-model: sonnet
+model: claude-sonnet-5
 effort: high
 skills:
   - aide-review-and-validation
