@@ -110,8 +110,9 @@ No agent signs off its own work; every role gets a fresh instance per item.
 
 **`validator` and `reviewer` are two different reads of one diff** (§9).
 Validation is spec-relative and gates the merge; review is adversarial and
-produces findings. A green validator is not a review, and a clean review does
-not discharge validation. The reviewer is off unless `aide.toml` sets
+produces findings, each ranked blocking / minor / nit as it is triaged. A
+green validator is not a review, and a clean review does not discharge
+validation. The reviewer is off unless `aide.toml` sets
 `loop.review = "background"`, and where it runs, the merge waits for both.
 
 **Deterministic work is scripted, not delegated** — recon/claim, progress

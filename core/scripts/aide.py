@@ -6095,6 +6095,12 @@ LEDGER_INTEGER_COLUMNS = ("ACs", "Tests", "Files", "Rounds", "Blocking",
                           "Minor", "Nit")
 #: The three ranks `--findings` accepts, in the order they are written.
 LEDGER_FINDING_RANKS = ("blocking", "minor", "nit")
+#: What the three finding cells hold where the project runs with no reviewer
+#: at all (§1 → `ledger.md`): not a count, and not the absence of one either.
+#: It is the engine's own answer, read from `[loop] review`, so a blank in
+#: those three columns means exactly one thing — a count that should have been
+#: passed and was not.
+LEDGER_NO_REVIEW_CELL = "-"
 #: How an item left the loop: `merge` writes one, `ledger abandon` the other.
 LEDGER_OUTCOMES = ("merged", "abandoned")
 #: An item cell: the zero-padded number the verbs write, and anything a reader
@@ -6113,6 +6119,18 @@ _LEDGER_MAINTENANCE_TYPES = ("defect", "gap", "automation")
 def ledger_path(ddir: Path) -> Path:
     """The run ledger. One name, one place — see ``insights_path``."""
     return ddir / "ledger.md"
+
+
+def review_is_off(config: Dict[str, Dict[str, object]]) -> bool:
+    """Whether `[loop] review` leaves this project with no reviewer at all.
+
+    The one reader of that key in the engine (§9 is prose the orchestrator
+    consumes), and the one thing the ledger needs from it: anything other than
+    the default `"off"` means some adversarial read runs, so a blank finding
+    cell is a count that was not passed rather than a review that never
+    happened.
+    """
+    return str(config.get("loop", {}).get("review", "off")).strip().lower() == "off"
 
 
 def parse_findings(value: str) -> Dict[str, int]:
@@ -6270,7 +6288,8 @@ def ledger_cells(repo_root: Path, config, number: int, outcome: str,
                  findings: Optional[Dict[str, int]] = None,
                  branch: Optional[str] = None,
                  base: Optional[str] = None,
-                 date: Optional[str] = None) -> List[str]:
+                 date: Optional[str] = None,
+                 no_review: bool = False) -> List[str]:
     """One row's cells, in `LEDGER_COLUMNS` order.
 
     Everything but *rounds* and *findings* is derived here, from the documents,
@@ -6307,22 +6326,36 @@ def ledger_cells(repo_root: Path, config, number: int, outcome: str,
         "Date": date or _dt.date.today().isoformat(),
     }
     cells.update(zip(LEDGER_COUNT_COLUMNS,
-                     _ledger_count_cells(rounds=rounds, findings=findings)))
+                     _ledger_count_cells(rounds=rounds, findings=findings,
+                                         no_review=no_review)))
     return [cells[column] for column in LEDGER_COLUMNS]
 
 
 #: The caller-supplied cells, in the order `_ledger_count_cells` renders them.
 LEDGER_COUNT_COLUMNS = ("Rounds",) + tuple(r.capitalize() for r in LEDGER_FINDING_RANKS)
+#: Those of them that count findings — the three that may carry the no-review
+#: marker, named once so `ledger_warnings` and the renderer cannot disagree.
+LEDGER_FINDING_COLUMNS = tuple(r.capitalize() for r in LEDGER_FINDING_RANKS)
 
 
 def _ledger_count_cells(rounds: Optional[int],
-                        findings: Optional[Dict[str, int]]) -> List[str]:
-    """Render the caller's counts — a count nobody passed is `""`, never `0`."""
+                        findings: Optional[Dict[str, int]],
+                        no_review: bool = False) -> List[str]:
+    """Render the caller's counts — a count nobody passed is `""`, never `0`.
+
+    *no_review* is the project's `[loop] review` read as "off": with no
+    reviewer in the loop there are no findings to count, so the three rank
+    cells carry `LEDGER_NO_REVIEW_CELL` instead of the blank that would read
+    as a count somebody forgot. Counts passed anyway win over it, whole — a
+    count is a claim its caller made, and the engine records claims rather
+    than correcting them from the configuration.
+    """
     findings = findings or {}
+    absent = LEDGER_NO_REVIEW_CELL if (no_review and not findings) else ""
     out = ["" if rounds is None else str(rounds)]
     for rank in LEDGER_FINDING_RANKS:
         got = findings.get(rank)
-        out.append("" if got is None else str(got))
+        out.append(absent if got is None else str(got))
     return out
 
 
@@ -6433,6 +6466,11 @@ def ledger_warnings(ddir: Path) -> List[str]:
                        f"{', '.join(LEDGER_OUTCOMES)}")
         for column in LEDGER_INTEGER_COLUMNS:
             value = row[column]
+            # The three finding columns may also carry the no-review marker,
+            # which the writing verbs put there themselves (§1 → ledger.md).
+            if (value == LEDGER_NO_REVIEW_CELL
+                    and column in LEDGER_FINDING_COLUMNS):
+                continue
             if value and not re.fullmatch(r"[0-9]+", value):
                 out.append(f"ledger.md:{lineno}: {column} cell '{value}' is "
                            f"neither an integer nor blank")
@@ -6449,10 +6487,13 @@ def cmd_ledger(args: argparse.Namespace) -> int:
               f"count recorded is indistinguishable from one nobody wrote "
               f"down.", file=sys.stderr)
         return 2
+    no_review = review_is_off(config)
     ddir = docs_dir(repo_root, config)
     path = ledger_path(ddir)
     if path.is_file():
-        counts = _ledger_count_cells(rounds=args.rounds, findings=args.findings)
+        counts = _ledger_count_cells(rounds=args.rounds,
+                                     findings=args.findings,
+                                     no_review=no_review)
         for lineno, cells in ledger_rows(path.read_text(encoding=_ENCODING)):
             row = dict(zip(LEDGER_COLUMNS, cells))
             if (row.get("Item") == f"{args.number:03d}"
@@ -6472,7 +6513,7 @@ def cmd_ledger(args: argparse.Namespace) -> int:
     base = _recorded_branch_base(repo_root, branch) if branch else None
     cells = ledger_cells(repo_root, config, args.number, "abandoned",
                          rounds=args.rounds, findings=args.findings,
-                         branch=branch, base=base)
+                         branch=branch, base=base, no_review=no_review)
     rel = append_ledger_row(repo_root, config, cells, f"ledger {args.action}")
     if rel is None:
         return 1
@@ -7768,13 +7809,26 @@ def cmd_merge(args: argparse.Namespace) -> int:
     # `ledger.md`). Derived here, written after the tick — a row records a
     # merge that happened, so nothing is written where nothing lands. A
     # failure to derive costs the row and never the merge.
+    findings = getattr(args, "findings", None)
+    no_review = review_is_off(config)
+    if not no_review and findings is None:
+        # A reviewer ran and its triage reached no flag: the row lands with
+        # three blanks that read as "counts nobody passed", which is exactly
+        # what happened. Said once, on stderr, because the row is still worth
+        # writing and the merge is still worth landing (§1 → `ledger.md`).
+        print(f"aide merge: [loop] review is on and no --findings was passed, "
+              f"so item {args.number:03d}'s row records no finding counts. "
+              f"The row is still written; pass "
+              f"'--findings {','.join(r + '=N' for r in LEDGER_FINDING_RANKS)}' "
+              f"from the role that triaged them to record what the review "
+              f"cost.", file=sys.stderr)
     pending_row: Optional[List[str]] = None
     try:
         pending_row = ledger_cells(
             repo_root, config, args.number, "merged",
             rounds=getattr(args, "rounds", None),
-            findings=getattr(args, "findings", None),
-            branch=branch, base=main)
+            findings=findings,
+            branch=branch, base=main, no_review=no_review)
     except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as exc:
         print(f"aide merge: the ledger row could not be derived "
               f"({type(exc).__name__}: {exc}), so item {args.number:03d} "
@@ -9679,7 +9733,10 @@ def build_parser() -> argparse.ArgumentParser:
             "--rounds is required and the verb exits 2 without it: the round "
             "count is why the row exists, and an abandoned item recorded "
             "without one says nothing a reader can use. --findings is "
-            "optional, and a rank left out of it is a blank cell. An item "
+            "optional, and a rank left out of it is a blank cell \u2014 "
+            "except under a project whose [loop] review is off, where the "
+            "three finding cells carry the same `-` mark `merge` writes. An "
+            "item "
             "already recorded as abandoned with the same counts is not "
             "recorded twice: a re-run appends nothing and exits 0, while a "
             "different count is a new abandonment and a new row.\n"
@@ -9767,7 +9824,17 @@ def register_git_subcommands(sub) -> None:
             "never changes the exit code: the merge landed, and capture is "
             "worth a sentence rather than an item. An item stopped at the "
             "validation-round cap never reaches this verb, and "
-            "`aide ledger abandon` writes its row instead."))
+            "`aide ledger abandon` writes its row instead.\n"
+            "\n"
+            "The finding cells read [loop] review, from aide.toml. Where it "
+            "is off no reviewer ran, so the three of them are written as `-` "
+            "rather than left blank, and a blank in them means a count that "
+            "should have been passed and was not. --findings passed anyway "
+            "under off wins over the mark, since a count is a claim its "
+            "caller made. Where review is on and --findings is absent the "
+            "run warns on stderr, writes the row and still exits 0. The "
+            "counts are of in-scope findings; one outside the item is an "
+            "insights.md line and no cell here."))
     p_merge.add_argument("number", type=int)
     p_merge.add_argument("branch", nargs="?", default=None, help="claim branch (default: found from number)")
     p_merge.add_argument("--base", default=None,

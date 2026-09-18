@@ -13,9 +13,11 @@
   Row — one cell per column of the table, in the table's order:
     | 001 | 001 | 2 | normal | merged | 3 | 4 | 6 | 2 | 1 | 2 | 0 | 1.58.0 | 2026-09-17 |
   A cell left empty is one nothing supplied or nothing could measure. It is
-  blank rather than 0, which would read as a measurement.
+  blank rather than 0, which would read as a measurement. One of the three
+  finding cells may instead hold `-`; which verb writes that mark, and when,
+  is at `python .aide/scripts/aide.py merge -h`.
 -->
-<!-- aide-template: ledger 1 -->
+<!-- aide-template: ledger 2 -->
 # Run Ledger
 
 _One row per item, newest last._

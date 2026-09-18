@@ -35,7 +35,16 @@ tests_dir = "tests"
 mode = "local"
 main_branch = "main"
 branch_prefix = "aide/"
+
+[loop]
+review = "background"
 """
+
+#: The default a scaffolded `aide.toml` carries: no reviewer runs at all, so
+#: the three finding cells carry the marker rather than a blank. The fixture
+#: above runs *with* a reviewer, because every count a caller passes is a
+#: count some reviewer produced; the marker cases switch it back.
+REVIEW_OFF = 'review = "background"', 'review = "off"'
 
 PROGRESS = """\
 # Demo — Progress
@@ -121,6 +130,14 @@ def _docs(path: Path, insights: str = INSIGHTS) -> Path:
     (d / "items" / "027-bounds-rules.md").write_text(SPEC_027, encoding="utf-8")
     (d / "insights.md").write_text(insights, encoding="utf-8")
     return path
+
+
+def _review_off(repo: Path) -> Path:
+    """Switch the repo to `[loop] review = "off"` — the scaffolded default."""
+    toml = repo / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(*REVIEW_OFF),
+                    encoding="utf-8")
+    return repo
 
 
 def _init_repo(path: Path, mode: str = "local", insights: str = INSIGHTS) -> Path:
@@ -579,3 +596,127 @@ def test_abandon_with_no_branch_left_blanks_the_two_diff_cells(tmp_path: Path):
     (row,) = _rows(repo)
     assert (row["Tests"], row["Files"]) == ("", "")
     assert row["ACs"] == "2"
+
+
+# --------------------------------------------------------------------------- #
+# [loop] review — what the three finding cells say when nobody reviewed
+# --------------------------------------------------------------------------- #
+def test_merge_under_review_off_marks_the_finding_cells(tmp_path: Path):
+    """No reviewer ran, so there were no findings to count — and `-` is what
+    separates that from a run whose counts were never passed on."""
+    repo = _review_off(_init_repo(tmp_path / "repo"))
+    assert aide.main(["--repo", str(repo), "claim"]) == 0
+    _do_the_work(repo)
+
+    assert aide.main(["--repo", str(repo), "merge", "27", "--no-test",
+                      "--rounds", "2"]) == 0
+
+    (row,) = _rows(repo)
+    assert (row["Blocking"], row["Minor"], row["Nit"]) == ("-", "-", "-")
+    # Only the finding cells: the round count is the caller's either way.
+    assert row["Rounds"] == "2"
+
+
+def test_merge_under_review_on_leaves_the_finding_cells_blank(tmp_path: Path):
+    """The other half of the same claim — without it the marker could be
+    unconditional and every assertion above would still pass."""
+    repo = _init_repo(tmp_path / "repo")
+    assert aide.main(["--repo", str(repo), "claim"]) == 0
+    _do_the_work(repo)
+
+    assert aide.main(["--repo", str(repo), "merge", "27", "--no-test",
+                      "--rounds", "2"]) == 0
+
+    (row,) = _rows(repo)
+    assert (row["Blocking"], row["Minor"], row["Nit"]) == ("", "", "")
+
+
+def test_findings_passed_under_review_off_win_over_the_mark(tmp_path: Path):
+    """A count is a claim its caller made, and the engine records claims: a
+    project that reviews outside the loop still gets its counts written."""
+    repo = _review_off(_init_repo(tmp_path / "repo"))
+    assert aide.main(["--repo", str(repo), "claim"]) == 0
+    _do_the_work(repo)
+
+    assert aide.main(["--repo", str(repo), "merge", "27", "--no-test",
+                      "--findings", "minor=2"]) == 0
+
+    (row,) = _rows(repo)
+    assert row["Minor"] == "2"
+    # Whole, not cell by cell: half a marked row would claim both things.
+    assert (row["Blocking"], row["Nit"]) == ("", "")
+
+
+def test_merge_with_review_on_and_no_findings_warns_and_still_lands(
+        tmp_path: Path, capsys):
+    """A reviewer ran and its triage reached no flag. The row is still worth
+    writing and the item still lands, so this costs one line of stderr."""
+    repo = _init_repo(tmp_path / "repo")
+    assert aide.main(["--repo", str(repo), "claim"]) == 0
+    _do_the_work(repo)
+
+    assert aide.main(["--repo", str(repo), "merge", "27", "--no-test",
+                      "--rounds", "1"]) == 0
+
+    assert "no --findings was passed" in capsys.readouterr().err
+    (row,) = _rows(repo)
+    assert row["Outcome"] == "merged"
+
+
+def test_merge_with_review_off_and_no_findings_does_not_warn(
+        tmp_path: Path, capsys):
+    """Nothing to pass, so nothing to warn about — a warning on every merge of
+    every unreviewed project is a warning nobody reads."""
+    repo = _review_off(_init_repo(tmp_path / "repo"))
+    assert aide.main(["--repo", str(repo), "claim"]) == 0
+    _do_the_work(repo)
+
+    assert aide.main(["--repo", str(repo), "merge", "27", "--no-test"]) == 0
+
+    assert "--findings" not in capsys.readouterr().err
+
+
+def test_abandon_under_review_off_marks_the_finding_cells(tmp_path: Path):
+    """Both writing verbs read the same setting; a row's cells must not depend
+    on which verb ended the item."""
+    repo = _review_off(_init_repo(tmp_path / "repo"))
+
+    assert aide.main(["--repo", str(repo), "ledger", "abandon", "27",
+                      "--rounds", "3"]) == 0
+
+    (row,) = _rows(repo)
+    assert (row["Blocking"], row["Minor"], row["Nit"]) == ("-", "-", "-")
+    assert row["Rounds"] == "3"
+
+
+def test_a_marked_row_is_readable_and_a_junk_cell_still_is_not(tmp_path: Path):
+    """`aide check` reports a cell no reader can use, and the marker the
+    engine itself writes is not one — while anything else in those columns
+    still is."""
+    repo = _docs(tmp_path / "repo")
+    ledger = repo / "docs" / "aide" / "ledger.md"
+    header = (aide.ledger_row(list(aide.LEDGER_COLUMNS)) + "\n"
+              + aide.ledger_row(["---"] * len(aide.LEDGER_COLUMNS)) + "\n")
+    marked = dict(zip(aide.LEDGER_COLUMNS,
+                      aide.ledger_cells(repo, aide.load_config(repo), 27,
+                                        "merged", rounds=1, no_review=True)))
+    junk = dict(marked, Minor="some")
+    ledger.write_text(
+        header
+        + aide.ledger_row([marked[c] for c in aide.LEDGER_COLUMNS]) + "\n"
+        + aide.ledger_row([junk[c] for c in aide.LEDGER_COLUMNS]) + "\n",
+        encoding="utf-8")
+
+    warnings = aide.ledger_warnings(repo / "docs" / "aide")
+    assert len(warnings) == 1 and "Minor cell 'some'" in warnings[0]
+
+
+def test_abandon_run_twice_under_review_off_still_records_the_item_once(
+        tmp_path: Path):
+    """The duplicate check compares the cells it is about to write, so it has
+    to render them the same way the row did."""
+    repo = _review_off(_init_repo(tmp_path / "repo"))
+    for _ in range(2):
+        assert aide.main(["--repo", str(repo), "ledger", "abandon", "27",
+                          "--rounds", "3"]) == 0
+    assert len(_rows(repo)) == 1

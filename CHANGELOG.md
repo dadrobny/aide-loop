@@ -121,6 +121,85 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.59.0] — 2026-09-18
+
+### Added
+
+- **A severity scale for review findings — blocking, minor, nit (issue #244,
+  part two).** 1.58.0 gave `aide merge` and `aide ledger abandon` three
+  finding-count cells and no definition of what a rank means: §9 triaged a
+  finding as in scope or out of scope only, and a project's own `REVIEW.md`
+  ranks for its own pull requests, not for the loop. A count on an undefined
+  scale is a claim nobody can read back. **`.aide/conventions.md` §9 now
+  defines the three ranks**: *blocking* is in scope and the merge waits for the
+  fix; *minor* is in scope and the triaging role chooses between a fix on the
+  branch now and one `insights.md` line; *nit* is recorded in the count and
+  never dispatched. Scope is answered first and wins — a finding outside the
+  running item is one `insights.md` line whatever its rank — the rank belongs
+  to the role that triages rather than the one that reports, and a project's
+  `REVIEW.md` may re-rank exactly as it already decides what is worth flagging.
+  The section is generated into `.claude/skills/aide-review-and-validation/`,
+  so the delivered copy carries the scale with no second edit. `§1 →
+  insights.md` names the one in-scope entry the inbox now carries — a deferred
+  *minor* finding, filed as a `defect` naming the item — so the file's own
+  out-of-scope definition stays true, and says that a line recording a review
+  finding opens its free text with the rank.
+- **`aide merge` and `aide ledger abandon` mark an unreviewed row (issue #244,
+  part two).** Both verbs now read `[loop] review` from `aide.toml`, and where
+  it is `"off"` — the scaffolded default, so most consumers — they write `-`
+  in the Blocking, Minor and Nit cells instead of leaving them empty. A blank
+  in those three therefore means one thing only: a count that should have been
+  passed and was not, which until now read identically to a project that never
+  ran a reviewer at all. `--findings` passed anyway under `"off"` still wins,
+  whole, since a count is a claim its caller made. Where review *is* on and no
+  `--findings` reaches the merge, the run prints one line on stderr, writes the
+  row and exits 0. `aide check` reads the mark as a legitimate cell; anything
+  else in those columns is still reported. **ledger template 2** carries the
+  mark in its header comment — **a consumer edits nothing**: rows already
+  written stand as written, and a blank in a row written under 1.58.0 with
+  review off is a pre-mark row rather than a lost count.
+
+### Changed
+
+- **The orchestrator ranks each finding and passes the counts to the merge
+  (issue #244, part two).** `.claude/commands/aide-run-item.md` now asks the
+  reviewer for a proposed rank on each finding (step 4) and, in the PASS (merge
+  held) triage (step 6), classifies every finding on the §9 scale — the
+  reviewer's rank is a proposal, the orchestrator's triage is the call, and
+  `REVIEW.md` wins where it re-ranks. Blocking findings are dispatched with the
+  merge still held, a minor one is fixed now or captured as one `insights.md`
+  line, a nit rides along with a dispatch that is already happening, and the
+  held merge is run as
+  `aide merge NNN --rounds R --findings blocking=A,minor=B,nit=C`. Where the
+  validator merges instead, `loop.review` was `"off"` and no reviewer ran, so
+  it passes no `--findings` and the engine marks those cells itself.
+  `.claude/agents/reviewer.md` reports a proposed rank with each finding, and
+  the one-line description of review in `.aide/README.md` names the scale.
+  **A consumer edits nothing** — `--update` re-copies both.
+- **Scope is a question about the change, not about the path (issue #244, part
+  two).** §9 defined an in-scope finding as one naming a file the spec's
+  `## Authorised paths` covers, which routed the one finding that most needs
+  fixing on the branch — *this diff edited a path nobody authorised* — to
+  `insights.md` as out of scope, leaving the overstep to merge. A finding about
+  this item's diff is now in scope whatever file it lands in, an unauthorised
+  edit is itself an in-scope **blocking** finding whose fix is a revert on the
+  branch, and a finding about code the diff did not touch is the out-of-scope
+  one. `.claude/agents/reviewer.md` and `.claude/commands/aide-run-item.md`
+  state it the same way, in the reviewer's brief and in the triage step.
+- **A nit never earns its own validation round (issue #244, part two).** It was
+  "recorded in the count and never dispatched", which left the loop no way to
+  fix one at all. A nit now rides along in whatever builder dispatch a blocking
+  or minor finding is already causing, and where nits are all that is left they
+  go to a builder — fresh, or the one just used, whichever the adapter has —
+  with **no validator and no reviewer behind it and nothing added to the round
+  count**. A nit changes no behaviour by definition; under `auto-merge` the
+  merge re-runs the suite anyway, and a nit that changes behaviour was ranked
+  wrong. The rank also travels out of the loop: an out-of-scope finding's
+  `insights.md` line opens its free text with the rank word, which the entry
+  grammar already allows and so changes no shape. And the ledger's finding
+  counts are **in-scope findings only** — an out-of-scope one is carried by its
+  inbox line and by no cell in the row.
+
 ## [1.58.0] — 2026-09-17
 
 ### Added
