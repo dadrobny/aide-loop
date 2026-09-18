@@ -150,12 +150,8 @@ section of the file, and **does not fail on them**: the file is yours.
 into a consumer as `.aide/VERSION`, and that file is what tells a project it is
 outdated. [`CHANGELOG.md`](CHANGELOG.md) records what each version changed.
 
-**Bump on every commit that touches `core/` or `adapters/`** — those are exactly
-what `--update` copies into a consumer, so a change there is a change the consumer
-receives. Commits that only touch `README.md`, `docs/`, or this repo's own tests
-change nothing a consumer installs and need no bump. SemVer, where the "API" is
-what a consumer installs — the document formats, the `aide` CLI surface,
-`aide.toml` keys, and the adapter's agents/skills/commands:
+SemVer, where the "API" is what a consumer installs — the document formats, the
+`aide` CLI surface, `aide.toml` keys, and the adapter's agents/skills/commands:
 
 | Bump | When |
 |---|---|
@@ -163,11 +159,10 @@ what a consumer installs — the document formats, the `aide` CLI surface,
 | **minor** | a new verb, template, `aide.toml` key, agent, or skill — `1.1.0 → 1.2.0` |
 | **major** | a consumer must edit its own files to update (renamed key, dropped verb, changed document format) |
 
-This is **enforced, not remembered**: `tests/test_repo_versioning.py` fails the
-suite when the branch's diff against `main` touches `core/` or `adapters/` while
-`core/VERSION` is unchanged. The rule exists because it was already broken once —
-seventeen consumer-visible commits shipped under `1.1.0`, so a consumer comparing
-version numbers saw "up to date" while running a 27-commit-old engine.
+Every change to `core/` or `adapters/` — exactly what `--update` copies — moves
+the version, and the suite fails a branch that forgets
+(`tests/test_repo_versioning.py`), so an unchanged `.aide/VERSION` means an
+unchanged install.
 
 ## Repo layout
 
@@ -217,7 +212,7 @@ this repo's own structure.
 
 ## How the loop works
 
-The engine documents *how the loop works* — the six-step workflow, the three
+The engine documents *how the loop works* — the workflow's steps, the three
 nested orchestrators, model routing by capability tier, the merge policy, and
 unattended long runs. That content ships to every consumer, so it lives at
 [`core/README.md`](core/README.md) (installed as `.aide/README.md`) rather than
@@ -227,9 +222,12 @@ here — this README covers how the *framework itself* is built and shipped.
 
 ## Provenance
 
-AIDE originated as an MIT-licensed **Spec Kit extension** by mnriem
-([github.com/mnriem/spec-kit-extensions](https://github.com/mnriem/spec-kit-extensions/tree/main/aide)):
-the seven-step workflow and the living-document templates come from there. This
-project packages that workflow as a provider-agnostic engine plus swappable adapters
-(the three-layer model above) rather than a single-runtime extension. See
-[`LICENSE`](LICENSE) for the derivation notice.
+AIDE started from an MIT-licensed **Spec Kit extension** by mnriem
+([github.com/mnriem/spec-kit-extensions](https://github.com/mnriem/spec-kit-extensions/tree/main/aide)).
+What is still recognisably from there is the skeleton: the sequence vision →
+roadmap → progress → queue → item → execute → feedback, and the idea of living
+documents that carry a plan between sessions. Nearly everything around that
+skeleton was built here — the numbered contract in `conventions/`, the
+deterministic CLI and its consistency gate, role-scoped sub-agents on capability
+tiers, the orchestrators and the usage-gated supervisor, the engine/adapter
+split, and the installer. See [`LICENSE`](LICENSE) for the derivation notice.
