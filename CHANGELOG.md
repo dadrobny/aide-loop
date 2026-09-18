@@ -121,6 +121,20 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.59.3] — 2026-09-18
+
+### Fixed
+
+- **`.aide/README.md` lists the loop's seventh step, and `aide -h` lists the
+  `ledger` verb (issue #199).** *The AIDE loop* stopped at execute-item while
+  the adapter contract's §1 — which cites that section by name as "seven
+  steps" — `docs/concepts.md` and the vision all count feedback-loop as the
+  seventh; the list now carries it, as "runs as needed". And the usage block
+  at the top of `aide -h` named every verb but `ledger`, which 1.58.0 added to
+  the parser and not to the block; a test now holds the block's verbs to the
+  parser's, in both directions. No behaviour changes, and a consumer edits
+  nothing.
+
 ## [1.59.2] — 2026-09-18
 
 ### Changed

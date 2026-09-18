@@ -15,6 +15,7 @@ Subcommands::
     python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
     python .aide/scripts/aide.py insights list|tick|archive|resolve  # the insight inbox
+    python .aide/scripts/aide.py ledger abandon NNN --rounds N  # the ledger row for an item that never merged
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
     python .aide/scripts/aide.py merge NNN [--base R]  # merge a validated item per git.mode
     python .aide/scripts/aide.py env                   # venv existence / import check + bootstrap

@@ -90,6 +90,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -987,6 +988,16 @@ def _verbs() -> List[str]:
     return [v for action in parser._actions
             if isinstance(action, argparse._SubParsersAction)
             for v in action.choices]
+
+
+def test_the_usage_block_names_every_verb_the_parser_has():
+    """The ``Subcommands::`` block at the top of ``aide -h`` is typed by hand,
+    and 1.58.0 added ``ledger`` to the parser without adding it there."""
+    listed = set(re.findall(r"^    python \.aide/scripts/aide\.py (\S+)",
+                            aide.__doc__, flags=re.M))
+    assert listed == set(_verbs()), (
+        f"in the parser, not the usage block: {sorted(set(_verbs()) - listed)}; "
+        f"in the usage block, not the parser: {sorted(listed - set(_verbs()))}")
 
 
 def _described(verb: str) -> bool:
