@@ -15,7 +15,10 @@ could replace — script it), **framework** (belongs to AIDE itself). One
 entry is in scope by design: a review finding ranked *minor* (§9) that the
 triaging role chose to defer rather than fix on the branch, filed as a
 `defect` naming the item — it routes like any other `defect`, and it is the
-only line here that a role could have acted on in place.
+only line here that a role could have acted on in place. A line that records
+a review finding, in scope or out of it, opens its free text with the
+finding's rank (§9) — a word inside the one line, not a change to the entry's
+shape, and nothing parses it.
 
 **The file exists before a role needs it — the engine puts it there.**
 `aide check`, `aide claim`, `aide queue start` and `aide insights list` each

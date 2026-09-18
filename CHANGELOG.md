@@ -142,7 +142,8 @@ instead — that is the bump policy above, and it is enforced by
   so the delivered copy carries the scale with no second edit. `§1 →
   insights.md` names the one in-scope entry the inbox now carries — a deferred
   *minor* finding, filed as a `defect` naming the item — so the file's own
-  out-of-scope definition stays true.
+  out-of-scope definition stays true, and says that a line recording a review
+  finding opens its free text with the rank.
 - **`aide merge` and `aide ledger abandon` mark an unreviewed row (issue #244,
   part two).** Both verbs now read `[loop] review` from `aide.toml`, and where
   it is `"off"` — the scaffolded default, so most consumers — they write `-`
