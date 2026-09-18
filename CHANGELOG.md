@@ -121,6 +121,43 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.59.0] — 2026-09-18
+
+### Added
+
+- **A severity scale for review findings — blocking, minor, nit (issue #244,
+  part two).** 1.58.0 gave `aide merge` and `aide ledger abandon` three
+  finding-count cells and no definition of what a rank means: §9 triaged a
+  finding as in scope or out of scope only, and a project's own `REVIEW.md`
+  ranks for its own pull requests, not for the loop. A count on an undefined
+  scale is a claim nobody can read back. **`.aide/conventions.md` §9 now
+  defines the three ranks**: *blocking* is in scope and the merge waits for the
+  fix; *minor* is in scope and the triaging role chooses between a fix on the
+  branch now and one `insights.md` line; *nit* is recorded in the count and
+  never dispatched. Scope is answered first and wins — a finding outside the
+  running item is one `insights.md` line whatever its rank — the rank belongs
+  to the role that triages rather than the one that reports, and a project's
+  `REVIEW.md` may re-rank exactly as it already decides what is worth flagging.
+  The section is generated into `.claude/skills/aide-review-and-validation/`,
+  so the delivered copy carries the scale with no second edit.
+
+### Changed
+
+- **The orchestrator ranks each finding and passes the counts to the merge
+  (issue #244, part two).** `.claude/commands/aide-run-item.md` now asks the
+  reviewer for a proposed rank on each finding (step 4) and, in the PASS (merge
+  held) triage (step 6), classifies every finding on the §9 scale — the
+  reviewer's rank is a proposal, the orchestrator's triage is the call, and
+  `REVIEW.md` wins where it re-ranks. Blocking findings are dispatched with the
+  merge still held, a minor one is fixed now or captured as one `insights.md`
+  line, a nit is counted and never dispatched, and the held merge is run as
+  `aide merge NNN --rounds R --findings blocking=A,minor=B,nit=C`. Where the
+  validator merges instead, `loop.review` was `"off"` and no reviewer ran, so
+  it passes no `--findings` and those cells stay blank rather than zeroed.
+  `.claude/agents/reviewer.md` reports a proposed rank with each finding.
+  **A consumer edits nothing** — `--update` re-copies both, and no template
+  version moved (`ledger template 1` stands).
+
 ## [1.58.0] — 2026-09-17
 
 ### Added

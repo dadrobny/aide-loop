@@ -135,7 +135,8 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    > the orchestrator to dispatch; out-of-scope ones are one `insights.md` line
    > each.
    > Return: findings, most-severe first, each with file, line, and the input or
-   > state that triggers it, and each triaged in scope / out of scope.
+   > state that triggers it, each triaged in scope / out of scope, and each
+   > carrying a proposed rank on the §9 scale — blocking, minor or nit.
 
    Hand it the contents of the repo's `REVIEW.md` in the prompt if one exists —
    a sub-agent inherits `CLAUDE.md`, not the review contract.
@@ -161,7 +162,9 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    and the count you are already keeping for the cap in step 6 on every
    re-dispatch. The flag is what puts the round count in the ledger row
    (`merge -h`); a brief that leaves R unsubstituted is a brief the validator
-   cannot act on.
+   cannot act on. The validator never passes `--findings`: where it merges at
+   all, `loop.review` was `"off"` and no reviewer ran, so those cells are left
+   blank rather than zeroed (§1 → ledger.md).
 
    **Under `loop.review = "background"`, add to that brief:**
    > A `reviewer` is reading this same diff concurrently. **The merge is held**:
@@ -189,19 +192,29 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    - **PASS**, `loop.review = "off"` → the validator has reconciled progress and
      merged. Done.
    - **PASS (merge held)**, `loop.review = "background"` → wait for the reviewer
-     if it has not returned, then triage its findings (§9):
-     - **In-scope findings** → a fresh `builder` (production code) or
+     if it has not returned, then triage its findings (§9). Rank every one of
+     them as you triage it: the reviewer's rank is a proposal, this call is
+     yours, and where the repo's `REVIEW.md` ranks differently it wins. Keep a
+     running total per rank — it is what you pass to the merge.
+     - **Blocking, in scope** → a fresh `builder` (production code) or
        `test-writer` (tests) with the finding, then a fresh `validator`, merge
        still held. These are validation rounds and count against the cap.
+     - **Minor, in scope** → your call: the same dispatch, or one `insights.md`
+       line instead of it. Say which you chose and why.
+     - **Nit** → counted, and that is all. Never dispatch one.
      - **Out-of-scope findings** → the reviewer already appended them to
-       `insights.md`. Nothing to dispatch.
+       `insights.md`, whatever rank they carry. Nothing to dispatch.
      - **Nothing in scope left** → the review is discharged and both gates have
        passed, so merge deterministically yourself:
        ```
-       python .aide/scripts/aide.py merge NNN --rounds <rounds this item took>
+       python .aide/scripts/aide.py merge NNN --rounds <rounds this item took> \
+           --findings blocking=A,minor=B,nit=C
        ```
        It honours `git.mode` and writes the ✅ itself; `--rounds` is the
-       count you kept for the cap. **A non-zero exit means
+       count you kept for the cap and `--findings` the totals you kept while
+       triaging, and the two are what put those cells in the ledger row
+       (`merge -h`). Substitute A, B and C with your counts — a command left
+       with its placeholders in it is not a command. **A non-zero exit means
        the item did not land** — under `auto-merge` it re-runs the full suite and
        `aide check`, and a red re-run or a document error leaves the item 🔍
        with nothing pushed; report it and stop

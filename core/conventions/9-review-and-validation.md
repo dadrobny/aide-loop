@@ -24,6 +24,20 @@ role that owns the file. One outside it is a single line in `insights.md`, for
 the feedback loop to triage at the queue boundary — never a widening of the
 item's authorised paths, and never acted on in place.
 
+**Every finding carries a rank as well as a scope: blocking, minor or nit.**
+The scope question is the one above; the rank says what the loop does with the
+finding. *Blocking* — in scope, and the merge waits for the fix. *Minor* — in
+scope too, and the triaging role chooses between fixing it on the branch now
+and capturing it as one `insights.md` line. *Nit* — recorded in the count and
+never dispatched. Scope is answered first and it wins: a finding outside the
+running item is one `insights.md` line whatever its rank, since a severe
+observation is no licence to widen the authorised paths. The rank belongs to
+the role that triages, not to the one that reports — a reviewer proposes a
+rank, and a project's own review contract re-ranks where it speaks, exactly as
+it already decides what is worth flagging at all. Counts by rank are what the
+run ledger records (§1 → ledger.md), so a finding is ranked as it is triaged
+and never reconstructed afterwards.
+
 **A review that lands after the merge is a report, not a review.** Wherever an
 adapter runs the reviewer concurrently with validation, the merge still waits
 for both.
@@ -53,5 +67,13 @@ call.
   the item has landed gate nothing, and the loop is entitled to treat
   "reviewed" as meaning the findings were available while the decision was
   still open.
+- **Why a rank at all, and why three.** The ledger records findings by rank
+  (§1 → ledger.md) and the contract had no scale to record them on: this
+  section asked only whether a finding was in scope, and a project's own review
+  contract ranks for its own pull requests rather than for the loop. A count on
+  an undefined scale is a claim nobody can read back — two runs each reporting
+  three minor findings say nothing to one another unless the word is fixed
+  here. Three is the number of distinct decisions the loop makes about a
+  finding it keeps: wait for it, choose about it, or only record it.
 - **Why the reviewer writes nothing.** A reviewer that fixes what it finds has
   reviewed its own work by the time it is done.

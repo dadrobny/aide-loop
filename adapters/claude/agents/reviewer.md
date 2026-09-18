@@ -67,7 +67,9 @@ read it yourself before you start.
    input or state that breaks it. A finding you cannot point at is a guess: say
    it is a guess, or drop it.
 6. **Triage each finding as you report it** (§9, and the same two questions
-   every role answers about an out-of-scope observation):
+   every role answers about an out-of-scope observation), and propose a rank
+   for it on the three-point scale §9 above defines — the orchestrator makes
+   the call, and `REVIEW.md` wins where it ranks differently:
    - **In scope for this item** — it names a file the spec's `## Authorised
      paths` already covers. Report it as a fix for the orchestrator to dispatch
      back to `builder` (production code) or `test-writer` (tests).
@@ -107,7 +109,7 @@ one write allowed outside your (otherwise read-only) scope.
 ## Output
 
 Return findings ordered most-severe first, each naming the file and line, the
-defect, the input or state that triggers it, and its triage — **in scope**
-(with the agent to dispatch: builder or test-writer) or **out of scope**
-(appended to `insights.md`). Then one line stating whether the review was
+defect, the input or state that triggers it, its proposed rank (§9), and its
+triage — **in scope** (with the agent to dispatch: builder or test-writer) or
+**out of scope** (appended to `insights.md`). Then one line stating whether the review was
 complete or cut short. If you found nothing, say that.
