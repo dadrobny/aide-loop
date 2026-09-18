@@ -237,7 +237,15 @@ def test_the_cell_parser_rejects_a_cell_that_is_not_a_binding():
 # --------------------------------------------------------------------------- #
 # the shipped rationale stays retired (#156)
 # --------------------------------------------------------------------------- #
-_MODEL_EFFORT = re.compile(r"^(?:#{1,6}[ \t]*|\*\*)Model\s*&\s*effort", re.M | re.I)
+_MODEL_EFFORT = re.compile(r"^(?:#{1,6}[ \t]*|\*\*)Model\s*(?:&|and)\s*effort",
+                           re.M | re.I)
+
+
+def test_the_retirement_guard_reads_both_spellings_of_the_opener():
+    for opener in ("**Model & effort.** Sonnet", "## Model and effort",
+                   "**model and effort.**"):
+        assert _MODEL_EFFORT.search(opener), opener
+    assert not _MODEL_EFFORT.search("the model and effort live in §2")
 
 
 @pytest.mark.parametrize("path", _AGENT_FILES, ids=lambda p: p.stem)
