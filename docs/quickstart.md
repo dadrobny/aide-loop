@@ -13,7 +13,9 @@ For the *why* behind each piece, read [`concepts.md`](concepts.md).
 
 ## 1. Install
 
-From a clone of this framework repo:
+From a checkout of this framework repo — a release tag (`git clone --branch
+v<VERSION> …`, or a release's source archive) if you want a known version; the
+installer copies from the tree it is run from:
 
 ```
 python install.py --adapter claude --into /path/to/your-repo
@@ -29,7 +31,11 @@ writes into your repo:
 - an appended `.gitignore` block
 
 If a `.claude/settings.json` already exists it is **not** overwritten — a
-`.aide-merge` diff is written for you to reconcile, then delete.
+`.aide-merge` diff is written for you to reconcile, then delete. To stop
+reconciling by hand, rename the scaffolded `.claude/settings.overlay.json.example`
+to `settings.overlay.json` and put your project's additions there: from then on
+`settings.json` is regenerated from the framework's settings plus your overlay
+on every install and `--update`.
 
 Commit the scaffold so the loop has a clean starting point.
 
@@ -84,7 +90,10 @@ human-reviewed PR:
 
 Each item is authored (spec-author) → tested (test-writer) → built (builder) →
 validated + merged (validator) by fresh, role-scoped sub-agents; `aide claim` picks
-the next item deterministically. Git commits are the durable checkpoint, so you can
+the next item deterministically. Two further roles are optional: a reviewer reading each
+item's diff alongside the validator, off until `aide.toml` sets `loop.review`,
+and a spec-reviewer that `/aide-spec-queue` spawns when you write a whole
+queue's specs up front. Git commits are the durable checkpoint, so you can
 stop and re-enter cleanly at any point.
 
 ### `git.mode` matters here
@@ -94,7 +103,8 @@ stop and re-enter cleanly at any point.
 - **`local`** — no pushes at all (offline); merges locally.
 
 Set it in `aide.toml` before a long run. Framework/process changes always want a
-reviewed PR regardless (see [`../README.md`](../README.md) → Merge policy).
+reviewed PR regardless (see `.aide/README.md` → Merge policy; in this repo,
+[`../core/README.md`](../core/README.md)).
 
 ## 5. Unattended overnight runs (optional)
 
@@ -123,4 +133,7 @@ python install.py --into /path/to/your-repo --update
 ```
 
 Re-copies the engine + adapter (framework-owned), leaves `aide.toml` and
-`docs/aide/` (yours) untouched. Pin to a `VERSION` and update deliberately.
+`docs/aide/` (yours) untouched. Pin to a `VERSION` by running the installer from
+that version's tag, and update deliberately;
+`python install.py --into /path/to/your-repo --check` says whether you are behind
+the checkout it runs from, without writing anything.

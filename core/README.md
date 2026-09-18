@@ -54,7 +54,8 @@ the test in place is not a third option — the next update silently overwrites 
 
 ## The AIDE loop
 
-Living documents live under `docs/aide/`. Steps 1–3 are one-time; 4–6 repeat:
+Living documents live under `docs/aide/`. Steps 1–3 are one-time; 4–6 repeat;
+7 runs as needed:
 
 1. **create-vision** → `vision.md` (once)
 2. **create-roadmap** → `roadmap.md` (once)
@@ -64,6 +65,8 @@ Living documents live under `docs/aide/`. Steps 1–3 are one-time; 4–6 repeat
 5. **create-item** → `docs/aide/items/NNN-*.md` — one testable spec
 6. **execute-item** → tests + implementation + validation + merge; updates
    `progress.md`
+7. **feedback-loop** → process and document improvements, from what the run
+   logged — the insight inbox first
 
 Repeat 5–6 until the queue empties, then back to 4. Each step is an
 **entry-point** the adapter exposes in its runtime's own primitive — for

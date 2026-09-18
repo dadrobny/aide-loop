@@ -70,7 +70,15 @@ tier to its own models:
 Recon/claim is **not** a role — it is deterministic (`aide claim`), so no agent and
 no tier. The Claude adapter binds **T3→Opus, T2→Sonnet**. A runtime without
 sub-agents degrades gracefully to "a fresh chat per role" — the roles and their
-tiers still hold.
+tiers still hold. Exact model IDs and effort levels per role are pinned in
+[`ADAPTER-SPEC.md`](../adapters/ADAPTER-SPEC.md) §2.
+
+Two further roles are **optional**, and an adapter may omit them: a
+**reviewer** (T2), an adversarial read of an item's diff concurrent with the
+validator, which produces findings and merges nothing — off unless `aide.toml`
+sets `loop.review`; and a **spec-reviewer** (T3), which reads a whole queue's
+specs at once, when they are written up front, and reports the conflicts
+between them for a human to arbitrate.
 
 ## Orchestrators (item ⊂ queue ⊂ roadmap)
 
@@ -94,12 +102,17 @@ the same `aide.py` steps in the same order.
 Every adapter routes all mechanical work through the **same** stdlib CLI:
 
 ```
-python .aide/scripts/aide.py {check, progress, queue, claim, merge, env, sync, gc, status}
+python .aide/scripts/aide.py {check, scope, progress, gate, queue, insights, ledger, claim, merge, env, sync, gc, status}
 ```
 
 - **check** — consistency gate over `docs/aide/` (shapes, statuses, rollups).
+- **scope** — an item branch's diff against the paths its spec authorises.
 - **progress** — edit `progress.md` status deterministically.
-- **queue** — queue maintenance (tidy).
+- **gate** — list and resolve the human gates recorded in `progress.md`.
+- **queue** — queue branch creation and maintenance (start, tidy).
+- **insights** — the insight inbox: list, tick, archive, resolve.
+- **ledger** — the run ledger's row for an item that never merged (`merge`
+  writes every other row).
 - **claim** — pick + claim the next unclaimed item (the recon step; not an agent).
 - **merge** — merge a validated item per `git.mode`, re-run tests, clean up.
 - **env** — venv existence / import check (+ bootstrap).
