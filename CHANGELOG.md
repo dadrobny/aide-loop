@@ -154,9 +154,9 @@ instead — that is the bump policy above, and it is enforced by
   own session) and **builder's third-attempt escalation**, which
   `aide-run-item` still dispatches with `model: opus` because the per-dispatch
   override accepts aliases only. `Engine` therefore means one exact model set
-  *for the seven sub-agents*. Checked on Claude Code 2.1.276: a sub-agent whose
-  frontmatter holds a full ID ran on it with `CLAUDE_CODE_SUBAGENT_MODEL` and
-  with `ANTHROPIC_DEFAULT_SONNET_MODEL` set to a different model.
+  *for the seven sub-agents*. Checked on Claude Code 2.1.276, headless: a sub-agent whose
+  frontmatter holds a full ID ran on it with `ANTHROPIC_DEFAULT_SONNET_MODEL`
+  pointing at a different model — the alias remapping does not reach an ID.
 
 ## [1.59.1] — 2026-09-18
 

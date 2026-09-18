@@ -28,11 +28,12 @@ import pytest
 _AGENTS_DIR = Path(__file__).resolve().parents[1] / "agents"
 _ADAPTER_SPEC = Path(__file__).resolve().parents[2] / "ADAPTER-SPEC.md"
 
-#: An exact model ID — `claude-<family>-<version…>` — and never one of the
-#: aliases below, which the runtime is free to re-point between two installs of
+#: An exact model ID — `claude-<family>` and then numeric segments only, so a
+#: moving tag (`claude-opus-5-latest`) is no more an ID than one of the aliases
+#: below, which the runtime is free to re-point between two installs of
 #: the same framework version (issue #250). The family is what §2's tier binding
 #: is read from: T3 -> opus, T2 -> sonnet.
-_MODEL_ID = re.compile(r"^claude-(opus|sonnet|haiku)-[0-9][0-9a-z.\-]*$")
+_MODEL_ID = re.compile(r"^claude-(opus|sonnet|haiku)(?:-[0-9]+)+$")
 _ALIASES = {"opus", "sonnet", "haiku", "fable", "inherit", "default", "best"}
 _EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 
@@ -253,7 +254,9 @@ def test_an_alias_is_not_a_model_id():
     """The guard on #250's guard: every alias the runtime resolves is refused
     by the ID pattern too, so a new alias missing from `_ALIASES` still fails —
     with the less helpful message, but it fails."""
-    for alias in sorted(_ALIASES) + ["claude-opus", "opus-5", "claude-opus-latest"]:
+    for alias in sorted(_ALIASES) + ["claude-opus", "opus-5", "claude-opus-latest",
+                                     "claude-opus-5-latest", "claude-sonnet-5[1m]",
+                                     "Claude-Opus-5"]:
         assert not _MODEL_ID.match(alias), alias
     for exact in ("claude-opus-5", "claude-sonnet-5", "claude-opus-4-8",
                   "claude-haiku-4-5-20251001"):

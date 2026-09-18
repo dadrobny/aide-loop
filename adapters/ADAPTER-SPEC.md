@@ -72,7 +72,17 @@ Recon/claim is **not a role** — it is deterministic (`aide claim`), so no agen
 no tier. The **Claude** column is the reference binding — **T3→Opus, T2→Sonnet**
 (builder→Opus on its third attempt), with `max` reserved for intractable one-offs
 — and each cell folds that runtime's own frontmatter keys into one token, which
-for Claude Code is `model:` + `effort:` on the matching `agents/*.md`.
+for Claude Code is `model:` + `effort:` on the matching `agents/*.md`. A second
+adapter adds **one further column** beside it the day it ships agents, filled only
+for the roles it actually ships and held to its own definitions by a test in its
+own `tests/` directory; a column of empty cells for a runtime that has no agents
+yet would encode this one example as the contract. The tiers and the reasons in
+the last column are the cross-adapter part and are not a copy of anything, so
+only the Claude column is pinned
+(`adapters/claude/tests/test_agent_definitions.py`, both directions: a spec with
+no row, a row with no spec and a disagreeing cell all fail). A runtime without
+sub-agents degrades gracefully to "a fresh chat per role" guidance — the roles and
+their tiers still hold.
 
 **An adapter resolves each role to a fixed model version, so that one installed
 version means one model set** (issue #250). A cell therefore holds an exact model
@@ -86,17 +96,7 @@ alias would have carried on, on a different model, silently. Two things stay
 outside it and are named rather than implied: the **orchestrator** runs in the
 user's own session on whatever model that session holds, and a runtime whose
 per-dispatch model override takes aliases only leaves an **escalation**
-(builder's third attempt) on the alias. The Claude reference has both. A second
-adapter adds **one further column** beside it the day it ships agents, filled only
-for the roles it actually ships and held to its own definitions by a test in its
-own `tests/` directory; a column of empty cells for a runtime that has no agents
-yet would encode this one example as the contract. The tiers and the reasons in
-the last column are the cross-adapter part and are not a copy of anything, so
-only the Claude column is pinned
-(`adapters/claude/tests/test_agent_definitions.py`, both directions: a spec with
-no row, a row with no spec and a disagreeing cell all fail). A runtime without
-sub-agents degrades gracefully to "a fresh chat per role" guidance — the roles and
-their tiers still hold.
+(builder's third attempt) on the alias. The Claude reference has both.
 
 **Optional definition — the item reviewer.** An adapter **may** express a
 **reviewer** at **T2**, dispatched over one item's diff concurrently with the
