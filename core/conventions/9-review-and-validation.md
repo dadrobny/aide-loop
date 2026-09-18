@@ -28,8 +28,10 @@ item's authorised paths, and never acted on in place.
 The scope question is the one above; the rank says what the loop does with the
 finding. *Blocking* — in scope, and the merge waits for the fix. *Minor* — in
 scope too, and the triaging role chooses between fixing it on the branch now
-and capturing it as one `insights.md` line. *Nit* — recorded in the count and
-never dispatched. Scope is answered first and it wins: a finding outside the
+and capturing it as one `insights.md` line — a `defect` entry naming the item,
+so the maintenance queue picks it up (§1 → insights-triage.md); it is the one
+in-scope entry that inbox carries, deferred for cost rather than out of scope.
+*Nit* — recorded in the count and never dispatched. Scope is answered first and it wins: a finding outside the
 running item is one `insights.md` line whatever its rank, since a severe
 observation is no licence to widen the authorised paths. The rank belongs to
 the role that triages, not to the one that reports — a reviewer proposes a

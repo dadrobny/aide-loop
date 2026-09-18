@@ -154,7 +154,8 @@ instead — that is the bump policy above, and it is enforced by
   `aide merge NNN --rounds R --findings blocking=A,minor=B,nit=C`. Where the
   validator merges instead, `loop.review` was `"off"` and no reviewer ran, so
   it passes no `--findings` and those cells stay blank rather than zeroed.
-  `.claude/agents/reviewer.md` reports a proposed rank with each finding.
+  `.claude/agents/reviewer.md` reports a proposed rank with each finding, and
+  the one-line description of review in `.aide/README.md` names the scale.
   **A consumer edits nothing** — `--update` re-copies both, and no template
   version moved (`ledger template 1` stands).
 

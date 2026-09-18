@@ -199,9 +199,10 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
      - **Blocking, in scope** → a fresh `builder` (production code) or
        `test-writer` (tests) with the finding, then a fresh `validator`, merge
        still held. These are validation rounds and count against the cap.
-     - **Minor, in scope** → your call: the same dispatch, or one `insights.md`
-       line instead of it. Say which you chose and why.
-     - **Nit** → counted, and that is all. Never dispatch one.
+     - **Minor, in scope** → your call: the same dispatch (a validation
+       round, counted against the cap like any other), or one `insights.md`
+       `defect` line instead of it. Say which you chose and why.
+     - **Nit, in scope** → counted, and that is all. Never dispatch one.
      - **Out-of-scope findings** → the reviewer already appended them to
        `insights.md`, whatever rank they carry. Nothing to dispatch.
      - **Nothing in scope left** → the review is discharged and both gates have
