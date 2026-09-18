@@ -7,7 +7,7 @@ description: >-
   capped at ~loop.queue_cap items — whichever is smaller — then tidies the
   superseded previous queue and commits both on the current branch. Does NOT push,
   open PRs, write item specs, code, or tests.
-model: opus
+model: claude-opus-5
 effort: xhigh
 skills:
   - aide-document-format

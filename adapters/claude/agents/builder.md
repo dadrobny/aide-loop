@@ -6,7 +6,7 @@ description: >-
   test-writer and validator handle those. Commits the implementation on the
   item's branch. Stops and hands back for PRs, force-pushes, or
   framework/process changes.
-model: sonnet
+model: claude-sonnet-5
 effort: medium
 ---
 

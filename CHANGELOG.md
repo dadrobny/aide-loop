@@ -121,6 +121,43 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [1.59.2] — 2026-09-18
+
+### Changed
+
+- **Every agent spec names an exact model ID, never an alias (issue #250).**
+  `model: opus` and `model: sonnet` resolve to whatever the runtime maps them
+  to on the day, so a role's model could change with no framework release, no
+  `core/VERSION` move and no trace in a consumer's history — and two run-ledger
+  rows carrying the same `Engine` value could have been worked by different
+  model generations. The seven specs now read `model: claude-opus-5`
+  (`queue-planner`, `spec-author`, `spec-reviewer`) and `model:
+  claude-sonnet-5` (`test-writer`, `builder`, `validator`, `reviewer`) — what
+  the aliases resolve to today, so behaviour is unchanged on the day this
+  lands — and `ADAPTER-SPEC.md` §2's Claude cells hold the same IDs
+  (`claude-opus-5, xhigh`), still compared with the frontmatter both ways.
+  `adapters/claude/tests/test_agent_definitions.py` fails on a bare alias in a
+  spec or a cell, and reads the tier binding (T3→Opus, T2→Sonnet) from the
+  ID's family. §2 gains the contract point in runtime-general words — *an
+  adapter resolves each role to a fixed model version, so that one installed
+  version means one model set* — and says the reasoning parameter is a literal
+  already. From here on **a model move is a release whose entry names the role
+  and both IDs.** **A consumer edits nothing.**
+- **What this costs, and what it leaves unpinned.** Every model generation now
+  needs a framework release and an `install.py --update`; an ID the provider
+  has retired **fails the spawn** for a consumer still on the old version,
+  where an alias would have carried on silently on another model; and a
+  provider that spells its IDs differently (Amazon Bedrock) cannot run the
+  specs as shipped, where an alias went through its environment mapping. Two
+  models stay outside the pin, named in §2 and in `adapters/claude/README.md`:
+  the **orchestrator** (`/aide-run-item`, `/aide-run-queue` run in the user's
+  own session) and **builder's third-attempt escalation**, which
+  `aide-run-item` still dispatches with `model: opus` because the per-dispatch
+  override accepts aliases only. `Engine` therefore means one exact model set
+  *for the seven sub-agents*. Checked on Claude Code 2.1.276: a sub-agent whose
+  frontmatter holds a full ID ran on it with `CLAUDE_CODE_SUBAGENT_MODEL` and
+  with `ANTHROPIC_DEFAULT_SONNET_MODEL` set to a different model.
+
 ## [1.59.1] — 2026-09-18
 
 ### Changed
