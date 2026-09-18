@@ -55,9 +55,10 @@ by design. Claude Code is the **reference adapter** (fully built and proven here
 
 ## Install
 
-**Requires Python 3.11+** on `PATH`, and nothing else — installer, CLI and loop
-are stdlib-only. 3.9 works too: the CLI carries a TOML fallback for interpreters
-without `tomllib`.
+**Requires Python 3.11+** on `PATH`, and a git repository to install into.
+Installer, CLI and loop are stdlib-only, so nothing is `pip install`ed for AIDE
+itself. 3.9 works too: the CLI carries a TOML fallback for interpreters without
+`tomllib`.
 
 **Get a version.** Every `core/VERSION` that reaches `main` is tagged
 `v<VERSION>`, and since 1.52.1 published as a
