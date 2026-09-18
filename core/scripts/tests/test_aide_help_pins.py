@@ -71,6 +71,13 @@ that moved everything.
   than an unexplained 'none left'"* (`claim`) — the *wording* of a report,
   which `test_aide_gates.py` holds phrase by phrase; the behaviour half ("it
   will not offer a blocked item") is pinned.
+* *"a blank in them means a count that should have been passed and was not"*
+  and *"since a count is a claim its caller made"* (`merge`) — the reading of
+  a cell and the reason for a pinned behaviour, not a second behaviour; both
+  sit beside claims pinned above. *"The counts are of in-scope findings; one
+  outside the item is an insights.md line and no cell here"* is §9's rule
+  about what the caller counts, which no cell the engine writes can measure —
+  the engine records the number it is handed.
 * The `-h` **option** help (`--queue`, `--base`, `--yes`, …). Argparse prints
   those below the description; this row is the description blocks, and an
   option line is one clause about one flag rather than a statement of what the
@@ -805,6 +812,26 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "changes the exit code",
          "test_aide_ledger::"
          "test_a_ledger_that_cannot_be_written_does_not_fail_the_merge"),
+        # `review_is_off(config)` -> `_ledger_count_cells(no_review=...)`,
+        # which renders `LEDGER_NO_REVIEW_CELL` for every rank the caller left
+        # out. Both guards, because the marker would be unconditional and the
+        # first alone would still pass.
+        ("Where it is off no reviewer ran, so the three of them are written "
+         "as `-` rather than left blank",
+         ("test_aide_ledger::test_merge_under_review_off_marks_the_finding_cells",
+          "test_aide_ledger::"
+          "test_merge_under_review_on_leaves_the_finding_cells_blank")),
+        # `_ledger_count_cells`: `absent` is the marker only where `findings`
+        # is empty, so any count passed takes the whole row back to blanks.
+        ("--findings passed anyway under off wins over the mark",
+         "test_aide_ledger::test_findings_passed_under_review_off_win_over_the_mark"),
+        # `cmd_merge` prints before deriving the row and changes no exit code.
+        ("Where review is on and --findings is absent the run warns on "
+         "stderr, writes the row and still exits 0",
+         ("test_aide_ledger::"
+          "test_merge_with_review_on_and_no_findings_warns_and_still_lands",
+          "test_aide_ledger::"
+          "test_merge_with_review_off_and_no_findings_does_not_warn")),
     ],
 
     # --------------------------------------------------------------- ledger --
@@ -840,6 +867,14 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("The file is created from .aide/templates/ledger.md when this is the "
          "first row",
          "test_aide_ledger::test_the_first_row_creates_the_ledger_from_the_template"),
+        # `cmd_ledger` reads `review_is_off` and hands it to the same renderer
+        # `merge` uses — including for the duplicate check, which compares the
+        # cells it is about to write.
+        ("except under a project whose [loop] review is off, where the three "
+         "finding cells carry the same `-` mark `merge` writes",
+         ("test_aide_ledger::test_abandon_under_review_off_marks_the_finding_cells",
+          "test_aide_ledger::"
+          "test_abandon_run_twice_under_review_off_still_records_the_item_once")),
     ],
 }
 

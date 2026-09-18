@@ -1528,6 +1528,26 @@ def test_merge_creates_the_ledger_from_the_installed_template_and_appends_a_row(
     assert "docs/aide/ledger.md" in shown and "docs/aide/progress.md" in shown
 
 
+def test_merge_marks_the_finding_cells_where_the_scaffold_leaves_review_off(
+        aide, consumer: Path):
+    """The scaffolded `aide.toml` sets `review = "off"`, so the install a
+    consumer gets out of the box writes `-` in the three finding cells — and
+    a blank there means a count that should have been passed and was not."""
+    assert 'review = "off"' in (consumer / "aide.toml").read_text(
+        encoding="utf-8")
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test",
+                      "--rounds", "2"]) == 0
+
+    (row,) = _ledger_rows(aide, consumer)
+    assert (row["Blocking"], row["Minor"], row["Nit"]) == ("-", "-", "-")
+    assert row["Rounds"] == "2"
+    # A row the engine wrote is a row `aide check` can read.
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+
 def test_ledger_abandon_records_an_item_no_merge_will(aide, consumer: Path):
     """Item 002 has no spec and no claim branch here, which is also the point:
     every cell nothing can measure is blank and the row still stands."""

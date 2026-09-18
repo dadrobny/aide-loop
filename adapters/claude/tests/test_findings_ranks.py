@@ -32,6 +32,9 @@ sys.modules[_spec.name] = aide
 _spec.loader.exec_module(aide)  # type: ignore[union-attr]
 
 _RANKS = aide.LEDGER_FINDING_RANKS
+#: The cell the engine writes where no reviewer ran — read from the engine for
+#: the same reason the ranks are: the orchestrator's prose is the copy.
+_MARK = aide.LEDGER_NO_REVIEW_CELL
 
 _RUN_ITEM = _ADAPTER / "commands" / "aide-run-item.md"
 _REVIEWER = _ADAPTER / "agents" / "reviewer.md"
@@ -91,3 +94,67 @@ def test_the_section_defines_the_ranks_the_engine_parses():
     core = _SECTION.read_text(encoding="utf-8").split("### Rationale")[0].lower()
     missing = [rank for rank in _RANKS if rank not in core]
     assert not missing, f"§9's core defines no rank named {missing}"
+
+
+# --------------------------------------------------------------------------- #
+# what the orchestrator does with each rank — the half the engine cannot check
+# --------------------------------------------------------------------------- #
+def _bullet(text: str, opener: str) -> str:
+    """One `- **…**` bullet of step 6, from *opener* to the next bullet at the
+    same indent. Returned lower-cased and on one line, with markdown emphasis
+    and code ticks dropped, so an assertion below is about the words and not
+    the setting or the wrapping."""
+    start = text.index(opener)
+    rest = text[start + len(opener):]
+    indent = "\n" + " " * (start - text.rindex("\n", 0, start) - 1) + "- "
+    end = rest.find(indent)
+    body = opener + (rest if end < 0 else rest[:end])
+    return " ".join(body.translate(str.maketrans("", "", "*`_")).split()).lower()
+
+
+def test_a_nit_only_fix_skips_both_gates_and_costs_no_round():
+    """§9's rank is only worth writing down if the loop acts on it. The nit
+    bullet has to say all three things — dispatch it, run neither gate behind
+    it, and add nothing to the count — because any two of them without the
+    third describe a different behaviour: a nit nobody fixes, a nit that pays
+    for a validation round, or a nit that quietly re-enters the cycle."""
+    bullet = _bullet(_RUN_ITEM.read_text(encoding="utf-8"), "- **Nit, in scope**")
+    assert "builder" in bullet, bullet
+    assert "no validator" in bullet and "no reviewer" in bullet, bullet
+    assert "round" in bullet, bullet
+    # And the blocking bullet still buys one, or the distinction is empty.
+    blocking = _bullet(_RUN_ITEM.read_text(encoding="utf-8"),
+                       "- **Blocking, in scope**")
+    assert "validator" in blocking and "no validator" not in blocking, blocking
+
+
+def test_the_counts_passed_to_the_merge_are_in_scope_findings_only():
+    """An out-of-scope finding is carried by its `insights.md` line (§9). A
+    brief that does not say so invites the one row that cannot be read back:
+    counts that include findings the item never paid for."""
+    text = _RUN_ITEM.read_text(encoding="utf-8").lower()
+    call = text.index("--findings blocking=")
+    tail = text[call:call + 1200]
+    assert "in-scope findings only" in tail, tail[:400]
+
+
+def test_the_unreviewed_row_is_described_as_marked_and_not_as_blank():
+    """The engine writes `LEDGER_NO_REVIEW_CELL` where `[loop] review` is off,
+    so an orchestrator told those cells are *blank* would be reading the row
+    it merged wrongly — and a blank there now means something else entirely
+    (a count that should have been passed)."""
+    text = _RUN_ITEM.read_text(encoding="utf-8")
+    para = next(p for p in text.split("\n\n")
+                if "never passes `--findings`" in p)
+    assert _MARK in para, para
+    flat = " ".join(para.split())
+    assert "cells are left blank" not in flat and "rather than zeroed" not in flat, flat
+
+
+def test_the_reviewer_carries_the_rank_onto_the_out_of_scope_line():
+    """The rank travels as the first word of the entry's free text (§9), which
+    is the only place an out-of-scope finding's triage survives: the row it
+    would have been counted in is never written for it."""
+    text = _REVIEWER.read_text(encoding="utf-8").lower()
+    assert "rank" in text.split("out-of-scope insights")[-1], (
+        "reviewer.md's insights section never says the rank opens the line")

@@ -37,6 +37,15 @@ project's own ratios and their trend.
   the absence of one. A count typed by an agent is a claim; recording nothing
   as `0` would turn an unrecorded run into a clean one. *(aide merge, ledger
   abandon, check)*
+- **The three finding counts are in-scope findings only, and `-` says no
+  review ran.** A finding outside the running item is carried by its
+  `insights.md` line rather than by this row (§9), so it is never counted
+  here. And where the writing verb runs under `loop.review = "off"` and the
+  caller passed no counts, it writes `-` in the Blocking, Minor and Nit cells
+  instead of leaving them empty — the engine reads that setting from
+  `aide.toml`, so no caller supplies it — which leaves a blank in those three
+  meaning one thing only: a count that should have been passed and was not.
+  *(aide merge, ledger abandon, check)*
 - **`outcome` is `merged` or `abandoned`** — how the item left the loop, which
   is the one thing a row cannot be read without: an item that cost three
   rounds and landed and one that cost three rounds and was dropped are
@@ -77,6 +86,16 @@ project's own ratios and their trend.
   and the ranks are its judgement of what a reviewer returned. Passing them at
   the merge is the one moment both are still in hand and a verb is running
   anyway.
+- **Why `-` rather than a fourth reading of a blank.** With the marker
+  absent, a project that never switched review on and a run whose reviewer's
+  findings were dropped on the floor wrote the identical row — and they are
+  the two rows a reader at a queue boundary most needs to tell apart, since
+  one is a policy and the other is a defect in the run. The marker costs one
+  character and is the engine's own answer rather than a fourth thing for a
+  caller to type, because a caller that can type it can mistype it. A count
+  passed anyway under review off is still written: a count is a claim someone
+  made, and the engine does not overwrite a claim with its own reading of the
+  configuration.
 - **Why a blank and not a zero.** The ledger is read as a trend, so a run
   whose caller passed nothing must not read as a run that cost nothing: the
   two are opposite claims and averaging them together silently flatters every

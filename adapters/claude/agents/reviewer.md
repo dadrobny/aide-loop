@@ -70,11 +70,16 @@ read it yourself before you start.
    every role answers about an out-of-scope observation), and propose a rank
    for it on the three-point scale §9 above defines — the orchestrator makes
    the call, and `REVIEW.md` wins where it ranks differently:
-   - **In scope for this item** — it names a file the spec's `## Authorised
-     paths` already covers. Report it as a fix for the orchestrator to dispatch
-     back to `builder` (production code) or `test-writer` (tests).
-   - **Outside it** — append ONE line to `docs/aide/insights.md` and carry on.
-     Never widen the item's authorised paths, and never fix it here.
+   - **In scope for this item** — the finding is about what this diff did, in
+     any file it touched. The authorised paths bound what the item may change;
+     they do not bound what you may report, so a diff that edited a path the
+     spec never authorised is itself a finding, and a blocking one. Report it
+     as a fix for the orchestrator to dispatch back to `builder` (production
+     code) or `test-writer` (tests).
+   - **Outside it** — the finding is about code this diff did not touch.
+     Append ONE line to `docs/aide/insights.md`, opening the free text with
+     the rank word, and carry on. Never widen the item's authorised paths, and
+     never fix it here.
 
 ## Hard limits
 
@@ -102,6 +107,10 @@ code could replace, or an AIDE-framework issue — append ONE line to
 `docs/aide/insights.md` and carry on. Never act on it here. Entry shape:
 
     - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(item NNN, YYYY-MM-DD, engine X.Y.Z)*
+
+For a review finding, open `<one line>` with the rank you proposed — `blocking
+— …`, `minor — …`, `nit — …`. The line's shape is unchanged; the rank is just
+its first word, so the triage you did survives into the inbox.
 
 The feedback loop triages the inbox at the queue boundary. This append is the
 one write allowed outside your (otherwise read-only) scope.

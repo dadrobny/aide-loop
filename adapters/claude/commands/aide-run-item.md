@@ -131,9 +131,12 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    > Review the diff for AIDE item NNN on branch `aide/NNN-short-name`. The spec
    > is `docs/aide/items/NNN-*.md`. Read the diff adversarially for defects the
    > spec never anticipated. **Do NOT write code or tests, do NOT run pytest, do
-   > NOT merge or touch progress.md.** Findings in scope for this item are for
-   > the orchestrator to dispatch; out-of-scope ones are one `insights.md` line
-   > each.
+   > NOT merge or touch progress.md.**
+   > In scope means the finding is about what this diff did, in any file it
+   > touched — an edit to a path the spec never authorised is in scope too, and
+   > blocking. Those are for the orchestrator to dispatch. Anything about code
+   > this diff left alone is out of scope: one `insights.md` line each, opening
+   > with the rank word.
    > Return: findings, most-severe first, each with file, line, and the input or
    > state that triggers it, each triaged in scope / out of scope, and each
    > carrying a proposed rank on the §9 scale — blocking, minor or nit.
@@ -163,8 +166,8 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    re-dispatch. The flag is what puts the round count in the ledger row
    (`merge -h`); a brief that leaves R unsubstituted is a brief the validator
    cannot act on. The validator never passes `--findings`: where it merges at
-   all, `loop.review` was `"off"` and no reviewer ran, so those cells are left
-   blank rather than zeroed (§1 → ledger.md).
+   all, `loop.review` was `"off"` and no reviewer ran, so the engine marks
+   those three cells itself — they read `-`, not blank (§1 → ledger.md).
 
    **Under `loop.review = "background"`, add to that brief:**
    > A `reviewer` is reading this same diff concurrently. **The merge is held**:
@@ -202,7 +205,14 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
      - **Minor, in scope** → your call: the same dispatch (a validation
        round, counted against the cap like any other), or one `insights.md`
        `defect` line instead of it. Say which you chose and why.
-     - **Nit, in scope** → counted, and that is all. Never dispatch one.
+     - **Nit, in scope** → counted, and never worth a validation round of its
+       own. Fold it into whatever `builder` dispatch a blocking or minor
+       finding is already causing. If nits are all that is left, send them to
+       a `builder` on their own — a fresh one, or the one you last used if it
+       is still around — and when it returns, **merge: no `validator` and no
+       `reviewer` behind it, and nothing added to the round count.** A nit
+       that would change behaviour was ranked wrong; re-rank it and pay the
+       round.
      - **Out-of-scope findings** → the reviewer already appended them to
        `insights.md`, whatever rank they carry. Nothing to dispatch.
      - **Nothing in scope left** → the review is discharged and both gates have
@@ -214,8 +224,10 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
        It honours `git.mode` and writes the ✅ itself; `--rounds` is the
        count you kept for the cap and `--findings` the totals you kept while
        triaging, and the two are what put those cells in the ledger row
-       (`merge -h`). Substitute A, B and C with your counts — a command left
-       with its placeholders in it is not a command. **A non-zero exit means
+       (`merge -h`). A, B and C are in-scope findings only: one you sent to
+       `insights.md` is carried by that line and by no cell here. Substitute
+       them with your counts — a command left with its placeholders in it is
+       not a command. **A non-zero exit means
        the item did not land** — under `auto-merge` it re-runs the full suite and
        `aide check`, and a red re-run or a document error leaves the item 🔍
        with nothing pushed; report it and stop
