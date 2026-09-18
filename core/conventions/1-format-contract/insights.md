@@ -11,7 +11,11 @@ the end. Any role, at any time, appends **one line** and returns to its task:
 
 with `<type>` one of **knowledge** (document it), **defect** (fix it), **gap**
 (plan it), **automation** (a recurring manual/agent action deterministic code
-could replace — script it), **framework** (belongs to AIDE itself).
+could replace — script it), **framework** (belongs to AIDE itself). One
+entry is in scope by design: a review finding ranked *minor* (§9) that the
+triaging role chose to defer rather than fix on the branch, filed as a
+`defect` naming the item — it routes like any other `defect`, and it is the
+only line here that a role could have acted on in place.
 
 **The file exists before a role needs it — the engine puts it there.**
 `aide check`, `aide claim`, `aide queue start` and `aide insights list` each

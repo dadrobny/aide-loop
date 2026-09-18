@@ -29,9 +29,7 @@ The scope question is the one above; the rank says what the loop does with the
 finding. *Blocking* — in scope, and the merge waits for the fix. *Minor* — in
 scope too, and the triaging role chooses between fixing it on the branch now
 and capturing it as one `insights.md` line — a `defect` entry naming the item,
-so the maintenance queue picks it up (§1 → insights-triage.md); it is the one
-in-scope entry that inbox carries, deferred for cost rather than out of scope.
-*Nit* — recorded in the count and never dispatched. Scope is answered first and it wins: a finding outside the
+so the maintenance queue picks it up (§1 → insights-triage.md). *Nit* — recorded in the count and never dispatched. Scope is answered first and it wins: a finding outside the
 running item is one `insights.md` line whatever its rank, since a severe
 observation is no licence to widen the authorised paths. The rank belongs to
 the role that triages, not to the one that reports — a reviewer proposes a
@@ -76,6 +74,9 @@ call.
   an undefined scale is a claim nobody can read back — two runs each reporting
   three minor findings say nothing to one another unless the word is fixed
   here. Three is the number of distinct decisions the loop makes about a
-  finding it keeps: wait for it, choose about it, or only record it.
+  finding it keeps: wait for it, choose about it, or only record it. A minor
+  finding captured rather than fixed is the one in-scope entry the inbox
+  carries — deferred for cost, not out of scope — and §1 → insights.md names
+  that exception so the file's own definition stays true.
 - **Why the reviewer writes nothing.** A reviewer that fixes what it finds has
   reviewed its own work by the time it is done.

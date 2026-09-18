@@ -139,7 +139,10 @@ instead — that is the bump policy above, and it is enforced by
   to the role that triages rather than the one that reports, and a project's
   `REVIEW.md` may re-rank exactly as it already decides what is worth flagging.
   The section is generated into `.claude/skills/aide-review-and-validation/`,
-  so the delivered copy carries the scale with no second edit.
+  so the delivered copy carries the scale with no second edit. `§1 →
+  insights.md` names the one in-scope entry the inbox now carries — a deferred
+  *minor* finding, filed as a `defect` naming the item — so the file's own
+  out-of-scope definition stays true.
 
 ### Changed
 
