@@ -1,0 +1,11 @@
+# Machine-local facts for the triage-issues skill. Copy to local.toml (which
+# is gitignored) and fill in. Nothing here is framework content.
+
+# The gh binary, when it is not on PATH. Omit to use plain `gh`.
+gh = "/path/to/gh"
+
+# Local consumer checkouts, each carrying the engine version it was installed
+# at in .aide/VERSION. Name -> path. Notes are free text.
+[consumers]
+# spine-failure-lab = { path = "/path/to/spine-failure-lab", notes = "has an InstructionsLoaded log" }
+# SegFACET = { path = "/path/to/SegFACET" }

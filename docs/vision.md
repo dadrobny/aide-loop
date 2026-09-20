@@ -42,6 +42,11 @@ The framework ships as three layers: a provider-agnostic **engine**, a per-runti
 works. This document says why it is shaped that way, and what would be a mistake
 to add.
 
+It is distributed as this public repository and nothing else: a consumer clones
+it, runs `install.py` from the clone, and reports back to this tracker. There
+is no package, registry or hosted service in between, so what a consumer runs
+is what it can read, and a fix is a version a consumer pulls.
+
 ## Who it is for
 
 A developer running an AI coding agent against a real codebase for longer than

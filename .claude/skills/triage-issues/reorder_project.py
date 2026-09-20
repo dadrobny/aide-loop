@@ -29,14 +29,18 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import pathlib
 import shutil
 import subprocess
 import sys
+import tomllib
 
 PROJECT_ID = "PVT_kwHOByffxc4Bg9iM"
 PROJECT_NUMBER = "1"
 OWNER = "dadrobny"
-FALLBACK_GH = "/mnt/data/ddrobny/.local/bin/gh"
+#: Machine-local facts (the gh path when it is off PATH) sit next to this
+#: script in a gitignored local.toml; local.toml.example holds the shape.
+LOCAL_TOML = pathlib.Path(__file__).with_name("local.toml")
 
 #: A Done item stays on the board for roughly the last few PR cycles, so the
 #: un-defer sweep and the "did we just fix this?" check in triage step 2 can
@@ -69,7 +73,12 @@ query($login:String!,$number:Int!,$cursor:String){
 
 
 def find_gh() -> str:
-    return shutil.which("gh") or FALLBACK_GH
+    if LOCAL_TOML.is_file():
+        with LOCAL_TOML.open("rb") as fh:
+            configured = tomllib.load(fh).get("gh")
+        if configured:
+            return configured
+    return shutil.which("gh") or "gh"
 
 
 def run(argv: list[str]) -> str:

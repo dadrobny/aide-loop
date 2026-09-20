@@ -17,9 +17,12 @@ project's tracker, not a rule every runtime should express.
 
 ## Before you start
 
-- **`gh` is not on `PATH`.** Call `/mnt/data/ddrobny/.local/bin/gh`. Set
-  `GH=/mnt/data/ddrobny/.local/bin/gh` once and use `$GH` throughout.
-- The repo is **private** and the Project needs the `project` scope
+- **Machine-local facts live in `local.toml`** next to this file, gitignored:
+  the `gh` binary when it is not on `PATH`, and the local consumer checkouts.
+  On a new machine, copy `local.toml.example` to `local.toml` and fill it in.
+  Read it first, set `GH` to its `gh` value (or plain `gh`) once, and use `$GH`
+  throughout.
+- The Project needs the `project` scope
   (`$GH auth refresh -s project`). `$GH auth status` should list `project` among
   the token scopes; without it every `gh project` call fails on permissions, not
   on network.
@@ -43,7 +46,7 @@ step — not one question per issue.
 Run these together; they are independent.
 
 ```bash
-GH=/mnt/data/ddrobny/.local/bin/gh
+GH=gh   # or the path local.toml gives
 $GH issue list  --repo dadrobny/aide-loop --state open --limit 200 \
     --json number,title,labels,createdAt,author > /tmp/issues.json
 $GH project item-list 1 --owner dadrobny --format json --limit 200 > /tmp/items.json
@@ -68,10 +71,9 @@ convention carries it explicitly:
 > **Project:** SegFACET (consumer). **Observed under engine 1.21.0**
 
 If that line is missing, read the version out of the consumer itself — the local
-installs are `/mnt/data/spine/codes/spine-failure-lab` and
-`/mnt/data/spine/codes/SegFACET`, each with a `.aide/VERSION`. If the reporter
-is not a local consumer, ask rather than guess; "unknown version" and "current
-version" are not the same triage.
+checkouts are listed in `local.toml`, each with a `.aide/VERSION`. If the
+reporter is not a local consumer, ask rather than guess; "unknown version" and
+"current version" are not the same triage.
 
 Then, for each issue whose observed version is behind `core/VERSION`:
 

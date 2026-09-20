@@ -1,0 +1,7 @@
+aide-loop
+Copyright (c) 2026 David Drobny
+
+This project is derived from the AIDE (AI-Driven Engineering) Spec Kit extension
+by mnriem (https://github.com/mnriem/spec-kit-extensions), used under the MIT
+License. See LICENSE for the terms; the derivation is described in the
+Provenance section of README.md.
