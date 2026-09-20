@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -73,20 +74,30 @@ query($login:String!,$number:Int!,$cursor:String){
 
 
 def find_gh() -> str:
+    """The gh binary: local.toml's `gh` key if set, else PATH, else "gh"."""
     if LOCAL_TOML.is_file():
-        with LOCAL_TOML.open("rb") as fh:
-            configured = tomllib.load(fh).get("gh")
-        if configured:
-            return configured
+        try:
+            with LOCAL_TOML.open("rb") as fh:
+                configured = tomllib.load(fh).get("gh")
+        except tomllib.TOMLDecodeError as exc:
+            sys.exit(f"{LOCAL_TOML}: not valid TOML: {exc}")
+        if configured is not None:
+            if not isinstance(configured, str) or not configured:
+                sys.exit(f"{LOCAL_TOML}: `gh` must be a non-empty string path")
+            return os.path.expanduser(configured)
     return shutil.which("gh") or "gh"
 
 
 def run(argv: list[str]) -> str:
     # encoding= rather than text=, so a non-UTF-8 default locale cannot mangle
     # an issue title (conventions.md §6, and issue #126).
-    proc = subprocess.run(
-        argv, capture_output=True, encoding="utf-8", errors="replace"
-    )
+    try:
+        proc = subprocess.run(
+            argv, capture_output=True, encoding="utf-8", errors="replace"
+        )
+    except OSError as exc:
+        sys.exit(f"cannot run {argv[0]}: {exc} — set `gh` in "
+                 f"{LOCAL_TOML.name} or put gh on PATH")
     if proc.returncode != 0:
         sys.exit(f"{argv[0]} failed ({proc.returncode}):\n{proc.stderr.strip()}")
     return proc.stdout
@@ -226,8 +237,11 @@ def main() -> int:
                         help="retire Done items closed more than N days ago; "
                              "'never' keeps them all "
                              f"(default {DEFAULT_ARCHIVE_AFTER_DAYS})")
-    parser.add_argument("--gh", default=find_gh(), help="path to the gh binary")
+    parser.add_argument("--gh", default=None,
+                        help="path to the gh binary (default: local.toml, then PATH)")
     args = parser.parse_args()
+    if args.gh is None:
+        args.gh = find_gh()
 
     raw = run([args.gh, "project", "item-list", PROJECT_NUMBER,
                "--owner", OWNER, "--format", "json", "--limit", "500"])

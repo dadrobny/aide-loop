@@ -182,7 +182,7 @@ aide-loop/
 │   └── copilot/ cursor/ gemini/   porting stubs (future work)
 ├── docs/                    vision.md · quickstart.md · concepts.md
 ├── install.py               the cross-OS installer
-└── README.md · LICENSE · NOTICE
+└── README.md · LICENSE · NOTICE · SECURITY.md · CONTRIBUTING.md
 ```
 
 - [`core/conventions.md`](core/conventions.md) — the shared contract every agent,

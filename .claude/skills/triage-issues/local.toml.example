@@ -1,8 +1,9 @@
 # Machine-local facts for the triage-issues skill. Copy to local.toml (which
 # is gitignored) and fill in. Nothing here is framework content.
 
-# The gh binary, when it is not on PATH. Omit to use plain `gh`.
-gh = "/path/to/gh"
+# The gh binary, when it is not on PATH. Leave commented out to use the one
+# on PATH; a set value wins over PATH.
+# gh = "/path/to/gh"
 
 # Local consumer checkouts, each carrying the engine version it was installed
 # at in .aide/VERSION. Name -> path. Notes are free text.
