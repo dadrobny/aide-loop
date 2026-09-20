@@ -31,7 +31,6 @@ import datetime as dt
 import json
 import os
 import pathlib
-import shutil
 import subprocess
 import sys
 import tomllib
@@ -73,19 +72,27 @@ query($login:String!,$number:Int!,$cursor:String){
 """
 
 
-def find_gh() -> str:
-    """The gh binary: local.toml's `gh` key if set, else PATH, else "gh"."""
+def find_gh() -> tuple[str, str]:
+    """The gh binary and where it came from: local.toml's top-level `gh` key
+    if set, else the bare name for PATH to resolve."""
     if LOCAL_TOML.is_file():
         try:
             with LOCAL_TOML.open("rb") as fh:
-                configured = tomllib.load(fh).get("gh")
-        except tomllib.TOMLDecodeError as exc:
-            sys.exit(f"{LOCAL_TOML}: not valid TOML: {exc}")
+                data = tomllib.load(fh)
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            sys.exit(f"{LOCAL_TOML}: cannot read: {exc}")
+        if "gh" in data.get("consumers", {}):
+            sys.exit(f"{LOCAL_TOML}: `gh` is a top-level key — move it above "
+                     "the [consumers] header")
+        configured = data.get("gh")
         if configured is not None:
             if not isinstance(configured, str) or not configured:
                 sys.exit(f"{LOCAL_TOML}: `gh` must be a non-empty string path")
-            return os.path.expanduser(configured)
-    return shutil.which("gh") or "gh"
+            return os.path.expanduser(configured), str(LOCAL_TOML)
+    return "gh", "PATH"
+
+
+GH_SOURCE = "PATH"   # set by main(); names where the gh path came from
 
 
 def run(argv: list[str]) -> str:
@@ -96,8 +103,7 @@ def run(argv: list[str]) -> str:
             argv, capture_output=True, encoding="utf-8", errors="replace"
         )
     except OSError as exc:
-        sys.exit(f"cannot run {argv[0]}: {exc} — set `gh` in "
-                 f"{LOCAL_TOML.name} or put gh on PATH")
+        sys.exit(f"cannot run {argv[0]} (from {GH_SOURCE}): {exc}")
     if proc.returncode != 0:
         sys.exit(f"{argv[0]} failed ({proc.returncode}):\n{proc.stderr.strip()}")
     return proc.stdout
@@ -240,8 +246,11 @@ def main() -> int:
     parser.add_argument("--gh", default=None,
                         help="path to the gh binary (default: local.toml, then PATH)")
     args = parser.parse_args()
+    global GH_SOURCE
     if args.gh is None:
-        args.gh = find_gh()
+        args.gh, GH_SOURCE = find_gh()
+    else:
+        GH_SOURCE = "--gh"
 
     raw = run([args.gh, "project", "item-list", PROJECT_NUMBER,
                "--owner", OWNER, "--format", "json", "--limit", "500"])

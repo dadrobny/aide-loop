@@ -3,5 +3,7 @@ Copyright (c) 2026 David Drobny
 
 This project is derived from the AIDE (AI-Driven Engineering) Spec Kit extension
 by mnriem (https://github.com/mnriem/spec-kit-extensions), used under the MIT
-License. See LICENSE for the terms; the derivation is described in the
-Provenance section of README.md.
+License. The upstream project declares MIT in its extension manifest and
+README and carries no copyright line of its own; the terms in LICENSE are the
+same text and apply to the derived parts as well. The derivation is described
+in the Provenance section of README.md.
