@@ -182,7 +182,7 @@ aide-loop/
 │   └── copilot/ cursor/ gemini/   porting stubs (future work)
 ├── docs/                    vision.md · quickstart.md · concepts.md
 ├── install.py               the cross-OS installer
-└── README.md · LICENSE
+└── README.md · LICENSE · NOTICE · SECURITY.md · CONTRIBUTING.md
 ```
 
 - [`core/conventions.md`](core/conventions.md) — the shared contract every agent,
@@ -230,4 +230,5 @@ documents that carry a plan between sessions. Nearly everything around that
 skeleton was built here — the numbered contract in `conventions/`, the
 deterministic CLI and its consistency gate, role-scoped sub-agents on capability
 tiers, the orchestrators and the usage-gated supervisor, the engine/adapter
-split, and the installer. See [`LICENSE`](LICENSE) for the derivation notice.
+split, and the installer. [`NOTICE`](NOTICE) carries the derivation; the
+license is MIT.

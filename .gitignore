@@ -8,3 +8,5 @@ adapters/**/loop.local.toml
 # installer artifacts
 .aide-merge
 .DS_Store
+# repo-local skill config (per machine)
+.claude/skills/triage-issues/local.toml

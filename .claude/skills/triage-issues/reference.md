@@ -26,7 +26,8 @@ $GH project item-list 1 --owner dadrobny --format json --limit 200 > /tmp/pre.js
 
 Names survive the rotation; ids do not. Restore by name.
 
-`GH=/mnt/data/ddrobny/.local/bin/gh` throughout (`gh` is not on `PATH`).
+`GH` throughout is the `gh` path from `local.toml`, or plain `gh` when it is on
+`PATH`.
 
 ## Ids
 
@@ -150,19 +151,14 @@ $GH project item-add 1 --owner dadrobny --url https://github.com/dadrobny/aide-l
 
 ## Consumer installs
 
-Local checkouts under `/mnt/data/spine/codes`, each carrying the engine version
-it was installed at in `.aide/VERSION`:
-
-| Consumer | Path | Notes |
-|---|---|---|
-| spine-failure-lab | `/mnt/data/spine/codes/spine-failure-lab` | has an `InstructionsLoaded` log |
-| SegFACET | `/mnt/data/spine/codes/SegFACET` | |
-
-Read the version an issue was observed under when its body does not say:
+The local checkouts, each carrying the engine version it was installed at in
+`.aide/VERSION`, are the `[consumers]` table of `local.toml` (gitignored; the
+shape is in `local.toml.example`). Read the version an issue was observed
+under when its body does not say:
 
 ```bash
-cat /mnt/data/spine/codes/SegFACET/.aide/VERSION
-python install.py --into /mnt/data/spine/codes/SegFACET --check   # writes nothing
+cat <consumer>/.aide/VERSION
+python install.py --into <consumer> --check   # writes nothing
 ```
 
 ## Issue template
