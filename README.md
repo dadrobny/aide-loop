@@ -56,7 +56,7 @@ by design. Claude Code is the **reference adapter** (fully built and proven here
 ## Install
 
 **Requires Python 3.11+** on `PATH`, and a git repository to install into.
-Installer, CLI and loop are stdlib-only, so nothing is `pip install`ed for AIDE
+Installer and CLI are stdlib-only, so nothing is `pip install`ed for AIDE
 itself. 3.9 works too: the CLI carries a TOML fallback for interpreters without
 `tomllib`.
 
@@ -95,7 +95,9 @@ Cross-OS. It:
    `<!-- generated-from: .aide/conventions/<file>.md -->` is written as the
    adapter's own text followed by that contract section's core, verbatim. A
    section that cannot be rendered aborts the install before the first write.
-3. copies the usage probe → `<target>/.aide/loop/usage_probe.py` (the loop's seam)
+3. moves a pre-2.0.0 `<target>/.aide/loop/loop.local.toml` to
+   `<target>/.aide/local.toml` — the per-machine config's home now the
+   supervisor it sat beside is retired; a no-op for anyone else
 4. scaffolds `<target>/aide.toml` (prompts for `source_dir`, `test_command`,
    `git.mode`; `--yes` + flags for non-interactive/CI use)
 5. ensures the runtime's instruction file (for Claude, `<target>/CLAUDE.md`)
@@ -174,11 +176,11 @@ aide-loop/
 │   ├── AGENT-CONTEXT.md     the page that must bind before anything points anywhere
 │   ├── templates/           vision · roadmap · progress · queue · item · insights · ledger
 │   ├── scripts/aide.py      the stdlib CLI (+ tests/)
-│   ├── loop/loop.py         the usage-gated supervisor (+ a pluggable probe seam)
+│   ├── local.toml.example   the per-machine config's shape (gitignored once copied)
 │   └── VERSION
 ├── adapters/
 │   ├── ADAPTER-SPEC.md      the engine↔adapter contract (what any runtime must express)
-│   ├── claude/              LAYER 2 — the reference adapter (agents · skills · commands · rules · hooks · settings.json · usage_probe.py · default-context.json)
+│   ├── claude/              LAYER 2 — the reference adapter (agents · skills · commands · rules · hooks · settings.json · default-context.json)
 │   └── copilot/ cursor/ gemini/   porting stubs (future work)
 ├── docs/                    vision.md · quickstart.md · concepts.md
 ├── install.py               the cross-OS installer
@@ -229,6 +231,5 @@ roadmap → progress → queue → item → execute → feedback, and the idea o
 documents that carry a plan between sessions. Nearly everything around that
 skeleton was built here — the numbered contract in `conventions/`, the
 deterministic CLI and its consistency gate, role-scoped sub-agents on capability
-tiers, the orchestrators and the usage-gated supervisor, the engine/adapter
-split, and the installer. [`NOTICE`](NOTICE) carries the derivation; the
-license is MIT.
+tiers, the orchestrators, the engine/adapter split, and the installer.
+[`NOTICE`](NOTICE) carries the derivation; the license is MIT.

@@ -6,7 +6,7 @@ single-quoted commit message; the carve-out for the documented
 framework-update workflow (all four repo-override forms — ``git -C``,
 ``--git-dir``, ``--work-tree``, ``GIT_DIR=``/``GIT_WORK_TREE=`` — on the
 declared ``[framework] local_path``, sourced from the personal, gitignored
-``.aide/loop/loop.local.toml``, never the shared ``aide.toml``); and that the
+``.aide/local.toml``, never the shared ``aide.toml``); and that the
 three non-``-C`` forms are recognised at all (they previously were not,
 letting an agent achieve the identical effect ``-C`` was blocked for, via a
 different flag).
@@ -53,14 +53,14 @@ _OVERRIDE_MARKER = "repo other than cwd"  # distinctive substring of the rule-1 
 
 
 def test_git_dash_c_blocked_without_declaration(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)  # no .aide/loop/loop.local.toml here
+    monkeypatch.chdir(tmp_path)  # no .aide/local.toml here
     assert _OVERRIDE_MARKER in _titles("git -C ../aide-loop push")
 
 
 def _declare_local_path(tmp_path, path):
-    loop_dir = tmp_path / ".aide" / "loop"
-    loop_dir.mkdir(parents=True)
-    (loop_dir / "loop.local.toml").write_text(
+    aide_dir = tmp_path / ".aide"
+    aide_dir.mkdir(parents=True, exist_ok=True)
+    (aide_dir / "local.toml").write_text(
         f'[framework]\nlocal_path = "{path}"\n', encoding="utf-8"
     )
 
@@ -75,13 +75,52 @@ def test_git_dash_c_allowed_for_declared_framework_path(tmp_path, monkeypatch):
 
 def test_git_dash_c_declaration_in_shared_aide_toml_is_not_honoured(tmp_path, monkeypatch):
     # A machine-specific path must never live in the committed aide.toml —
-    # only the personal, gitignored loop.local.toml source is read.
+    # only the personal, gitignored local.toml source is read.
     (tmp_path / "aide.toml").write_text(
         '[framework]\nrepo = "x/aide-loop"\nlocal_path = "../aide-loop"\n',
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
     assert _OVERRIDE_MARKER in _titles("git -C ../aide-loop push")
+
+
+# --------------------------------------------------------------------------- #
+# rule 1 — the 2.0.0 move of the per-machine config
+# --------------------------------------------------------------------------- #
+_MIGRATION_MARKER = "no longer read as of 2.0.0"
+
+
+def test_the_denial_names_the_move_when_the_config_is_still_at_the_old_path(
+        tmp_path, monkeypatch):
+    """A consumer who copied the framework's files by hand keeps a declaration
+    the guard no longer reads — and would otherwise be told only that the repo
+    is undeclared, over a file where they plainly declared it. The denial is
+    what the session sees, so the repair goes there."""
+    loop_dir = tmp_path / ".aide" / "loop"
+    loop_dir.mkdir(parents=True)
+    (loop_dir / "loop.local.toml").write_text(
+        '[framework]\nlocal_path = "../aide-loop"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    titles = _titles("git -C ../aide-loop push")
+    assert _OVERRIDE_MARKER in titles, "the pre-2.0.0 path must not be read"
+    assert _MIGRATION_MARKER in titles
+    assert ".aide/local.toml" in titles
+
+
+def test_the_denial_is_silent_about_the_move_when_there_is_nothing_to_move(
+        tmp_path, monkeypatch):
+    """Both the ordinary case (no such file) and the one the installer reports
+    itself (both files present, the new one being read)."""
+    monkeypatch.chdir(tmp_path)
+    assert _MIGRATION_MARKER not in _titles("git -C ../aide-loop push")
+
+    _declare_local_path(tmp_path, "../aide-loop")
+    loop_dir = tmp_path / ".aide" / "loop"
+    loop_dir.mkdir(parents=True)
+    (loop_dir / "loop.local.toml").write_text(
+        '[framework]\nlocal_path = "../elsewhere"\n', encoding="utf-8")
+    assert _MIGRATION_MARKER not in _titles("git -C ../elsewhere push")
 
 
 # --------------------------------------------------------------------------- #
@@ -176,13 +215,13 @@ def test_operators_inside_quotes_do_not_false_positive():
 # [hygiene] extra_repos — a project may legitimately span more than one repo
 # --------------------------------------------------------------------------- #
 def _declare_extra_repos(tmp_path, paths, framework=None):
-    loop_dir = tmp_path / ".aide" / "loop"
-    loop_dir.mkdir(parents=True, exist_ok=True)
+    aide_dir = tmp_path / ".aide"
+    aide_dir.mkdir(parents=True, exist_ok=True)
     listed = ", ".join(f'"{p}"' for p in paths)
     text = f"[hygiene]\nextra_repos = [{listed}]\n"
     if framework is not None:
         text = f'[framework]\nlocal_path = "{framework}"\n\n' + text
-    (loop_dir / "loop.local.toml").write_text(text, encoding="utf-8")
+    (aide_dir / "local.toml").write_text(text, encoding="utf-8")
 
 
 def test_extra_repo_is_allowed(tmp_path, monkeypatch):
@@ -242,21 +281,15 @@ def test_empty_extra_repos_keeps_the_default_posture(tmp_path, monkeypatch):
 def test_extra_repos_across_multiple_lines_is_parsed(tmp_path, monkeypatch):
     """A TOML array may be written multi-line; a reader that stops at the first
     newline would silently honour only the first entry."""
-    loop_dir = tmp_path / ".aide" / "loop"
-    loop_dir.mkdir(parents=True)
-    (loop_dir / "loop.local.toml").write_text(
-        '[hygiene]\nextra_repos = [\n  "../one",\n  "../two",\n]\n',
-        encoding="utf-8")
+    _write_local_toml(tmp_path,
+                      '[hygiene]\nextra_repos = [\n  "../one",\n  "../two",\n]\n')
     monkeypatch.chdir(tmp_path)
     assert guard.violations("git -C ../two status") == []
 
 
 def test_extra_repos_ignores_a_trailing_comment(tmp_path, monkeypatch):
-    loop_dir = tmp_path / ".aide" / "loop"
-    loop_dir.mkdir(parents=True)
-    (loop_dir / "loop.local.toml").write_text(
-        '[hygiene]\nextra_repos = ["../one"]  # the sibling programme repo\n',
-        encoding="utf-8")
+    _write_local_toml(tmp_path,
+                      '[hygiene]\nextra_repos = ["../one"]  # the sibling programme repo\n')
     monkeypatch.chdir(tmp_path)
     assert guard.violations("git -C ../one status") == []
 
@@ -271,18 +304,15 @@ def test_extra_repos_in_shared_aide_toml_is_not_honoured(tmp_path, monkeypatch):
 
 
 def test_extra_repos_under_another_section_is_not_honoured(tmp_path, monkeypatch):
-    loop_dir = tmp_path / ".aide" / "loop"
-    loop_dir.mkdir(parents=True)
-    (loop_dir / "loop.local.toml").write_text(
-        '[loop]\nextra_repos = ["../sibling"]\n', encoding="utf-8")
+    _write_local_toml(tmp_path, '[loop]\nextra_repos = ["../sibling"]\n')
     monkeypatch.chdir(tmp_path)
     assert _OVERRIDE_MARKER in _titles("git -C ../sibling status")
 
 
 def _write_local_toml(tmp_path, text):
-    loop_dir = tmp_path / ".aide" / "loop"
-    loop_dir.mkdir(parents=True, exist_ok=True)
-    (loop_dir / "loop.local.toml").write_text(text, encoding="utf-8")
+    aide_dir = tmp_path / ".aide"
+    aide_dir.mkdir(parents=True, exist_ok=True)
+    (aide_dir / "local.toml").write_text(text, encoding="utf-8")
 
 
 def test_malformed_key_does_not_disable_the_whole_guard(tmp_path, monkeypatch):

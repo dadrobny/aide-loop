@@ -40,7 +40,7 @@ SIBLING_RULES = "# Sibling rules\n\nNever 'fix' the consumer paths.\n"
 def _consumer(tmp_path, extra_repos=(), framework=None, sibling_text=SIBLING_RULES):
     """A cwd repo declaring siblings, plus the sibling trees themselves."""
     repo = tmp_path / "consumer"
-    (repo / ".aide" / "loop").mkdir(parents=True)
+    (repo / ".aide").mkdir(parents=True)
 
     declared = list(extra_repos)
     lines = []
@@ -50,7 +50,7 @@ def _consumer(tmp_path, extra_repos=(), framework=None, sibling_text=SIBLING_RUL
     if extra_repos:
         listed = ", ".join('"%s"' % p for p in extra_repos)
         lines.append("[hygiene]\nextra_repos = [%s]\n" % listed)
-    (repo / ".aide" / "loop" / "loop.local.toml").write_text(
+    (repo / ".aide" / "local.toml").write_text(
         "\n".join(lines), encoding="utf-8"
     )
 
@@ -233,7 +233,7 @@ def test_an_undeclared_repo_injects_nothing(tmp_path, monkeypatch):
 
 def test_no_declaration_at_all_injects_nothing(tmp_path, monkeypatch):
     repo = tmp_path / "consumer"
-    (repo / ".aide" / "loop").mkdir(parents=True)
+    (repo / ".aide").mkdir(parents=True)
     assert _run(monkeypatch, repo, "Edit", {"file_path": str(tmp_path / "s" / "x.py")}) is None
 
 
@@ -405,8 +405,8 @@ def test_a_malformed_local_toml_injects_nothing(tmp_path, monkeypatch):
     inherits that, so a typo in a personal config file cannot start leaking an
     undeclared repo's file into context."""
     repo = tmp_path / "consumer"
-    (repo / ".aide" / "loop").mkdir(parents=True)
-    (repo / ".aide" / "loop" / "loop.local.toml").write_text(
+    (repo / ".aide").mkdir(parents=True)
+    (repo / ".aide" / "local.toml").write_text(
         '[hygiene]\nextra_repos = "../sibling"\n', encoding="utf-8"
     )
     sibling = tmp_path / "sibling"

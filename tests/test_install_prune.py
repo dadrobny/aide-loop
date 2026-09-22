@@ -77,12 +77,12 @@ def test_a_directory_the_prune_empties_is_removed_too(tmp_path: Path):
 def test_a_directory_still_holding_a_protected_file_survives(tmp_path: Path):
     """Emptiness is checked after the files are gone, not predicted from the source."""
     src = _tree(tmp_path / "src", "keep.md")
-    dst = _tree(tmp_path / "dst", "keep.md", "gone/a.md", "gone/loop.local.toml")
+    dst = _tree(tmp_path / "dst", "keep.md", "gone/a.md", "gone/local.toml")
 
     install.prune_stale(src, dst, [])
 
     assert not (dst / "gone" / "a.md").exists()
-    assert (dst / "gone" / "loop.local.toml").is_file()
+    assert (dst / "gone" / "local.toml").is_file()
 
 
 def test_private_and_junk_names_are_never_prune_candidates(tmp_path: Path):
@@ -91,36 +91,66 @@ def test_private_and_junk_names_are_never_prune_candidates(tmp_path: Path):
     Treating "not in the source" as "removed from the engine" would delete a
     consumer's gitignored per-machine config on the next update.
     """
-    src = _tree(tmp_path / "src", "loop/loop.py")
-    dst = _tree(tmp_path / "dst", "loop/loop.py", "loop/loop.local.toml",
-                "loop/__pycache__/loop.cpython-312.pyc", "scripts/aide.pyc")
+    src = _tree(tmp_path / "src", "scripts/aide.py")
+    dst = _tree(tmp_path / "dst", "scripts/aide.py", "local.toml",
+                "scripts/__pycache__/aide.cpython-312.pyc", "scripts/aide.pyc")
 
     install.prune_stale(src, dst, [])
 
-    assert (dst / "loop" / "loop.local.toml").is_file()
-    assert (dst / "loop" / "__pycache__" / "loop.cpython-312.pyc").is_file()
+    assert (dst / "local.toml").is_file()
+    assert (dst / "scripts" / "__pycache__" / "aide.cpython-312.pyc").is_file()
     assert (dst / "scripts" / "aide.pyc").is_file()
 
 
-def test_a_file_the_installer_writes_from_the_adapter_is_kept(tmp_path: Path):
-    """The usage probe lives under `.aide/loop/` but comes from `adapters/<n>/`.
+def test_the_pre_2_0_config_is_still_protected_at_its_old_path(tmp_path: Path):
+    """`loop.local.toml` stays in SKIP_NAMES after 2.0.0 renamed the file.
 
-    It is absent from `core/`, so without the keep-list the prune would delete
-    the probe the same run had just installed.
+    A consumer updating from 1.x has one, and `migrate_local_config` moves it
+    before the prune runs. If the move cannot happen — both files present, or
+    an OSError — the prune must still step around it: the alternative is the
+    update deleting the machine's `extra_repos` instead of moving them.
     """
-    src = _tree(tmp_path / "src", "loop/loop.py")
-    dst = _tree(tmp_path / "dst", "loop/loop.py", "loop/usage_probe.py")
+    src = _tree(tmp_path / "src", "scripts/aide.py")
+    dst = _tree(tmp_path / "dst", "scripts/aide.py", "loop/loop.py",
+                "loop/loop.local.toml")
+
+    install.prune_stale(src, dst, [])
+
+    assert not (dst / "loop" / "loop.py").exists()
+    assert (dst / "loop" / "loop.local.toml").is_file()
+    assert (dst / "loop").is_dir(), "a protected file's directory went with it"
+
+
+def test_the_retired_supervisor_and_its_probe_are_pruned_whole(tmp_path: Path):
+    """2.0.0 retired `.aide/loop/` — engine files and the adapter's probe alike.
+
+    The probe was the one path the installer wrote under `.aide/` from
+    `adapters/<n>/`, and it was on the keep-list for exactly that reason. With
+    the seam gone the keep-list entry goes too, which is what lets the prune
+    remove a file `core/` never shipped — and the directory with it.
+    """
+    src = _tree(tmp_path / "src", "scripts/aide.py")
+    dst = _tree(tmp_path / "dst", "scripts/aide.py", "loop/loop.py",
+                "loop/usage_probe.py")
 
     install.prune_stale(src, dst, [], keep=install.AIDE_FOREIGN_PATHS)
 
-    assert (dst / "loop" / "usage_probe.py").is_file()
+    assert not (dst / "loop").exists(), "the retired directory survived the prune"
+    assert (dst / "scripts" / "aide.py").is_file()
 
 
 def test_the_keep_list_names_a_path_the_installer_actually_writes(tmp_path: Path):
-    """A keep-entry that no longer matches is a silent deletion waiting to happen."""
-    assert "loop/usage_probe.py" in install.AIDE_FOREIGN_PATHS
-    assert (FRAMEWORK_ROOT / "adapters" / "claude" / "usage_probe.py").is_file()
-    assert not (FRAMEWORK_ROOT / "core" / "loop" / "usage_probe.py").exists()
+    """A keep-entry that no longer matches is a silent deletion waiting to happen.
+
+    The inverse bites as hard and is what 2.0.0 had to fix: an entry kept for a
+    file nothing writes any more protects a retired file forever.
+    """
+    for rel in install.AIDE_FOREIGN_PATHS:
+        assert not (FRAMEWORK_ROOT / "core" / rel).exists(), (
+            f"{rel} is shipped by core/ — the prune finds it in the source and "
+            f"the keep-list entry is dead weight")
+    assert "loop/usage_probe.py" not in install.AIDE_FOREIGN_PATHS
+    assert not (FRAMEWORK_ROOT / "adapters" / "claude" / "usage_probe.py").exists()
 
 
 def test_the_adapter_manifest_is_kept_by_the_prune(tmp_path: Path):
@@ -133,8 +163,8 @@ def test_the_adapter_manifest_is_kept_by_the_prune(tmp_path: Path):
     """
     assert install.ADAPTER_MANIFEST in install.AIDE_FOREIGN_PATHS
     assert not (FRAMEWORK_ROOT / "core" / install.ADAPTER_MANIFEST).exists()
-    src = _tree(tmp_path / "src", "loop/loop.py")
-    dst = _tree(tmp_path / "dst", "loop/loop.py", install.ADAPTER_MANIFEST)
+    src = _tree(tmp_path / "src", "scripts/aide.py")
+    dst = _tree(tmp_path / "dst", "scripts/aide.py", install.ADAPTER_MANIFEST)
 
     install.prune_stale(src, dst, [], keep=install.AIDE_FOREIGN_PATHS)
 
@@ -172,14 +202,14 @@ def test_update_removes_a_stale_engine_file_end_to_end(tmp_path: Path):
 
     stale = target / ".aide" / "conventions-old.md"
     stale.write_text("superseded\n", encoding="utf-8")
-    probe = target / ".aide" / "loop" / "usage_probe.py"
-    assert probe.is_file(), "the Claude adapter ships a probe; the keep-list guards it"
+    manifest = target / ".aide" / install.ADAPTER_MANIFEST
+    assert manifest.is_file(), "the installer writes a manifest; the keep-list guards it"
 
     args = install.build_parser().parse_args(["--into", str(target), "--update"])
     assert install.run(args) == 0
 
     assert not stale.exists()
-    assert probe.is_file()
+    assert manifest.is_file()
     assert (target / ".aide" / "conventions.md").is_file()
     assert (target / ".aide" / "conventions" / "6-test-hygiene.md").is_file()
 
@@ -230,8 +260,8 @@ def test_a_symlink_to_a_non_empty_directory_is_also_unlinked(tmp_path: Path):
 def test_a_removal_that_fails_is_logged_and_stepped_over(tmp_path, monkeypatch):
     """One unremovable file must not cost the consumer the rest of the update.
 
-    The realistic case is Windows: `.aide/loop/loop.py` held open by a running
-    supervisor, during exactly the unattended run an update interrupts.
+    The realistic case is Windows: an engine file held open by the process the
+    update is interrupting.
 
     The failure is injected rather than staged from the filesystem. What is
     under test is the `except OSError` branch, and every way of producing a

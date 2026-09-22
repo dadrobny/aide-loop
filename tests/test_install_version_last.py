@@ -2,7 +2,7 @@
 
 The failure this pins (issue #80): `copy_tree(core_dir, aide_dir, …)` used to
 place `VERSION` in step 1, so every later step — adapter control files,
-settings.json, the usage probe, the context import, .gitignore, the prune — ran
+settings.json, the context import, .gitignore, the prune — ran
 after the consumer was already marked as the new version. Any failure in
 between left an install that was half-applied and reported "up to date" to
 `--check`. Reproduced during the review of #79: a 1.22.0 engine, a 1.21.0

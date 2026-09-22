@@ -121,6 +121,84 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.0.0] — 2026-09-22
+
+### Removed
+
+- **The loop supervisor and its usage probe (issue #256).** `core/loop/` —
+  `loop.py`, the three `watch_and_resume.*` wrappers and
+  `loop.local.toml.example` — and the Claude adapter's `usage_probe.py` are
+  gone, with ADAPTER-SPEC §6 (*Optional: usage probe*) and its conformance-
+  checklist line. Nothing had run it in a consumer since July, and the engine
+  grew human gates, a merge check and a run ledger underneath it that it knew
+  nothing about: it relaunched every 300 s forever, blind to either terminal
+  outcome of `/aide-run-roadmap`. It also put the two things `core/` may not
+  have into the engine — a default command naming a provider's CLI, and a
+  credentials path naming a provider's dotfile. §6's *number* is kept as a
+  tombstone so every `§7` and `§8` pointer still resolves.
+- **`[loop]` in the per-machine config.** The supervisor's caps
+  (`max_weekly_pct`, `interval`, `usage_probe`, `command`, …) are read by
+  nothing now. A table left in a moved file is ignored, not an error. This is
+  **not** `aide.toml`'s own committed `[loop]` table (`queue_cap`, `clarify`,
+  `review`), which is untouched.
+
+### Changed
+
+- **The per-machine config moved: `.aide/loop/loop.local.toml` →
+  `.aide/local.toml`**, with `core/local.toml.example` installed beside it as
+  `.aide/local.toml.example`. It only ever lived under `loop/` because the
+  supervisor read it; its surviving readers are the adapter's hooks —
+  `[framework] local_path` and `[hygiene] extra_repos`, the command-hygiene
+  guard's repo-override carve-out and the sibling-instruction hook's repo list.
+  `install.py --update` **moves an existing file** before the prune that
+  removes `.aide/loop/`, so a consumer keeps its declarations without touching
+  anything; `--check` previews the same move and writes nothing. Where both
+  files already exist the installer moves nothing and says so, because merging
+  two configs is a judgment only their author can make. The guard's
+  repo-override denial names the move when the old file is the only one there,
+  which is the one message a consumer who copied files by hand ever sees. The
+  managed `.gitignore` block carries `.aide/local.toml` and is reconciled on
+  update. `AGENT-CONTEXT.md` §8 and `conventions/8-sibling-repos.md` name the
+  new path, so **the always-on floor moves from 9,055 to 9,045 content bytes**.
+- **The unattended-run story is a launch contract, not a supervisor.**
+  `docs/vision.md` gains the non-goal *Not a scheduler* — continuous operation
+  across usage windows and across repos belongs to an external tool; the
+  engine's obligations are to be cheap to relaunch from a fresh session (state
+  lives in the documents) and to say whether a repo is runnable (a read, not a
+  supervisor). The contract any scheduler runs against survives in the Claude
+  adapter's `execution-surfaces.md`: a top-level print-mode session,
+  permissions from the committed allow-list only, never a skip-permissions
+  flag. `README.md`, `core/README.md`, `docs/concepts.md`,
+  `docs/quickstart.md` §5, `adapters/claude/README.md` and
+  `/aide-run-roadmap`'s historical note say that and nothing more; commitment 2
+  of the vision no longer claims a `usage_probe` seam it does not have, and
+  commitment 8 no longer lists `loop.py`.
+
+### What a consumer does
+
+Run `python install.py --into <repo> --update` from a 2.0.0 checkout, then:
+
+- **the per-machine config** — the update **moves**
+  `.aide/loop/loop.local.toml` to `.aide/local.toml` when the new file does not
+  exist; a `[loop]` table left in it is ignored, and you can delete it at
+  leisure. If **both** files exist the update moves nothing: merge the old
+  file's `[framework]` and `[hygiene]` tables into `.aide/local.toml` by hand
+  and delete the old file — the managed `.gitignore` block no longer covers the
+  old path, so a copy left there shows up as an untracked file and `aide sync`
+  refuses on it. Until one of those happens, `[framework] local_path` and
+  `[hygiene] extra_repos` are not read, so a declared sibling repo is refused
+  as undeclared.
+- **anything that ran the supervisor** — replace `python .aide/loop/loop.py`
+  and the `watch_and_resume.sh`/`.ps1`/`.bat` wrappers with your own
+  scheduler, or the documented shell loop
+  (`while true; do claude -p "/aide-run-roadmap"; sleep 300; done`). Read
+  `adapters/claude/execution-surfaces.md` in the framework checkout first (it
+  is documentation, not an installed file): the launch contract is unchanged
+  and is what a scheduler must respect.
+- **nothing else.** `.aide/loop/` is removed by the update, the managed
+  `.gitignore` block is reconciled automatically, and no document format, CLI
+  verb or agent spec changed.
+
 ## [1.59.3] — 2026-09-18
 
 ### Fixed

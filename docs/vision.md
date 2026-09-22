@@ -75,10 +75,12 @@ the output, it wants an agent; otherwise it wants a CLI verb.
 Claude model, or a `.claude/` primitive — the rule stated in
 [`CLAUDE.md`](../CLAUDE.md) and the reason a different runtime can replace the
 adapter wholesale and reuse the engine unchanged. Engine and adapter are
-**co-equal halves**, not core plus optional glue. Where the engine genuinely needs
-something provider-specific, it takes a seam with a neutral default rather than a
-special case: `[loop] usage_probe` is the one such seam, and `"none"` is a
-complete answer to it.
+**co-equal halves**, not core plus optional glue. The engine currently needs
+nothing provider-specific at all: every provider-supplied mechanism — the
+permission policy, the instruction-file import, the hooks — is adapter-side, and
+the one seam that once ran the other way (the supervisor's usage probe) went
+with the supervisor in 2.0.0. Should the engine ever need one again, it takes a
+seam with a neutral default rather than a special case.
 
 **3. An adapter translates; it never re-implements.** The contract is
 [`ADAPTER-SPEC.md`](../adapters/ADAPTER-SPEC.md). An adapter re-expresses the
@@ -116,7 +118,7 @@ person can still hold the whole batch in mind while the loop stays worth running
 unattended. Framework and process changes always want a reviewed PR regardless of
 `git.mode`, because they cascade into every future queue.
 
-**8. Stdlib only, cross-OS.** `aide.py`, `loop.py` and `install.py` are
+**8. Stdlib only, cross-OS.** `aide.py` and `install.py` are
 stdlib-only Python (3.11+, with 3.9 workable), so the engine runs before a project
 venv exists and behaves the same on Windows as on Linux. A dependency in the
 engine is a dependency in every consumer, resolved before the framework can do
@@ -151,6 +153,17 @@ reimplementing the CLI as a compiled binary plus a per-OS release matrix: modera
 effort, low payoff while every consumer has an interpreter. Deferred until a real
 no-Python consumer appears — the ADAPTER-SPEC is already written so that swap
 changes no adapter.
+
+**Not a scheduler.** Continuous operation — keeping a repo working across usage
+windows, or several AIDE repos working in turn — belongs to an external tool that
+watches them and relaunches one when a limit resets or a gate closes. The engine's
+obligations are the two that make such a tool easy to write: be **cheap to
+relaunch from a fresh session**, because the state lives in the documents and a
+new session re-reads them, and **say whether a repo is runnable**, which is a read
+(`aide status`, `aide check`), not a supervisor. The engine shipped one until
+2.0.0; it went unused for months while gates, the merge check and the run ledger
+grew around it, unknown to it. A proposal to relaunch, schedule, or babysit runs
+from inside the framework is out of scope.
 
 **Not autonomous end to end.** The loop runs unattended *between* checkpoints, not
 instead of them. Human gates, the queue-boundary review, and `git.mode = "pr"`

@@ -12,9 +12,9 @@ see the feedback loop).
 
 ## The matrix
 
-| Concern | IDE extension chat | CLI interactive (`claude`) | Supervisor (`claude -p …` from `loop.py`) |
+| Concern | IDE extension chat | CLI interactive (`claude`) | Unattended (`claude -p …`, launched by a scheduler) |
 |---|---|---|---|
-| Session lifetime | until the chat/window closes | until the user exits | **exits when the prompt completes** — this is why the supervisor must use `-p`; an interactive child never returns control |
+| Session lifetime | until the chat/window closes | until the user exits | **exits when the prompt completes** — this is why an unattended launch must use `-p`; an interactive child never returns control, so whatever started it never gets to start the next one |
 | cwd between Bash calls | resets to the workspace root on Windows | resets to the repo root on Windows | same as CLI |
 | Settings resolution | `.claude/settings.json` + `settings.local.json` + user settings *(verify: extension-specific overrides)* | same project + user settings files | same files; **only** the committed allow-list matters in practice (see below) |
 | Permission `ask` | interactive prompt in the panel | interactive prompt in the terminal | **denied without prompting** — a `-p` session cannot ask |
@@ -28,18 +28,26 @@ see the feedback loop).
 
 - **The committed `.claude/settings.json` allow-list *is* the orchestrator's
   permission grant.** An unattended run must need nothing beyond it. Every
-  denial in a supervisor run is a *gap in the allow-list*, to be fixed through
+  denial in an unattended run is a *gap in the allow-list*, to be fixed through
   the existing loop: permission events are logged to `docs/aide/permissions/`,
   `/aide-review-permissions` ranks them, safe recurring ones get promoted via a
   reviewed PR.
-- **Never** `--dangerously-skip-permissions`, in `loop.local.toml`'s `command`
+- **Never** `--dangerously-skip-permissions`, in a scheduler's launch command
   or anywhere else — it converts the permission model from a contract into a
   bypass, and one bad generated command can then do anything.
-- `loop.py`'s default command is `claude -p "/aide-run-roadmap"`; override via
-  `[loop] command` only to add flags that *narrow* behaviour (e.g. `--model`).
+- **The launch command is `claude -p "/aide-run-roadmap"`**, top-level, with only
+  flags that *narrow* behaviour added (e.g. `--model`). The framework relaunches
+  nothing of its own (`../../docs/vision.md` → *Not a scheduler*), so this line is
+  the contract whatever runs it — cron, a systemd timer, or the minimum, a shell
+  loop:
+
+  ```
+  while true; do claude -p "/aide-run-roadmap"; sleep 300; done
+  ```
+
 - Before the **first** unattended run on a fresh clone/machine: launch `claude`
   once interactively in the repo to answer the trusted-folder prompt, and run
-  `python .aide/scripts/aide.py check` — a supervisor pass should never be the
+  `python .aide/scripts/aide.py check` — an unattended pass should never be the
   first thing to touch a virgin checkout.
 
 ## Known divergences and their standing workarounds
@@ -49,7 +57,7 @@ see the feedback loop).
   design; see `/aide-run-roadmap` → historical note). Use repo-root-relative
   paths or `git -C`.
 - **No nested headless children** — the orchestrator runs everything inline in
-  one session and spawns only `Task` subagents. The supervisor's own top-level
+  one session and spawns only `Task` subagents. The scheduler's own top-level
   `-p` launch is the *only* headless process in the system.
 - **IDE-vs-CLI behavioural drift** — when a `/aide-*` command behaves
   differently in the extension than in the CLI, record it here with the
