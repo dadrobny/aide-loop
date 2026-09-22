@@ -137,6 +137,12 @@ def test_the_move_is_not_mentioned_on_a_denial_no_declaration_could_lift(
     assert _OVERRIDE_MARKER in titles
     assert _MIGRATION_MARKER not in titles
 
+    # The same with the override alongside the prefix: moving the file would
+    # leave the command refused, so the note would be advice that cannot help.
+    titles = _titles("cd ../aide-loop && git -C ../aide-loop status")
+    assert _OVERRIDE_MARKER in titles
+    assert _MIGRATION_MARKER not in titles
+
 
 # --------------------------------------------------------------------------- #
 # rule 1 — the three non-`-C` forms of the same operation

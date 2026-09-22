@@ -449,6 +449,29 @@ def test_check_previews_the_move_of_a_pre_2_0_config_and_writes_nothing(
     assert not (consumer / ".aide" / "local.toml").exists(), "--check wrote"
 
 
+def test_check_fails_on_a_config_conflict_the_update_will_not_resolve(
+        consumer: Path, capsys):
+    """Both files present, and nothing else stale: the engine is current and
+    no retired file is left, so the 1 can only come from the conflict — the
+    one migration case `--update` declines, and therefore the one that has to
+    reach the exit code, or a consumer's `extra_repos` sit unread behind an
+    "up to date"."""
+    old = consumer / ".aide" / "loop" / "loop.local.toml"
+    old.parent.mkdir(parents=True)
+    old.write_text(PRE_2_0_LOCAL_CONFIG, encoding="utf-8")
+    current = consumer / ".aide" / "local.toml"
+    current.write_text('[hygiene]\nextra_repos = ["../mine"]\n', encoding="utf-8")
+    capsys.readouterr()
+
+    assert install.main(["--into", str(consumer), "--check"]) == 1
+
+    out = capsys.readouterr().out
+    assert "needs a decision" in out, out
+    assert str(old) in out and "[hygiene]" in out, out
+    assert old.read_bytes() == PRE_2_0_LOCAL_CONFIG.encode("utf-8")
+    assert current.read_text(encoding="utf-8") == '[hygiene]\nextra_repos = ["../mine"]\n'
+
+
 # --------------------------------------------------------------------------- #
 # .claude/rules/ and the section skills — the contract's delivery mechanism,
 # at the paths that load it

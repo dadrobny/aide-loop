@@ -496,9 +496,9 @@ def violations(cmd):
     #    `git -C <declared> commit -F - <<'EOF'` shape the body-blanking above
     #    exists to allow.
     has_override = bool(_GIT_REPO_OVERRIDE_TRIGGER_RE.search(bare))
-    if re.match(r"\s*cd\s", cmd) or (
-        has_override and not _git_repo_override_all_declared(data)
-    ):
+    cd_prefix = bool(re.match(r"\s*cd\s", cmd))
+    undeclared = has_override and not _git_repo_override_all_declared(data)
+    if cd_prefix or undeclared:
         found.append(
             "Drop the `cd` prefix, and drop `-C`/`--git-dir`/`--work-tree`/"
             "`GIT_DIR=`/`GIT_WORK_TREE=` — all four point git at a repo other "
@@ -513,9 +513,11 @@ def violations(cmd):
             "cd is needed either: run that repo's own install with an explicit "
             "root, `python <repo>/.aide/scripts/aide.py --repo <repo> <verb>`."
             # The note is about a declaration that is not being read, so it
-            # rides only a denial that a declaration could have lifted: a
-            # bare `cd` prefix is refused whatever the config says.
-            + (_legacy_local_config_note() if has_override else "")
+            # rides only a denial that reading it could have lifted: an
+            # undeclared override with no `cd` prefix. A `cd` prefix is
+            # refused whatever the config says, so on a command carrying
+            # both the note would be advice about a file that cannot help.
+            + (_legacy_local_config_note() if undeclared and not cd_prefix else "")
         )
 
     # 2. One command per Bash call — `&&`, `||`, `;` sequencing isn't
