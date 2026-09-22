@@ -370,7 +370,10 @@ def _plant_pre_2_0_layout(consumer: Path) -> Path:
         "def get_usage(cfg):\n    return None\n", encoding="utf-8")
     (loop_dir / "watch_and_resume.sh").write_text("#!/bin/sh\n", encoding="utf-8")
     config = loop_dir / "loop.local.toml"
-    config.write_text(PRE_2_0_LOCAL_CONFIG, encoding="utf-8")
+    # Bytes, not text: the tests below hold the move to be byte-for-byte,
+    # and a text-mode write on Windows would plant CRLF against an LF
+    # source string.
+    config.write_bytes(PRE_2_0_LOCAL_CONFIG.encode("utf-8"))
     return config
 
 
@@ -458,7 +461,7 @@ def test_check_fails_on_a_config_conflict_the_update_will_not_resolve(
     "up to date"."""
     old = consumer / ".aide" / "loop" / "loop.local.toml"
     old.parent.mkdir(parents=True)
-    old.write_text(PRE_2_0_LOCAL_CONFIG, encoding="utf-8")
+    old.write_bytes(PRE_2_0_LOCAL_CONFIG.encode("utf-8"))
     current = consumer / ".aide" / "local.toml"
     current.write_text('[hygiene]\nextra_repos = ["../mine"]\n', encoding="utf-8")
     capsys.readouterr()
