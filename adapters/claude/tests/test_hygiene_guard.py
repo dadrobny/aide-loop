@@ -123,6 +123,21 @@ def test_the_denial_is_silent_about_the_move_when_there_is_nothing_to_move(
     assert _MIGRATION_MARKER not in _titles("git -C ../elsewhere push")
 
 
+def test_the_move_is_not_mentioned_on_a_denial_no_declaration_could_lift(
+        tmp_path, monkeypatch):
+    """A bare `cd` prefix is refused whatever the config declares, so the note
+    would be advice about a file that has no bearing on the command."""
+    loop_dir = tmp_path / ".aide" / "loop"
+    loop_dir.mkdir(parents=True)
+    (loop_dir / "loop.local.toml").write_text(
+        '[framework]\nlocal_path = "../aide-loop"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    titles = _titles("cd ../aide-loop && git status")
+    assert _OVERRIDE_MARKER in titles
+    assert _MIGRATION_MARKER not in titles
+
+
 # --------------------------------------------------------------------------- #
 # rule 1 — the three non-`-C` forms of the same operation
 # --------------------------------------------------------------------------- #

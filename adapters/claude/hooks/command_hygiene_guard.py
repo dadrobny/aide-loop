@@ -512,7 +512,10 @@ def violations(cmd):
             "both are declared.) For the aide CLI against a declared repo, no "
             "cd is needed either: run that repo's own install with an explicit "
             "root, `python <repo>/.aide/scripts/aide.py --repo <repo> <verb>`."
-            + _legacy_local_config_note()
+            # The note is about a declaration that is not being read, so it
+            # rides only a denial that a declaration could have lifted: a
+            # bare `cd` prefix is refused whatever the config says.
+            + (_legacy_local_config_note() if has_override else "")
         )
 
     # 2. One command per Bash call — `&&`, `||`, `;` sequencing isn't

@@ -87,6 +87,35 @@ def test_ahead_is_reported_but_not_an_error(tmp_path, capsys):
     assert "AHEAD" in capsys.readouterr().out
 
 
+def test_a_pending_config_move_is_reported_but_is_not_an_error(tmp_path, capsys):
+    """The next `--update` performs the move by itself, so a preview of it is a
+    notice: the install is still current, and the exit code says so."""
+    path = _installed(tmp_path, "2.0.0")
+    move = ("move", ".aide/loop/loop.local.toml is no longer read since 2.0.0 "
+                    "— --update will MOVE it to .aide/local.toml")
+    assert install.report_version("2.0.0", path, tmp_path, migration=[move]) == 0
+    out = capsys.readouterr().out
+    assert "--update will MOVE it" in out
+    assert "up to date" in out
+
+
+def test_a_config_conflict_fails_the_check_and_names_the_decision(tmp_path, capsys):
+    """Both files present is the one migration case no update resolves, so an
+    otherwise-current install still exits 1 — and the closing line points at
+    the decision rather than at `--update`, which would send the reader in a
+    circle past the line that already said what to do."""
+    path = _installed(tmp_path, "2.0.0")
+    conflict = ("conflict", ".aide/loop/loop.local.toml is no longer read "
+                            "(2.0.0 moved the per-machine config to "
+                            ".aide/local.toml, which already exists)")
+    assert install.report_version("2.0.0", path, tmp_path,
+                                  migration=[conflict]) == 1
+    out = capsys.readouterr().out
+    assert "which already exists" in out
+    assert "needs a decision" in out
+    assert "--update" not in out.splitlines()[-1]
+
+
 def test_missing_install_is_distinct_from_outdated(tmp_path, capsys):
     assert install.report_version("1.2.0", tmp_path / ".aide" / "VERSION", tmp_path) == 2
     assert "no install found" in capsys.readouterr().err
