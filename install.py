@@ -38,7 +38,9 @@ into a target repo:
   3. scaffold <target>/aide.toml from a template (prompts for source_dir, tests_dir,
      test_command, git.mode; skipped if aide.toml already exists) — done BEFORE (2)
      so the settings write-scope can read it.
-  4. copy  adapters/<adapter>/usage_probe.py  -> <target>/.aide/loop/   (plan §4.4 seam)
+  4. move a pre-2.0.0 <target>/.aide/loop/loop.local.toml to <target>/.aide/local.toml
+     — the per-machine config's new home now the supervisor that shared the file
+     is retired (`migrate_local_config`). A no-op where there is nothing to move.
   5. append the framework .gitignore block if absent
   5b. record which files (2) wrote, as <target>/.aide/adapter-manifest.txt — the
      list an --update reads back to retire adapter files the framework has
@@ -52,7 +54,7 @@ into a target repo:
 
     python install.py --into <target-repo> --update
 
-  re-copies core/ (+ the adapter control files, + usage_probe.py) so the engine
+  re-copies core/ (+ the adapter control files) so the engine
   tracks the framework, removes engine files core/ no longer ships and adapter
   files the previous manifest lists that the adapter no longer ships, but NEVER
   touches <target>/aide.toml or <target>/docs/aide/ (owned by the project).
@@ -72,6 +74,7 @@ import copy
 import difflib
 import importlib.util
 import json
+import os
 import re
 import shutil
 import sys
@@ -81,7 +84,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple
 FRAMEWORK_ROOT = Path(__file__).resolve().parent
 
 # Adapter control files copied into <target>/.claude/. Everything else under
-# adapters/<name>/ (README.md, usage_probe.py) is handled out of band.
+# adapters/<name>/ (README.md) is handled out of band.
 #
 # A name may only LEAVE this tuple by moving into the retired half of
 # HISTORIC_CONTROL_DIRS below. The adapter manifest and RETIRED_ADAPTER_PATHS
@@ -121,7 +124,7 @@ ADAPTER_MANIFEST = "adapter-manifest.txt"
 # Paths under .aide/ that the installer writes from somewhere OTHER than core/.
 # `prune_stale` compares the installed tree against core/, so without this a
 # file the installer itself put there would be deleted on the next update.
-AIDE_FOREIGN_PATHS = ("loop/usage_probe.py", ADAPTER_MANIFEST)
+AIDE_FOREIGN_PATHS = (ADAPTER_MANIFEST,)
 ADAPTER_SETTINGS = "settings.json"
 
 # Bootstrap for consumers installed before the manifest existed: per adapter,
@@ -207,7 +210,11 @@ SETTINGS_OVERLAY = "settings.overlay.json"
 SETTINGS_OVERLAY_EXAMPLE = SETTINGS_OVERLAY + ".example"
 
 # Names never copied out of the source tree (junk / private per-machine config).
-SKIP_NAMES = {"__pycache__", ".DS_Store", "loop.local.toml"}
+# `loop.local.toml` is the per-machine config's pre-2.0.0 name and stays here
+# after the rename: a consumer that has not been updated yet still has one, and
+# a name dropped from this set would make that file a prune candidate — the
+# personal config deleted by the very update that was supposed to move it.
+SKIP_NAMES = {"__pycache__", ".DS_Store", "local.toml", "loop.local.toml"}
 SKIP_SUFFIXES = {".pyc"}
 
 GITIGNORE_MARKER = "# --- AIDE framework (managed by aide-loop install.py) ---"
@@ -215,7 +222,7 @@ GITIGNORE_END = "# --- end AIDE ---"
 #: The engine's own untracked paths — runtime-agnostic, every consumer.
 GITIGNORE_ENGINE_LINES = (
     ".aide/**/__pycache__/",
-    ".aide/loop/loop.local.toml",
+    ".aide/local.toml",
     ".aide-merge",
     "docs/aide/status/",
     "docs/aide/permissions/*.jsonl",
@@ -285,9 +292,9 @@ review = "off"
 repo = ""
 # A local clone of the framework repo, for the documented framework-update
 # workflow, is declared per-machine via `local_path` under `[framework]` in
-# the PERSONAL .aide/loop/loop.local.toml (copy
-# .aide/loop/loop.local.toml.example) — never here. A machine-specific
-# filesystem path has no business in this shared, committed file.
+# the PERSONAL .aide/local.toml (copy .aide/local.toml.example) — never here.
+# A machine-specific filesystem path has no business in this shared,
+# committed file.
 
 # [validation]
 # Named environment profiles for stage-validation items — each value is a
@@ -369,7 +376,8 @@ def report_version(available: str, installed_path: Path, target: Path,
                    orphans: Optional[List[str]] = None,
                    stale: Optional[List[Path]] = None,
                    retired: Optional[List[Path]] = None,
-                   restated: Optional[List[str]] = None) -> int:
+                   restated: Optional[List[str]] = None,
+                   migration: Optional[List[Tuple[str, str]]] = None) -> int:
     """``--check``: report whether the target's install is current.
 
     Writes nothing. Exit 2 when the target has no install to compare, 1 when
@@ -401,6 +409,13 @@ def report_version(available: str, installed_path: Path, target: Path,
     a consumer reading ``.claude/`` as their own directory needs to hear that
     this file was not — and a closing line worded for both, so the summary
     does not undo the distinction the per-file lines drew.
+
+    *migration* is the per-machine config still at its pre-2.0.0 path
+    (``migrate_local_config``, previewed here exactly as it will be performed).
+    A plain move is a notice and nothing more — the next ``--update`` does it —
+    so it does not reach the exit code; the both-files-present conflict does,
+    because no update resolves that one and the tables sit unread until a
+    person merges them.
 
     *restated* is the one report class that **does not reach the exit code**:
     passages of the instruction file that repeat contract text the engine
@@ -442,6 +457,9 @@ def report_version(available: str, installed_path: Path, target: Path,
     for path in retired or ():
         print(f"aide {target}: {path} was installed from the adapter, which no "
               f"longer ships it — --update will DELETE it")
+    for _kind, message in migration or ():
+        print(f"aide {target}: {message}")
+    blocked = [m for kind, m in (migration or ()) if kind == "conflict"]
     # Last of the per-item lines and ahead of the version verdict, so the
     # advisory does not sit between a reader and the answer they ran this for.
     for line in restated or ():
@@ -470,9 +488,16 @@ def report_version(available: str, installed_path: Path, target: Path,
             # does not, has to say what to do instead.
             print(f"aide {target}: add the import by hand, or --update from the "
                   f"newer framework checkout this install came from")
-        return 1 if (drift or orphans or pending) else 0
+        return 1 if (drift or orphans or pending or blocked) else 0
     if drift:
         print(f"aide {target}: v{installed} — run install.py --into {target} --update")
+        return 1
+    if blocked:
+        # Same shape as orphans, same reason: the repair is a hand edit the
+        # installer will not make, so pointing at --update would send the
+        # reader in a circle past the line that already said what to do.
+        print(f"aide {target}: v{installed} — engine up to date, but the "
+              f"per-machine config above needs a decision")
         return 1
     if orphans:
         # Deliberately not "run --update": nothing an update does removes a
@@ -719,7 +744,7 @@ def prune_stale(src: Path, dst: Path, log: List[str],
     consumer's own agent.
 
     Skips the junk/private names ``copy_tree`` skips, so a `__pycache__` or a
-    personal `loop.local.toml` is never a prune candidate, and removes a
+    personal `local.toml` is never a prune candidate, and removes a
     directory only once this prune has emptied it.
 
     **Never raises.** A leftover file the engine no longer ships is the least
@@ -728,7 +753,7 @@ def prune_stale(src: Path, dst: Path, log: List[str],
     exception here would prevent is the VERSION write that follows — leaving a
     complete install reporting itself behind over a file that was going to be
     stepped around anyway. A removal that cannot happen (a read-only file, a
-    Windows file held open by a running supervisor) is logged and stepped over
+    Windows file held open by another process) is logged and stepped over
     instead.
 
     ``dry_run`` computes the same list without touching anything, which is what
@@ -779,6 +804,73 @@ def copy_file(src: Path, dst: Path, log: List[str]) -> None:
     existed = dst.exists()
     shutil.copy2(src, dst)
     log.append(f"  {'~' if existed else '+'} {dst}")
+
+
+# --------------------------------------------------------------------------- #
+# the per-machine config — moved out of the retired supervisor's directory
+# --------------------------------------------------------------------------- #
+#: Where the personal, gitignored config lived until 2.0.0: beside the usage-gated
+#: supervisor, which is the only reason it was ever in `loop/`.
+LEGACY_LOCAL_CONFIG = ("loop", "loop.local.toml")
+#: Where it lives from 2.0.0 on. Its readers are an adapter's hooks
+#: (`[framework] local_path`, `[hygiene] extra_repos`); the `[loop]` table the
+#: supervisor read is gone, and one left behind in a moved file is ignored.
+LOCAL_CONFIG = "local.toml"
+
+
+def migrate_local_config(aide_dir: Path, log: List[str],
+                         dry_run: bool = False) -> List[Tuple[str, str]]:
+    """Move a pre-2.0.0 ``loop/loop.local.toml`` to ``local.toml``.
+
+    Returns ``[(kind, message)]``, empty when there is nothing to do — ``kind``
+    is ``"move"`` for something this step handles by itself and ``"conflict"``
+    for the one case it will not: **both** files present, where merging is a
+    judgment about two files' contents that only their author can make. The
+    old file is left exactly as it is then, because the alternative is losing
+    a machine's `extra_repos` to a rename it never asked for.
+
+    Never raises. Like ``prune_stale``, this runs inside an install that has
+    otherwise succeeded, and a config that could not be moved (a read-only
+    directory, a Windows file held open) must cost the consumer a log line and
+    a hand move, not the VERSION write that marks the install complete.
+
+    ``dry_run`` computes the same answer without touching anything, which is
+    what ``--check`` reports: the preview and the act read the same state and
+    reach the same decision, so what a consumer is told is what happens.
+    """
+    old = aide_dir.joinpath(*LEGACY_LOCAL_CONFIG)
+    new = aide_dir / LOCAL_CONFIG
+    if not old.is_file():
+        return []
+    if new.exists():
+        msg = (f"{old} is no longer read (2.0.0 moved the per-machine config to "
+               f"{new}, which already exists) — merge its [framework] and "
+               f"[hygiene] tables into {new} by hand and delete it; the managed "
+               f".gitignore block no longer covers it, so a left-behind copy "
+               f"shows up as an untracked file")
+        log.append(f"  ! {msg}")
+        return [("conflict", msg)]
+    # One message, one clause of it in the tense of the caller: a preview says
+    # what the update will do, the update says what it did, and neither can
+    # describe a different decision from the other's.
+    action = "--update will MOVE it to" if dry_run else "moved to"
+    msg = (f"{old} is no longer read since 2.0.0 — {action} {new}, the "
+           f"per-machine config's home; a [loop] table left in it is no longer "
+           f"read either and may be deleted")
+    if not dry_run:
+        try:
+            # os.replace, not a copy: same filesystem by construction (both
+            # under .aide/), atomic, and it leaves no second copy for a reader
+            # to pick the stale one of.
+            os.replace(old, new)
+        except OSError as exc:
+            failed = (f"{old} could not be moved to {new} ({exc.strerror}) — "
+                      f"move it by hand; until then its [framework] and "
+                      f"[hygiene] tables are not read")
+            log.append(f"  ! {failed}")
+            return [("conflict", failed)]
+    log.append(f"  ~ {msg}")
+    return [("move", msg)]
 
 
 # --------------------------------------------------------------------------- #
@@ -1632,8 +1724,8 @@ def default_context_declaration(adapter_dir: Path) -> Optional[Tuple[str, str]]:
     """``(instruction file, import line)`` an adapter declares, or None.
 
     None means the runtime has no default-context concept (ADAPTER-SPEC §7 is
-    optional), so the caller does nothing — the same graceful degradation as a
-    missing ``usage_probe.py``. A malformed declaration is treated the same way
+    optional), so the caller does nothing — the graceful degradation every
+    optional adapter feature gets. A malformed declaration is treated the same way
     rather than failing an install over an optional channel; the drift report
     under ``--check`` is what surfaces a channel that never got linked.
     """
@@ -2033,7 +2125,8 @@ def run(args: argparse.Namespace) -> int:
                               prune_stale(core_dir, aide_dir, [],
                                           keep=AIDE_FOREIGN_PATHS, dry_run=True),
                               stale_adapter_files(adapter_dir, target, retirable),
-                              instruction_restatements(target, adapter_dir, core_dir))
+                              instruction_restatements(target, adapter_dir, core_dir),
+                              migrate_local_config(aide_dir, [], dry_run=True))
 
     mode = "update" if args.update else "install"
     # The resolved adapter, not args.adapter — the latter is the value that was
@@ -2089,10 +2182,13 @@ def run(args: argparse.Namespace) -> int:
     source_dir, tests_dir = _project_scope(target)
     install_settings(adapter_dir, claude_dir, target, log, source_dir, tests_dir)
 
-    # 5. usage probe -> .aide/loop/  (the plan §4.4 seam)
-    probe = adapter_dir / "usage_probe.py"
-    if probe.is_file():
-        copy_file(probe, aide_dir / "loop" / "usage_probe.py", log)
+    # 5. the per-machine config, from the retired supervisor's directory to
+    #    .aide/local.toml. BEFORE the prune in step 8, which is what then
+    #    empties .aide/loop/ and removes it: the old file is in SKIP_NAMES, so
+    #    a prune that ran first would step around it and leave the directory
+    #    standing with one unread file in it. A no-op on a consumer that has
+    #    no such file, which after one update is every consumer.
+    migrate_local_config(aide_dir, log)
 
     # 6. instruction-file import -> .aide/AGENT-CONTEXT.md  (ADAPTER-SPEC §7).
     #    Runs on update too: the line is how a framework rule reaches an

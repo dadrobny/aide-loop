@@ -339,6 +339,143 @@ def test_an_overlay_is_regenerated_into_settings_on_update(consumer: Path):
 
 
 # --------------------------------------------------------------------------- #
+# the per-machine config, at the paths a consumer has it (2.0.0, issue #256)
+#
+# `.aide/loop/loop.local.toml` was the personal config only because the retired
+# supervisor read it. The update has to carry an existing one to
+# `.aide/local.toml` — the file the adapter's hooks now read — without the
+# consumer touching anything, because the declarations in it (a framework
+# clone, the sibling repos a project spans) are what unblock git operations
+# that are otherwise refused.
+# --------------------------------------------------------------------------- #
+PRE_2_0_LOCAL_CONFIG = """\
+[loop]
+interval = 300
+usage_probe = "anthropic-oauth"
+
+[framework]
+local_path = "../aide-loop"
+
+[hygiene]
+extra_repos = ["../programme-repo"]
+"""
+
+
+def _plant_pre_2_0_layout(consumer: Path) -> Path:
+    """What a 1.x install left in `.aide/loop/`; returns the config's path."""
+    loop_dir = consumer / ".aide" / "loop"
+    loop_dir.mkdir(parents=True, exist_ok=True)
+    (loop_dir / "loop.py").write_text("# the retired supervisor\n", encoding="utf-8")
+    (loop_dir / "usage_probe.py").write_text(
+        "def get_usage(cfg):\n    return None\n", encoding="utf-8")
+    (loop_dir / "watch_and_resume.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    config = loop_dir / "loop.local.toml"
+    # Bytes, not text: the tests below hold the move to be byte-for-byte,
+    # and a text-mode write on Windows would plant CRLF against an LF
+    # source string.
+    config.write_bytes(PRE_2_0_LOCAL_CONFIG.encode("utf-8"))
+    return config
+
+
+def _installed_guard(consumer: Path):
+    """The command-hygiene guard **as installed**, loaded by path.
+
+    The same reason the engine is loaded from `.aide/scripts/` above: what is
+    under test is the copy at the path the runtime executes, reading the file
+    at the path the update just wrote.
+    """
+    path = consumer / ".claude" / "hooks" / "command_hygiene_guard.py"
+    spec = importlib.util.spec_from_file_location("installed_hygiene_guard", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
+def test_update_moves_a_pre_2_0_config_and_retires_the_loop_directory(
+        consumer: Path, monkeypatch):
+    """End to end: the file moves, `.aide/loop/` goes, and the declarations
+    still reach the hook that needs them."""
+    planted = _plant_pre_2_0_layout(consumer)
+    before = planted.read_bytes()
+
+    assert install.main(["--into", str(consumer), "--update"]) == 0
+
+    assert not (consumer / ".aide" / "loop").exists(), (
+        "the retired directory survived — the prune ran before the move, or "
+        "not at all")
+    moved = consumer / ".aide" / "local.toml"
+    assert moved.read_bytes() == before, "the move rewrote the consumer's config"
+
+    guard = _installed_guard(consumer)
+    monkeypatch.chdir(consumer)
+    assert guard._framework_local_path() == "../aide-loop"
+    assert guard._hygiene_extra_repos() == ["../programme-repo"]
+    assert install.main(["--into", str(consumer), "--check"]) == 0
+
+
+def test_update_moves_nothing_when_both_configs_exist_and_says_so(
+        consumer: Path, capsys):
+    """Merging two configs is a judgment only their author can make, so the
+    update declines it — loudly, and without touching either file."""
+    planted = _plant_pre_2_0_layout(consumer)
+    current = consumer / ".aide" / "local.toml"
+    current.write_text('[hygiene]\nextra_repos = ["../mine"]\n', encoding="utf-8")
+    old_bytes, new_bytes = planted.read_bytes(), current.read_bytes()
+    capsys.readouterr()
+
+    assert install.main(["--into", str(consumer), "--update"]) == 0
+
+    assert planted.read_bytes() == old_bytes, "the old config was written to"
+    assert current.read_bytes() == new_bytes, "the live config was overwritten"
+    out = capsys.readouterr().out
+    assert str(planted) in out and "[hygiene]" in out, out
+    assert not (consumer / ".aide" / "loop" / "loop.py").exists(), (
+        "the rest of the retired directory must still go")
+
+
+def test_check_previews_the_move_of_a_pre_2_0_config_and_writes_nothing(
+        consumer: Path, capsys):
+    """`--check` is safe to run because it writes nothing; a move nobody could
+    preview is one a consumer only learns about from the aftermath."""
+    planted = _plant_pre_2_0_layout(consumer)
+    capsys.readouterr()
+
+    # 1, not 0: the engine is current, but `.aide/loop/` holds files this
+    # engine no longer ships and the next --update removes them.
+    assert install.main(["--into", str(consumer), "--check"]) == 1
+
+    out = capsys.readouterr().out
+    assert str(planted) in out, out
+    assert str(consumer / ".aide" / "local.toml") in out, out
+    assert planted.read_bytes() == PRE_2_0_LOCAL_CONFIG.encode("utf-8")
+    assert not (consumer / ".aide" / "local.toml").exists(), "--check wrote"
+
+
+def test_check_fails_on_a_config_conflict_the_update_will_not_resolve(
+        consumer: Path, capsys):
+    """Both files present, and nothing else stale: the engine is current and
+    no retired file is left, so the 1 can only come from the conflict — the
+    one migration case `--update` declines, and therefore the one that has to
+    reach the exit code, or a consumer's `extra_repos` sit unread behind an
+    "up to date"."""
+    old = consumer / ".aide" / "loop" / "loop.local.toml"
+    old.parent.mkdir(parents=True)
+    old.write_bytes(PRE_2_0_LOCAL_CONFIG.encode("utf-8"))
+    current = consumer / ".aide" / "local.toml"
+    current.write_text('[hygiene]\nextra_repos = ["../mine"]\n', encoding="utf-8")
+    capsys.readouterr()
+
+    assert install.main(["--into", str(consumer), "--check"]) == 1
+
+    out = capsys.readouterr().out
+    assert "needs a decision" in out, out
+    assert str(old) in out and "[hygiene]" in out, out
+    assert old.read_bytes() == PRE_2_0_LOCAL_CONFIG.encode("utf-8")
+    assert current.read_text(encoding="utf-8") == '[hygiene]\nextra_repos = ["../mine"]\n'
+
+
+# --------------------------------------------------------------------------- #
 # .claude/rules/ and the section skills — the contract's delivery mechanism,
 # at the paths that load it
 # --------------------------------------------------------------------------- #

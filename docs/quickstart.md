@@ -108,23 +108,19 @@ reviewed PR regardless (see `.aide/README.md` → Merge policy; in this repo,
 
 ## 5. Unattended overnight runs (optional)
 
-For runs longer than one sitting, the supervisor relaunches the gated command when
-usage limits allow:
+The framework relaunches nothing; use any scheduler you like, and a shell loop is
+the minimum:
 
 ```
-cp .aide/loop/loop.local.toml.example .aide/loop/loop.local.toml   # then edit caps
-python .aide/loop/loop.py
+while true; do claude -p "/aide-run-roadmap"; sleep 300; done
 ```
 
-With the Claude adapter, set `usage_probe = "anthropic-oauth"` in `loop.local.toml`
-to gate on real usage; leave it `"none"` to relaunch on a plain time cadence. See
-[`concepts.md`](concepts.md) → "The loop supervisor".
-
-Before the first unattended run, read the adapter's
-[`execution-surfaces.md`](../adapters/claude/execution-surfaces.md): the
-supervisor launches a print-mode session in which a permission `ask` is
-**denied, not prompted** — the committed allow-list must cover the whole run,
-and the folder must have been trusted once interactively.
+Whatever runs it, read the adapter's
+[`execution-surfaces.md`](../adapters/claude/execution-surfaces.md) first — it
+holds the launch contract: a top-level print-mode session, permissions from the
+committed allow-list only (a permission `ask` is **denied, not prompted**), and
+never a skip-permissions flag. The folder must also have been trusted once
+interactively.
 
 ## 6. Pulling framework updates
 

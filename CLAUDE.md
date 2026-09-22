@@ -17,7 +17,7 @@ Three layers; the first two are what a consumer installs.
 
 | In this repo | Installed into a consumer as | What it is |
 |---|---|---|
-| [`core/`](core/) | `<repo>/.aide/` | The **engine** — provider-agnostic: document templates, `conventions.md` + `conventions/`, the `aide.py` CLI, the supervisor loop |
+| [`core/`](core/) | `<repo>/.aide/` | The **engine** — provider-agnostic: document templates, `conventions.md` + `conventions/`, the `aide.py` CLI |
 | [`adapters/claude/`](adapters/claude/) | `<repo>/.claude/` | The **Claude adapter** — agents, skills, commands, rules, hooks, `settings.json` |
 | [`install.py`](install.py) | — | The cross-OS installer that copies both and scaffolds `aide.toml` |
 

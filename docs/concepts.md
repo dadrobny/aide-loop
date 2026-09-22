@@ -22,7 +22,7 @@ A working install is three layers, and it needs all three:
   knowledge of any specific LLM runtime.
 - **Adapter** (`adapters/<name>/` → installed as the runtime's dir, e.g. `.claude/`)
   — how one runtime *drives* the engine: its role agents, workflow entry-points,
-  orchestrators, and (optionally) a permission policy and usage probe.
+  orchestrators, and (optionally) a permission policy.
 - **Project config** (`aide.toml` + `docs/aide/`) — this project's facts and living
   documents. Never part of the framework.
 
@@ -126,7 +126,7 @@ compiled `aide` binary exposing the same subcommands is a drop-in substitution w
 no change to any adapter. It is why generality is real rather than aspirational: the
 hard 80% is already shared.
 
-**Why Python for the engine.** `aide.py`, `loop.py`, and `install.py` are stdlib-only
+**Why Python for the engine.** `aide.py` and `install.py` are stdlib-only
 Python 3.11+ (3.9 works too — the CLI has a TOML fallback), so the engine runs on a
 stock interpreter with no dependency resolution — the reason it works *before* a
 project venv exists and behaves identically across OSes. A consuming project therefore
@@ -158,22 +158,25 @@ enforced, and any provider-specific command shaping a permission policy
 demands, are **adapter** concerns — for Claude, a `PreToolUse` hook plus a permission
 allow-list (see [`../adapters/claude/README.md`](../adapters/claude/README.md)).
 
-## The loop supervisor
+## Unattended runs
 
-For unattended runs longer than one sitting, an **external supervisor**
-(`core/loop/loop.py`) relaunches the gated roadmap command whenever usage limits
-allow, deciding RUN / WAIT / STOP_WEEKLY each pass. It is provider-agnostic: the
-decision loop is engine code, but the usage numbers come from a **pluggable probe**
-selected by `[loop] usage_probe`. This is the one core/adapter seam in the loop — the
-Claude adapter ships a `usage_probe.py` (`"anthropic-oauth"`) that reads the OAuth
-usage endpoint; `"none"` ships no probe and relaunches on a plain time cadence, the
-graceful default for any runtime without a usage API. State lives in git commits, not
-the supervisor, so a cutoff never loses in-flight work.
+The loop pauses at each queue PR by design, and between those checkpoints a run is
+one session. **Nothing in the framework relaunches it.** Continuous operation —
+across usage windows, or across several AIDE repos — is an external scheduler's
+job ([`vision.md`](vision.md) → *Not a scheduler*); the engine's side of that
+bargain is that relaunching is cheap, because state lives in git commits and the
+living documents and a fresh session re-reads them, so a cutoff never loses
+in-flight work. The minimum scheduler is a shell loop around the launch command.
+
+What a scheduler has to get right is the **launch contract** — which surface the
+run is launched on, how permissions resolve there, and what a non-interactive
+session cannot do. That is adapter-specific and written down per adapter; for
+Claude, [`../adapters/claude/execution-surfaces.md`](../adapters/claude/execution-surfaces.md).
 
 ## Shared vs. personal
 
-- **Shared (committed):** `.aide/` (minus `loop.local.toml`), `aide.toml`, the
+- **Shared (committed):** `.aide/` (minus `local.toml`), `aide.toml`, the
   `.claude/` control files, `CLAUDE.md`, the `docs/aide/` living documents.
-- **Personal (git-ignored):** `.aide/loop/loop.local.toml`,
+- **Personal (git-ignored):** `.aide/local.toml`,
   `.claude/settings.local.json`, permission logs, generated status HTML, and any
   credentials. Never commit credentials.

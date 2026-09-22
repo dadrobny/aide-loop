@@ -1,11 +1,10 @@
 # Security
 
-aide-loop installs files into a consumer's repository, ships a permission
-allow-list and a guard hook that decide which agent commands run unattended,
-and runs a supervisor loop under the consumer's own permissions. A defect in
-any of those is a security defect, and so is anything that lets an installed
-file, a document the loop parses, or an insight a consumer's agent appends do
-more than it says.
+aide-loop installs files into a consumer's repository and ships a permission
+allow-list and a guard hook that decide which agent commands run unattended —
+all of it under the consumer's own permissions. A defect in any of those is a
+security defect, and so is anything that lets an installed file, a document the
+loop parses, or an insight a consumer's agent appends do more than it says.
 
 **Report privately** through GitHub's *Report a vulnerability* button on this
 repository's Security tab, not as a public issue. If that button is absent,

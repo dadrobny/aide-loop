@@ -13,10 +13,11 @@ An adapter is a translation layer, not a rewrite. The deterministic 80% —
 git/document/merge/env logic — already lives in `scripts/aide.py` and is invoked
 identically by every runtime. An adapter re-expresses only the ~18 markdown
 control files (entry-points, roles, orchestrators) plus, optionally, a permission
-policy and a usage probe. Nothing below re-implements engine logic.
+policy. Nothing below re-implements engine logic.
 
-A conforming adapter provides all of §1–§4; §5–§8 are optional and only apply to
-runtimes whose feature set supports them. The unnumbered *Copies of engine text*
+A conforming adapter provides all of §1–§4; §5, §7 and §8 are optional and only
+apply to runtimes whose feature set supports them (§6 is retired, its number
+kept so those pointers still resolve). The unnumbered *Copies of engine text*
 section below is not an adapter feature at all: it is the one rule for every copy
 of engine text, of which an adapter's delivered files are one case.
 
@@ -197,23 +198,19 @@ so it is never removed. A file retired before a consumer had a manifest is liste
 in `install.py`'s `RETIRED_ADAPTER_PATHS` and removed on the same grounds: at that
 path, the file is the framework's old copy, not the project's.
 
-## 6. Optional: usage probe (unattended long runs)
+## 6. Retired: usage probe
 
-The engine's supervisor (`loop/loop.py`) gates unattended relaunches on real usage
-numbers via a **pluggable probe** — the one core/adapter seam in the loop:
+Retired in 2.0.0, with the engine supervisor whose RUN/WAIT/STOP decision it fed.
+The number is kept rather than reclaimed, so every `§7` and `§8` pointer written
+against this document still resolves.
 
-- **Engine (`loop/loop.py`)** owns the RUN/WAIT/STOP_WEEKLY decision loop,
-  deadlines, and relaunch. It contains no provider specifics.
-- **Adapter (`usage_probe.py`, installed next to `loop.py`)** implements
-  `get_usage(cfg) -> dict | None` — the raw usage document (`five_hour`/`seven_day`
-  utilisation + `resets_at`) the engine interprets, or `None` when it can't be read.
-- **Config** `[loop] usage_probe` selects it: the Claude adapter ships
-  `"anthropic-oauth"` (the OAuth usage endpoint); `"none"` ships no probe and the
-  loop relaunches on a plain time cadence — the graceful default for any runtime or
-  subscription without a usage API.
-
-An adapter for a runtime with no usage endpoint sets `usage_probe = "none"` and
-ships no probe file; the contract is still satisfied.
+Continuous operation — relaunching a run when a usage window resets or a gate
+closes — is an **external scheduler's** job, not the engine's or an adapter's
+(`docs/vision.md` → *Not a scheduler*). What an adapter still owes an unattended
+run is the **launch contract**: which surface the run is launched on, how
+permissions resolve there, and what a session cannot do once it is running. The
+Claude adapter records it in `execution-surfaces.md`; that is the document a
+scheduler is written against.
 
 ## 7. Optional: default-context instructions
 
@@ -292,7 +289,7 @@ inside a project-owned document and no third ownership pattern to invent.
 An adapter for a runtime with **no import mechanism** ships a managed delimited
 block instead; one with no default-context concept at all omits `default-context.json`
 and this section, and relies on `conventions.md` being read — the same graceful
-degradation §5 and §6 use.
+degradation §5 uses.
 
 ### §-level delivery
 
@@ -445,7 +442,7 @@ runtime-general and lives in `conventions.md` §8, restated in `AGENT-CONTEXT.md
 so it binds from the first message. Only the mechanism is adapter-local.
 
 **The declaration already exists.** No new configuration: `[framework] local_path`
-and `[hygiene] extra_repos` in the personal, gitignored `.aide/loop/loop.local.toml`
+and `[hygiene] extra_repos` in the personal, gitignored `.aide/local.toml`
 are already the machine's answer to "which repos does this project legitimately
 span", in the one file permitted to hold absolute paths. The instruction filename
 is the `file` an adapter already declares in `default-context.json` (§7), so it is
@@ -489,7 +486,7 @@ shown — only `hookSpecificOutput.additionalContext` is — so the obvious
 implementation prints the file, appears to work, and delivers nothing.
 
 A runtime with **no way to inject context mid-session** omits this and relies on
-the `conventions.md` §8 rule being read, the same graceful degradation §5, §6 and
+the `conventions.md` §8 rule being read, the same graceful degradation §5 and
 §7 use.
 
 ---
@@ -706,7 +703,6 @@ moment at which the ladder above is a question rather than an excavation.
 - [ ] Three orchestrators (or a manual runbook calling the same `aide.py` steps in order).
 - [ ] Every mechanical action routed through `python .aide/scripts/aide.py …`.
 - [ ] *(if the runtime has one)* a permission policy enforcing `conventions.md` §3.
-- [ ] *(if unattended runs are wanted)* a `usage_probe.py`, or `usage_probe = "none"`.
 - [ ] *(if the runtime loads an instruction file by default)* a `default-context.json`
       declaring that file and the runtime's import syntax.
 - [ ] *(if the runtime has any always-loaded instruction channel)* §3 delivered,

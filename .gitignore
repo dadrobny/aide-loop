@@ -2,9 +2,8 @@
 __pycache__/
 *.pyc
 .venv/
-# per-machine loop config (never shared)
-core/loop/loop.local.toml
-adapters/**/loop.local.toml
+# per-machine config (never shared)
+core/local.toml
 # installer artifacts
 .aide-merge
 .DS_Store

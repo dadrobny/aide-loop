@@ -3,8 +3,8 @@
 The reference AIDE adapter: it drives the provider-agnostic engine (`../../core/`)
 from **Claude Code**. Where [`../ADAPTER-SPEC.md`](../ADAPTER-SPEC.md) states the
 *contract* every adapter fulfils in the abstract (seven entry-points, five roles on
-capability tiers, three orchestrators, the shared CLI, an optional permission policy
-and usage probe), this README is the concrete **AIDE-concept → Claude-Code-primitive
+capability tiers, three orchestrators, the shared CLI, an optional permission
+policy), this README is the concrete **AIDE-concept → Claude-Code-primitive
 map**: which file expresses each contract point, and how the tiers bind to Claude
 models.
 
@@ -13,7 +13,6 @@ models.
 | Source (here) | Installed to | Role |
 |---|---|---|
 | `agents/` `skills/` `commands/` `rules/` `hooks/` `scripts/` `settings.json` | `<repo>/.claude/` | the Claude harness |
-| `usage_probe.py` | `<repo>/.aide/loop/usage_probe.py` | the loop's usage seam (co-located with the engine `loop.py`) |
 | `default-context.json` | — | not installed; declares the instruction file and import syntax `install.py` uses to link `.aide/AGENT-CONTEXT.md` |
 | `README.md` (this file) | — | not installed; documents the adapter |
 
@@ -103,19 +102,20 @@ session, so the nesting is real, not a manual runbook.
   empties. Does **not** create the next queue.
 - **`aide-run-roadmap`** — generate a queue → run it → generate the next, until the
   roadmap is exhausted. Each new queue lands via a **human-reviewed PR** — the batch
-  checkpoint, one review per ~10 items. This is also the loop supervisor's default
-  command (see the usage probe below).
+  checkpoint, one review per ~10 items. It is also what an external scheduler
+  launches for an unattended run (`execution-surfaces.md`).
 
 Two more commands are not orchestrators: **`aide-review-permissions`** belongs to
 the permission model below, and **`aide-review-instructions`** to the delivery
 instrumentation beside it.
 
 The `/aide-*` entry-points can be launched from the IDE extension, the
-interactive CLI, or the loop supervisor's top-level `claude -p` — these surfaces
-differ in cwd behaviour, permission-ask handling, and session lifetime. The
-differences, the unattended permission posture, and the trusted-folder caveat
-are recorded in **[`execution-surfaces.md`](execution-surfaces.md)** — read it
-before the first unattended run.
+interactive CLI, or a top-level `claude -p` session an external scheduler
+starts — these surfaces differ in cwd behaviour, permission-ask handling, and
+session lifetime. The differences, the unattended permission posture, and the
+trusted-folder caveat are recorded in
+**[`execution-surfaces.md`](execution-surfaces.md)** — read it before the first
+unattended run.
 
 ## Permission model → **`settings.json`** + **`hooks/`** (Claude-specific)
 
@@ -432,26 +432,6 @@ not an instruction file to the runtime, so it never appears in the
 `InstructionsLoaded` log — and it needs no measuring: it is unconditional per
 spawn, and the budget test prints the exact per-role sum.
 
-## Usage probe → **`usage_probe.py`** (`anthropic-oauth`)
-
-This is [spec §6](../ADAPTER-SPEC.md) — the one core/adapter seam in the loop. The
-engine's supervisor (`loop/loop.py`) owns the RUN/WAIT/STOP_WEEKLY decision, and
-calls a **pluggable probe** sitting next to it for the raw numbers.
-
-- **`usage_probe.py`** implements the engine contract `get_usage(cfg) -> dict | None`
-  against Anthropic's OAuth **usage endpoint** — it reads a *hard* utilisation number
-  (`five_hour`/`seven_day` + `resets_at`), never scraped output, using the on-disk
-  Claude Code OAuth token (`~/.claude/.credentials.json`, overridable via
-  `credentials_path`). It returns `None` — degrading the loop to a plain time cadence,
-  never crashing — when there is no token or the fetch fails.
-- **Selection.** `[loop] usage_probe = "anthropic-oauth"` in the gitignored
-  `.aide/loop/loop.local.toml` picks it; `"none"` (the engine default) ships no probe
-  and relaunches on time cadence — the graceful path for any plan without a usage API.
-- **Co-location** is what makes the seam resolve: `install.py` drops this file next to
-  the engine `loop.py` in `.aide/loop/`, and `loop.py`'s `_import_probe_module()`
-  imports the sibling by filename, never by provider name. That invariant is tested in
-  [`tests/test_usage_probe.py`](tests/test_usage_probe.py).
-
 ---
 
 ## Default-context instructions → **`default-context.json`** (`CLAUDE.md` + `@path`)
@@ -499,9 +479,8 @@ adapters/claude/
 │                  log_instructions_loaded.py · sibling_instructions.py
 ├── scripts/       review_permissions.py · review_instructions.py
 ├── settings.json  permission allow/ask-list + hook registration
-├── usage_probe.py the anthropic-oauth usage probe (installed into .aide/loop/)
 ├── default-context.json   CLAUDE.md + @path — how .aide/AGENT-CONTEXT.md gets linked
-└── tests/         adapter/installer conformance — rules, pins, generation, agents, hooks, probe
+└── tests/         adapter/installer conformance — rules, pins, generation, agents, hooks
 ```
 
 For the *why* behind each obligation — and the conformance checklist a new adapter
