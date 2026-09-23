@@ -277,8 +277,9 @@ def test_an_alias_is_not_a_model_id():
 #: builder role on T3: a model pinned per role can only come from frontmatter
 #: (the per-dispatch `model` override takes aliases only), so the step-up is a
 #: second definition — and nothing about it but the frontmatter may differ.
-#: Rung 3 of ADAPTER-SPEC's *Copies of engine text* at its strictest: the whole
-#: body is the pin, held here because the copy's reader, the spawn, receives
+#: Registered by a byte comparison, which ADAPTER-SPEC's *Copies of engine
+#: text* names beside the quote-pins: stricter than rung 3's normalised quotes,
+#: since the whole body is held with no tolerance at all. It is held here because the copy's reader, the spawn, receives
 #: the body whole, and a declaration in it would be one more thing to keep
 #: identical. Install-time generation (rung 2) was not taken: the installer
 #: generates *section cores*, and a second grammar for one adapter file buys

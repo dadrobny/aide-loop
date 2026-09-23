@@ -158,8 +158,9 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    > local). **`in-review`, never `done`** — ✅ means merged and is written by
    > `merge` itself, so under `pr` the item stays 🔍 until a human merges the PR;
    > marking it done here is what once let the exhaustion sweep target an open
-   > PR's head branch. FAIL: report which check failed and whether builder or test-writer
-   > must fix it. Do not merge.
+   > PR's head branch. FAIL: report which check failed, what it showed (the
+   > failing test or criterion and its output), and whether builder or
+   > test-writer must fix it. Do not merge.
 
    Substitute **R** with this dispatch's round number — 1 the first time,
    and the count you are already keeping for the cap in step 6 on every
@@ -214,17 +215,18 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
      them as you triage it: the reviewer's rank is a proposal, this call is
      yours, and where the repo's `REVIEW.md` ranks differently it wins. Keep a
      running total per rank — it is what you pass to the merge.
-     - **Blocking, in scope** → a fresh builder (production code) or
+     - **Blocking, in scope** → a fresh builder of the item's tier
+       (`builder-escalation` once escalated) for production code, or
        `test-writer` (tests) with the finding, then a fresh `validator`, merge
        still held. These are validation rounds and count against the cap.
      - **Minor, in scope** → your call: the same dispatch (a validation
        round, counted against the cap like any other), or one `insights.md`
        `defect` line instead of it. Say which you chose and why.
      - **Nit, in scope** → counted, and never worth a validation round of its
-       own. Fold it into whatever `builder` dispatch a blocking or minor
-       finding is already causing. If nits are all that is left, send them to
-       a `builder` on their own — a fresh one, or the one you last used if it
-       is still around — and when it returns, **merge: no `validator` and no
+       own. Fold it into whatever build dispatch a blocking or minor
+       finding is already causing. If nits are all that is left, send them on
+       their own to a builder of the item's tier — a fresh one, or the one you
+       last used if it is still around — and when it returns, **merge: no `validator` and no
        `reviewer` behind it, and nothing added to the round count.** A nit
        that would change behaviour was ranked wrong; re-rank it and pay the
        round.
