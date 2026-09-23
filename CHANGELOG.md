@@ -121,6 +121,25 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.0.1] — 2026-09-23
+
+### Changed
+
+- **The three T3 roles move from `claude-opus-5` to `claude-opus-5-5` (issue
+  #261).** `queue-planner`, `spec-author` and `spec-reviewer` now read `model:
+  claude-opus-5-5`, and `ADAPTER-SPEC.md` §2's matching Claude cells read
+  `claude-opus-5-5, xhigh` / `claude-opus-5-5, high`; the T2 roles
+  (`test-writer`, `builder`, `validator`, `reviewer`) stay on
+  `claude-sonnet-5`. Effort values are unchanged — re-tuning effort on the new
+  generation is a separate observation with its own evidence. Still unpinned,
+  per §2: the orchestrator's session model and the builder's round-3
+  escalation. The ID was probed as served before this landed (a sub-agent
+  pinned to it spawned under Claude Code 2.1.280 on the first-party API).
+  **A consumer edits nothing** — but a pinned ID its runtime does not serve
+  fails the spawn, so a consumer running on Amazon Bedrock or Google Vertex AI
+  should hold `install.py --update` until that catalogue serves
+  `claude-opus-5-5`.
+
 ## [2.0.0] — 2026-09-22
 
 ### Removed

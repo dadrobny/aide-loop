@@ -55,8 +55,8 @@ own work; a fresh instance per item.
 
 | Role | Tier | Claude | Why the tier and the effort |
 |---|---|---|---|
-| queue-planner | **T3 (strongest)** | `claude-opus-5, xhigh` | one plan cascades into ~10 items, and `xhigh` sits one notch above `spec-author` because sequencing, dependency ordering and scoping several items against vision/roadmap/progress *at once* is the single highest-leverage decision in the workflow — one bad call propagates through the whole batch |
-| spec-author | **T3** | `claude-opus-5, high` | the item spec is its single source of truth, cascading into 3 downstream roles |
+| queue-planner | **T3 (strongest)** | `claude-opus-5-5, xhigh` | one plan cascades into ~10 items, and `xhigh` sits one notch above `spec-author` because sequencing, dependency ordering and scoping several items against vision/roadmap/progress *at once* is the single highest-leverage decision in the workflow — one bad call propagates through the whole batch |
+| spec-author | **T3** | `claude-opus-5-5, high` | the item spec is its single source of truth, cascading into 3 downstream roles |
 | test-writer | **T2 (mid)** | `claude-sonnet-5, medium` | well-scoped against a fixed spec |
 | builder | **T2** (may escalate to **T3** on a late retry) | `claude-sonnet-5, medium` | implements `source_dir` against a fixed spec + tests: the "what" is fixed by committed AC and committed tests, so `medium` covers translating it into code that matches the surrounding modules. The third-attempt escalation is the deliberate step-up once a defect has resisted two rounds |
 | validator | **T2** | `claude-sonnet-5, medium` | quality gate against fixed AC; reconciles + merges |
@@ -67,7 +67,7 @@ entirely — a runtime that does not express one simply has no cell here:
 | Optional definition | Tier | Claude | Why the tier and the effort |
 |---|---|---|---|
 | reviewer | **T2** | `claude-sonnet-5, high` | an adversarial read of one diff turns on meaning — whether an enumeration covers its inputs, whether a guard can pass while the thing it checks is absent — and none of it is a string match, which is where `high` stops a review re-reading the spec back to itself |
-| spec-reviewer | **T3** | `claude-opus-5, high` | every cross-item conflict it misses becomes a red test or a hand-back several items later, and the judgements are about what a criterion requires and where a symbol lives — exactly what the deterministic `aide check --queue` ahead of it cannot decide |
+| spec-reviewer | **T3** | `claude-opus-5-5, high` | every cross-item conflict it misses becomes a red test or a hand-back several items later, and the judgements are about what a criterion requires and where a symbol lives — exactly what the deterministic `aide check --queue` ahead of it cannot decide |
 
 Recon/claim is **not a role** — it is deterministic (`aide claim`), so no agent and
 no tier. The **Claude** column is the reference binding — **T3→Opus, T2→Sonnet**
