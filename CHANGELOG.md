@@ -121,7 +121,7 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
-## [2.0.2] — 2026-09-23
+## [2.1.0] — 2026-09-23
 
 ### Fixed
 
@@ -149,7 +149,7 @@ instead — that is the bump policy above, and it is enforced by
   They now leave out exactly the tests `aide scope` reports as reconciled:
   those belong to the item whose file they sit in. A test in that file that
   traces to neither spec is still counted. **The column's meaning has
-  changed**, so a row written before 2.0.2 by an item that reconciled another
+  changed**, so a row written before 2.1.0 by an item that reconciled another
   item's tests counts higher than the same row written now. Rows already in
   the file are not rewritten. `aide merge -h` and §1 → `ledger.md` say so.
 - **§6 recommends the test file's name.** An item's tests go in

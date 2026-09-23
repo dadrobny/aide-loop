@@ -8784,7 +8784,7 @@ def split_reconciled_tests(repo_root: Path, config,
     not count.
     """
     idir = docs_dir(repo_root, config) / "items"
-    specs: Dict[int, Optional[Tuple[str, str]]] = {}
+    specs: Dict[int, Optional[Tuple[str, List[int], List[str]]]] = {}
     own: List[Tuple[str, str]] = []
     others: Dict[int, ReconciledTests] = {}
     for rel, name in added:
@@ -8801,14 +8801,15 @@ def split_reconciled_tests(repo_root: Path, config,
                 except (OSError, UnicodeDecodeError):
                     text = ""
                 if _AC_HEADING_RE.search(text):
-                    specs[owner] = (found[0].relative_to(repo_root).as_posix(), text)
+                    specs[owner] = (found[0].relative_to(repo_root).as_posix(),
+                                    spec_acceptance_numbers(text),
+                                    testing_strategy_labels(text))
         if specs[owner] is None:
             own.append((rel, name))
             continue
-        rel_spec, text = specs[owner]
+        rel_spec, acs, labels = specs[owner]
         bucket = others.setdefault(owner, ReconciledTests(rel_spec, [], []))
-        traced = _traces_to(name, spec_acceptance_numbers(text),
-                            testing_strategy_labels(text))
+        traced = _traces_to(name, acs, labels)
         (bucket.reconciled if traced else bucket.untraced).append((rel, name))
     return own, others
 

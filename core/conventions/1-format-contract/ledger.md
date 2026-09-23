@@ -89,7 +89,7 @@ project's own ratios and their trend.
   and the ranks are its judgement of what a reviewer returned. Passing them at
   the merge is the one moment both are still in hand and a verb is running
   anyway.
-- **Why a reconciled test is not counted.** Until 2.0.2 the Tests cell
+- **Why a reconciled test is not counted.** Until 2.1.0 the Tests cell
   counted every test function new at the base, so an item that renamed a test
   in an earlier item's file, as its spec prescribed, was charged with a test
   that covers the earlier item's criterion — and tests per criterion, the
