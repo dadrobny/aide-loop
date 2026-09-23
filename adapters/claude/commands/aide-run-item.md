@@ -1,5 +1,5 @@
 ---
-description: Drive a single AIDE work item end-to-end — author spec (Opus), write tests, implement, validate, merge — via fresh sub-agents. The reusable unit that /aide-run-queue loops over. Pauses only for PRs and major structural changes.
+description: Drive a single AIDE work item end-to-end — author spec, write tests, implement, validate, merge — via fresh sub-agents. The reusable unit that /aide-run-queue loops over. Pauses only for PRs and major structural changes.
 argument-hint: "<item number, e.g. 014> [branch name — optional; defaults to the existing aide/NNN-* branch]"
 ---
 
@@ -20,18 +20,19 @@ branch name, else the existing `aide/NNN-*` branch).
 > caller to claim it first.
 
 **Orchestration model.** This dispatch-and-gate role is light — run it on
-**Sonnet** (the heavy work is in the Opus/Sonnet subagents). A slash command can't
-pin the session model, so `/model sonnet` first if you're on Opus.
+**Sonnet** (the heavy work is in the subagents, each on the model its agent
+spec pins). A slash command can't pin the session model, so `/model sonnet`
+first if you're on Opus.
 
 ## Task → sub-agent mapping
 
-| Step | Task | Sub-agent | Model | Notes |
-|---|---|---|---|---|
-| 0 | **Author the item spec** | `spec-author` | **Opus** | writes `docs/aide/items/NNN-*.md` (Description, atomic AC, steps, testing strategy, deps, decisions), commits. **No code, no tests.** Skip only if the spec file already exists and is complete — and its Assumptions pin no dependency's interface; if they do, it re-checks them (step 1). |
-| 1 | **Write tests** for the item | `test-writer` | Sonnet | reads spec + AC + existing test style, writes one test per AC plus the cases the Testing Strategy names, commits. **No production code, no pytest.** |
-| 2 | **Implement** production code | `builder` (`builder-escalation` once escalated, step 6) | Sonnet (escalated: Opus) | checkout branch, implement `source_dir` per every AC, record decisions, set progress in-progress (`aide progress set NNN in-progress`), commit. **No tests, no pytest.** |
-| 2b | **Review** the diff | `reviewer` | Sonnet | **only when `aide.toml` sets `loop.review = "background"`** (default `"off"`). Dispatched in the background the moment builder returns, concurrent with step 3 over the same branch. Reads the diff adversarially and reports findings; writes nothing, merges nothing. |
-| 3 | **Validate** (+ merge, unless held) | `validator` | Sonnet | a **different** agent: runs pytest, checks AC coverage + scope + vision fit, then on PASS reconciles via the CLI (`aide progress set NNN in-review`) and merges (`aide merge NNN` — `merge` writes the ✅ itself once the merge lands). **Under `loop.review = "background"` the merge is held**: it stops after the reconcile, reports PASS (merge held), and *you* merge once the review is discharged. **No new tests.** |
+| Step | Task | Sub-agent | Notes |
+|---|---|---|---|
+| 0 | **Author the item spec** | `spec-author` | writes `docs/aide/items/NNN-*.md` (Description, atomic AC, steps, testing strategy, deps, decisions), commits. **No code, no tests.** Skip only if the spec file already exists and is complete — and its Assumptions pin no dependency's interface; if they do, it re-checks them (step 1). |
+| 1 | **Write tests** for the item | `test-writer` | reads spec + AC + existing test style, writes one test per AC plus the cases the Testing Strategy names, commits. **No production code, no pytest.** |
+| 2 | **Implement** production code | `builder` (`builder-escalation` once escalated, step 6) | checkout branch, implement `source_dir` per every AC, record decisions, set progress in-progress (`aide progress set NNN in-progress`), commit. **No tests, no pytest.** |
+| 2b | **Review** the diff | `reviewer` | **only when `aide.toml` sets `loop.review = "background"`** (default `"off"`). Dispatched in the background the moment builder returns, concurrent with step 3 over the same branch. Reads the diff adversarially and reports findings; writes nothing, merges nothing. |
+| 3 | **Validate** (+ merge, unless held) | `validator` | a **different** agent: runs pytest, checks AC coverage + scope + vision fit, then on PASS reconciles via the CLI (`aide progress set NNN in-review`) and merges (`aide merge NNN` — `merge` writes the ✅ itself once the merge lands). **Under `loop.review = "background"` the merge is held**: it stops after the reconcile, reports PASS (merge held), and *you* merge once the review is discharged. **No new tests.** |
 
 **Spec authoring, testing, implementation, and validation are always separate
 agents.** No agent signs off its own work. Spawn a **new** instance of each per
@@ -54,7 +55,7 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
 
 ## Steps
 
-1. **Spec → spawn `spec-author` (Opus).** Brief:
+1. **Spec → spawn `spec-author`.** Brief:
    > Author the work-item spec for AIDE item NNN on branch `aide/NNN-short-name`.
    > If `docs/aide/items/NNN-*.md` already exists and is complete, just return its
    > Acceptance Criteria. Otherwise read the queue line, roadmap stage, progress

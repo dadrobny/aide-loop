@@ -17,8 +17,9 @@ Arguments: **$ARGUMENTS** — a queue number (if empty, the live queue: the
 lowest-numbered `docs/aide/queue/queue-*.md` with open items).
 
 **Orchestration model.** This dispatch-and-gate role is light — run it on
-**Sonnet** (the heavy work is in the Opus/Sonnet subagents). A slash command can't
-pin the session model, so `/model sonnet` first if you're on Opus.
+**Sonnet** (the heavy work is in the subagents, each on the model its agent
+spec pins). A slash command can't pin the session model, so `/model sonnet`
+first if you're on Opus.
 
 **One session, one layer.** Per item, load `/aide-run-item NNN` **inline as a
 skill in *this* session** — it is a prompt expansion, not a subprocess. The only
@@ -36,7 +37,7 @@ parallel*.
 | Concern | Owner | Notes |
 |---|---|---|
 | Claim the next 📋 item | `aide claim` (CLI) | `python .aide/scripts/aide.py claim [--queue NNN]` — syncs, checks `aide/*` branches, picks the first unclaimed unblocked 📋 item, creates + pushes `aide/NNN-*`; prints item number + branch + title, and the base when it is not `main`. Deterministic, no subagent. **Run it from the branch the queue's work belongs on**: claiming while a queue branch is checked out records that branch as each item's base, so `aide merge` returns the item to it and the whole queue still lands as one reviewed PR. |
-| Run one item end-to-end | **`/aide-run-item NNN`** | spec-author (Opus) → test-writer → builder → validator+merge, incl. the build↔validate cycle (≤`loop.validation_rounds` rounds). Under `loop.review = "background"` a `reviewer` reads the diff concurrently with the validator and the merge waits for both. See that command for the per-item detail. |
+| Run one item end-to-end | **`/aide-run-item NNN`** | spec-author → test-writer → builder → validator+merge, incl. the build↔validate cycle (≤`loop.validation_rounds` rounds). Under `loop.review = "background"` a `reviewer` reads the diff concurrently with the validator and the merge waits for both. See that command for the per-item detail. |
 | Approval gates, looping | *orchestrator* | stays in the main thread |
 | Generating the **next** queue | **not here** | only `/aide-run-roadmap` (or a manual `/aide-create-queue`) does that |
 

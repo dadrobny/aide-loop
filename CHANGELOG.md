@@ -154,6 +154,12 @@ instead — that is the bump policy above, and it is enforced by
   never read. A new `aide.toml` scaffold writes `validation_rounds = 5`.
   **A consumer edits nothing**: one whose `aide.toml` has no such key gets
   the engine default of 5, and one that sets it explicitly keeps its value.
+- **The run-* commands stop naming the subagents' models.** `aide-run-item`'s
+  task table loses its Model column, and the "(Opus)"/"on Sonnet" asides in
+  `aide-run-item`, `aide-run-queue` and `aide-run-roadmap` are gone. Each
+  role's model is its agent spec's `model:`, and those asides had already
+  drifted once (the escalation). The advice to run the orchestrating session
+  itself on Sonnet stays, since nothing else pins that model.
 
 ## [2.1.0] — 2026-09-23
 
