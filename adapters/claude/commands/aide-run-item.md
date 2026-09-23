@@ -1,5 +1,5 @@
 ---
-description: Drive a single AIDE work item end-to-end — author spec (Opus), write tests, implement, validate, merge — via fresh sub-agents. The reusable unit that /aide-run-queue loops over. Pauses only for PRs and major structural changes.
+description: Drive a single AIDE work item end-to-end — author spec, write tests, implement, validate, merge — via fresh sub-agents. The reusable unit that /aide-run-queue loops over. Pauses only for PRs and major structural changes.
 argument-hint: "<item number, e.g. 014> [branch name — optional; defaults to the existing aide/NNN-* branch]"
 ---
 
@@ -20,18 +20,19 @@ branch name, else the existing `aide/NNN-*` branch).
 > caller to claim it first.
 
 **Orchestration model.** This dispatch-and-gate role is light — run it on
-**Sonnet** (the heavy work is in the Opus/Sonnet subagents). A slash command can't
-pin the session model, so `/model sonnet` first if you're on Opus.
+**Sonnet** (the heavy work is in the subagents, each on the model its agent
+spec pins). A slash command can't pin the session model, so `/model sonnet`
+first if you're on Opus.
 
 ## Task → sub-agent mapping
 
-| Step | Task | Sub-agent | Model | Notes |
-|---|---|---|---|---|
-| 0 | **Author the item spec** | `spec-author` | **Opus** | writes `docs/aide/items/NNN-*.md` (Description, atomic AC, steps, testing strategy, deps, decisions), commits. **No code, no tests.** Skip only if the spec file already exists and is complete — and its Assumptions pin no dependency's interface; if they do, it re-checks them (step 1). |
-| 1 | **Write tests** for the item | `test-writer` | Sonnet | reads spec + AC + existing test style, writes one test per AC plus the cases the Testing Strategy names, commits. **No production code, no pytest.** |
-| 2 | **Implement** production code | `builder` | Sonnet (→ Opus on 3rd attempt) | checkout branch, implement `source_dir` per every AC, record decisions, set progress in-progress (`aide progress set NNN in-progress`), commit. **No tests, no pytest.** |
-| 2b | **Review** the diff | `reviewer` | Sonnet | **only when `aide.toml` sets `loop.review = "background"`** (default `"off"`). Dispatched in the background the moment builder returns, concurrent with step 3 over the same branch. Reads the diff adversarially and reports findings; writes nothing, merges nothing. |
-| 3 | **Validate** (+ merge, unless held) | `validator` | Sonnet | a **different** agent: runs pytest, checks AC coverage + scope + vision fit, then on PASS reconciles via the CLI (`aide progress set NNN in-review`) and merges (`aide merge NNN` — `merge` writes the ✅ itself once the merge lands). **Under `loop.review = "background"` the merge is held**: it stops after the reconcile, reports PASS (merge held), and *you* merge once the review is discharged. **No new tests.** |
+| Step | Task | Sub-agent | Notes |
+|---|---|---|---|
+| 0 | **Author the item spec** | `spec-author` | writes `docs/aide/items/NNN-*.md` (Description, atomic AC, steps, testing strategy, deps, decisions), commits. **No code, no tests.** Skip only if the spec file already exists and is complete — and its Assumptions pin no dependency's interface; if they do, it re-checks them (step 1). |
+| 1 | **Write tests** for the item | `test-writer` | reads spec + AC + existing test style, writes one test per AC plus the cases the Testing Strategy names, commits. **No production code, no pytest.** |
+| 2 | **Implement** production code | `builder` (`builder-escalation` once escalated, step 6) | checkout branch, implement `source_dir` per every AC, record decisions, set progress in-progress (`aide progress set NNN in-progress`), commit. **No tests, no pytest.** |
+| 2b | **Review** the diff | `reviewer` | **only when `aide.toml` sets `loop.review = "background"`** (default `"off"`). Dispatched in the background the moment builder returns, concurrent with step 3 over the same branch. Reads the diff adversarially and reports findings; writes nothing, merges nothing. |
+| 3 | **Validate** (+ merge, unless held) | `validator` | a **different** agent: runs pytest, checks AC coverage + scope + vision fit, then on PASS reconciles via the CLI (`aide progress set NNN in-review`) and merges (`aide merge NNN` — `merge` writes the ✅ itself once the merge lands). **Under `loop.review = "background"` the merge is held**: it stops after the reconcile, reports PASS (merge held), and *you* merge once the review is discharged. **No new tests.** |
 
 **Spec authoring, testing, implementation, and validation are always separate
 agents.** No agent signs off its own work. Spawn a **new** instance of each per
@@ -54,7 +55,7 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
 
 ## Steps
 
-1. **Spec → spawn `spec-author` (Opus).** Brief:
+1. **Spec → spawn `spec-author`.** Brief:
    > Author the work-item spec for AIDE item NNN on branch `aide/NNN-short-name`.
    > If `docs/aide/items/NNN-*.md` already exists and is complete, just return its
    > Acceptance Criteria. Otherwise read the queue line, roadmap stage, progress
@@ -158,8 +159,9 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    > local). **`in-review`, never `done`** — ✅ means merged and is written by
    > `merge` itself, so under `pr` the item stays 🔍 until a human merges the PR;
    > marking it done here is what once let the exhaustion sweep target an open
-   > PR's head branch. FAIL: report which check failed and whether builder or test-writer
-   > must fix it. Do not merge.
+   > PR's head branch. FAIL: report which check failed, what it showed (the
+   > failing test or criterion and its output), and whether builder or
+   > test-writer must fix it. Do not merge.
 
    Substitute **R** with this dispatch's round number — 1 the first time,
    and the count you are already keeping for the cap in step 6 on every
@@ -176,22 +178,37 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    > report PASS (merge held)** — do NOT run `aide merge`. The orchestrator
    > merges once the review findings are discharged.
 
-6. **Build/test ↔ validate cycle (orchestrator).** Read the verdict:
-   - **FAIL — suite red (code bug)** → fresh `builder` on the same branch with the
+6. **Build/test ↔ validate cycle (orchestrator).** A **round** is one build
+   or test fix followed by a fresh `validator`. Read `loop.validation_rounds`
+   from `aide.toml` (5 when unset): it is the ceiling on rounds per item. Read
+   the verdict:
+   - **FAIL — suite red (code bug)** → fresh builder on the same branch with the
      reproduce steps; then a fresh `validator`.
    - **FAIL — missing AC coverage** → fresh `test-writer`; then a fresh `validator`.
-   - **FAIL — out-of-scope / vision conflict** → fresh `builder` to revert/fix;
+   - **FAIL — out-of-scope / vision conflict** → fresh builder to revert/fix;
      then a fresh `validator`.
-   - Cap at **3 validation rounds**. Still failing after round 3 → record what
-     the item cost, stop, document the blocker in the item file, ask the user:
+   - **Which builder — escalation is a judgement, not a round number.** A quick
+     fix to a *newly found* failure goes to `builder`, round after round.
+     Dispatch `builder-escalation` instead when either
+     - a failure has **survived** a round: the same failure, or the same root
+       cause, is reported again after a fix aimed at it; or
+     - the first FAIL already shows a **serious** defect — a wrong approach or
+       a missing mechanism rather than a slip: several criteria failing
+       together, or a design-level mismatch with the spec.
+
+     Once escalated, every later build dispatch for this item — review fixes
+     and nits included — goes to `builder-escalation`. Brief it as step 3,
+     adding "escalated: <the failure and the fix it survived, or why it is
+     serious>". A `test-writer` fix never escalates.
+   - **Stop** when a failure survives an escalated round — this loop cannot fix
+     it — or when the item has used `loop.validation_rounds` rounds. Record
+     what the item cost, document the blocker in the item file, ask the user:
      ```
-     python .aide/scripts/aide.py ledger abandon NNN --rounds 3
+     python .aide/scripts/aide.py ledger abandon NNN --rounds R
      ```
-     No merge will ever write a row for this item, and this is the one a reader
-     at the queue boundary is looking for (`ledger -h`). It records; it decides
-     nothing about the item's status.
-   - **Round-3 builder** (validator FAILed twice): spawn with `model: opus` and say
-     "attempt 3, validator failed twice — hard defect, deeper analysis on Opus."
+     R is the rounds actually run. No merge will ever write a row for this
+     item, and this is the one a reader at the queue boundary is looking for
+     (`ledger -h`). It records; it decides nothing about the item's status.
    - **PASS**, `loop.review = "off"` → the validator has reconciled progress and
      merged. Done.
    - **PASS (merge held)**, `loop.review = "background"` → wait for the reviewer
@@ -199,17 +216,18 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
      them as you triage it: the reviewer's rank is a proposal, this call is
      yours, and where the repo's `REVIEW.md` ranks differently it wins. Keep a
      running total per rank — it is what you pass to the merge.
-     - **Blocking, in scope** → a fresh `builder` (production code) or
+     - **Blocking, in scope** → a fresh builder of the item's tier
+       (`builder-escalation` once escalated) for production code, or
        `test-writer` (tests) with the finding, then a fresh `validator`, merge
        still held. These are validation rounds and count against the cap.
      - **Minor, in scope** → your call: the same dispatch (a validation
        round, counted against the cap like any other), or one `insights.md`
        `defect` line instead of it. Say which you chose and why.
      - **Nit, in scope** → counted, and never worth a validation round of its
-       own. Fold it into whatever `builder` dispatch a blocking or minor
-       finding is already causing. If nits are all that is left, send them to
-       a `builder` on their own — a fresh one, or the one you last used if it
-       is still around — and when it returns, **merge: no `validator` and no
+       own. Fold it into whatever build dispatch a blocking or minor
+       finding is already causing. If nits are all that is left, send them on
+       their own to a builder of the item's tier — a fresh one, or the one you
+       last used if it is still around — and when it returns, **merge: no `validator` and no
        `reviewer` behind it, and nothing added to the round count.** A nit
        that would change behaviour was ranked wrong; re-rank it and pay the
        round.
@@ -247,5 +265,6 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
 - The item needs a **major structural change** or an edit to a framework/process
   file (`CLAUDE.md`, `aide.toml`, `.aide/**`, `vision.md`, `roadmap.md`,
   `.claude/skills|commands|agents/**`) — needs a reviewed PR, never a direct merge.
-- The **build↔validate cycle exceeds 3 rounds**, or the item is blocked /
+- The **build↔validate cycle stops** (step 6: a failure survived an escalated
+  round, or `loop.validation_rounds` was reached), or the item is blocked /
   contradictory. Document the blocker and suggest `/aide-feedback-loop`.

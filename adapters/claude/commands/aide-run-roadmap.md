@@ -17,7 +17,7 @@ items, not every item.
 current queue by loading `/aide-run-queue` **inline as a skill in this same
 session** (which in turn loads `/aide-run-item` inline), and delegates only the
 *leaf* work — item spec/tests/build/validate and queue *authoring* — to
-**`Task` subagents** (`spec-author`, `test-writer`, `builder`, `validator`,
+**`Task` subagents** (`spec-author`, `test-writer`, `builder` or `builder-escalation`, `validator`,
 `queue-planner`, and `reviewer` where `loop.review` turns it on). There is **no headless nesting**: the orchestrator never spawns
 `claude -p` child processes. Each new queue is a natural session boundary — the
 loop pauses at the queue PR, and the human re-invokes for the next queue, giving a
@@ -32,8 +32,8 @@ fresh session per batch.
 
 - **Run the orchestrator on Sonnet.** Orchestration here is light dispatch and
   gating — spawn a subagent, read its short summary, decide the next step. The
-  heavy cognition lives in the subagents (`queue-planner` and `spec-author` on
-  Opus; builder/validator on Sonnet). A slash command can't pin the session
+  heavy cognition lives in the subagents, each on the model its agent spec
+  pins. A slash command can't pin the session
   model, so if you're on Opus, `/model sonnet` before a long run.
 - **All layers run inline in this one session; only leaf tasks are subagents.**
   `/aide-run-roadmap` → `/aide-run-queue` → `/aide-run-item` are loaded as skills
@@ -84,7 +84,7 @@ isolation).
 
 ## Generate the next queue
 
-Queue authoring is delegated to the **`queue-planner` (Opus)** subagent — never
+Queue authoring is delegated to the **`queue-planner`** subagent — never
 run `/aide-create-queue` inline in the orchestrator (it would pollute this
 session's context and tie queue quality to the orchestration model). The planner
 writes + commits `queue-NNN.md` **and** tidies the superseded `queue-(NNN-1).md`
@@ -186,4 +186,4 @@ in the next queue rather than rewriting history.
   `roadmap.md`, `aide.toml`, `.aide/**`, `CLAUDE.md`, `.claude/**`) — reviewed
   PR, never auto-merge.
 - `/aide-run-queue` reports an item blocked, a PR/force-push need, or a
-  build↔validate cycle exceeding 3 rounds — surface it and pause.
+  build↔validate cycle that stopped (`/aide-run-item` step 6) — surface it and pause.

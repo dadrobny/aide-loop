@@ -251,8 +251,12 @@ DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
     # alone; "background" also dispatches a reviewer concurrently with it, and
     # the merge waits for both. Off by default because a review round costs
     # tokens on every item, and a consumer with CI and hosted reviewers may
-    # reasonably decline it (issue #151).
-    "loop": {"queue_cap": 10, "validation_rounds": 3, "clarify": "assume",
+    # reasonably decline it (issue #151). `validation_rounds` is prose-consumed
+    # the same way: the ceiling on build<->validate rounds per item. 5 leaves
+    # room for quick fixes to different new failures; one that keeps coming
+    # back is stopped by the orchestrator's escalation rule long before
+    # (issue #264).
+    "loop": {"queue_cap": 10, "validation_rounds": 5, "clarify": "assume",
              "claim_scope": "live-queue", "review": "off"},
     "framework": {"repo": ""},
     # [validation] — named environment profiles for stage-validation items:

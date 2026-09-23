@@ -25,7 +25,7 @@ paths:
      `tests/test_structural_budget.py` compares this line to the `skills:`
      lists. -->
 
-<!-- triggers: builder, queue-planner, reviewer, spec-author, spec-reviewer, validator
+<!-- triggers: builder, builder-escalation, queue-planner, reviewer, spec-author, spec-reviewer, validator
      The interactive half, declared so the glob evaluator stays on an
      assertion path: the roles whose named reads match the `paths:` above.
      A gate is recorded in `progress.md` and declared in `roadmap.md`, and
