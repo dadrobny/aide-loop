@@ -141,7 +141,7 @@ _SECTION_2 = re.compile(r"^## 2\. .*$", re.M)
 _NEXT_SECTION = re.compile(r"^## ", re.M)
 
 #: A Claude cell: one folded token per the spec's own example,
-#: `claude-opus-5, xhigh` — the frontmatter's two values, as written there.
+#: `claude-opus-5-5, xhigh` — the frontmatter's two values, as written there.
 _CLAUDE_CELL = re.compile(r"^`([A-Za-z][A-Za-z0-9.\-]*),\s*([A-Za-z]+)`$")
 
 #: The tier the row claims, read from the first `T<n>` token in its cell, so
@@ -242,23 +242,30 @@ def test_the_cell_parser_rejects_a_cell_that_is_not_a_binding():
     """The guard on the guard. If `_CLAUDE_CELL` ever loosened enough to match
     a tier or a rationale cell, `_table_rows` would read the wrong column and
     the comparisons above would fail for the wrong reason — or, worse, pass."""
-    assert _CLAUDE_CELL.match("`claude-opus-5, xhigh`")
+    assert _CLAUDE_CELL.match("`claude-opus-5-5, xhigh`")
     assert _CLAUDE_CELL.match("`claude-haiku-4-5-20251001, low`")
     for not_a_binding in ("**T3 (strongest)**", "one plan cascades into ~10 items",
-                          "`claude-opus-5`", "claude-opus-5, xhigh",
-                          "`claude-opus-5, xhigh` (late retry)"):
+                          "`claude-opus-5-5`", "claude-opus-5-5, xhigh",
+                          "`claude-opus-5-5, xhigh` (late retry)"):
         assert not _CLAUDE_CELL.match(not_a_binding), not_a_binding
 
 
 def test_an_alias_is_not_a_model_id():
     """The guard on #250's guard: every alias the runtime resolves is refused
     by the ID pattern too, so a new alias missing from `_ALIASES` still fails —
-    with the less helpful message, but it fails."""
+    with the less helpful message, but it fails.
+
+    The accepted examples carry the most specific ID a spec ships
+    (`claude-opus-5-5`, issue #261), not its generation prefix: a shorter
+    `claude-opus-5` may be underspecified and resolve dynamically on the
+    provider's side, and a more specific ID can behave differently from it,
+    so the fixtures show the shape a move should land on. `claude-sonnet-5`
+    stays accepted because a shipped spec still names it."""
     for alias in sorted(_ALIASES) + ["claude-opus", "opus-5", "claude-opus-latest",
                                      "claude-opus-5-latest", "claude-sonnet-5[1m]",
                                      "Claude-Opus-5"]:
         assert not _MODEL_ID.match(alias), alias
-    for exact in ("claude-opus-5", "claude-sonnet-5", "claude-opus-4-8",
+    for exact in ("claude-opus-5-5", "claude-sonnet-5", "claude-opus-4-8",
                   "claude-haiku-4-5-20251001"):
         assert _MODEL_ID.match(exact), exact
 
