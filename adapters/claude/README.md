@@ -59,7 +59,7 @@ The five roles ([spec §2](../ADAPTER-SPEC.md)) are Claude Code **sub-agents** �
 fresh, role-scoped instances with `model:`/`effort:` frontmatter. The contract names
 capability *tiers*; this adapter binds **T3 → Opus, T2 → Sonnet**, and the
 per-role binding is **[spec §2's table](../ADAPTER-SPEC.md)**, whose *Claude*
-cell (`claude-opus-5, xhigh`) is this adapter's `model:` + `effort:` pair and
+cell (`claude-opus-5-5, xhigh`) is this adapter's `model:` + `effort:` pair and
 is held to every `agents/*.md` in both directions by
 [`tests/test_agent_definitions.py`](tests/test_agent_definitions.py). It is not
 restated here: a second copy is a copy that drifts.
