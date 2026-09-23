@@ -273,6 +273,10 @@ branch_prefix = "aide/"
 
 [loop]
 queue_cap = 10
+# The most build<->validate rounds one item may take before the item loop
+# stops and asks. Escalation and the earlier stop are the orchestrator's
+# judgement; this is only the ceiling.
+validation_rounds = 5
 # Queue-execution scoped: how spec-author resolves an ambiguous queued item
 # (.aide/conventions.md §5). Not a global posture — root documents (vision,
 # roadmap) are authored interactively whatever this says.

@@ -58,7 +58,8 @@ own work; a fresh instance per item.
 | queue-planner | **T3 (strongest)** | `claude-opus-5-5, xhigh` | one plan cascades into ~10 items, and `xhigh` sits one notch above `spec-author` because sequencing, dependency ordering and scoping several items against vision/roadmap/progress *at once* is the single highest-leverage decision in the workflow — one bad call propagates through the whole batch |
 | spec-author | **T3** | `claude-opus-5-5, high` | the item spec is its single source of truth, cascading into 3 downstream roles |
 | test-writer | **T2 (mid)** | `claude-sonnet-5, medium` | well-scoped against a fixed spec |
-| builder | **T2** (may escalate to **T3** on a late retry) | `claude-sonnet-5, medium` | implements `source_dir` against a fixed spec + tests: the "what" is fixed by committed AC and committed tests, so `medium` covers translating it into code that matches the surrounding modules. The third-attempt escalation is the deliberate step-up once a defect has resisted two rounds |
+| builder | **T2** (escalates to **T3** as `builder-escalation`) | `claude-sonnet-5, medium` | implements `source_dir` against a fixed spec + tests: the "what" is fixed by committed AC and committed tests, so `medium` covers translating it into code that matches the surrounding modules. The escalation is the deliberate step-up once a failure has survived a fix aimed at it, or the first FAIL shows a serious defect |
+| builder-escalation | **T3** | `claude-opus-5-5, medium` | the builder role on T3, not a sixth role: the same definition, dispatched in its place once an item's build fixes escalate. The model is the step-up; `medium` stays because the "what" is still fixed by committed AC and tests, and re-tuning effort needs its own evidence. A runtime that can pin a model per dispatch may express it as an override instead of a second definition |
 | validator | **T2** | `claude-sonnet-5, medium` | quality gate against fixed AC; reconciles + merges |
 
 And the two optional definitions described below, which an adapter may omit
@@ -71,7 +72,7 @@ entirely — a runtime that does not express one simply has no cell here:
 
 Recon/claim is **not a role** — it is deterministic (`aide claim`), so no agent and
 no tier. The **Claude** column is the reference binding — **T3→Opus, T2→Sonnet**
-(builder→Opus on its third attempt), with `max` reserved for intractable one-offs
+(builder→Opus once escalated), with `max` reserved for intractable one-offs
 — and each cell folds that runtime's own frontmatter keys into one token, which
 for Claude Code is `model:` + `effort:` on the matching `agents/*.md`. A second
 adapter adds **one further column** beside it the day it ships agents, filled only
@@ -93,11 +94,12 @@ run ledger against the `Engine` cell is reading one set of role models per value
 The reasoning parameter is a literal already, so it is fixed by the same cell.
 The trade is deliberate — every model generation costs a release and a
 consumer's update, and an ID the provider has retired stops the spawn where an
-alias would have carried on, on a different model, silently. Two things stay
-outside it and are named rather than implied: the **orchestrator** runs in the
-user's own session on whatever model that session holds, and a runtime whose
-per-dispatch model override takes aliases only leaves an **escalation**
-(builder's third attempt) on the alias. The Claude reference has both.
+alias would have carried on, on a different model, silently. One thing stays
+outside it and is named rather than implied: the **orchestrator** runs in the
+user's own session on whatever model that session holds. The builder's
+**escalation** does not: a runtime whose per-dispatch model override takes
+aliases only expresses it as a definition of its own, pinned like every other
+row (the Claude reference's `builder-escalation`).
 
 **Optional definition — the item reviewer.** An adapter **may** express a
 **reviewer** at **T2**, dispatched over one item's diff concurrently with the
@@ -135,6 +137,8 @@ in the same order satisfies the contract.
 
 - **run-item** — one already-claimed item end-to-end: spec-author → test-writer →
   builder → validator+merge, with a ≤`loop.validation_rounds` build↔validate cycle.
+  The builder escalates to T3 when a failure survives a round or the first FAIL
+  is serious, and a failure that survives an escalated round stops the item.
 - **run-queue** — `aide claim` each item, then run-item it, until the queue empties.
   Does **not** create the next queue.
 - **run-roadmap** — generate a queue → run it → generate the next, until the
@@ -677,7 +681,9 @@ its guard. A quote-pinned copy is registered by its pins — the `<!-- pins: -->
 block in the copy, or the entry in the test module (`FLOOR_PINS`) that the
 placement criterion puts there; a generated copy by its `generated-from` line;
 prose the code owns by its entry in the `-h` register (`HELP_PINS`); a
-template by the guard that compares it to the sections. A copy with none of
+template by the guard that compares it to the sections; a whole adapter file
+copied into a second definition by a byte comparison of the two (the Claude
+adapter's `builder-escalation` body, in its agent-definitions test). A copy with none of
 these is a pointer or advisory, and a pointer is held too where it can be
 measured: a workflow skill, agent spec or command that carries no pins is held
 by the Claude adapter's pins test to restating nothing measurable — a floor on

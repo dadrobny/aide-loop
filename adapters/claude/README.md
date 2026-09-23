@@ -72,9 +72,16 @@ ID is also what the alias-remapping environment variables
 with it: a provider that spells its IDs differently (Amazon Bedrock's
 `us.anthropic.…`) cannot run these specs as shipped, where an alias would have
 gone through its mapping; and a retired ID fails the spawn until the consumer
-updates. Two models stay unpinned, and §2 names both — the orchestrating
-session's own, and the builder's third-attempt escalation, because the
-per-dispatch `model` override accepts aliases only.
+updates. One model stays unpinned, and §2 names it — the orchestrating
+session's own.
+
+The builder's escalation is not an exception. The per-dispatch `model` override
+accepts aliases only, so the step-up is its own spec, `builder-escalation`: the
+builder role on T3, not a sixth role. Its body is `builder.md`'s byte for byte,
+and only `name:`, `description:` and `model:` differ, both held by
+[`tests/test_agent_definitions.py`](tests/test_agent_definitions.py).
+`aide-run-item` dispatches it in `builder`'s place once an item's build fixes
+escalate (its step 6).
 
 Recon/claim is **not** an agent — it is deterministic `aide claim`, so no `agents/`
 file and no tier. No role signs off its own work; each item gets a fresh instance.
@@ -97,7 +104,9 @@ Claude Code **slash-commands**; Claude loads the role agents as sub-agents withi
 session, so the nesting is real, not a manual runbook.
 
 - **`aide-run-item`** — one claimed item end-to-end: spec-author → test-writer →
-  builder → validator+merge, with a ≤`loop.validation_rounds` build↔validate cycle.
+  builder → validator+merge, with a ≤`loop.validation_rounds` build↔validate cycle
+  in which the builder escalates to `builder-escalation` when a failure survives
+  a round or the first FAIL is serious.
 - **`aide-run-queue`** — `aide claim` each item, `aide-run-item` it, until the queue
   empties. Does **not** create the next queue.
 - **`aide-run-roadmap`** — generate a queue → run it → generate the next, until the

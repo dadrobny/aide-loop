@@ -34,12 +34,12 @@ paths:
      own. `tests/test_structural_budget.py` compares this line to the
      `skills:` lists. -->
 
-<!-- triggers: builder, reviewer, spec-author, test-writer, validator
+<!-- triggers: builder, builder-escalation, reviewer, spec-author, test-writer, validator
      The interactive half, declared so the glob evaluator stays on an
      assertion path: the roles whose named reads match the `paths:` above.
-     Five roles name an item spec — every role that builds, tests, judges or
-     writes one; `queue-planner` and `spec-reviewer` name the queue and
-     `progress.md` instead. -->
+     Five roles name an item spec — every role that builds (on either tier),
+     tests, judges or writes one; `queue-planner` and `spec-reviewer` name the
+     queue and `progress.md` instead. -->
 
 <!-- pins: .aide/conventions/1-format-contract/items.md
      Quoted from that section; `test_rule_pins.py` fails if either copy moves

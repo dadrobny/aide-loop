@@ -79,8 +79,10 @@ spawns a sub-agent per leaf task and gates approvals.
 
 - **`/aide-run-item NNN`** — one already-claimed item end-to-end: spec-author →
   test-writer → builder → validator+merge, with a bounded build↔validate cycle
-  (`loop.validation_rounds`). Under `loop.review = "background"` a reviewer runs
-  concurrently with the validator and the merge waits for both. A builder that
+  (`loop.validation_rounds`) in which the builder steps up a tier when a failure
+  survives a round or is serious from the first FAIL. Under
+  `loop.review = "background"` a reviewer runs concurrently with the validator
+  and the merge waits for both. A builder that
   finds the spec and the tests in contradiction hands the item back to
   spec-author rather than picking a side (§5).
 - **`/aide-run-queue [NNN]`** — claims each item (`aide claim`) then runs it via
@@ -105,7 +107,7 @@ tier to its own runtime's models (as high as necessary, as low as adequate). Det
 | `queue-planner` | **T3** (strongest) | authors one queue batch (cascades into ~10 items) |
 | `spec-author` | **T3** | authors one item spec (cascades into 3 downstream agents) |
 | `test-writer` | **T2** (mid) | writes one test per acceptance criterion, plus the cases the spec names |
-| `builder` | **T2** (→T3 late retry) | implements the source dir to satisfy every AC |
+| `builder` | **T2** (→T3 when a failure survives a round or is serious) | implements the source dir to satisfy every AC |
 | `validator` | **T2** | quality gate: tests, AC coverage, scope, vision fit; reconciles + merges |
 | `reviewer` | **T2** | *optional, `loop.review`* — adversarial read of the item's diff, concurrent with the validator; produces findings, merges nothing |
 

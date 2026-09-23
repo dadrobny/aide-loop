@@ -64,7 +64,7 @@ tier to its own models:
 | queue-planner | **T3** (strongest) | one plan cascades into ~10 items |
 | spec-author | **T3** | the item spec is its single source of truth, feeding 3 downstream roles |
 | test-writer | **T2** (mid) | well-scoped against a fixed spec |
-| builder | **T2** (may escalate to T3 on a late retry) | implements against a fixed spec + tests |
+| builder | **T2** (escalates to T3 when a failure survives a round or is serious) | implements against a fixed spec + tests |
 | validator | **T2** | quality gate against fixed acceptance criteria; reconciles + merges |
 
 Recon/claim is **not** a role — it is deterministic (`aide claim`), so no agent and
@@ -85,7 +85,9 @@ between them for a human to arbitrate.
 Three nested drivers sequence the roles:
 
 - **run-item** — one claimed item end-to-end (spec → tests → build → validate →
-  merge), with a bounded build↔validate cycle (`loop.validation_rounds`).
+  merge), with a bounded build↔validate cycle (`loop.validation_rounds`); the
+  builder steps up a tier when a failure survives a round or is serious from
+  the start.
 - **run-queue** — claim + run-item each item until the queue empties. Does *not*
   create the next queue.
 - **run-roadmap** — generate a queue → run it → generate the next, until the

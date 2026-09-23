@@ -145,7 +145,7 @@ _NEXT_SECTION = re.compile(r"^## ", re.M)
 _CLAUDE_CELL = re.compile(r"^`([A-Za-z][A-Za-z0-9.\-]*),\s*([A-Za-z]+)`$")
 
 #: The tier the row claims, read from the first `T<n>` token in its cell, so
-#: builder's "**T2** (may escalate to **T3** on a late retry)" reads as T2.
+#: builder's "**T2** (escalates to **T3** as `builder-escalation`)" reads as T2.
 _TIER = re.compile(r"T([0-9])")
 
 #: The binding §2 states in prose, and the only one this adapter expresses.
@@ -268,6 +268,62 @@ def test_an_alias_is_not_a_model_id():
     for exact in ("claude-opus-5-5", "claude-sonnet-5", "claude-opus-4-8",
                   "claude-haiku-4-5-20251001"):
         assert _MODEL_ID.match(exact), exact
+
+
+# --------------------------------------------------------------------------- #
+# the escalated builder is the builder, byte for byte (#264)
+# --------------------------------------------------------------------------- #
+#: The one agent spec that is a copy of another. `builder-escalation` is the
+#: builder role on T3: a model pinned per role can only come from frontmatter
+#: (the per-dispatch `model` override takes aliases only), so the step-up is a
+#: second definition — and nothing about it but the frontmatter may differ.
+#: Rung 3 of ADAPTER-SPEC's *Copies of engine text* at its strictest: the whole
+#: body is the pin, held here because the copy's reader, the spawn, receives
+#: the body whole, and a declaration in it would be one more thing to keep
+#: identical. Install-time generation (rung 2) was not taken: the installer
+#: generates *section cores*, and a second grammar for one adapter file buys
+#: nothing a byte comparison in the suite does not.
+_ESCALATION = {"builder-escalation": "builder"}
+
+#: The frontmatter keys an escalated copy exists to change. Any other key —
+#: `effort`, a `tools:` or `skills:` list added later — must match its
+#: original, so a preload or a tool grant reaches both tiers of the role.
+_ESCALATION_MAY_DIFFER = {"name", "description", "model"}
+
+
+@pytest.mark.parametrize("copy, original", sorted(_ESCALATION.items()))
+def test_an_escalated_spec_is_its_originals_body_byte_for_byte(copy, original):
+    copy_path, original_path = _AGENTS_DIR / f"{copy}.md", _AGENTS_DIR / f"{original}.md"
+    assert copy_path.is_file() and original_path.is_file(), (copy_path, original_path)
+    assert _split(copy_path)[1] == _split(original_path)[1], (
+        f"agents/{copy}.md's body differs from agents/{original}.md's. The "
+        f"escalation is the same role on a stronger model — edit both bodies, "
+        f"in one commit, so they stay identical.")
+
+
+@pytest.mark.parametrize("copy, original", sorted(_ESCALATION.items()))
+def test_an_escalated_spec_changes_only_its_name_description_and_model(copy, original):
+    copied = _frontmatter(_AGENTS_DIR / f"{copy}.md")
+    source = _frontmatter(_AGENTS_DIR / f"{original}.md")
+    for key in (set(copied) | set(source)) - _ESCALATION_MAY_DIFFER:
+        assert copied.get(key) == source.get(key), (
+            f"agents/{copy}.md: {key}={copied.get(key)!r} but agents/{original}.md "
+            f"says {source.get(key)!r} — only {sorted(_ESCALATION_MAY_DIFFER)} "
+            f"may differ between the two tiers of one role")
+    assert copied.get("model") != source.get("model"), (
+        f"agents/{copy}.md runs on the same model as agents/{original}.md, so "
+        f"escalating to it steps up nothing")
+
+
+def test_the_escalation_register_names_every_copy_the_tree_holds():
+    """The guard on the guard: a spec whose body equals another's is a copy
+    the byte check must know about, or a later edit to one of them drifts."""
+    bodies: dict = {}
+    for path in _AGENT_FILES:
+        bodies.setdefault(_split(path)[1], []).append(path.stem)
+    shared = sorted(tuple(sorted(stems)) for stems in bodies.values() if len(stems) > 1)
+    expected = sorted(tuple(sorted(pair)) for pair in _ESCALATION.items())
+    assert shared == expected, shared
 
 
 # --------------------------------------------------------------------------- #

@@ -121,6 +121,40 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.2.0] — 2026-09-23
+
+### Added
+
+- **A `builder-escalation` agent pins the builder's step-up to
+  `claude-opus-5-5` (issue #264).** The escalated builder was the one role
+  spawn left on a model alias: `aide-run-item` spawned it as `builder` with a
+  per-dispatch `model: opus`, because that override accepts aliases only. Now
+  it is its own spec, `.claude/agents/builder-escalation.md`, with `model:
+  claude-opus-5-5` and `effort: medium`, the builder's effort, since the model
+  is the step-up. It is the builder role on T3, not a sixth role: its body is
+  `builder.md`'s byte for byte, and a test holds the two bodies identical. It
+  has its own `ADAPTER-SPEC.md` §2 row, held to its frontmatter like every
+  other. Only the orchestrator's session model stays unpinned.
+
+### Changed
+
+- **The builder escalates on judgement, not on round 3.** `aide-run-item`
+  step 6 used to cap an item at three validation rounds and escalate the
+  third build. Now it sends a build fix to `builder-escalation` when a failure
+  has survived a round (the same failure, or the same root cause, reported
+  again after a fix aimed at it), or when the first FAIL already shows a
+  serious defect (a wrong approach or a missing mechanism, not a slip). Quick
+  fixes to newly found failures stay on `builder`. Once escalated, an item
+  stays escalated, and a failure that survives an escalated round stops the
+  item and asks the user, as the cap did. `ledger abandon --rounds` records
+  the rounds actually run. A `test-writer` fix never escalates.
+- **`loop.validation_rounds` is read, and its default moves from 3 to 5.**
+  The orchestrator now reads the key from `aide.toml` as the ceiling on
+  rounds per item. The old cap was written into the command and the key was
+  never read. A new `aide.toml` scaffold writes `validation_rounds = 5`.
+  **A consumer edits nothing**: one whose `aide.toml` has no such key gets
+  the engine default of 5, and one that sets it explicitly keeps its value.
+
 ## [2.1.0] — 2026-09-23
 
 ### Fixed

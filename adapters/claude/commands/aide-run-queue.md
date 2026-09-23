@@ -23,7 +23,7 @@ pin the session model, so `/model sonnet` first if you're on Opus.
 **One session, one layer.** Per item, load `/aide-run-item NNN` **inline as a
 skill in *this* session** — it is a prompt expansion, not a subprocess. The only
 parallel/isolated contexts are the `Task` subagents (`spec-author`, `test-writer`,
-`builder`, `validator`, plus `reviewer` where `loop.review` turns it on) that do
+`builder` or `builder-escalation`, `validator`, plus `reviewer` where `loop.review` turns it on) that do
 the leaf work; claiming is a deterministic CLI
 call, not a subagent. There is **no headless `claude -p` nesting** (an earlier
 `--continuous` design tried it and was removed — see `/aide-run-roadmap` →
@@ -36,12 +36,12 @@ parallel*.
 | Concern | Owner | Notes |
 |---|---|---|
 | Claim the next 📋 item | `aide claim` (CLI) | `python .aide/scripts/aide.py claim [--queue NNN]` — syncs, checks `aide/*` branches, picks the first unclaimed unblocked 📋 item, creates + pushes `aide/NNN-*`; prints item number + branch + title, and the base when it is not `main`. Deterministic, no subagent. **Run it from the branch the queue's work belongs on**: claiming while a queue branch is checked out records that branch as each item's base, so `aide merge` returns the item to it and the whole queue still lands as one reviewed PR. |
-| Run one item end-to-end | **`/aide-run-item NNN`** | spec-author (Opus) → test-writer → builder → validator+merge, incl. the ≤3-round validate cycle. Under `loop.review = "background"` a `reviewer` reads the diff concurrently with the validator and the merge waits for both. See that command for the per-item detail. |
+| Run one item end-to-end | **`/aide-run-item NNN`** | spec-author (Opus) → test-writer → builder → validator+merge, incl. the build↔validate cycle (≤`loop.validation_rounds` rounds). Under `loop.review = "background"` a `reviewer` reads the diff concurrently with the validator and the merge waits for both. See that command for the per-item detail. |
 | Approval gates, looping | *orchestrator* | stays in the main thread |
 | Generating the **next** queue | **not here** | only `/aide-run-roadmap` (or a manual `/aide-create-queue`) does that |
 
-The per-item mechanics (which agent does what, the build↔validate cycle, the
-Opus escalation on round 3) live in **`/aide-run-item`** — this command does not
+The per-item mechanics (which agent does what, the build↔validate cycle, when
+a build fix escalates to `builder-escalation`) live in **`/aide-run-item`** — this command does not
 restate them. Keeping a single source of truth for the item loop is the point of
 the split.
 
@@ -145,5 +145,5 @@ reached the batch's sessions, and rotates that log.
 - An item needs a **major structural change** or an edit to a framework/process
   file (`CLAUDE.md`, `aide.toml`, `.aide/**`, `vision.md`, `roadmap.md`,
   `.claude/skills|commands|agents/**`) — needs a reviewed PR, never a direct merge.
-- The build↔validate cycle for an item exceeds 3 rounds, or an item is blocked /
+- The build↔validate cycle for an item stops (`/aide-run-item` step 6), or an item is blocked /
   contradictory — document the blocker and suggest `/aide-feedback-loop`.

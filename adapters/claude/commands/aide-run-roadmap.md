@@ -17,7 +17,7 @@ items, not every item.
 current queue by loading `/aide-run-queue` **inline as a skill in this same
 session** (which in turn loads `/aide-run-item` inline), and delegates only the
 *leaf* work — item spec/tests/build/validate and queue *authoring* — to
-**`Task` subagents** (`spec-author`, `test-writer`, `builder`, `validator`,
+**`Task` subagents** (`spec-author`, `test-writer`, `builder` or `builder-escalation`, `validator`,
 `queue-planner`, and `reviewer` where `loop.review` turns it on). There is **no headless nesting**: the orchestrator never spawns
 `claude -p` child processes. Each new queue is a natural session boundary — the
 loop pauses at the queue PR, and the human re-invokes for the next queue, giving a
@@ -186,4 +186,4 @@ in the next queue rather than rewriting history.
   `roadmap.md`, `aide.toml`, `.aide/**`, `CLAUDE.md`, `.claude/**`) — reviewed
   PR, never auto-merge.
 - `/aide-run-queue` reports an item blocked, a PR/force-push need, or a
-  build↔validate cycle exceeding 3 rounds — surface it and pause.
+  build↔validate cycle that stopped (`/aide-run-item` step 6) — surface it and pause.

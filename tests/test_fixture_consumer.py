@@ -2860,6 +2860,40 @@ def test_the_review_key_reaches_the_orchestrator_as_the_project_set_it(
     assert aide.load_config(consumer)["loop"]["clarify"] == "assume"
 
 
+
+def test_the_scaffold_carries_the_round_ceiling_and_the_engine_defaults_it_to_five(
+        aide, consumer: Path):
+    """`loop.validation_rounds` (issue #264), prose-consumed like `review`:
+    the item orchestrator reads it as the ceiling on build<->validate rounds.
+    The scaffold writes it so a fresh consumer can see it, and a consumer whose
+    `aide.toml` predates the key — `--update` never rewrites that file — gets
+    the engine default, which is the number the orchestrator's brief states
+    for an unset key. Both are read here from the install a consumer runs."""
+    toml = consumer / "aide.toml"
+    text = toml.read_text(encoding="utf-8")
+    assert "validation_rounds = 5\n" in text, "the aide.toml scaffold lost loop.validation_rounds"
+    assert aide.load_config(consumer)["loop"]["validation_rounds"] == 5
+
+    toml.write_text(text.replace("validation_rounds = 5\n", ""), encoding="utf-8")
+    assert aide.load_config(consumer)["loop"]["validation_rounds"] == 5
+
+    brief = " ".join((consumer / ".claude" / "commands" / "aide-run-item.md")
+                     .read_text(encoding="utf-8").split())
+    assert "`loop.validation_rounds` from `aide.toml` (5 when unset)" in brief, (
+        "aide-run-item's step 6 no longer states the engine default for an "
+        "unset loop.validation_rounds — edit it and DEFAULT_CONFIG together")
+
+
+def test_a_round_ceiling_the_project_set_reaches_the_orchestrator_unchanged(
+        aide, consumer: Path):
+    """A consumer that set the key explicitly keeps its value across the
+    default's move from 3 to 5: the engine carries it verbatim."""
+    toml = consumer / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        "validation_rounds = 5", "validation_rounds = 3"), encoding="utf-8")
+    assert aide.load_config(consumer)["loop"]["validation_rounds"] == 3
+
+
 def _set_python_keys(repo: Path, **keys: str) -> None:
     toml = repo / "aide.toml"
     text = toml.read_text(encoding="utf-8")
