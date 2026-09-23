@@ -121,6 +121,45 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.1.0] — 2026-09-23
+
+### Fixed
+
+- **`aide scope` reads a test in another item's test file against that item's
+  spec (issue #262).** A test file named `test_NNN_<topic>.py` belongs to item
+  NNN. When the scoped item changed such a file for a different item — the
+  reconcile its spec prescribes — every test it added there was read against
+  the scoped spec. A renamed `ac20` whose AC20 is the owning item's was
+  reported as a test nobody asked for, and a test whose number happened to
+  exist in both specs was quietly credited to the wrong one (under 1.59.2,
+  one consumer had six files where that happened). Now those tests are
+  checked against the owning item's spec only. The ones that trace are
+  reported in one `notice: reconciled K test(s) in item NNN's test files`
+  line per item and add nothing to the warning count. The ones that trace to
+  nothing still warn, and the warning names the owning spec. A file whose
+  owner has no spec, or a spec with no `## Acceptance Criteria` heading, is
+  read against the scoped spec as before. `aide scope -h` states the grammar.
+  One helper, `split_reconciled_tests`, makes the split for both `scope` and
+  the ledger.
+
+### Changed
+
+- **The ledger's Tests cell leaves out reconciled tests.** `aide merge` and
+  `aide ledger abandon` used to count every test function the branch added.
+  They now leave out exactly the tests `aide scope` reports as reconciled:
+  those belong to the item whose file they sit in. A test in that file that
+  traces to neither spec is still counted. **The column's meaning has
+  changed**, so a row written before 2.1.0 by an item that reconciled another
+  item's tests counts higher than the same row written now. Rows already in
+  the file are not rewritten. `aide merge -h` and §1 → `ledger.md` say so.
+- **§6 recommends the test file's name.** An item's tests go in
+  `test_NNN_<topic>.py` under `tests_dir`, unless the project has a reason
+  to do otherwise. A test reconciled in another item's file keeps that item's
+  criterion number, because the number records where the test came from.
+  The item template's Testing Strategy guidance and the `test-writer`'s
+  reconcile step point at the rule. **A consumer edits nothing**: a file
+  named any other way is read exactly as before.
+
 ## [2.0.1] — 2026-09-23
 
 ### Changed

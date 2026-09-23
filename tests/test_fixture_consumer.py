@@ -1147,6 +1147,42 @@ def test_scope_is_quiet_for_a_test_named_for_its_ac(aide, consumer: Path, capsys
     assert "warning" not in capsys.readouterr().out
 
 
+def test_scope_reports_a_test_reconciled_in_another_items_file(
+        aide, consumer: Path, capsys):
+    """Issue #262 on the installed verb: item 001 renames a test in item
+    002's `test_002_…` file. Its `ac7` is 002's AC7 — a reconciled notice,
+    not a warning, and still exit 0; one tracing to neither spec warns."""
+    items = consumer / "docs" / "aide" / "items"
+    (items / "001-the-greeter.md").write_text(SPEC_001.replace(
+        "- `tests/test_greeter.py` — its tests\n",
+        "- `tests/test_greeter.py` — its tests\n"
+        "- `tests/test_002_farewell.py` — reconciled\n"), encoding="utf-8")
+    (items / "002-the-farewell.md").write_text(
+        "# Item 002 — The farewell\n\n## Acceptance Criteria\n\n"
+        "- [ ] AC7: `bye()` says goodbye.\n", encoding="utf-8")
+    (consumer / "tests" / "test_002_farewell.py").write_text(
+        "def test_ac7_bye():\n    assert True\n", encoding="utf-8")
+    _commit(consumer, "docs: item 002")
+    assert _claim(aide, consumer) == 0
+    (consumer / "tests" / "test_002_farewell.py").write_text(
+        "def test_ac7_says_goodbye():\n    assert True\n", encoding="utf-8")
+    _commit(consumer, "tests: reconcile 002")
+    assert aide.main(["--repo", str(consumer), "scope"]) == 0
+    out = capsys.readouterr().out
+    assert "notice: reconciled 1 test(s) in item 002's test files" in out
+    assert "warning" not in out
+
+    (consumer / "tests" / "test_002_farewell.py").write_text(
+        "def test_ac7_says_goodbye():\n    assert True\n\n"
+        "def test_ac1_greet():\n    assert True\n", encoding="utf-8")
+    _commit(consumer, "tests: a test in the wrong file")
+    assert aide.main(["--repo", str(consumer), "scope"]) == 0
+    out = capsys.readouterr().out
+    assert ("warning: tests/test_002_farewell.py::test_ac1_greet names no AC "
+            "number") in out
+    assert "docs/aide/items/002-the-farewell.md" in out
+
+
 def test_scope_cannot_check_an_unspecced_item(aide, consumer: Path):
     """Exit 2, not 1 and not 0: an undeclared spec is not an unconstrained one,
     and "could not check" must never read as "in scope"."""
