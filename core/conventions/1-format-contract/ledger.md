@@ -12,8 +12,9 @@ project's own ratios and their trend.
   engine landed; an item stopped at the validation-round cap never reaches a
   merge and takes its row from `aide ledger abandon` instead. One item, one
   row, whatever it took to get there — a re-dispatched builder, a second
-  validator and a third round all land in the same row. *(aide merge, ledger
-  abandon)*
+  validator and a third round all land in the same row. An item `aide progress
+  reopen` sends back is worked again, and its next merge appends a second
+  row. *(aide merge, ledger abandon)*
 - **The engine puts the file there, from `.aide/templates/ledger.md`.** The
   first row to be written creates the document as a byte-exact copy of that
   template; an existing file is only ever appended to, and `aide check` never
@@ -77,6 +78,10 @@ project's own ratios and their trend.
   item, tests per criterion — has to be re-aggregated before it can be read.
   One row per item is also the one shape a verb that already runs once per
   item can write without any new bookkeeping.
+- **Why a reopened item takes a second row.** The first row records a merge
+  that happened, with what it cost, and a row is never edited; the reopen
+  exists because that merge was not the end of the item (issue #271), so the
+  second run is a second record rather than a correction of the first.
 - **Why nothing about a run survived it.** Rounds lived in the orchestrator's
   session and died with it, `progress.md` records status and no history — one
   consumer's 69 items carry exactly one `-> in-progress` commit each, since a

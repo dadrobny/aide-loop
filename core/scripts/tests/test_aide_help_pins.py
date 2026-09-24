@@ -318,6 +318,23 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # run_checks, appending to `warnings`.
         ("every retracted acceptance criterion",
          "test_aide_help_pins::test_a_retracted_criterion_reaches_check_as_a_warning"),
+        # `for reopening in reopened_items(lines)` beside it (issue #271).
+        ("and every reopened item",
+         "test_aide_reopen::test_reopen_raises_no_check_error"),
+        # `_latest_trail_note` takes the last prefixed line of a trail, and
+        # both readers emit one entry per box / per item (issue #273).
+        ("each reported once, by its latest retraction or reopening",
+         ("test_aide_reopen::test_a_box_retracted_again_is_open_and_keyed_on_the_second_retraction",
+          "test_aide_reopen::test_the_latest_reopening_is_the_one_reported")),
+        # `Retraction.reaccepted` reads the box's mark, `Reopening.completed`
+        # the item's status; `*_summary` never says "open" for either.
+        ("never as open once the box is ticked or the item \u2705 again "
+         "\u2014 then as re-accepted or completed again, with the newest "
+         "trail date since when there is one",
+         ("test_aide_reopen::test_a_re_accepted_box_is_reported_as_re_accepted_not_open",
+          "test_aide_reopen::test_a_box_re_accepted_with_no_dated_line_says_since",
+          "test_aide_reopen::test_completed_again_names_the_newest_dated_line_since_when_there_is_one",
+          "test_aide_reopen::test_an_item_completed_again_is_never_reported_as_open")),
         # `insight_warnings` -> `_INSIGHT_FULL_LOOSE_RE` around a strict `_DATE_RE`.
         ("an insights entry whose shape is off — loose either side of the "
          "date, strict about the date",
@@ -458,8 +475,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "never rolls up",
          "test_aide_core::test_unmet_target_blocks_objective_rollup_not_stage"),
         # `RANK` guards the write: a lower-ranked status is not applied.
-        ("A status is never downgraded",
+        ("set never downgrades a status",
          "test_aide_core::test_set_item_never_downgrades"),
+        # `reopen_item` refuses any bullet not ✅, and is the one caller that
+        # passes `downgrade_stages` to `_recompute_rollups` (issue #271).
+        ("only reopen moves one back, and only from \u2705",
+         ("test_aide_reopen::test_reopen_refuses_an_item_that_is_not_done_and_names_its_status",
+          "test_aide_reopen::test_reopen_rolls_the_stage_and_its_objective_back_down")),
         # `stage_deliverable_statuses` skips `_CHECKBOX_RE` lines, and nothing
         # on the rollup path writes one — the attestation is a person's.
         ("no rollup ever ticks an acceptance box",
@@ -488,6 +510,43 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "prints it",
          ("test_aide_help_pins::test_a_retracted_criterion_reaches_check_as_a_warning",
           "test_aide_help_pins::test_status_prints_the_four_states_it_promises")),
+
+        # `reopen_item` (issue #271): the flip, the `_REOPENED_PREFIX` trail
+        # line through `_insert_trail_line`, `_recompute_rollups` with the
+        # item's stages allowed down, and `_route_gap_to_insights`.
+        ("send a \u2705 item back to \U0001f4cb \u2014 its deliverable "
+         "bullet flips, a dated `reopened: <reason>` line goes under it, its "
+         "stage rolls back down, and a `gap` insight is captured",
+         ("test_aide_reopen::test_reopen_flips_the_bullet_and_writes_the_reason_under_it",
+          "test_aide_reopen::test_reopen_rolls_the_stage_and_its_objective_back_down",
+          "test_aide_reopen::test_reopen_routes_its_finding_into_the_inbox")),
+        # The all-✅ precondition over every owned bullet, raised before any
+        # write, and `cmd` printing "NOT changed" with the file untouched.
+        ("reopen refuses, writing nothing, unless every deliverable bullet "
+         "whose trailing marker names the item is \u2705",
+         ("test_aide_reopen::test_reopen_refuses_when_one_of_the_items_bullets_is_not_done",
+          "test_aide_reopen::test_reopen_of_an_item_not_done_exits_one_and_writes_nothing")),
+        # `.strip()`ped, exit 2, before anything is read.
+        ("and refuses without a stated reason",
+         "test_aide_reopen::test_reopen_refuses_without_a_stated_reason_and_writes_nothing"),
+        ("The reason goes on the trail line under each flipped bullet and "
+         "into the `gap` entry",
+         "test_aide_reopen::test_reopen_routes_its_finding_into_the_inbox"),
+        # Only the owned bullets' icons and the rollup cells of their stage
+        # move; the wrapped text, the marker and every box are compared.
+        ("the bullet's text and marker, other items and every acceptance box "
+         "are left as they were",
+         ("test_aide_reopen::test_reopen_leaves_everything_but_the_item_as_it_was",
+          "test_aide_reopen::test_reopen_desugars_a_shared_marker_and_moves_only_the_named_item")),
+        # `reopened_items` feeds both `run_checks` and `cmd_status`.
+        ("`aide check` warns on every reopened item and `aide status` prints it",
+         ("test_aide_reopen::test_reopen_raises_no_check_error",
+          "test_aide_reopen::test_status_prints_a_reopened_item_by_its_status_today")),
+        # `Reopening.completed` is the item's status today, read by
+        # `_parse_item_status`, and `reopening_summary` words by it.
+        ("one \u2705 again since reads as reopened and completed again, never "
+         "as open",
+         "test_aide_reopen::test_an_item_completed_again_is_never_reported_as_open"),
     ],
 
     # ------------------------------------------------------------- insights --
@@ -684,6 +743,14 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "Met, every retracted acceptance criterion and every progress.md "
          "table row no reader can use is printed too",
          "test_aide_help_pins::test_status_prints_the_four_states_it_promises"),
+        # The `reopened_items` loop in `cmd_status` (issue #271), and the
+        # `; re-accepted` / `; completed again` suffix both loops carry (#273).
+        ("So is every item `aide progress reopen` sent back",
+         "test_aide_reopen::test_status_prints_a_reopened_item_by_its_status_today"),
+        ("a retracted criterion or reopened item that has since been "
+         "re-accepted or completed again says so",
+         ("test_aide_reopen::test_check_and_status_word_a_re_accepted_box_by_its_tick",
+          "test_aide_reopen::test_status_prints_a_reopened_item_by_its_status_today")),
         # The `gated_capabilities` loop in `cmd_status`: the profile named
         # always, `evaluate_profile` called only under `args.profiles` and
         # `c.kind == "unverified"`, memoised per profile.

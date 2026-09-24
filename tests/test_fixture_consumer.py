@@ -2689,6 +2689,83 @@ def test_the_gap_a_retraction_captures_is_a_well_shaped_inbox_entry(
     assert "does not match" not in capsys.readouterr().out
 
 
+def test_a_re_accepted_box_is_reported_as_re_accepted_not_as_open(
+        aide, consumer: Path, capsys):
+    """Issue #273: `accept` after a retraction is the path the retraction
+    names, and the warning then says what happened rather than that the box
+    is open."""
+    _accept_one(aide, consumer, "checked")
+    assert aide.main(["--repo", str(consumer), "progress", "retract", "1",
+                      "--criterion", "1", "--date", "2026-09-02",
+                      "--reason", "the host was misread"]) == 0
+    _accept_one(aide, consumer, "re-run on the right host")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "was retracted on 2026-09-02" in out
+    assert "and re-accepted since" in out and "open again" not in out
+    assert aide.main(["--repo", str(consumer), "status"]) == 0
+    assert "re-accepted since" in capsys.readouterr().out
+
+
+def _progress_text(consumer: Path) -> str:
+    return (consumer / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+
+
+def test_a_reopened_item_is_claimed_and_merged_again(aide, consumer: Path, capsys):
+    """Issue #271, end to end through the installed engine: land item 001,
+    reopen it with a reason, and the loop picks it up again — `claim` offers
+    it, and `merge` lands it a second time with a second ledger row."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 0
+    assert _item_status(aide, consumer, 1) == "complete"
+    before = _progress_text(consumer)
+
+    # No reason, no reopen — and nothing written.
+    assert aide.main(["--repo", str(consumer), "progress", "reopen", "1"]) == 2
+    assert _progress_text(consumer) == before
+    # An item that is not done has nothing to reopen.
+    assert aide.main(["--repo", str(consumer), "progress", "reopen", "2",
+                      "--reason", "x"]) == 1
+    assert _progress_text(consumer) == before
+
+    assert aide.main(["--repo", str(consumer), "progress", "reopen", "1",
+                      "--date", "2026-09-24",
+                      "--reason", "the operator run never happened"]) == 0
+    lines = _progress_text(consumer).splitlines()
+    i = lines.index("- 📋 The greeter. *(Item 001)*")
+    assert lines[i + 1] == "  - **2026-09-24** → reopened: the operator run never happened"
+    assert _item_status(aide, consumer, 1) == "planned"
+    # One commit carries the flip and the finding.
+    assert sorted(_files_in_head(consumer)) == [
+        "docs/aide/insights.md", "docs/aide/progress.md"]
+
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "item 001 was reopened on 2026-09-24" in out
+    assert "error:" not in out
+
+    # The loop picks it up again: claimed, rebuilt, merged, a second row.
+    assert _claim(aide, consumer, "--dry-run") == 0
+    assert "would claim item 001" in capsys.readouterr().out
+    assert _claim(aide, consumer) == 0
+    (consumer / "src" / "greeter.py").write_text(
+        'def greet(name):\n    return f"hello {name.strip()}"\n', encoding="utf-8")
+    _commit(consumer, "fix: greeter, after the operator run")
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 0
+    assert _item_status(aide, consumer, 1) == "complete"
+    assert [r["Item"] for r in _ledger_rows(aide, consumer)] == ["001", "001"]
+
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "reopened on 2026-09-24 (the operator run never happened) and completed again" in out
+    assert aide.main(["--repo", str(consumer), "status"]) == 0
+    assert "reopened: item 001 (2026-09-24)" in capsys.readouterr().out
+
+
 def test_reword_rewrites_an_untouched_criterion_and_mirrors_the_roadmap(
         aide, consumer: Path):
     (consumer / "docs" / "aide" / "roadmap.md").write_text(_ROADMAP, encoding="utf-8")

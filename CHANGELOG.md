@@ -121,6 +121,60 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.3.0] — 2026-09-24
+
+### Added
+
+- **`aide progress reopen NNN --reason TEXT` sends a ✅ item back to 📋
+  (issue #271).** `progress set` only moves an item forward, so a deliverable
+  closed on merged code whose operator-run Validation never happened had no
+  verb back. A consumer hand-edited the bullet from ✅ to 📋 so `aide claim`
+  would offer the item again, and the edit left no trail. `reopen` is
+  `retract` one level up. It flips every bullet whose trailing marker names
+  the item and writes `- **YYYY-MM-DD** → reopened: <reason>` under each, in
+  the acceptance trail's grammar and through the same writer. The stage
+  header, summary row and Objective rows of those stages roll back down; no
+  other stage's cells are touched, and neither is any acceptance box. It
+  captures a `gap` entry in `insights.md` in the same commit, and prints the
+  #152 notice that the warning it creates is permanent. It refuses, writing
+  nothing, unless every bullet naming the item is ✅, and it names the status
+  it found. It also refuses without a stated reason. A shared `*(Items …)*`
+  marker is desugared first, as `set` does, so no sibling is carried back.
+  `set` still never downgrades. The trail line under a deliverable bullet is
+  a list line, so the bullet's span ends above it: ownership is still read
+  from the bullet's last wrapped line, and neither the nested-bullet,
+  identical-prose nor unattributed-reference lint reads it.
+  - **The loop redoes the item.** Its queue is open again, since queue state
+    is derived. `claim` offers the item once its merged claim branch is gone,
+    which `merge` sees to. `merge` lands it a second time, and neither `scope`
+    nor the merge's `aide check` gate reads an item's history. The ledger
+    gains a second `merged` row. §1 → `ledger.md` now says so, because its
+    "one item, one row" read as if a reopened item could not have two.
+  - **`aide check` warns on every reopened item and `aide status` prints
+    it**, keyed on the item's status today: "item NNN was reopened on D
+    (reason)" while it is open, and "reopened on D1 (reason) and completed
+    again" once it is ✅. The line names D2, the newest dated trail line since,
+    when one exists; a merge writes no trail line, so it usually reads
+    "completed again since".
+  - **The floor's verb list gains `progress reopen`**, so the always-on floor
+    moves from 9,045 to 9,052 content bytes.
+
+### Fixed
+
+- **A retracted box that is re-accepted is no longer reported as open
+  (issue #273).** `retracted_criteria` collected every `retracted:` trail line
+  without reading the box's tick. `aide check` therefore warned "the box is
+  open again" about a box re-accepted through `accept`, the path the
+  retraction itself names, and it said so for good. Both readers now report
+  one entry per box, keyed on its latest retraction. An unticked box keeps
+  today's wording. A ticked one reads "was retracted on D1 (reason) and
+  re-accepted on D2", where D2 is the newest dated trail line after that
+  retraction; when `accept --evidence` annotated the box line instead, it
+  reads "re-accepted since". A box retracted a second time is open again and
+  reported by that retraction. The warning stays permanent by design (#152).
+  `aide status` draws the same distinction, and `aide check -h`,
+  `aide status -h` and `aide progress -h` state both rules.
+
 ## [2.2.1] — 2026-09-24
 
 ### Fixed
