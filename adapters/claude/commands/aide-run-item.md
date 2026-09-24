@@ -153,7 +153,8 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    > tests.**
    > PASS: reconcile + merge via the CLI —
    > `python .aide/scripts/aide.py progress set NNN in-review` then
-   > `python .aide/scripts/aide.py merge NNN --rounds R` (honours git.mode: direct-merge +
+   > `python .aide/scripts/aide.py merge NNN --rounds R`, started and waited on
+   > through `.claude/scripts/await_run.py` as your spec says (honours git.mode: direct-merge +
    > branch cleanup + re-test for auto-merge, where a red re-test blocks the ✅
    > and the push and exits non-zero; push-and-stop for pr; local merge for
    > local). **`in-review`, never `done`** — ✅ means merged and is written by
@@ -209,6 +210,15 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
      R is the rounds actually run. No merge will ever write a row for this
      item, and this is the one a reader at the queue boundary is looking for
      (`ledger -h`). It records; it decides nothing about the item's status.
+   - **INCOMPLETE — a run hit the validator's 50-minute dispatch budget, hung,
+     or died** → not a FAIL and not a round: nothing failed for a builder to
+     fix. Do not re-dispatch a validator into the same wait — report the
+     command, elapsed time and log tail to the user and stop, like a blocked
+     item. The validator has already stopped the run; what hung is for a
+     person to look at. For a merge, pass on the log tail, which holds
+     `aide merge`'s own word on the base, the claim branch and what to
+     re-run — and if the validator reports the merge **still running**
+     (`stop` exited 93), say that first.
    - **PASS**, `loop.review = "off"` → the validator has reconciled progress and
      merged. Done.
    - **PASS (merge held)**, `loop.review = "background"` → wait for the reviewer
@@ -236,10 +246,19 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
      - **Nothing in scope left** → the review is discharged and both gates have
        passed, so merge deterministically yourself:
        ```
-       python .aide/scripts/aide.py merge NNN --rounds <rounds this item took> \
+       python .claude/scripts/await_run.py start merge NNN --rounds <rounds this item took> \
            --findings blocking=A,minor=B,nit=C
+       python .claude/scripts/await_run.py wait <label>
        ```
-       It honours `git.mode` and writes the ✅ itself; `--rounds` is the
+       That is `python .aide/scripts/aide.py merge NNN` with those flags, run
+       detached the way the validator runs it (§9): `wait` in its default
+       240 s calls, never a turn ended to await it, and at 50 minutes
+       `python .claude/scripts/await_run.py stop <label>` and report the
+       command, elapsed time and log tail to the user instead of sitting on
+       the run — the tail normally carries the merge's own restore message (with none,
+       check the base for an unticked, unpushed merge whose claim branch is
+       gone), and a
+       `stop` that exits 93 means the merge is still running. It honours `git.mode` and writes the ✅ itself; `--rounds` is the
        count you kept for the cap and `--findings` the totals you kept while
        triaging, and the two are what put those cells in the ledger row
        (`merge -h`). A, B and C are in-scope findings only: one you sent to
@@ -265,6 +284,9 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
 - The item needs a **major structural change** or an edit to a framework/process
   file (`CLAUDE.md`, `aide.toml`, `.aide/**`, `vision.md`, `roadmap.md`,
   `.claude/skills|commands|agents/**`) — needs a reviewed PR, never a direct merge.
+- A validator hands back **INCOMPLETE** (step 6): a run hit its budget, hung,
+  or died, and was stopped. Report the command, elapsed time and log tail; do
+  not re-dispatch.
 - The **build↔validate cycle stops** (step 6: a failure survived an escalated
   round, or `loop.validation_rounds` was reached), or the item is blocked /
   contradictory. Document the blocker and suggest `/aide-feedback-loop`.

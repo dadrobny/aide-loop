@@ -146,5 +146,6 @@ reached the batch's sessions, and rotates that log.
 - An item needs a **major structural change** or an edit to a framework/process
   file (`CLAUDE.md`, `aide.toml`, `.aide/**`, `vision.md`, `roadmap.md`,
   `.claude/skills|commands|agents/**`) — needs a reviewed PR, never a direct merge.
+- A validator hands back **INCOMPLETE** (a run reached its limit; `/aide-run-item` step 6).
 - The build↔validate cycle for an item stops (`/aide-run-item` step 6), or an item is blocked /
   contradictory — document the blocker and suggest `/aide-feedback-loop`.

@@ -192,6 +192,34 @@ allow-list" framing** are adapter-local and documented here.
   aggregate that log into recurring bottlenecks and propose safe, recurring prompts to
   promote into the allow-list. The human makes the final allow/ask/leave call and the
   actual edit; the script only recommends.
+- **`scripts/await_run.py`** — how the `validator` (and the orchestrator's own
+  held merge) follows §9's rule for a command that can outlast one tool call:
+  `start suite` or `start merge NNN …` launches it detached with its output to
+  a log under the git directory, and `wait <label>` blocks up to 240 s, below a
+  sub-agent's default 5-minute prompt cache and the Bash tool's 10-minute
+  ceiling, returning the command's exit code or 75 for "still running". The
+  supervisor holds a lock on `<label>.lock` for its whole life, so a run whose
+  supervisor died reads as dead at once (90) instead of "still running", and
+  `start` refuses while a run is live in the same worktree (92), naming the
+  label to wait on. Every start, and every verdict that a run is dead, is
+  taken under a `start.lock` in the state directory, so a run still being
+  launched is never mistaken for a dead one. `stop <label>` kills a suite
+  run's whole process tree (`killpg` SIGTERM then SIGKILL on POSIX,
+  `taskkill /T /F` on Windows) and records it stopped (91). A merge run is
+  only sent SIGTERM, which `aide merge` turns into restoring its claim
+  branch, and gets 120 s; one still alive then, or any merge run on Windows
+  (no graceful signal to a detached process), is left running and reported
+  as 93. The validator gives its whole dispatch a 50-minute budget, below the
+  orchestrator's 1-hour cache. It treats the merge's re-run as hung past 3×
+  its own suite run, or 10 minutes, and stops the run at either limit. The
+  script keeps no timing history, only each run's own state. It runs those
+  two commands only, and `stop` acts only on a pid from a valid label's
+  record, so its allow entry admits nothing else.
+- **Every hook command resolves its script from `$CLAUDE_PROJECT_DIR`**, not
+  the hook process's cwd (issue #272): a worktree-isolated sub-agent's hooks
+  run with the worktree as cwd, where a relative path ran the worktree's copy
+  of the script, or blocked every call where it had none. A script that is
+  missing is one stderr line and exit 1, a non-blocking hook error.
 
 **Allow-list command shaping.** The allow-list matches a command **prefix** and
 auto-approves a compound only if *every* part matches — so beyond the runtime-general
@@ -486,7 +514,7 @@ adapters/claude/
 ├── rules/         aide-command-hygiene.md — the one unscoped rule (§3), every context
 ├── hooks/         command_hygiene_guard.py · log_permission_event.py ·
 │                  log_instructions_loaded.py · sibling_instructions.py
-├── scripts/       review_permissions.py · review_instructions.py
+├── scripts/       review_permissions.py · review_instructions.py · await_run.py
 ├── settings.json  permission allow/ask-list + hook registration
 ├── default-context.json   CLAUDE.md + @path — how .aide/AGENT-CONTEXT.md gets linked
 └── tests/         adapter/installer conformance — rules, pins, generation, agents, hooks

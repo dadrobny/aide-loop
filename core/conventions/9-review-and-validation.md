@@ -7,7 +7,8 @@ roles that perform either read rather than pointing at it.
 this branch meet the Acceptance Criteria of the spec it was built from* — the
 suite is green, every AC has a test that measures it, the diff is inside the
 authorised paths, the Assumptions still hold. Every term is measured against
-the item spec, the verdict is PASS/FAIL, and it **gates the merge**. Review
+the item spec, the verdict is PASS/FAIL — or none, when a run outlasts its
+limit (below) — and it **gates the merge**. Review
 asks *is this code correct, and does it fit the codebase* — it reads the diff
 adversarially for what the spec never anticipated, and it **produces findings**,
 not a verdict.
@@ -63,6 +64,15 @@ and does not touch `progress.md` — its output is findings for another role to
 act on. A reviewer that fixes what it finds has destroyed the evidence for the
 call.
 
+**A command that can outlast the runtime's bound on one tool call, or on how
+long an agent may sit idle, is run detached and waited on in bounded waits.**
+Its output goes to a file, and the agent waits on it inside its own turn, each
+wait shorter than that bound — never in a tight polling loop, and never by
+ending the turn to await a notification. The suite is the usual such command,
+and a merge that re-runs it is the second. At the overall limit the adapter
+states, stop waiting and hand back the command, the elapsed time and its last
+output in place of a verdict.
+
 ### Rationale
 
 - **Why delivered.** A role that has not been told the difference will collapse
@@ -115,3 +125,13 @@ call.
   queue boundary wants it in.
 - **Why the reviewer writes nothing.** A reviewer that fixes what it finds has
   reviewed its own work by the time it is done.
+- **Why a long command is waited on in bounded waits.** A validator in a
+  consumer outlived its tool call on a hung suite and fell back to polling the
+  process every two seconds for 24 minutes — about 450 calls, each re-reading
+  its whole context — while the role above it sat waiting on a verdict that
+  never came (issue #274). Ending the turn to await a notification is no
+  better: the caller receives the placeholder as the agent's final report, the
+  agent is not woken again, and the command dies with the session. One wait
+  longer than the idle bound costs the agent its cached context on the next
+  request, where a wait inside it keeps the context warm. A limit with a hand
+  back turns a hung run into a report someone can act on.

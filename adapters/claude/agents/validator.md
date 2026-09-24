@@ -41,19 +41,45 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
 
 ## What you validate (all must hold)
 
-1. **Tests pass.** Run the full suite via the venv, e.g.
-   `.venv/Scripts/python -m pytest` (Windows) or `.venv/bin/python -m pytest`
-   (macOS/Linux). Run it **synchronously in the foreground** — never as a
-   background task and never via a Monitor/watch tool (a monitored background
-   run can stall the whole validation on a permission prompt and never
-   resume). A red suite is an automatic FAIL. If the venv is missing/stale,
-   `python .aide/scripts/aide.py env --bootstrap` first.
+1. **Tests pass.** Run the full suite — `aide.toml`'s `test_command`, bound to
+   the venv exactly as `aide merge` binds it — through the run helper, which
+   starts it detached and prints a label:
+   ```
+   python .claude/scripts/await_run.py start suite
+   python .claude/scripts/await_run.py wait <label>
+   ```
+   `wait` returns the moment the suite exits, with its exit code, the elapsed
+   time and the log's last lines; after 240 s it returns exit **75** instead,
+   "still running" — call `wait` again. A red suite is an automatic FAIL. If
+   the venv is missing/stale, `python .aide/scripts/aide.py env --bootstrap`
+   first. If `start` exits **92**, a run is already live in this checkout (a
+   validator before you started it): do not start another — `wait` on the
+   label it names, and carry on from its result.
 
-   **This applies to every long-running command here**, most consequentially
-   `aide merge` below, which under `auto-merge` re-runs the whole suite again.
-   Ending your turn with a placeholder ("I'll wait for the notification")
-   leaves the orchestrator with no verdict and no way to learn when the real
-   one arrives — wait for each command's actual exit, however long it takes.
+   **Every long-running command here goes the same way** (§9, preloaded
+   above), most consequentially `aide merge` below, which under `auto-merge`
+   re-runs the whole suite. The numbers are this runtime's: a Bash call is cut
+   at 10 minutes and moved to the background, and your prompt cache lives 5
+   minutes by default, so each `wait` stays at its default and never takes
+   `--for` above 240. Do not start a long command with the Bash tool's
+   background option, Monitor, `sleep`, or a `ps` loop. **Never end your turn
+   while a run is going**: ending it with a placeholder ("I'll wait for the
+   notification") hands the orchestrator that placeholder as your report, you
+   are not woken again, and the run dies with you.
+
+   **Your whole dispatch has a 50-minute budget**, shared by the suite run
+   and the merge's re-run below. The orchestrator waits inside its call to
+   you without making a request, so its own 1-hour cache is measured across
+   everything you do. Keep the elapsed times `wait` prints; the suite run has
+   no expected duration, so only the budget bounds it. **At the budget,
+   stop the run** —
+   ```
+   python .claude/scripts/await_run.py stop <label>
+   ```
+   — and hand back **INCOMPLETE** in place of a verdict: the command, its
+   label, the elapsed time and the log tail `stop` printed. Nothing is merged
+   or ticked. A `wait` that exits **90** means the run died without an exit
+   code; that is INCOMPLETE too, reported the same way.
 2. **Tests cover all AC, and each test measures what its AC claims.** Every
    Acceptance Criterion in the spec must have at least one test that directly
    exercises it; an uncovered AC is a FAIL (report which). So is an AC that
@@ -115,6 +141,11 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
   precisely what failed
   and hand back so the orchestrator dispatches the right agent (builder for code,
   test-writer for coverage). Do **not** merge.
+
+- **INCOMPLETE** if a run was stopped at the dispatch budget or as hung, or
+  died (step 1, merge step 3): no verdict, because the check did not finish —
+  not a FAIL, since nothing failed that a builder could fix. Report the
+  command, label, elapsed time and log tail, and which limit it hit.
 
 - **PASS** only when every check holds. Then, in order:
   1. **Reconcile `progress.md` via the CLI** — it flips the item's row to 🔍
@@ -180,13 +211,28 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      the base its claim recorded, which is the queue branch when the item was
      claimed from one:
      ```
-     python .aide/scripts/aide.py merge NNN --rounds <the round number your brief gives>
+     python .claude/scripts/await_run.py start merge NNN --rounds <the round number your brief gives>
+     python .claude/scripts/await_run.py wait <label>
      ```
-     Pass the round number your brief names — it is what the ledger row
-     records (`merge -h`). If the brief does not give one, merge without the
-     flag rather than guessing at a count.
-     **Run this in the foreground** (see step 1) — under `auto-merge` it
-     re-runs the full suite and takes as long as the test run did.
+     That is `python .aide/scripts/aide.py merge NNN --rounds R`, run the way
+     step 1 runs the suite, inside what is left of the same 50-minute budget.
+     Under `auto-merge` it re-runs the full suite, so it should take about as
+     long as your suite run did: **treat it as hung once it passes 3× the
+     elapsed time your suite run's `wait` reported, or 10 minutes if that is
+     more** — then `stop` it and hand back INCOMPLETE, saying it hung. The
+     budget still wins where it comes first. A merge is only ever asked to
+     stop, never killed, so that it can put its claim branch back: include
+     the log tail `stop` prints, which normally carries `aide merge`'s own
+     message about the base, the claim branch and what to re-run. **If the
+     tail has no such message**, say so: the merge may have been stopped
+     after deleting its claim branch and before it could restore it, so a
+     person must check the base for an unticked, unpushed merge. If `stop`
+     exits **93**,
+     say plainly that the merge process is **still running** and a person
+     must look. Pass the round number your brief
+     names — it is what the ledger row records (`merge -h`). If the brief does
+     not give one, start the merge without the flag rather than guessing at a
+     count.
 
      **A non-zero exit means the item did not land as done.** That re-run,
      and the `aide check` beside it, is a gate: a failure or a document error
@@ -220,6 +266,6 @@ one write allowed outside your edit scope.
 
 ## Output
 
-Return a tight report: PASS/FAIL, the AC checklist (✓/✗ per criterion with the
-covering test name), scope check result, and (on FAIL) the exact agent to dispatch
-and reproduce steps.
+Return a tight report: PASS/FAIL (or INCOMPLETE, step 1), the AC checklist
+(✓/✗ per criterion with the covering test name), scope check result, and (on
+FAIL) the exact agent to dispatch and reproduce steps.
