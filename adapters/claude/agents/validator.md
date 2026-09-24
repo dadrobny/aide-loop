@@ -221,9 +221,13 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      elapsed time your suite run's `wait` reported, or 10 minutes if that is
      more** — then `stop` it and hand back INCOMPLETE, saying it hung. The
      budget still wins where it comes first. A merge is only ever asked to
-     stop, never killed, so it can put its claim branch back: include the
-     log tail `stop` prints, which carries `aide merge`'s own message about
-     the base, the claim branch and what to re-run. If `stop` exits **93**,
+     stop, never killed, so that it can put its claim branch back: include
+     the log tail `stop` prints, which normally carries `aide merge`'s own
+     message about the base, the claim branch and what to re-run. **If the
+     tail has no such message**, say so: the merge may have been stopped
+     after deleting its claim branch and before it could restore it, so a
+     person must check the base for an unticked, unpushed merge. If `stop`
+     exits **93**,
      say plainly that the merge process is **still running** and a person
      must look. Pass the round number your brief
      names — it is what the ledger row records (`merge -h`). If the brief does

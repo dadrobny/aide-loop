@@ -255,7 +255,9 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
        240 s calls, never a turn ended to await it, and at 50 minutes
        `python .claude/scripts/await_run.py stop <label>` and report the
        command, elapsed time and log tail to the user instead of sitting on
-       the run — the tail carries the merge's own restore message, and a
+       the run — the tail normally carries the merge's own restore message (with none,
+       check the base for an unticked, unpushed merge whose claim branch is
+       gone), and a
        `stop` that exits 93 means the merge is still running. It honours `git.mode` and writes the ✅ itself; `--rounds` is the
        count you kept for the cap and `--findings` the totals you kept while
        triaging, and the two are what put those cells in the ledger row
