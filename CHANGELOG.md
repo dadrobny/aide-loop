@@ -142,8 +142,9 @@ instead — that is the bump policy above, and it is enforced by
   direction only. A literal pin under a May-change glob is still the
   deliberate carve-out, and `aide scope` still judges it. `aide scope` itself
   is unchanged: `check` gives the early warning, and scope stays the final
-  check. §1 → `authorised-paths.md`, `aide check -h` and the
-  `aide-item-specs` skill state the new shape.
+  check. §1 → `authorised-paths.md`, `aide check -h`, the
+  `aide-item-specs` skill and the item template's Asserts-against guidance
+  state the new shape (guidance only, so the template's version is unmoved).
 
 ## [2.2.0] — 2026-09-23
 

@@ -96,10 +96,11 @@ list, not by hashing another file's bytes._
 
 _Paths this item's tests pin — read, never changed — including a derived
 artifact recomputed live. Write "None." if the item pins nothing outside what
-it changes. Two things never go here, an always-authorised path and the same
-path listed again under May change; conventions.md §1 → Authorised paths says
-why, where each belongs instead, and why pinning one file inside a May-change
-glob is the carve-out rather than a double-listing._
+it changes. Three things never go here: an always-authorised path, the same
+path listed again under May change, and a glob sweeping over one May change
+names. conventions.md §1 → Authorised paths says why, where each belongs
+instead, and why pinning one file inside a May-change glob is the carve-out
+rather than a double-listing._
 
 - `{{path}}` — {{which AC pins it, and how}}
 
