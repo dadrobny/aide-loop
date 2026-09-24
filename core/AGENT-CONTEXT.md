@@ -75,7 +75,7 @@ queue and item derived from it.
 
 ```
 python .aide/scripts/aide.py check | status | env | sync | claim | scope
-    | merge | gc | progress set/accept/amend/retract/reword
+    | merge | gc | progress set/accept/amend/retract/reword/reopen
     | gate list/approve/decline | insights list/tick/archive/resolve
     | queue start/tidy | ledger abandon
 ```

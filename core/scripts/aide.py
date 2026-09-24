@@ -1067,7 +1067,8 @@ def _sub_status_cell(line: str, status: str) -> str:
     return _ICON_RE.sub(STATUS_TO_ICON[status], line, count=1)
 
 
-def _set_summary_row(lines: List[str], stage_num: str, status: str) -> None:
+def _set_summary_row(lines: List[str], stage_num: str, status: str,
+                     allow_downgrade: bool = False) -> None:
     for i, line in enumerate(lines):
         if not line.strip().startswith("|"):
             continue
@@ -1076,19 +1077,20 @@ def _set_summary_row(lines: List[str], stage_num: str, status: str) -> None:
             current = _icon_status(cells[3])
             if current in ("deferred", "excluded"):
                 return
-            if RANK[status] >= RANK[current]:
+            if allow_downgrade or RANK[status] >= RANK[current]:
                 lines[i] = _sub_status_cell(line, status)
             return
 
 
-def _set_stage_header(lines: List[str], start: int, status: str) -> None:
+def _set_stage_header(lines: List[str], start: int, status: str,
+                      allow_downgrade: bool = False) -> None:
     line = lines[start]
     current = _header_status(line)
     if current in ("deferred", "excluded"):
         return
     if current is None:
         lines[start] = line.rstrip() + f" — {STATUS_TO_ICON[status]}"
-    elif RANK[status] >= RANK[current]:
+    elif allow_downgrade or RANK[status] >= RANK[current]:
         lines[start] = _TRAILING_ICON_RE.sub(STATUS_TO_ICON[status], line)
 
 
@@ -1257,14 +1259,25 @@ def _append_trail(lines: List[str], box: int, end: int, date: str, note: str) ->
     Indentation follows an existing trail line when there is one, so a file
     that indents by four spaces keeps doing so.
     """
-    trail = acceptance_box_trail(lines, box, end)
+    return _insert_trail_line(lines, acceptance_box_last(lines, box, end),
+                              acceptance_box_trail(lines, box, end), date, note)
+
+
+def _insert_trail_line(lines: List[str], last: int, trail: List[int],
+                       date: str, note: str) -> str:
+    """Write one dated trail line below whatever owns *trail*; return it.
+
+    *last* is the owner's last physical line and *trail* its existing trail
+    lines, file order. The one writer of the trail grammar
+    (`_ACCEPT_TRAIL_RE`), shared by an acceptance box and a deliverable bullet
+    alike, so the two cannot drift into two shapes.
+    """
     indent = "  "
     if trail:
-        last = lines[trail[-1]]
-        indent = last[: len(last) - len(last.lstrip())]
+        prev = lines[trail[-1]]
+        indent = prev[: len(prev) - len(prev.lstrip())]
     written = f"{indent}- **{date}** → {note}"
-    lines.insert((trail[-1] if trail else acceptance_box_last(lines, box, end)) + 1,
-                 written)
+    lines.insert((trail[-1] if trail else last) + 1, written)
     return written
 
 
@@ -1361,23 +1374,79 @@ def reword_criterion(text: str, stage: str, n: int, new_text: str) -> Tuple[str,
     return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""), old)
 
 
-def retracted_criteria(lines: List[str]) -> List[Tuple[str, int, str, str]]:
-    """``(stage, criterion_index, date, reason)`` per retracted acceptance box.
+class Retraction(NamedTuple):
+    """One retracted acceptance box, as `check` and `status` report it.
+
+    ``date`` and ``reason`` are the box's **latest** retraction. ``reaccepted``
+    is whether the box is ticked today — `accept` after a retraction is the
+    path the retraction itself names — and ``reaccepted_on`` the date of the
+    newest dated trail line after that retraction, or None when the tick left
+    no dated line (``accept --evidence`` annotates the box line, not the trail).
+    """
+
+    stage: str
+    criterion: int
+    date: str
+    reason: str
+    reaccepted: bool = False
+    reaccepted_on: Optional[str] = None
+
+
+def _latest_trail_note(lines: List[str], trail: List[int], prefix: str
+                       ) -> Optional[Tuple[str, str, Optional[str]]]:
+    """``(date, text, newest later date)`` for the last *prefix* line of a trail.
+
+    The trail is newest last, so the last matching line is the latest event,
+    and any dated line after it is something that happened since. None when
+    no trail line carries *prefix*.
+    """
+    hit: Optional[int] = None
+    for pos, i in enumerate(trail):
+        if _ACCEPT_TRAIL_RE.match(lines[i]).group("text").startswith(prefix):
+            hit = pos
+    if hit is None:
+        return None
+    tm = _ACCEPT_TRAIL_RE.match(lines[trail[hit]])
+    later = [_ACCEPT_TRAIL_RE.match(lines[i]).group("date")
+             for i in trail[hit + 1:]]
+    return (tm.group("date"), tm.group("text")[len(prefix):].strip(),
+            later[-1] if later else None)
+
+
+def retracted_criteria(lines: List[str]) -> List[Retraction]:
+    """One `Retraction` per acceptance box that was ever retracted.
 
     Read back out of the trail so `check` and `status` can surface it: a
     retraction that only ever appeared in one commit's diff is exactly the
-    quiet the append-only rule exists to prevent.
+    quiet the append-only rule exists to prevent. Keyed on the box's latest
+    retraction and read against its tick today, so a box re-accepted since is
+    reported as that rather than as open (issue #273) — and one retracted
+    again after that is open, and reported by the second retraction.
     """
-    out: List[Tuple[str, int, str, str]] = []
+    out: List[Retraction] = []
     for start, end, num in stage_sections(lines):
         for n, box in enumerate(acceptance_boxes(lines, start, end), start=1):
-            for i in acceptance_box_trail(lines, box, end):
-                tm = _ACCEPT_TRAIL_RE.match(lines[i])
-                note = tm.group("text")
-                if note.startswith(_RETRACTED_PREFIX):
-                    out.append((num, n, tm.group("date"),
-                                note[len(_RETRACTED_PREFIX):].strip()))
+            latest = _latest_trail_note(
+                lines, acceptance_box_trail(lines, box, end), _RETRACTED_PREFIX)
+            if latest is None:
+                continue
+            date, reason, later = latest
+            ticked = _CHECKBOX_RE.match(lines[box]).group("mark") != " "
+            out.append(Retraction(num, n, date, reason, ticked,
+                                  later if ticked else None))
     return out
+
+
+def retraction_summary(r: Retraction) -> str:
+    """What `check` says about one retracted box — worded by its tick today."""
+    if not r.reaccepted:
+        return (f"stage {r.stage} criterion {r.criterion} was retracted on "
+                f"{r.date} ({r.reason}) — the box is open again, and the "
+                f"original attestation is kept above the correction")
+    since = f"on {r.reaccepted_on}" if r.reaccepted_on else "since"
+    return (f"stage {r.stage} criterion {r.criterion} was retracted on "
+            f"{r.date} ({r.reason}) and re-accepted {since} — the box is "
+            f"ticked again, and the retraction is kept in its trail")
 
 
 #: The roadmap block whose bullets become a stage's acceptance boxes, and the
@@ -1505,7 +1574,13 @@ def _objective_stages(delivered_by: str) -> List[str]:
     return re.findall(r"\bStage[s]?\s+([\d,\s]+)", delivered_by)
 
 
-def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str]) -> None:
+def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
+                            downgrade_stages: Set[str] = frozenset()) -> None:
+    """Roll each Objective row up from the stages its Delivered-by cell names.
+
+    Never downgrades a row, except one naming a stage in *downgrade_stages* —
+    the stages a reopen just sent back (issue #271), and nothing else, so an
+    unrelated row is never rewritten by it."""
     # An objective linked to an outcome target that is not ✅ Met can never
     # roll up to ✅: its stages shipping is necessary but not sufficient.
     blocked = {g for t in outcome_targets(lines) if t.kind != "met"
@@ -1525,15 +1600,20 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str]) -> N
             if current in ("deferred", "excluded"):
                 continue
             statuses = [stage_status.get(n) for n in nums if stage_status.get(n)]
+            allow_downgrade = any(n in downgrade_stages for n in nums)
             if statuses and all(s == "complete" for s in statuses):
                 derived = "complete"
             elif any(s in ("complete", "in-progress", "in-review") for s in statuses):
                 derived = "in-progress"
+            elif allow_downgrade and statuses:
+                # Only a reopen gets here with stages to read: every stage the
+                # row names is 📋, so the objective is too.
+                derived = "planned"
             else:
                 derived = current
             if derived == "complete" and gm.group(0) in blocked:
                 derived = "in-progress"
-            if RANK[derived] >= RANK[current]:
+            if allow_downgrade or RANK[derived] >= RANK[current]:
                 lines[i] = _sub_status_cell(line, derived)
 
 
@@ -1568,7 +1648,11 @@ def insert_item_reference(text: str, number: int, stage: str, title: str) -> Opt
         # hands the wrapped bullet's marker to the wrong owner.
         spans = _deliverable_bullet_spans(lines[start:end])
         if spans:
-            insert_at = start + spans[-1][1] + 1
+            # And after its correction trail: a bullet slipped in above a
+            # `reopened:` line would take that line as its own (issue #271).
+            last = start + spans[-1][1]
+            trail = deliverable_bullet_trail(lines, last)
+            insert_at = (trail[-1] if trail else last) + 1
         if insert_at is None:
             return None
         lines.insert(insert_at, f"- 📋 {title}. *(Item {number:03d})*")
@@ -1592,7 +1676,8 @@ class BulletSplit(NamedTuple):
 
 
 def _split_multi_item_bullets(lines: List[str], num: int, status: str,
-                              splits: Optional[List[BulletSplit]] = None) -> List[str]:
+                              splits: Optional[List[BulletSplit]] = None,
+                              downgrade: bool = False) -> List[str]:
     """One bullet, one item: desugar a bullet that owns ``num`` *and* siblings.
 
     A trailing marker may name several items — ``*(Items 016, 017)*``, the form
@@ -1611,9 +1696,11 @@ def _split_multi_item_bullets(lines: List[str], num: int, status: str,
     the sibling protection issue #99 gave a prose mention, given to the list
     form that actually attributes.
 
-    Only a flip that would ADVANCE the bullet splits it. A `progress set` that
-    changes nothing must rewrite nothing: re-running one, or setting a status
-    the bullet already holds, is not a reason to reshape a consumer's file.
+    Only a flip that would ADVANCE the bullet splits it — or, with
+    *downgrade*, one that would move it back at all (`progress reopen`, issue
+    #271). A `progress set` that changes nothing must rewrite nothing:
+    re-running one, or setting a status the bullet already holds, is not a
+    reason to reshape a consumer's file.
 
     What the split writes is the shared prose, verbatim, N times. It cannot be
     otherwise — the bullet had one sentence for N items, and the engine has no
@@ -1648,7 +1735,8 @@ def _split_multi_item_bullets(lines: List[str], num: int, status: str,
         if _has_typo_range(marker.group(0)):
             continue
         current = ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
-        if not current or RANK[status] <= RANK[current]:
+        if not current or status == current or (
+                not downgrade and RANK[status] <= RANK[current]):
             continue
         head = lines[last][:marker.start()]
         # Whatever followed the last `)*` — the sentence-ending period the
@@ -1706,17 +1794,163 @@ def set_item_status(text: str, num: int, status: str,
             lines[start] = _replace_first_icon(lines[start], status)
 
     # Recompute rollups for every stage (never downgrading).
+    _recompute_rollups(lines)
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+
+def _recompute_rollups(lines: List[str],
+                       downgrade_stages: Set[str] = frozenset()) -> None:
+    """Roll every stage header, summary row and Objective row up, in place.
+
+    Never downgrades, except a stage in *downgrade_stages* and the Objective
+    rows naming one: the stages a reopen just sent back (issue #271), whose
+    rolled-up cells must follow the bullet down or `aide check` reports the
+    drift the moment the reopen lands.
+    """
     stage_status: Dict[str, str] = {}
     for start, end, stage_num in stage_sections(lines):
         derived = rollup_status(stage_deliverable_statuses(lines, start, end))
         if derived is None:
             continue
         stage_status[stage_num] = derived
-        _set_stage_header(lines, start, derived)
-        _set_summary_row(lines, stage_num, derived)
-    _apply_objective_rollup(lines, stage_status)
+        down = stage_num in downgrade_stages
+        _set_stage_header(lines, start, derived, allow_downgrade=down)
+        _set_summary_row(lines, stage_num, derived, allow_downgrade=down)
+    _apply_objective_rollup(lines, stage_status, downgrade_stages)
 
-    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+#: The trail prefix a reopen writes under a deliverable bullet — read back by
+#: `check` and `status` exactly as `_RETRACTED_PREFIX` is under a box.
+_REOPENED_PREFIX = "reopened: "
+
+
+def deliverable_bullet_trail(lines: List[str], last: int) -> List[int]:
+    """Line indices of the correction trail under the bullet ending at *last*.
+
+    The trail lines immediately below the bullet's last wrapped line, in file
+    order. `_deliverable_bullet_spans` ends a bullet at any line carrying a
+    list marker, so a trail line is never part of the bullet — its marker is
+    not read from one, and `_NESTED_DELIVERABLE_RE` never matches one, since
+    it carries a date where a status bullet carries an icon.
+    """
+    out: List[int] = []
+    for i in range(last + 1, len(lines)):
+        if not _ACCEPT_TRAIL_RE.match(lines[i]):
+            break
+        out.append(i)
+    return out
+
+
+def _stage_of_line(lines: List[str], index: int) -> Optional[str]:
+    for start, end, num in stage_sections(lines):
+        if start <= index < end:
+            return num
+    return None
+
+
+def reopen_item(text: str, num: int, reason: str, date: str,
+                splits: Optional[List[BulletSplit]] = None) -> Tuple[str, str]:
+    """Send a ✅ item back to 📋, append-only; ``(updated text, message)``.
+
+    Every deliverable bullet whose trailing marker names *num* flips to 📋 and
+    gains a dated ``reopened: <reason>`` trail line — the same grammar as an
+    acceptance box's correction trail — and the stages holding them roll up
+    with a downgrade allowed. Nothing else in the file changes: the bullet's
+    own text and marker, other items, and every acceptance box stay as they
+    were.
+
+    Refuses unless every such bullet is ✅: an item that is not done has
+    nothing to reopen, and one ✅ bullet beside a 🚧 one is not a closed item.
+    A shared marker is desugared first, as `set` does, so no sibling is
+    carried back with it.
+    """
+    lines = text.splitlines()
+    owned = [(s, l) for s, l in _deliverable_bullet_spans(lines)
+             if num in _bullet_marker_item_numbers(lines[l])]
+    if not owned:
+        raise ValueError(
+            f"no deliverable bullet's trailing *(Item {num:03d})* marker names "
+            f"item {num:03d}, so there is nothing to reopen")
+    statuses = [ICON_TO_STATUS[_BULLET_RE.match(lines[s]).group("icon")]
+                for s, _ in owned]
+    if any(st != "complete" for st in statuses):
+        shown = ", ".join(sorted({f"{STATUS_TO_ICON[st]} {st}" for st in statuses}))
+        raise ValueError(
+            f"item {num:03d} is {shown}, not ✅ — only a completed item can be "
+            f"reopened")
+    lines = _split_multi_item_bullets(lines, num, "planned", splits, downgrade=True)
+    stages: Set[str] = set()
+    # Bottom-up, so an inserted trail line never shifts a span still to visit.
+    for start, last in reversed(_deliverable_bullet_spans(lines)):
+        if num not in _bullet_marker_item_numbers(lines[last]):
+            continue
+        lines[start] = _replace_first_icon(lines[start], "planned")
+        _insert_trail_line(lines, last, deliverable_bullet_trail(lines, last),
+                           date, _REOPENED_PREFIX + reason)
+        stage = _stage_of_line(lines, start)
+        if stage is not None:
+            stages.add(stage)
+    _recompute_rollups(lines, stages)
+    return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""),
+            f"item {num:03d}: reopened — {reason}")
+
+
+class Reopening(NamedTuple):
+    """One reopened item, as `check` and `status` report it.
+
+    ``date`` and ``reason`` are the item's latest reopening, across every
+    bullet it owns. ``completed`` is whether the item is ✅ again today, and
+    ``completed_on`` the newest dated trail line after that reopening, or None
+    when nothing dated was written since (a merge flips the icon and writes no
+    trail line).
+    """
+
+    item: int
+    date: str
+    reason: str
+    status: str
+    completed: bool = False
+    completed_on: Optional[str] = None
+
+
+def reopened_items(lines: List[str]) -> List[Reopening]:
+    """One `Reopening` per item whose bullet carries a ``reopened:`` trail line.
+
+    Keyed on the item's status today (issue #273's rule, one level up): an item
+    ✅ again since is reported as that, never as open.
+    """
+    item_status = _parse_item_status(lines)[2]
+    latest: Dict[int, Tuple[Tuple[str, int], str, str, Optional[str]]] = {}
+    for start, last in _deliverable_bullet_spans(lines):
+        trail = deliverable_bullet_trail(lines, last)
+        hit = _latest_trail_note(lines, trail, _REOPENED_PREFIX)
+        if hit is None:
+            continue
+        date, reason, later = hit
+        for num in _bullet_marker_item_numbers(lines[last]):
+            key = (date, start)
+            if num not in latest or key >= latest[num][0]:
+                latest[num] = (key, date, reason, later)
+    out: List[Reopening] = []
+    for num in sorted(latest):
+        _, date, reason, later = latest[num]
+        status = item_status.get(num, "planned")
+        done = status == "complete"
+        out.append(Reopening(num, date, reason, status, done,
+                             later if done else None))
+    return out
+
+
+def reopening_summary(r: Reopening) -> str:
+    """What `check` says about one reopened item — worded by its status today."""
+    if not r.completed:
+        return (f"item {r.item:03d} was reopened on {r.date} ({r.reason}) — it "
+                f"is {STATUS_TO_ICON[r.status]} again, and the trail under its "
+                f"bullet keeps the earlier ✅ on record")
+    since = f"on {r.completed_on}" if r.completed_on else "since"
+    return (f"item {r.item:03d} was reopened on {r.date} ({r.reason}) and "
+            f"completed again {since} — the reopening is kept in the trail "
+            f"under its bullet")
 
 
 # --------------------------------------------------------------------------- #
@@ -4464,11 +4698,12 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     # stays visible. Retracting is append-only, so without a surfacing rule the
     # withdrawal would live only in one commit's diff, which is exactly the
     # quiet the trail exists to prevent.
-    for stg, cn, cdate, creason in retracted_criteria(lines):
-        warnings.append(
-            f"progress.md: stage {stg} criterion {cn} was retracted on "
-            f"{cdate} ({creason}) — the box is open again, and the original "
-            f"attestation is kept above the correction")
+    for retraction in retracted_criteria(lines):
+        warnings.append(f"progress.md: {retraction_summary(retraction)}")
+    # The same rule one level up (issue #271): a reopened item stays visible,
+    # worded by the item's status today.
+    for reopening in reopened_items(lines):
+        warnings.append(f"progress.md: {reopening_summary(reopening)}")
     warnings.extend(nested_deliverable_warnings(lines))
     warnings.extend(identical_deliverable_warnings(lines))
     warnings.extend(unattributed_reference_warnings(lines))
@@ -5221,7 +5456,8 @@ def _report_bullet_splits(number: int, lines: List[str],
 def cmd_progress(args: argparse.Namespace) -> int:
     #: The acceptance verbs, in the order §1 describes them: make an
     #: attestation, correct its evidence, withdraw it, or reword a criterion
-    #: nobody has attested yet.
+    #: nobody has attested yet. `reopen` is `retract` one level up — an item,
+    #: not a box (issue #271).
     if args.action == "accept":
         return _cmd_progress_accept(args)
     if args.action == "amend":
@@ -5230,8 +5466,12 @@ def cmd_progress(args: argparse.Namespace) -> int:
         return _cmd_progress_retract(args)
     if args.action == "reword":
         return _cmd_progress_reword(args)
+    if args.action == "reopen":
+        return _cmd_progress_reopen(args)
     if args.action != "set":
-        print("usage: aide progress set NNN <in-progress|in-review|done>", file=sys.stderr)
+        print("usage: aide progress set NNN <in-progress|in-review|done> | "
+              "reopen NNN --reason TEXT | accept|amend|retract|reword STAGE "
+              "(see aide progress -h)", file=sys.stderr)
         return 2
     if args.status is None:
         print("usage: aide progress set NNN <in-progress|in-review|done>", file=sys.stderr)
@@ -5385,21 +5625,35 @@ def _route_retraction_to_insights(repo_root: Path, config, stage: str, n: int,
     down, so the verb does the routing itself rather than asking the caller to
     remember: the honest path has to be the cheap one, or the quiet path wins.
     """
+    return _route_gap_to_insights(repo_root, config, "retraction",
+                                  "acceptance criterion retracted",
+                                  f"stage {stage} criterion {n}", reason, date)
+
+
+def _route_gap_to_insights(repo_root: Path, config, event: str, lead: str,
+                           source: str, reason: str,
+                           date: str) -> Tuple[Optional[str], str]:
+    """Append ``- [ ] gap — <lead>: <reason> *(<source>, <date>, engine)*``.
+
+    The one writer for a correction verb's finding — `retract` for a box,
+    `reopen` for an item (issue #271) — so both entries have the one shape
+    `aide check`'s inbox rule reads. ``(rel_path, message)``; no path when
+    there is no inbox to write to, and the message says so.
+    """
     ddir = docs_dir(repo_root, config)
     path = insights_path(ddir)
     if not path.is_file():
-        return None, ("notice: no insights.md, so the retraction was not "
-                      "routed — capture it wherever this project keeps findings")
+        return None, (f"notice: no insights.md, so the {event} was not "
+                      f"routed — capture it wherever this project keeps findings")
     stamp = _engine_stamp()
-    source = f"stage {stage} criterion {n}"
     marker = f"*({source}, {date}" + (f", {stamp}" if stamp else "") + ")*"
-    entry = f"- [ ] gap — acceptance criterion retracted: {reason} {marker}"
+    entry = f"- [ ] gap — {lead}: {reason} {marker}"
     text = path.read_text(encoding=_ENCODING)
     if not text.endswith("\n"):
         text += "\n"
     path.write_text(text + entry + "\n", encoding="utf-8")
     rel = str(config["project"].get("docs_dir", "docs/aide")) + "/insights.md"
-    return rel, f"insights.md: captured a gap entry for the retraction"
+    return rel, f"insights.md: captured a gap entry for the {event}"
 
 
 def _cmd_progress_amend(args: argparse.Namespace) -> int:
@@ -5485,6 +5739,66 @@ def _cmd_progress_retract(args: argparse.Namespace) -> int:
             repo_root, config,
             f"progress(aide): stage {args.number} retract criterion {args.criterion}",
             rels)
+    return 0
+
+
+def _cmd_progress_reopen(args: argparse.Namespace) -> int:
+    """``aide progress reopen NNN --reason TEXT`` — send a ✅ item back to 📋.
+
+    The item-level counterpart of `retract` (issue #271): a deliverable closed
+    on merged code whose operator run never happened had no verb back, so it
+    was hand-edited from ✅ to 📋 and left no trail. This flips the bullet,
+    writes the reason under it, and routes the finding, exactly as `retract`
+    does for a box.
+    """
+    usage = "usage: aide progress reopen NNN --reason TEXT [--date YYYY-MM-DD]"
+    if args.status is not None or args.criterion is not None or args.all_criteria:
+        print(f"{usage}\naide progress reopen: an item is reopened whole — it "
+              f"takes no status, --criterion or --all", file=sys.stderr)
+        return 2
+    if not (args.reason or "").strip():
+        print("aide progress reopen: --reason is required — the reason is "
+              "what the record keeps", file=sys.stderr)
+        return 2
+    reason = args.reason.strip()
+    if "\n" in reason or "\r" in reason:
+        print("aide progress reopen: the reason may not contain a line break "
+              "— it is written into one trail line", file=sys.stderr)
+        return 2
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    progress_path = docs_dir(repo_root, config) / "progress.md"
+    if not progress_path.is_file():
+        print(f"error: {progress_path} not found", file=sys.stderr)
+        return 1
+    import datetime as _dt
+    date = args.date or _dt.date.today().isoformat()
+    text = progress_path.read_text(encoding=_ENCODING)
+    splits: List[BulletSplit] = []
+    try:
+        updated, message = reopen_item(text, args.number, reason, date, splits)
+    except ValueError as exc:
+        print(f"error: {exc}; progress.md NOT changed", file=sys.stderr)
+        return 1
+    progress_path.write_text(updated, encoding="utf-8")
+    print(message)
+    _report_bullet_splits(args.number, updated.splitlines(), splits)
+    rel_insights, note = _route_gap_to_insights(
+        repo_root, config, "reopening", "item reopened",
+        f"item {args.number:03d}", reason, date)
+    print(note)
+    # Issue #152's advice, one level up: the warning is permanent by design.
+    print(f"notice: `aide check` will warn about this reopening from now on — "
+          f"the record is permanent, not a defect to clear. A test that pins "
+          f"the tolerated warning set needs widening for item "
+          f"{args.number:03d}; do it in this change, not at the merge gate")
+    if not args.no_commit and (repo_root / ".git").exists():
+        rels = [str(config["project"].get("docs_dir", "docs/aide")) + "/progress.md"]
+        if rel_insights:
+            rels.append(rel_insights)
+        _commit_docs_files(
+            repo_root, config,
+            f"progress(aide): item {args.number:03d} reopen", rels)
     return 0
 
 
@@ -9224,8 +9538,20 @@ def cmd_status(args: argparse.Namespace) -> int:
             stages = (f" [stage {', '.join(map(str, c.stages))}]"
                       if c.stages else "")
             print(f"  capability: {c.text}{stages} — {label}")
-        for stg, cn, cdate, creason in retracted_criteria(plines):
-            print(f"  retracted: stage {stg} criterion {cn} ({cdate}) — {creason}")
+        for r in retracted_criteria(plines):
+            again = ""
+            if r.reaccepted:
+                again = (f"; re-accepted on {r.reaccepted_on}"
+                         if r.reaccepted_on else "; re-accepted since")
+            print(f"  retracted: stage {r.stage} criterion {r.criterion} "
+                  f"({r.date}) — {r.reason}{again}")
+        for r in reopened_items(plines):
+            again = ""
+            if r.completed:
+                again = (f"; completed again on {r.completed_on}"
+                         if r.completed_on else "; completed again since")
+            print(f"  reopened: item {r.item:03d} ({r.date}) — {r.reason}"
+                  f"{again}")
 
     branches = _list_claim_branches(repo_root, prefix)
     # Guarded the way `run_checks` guards it: two git spawns are not worth
@@ -9675,8 +10001,12 @@ def build_parser() -> argparse.ArgumentParser:
             "`aide scope` to judge); an always-authorised path pinned "
             "under Asserts against; a marked assumption pinning an engine "
             "whose feature line predates the installed one; every "
-            "retracted acceptance criterion, a normal state rather than a "
-            "defect; and an insights entry whose shape is off \u2014 loose "
+            "retracted acceptance criterion and every reopened item, a "
+            "normal state rather than a defect, each reported once, by its "
+            "latest retraction or reopening, and never as open once the box "
+            "is ticked or the item \u2705 again \u2014 then as re-accepted "
+            "or completed again, with the newest trail date since when there "
+            "is one; and an insights entry whose shape is off \u2014 loose "
             "either side of the date, strict about the date, and never "
             "applied to an archived entry; a ledger row no reader can "
             "use \u2014 the wrong cell count, an Item cell that is not an "
@@ -9717,6 +10047,10 @@ def build_parser() -> argparse.ArgumentParser:
             "or in neither; where roadmap.md has no acceptance block for the "
             "stage, in progress.md alone; refuses over a ticked, annotated or "
             "corrected box\n"
+            "reopen:  send a \u2705 item back to \U0001f4cb \u2014 its "
+            "deliverable bullet flips, a dated `reopened: <reason>` line goes "
+            "under it, its stage rolls back down, and a `gap` insight is "
+            "captured (--reason required)\n"
             "\n"
             "The rollup, applied by set and read by `aide check`: a stage is "
             "\u2705 when every deliverable bullet in it is \u2705 or \u274c "
@@ -9731,8 +10065,9 @@ def build_parser() -> argparse.ArgumentParser:
             "The stage header, its summary-table "
             "row, and any Objective row delivered solely by \u2705 stages "
             "follow; an objective linked to an Outcome target that is not "
-            "\u2705 Met never rolls up. A status is never downgraded, and no "
-            "rollup ever ticks an acceptance box.\n"
+            "\u2705 Met never rolls up. set never downgrades a status; only "
+            "reopen moves one back, and only from \u2705. No rollup ever "
+            "ticks an acceptance box.\n"
             "\n"
             "reword matches the Nth box to the Nth non-`Target:` bullet of the "
             "roadmap stage's Validation / acceptance block; if the two cannot "
@@ -9742,11 +10077,23 @@ def build_parser() -> argparse.ArgumentParser:
             "Neither amend nor retract takes --all: each attestation was made "
             "separately and is corrected or withdrawn separately. Both refuse "
             "without a stated reason. `aide check` warns on every retracted "
-            "criterion and `aide status` prints it."))
+            "criterion and `aide status` prints it.\n"
+            "\n"
+            "reopen refuses, writing nothing, unless every deliverable bullet "
+            "whose trailing marker names the item is \u2705, and refuses "
+            "without a stated reason. The reason goes on the trail line under "
+            "each flipped bullet and into the `gap` entry; the bullet's text "
+            "and marker, other items and every acceptance box are left as "
+            "they were. `aide check` warns on every reopened item and "
+            "`aide status` prints it, worded by the item's status today: one "
+            "\u2705 again since reads as reopened and completed again, never "
+            "as open."))
     p_prog.add_argument("action",
-                        choices=["set", "accept", "amend", "retract", "reword"])
+                        choices=["set", "accept", "amend", "retract", "reword",
+                                 "reopen"])
     p_prog.add_argument("number", type=int,
-                        help="item number (set) | stage number (every other action)")
+                        help="item number (set, reopen) | stage number "
+                             "(every other action)")
     p_prog.add_argument("status", nargs="?", default=None,
                         help="set: in-progress | in-review | done "
                              "(in-review = pushed, awaiting a human's merge)")
@@ -9759,11 +10106,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help="accept: annotation appended to the ticked criterion; "
                              "amend: the corrected evidence, appended as a dated line")
     p_prog.add_argument("--reason", default=None,
-                        help="retract: why the attestation is withdrawn (required)")
+                        help="retract: why the attestation is withdrawn; "
+                             "reopen: why the item is not done after all "
+                             "(required for both)")
     p_prog.add_argument("--text", default=None,
                         help="reword: the criterion's new wording (required)")
     p_prog.add_argument("--date", default=None,
-                        help="amend/retract: ISO date for the trail line (default: today)")
+                        help="amend/retract/reopen: ISO date for the trail "
+                             "line (default: today)")
     p_prog.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
     p_prog.set_defaults(func=cmd_progress)
 
@@ -10051,6 +10401,9 @@ def register_git_subcommands(sub) -> None:
             "target not yet \u2705 Met, every retracted acceptance "
             "criterion and every progress.md table row no reader can use is "
             "printed too, so none of them lives only in one commit's diff. "
+            "So is every item `aide progress reopen` sent back, and a "
+            "retracted criterion or reopened item that has since been "
+            "re-accepted or completed again says so. "
             "So is every environment-gated capability not yet ✅ "
             "Verified, with the [validation] profile its Package / Tool cell "
             "names. With --profiles, each profile a ❓ Unverified row names "
