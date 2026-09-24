@@ -121,6 +121,31 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.2.1] — 2026-09-24
+
+### Fixed
+
+- **A continuation line opening on `**bold**` no longer grants a phantom
+  authorised path (issue #270).** `parse_authorised_paths` read any line whose
+  first character was `-`, `*` or `+` as a bullet, so a wrapped reason whose
+  next line began `**Relationship to `vision.md`**` authorised a repo-root
+  `vision.md`, and `aide scope` accepted an edit to it. The parser now uses
+  the rule the spec-time lint already used: a marker counts only when
+  whitespace follows it. The two readers of the section now agree. A bullet
+  written with no space after its marker (`-`path``) is no longer read either.
+  It was never Markdown list syntax.
+- **`aide check` warns when an Asserts-against glob covers a path May change
+  names (issue #269).** The collision lint caught only the exact double
+  listing. A read-only sweep pinned as `src/pkg/*.py` over a May-change
+  `src/pkg/mod.py` went unreported until `aide scope` failed the item a build
+  round later, in the section the builder may not edit. The lint checks one
+  direction only. A literal pin under a May-change glob is still the
+  deliberate carve-out, and `aide scope` still judges it. `aide scope` itself
+  is unchanged: `check` gives the early warning, and scope stays the final
+  check. §1 → `authorised-paths.md`, `aide check -h`, the
+  `aide-item-specs` skill and the item template's Asserts-against guidance
+  state the new shape (guidance only, so the template's version is unmoved).
+
 ## [2.2.0] — 2026-09-23
 
 ### Added
