@@ -147,7 +147,7 @@ def test_a_run_still_going_answers_with_its_own_code_and_the_log_tail(repo: Path
 
 
 _OWN_CODES = ("EXIT_RUNNING", "EXIT_USAGE", "EXIT_NOT_STARTED", "EXIT_DIED",
-              "EXIT_STOPPED", "EXIT_BUSY")
+              "EXIT_STOPPED", "EXIT_BUSY", "EXIT_STOP_REFUSED")
 
 
 def test_the_wrappers_own_codes_collide_with_nothing_it_reports():
@@ -423,3 +423,130 @@ def test_stop_reaches_no_pid_but_a_valid_labels(repo: Path, monkeypatch):
     monkeypatch.setattr(ar, "_kill_tree", lambda *a, **k: pytest.fail("killed"))
     for argv in (["stop", "1234"], ["stop", "../x"], ["stop", "suite-20260101-000000"]):
         assert ar.main(argv, root=repo) == ar.EXIT_USAGE
+
+
+# --------------------------------------------------------------------------- #
+# the launch window — a run being started is never read as dead
+# --------------------------------------------------------------------------- #
+def _await_file(pattern_dir: Path, pattern: str, seconds: float = 20):
+    import time
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        found = sorted(pattern_dir.glob(pattern)) if pattern_dir.is_dir() else []
+        if found:
+            return found[0]
+        time.sleep(0.02)
+    raise AssertionError(f"no {pattern} under {pattern_dir}")
+
+
+def _await_log(directory: Path, label: str, text: str, seconds: float = 20):
+    import time
+    deadline = time.monotonic() + seconds
+    log = directory / f"{label}.log"
+    while time.monotonic() < deadline:
+        if log.is_file() and text in log.read_text(encoding="utf-8", errors="replace"):
+            return
+        time.sleep(0.02)
+    raise AssertionError(f"{text!r} never reached {log}")
+
+
+def test_a_concurrent_start_sees_a_launching_run_as_busy_never_dead(repo: Path):
+    """The review's repro: the gap between `Popen` returning and the
+    supervisor taking its lock, widened to a second by a test-only seam."""
+    import threading
+    directory = ar.state_dir(repo)
+    first = {}
+    launcher = threading.Thread(target=lambda: first.setdefault(
+        "label", ar.start_run("suite", _py(_HOLD), repo, directory,
+                              _pre_lock_delay=1.0)))
+    launcher.start()
+    try:
+        label = _await_file(directory, "*.start").stem
+        # Mid-launch: the run reads dead, and neither a wait nor a start may
+        # act on that reading.
+        assert ar.run_state(directory, label) == "dead"
+        assert ar.wait_run(label, directory, 0) == ar.EXIT_RUNNING
+        with pytest.raises(ar.BusyError) as busy:
+            ar.start_run("suite", _py("pass"), repo, directory)
+        assert busy.value.label == label
+        assert not (directory / f"{label}.exit").exists()
+        assert ar.run_state(directory, label) == "live"
+    finally:
+        launcher.join(30)
+        ar.stop_run(first.get("label") or label, directory)
+    assert (directory / f"{label}.exit").read_text().strip() == str(ar.EXIT_STOPPED)
+
+
+# --------------------------------------------------------------------------- #
+# stop on a merge — SIGTERM only, so aide merge can restore its claim branch
+# --------------------------------------------------------------------------- #
+_TRAPS_SIGTERM = """
+    import signal, sys, time
+    def restore(*_):
+        print("aide merge: interrupted - claim branch restored; re-run merge", flush=True)
+        sys.exit(1)
+    signal.signal(signal.SIGTERM, restore)
+    print("ready", flush=True)
+    time.sleep(60)
+"""
+
+_IGNORES_SIGTERM = """
+    import signal, time
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    print("ready", flush=True)
+    time.sleep(60)
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
+def test_stop_on_a_merge_sends_sigterm_only_and_its_restore_reaches_the_tail(
+        repo: Path, monkeypatch, capsys):
+    kills = []
+    real = ar._kill_tree
+    monkeypatch.setattr(ar, "_kill_tree",
+                        lambda pid, hard: kills.append(hard) or real(pid, hard))
+    directory = ar.state_dir(repo)
+    label = ar.start_run("merge-014", _py(_TRAPS_SIGTERM), repo, directory)
+    _await_log(directory, label, "ready")
+    assert ar.stop_run(label, directory) == 0
+    assert kills == [False], "a merge run was hard-killed"
+    out = capsys.readouterr().out
+    assert "claim branch restored" in out
+    assert "own exit code, before the stop was recorded: 1" in out
+    assert (directory / f"{label}.exit").read_text().strip() == str(ar.EXIT_STOPPED)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
+def test_a_merge_that_outlives_sigterm_is_left_running_and_reported(
+        repo: Path, monkeypatch, capsys):
+    import os
+    import signal
+    monkeypatch.setattr(ar, "_MERGE_GRACE", 1.0)
+    directory = ar.state_dir(repo)
+    label = ar.start_run("merge-014", _py(_IGNORES_SIGTERM), repo, directory)
+    pid = json.loads((directory / f"{label}.start").read_text())["pid"]
+    try:
+        _await_log(directory, label, "ready")
+        assert ar.main(["stop", label], root=repo) == ar.EXIT_STOP_REFUSED
+        assert "NOT stopped" in capsys.readouterr().out
+        assert ar.run_state(directory, label) == "live"
+        assert not (directory / f"{label}.exit").exists()
+    finally:
+        os.killpg(pid, signal.SIGKILL)
+        ar.wait_run(label, directory, 20)
+
+
+def test_on_windows_a_merge_run_is_refused_not_killed(repo: Path, monkeypatch, capsys):
+    monkeypatch.setattr(ar, "_NO_GRACEFUL_STOP", True)
+    monkeypatch.setattr(ar, "_kill_tree", lambda *a, **k: pytest.fail("killed"))
+    directory = ar.state_dir(repo)
+    label = ar.start_run("merge-014", _py(_HOLD), repo, directory)
+    try:
+        assert ar.stop_run(label, directory) == ar.EXIT_STOP_REFUSED
+        assert "never killed on Windows" in capsys.readouterr().out
+        assert ar.run_state(directory, label) == "live"
+    finally:
+        monkeypatch.undo()
+        pid = json.loads((directory / f"{label}.start").read_text())["pid"]
+        ar._kill_tree(pid, hard=True)
+        ar.wait_run(label, directory, 20)

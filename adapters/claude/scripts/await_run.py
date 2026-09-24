@@ -20,13 +20,24 @@ and prints a label once the run is under way. It refuses while another run in
 this worktree is still live, naming it: wait on that label instead. ``wait``
 blocks for at most ``--for`` seconds (default 240, under a 5-minute cache;
 capped at 540, under the Bash tool's 600000 ms ceiling) and returns the moment
-the command exits, or the moment its supervisor is found dead. ``stop`` kills
-the run's whole process tree and records it as stopped; a run that already
-ended is reported, not an error.
+the command exits, or the moment its supervisor is found dead. ``stop`` ends
+the run and records it as stopped; a run that already ended is reported, not
+an error. A suite run's whole process tree is killed: SIGTERM, then SIGKILL
+after a short grace on POSIX, ``taskkill /T /F`` on Windows. A merge run is
+only ever sent SIGTERM, which ``aide merge`` turns into putting the claim
+branch back and saying what to re-run; a hard kill would get past that and
+leave the base merged with the claim branch gone. ``stop`` waits up to 120 s
+for it, and a merge still alive then is left running and reported (93). On
+Windows a detached process has no graceful signal, so ``stop`` refuses a merge
+run there outright (93) and a person decides.
 
 A run is live while its supervisor holds an exclusive lock on
 ``<label>.lock``; the supervisor writes ``.exit`` before that lock is released
-at its exit, so a free lock with no ``.exit`` means it died.
+at its exit, so a free lock with no ``.exit`` means it died. The supervisor
+outlives its command on SIGTERM, so a stopped run still records the command's
+own ending. Every ``start``, and every verdict that a run is dead, is taken
+under ``start.lock`` in the state directory: a run still being launched holds
+it, so it is never mistaken for a dead one.
 
 It runs **only** those two commands, so allow-listing it lets nothing else
 through: ``suite`` is the project's ``[python] test_command``, resolved by the
@@ -41,11 +52,14 @@ Exit codes:
     91                  wait: the run was stopped (``stop``)
     92                  start: another run is live here — wait on the label
                         it names instead
+    93                  stop: a merge run was not stopped — still alive after
+                        SIGTERM, or on Windows, where it is never killed; a
+                        person must look
     64                  await_run itself could not do what was asked (EX_USAGE)
     127                 recorded when the command could not be started at all
     0                   start: launched; stop: stopped, or already ended
 
-None of 64, 75 or 90–92 is a code pytest (0–5) or ``aide merge`` returns, and
+None of 64, 75 or 90–93 is a code pytest (0–5) or ``aide merge`` returns, and
 none is 128+N, a signal death. State lives under the git directory
 (``git rev-parse --git-dir``, which is per worktree), in
 ``aide-runs/<label>.{start,lock,log,exit}``, so it never dirties the working
@@ -78,11 +92,21 @@ EXIT_NOT_STARTED = 127
 EXIT_DIED = 90
 EXIT_STOPPED = 91
 EXIT_BUSY = 92
+EXIT_STOP_REFUSED = 93
 _POLL = 0.5
 # How long `start` waits for the supervisor to take its lock, and `stop` for
 # a killed tree to let go of it.
 _LOCK_BOUND = 30.0
 _STOP_GRACE = 5.0
+# A merge gets this long to restore its claim branch after SIGTERM.
+_MERGE_GRACE = 120.0
+# The directory lock serialising `start` and every "dead" verdict.
+_DIR_LOCK = "start.lock"
+_WINDOWS = os.name == "nt"
+# No graceful signal reaches a DETACHED_PROCESS (no console, no CTRL_BREAK),
+# so a merge run is never stopped there. Its own name, so a test can take
+# the Windows branch of `stop` without the Windows lock calls.
+_NO_GRACEFUL_STOP = _WINDOWS
 _KEEP_SECONDS = 7 * 24 * 3600
 _LABEL_RE = re.compile(r"^[a-z]+(?:-\d+)?-\d{8}-\d{6}(?:-\d+)?$")
 # The shape `aide merge --findings` takes; anything else never reaches it.
@@ -92,21 +116,32 @@ _FINDINGS_RE = re.compile(r"^(?:blocking|minor|nit)=\d+(?:,(?:blocking|minor|nit
 # the stdlib. It is handed its command as data, from `start_run`; nothing on
 # this script's command line can reach it, which is the allow-list property.
 _SUPERVISOR = r"""
-import json, os, subprocess, sys
+import json, os, signal, subprocess, sys, time
 spec = json.loads(sys.argv[1])
-# Held for this process's whole life and released only by its exit, after
-# `.exit` is written: a free lock with no `.exit` is a supervisor that died.
-lock = os.open(spec["lock"], os.O_RDWR | os.O_CREAT)
-if os.name == "nt":
-    import msvcrt
-    msvcrt.locking(lock, msvcrt.LK_LOCK, 1)
-else:
-    import fcntl
-    fcntl.flock(lock, fcntl.LOCK_EX)
 code = int(spec["not_started"])
 env = dict(os.environ, PYTHONUNBUFFERED="1")
+# SIGTERM is for the command: the supervisor outlives it to record how it
+# ended. A handler, not SIG_IGN, so the command starts with the default.
+signal.signal(signal.SIGTERM, lambda *_: None)
 try:
     with open(spec["log"], "ab") as log:
+        time.sleep(float(spec.get("pre_lock_delay", 0)))  # tests only
+        # Held for this process's whole life and released only by its exit,
+        # after `.exit` is written: a free lock with no `.exit` is a
+        # supervisor that died. Inside the `try`, so a lock that cannot be
+        # taken still ends in an `.exit` rather than a record read as dead.
+        try:
+            lock = os.open(spec["lock"], os.O_RDWR | os.O_CREAT)
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(lock, msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock, fcntl.LOCK_EX)
+        except Exception as exc:
+            log.write(("await_run: could not take the run lock: %s\n"
+                       % exc).encode("utf-8"))
+            raise
         try:
             code = subprocess.call(spec["argv"], cwd=spec["cwd"], env=env,
                                    stdin=subprocess.DEVNULL, stdout=log,
@@ -115,10 +150,23 @@ try:
             log.write(("await_run: could not start %r: %s\n"
                        % (spec["argv"], exc)).encode("utf-8"))
 finally:
-    tmp = spec["exit"] + ".tmp"
+    # Write-if-absent. An `.exit` already there was written by someone who
+    # judged this run over (DIED, or STOPPED) and acted on that verdict; a
+    # late code replacing it would change the answer under them. Linking the
+    # finished file into place is atomic and fails if the name exists.
+    tmp = spec["exit"] + ".sup"
     with open(tmp, "w") as fh:
         fh.write("%d\n" % code)
-    os.replace(tmp, spec["exit"])
+    try:
+        os.link(tmp, spec["exit"])
+    except FileExistsError:
+        pass
+    except OSError:  # a filesystem without hard links
+        if not os.path.exists(spec["exit"]):
+            os.replace(tmp, spec["exit"])
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
 """
 
 
@@ -202,6 +250,65 @@ def _prune(directory: Path, now: float) -> None:
             pass
 
 
+def _try_lock(fd: int) -> bool:
+    """Take an exclusive lock on *fd* without blocking; False if it is held."""
+    if _WINDOWS:
+        import msvcrt
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError:
+            return False
+        return True
+    import fcntl
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    return True
+
+
+def _unlock(fd: int) -> None:
+    if _WINDOWS:
+        import msvcrt
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+class _DirLock:
+    """``start.lock`` in the state directory, held for a ``with`` block.
+
+    *timeout* 0 is one try. ``acquired`` says whether it was got; the caller
+    decides what not getting it means.
+    """
+
+    def __init__(self, directory: Path, timeout: float):
+        self.path = directory / _DIR_LOCK
+        self.timeout = timeout
+        self.fd = -1
+        self.acquired = False
+
+    def __enter__(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.fd = os.open(str(self.path), os.O_RDWR | os.O_CREAT)
+        deadline = time.monotonic() + self.timeout
+        while True:
+            if _try_lock(self.fd):
+                self.acquired = True
+                break
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.02)
+        return self
+
+    def __exit__(self, *exc):
+        if self.acquired:
+            _unlock(self.fd)
+        os.close(self.fd)
+        return False
+
+
 def _lock_held(lock: Path) -> bool:
     """True while some process holds *lock*; probes without blocking."""
     try:
@@ -209,27 +316,21 @@ def _lock_held(lock: Path) -> bool:
     except OSError:
         return False
     try:
-        if os.name == "nt":
-            import msvcrt
-            try:
-                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-            except OSError:
-                return True
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-        else:
-            import fcntl
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError:
-                return True
-            fcntl.flock(fd, fcntl.LOCK_UN)
+        if not _try_lock(fd):
+            return True
+        _unlock(fd)
         return False
     finally:
         os.close(fd)
 
 
 def run_state(directory: Path, label: str) -> str:
-    """``"ended"`` (an ``.exit`` exists), ``"live"`` or ``"dead"``."""
+    """``"ended"`` (an ``.exit`` exists), ``"live"`` or ``"dead"``.
+
+    ``"dead"`` is only a reading: a run being launched reads that way until
+    its supervisor takes its lock. It is acted on only under the directory
+    lock (``_confirm_dead``), which that launch holds.
+    """
     exit_file = directory / f"{label}.exit"
     if exit_file.is_file():
         return "ended"
@@ -237,6 +338,21 @@ def run_state(directory: Path, label: str) -> str:
         return "live"
     # Re-checked: the supervisor writes `.exit` and only then lets go.
     return "ended" if exit_file.is_file() else "dead"
+
+
+def _confirm_dead(directory: Path, label: str, timeout: float) -> bool:
+    """Mark *label* DIED if it is dead under the directory lock; True if it
+    was marked or has ended since. False means the lock was busy — a start
+    in progress — and nothing was decided."""
+    with _DirLock(directory, timeout) as held:
+        if not held.acquired:
+            return False
+        state = run_state(directory, label)
+        if state == "live":
+            return False
+        if state == "dead":
+            _mark(directory, label, EXIT_DIED)
+        return True
 
 
 def _mark(directory: Path, label: str, code: int) -> None:
@@ -260,13 +376,27 @@ def _open_runs(directory: Path) -> List[str]:
                   if not p.with_suffix(".exit").exists())
 
 
-def start_run(kind: str, argv: List[str], cwd: Path, directory: Path) -> str:
+def start_run(kind: str, argv: List[str], cwd: Path, directory: Path, *,
+              _pre_lock_delay: float = 0.0) -> str:
     """Launch *argv* detached under the supervisor; return its label.
 
     The seam the tests drive with a command of their own. The CLI reaches it
-    only with `suite_command` or `merge_command`.
+    only with `suite_command` or `merge_command`, and never passes
+    ``_pre_lock_delay``, which widens the launch window for a race test.
+    Serialised by the directory lock from the scan to the new supervisor
+    holding its own lock, so no two starts interleave and no start reads
+    another's launch as a dead run.
     """
     directory.mkdir(parents=True, exist_ok=True)
+    with _DirLock(directory, _LOCK_BOUND) as held:
+        if not held.acquired:
+            raise UsageError(f"another start held {directory / _DIR_LOCK} for "
+                             f"{int(_LOCK_BOUND)}s")
+        return _start_locked(kind, argv, cwd, directory, _pre_lock_delay)
+
+
+def _start_locked(kind: str, argv: List[str], cwd: Path, directory: Path,
+                  pre_lock_delay: float) -> str:
     now = time.time()
     _prune(directory, now)
     # One run at a time per worktree. A live one is refused by name, which is
@@ -284,11 +414,13 @@ def start_run(kind: str, argv: List[str], cwd: Path, directory: Path) -> str:
         n += 1
         label = f"{stem}-{n}"
     paths = {s: directory / f"{label}.{s}" for s in ("start", "lock", "log", "exit")}
-    record = {"label": label, "argv": argv, "cwd": str(cwd), "started": now}
+    record = {"label": label, "kind": kind.split("-")[0], "argv": argv,
+              "cwd": str(cwd), "started": now}
     _write_atomic(paths["start"], json.dumps(record))
     spec = json.dumps({"argv": argv, "cwd": str(cwd), "log": str(paths["log"]),
                        "exit": str(paths["exit"]), "lock": str(paths["lock"]),
-                       "not_started": EXIT_NOT_STARTED})
+                       "not_started": EXIT_NOT_STARTED,
+                       "pre_lock_delay": pre_lock_delay})
     kwargs = dict(cwd=str(cwd), stdin=subprocess.DEVNULL,
                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                   close_fds=True)
@@ -306,9 +438,10 @@ def start_run(kind: str, argv: List[str], cwd: Path, directory: Path) -> str:
         raise UsageError(f"could not launch the run: {exc}") from exc
     record["pid"] = proc.pid
     _write_atomic(paths["start"], json.dumps(record))
-    # Not returned until the supervisor holds its lock (or has already
-    # finished): before that, a liveness probe would read the run as dead.
-    deadline = time.monotonic() + _LOCK_BOUND
+    # Not returned — and the directory lock not released — until the
+    # supervisor holds its lock (or has already finished): before that, a
+    # liveness probe reads the run as dead.
+    deadline = time.monotonic() + _LOCK_BOUND + pre_lock_delay
     while run_state(directory, label) == "dead":
         if proc.poll() is not None and run_state(directory, label) == "dead":
             _mark(directory, label, EXIT_DIED)
@@ -376,8 +509,9 @@ def wait_run(label: str, directory: Path, seconds: float) -> int:
     deadline = time.monotonic() + seconds
     while True:
         state = run_state(directory, label)
-        if state == "dead":
-            _mark(directory, label, EXIT_DIED)
+        # A dead reading is only acted on under the directory lock; if a start
+        # holds it, this run may be the one being launched — look again.
+        if state == "dead" and _confirm_dead(directory, label, 0):
             state = "ended"
         if state == "ended":
             return _ended(label, directory, record)
@@ -416,11 +550,16 @@ def _await_release(directory: Path, label: str, seconds: float) -> bool:
 
 
 def stop_run(label: str, directory: Path) -> int:
-    """Kill a live run's tree and record it stopped; report an ended one."""
+    """End a live run and record it stopped; report an ended one.
+
+    A merge is never hard-killed: SIGTERM is what `aide merge` turns into
+    restoring its claim branch, and SIGKILL or ``taskkill /F`` gets past that
+    and leaves the base merged with the claim branch gone.
+    """
     record = _checked_label(label, directory)
     state = run_state(directory, label)
-    if state == "dead":
-        _mark(directory, label, EXIT_DIED)
+    if state == "dead" and not _confirm_dead(directory, label, _STOP_GRACE):
+        state = "live"  # a start holds the lock: it is being launched
     if state != "live":
         _ended(label, directory, record)
         return 0
@@ -429,14 +568,37 @@ def stop_run(label: str, directory: Path) -> int:
     pid = record.get("pid")
     if not isinstance(pid, int):
         raise UsageError(f"run record {label} names no pid")
-    _kill_tree(pid, hard=False)
-    if not _await_release(directory, label, _STOP_GRACE):
-        _kill_tree(pid, hard=True)
+    is_merge = (record.get("kind") or label.split("-")[0]) == "merge"
+    command = " ".join(record.get("argv", []))
+    if is_merge:
+        if _NO_GRACEFUL_STOP:
+            _report(label, directory,
+                    f"await_run: {label} NOT stopped — a merge run is never "
+                    f"killed on Windows, where a detached process has no "
+                    f"graceful signal and a hard kill gets past aide merge's "
+                    f"restore. It is still running (pid {pid}): {command}. "
+                    f"A person must look.")
+            return EXIT_STOP_REFUSED
+        _kill_tree(pid, hard=False)
+        if not _await_release(directory, label, _MERGE_GRACE):
+            _report(label, directory,
+                    f"await_run: {label} NOT stopped — the merge is still "
+                    f"running {int(_MERGE_GRACE)}s after SIGTERM and is never "
+                    f"hard-killed (pid {pid}): {command}. A person must look.")
+            return EXIT_STOP_REFUSED
+    else:
+        _kill_tree(pid, hard=False)
         if not _await_release(directory, label, _STOP_GRACE):
-            raise UsageError(f"{label} (pid {pid}) is still holding its lock "
-                             f"after SIGKILL")
+            _kill_tree(pid, hard=True)
+            if not _await_release(directory, label, _STOP_GRACE):
+                raise UsageError(f"{label} (pid {pid}) is still holding its "
+                                 f"lock after SIGKILL")
+    ended = directory / f"{label}.exit"
+    own = ended.read_text(encoding="utf-8").strip() if ended.is_file() else None
     _mark(directory, label, EXIT_STOPPED)
     _ended(label, directory, record)
+    if own is not None:
+        print(f"(the command's own exit code, before the stop was recorded: {own})")
     return 0
 
 

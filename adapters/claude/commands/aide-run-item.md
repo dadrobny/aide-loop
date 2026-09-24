@@ -215,7 +215,10 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
      fix. Do not re-dispatch a validator into the same wait — report the
      command, elapsed time and log tail to the user and stop, like a blocked
      item. The validator has already stopped the run; what hung is for a
-     person to look at.
+     person to look at. For a merge, pass on the log tail, which holds
+     `aide merge`'s own word on the base, the claim branch and what to
+     re-run — and if the validator reports the merge **still running**
+     (`stop` exited 93), say that first.
    - **PASS**, `loop.review = "off"` → the validator has reconciled progress and
      merged. Done.
    - **PASS (merge held)**, `loop.review = "background"` → wait for the reviewer
@@ -252,7 +255,8 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
        240 s calls, never a turn ended to await it, and at 50 minutes
        `python .claude/scripts/await_run.py stop <label>` and report the
        command, elapsed time and log tail to the user instead of sitting on
-       the run. It honours `git.mode` and writes the ✅ itself; `--rounds` is the
+       the run — the tail carries the merge's own restore message, and a
+       `stop` that exits 93 means the merge is still running. It honours `git.mode` and writes the ✅ itself; `--rounds` is the
        count you kept for the cap and `--findings` the totals you kept while
        triaging, and the two are what put those cells in the ledger row
        (`merge -h`). A, B and C are in-scope findings only: one you sent to

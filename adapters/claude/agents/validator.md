@@ -220,7 +220,12 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      long as your suite run did: **treat it as hung once it passes 3× the
      elapsed time your suite run's `wait` reported, or 10 minutes if that is
      more** — then `stop` it and hand back INCOMPLETE, saying it hung. The
-     budget still wins where it comes first. Pass the round number your brief
+     budget still wins where it comes first. A merge is only ever asked to
+     stop, never killed, so it can put its claim branch back: include the
+     log tail `stop` prints, which carries `aide merge`'s own message about
+     the base, the claim branch and what to re-run. If `stop` exits **93**,
+     say plainly that the merge process is **still running** and a person
+     must look. Pass the round number your brief
      names — it is what the ledger row records (`merge -h`). If the brief does
      not give one, start the merge without the flag rather than guessing at a
      count.

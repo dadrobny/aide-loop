@@ -201,9 +201,15 @@ allow-list" framing** are adapter-local and documented here.
   supervisor holds a lock on `<label>.lock` for its whole life, so a run whose
   supervisor died reads as dead at once (90) instead of "still running", and
   `start` refuses while a run is live in the same worktree (92), naming the
-  label to wait on. `stop <label>` kills the run's whole process tree
-  (`killpg` on POSIX, `taskkill /T /F` on Windows) and records it stopped
-  (91). The validator gives its whole dispatch a 50-minute budget, below the
+  label to wait on. Every start, and every verdict that a run is dead, is
+  taken under a `start.lock` in the state directory, so a run still being
+  launched is never mistaken for a dead one. `stop <label>` kills a suite
+  run's whole process tree (`killpg` SIGTERM then SIGKILL on POSIX,
+  `taskkill /T /F` on Windows) and records it stopped (91). A merge run is
+  only sent SIGTERM, which `aide merge` turns into restoring its claim
+  branch, and gets 120 s; one still alive then, or any merge run on Windows
+  (no graceful signal to a detached process), is left running and reported
+  as 93. The validator gives its whole dispatch a 50-minute budget, below the
   orchestrator's 1-hour cache. It treats the merge's re-run as hung past 3×
   its own suite run, or 10 minutes, and stops the run at either limit. The
   script keeps no timing history, only each run's own state. It runs those

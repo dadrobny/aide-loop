@@ -176,9 +176,19 @@ instead — that is the bump policy above, and it is enforced by
     and writes `.exit` before releasing it, so `wait` reports a run whose
     supervisor died as 90 at once, not as "still running". `stop <label>`
     kills the run's whole process tree (`killpg` with SIGTERM then SIGKILL on
-    POSIX, `taskkill /T /F` on Windows), records 91 and keeps the log.
+    POSIX, `taskkill /T /F` on Windows) for a suite run, records 91 and keeps
+    the log.
     `start` refuses with 92 while a run is live in the same worktree, and
     names the label to wait on; a dead one is marked 90 and does not block.
+    Every start, and every verdict that a run is dead, is taken under a
+    `start.lock` in the state directory, so a run still being launched is
+    never read as dead. The supervisor never overwrites an `.exit` already
+    there, and a failure to take its lock still ends in one. A merge run is
+    never hard-killed: `stop` sends it SIGTERM only, which `aide merge`
+    turns into restoring its claim branch, and waits 120 s. A merge still
+    alive then is left running and reported as 93, and on Windows, where a
+    detached process has no graceful signal, a merge run is refused outright
+    with 93.
     The script runs those two commands only, and `stop` acts only on the pid
     of a valid label's record, so its allow entry admits nothing else. It
     keeps each run's own state and no timing history.
