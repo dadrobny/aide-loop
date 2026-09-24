@@ -210,11 +210,12 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
      R is the rounds actually run. No merge will ever write a row for this
      item, and this is the one a reader at the queue boundary is looking for
      (`ledger -h`). It records; it decides nothing about the item's status.
-   - **INCOMPLETE — a run reached the validator's 60-minute limit** → not a
-     FAIL and not a round: nothing failed for a builder to fix. Do not
-     re-dispatch a validator into the same wait — report the command, elapsed
-     time and log tail to the user and stop, like a blocked item. The run is
-     detached and may still be going; a hang is for a person to look at.
+   - **INCOMPLETE — a run hit the validator's 50-minute dispatch budget, hung,
+     or died** → not a FAIL and not a round: nothing failed for a builder to
+     fix. Do not re-dispatch a validator into the same wait — report the
+     command, elapsed time and log tail to the user and stop, like a blocked
+     item. The validator has already stopped the run; what hung is for a
+     person to look at.
    - **PASS**, `loop.review = "off"` → the validator has reconciled progress and
      merged. Done.
    - **PASS (merge held)**, `loop.review = "background"` → wait for the reviewer
@@ -248,9 +249,10 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
        ```
        That is `python .aide/scripts/aide.py merge NNN` with those flags, run
        detached the way the validator runs it (§9): `wait` in its default
-       240 s calls, never a turn ended to await it, and at 60 minutes report
-       the command, elapsed time and log tail to the user instead of sitting
-       on the run. It honours `git.mode` and writes the ✅ itself; `--rounds` is the
+       240 s calls, never a turn ended to await it, and at 50 minutes
+       `python .claude/scripts/await_run.py stop <label>` and report the
+       command, elapsed time and log tail to the user instead of sitting on
+       the run. It honours `git.mode` and writes the ✅ itself; `--rounds` is the
        count you kept for the cap and `--findings` the totals you kept while
        triaging, and the two are what put those cells in the ledger row
        (`merge -h`). A, B and C are in-scope findings only: one you sent to
@@ -276,8 +278,9 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
 - The item needs a **major structural change** or an edit to a framework/process
   file (`CLAUDE.md`, `aide.toml`, `.aide/**`, `vision.md`, `roadmap.md`,
   `.claude/skills|commands|agents/**`) — needs a reviewed PR, never a direct merge.
-- A validator hands back **INCOMPLETE** (step 6): a run reached its limit.
-  Report the command, elapsed time and log tail; do not re-dispatch.
+- A validator hands back **INCOMPLETE** (step 6): a run hit its budget, hung,
+  or died, and was stopped. Report the command, elapsed time and log tail; do
+  not re-dispatch.
 - The **build↔validate cycle stops** (step 6: a failure survived an escalated
   round, or `loop.validation_rounds` was reached), or the item is blocked /
   contradictory. Document the blocker and suggest `/aide-feedback-loop`.

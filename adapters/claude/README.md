@@ -197,8 +197,18 @@ allow-list" framing** are adapter-local and documented here.
   `start suite` or `start merge NNN …` launches it detached with its output to
   a log under the git directory, and `wait <label>` blocks up to 240 s, below a
   sub-agent's default 5-minute prompt cache and the Bash tool's 10-minute
-  ceiling, returning the command's exit code or 75 for "still running". It
-  runs those two commands only, so its allow entry admits nothing else.
+  ceiling, returning the command's exit code or 75 for "still running". The
+  supervisor holds a lock on `<label>.lock` for its whole life, so a run whose
+  supervisor died reads as dead at once (90) instead of "still running", and
+  `start` refuses while a run is live in the same worktree (92), naming the
+  label to wait on. `stop <label>` kills the run's whole process tree
+  (`killpg` on POSIX, `taskkill /T /F` on Windows) and records it stopped
+  (91). The validator gives its whole dispatch a 50-minute budget, below the
+  orchestrator's 1-hour cache. It treats the merge's re-run as hung past 3×
+  its own suite run, or 10 minutes, and stops the run at either limit. The
+  script keeps no timing history, only each run's own state. It runs those
+  two commands only, and `stop` acts only on a pid from a valid label's
+  record, so its allow entry admits nothing else.
 - **Every hook command resolves its script from `$CLAUDE_PROJECT_DIR`**, not
   the hook process's cwd (issue #272): a worktree-isolated sub-agent's hooks
   run with the worktree as cwd, where a relative path ran the worktree's copy

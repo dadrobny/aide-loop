@@ -172,14 +172,28 @@ instead — that is the bump policy above, and it is enforced by
     under the git directory (`<git-dir>/aide-runs/`), so it never dirties the
     tree or reaches `aide scope`. `wait <label>` blocks up to 240 s (capped at
     540) and returns the command's exit code, or 75 for "still running". The
-    script runs those two commands only, so its allow entry admits nothing
-    else.
-  - **`validator.md` replaces the foreground rule** with that procedure,
-    `wait` calls at the default 240 s and a 60-minute limit per run. At the
-    limit the validator hands back **INCOMPLETE** with the command, label,
-    elapsed time and log tail. `aide-run-item` surfaces an INCOMPLETE to the
-    user rather than re-dispatching into the same wait, and runs its own held
-    merge the same way.
+    supervisor holds an exclusive lock on `<label>.lock` for its whole life
+    and writes `.exit` before releasing it, so `wait` reports a run whose
+    supervisor died as 90 at once, not as "still running". `stop <label>`
+    kills the run's whole process tree (`killpg` with SIGTERM then SIGKILL on
+    POSIX, `taskkill /T /F` on Windows), records 91 and keeps the log.
+    `start` refuses with 92 while a run is live in the same worktree, and
+    names the label to wait on; a dead one is marked 90 and does not block.
+    The script runs those two commands only, and `stop` acts only on the pid
+    of a valid label's record, so its allow entry admits nothing else. It
+    keeps each run's own state and no timing history.
+  - **`validator.md` replaces the foreground rule** with that procedure:
+    `wait` calls at the default 240 s, and a 50-minute budget for the whole
+    dispatch, shared by the suite run and the merge's re-run. The
+    orchestrator waits inside its call to the validator without making a
+    request, so its 1-hour cache is measured across the whole dispatch. The
+    merge's re-run counts as hung past 3× the suite run's elapsed time, or
+    10 minutes if that is more. At the budget, on a hang, or when a run died,
+    the validator stops the run and hands back **INCOMPLETE** with the
+    command, label, elapsed time and log tail. On 92 it waits on the named
+    run, which is how a re-dispatched validator re-attaches. `aide-run-item`
+    surfaces an INCOMPLETE to the user rather than re-dispatching into the
+    same wait, and runs its own held merge under the same limit.
 - **What a consumer without an overlay receives.** `settings.json` stays
   non-clobbering, so `install.py --update` now carries one targeted migration
   (`migrate_settings`). A hook `command` exactly equal to one a release wrote

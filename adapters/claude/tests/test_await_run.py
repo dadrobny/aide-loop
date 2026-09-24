@@ -143,13 +143,21 @@ def test_a_run_still_going_answers_with_its_own_code_and_the_log_tail(repo: Path
     assert "still running" in out and "elapsed" in out
     assert "collected 900 items" in out
     assert f"wait {label}" in out
+    ar.stop_run(label, directory)
+
+
+_OWN_CODES = ("EXIT_RUNNING", "EXIT_USAGE", "EXIT_NOT_STARTED", "EXIT_DIED",
+              "EXIT_STOPPED", "EXIT_BUSY")
 
 
 def test_the_wrappers_own_codes_collide_with_nothing_it_reports():
-    """pytest exits 0–5 and `aide merge` 0–2; a caller must tell them apart."""
-    assert ar.EXIT_RUNNING not in range(0, 6)
-    assert ar.EXIT_USAGE not in range(0, 6)
-    assert len({ar.EXIT_RUNNING, ar.EXIT_USAGE, ar.EXIT_NOT_STARTED}) == 3
+    """pytest exits 0–5 and `aide merge` 0–2, a signal death reads 128+N; a
+    caller must tell every one of them from the wrapper's own."""
+    codes = [getattr(ar, name) for name in _OWN_CODES]
+    assert len(set(codes)) == len(codes)
+    for code in codes:
+        assert code not in range(0, 6)
+        assert not 128 < code < 256
 
 
 def test_a_command_that_cannot_start_is_recorded_not_left_running(repo: Path, capsys):
@@ -162,11 +170,12 @@ def test_a_command_that_cannot_start_is_recorded_not_left_running(repo: Path, ca
 def test_two_starts_in_one_second_get_two_labels(repo: Path):
     directory = ar.state_dir(repo)
     first = ar.start_run("suite", _py("pass"), repo, directory)
+    assert ar.wait_run(first, directory, 60) == 0  # one live run at a time
     second = ar.start_run("suite", _py("pass"), repo, directory)
+    assert ar.wait_run(second, directory, 60) == 0
     assert first != second
     for label in (first, second):
         assert ar._LABEL_RE.match(label), label
-        assert ar.wait_run(label, directory, 60) == 0
 
 
 def test_a_torn_run_record_is_a_usage_error_not_a_traceback(repo: Path, capsys):
@@ -260,5 +269,157 @@ def test_the_framework_settings_pre_approve_it_under_both_interpreter_names():
 
 def test_help_names_the_exit_codes():
     text = ar.build_parser().format_help()
-    for code in (ar.EXIT_RUNNING, ar.EXIT_USAGE, ar.EXIT_NOT_STARTED):
-        assert str(code) in text
+    for name in _OWN_CODES:
+        assert f"\n    {getattr(ar, name)} " in text, name
+
+
+# --------------------------------------------------------------------------- #
+# liveness by lock, stop, and one live run per worktree
+# --------------------------------------------------------------------------- #
+_HOLD = """
+    import time
+    print("started", flush=True)
+    time.sleep(60)
+"""
+
+
+def _live(repo: Path):
+    directory = ar.state_dir(repo)
+    return directory, ar.start_run("suite", _py(_HOLD), repo, directory)
+
+
+def test_the_lock_is_held_from_start_until_the_run_ends(repo: Path):
+    directory, label = _live(repo)
+    try:
+        # `start` returned, so the supervisor already holds it: no race.
+        assert ar._lock_held(directory / f"{label}.lock")
+        assert ar.run_state(directory, label) == "live"
+    finally:
+        ar.stop_run(label, directory)
+    assert not ar._lock_held(directory / f"{label}.lock")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGKILL is POSIX")
+def test_a_killed_supervisor_reads_as_died_at_once(repo: Path, capsys):
+    import os
+    import signal
+    import time
+    directory, label = _live(repo)
+    record = json.loads((directory / f"{label}.start").read_text(encoding="utf-8"))
+    os.kill(record["pid"], signal.SIGKILL)
+    began = time.monotonic()
+    try:
+        assert ar.wait_run(label, directory, 60) == ar.EXIT_DIED
+    finally:
+        os.killpg(record["pid"], signal.SIGKILL)  # the orphaned command
+    assert time.monotonic() - began < 10, "a dead run was waited on like a live one"
+    assert "died without an exit code" in capsys.readouterr().out
+    assert (directory / f"{label}.exit").read_text().strip() == str(ar.EXIT_DIED)
+
+
+def test_stop_kills_the_command_and_its_children(repo: Path, tmp_path: Path, capsys):
+    """The command spawns a grandchild; stop takes both, and the run records
+    STOPPED with its log kept."""
+    pid_file = tmp_path / "grandchild.pid"
+    directory = ar.state_dir(repo)
+    label = ar.start_run("suite", _py(f"""
+        import subprocess, sys, time, pathlib
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        pathlib.Path({str(pid_file)!r}).write_text(str(child.pid))
+        print("spawned", flush=True)
+        time.sleep(60)
+    """), repo, directory)
+    for _ in range(200):
+        if pid_file.exists() and pid_file.read_text():
+            break
+        __import__("time").sleep(0.05)
+    grandchild = int(pid_file.read_text())
+
+    assert ar.main(["stop", label], root=repo) == 0
+    assert (directory / f"{label}.exit").read_text().strip() == str(ar.EXIT_STOPPED)
+    assert "spawned" in capsys.readouterr().out  # the log survives
+    assert ar.wait_run(label, directory, 5) == ar.EXIT_STOPPED
+    assert not _running(grandchild), "stop left the command's child alive"
+
+
+def _running(pid: int) -> bool:
+    import time
+    for _ in range(100):
+        if sys.platform == "win32":
+            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                                 capture_output=True, text=True).stdout
+            alive = str(pid) in out
+        else:
+            import os
+            try:
+                os.kill(pid, 0)
+                # A zombie awaiting its (killed) parent's reaper is gone too.
+                stat = Path(f"/proc/{pid}/stat")
+                alive = not (stat.exists() and ") Z" in stat.read_text())
+            except ProcessLookupError:
+                alive = False
+        if not alive:
+            return False
+        time.sleep(0.05)
+    return True
+
+
+def test_stop_on_a_finished_run_reports_it(repo: Path, capsys):
+    directory = ar.state_dir(repo)
+    label = ar.start_run("suite", _py("raise SystemExit(3)"), repo, directory)
+    assert ar.wait_run(label, directory, 60) == 3
+    capsys.readouterr()
+    assert ar.main(["stop", label], root=repo) == 0
+    assert "exit 3" in capsys.readouterr().out
+    assert (directory / f"{label}.exit").read_text().strip() == "3"
+
+
+def test_start_refuses_while_a_run_is_live_and_names_it(repo: Path, capsys):
+    directory, label = _live(repo)
+    try:
+        assert ar.main(["start", "suite"], root=repo, engine=ENGINE) == ar.EXIT_BUSY
+        out = capsys.readouterr().out
+        assert label in out and "Wait on this label instead" in out
+        assert "started" in out  # its log tail
+        assert ar._open_runs(directory) == [label]
+    finally:
+        ar.stop_run(label, directory)
+
+
+def test_start_proceeds_once_a_dead_run_is_marked(repo: Path):
+    directory = ar.state_dir(repo)
+    directory.mkdir(parents=True)
+    dead = "suite-20260101-000000"
+    (directory / f"{dead}.start").write_text(
+        json.dumps({"label": dead, "argv": ["x"], "started": 0, "pid": 1}),
+        encoding="utf-8")
+    label = ar.start_run("suite", _py("pass"), repo, directory)
+    assert (directory / f"{dead}.exit").read_text().strip() == str(ar.EXIT_DIED)
+    assert ar.wait_run(label, directory, 60) == 0
+
+
+def test_prune_removes_old_ended_runs_and_never_a_live_one(repo: Path):
+    import os
+    import time
+    directory, live = _live(repo)
+    try:
+        old = "suite-20200101-000000"
+        for suffix in ("start", "lock", "log", "exit"):
+            path = directory / f"{old}.{suffix}"
+            path.write_text("0\n", encoding="utf-8")
+            os.utime(path, (0, 0))
+        for path in directory.glob(f"{live}.*"):
+            os.utime(path, (0, 0))
+        ar._prune(directory, time.time())
+        assert not list(directory.glob(f"{old}.*"))
+        assert ar.run_state(directory, live) == "live"
+        assert {p.suffix for p in directory.glob(f"{live}.*")} >= {
+            ".start", ".lock", ".log"}
+    finally:
+        ar.stop_run(live, directory)
+
+
+def test_stop_reaches_no_pid_but_a_valid_labels(repo: Path, monkeypatch):
+    monkeypatch.setattr(ar, "_kill_tree", lambda *a, **k: pytest.fail("killed"))
+    for argv in (["stop", "1234"], ["stop", "../x"], ["stop", "suite-20260101-000000"]):
+        assert ar.main(argv, root=repo) == ar.EXIT_USAGE

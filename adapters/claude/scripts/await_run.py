@@ -13,29 +13,44 @@ follows it:
     python .claude/scripts/await_run.py start merge NNN [--rounds R] [--base B]
                                                   [--findings blocking=A,minor=B,nit=C]
     python .claude/scripts/await_run.py wait <label> [--for SECONDS]
+    python .claude/scripts/await_run.py stop <label>
 
 ``start`` launches the command fully detached, with its output going to a log,
-and prints a label straight away. ``wait`` blocks for at most ``--for``
-seconds (default 240, under a 5-minute cache; capped at 540, under the Bash
-tool's 600000 ms ceiling) and returns the moment the command exits.
+and prints a label once the run is under way. It refuses while another run in
+this worktree is still live, naming it: wait on that label instead. ``wait``
+blocks for at most ``--for`` seconds (default 240, under a 5-minute cache;
+capped at 540, under the Bash tool's 600000 ms ceiling) and returns the moment
+the command exits, or the moment its supervisor is found dead. ``stop`` kills
+the run's whole process tree and records it as stopped; a run that already
+ended is reported, not an error.
+
+A run is live while its supervisor holds an exclusive lock on
+``<label>.lock``; the supervisor writes ``.exit`` before that lock is released
+at its exit, so a free lock with no ``.exit`` means it died.
 
 It runs **only** those two commands, so allow-listing it lets nothing else
 through: ``suite`` is the project's ``[python] test_command``, resolved by the
 engine exactly as ``aide merge`` resolves it (a leading ``python`` bound to the
 venv), and ``merge`` is ``.aide/scripts/aide.py merge`` under this interpreter.
 
-Exit codes of ``wait``:
+Exit codes:
 
-    the command's own   it finished; a red suite reads as red
-    75                  still running — call wait again (EX_TEMPFAIL)
+    the command's own   wait: it finished; a red suite reads as red
+    75                  wait: still running — call wait again (EX_TEMPFAIL)
+    90                  wait: the run died without an exit code
+    91                  wait: the run was stopped (``stop``)
+    92                  start: another run is live here — wait on the label
+                        it names instead
     64                  await_run itself could not do what was asked (EX_USAGE)
     127                 recorded when the command could not be started at all
+    0                   start: launched; stop: stopped, or already ended
 
-Neither 64 nor 75 is a code pytest or ``aide merge`` returns. State lives under
-the git directory (``git rev-parse --git-dir``, which is per worktree), in
-``aide-runs/<label>.{start,log,exit}``, so it never dirties the working tree
-or reaches ``aide scope``. Finished runs older than a week are removed by the
-next ``start``.
+None of 64, 75 or 90–92 is a code pytest (0–5) or ``aide merge`` returns, and
+none is 128+N, a signal death. State lives under the git directory
+(``git rev-parse --git-dir``, which is per worktree), in
+``aide-runs/<label>.{start,lock,log,exit}``, so it never dirties the working
+tree or reaches ``aide scope``. It is this run's state only, never a history:
+finished runs older than a week are removed by the next ``start``.
 """
 from __future__ import annotations
 
@@ -60,7 +75,14 @@ TAIL_LINES = 40
 EXIT_RUNNING = 75
 EXIT_USAGE = 64
 EXIT_NOT_STARTED = 127
+EXIT_DIED = 90
+EXIT_STOPPED = 91
+EXIT_BUSY = 92
 _POLL = 0.5
+# How long `start` waits for the supervisor to take its lock, and `stop` for
+# a killed tree to let go of it.
+_LOCK_BOUND = 30.0
+_STOP_GRACE = 5.0
 _KEEP_SECONDS = 7 * 24 * 3600
 _LABEL_RE = re.compile(r"^[a-z]+(?:-\d+)?-\d{8}-\d{6}(?:-\d+)?$")
 # The shape `aide merge --findings` takes; anything else never reaches it.
@@ -72,6 +94,15 @@ _FINDINGS_RE = re.compile(r"^(?:blocking|minor|nit)=\d+(?:,(?:blocking|minor|nit
 _SUPERVISOR = r"""
 import json, os, subprocess, sys
 spec = json.loads(sys.argv[1])
+# Held for this process's whole life and released only by its exit, after
+# `.exit` is written: a free lock with no `.exit` is a supervisor that died.
+lock = os.open(spec["lock"], os.O_RDWR | os.O_CREAT)
+if os.name == "nt":
+    import msvcrt
+    msvcrt.locking(lock, msvcrt.LK_LOCK, 1)
+else:
+    import fcntl
+    fcntl.flock(lock, fcntl.LOCK_EX)
 code = int(spec["not_started"])
 env = dict(os.environ, PYTHONUNBUFFERED="1")
 try:
@@ -93,6 +124,14 @@ finally:
 
 class UsageError(Exception):
     """Something this script was asked to do and cannot; exits EXIT_USAGE."""
+
+
+class BusyError(Exception):
+    """A run is live in this worktree; `start` refuses with EXIT_BUSY."""
+
+    def __init__(self, label: str):
+        super().__init__(label)
+        self.label = label
 
 
 class _Parser(argparse.ArgumentParser):
@@ -151,14 +190,74 @@ def merge_command(engine: Path, number: int, rounds: Optional[int],
 
 
 def _prune(directory: Path, now: float) -> None:
+    """Remove runs that ended over a week ago. Only a run with an ``.exit``
+    is a candidate, so a live one is never touched."""
     for exit_file in directory.glob("*.exit"):
         try:
             if now - exit_file.stat().st_mtime < _KEEP_SECONDS:
                 continue
-            for suffix in (".start", ".log", ".exit"):
+            for suffix in (".start", ".lock", ".log", ".exit"):
                 exit_file.with_suffix(suffix).unlink(missing_ok=True)
         except OSError:
             pass
+
+
+def _lock_held(lock: Path) -> bool:
+    """True while some process holds *lock*; probes without blocking."""
+    try:
+        fd = os.open(str(lock), os.O_RDWR | os.O_CREAT)
+    except OSError:
+        return False
+    try:
+        if os.name == "nt":
+            import msvcrt
+            try:
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            except OSError:
+                return True
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return True
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
+
+
+def run_state(directory: Path, label: str) -> str:
+    """``"ended"`` (an ``.exit`` exists), ``"live"`` or ``"dead"``."""
+    exit_file = directory / f"{label}.exit"
+    if exit_file.is_file():
+        return "ended"
+    if _lock_held(directory / f"{label}.lock"):
+        return "live"
+    # Re-checked: the supervisor writes `.exit` and only then lets go.
+    return "ended" if exit_file.is_file() else "dead"
+
+
+def _mark(directory: Path, label: str, code: int) -> None:
+    _write_atomic(directory / f"{label}.exit", f"{code}\n")
+
+
+def _record(directory: Path, label: str) -> dict:
+    start = directory / f"{label}.start"
+    try:
+        return json.loads(start.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise UsageError(f"unreadable run record {start}: {exc}") from exc
+
+
+def _elapsed(record: dict) -> int:
+    return int(time.time() - float(record.get("started", time.time())))
+
+
+def _open_runs(directory: Path) -> List[str]:
+    return sorted(p.stem for p in directory.glob("*.start")
+                  if not p.with_suffix(".exit").exists())
 
 
 def start_run(kind: str, argv: List[str], cwd: Path, directory: Path) -> str:
@@ -170,16 +269,25 @@ def start_run(kind: str, argv: List[str], cwd: Path, directory: Path) -> str:
     directory.mkdir(parents=True, exist_ok=True)
     now = time.time()
     _prune(directory, now)
+    # One run at a time per worktree. A live one is refused by name, which is
+    # how a re-dispatched agent finds the run it should wait on; a dead one
+    # is recorded as dead and stops counting.
+    for other in _open_runs(directory):
+        state = run_state(directory, other)
+        if state == "live":
+            raise BusyError(other)
+        if state == "dead":
+            _mark(directory, other, EXIT_DIED)
     stem = f"{kind}-{time.strftime('%Y%m%d-%H%M%S', time.localtime(now))}"
     label, n = stem, 1
     while (directory / f"{label}.start").exists():
         n += 1
         label = f"{stem}-{n}"
-    paths = {s: directory / f"{label}.{s}" for s in ("start", "log", "exit")}
+    paths = {s: directory / f"{label}.{s}" for s in ("start", "lock", "log", "exit")}
     record = {"label": label, "argv": argv, "cwd": str(cwd), "started": now}
     _write_atomic(paths["start"], json.dumps(record))
     spec = json.dumps({"argv": argv, "cwd": str(cwd), "log": str(paths["log"]),
-                       "exit": str(paths["exit"]),
+                       "exit": str(paths["exit"]), "lock": str(paths["lock"]),
                        "not_started": EXIT_NOT_STARTED})
     kwargs = dict(cwd=str(cwd), stdin=subprocess.DEVNULL,
                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -198,6 +306,17 @@ def start_run(kind: str, argv: List[str], cwd: Path, directory: Path) -> str:
         raise UsageError(f"could not launch the run: {exc}") from exc
     record["pid"] = proc.pid
     _write_atomic(paths["start"], json.dumps(record))
+    # Not returned until the supervisor holds its lock (or has already
+    # finished): before that, a liveness probe would read the run as dead.
+    deadline = time.monotonic() + _LOCK_BOUND
+    while run_state(directory, label) == "dead":
+        if proc.poll() is not None and run_state(directory, label) == "dead":
+            _mark(directory, label, EXIT_DIED)
+            break
+        if time.monotonic() > deadline:
+            raise UsageError(f"the run {label} did not start within "
+                             f"{int(_LOCK_BOUND)}s (supervisor pid {proc.pid})")
+        time.sleep(0.02)
     return label
 
 
@@ -219,42 +338,106 @@ def _tail(log: Path, lines: int = TAIL_LINES) -> str:
     return "\n".join(data.decode("utf-8", "replace").splitlines()[-lines:])
 
 
-def wait_run(label: str, directory: Path, seconds: float) -> int:
-    """Block up to *seconds* for *label*; print where it stands; return a code."""
+def _report(label: str, directory: Path, headline: str) -> None:
+    log = directory / f"{label}.log"
+    print(headline)
+    print(f"--- last {TAIL_LINES} lines of {log} ---")
+    print(_tail(log))
+
+
+def _ended(label: str, directory: Path, record: dict) -> int:
+    """Report a run that has an ``.exit``; return the code a caller reads."""
+    try:
+        code = int((directory / f"{label}.exit").read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        code = EXIT_NOT_STARTED
+    command = " ".join(record.get("argv", []))
+    how = {EXIT_DIED: "died without an exit code",
+           EXIT_STOPPED: "was stopped"}.get(code, f"finished — exit {code}")
+    _report(label, directory, f"await_run: {label} {how} after "
+                              f"{_elapsed(record)}s: {command}")
+    # A signal death is recorded negative on POSIX; report it the way a shell does.
+    return code if code >= 0 else 128 - code
+
+
+def _checked_label(label: str, directory: Path) -> dict:
     if not _LABEL_RE.match(label):
         raise UsageError(f"not a run label: {label!r}")
-    start = directory / f"{label}.start"
-    if not start.is_file():
+    if not (directory / f"{label}.start").is_file():
         known = sorted(p.stem for p in directory.glob("*.start"))
         raise UsageError(f"no run {label} under {directory}"
                          + (f"; known: {', '.join(known)}" if known else ""))
-    try:
-        record = json.loads(start.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise UsageError(f"unreadable run record {start}: {exc}") from exc
-    exit_file = directory / f"{label}.exit"
-    log = directory / f"{label}.log"
+    return _record(directory, label)
+
+
+def wait_run(label: str, directory: Path, seconds: float) -> int:
+    """Block up to *seconds* for *label*; print where it stands; return a code."""
+    record = _checked_label(label, directory)
     deadline = time.monotonic() + seconds
-    while not exit_file.is_file() and time.monotonic() < deadline:
+    while True:
+        state = run_state(directory, label)
+        if state == "dead":
+            _mark(directory, label, EXIT_DIED)
+            state = "ended"
+        if state == "ended":
+            return _ended(label, directory, record)
+        if time.monotonic() >= deadline:
+            break
         time.sleep(_POLL)
-    elapsed = int(time.time() - float(record.get("started", time.time())))
-    command = " ".join(record.get("argv", []))
-    if not exit_file.is_file():
-        print(f"await_run: {label} still running — elapsed {elapsed}s, pid "
-              f"{record.get('pid', '?')}: {command}")
-        print(f"wait again: python .claude/scripts/await_run.py wait {label}")
-        print(f"--- last {TAIL_LINES} lines of {log} ---")
-        print(_tail(log))
-        return EXIT_RUNNING
+    _report(label, directory,
+            f"await_run: {label} still running — elapsed {_elapsed(record)}s, "
+            f"pid {record.get('pid', '?')}: {' '.join(record.get('argv', []))}\n"
+            f"wait again: python .claude/scripts/await_run.py wait {label}")
+    return EXIT_RUNNING
+
+
+def _kill_tree(pid: int, hard: bool) -> None:
+    """Signal the supervisor's whole tree. POSIX: it leads its own session,
+    so its process group is the run. Windows: taskkill walks the tree."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       check=False)
+        return
+    import signal
     try:
-        code = int(exit_file.read_text(encoding="utf-8").strip())
-    except ValueError:
-        code = EXIT_NOT_STARTED
-    print(f"await_run: {label} finished — exit {code} after {elapsed}s: {command}")
-    print(f"--- last {TAIL_LINES} lines of {log} ---")
-    print(_tail(log))
-    # A signal death is recorded negative on POSIX; report it the way a shell does.
-    return code if code >= 0 else 128 - code
+        os.killpg(pid, signal.SIGKILL if hard else signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def _await_release(directory: Path, label: str, seconds: float) -> bool:
+    deadline = time.monotonic() + seconds
+    while _lock_held(directory / f"{label}.lock"):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+    return True
+
+
+def stop_run(label: str, directory: Path) -> int:
+    """Kill a live run's tree and record it stopped; report an ended one."""
+    record = _checked_label(label, directory)
+    state = run_state(directory, label)
+    if state == "dead":
+        _mark(directory, label, EXIT_DIED)
+    if state != "live":
+        _ended(label, directory, record)
+        return 0
+    # The pid is only ever the one this run's record holds, and only acted on
+    # while the lock says that supervisor is alive — so never a reused pid.
+    pid = record.get("pid")
+    if not isinstance(pid, int):
+        raise UsageError(f"run record {label} names no pid")
+    _kill_tree(pid, hard=False)
+    if not _await_release(directory, label, _STOP_GRACE):
+        _kill_tree(pid, hard=True)
+        if not _await_release(directory, label, _STOP_GRACE):
+            raise UsageError(f"{label} (pid {pid}) is still holding its lock "
+                             f"after SIGKILL")
+    _mark(directory, label, EXIT_STOPPED)
+    _ended(label, directory, record)
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -276,6 +459,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_wait.add_argument("--for", dest="seconds", type=float, default=DEFAULT_WAIT,
                         help=f"seconds to wait at most (default {DEFAULT_WAIT}, "
                              f"capped at {MAX_WAIT})")
+    p_stop = sub.add_parser("stop", help="kill a run's whole process tree and "
+                                         "record it stopped")
+    p_stop.add_argument("label")
     return p
 
 
@@ -297,6 +483,8 @@ def main(argv: Optional[List[str]] = None, *, root: Optional[Path] = None,
         if args.verb == "wait":
             seconds = min(max(args.seconds, 0.0), float(MAX_WAIT))
             return wait_run(args.label, directory, seconds)
+        if args.verb == "stop":
+            return stop_run(args.label, directory)
         if args.what == "suite":
             label = start_run("suite", suite_command(root, engine), root, directory)
         else:
@@ -313,6 +501,17 @@ def main(argv: Optional[List[str]] = None, *, root: Optional[Path] = None,
     except UsageError as exc:
         print(f"await_run: {exc}", file=sys.stderr)
         return EXIT_USAGE
+    except BusyError as busy:
+        record = {}
+        try:
+            record = _record(directory, busy.label)
+        except UsageError:
+            pass
+        _report(busy.label, directory,
+                f"await_run: {busy.label} is still live here — elapsed "
+                f"{_elapsed(record)}s; nothing was started. Wait on this label "
+                f"instead: python .claude/scripts/await_run.py wait {busy.label}")
+        return EXIT_BUSY
     print(label)
     print(f"next: python .claude/scripts/await_run.py wait {label}")
     return 0
