@@ -170,8 +170,10 @@ instead — that is the bump policy above, and it is enforced by
   - **What a consumer may see on update.** A stage already holding ⏸️
     bullets beside ✅ ones reads ⏸️ from the next `progress set` on, and
     `aide check` warns about it until then; an Objective row naming that
-    stage follows it in the same write, down as well as up (to 📋 when its
-    other stages are 📋), except a ⏸️ row set by hand. A stage deferred by hand over
+    stage follows it in the same write, down as well as up, to the rollup
+    of the stages it names (📋 when its other stages are 📋; any status
+    above that rollup, even a hand-typed one, is corrected to it), except a
+    ⏸️ row set by hand. A stage deferred by hand over
     bullets still 📋 or 🚧 is now a `check` warning: run `aide progress set
     NNN deferred --reason …` on its open items to put the deferral on
     record, or restore the rolled-up icon. §1 → `progress.md` and §1 →
