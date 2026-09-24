@@ -1648,7 +1648,11 @@ def insert_item_reference(text: str, number: int, stage: str, title: str) -> Opt
         # hands the wrapped bullet's marker to the wrong owner.
         spans = _deliverable_bullet_spans(lines[start:end])
         if spans:
-            insert_at = start + spans[-1][1] + 1
+            # And after its correction trail: a bullet slipped in above a
+            # `reopened:` line would take that line as its own (issue #271).
+            last = start + spans[-1][1]
+            trail = deliverable_bullet_trail(lines, last)
+            insert_at = (trail[-1] if trail else last) + 1
         if insert_at is None:
             return None
         lines.insert(insert_at, f"- 📋 {title}. *(Item {number:03d})*")

@@ -185,6 +185,20 @@ def test_a_trail_line_is_never_read_as_a_deliverable_or_an_owner():
     assert "  - **2026-09-24** → reopened: operator run never happened" in done
 
 
+def test_a_back_filled_bullet_lands_below_the_last_bullets_trail():
+    """`progress set`'s self-heal appends after the stage's last bullet. Put
+    between that bullet and its `reopened:` line, the new bullet would take
+    the line as its own: the reopened item would stop being reported, and
+    the healed one would be reported as reopened, with no lint to see it
+    (PR #278 review)."""
+    reopened = _reopen(num=28)
+    healed = aide.insert_item_reference(reopened, 99, "1", "New deliverable")
+    assert ("- 📋 Coverage. *(Item 028)*\n"
+            "  - **2026-09-24** → reopened: operator run never happened\n"
+            "- 📋 New deliverable. *(Item 099)*\n") in healed
+    assert [r.item for r in aide.reopened_items(healed.splitlines())] == [28]
+
+
 def test_a_trail_carrying_an_item_reference_attributes_nothing():
     """A reason naming another item is prose on a line that is not a bullet."""
     lines = _reopen(reason="blocked on *(Item 031)*").splitlines()

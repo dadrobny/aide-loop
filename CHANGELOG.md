@@ -143,7 +143,9 @@ instead — that is the bump policy above, and it is enforced by
   `set` still never downgrades. The trail line under a deliverable bullet is
   a list line, so the bullet's span ends above it: ownership is still read
   from the bullet's last wrapped line, and neither the nested-bullet,
-  identical-prose nor unattributed-reference lint reads it.
+  identical-prose nor unattributed-reference lint reads it. `set`'s
+  back-fill of a missing bullet lands below the last bullet's trail, never
+  between the two.
   - **The loop redoes the item.** Its queue is open again, since queue state
     is derived. `claim` offers the item once its merged claim branch is gone,
     which `merge` sees to. `merge` lands it a second time, and neither `scope`
