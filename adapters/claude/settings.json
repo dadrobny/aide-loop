@@ -37,6 +37,8 @@
       "Bash(python3:*)",
       "Bash(python .aide/scripts/aide.py:*)",
       "Bash(python3 .aide/scripts/aide.py:*)",
+      "Bash(python .claude/scripts/await_run.py:*)",
+      "Bash(python3 .claude/scripts/await_run.py:*)",
       "Bash(.venv/Scripts/python:*)",
       "Bash(.venv/Scripts/pip:*)",
       "Bash(.venv/Scripts/pytest:*)",
@@ -114,7 +116,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$@\"; done; exit 0' _ .claude/hooks/command_hygiene_guard.py"
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/command_hygiene_guard.py"
           }
         ]
       },
@@ -123,7 +125,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$@\"; done; exit 0' _ .claude/hooks/log_permission_event.py"
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/log_permission_event.py"
           }
         ]
       },
@@ -132,7 +134,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$@\"; done; exit 0' _ .claude/hooks/sibling_instructions.py"
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/sibling_instructions.py"
           }
         ]
       }
@@ -143,7 +145,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$@\"; done; exit 0' _ .claude/hooks/log_permission_event.py"
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/log_permission_event.py"
           }
         ]
       }
@@ -153,7 +155,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$@\"; done; exit 0' _ .claude/hooks/log_instructions_loaded.py"
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/log_instructions_loaded.py"
           }
         ]
       }

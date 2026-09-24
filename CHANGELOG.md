@@ -121,6 +121,75 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.4.0] — 2026-09-24
+
+### Fixed
+
+- **Every hook resolves its script from the project root, not the hook's cwd
+  (issue #272).** The five hook registrations in `settings.json` passed
+  `.claude/hooks/<script>.py` to the interpreter as a cwd-relative path. Probed
+  on Claude Code 2.1.281, the `PreToolUse` hook does fire on a sub-agent's Bash
+  calls. In a worktree-isolated sub-agent, though, the hook process's cwd is the
+  worktree while `$CLAUDE_PROJECT_DIR` is the primary checkout, so the hook ran
+  the worktree's committed copy of the script. Where the worktree had no copy,
+  Python exited 2, the `PreToolUse` block code, and every Bash call was refused
+  with "can't open file". The wrapper now resolves
+  `"${CLAUDE_PROJECT_DIR:-.}/$1"`, and the `:-.` fallback keeps a runtime that
+  sets no variable working as before. A script that is not there prints
+  `aide: hook script not found: <path>` to stderr and exits 1, a non-blocking
+  hook error. It no longer fails silently or blocks. A missing interpreter
+  still exits 0. The two logging hooks already resolved their log paths from
+  their own file, so they now log to the primary checkout from a worktree too.
+  `command_hygiene_guard.py` and `sibling_instructions.py` still read
+  `.aide/local.toml` from the cwd. In a worktree that file is absent, which
+  makes the guard stricter, never looser.
+### Added
+
+- **A command that can outlast a tool call is run detached and waited on in
+  bounded waits (issue #274).** A consumer's validator polled a hung suite with
+  `ps` about every two seconds for 24 minutes, some 450 tool calls, while its
+  orchestrator waited past its own cache hour. `validator.md`'s rule to wait
+  in the foreground "however long it takes" could not be followed past the
+  Bash tool's 10-minute ceiling, where the tool moves the command to the
+  background. The probes showed the other exits fail too. A sub-agent that
+  ends its turn to await a background command hands its caller the
+  placeholder as its final report, is not woken again, and the command dies
+  with the session. Monitor has the same problem. A sub-agent's prompt cache
+  lives 5 minutes by default, so a longer idle wait re-writes its whole
+  context on the next request.
+  - **§9 gains the rule, runtime-general:** a command that can outlast the
+    runtime's bound on one tool call, or on how long an agent may sit idle,
+    runs detached with its output to a file. The agent waits on it inside
+    its turn, each wait shorter than that bound, and never polls in a tight
+    loop or ends the turn to await a notification. At the limit the adapter
+    states, it hands back the command, the elapsed time and the last output
+    in place of a verdict. The `aide-review-and-validation` skill carries it.
+  - **New `.claude/scripts/await_run.py`:** `start suite` runs the project's
+    `test_command`, resolved by the engine exactly as `aide merge` resolves
+    it. `start merge NNN [--rounds R] [--base B] [--findings …]` runs
+    `aide merge`. Either starts fully detached, with its log and exit code
+    under the git directory (`<git-dir>/aide-runs/`), so it never dirties the
+    tree or reaches `aide scope`. `wait <label>` blocks up to 240 s (capped at
+    540) and returns the command's exit code, or 75 for "still running". The
+    script runs those two commands only, so its allow entry admits nothing
+    else.
+  - **`validator.md` replaces the foreground rule** with that procedure,
+    `wait` calls at the default 240 s and a 60-minute limit per run. At the
+    limit the validator hands back **INCOMPLETE** with the command, label,
+    elapsed time and log tail. `aide-run-item` surfaces an INCOMPLETE to the
+    user rather than re-dispatching into the same wait, and runs its own held
+    merge the same way.
+- **What a consumer without an overlay receives.** `settings.json` stays
+  non-clobbering, so `install.py --update` now carries one targeted migration
+  (`migrate_settings`). A hook `command` exactly equal to one a release wrote
+  becomes today's. That covers the bootstrap's `python .claude/hooks/…`, the
+  first cross-OS `exec $(command -v …)` selector and the probing selector
+  through 2.3.0.
+  The two `Bash(python[3] .claude/scripts/await_run.py:*)` allow entries are
+  added when absent. The project's own hooks, and a framework hook it
+  edited, are left alone, and each rewrite is logged. A consumer with
+  `settings.overlay.json` gets both through the regenerated file.
+
 ## [2.3.0] — 2026-09-24
 
 ### Added

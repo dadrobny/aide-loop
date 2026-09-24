@@ -41,9 +41,11 @@ _REVIEWER = _ADAPTER / "agents" / "reviewer.md"
 _SECTION = _REPO / "core" / "conventions" / "9-review-and-validation.md"
 
 #: The held merge the orchestrator runs itself, wrapped or not: `--findings`
-#: with its rank=placeholder list, on the same command as `merge NNN`.
+#: with its rank=placeholder list, on the same command as `merge NNN` — the
+#: engine verb, or the run helper that starts it detached (issue #274).
 _FINDINGS_CALL = re.compile(
-    r"aide\.py merge NNN[^\n]*(?:\\\s*\n\s*)?[^\n]*--findings\s+(\S+)")
+    r"(?:aide\.py|await_run\.py start) merge NNN[^\n]*(?:\\\s*\n\s*)?[^\n]*"
+    r"--findings\s+(\S+)")
 
 
 def test_the_engine_names_three_ranks():

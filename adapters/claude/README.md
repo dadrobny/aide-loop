@@ -192,6 +192,18 @@ allow-list" framing** are adapter-local and documented here.
   aggregate that log into recurring bottlenecks and propose safe, recurring prompts to
   promote into the allow-list. The human makes the final allow/ask/leave call and the
   actual edit; the script only recommends.
+- **`scripts/await_run.py`** — how the `validator` (and the orchestrator's own
+  held merge) follows §9's rule for a command that can outlast one tool call:
+  `start suite` or `start merge NNN …` launches it detached with its output to
+  a log under the git directory, and `wait <label>` blocks up to 240 s, below a
+  sub-agent's default 5-minute prompt cache and the Bash tool's 10-minute
+  ceiling, returning the command's exit code or 75 for "still running". It
+  runs those two commands only, so its allow entry admits nothing else.
+- **Every hook command resolves its script from `$CLAUDE_PROJECT_DIR`**, not
+  the hook process's cwd (issue #272): a worktree-isolated sub-agent's hooks
+  run with the worktree as cwd, where a relative path ran the worktree's copy
+  of the script, or blocked every call where it had none. A script that is
+  missing is one stderr line and exit 1, a non-blocking hook error.
 
 **Allow-list command shaping.** The allow-list matches a command **prefix** and
 auto-approves a compound only if *every* part matches — so beyond the runtime-general
@@ -486,7 +498,7 @@ adapters/claude/
 ├── rules/         aide-command-hygiene.md — the one unscoped rule (§3), every context
 ├── hooks/         command_hygiene_guard.py · log_permission_event.py ·
 │                  log_instructions_loaded.py · sibling_instructions.py
-├── scripts/       review_permissions.py · review_instructions.py
+├── scripts/       review_permissions.py · review_instructions.py · await_run.py
 ├── settings.json  permission allow/ask-list + hook registration
 ├── default-context.json   CLAUDE.md + @path — how .aide/AGENT-CONTEXT.md gets linked
 └── tests/         adapter/installer conformance — rules, pins, generation, agents, hooks

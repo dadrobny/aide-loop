@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import codecs
 import importlib.util
+import json
 import shutil
 import subprocess
 import sys
@@ -336,6 +337,46 @@ def test_an_overlay_is_regenerated_into_settings_on_update(consumer: Path):
         encoding=install.CONSUMER_ENCODING)
     assert "FIXTURE_MARKER" in merged
     assert "permissions" in merged  # the framework base survived the merge
+    assert '${CLAUDE_PROJECT_DIR:-.}/$1' in json.loads(merged)["hooks"][
+        "PreToolUse"][0]["hooks"][0]["command"]  # the anchored wrapper, #272
+
+
+# What 2.3.0 wrote as every hook's command, less the script path. A consumer
+# without an overlay holds exactly this, and `--update` keeps its settings.json.
+_HOOK_WRAPPER_2_3_0 = (
+    "sh -c 'for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 "
+    "|| continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" "
+    "\"$@\"; done; exit 0' _ ")
+
+
+def test_update_rewrites_the_hook_wrappers_a_kept_settings_file_holds(consumer: Path):
+    """Issue #272 at the path a consumer has it: no overlay, a settings.json
+    of the project's own beside the framework hooks, and an update that must
+    anchor the framework's hooks and leave the project's alone."""
+    path = consumer / ".claude" / "settings.json"
+    settings = json.loads(path.read_text(encoding=install.CONSUMER_ENCODING))
+    for groups in settings["hooks"].values():
+        for group in groups:
+            for hook in group["hooks"]:
+                hook["command"] = (_HOOK_WRAPPER_2_3_0
+                                   + hook["command"].rsplit(" ", 1)[-1])
+    own = "python tools/project_hook.py"
+    settings["hooks"]["PreToolUse"].append(
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": own}]})
+    path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+
+    assert install.main(["--into", str(consumer), "--update"]) == 0
+
+    after = json.loads(path.read_text(encoding=install.CONSUMER_ENCODING))
+    commands = [hook["command"] for groups in after["hooks"].values()
+                for group in groups for hook in group["hooks"]]
+    assert own in commands
+    framework = [c for c in commands if c != own]
+    assert len(framework) == 5
+    assert all(c.startswith("sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"")
+               for c in framework), framework
+    assert "Bash(python .claude/scripts/await_run.py:*)" in after["permissions"]["allow"]
+    assert (consumer / ".claude" / "scripts" / "await_run.py").is_file()
 
 
 # --------------------------------------------------------------------------- #

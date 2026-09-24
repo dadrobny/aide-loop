@@ -27,7 +27,10 @@ into a target repo:
                edit the overlay, not it.
              * no overlay, existing settings.json -> NON-CLOBBERING: the existing
                file is kept and the framework's version is emitted as a
-               <target>/.aide-merge diff for a human to reconcile.
+               <target>/.aide-merge diff for a human to reconcile. Kept, save
+               one targeted migration (`migrate_settings`): a hook command an
+               earlier release wrote, matched exactly, becomes today's, and
+               the allow entries an unattended run needs are added if absent.
              * fresh install -> the effective base is written and an inert
                settings.overlay.json.example is scaffolded so the overlay
                mechanism is discoverable.
@@ -58,7 +61,8 @@ into a target repo:
   tracks the framework, removes engine files core/ no longer ships and adapter
   files the previous manifest lists that the adapter no longer ships, but NEVER
   touches <target>/aide.toml or <target>/docs/aide/ (owned by the project).
-  settings.json stays non-clobbering on --update too.
+  settings.json stays non-clobbering on --update too, beyond the targeted
+  `migrate_settings` rewrite of strings a release itself wrote.
 
   No --adapter: the target's aide.toml records the adapter under [aide], and an
   update reads it back (`resolve_adapter`). Passing one that contradicts the
@@ -1363,7 +1367,8 @@ def install_settings(adapter_dir: Path, claude_dir: Path, target: Path, log: Lis
 
     Three paths (see the module docstring):
       * overlay present -> regenerate settings.json = merge(effective base, overlay).
-      * no overlay, existing settings.json -> non-clobber + .aide-merge diff.
+      * no overlay, existing settings.json -> non-clobber + .aide-merge diff,
+        after ``migrate_settings`` has rewritten what a release itself wrote.
       * fresh install -> write the effective base and scaffold the .example overlay.
 
     The "effective base" is the framework settings.json with its write-scope globs
@@ -1390,6 +1395,10 @@ def install_settings(adapter_dir: Path, claude_dir: Path, target: Path, log: Lis
         _scaffold_overlay_example(claude_dir, log)
         return
 
+    # The one exception to non-clobbering: strings the framework itself wrote,
+    # which no project chose and which a fix must be able to reach.
+    migrate_settings(base, dst, log)
+
     # utf-8-sig: the consumer's settings.json may carry an editor-added BOM. Reading
     # it as plain utf-8 would leave U+FEFF in the text, so the comparison below sees
     # a spurious difference and a pointless .aide-merge is emitted every run.
@@ -1401,6 +1410,113 @@ def install_settings(adapter_dir: Path, claude_dir: Path, target: Path, log: Lis
 
     _emit_aide_merge(base, base_text, existing_text, dst, target, log)
     _scaffold_overlay_example(claude_dir, log)
+
+
+# Hook commands an earlier release wrote into settings.json, exactly as written
+# — one template per wrapper, and the hook scripts it was ever written for. A
+# consumer without an overlay keeps its settings.json (non-clobbering), so a
+# fix to a wrapper reaches it only by this rewrite; matching the exact string
+# is what keeps a project's own hooks, and a framework hook the project edited,
+# out of reach. Retiring a wrapper means adding it here, never removing one:
+# a consumer can be any number of releases behind.
+_RETIRED_HOOK_COMMANDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    # 1c0aa38 — the bootstrap: one interpreter name, cwd-relative.
+    ("python .claude/hooks/{}",
+     ("command_hygiene_guard.py", "log_permission_event.py")),
+    # 009dd14 — the first cross-OS selector.
+    ("sh -c 'exec $(command -v python3 || command -v python) $@' _ .claude/hooks/{}",
+     ("command_hygiene_guard.py", "log_permission_event.py")),
+    # bd64e83 to 2.3.0 — the probing selector, still cwd-relative: in a
+    # worktree-isolated sub-agent it ran the worktree's copy of the script, or
+    # none (issue #272).
+    ("sh -c 'for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 "
+     "|| continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" "
+     "\"$@\"; done; exit 0' _ .claude/hooks/{}",
+     ("command_hygiene_guard.py", "log_permission_event.py",
+      "sibling_instructions.py", "log_instructions_loaded.py")),
+)
+
+# Allow entries a release added that an unattended run cannot do without, and
+# which a non-overlay consumer would otherwise never receive. Added when absent;
+# a consumer's other entries are never touched.
+_MIGRATED_ALLOW = (
+    "Bash(python .claude/scripts/await_run.py:*)",
+    "Bash(python3 .claude/scripts/await_run.py:*)",
+)
+
+
+def _hook_entries(settings: dict) -> Iterable[dict]:
+    """Every ``{"type": "command", …}`` hook in *settings*, whatever the event."""
+    hooks = settings.get("hooks")
+    if not isinstance(hooks, dict):
+        return
+    for groups in hooks.values():
+        for group in groups if isinstance(groups, list) else ():
+            inner = group.get("hooks") if isinstance(group, dict) else None
+            for hook in inner if isinstance(inner, list) else ():
+                if isinstance(hook, dict) and isinstance(hook.get("command"), str):
+                    yield hook
+
+
+def migrate_settings(base: dict, dst: Path, log: List[str]) -> List[str]:
+    """Rewrite what an earlier release wrote into a kept ``settings.json``.
+
+    Two edits and nothing else: a hook ``command`` exactly equal to one in
+    ``_RETIRED_HOOK_COMMANDS`` becomes the framework *base*'s command for the
+    same script, and each ``_MIGRATED_ALLOW`` entry missing from
+    ``permissions.allow`` is added — after the engine's own entries where they
+    are there, else at the end. Returns one line per edit, also logged.
+
+    Idempotent: a rewritten file matches nothing on the next run. A file that
+    does not parse is left alone — the ``.aide-merge`` beside it still says
+    what the framework ships. The BOM an editor put there is kept.
+    """
+    raw = dst.read_bytes()
+    try:
+        settings = json.loads(raw.decode(CONSUMER_ENCODING))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    if not isinstance(settings, dict):
+        return []
+
+    current: Dict[str, str] = {}
+    for hook in _hook_entries(base):
+        current[hook["command"].rsplit(" ", 1)[-1]] = hook["command"]
+    retired: Dict[str, str] = {}
+    for template, scripts in _RETIRED_HOOK_COMMANDS:
+        for script in scripts:
+            new = current.get(f".claude/hooks/{script}")
+            if new is not None:
+                retired[template.format(script)] = new
+
+    edits: List[str] = []
+    for hook in _hook_entries(settings):
+        new = retired.get(hook["command"])
+        if new is not None:
+            hook["command"] = new
+            edits.append(f"hook for {new.rsplit(' ', 1)[-1]} now resolves its "
+                         f"script from the project root (issue #272)")
+
+    perms = settings.setdefault("permissions", {})
+    allow = perms.setdefault("allow", []) if isinstance(perms, dict) else None
+    if isinstance(allow, list):
+        anchor = next((i + 1 for i in range(len(allow) - 1, -1, -1)
+                       if isinstance(allow[i], str)
+                       and ".aide/scripts/aide.py" in allow[i]), len(allow))
+        for entry in _MIGRATED_ALLOW:
+            if entry not in allow:
+                allow.insert(anchor, entry)
+                anchor += 1
+                edits.append(f"allow entry {entry} added")
+
+    if not edits:
+        return []
+    bom = "﻿" if raw.startswith(b"\xef\xbb\xbf") else ""
+    dst.write_text(bom + json.dumps(settings, indent=2, ensure_ascii=False) + "\n",
+                   encoding="utf-8")
+    for edit in edits:
+        log.append(f"  ~ {dst} ({edit})")
+    return edits
 
 
 # Write-scope permission entries whose directory is templated from aide.toml, so a

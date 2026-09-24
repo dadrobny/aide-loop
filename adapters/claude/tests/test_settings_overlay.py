@@ -213,9 +213,11 @@ def test_legacy_non_clobber_when_settings_differs_and_no_overlay(tmp_path):
     )
     install.install_settings(ADAPTER_DIR, claude, target, [])
 
-    # existing file untouched, diff emitted, and the migration path is scaffolded
+    # existing file kept — the only additions are the entries the targeted
+    # migration owes every kept file (`migrate_settings`) — diff emitted, and
+    # the migration path is scaffolded
     assert json.loads((claude / install.ADAPTER_SETTINGS).read_text("utf-8")) == {
-        "permissions": {"allow": ["Read"]}
+        "permissions": {"allow": ["Read", *install._MIGRATED_ALLOW]}
     }
     merge = (target / ".aide-merge").read_text("utf-8")
     assert install.SETTINGS_OVERLAY in merge  # points at the overlay migration
