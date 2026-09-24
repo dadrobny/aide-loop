@@ -166,6 +166,9 @@ def test_progress_help_states_the_rollup_the_code_applies():
         if (all(s in ("complete", "excluded") for s in statuses)
                 and any(s == "complete" for s in statuses)):
             return "complete"
+        if (all(s in ("complete", "excluded", "deferred") for s in statuses)
+                and any(s == "deferred" for s in statuses)):
+            return "deferred"
         if any(s in ("complete", "in-progress", "in-review") for s in statuses):
             return "in-progress"
         return "planned"
@@ -181,8 +184,9 @@ def test_progress_help_states_the_rollup_the_code_applies():
     # And the help still makes the two claims that predicate encodes, so a
     # rewording that silently drops one is caught as well as a behaviour change.
     for claim in ("\u2705 or \u274c and at least one is \u2705",
+                  "\u2705, \u274c or \u23f8\ufe0f and at least one is \u23f8\ufe0f",
                   "a stage holding one is always \U0001f6a7",
-                  "\u23f8\ufe0f, \U0001f4cb and \u274c reads \U0001f4cb"):
+                  "\u23f8\ufe0f and \U0001f4cb reads \U0001f4cb"):
         assert claim in help_text, f"`aide progress -h` no longer states: {claim}"
 
 
@@ -190,19 +194,32 @@ def test_a_deferred_deliverable_keeps_its_stage_open():
     """Issue #173, and the assertion this file used to make the other way round.
 
     A \u23f8 deliverable is work postponed, not work done, so a stage still
-    holding one is \U0001f6a7 — which is what `scope` has always meant by the same
+    holding one is never ✅ — which is what `scope` has always meant by the same
     icon (its spent set is `{complete, excluded}`). ❌ stays terminal: an
     excluded deliverable is a decision *not* to do the work, and a stage waits
     for nothing on its account.
+
+    Since issue #281 the stage reads ⏸️ once nothing but deferred work is left
+    open (it read 🚧 beside a ✅, and 📋 alone, until 2.5.0), and any 📋, 🚧 or
+    🔍 bullet beside the ⏸️ one still wins.
     """
-    assert aide.rollup_status(["complete", "deferred"]) == "in-progress"
-    assert aide.rollup_status(["complete", "deferred", "excluded"]) == "in-progress"
+    assert aide.rollup_status(["complete", "deferred"]) == "deferred"
+    assert aide.rollup_status(["complete", "deferred", "excluded"]) == "deferred"
     assert aide.rollup_status(["complete", "excluded"]) == "complete"
-    # Unchanged, and deliberately so: with no ✅ among them there is no work to
-    # report as shipped, so an all-⏸ stage is still `planned` rather than a
-    # rollup state of its own.
-    assert aide.rollup_status(["deferred"]) == "planned"
-    assert aide.rollup_status(["deferred", "excluded"]) == "planned"
+    assert aide.rollup_status(["deferred"]) == "deferred"
+    assert aide.rollup_status(["deferred", "deferred"]) == "deferred"
+    assert aide.rollup_status(["deferred", "excluded"]) == "deferred"
+    assert aide.rollup_status(["deferred", "planned"]) == "planned"
+    assert aide.rollup_status(["deferred", "in-progress"]) == "in-progress"
+    assert aide.rollup_status(["deferred", "in-review"]) == "in-progress"
+    assert aide.rollup_status(["complete", "deferred", "planned"]) == "in-progress"
+    # #173's invariant: no mix holding a ⏸️ is ever ✅.
+    from itertools import combinations_with_replacement
+    every = ("complete", "excluded", "in-progress", "in-review", "deferred", "planned")
+    for size in (1, 2, 3):
+        for combo in combinations_with_replacement(every, size):
+            if "deferred" in combo:
+                assert aide.rollup_status(["deferred", *combo]) != "complete"
 
 
 def test_stage_sections_bounds():

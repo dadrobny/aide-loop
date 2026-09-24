@@ -52,6 +52,10 @@ paths:
      - enter through the queue, never by retro-editing a closed stage's
        deliverable list
      - ticked only by `aide progress accept` — never derived
+     - Deferral is recorded on the item, with its reason, and the stage follows
+     - Postpone an item with `aide progress set NNN deferred --reason …`,
+       never by typing ⏸️ over a bullet or a stage
+     - Deferred work resumes through any forward `aide progress set`
      - A box is ticked only by a human — or by an agent acting on a check it
        actually performed
      - A stage may be ✅ with an unticked box; say why in an annotation beside it
@@ -115,6 +119,11 @@ accept`, `aide queue tidy`. Acceptance boxes are **ticked only by
 box is ticked only by a human — or by an agent acting on a check it actually
 performed** — via `aide progress accept`, whose flags `aide progress -h`
 states.
+
+**Deferral is recorded on the item, with its reason, and the stage follows.**
+Postpone an item with `aide progress set NNN deferred --reason …`, never by
+typing ⏸️ over a bullet or a stage; deferred work resumes through any forward
+`aide progress set`.
 
 **A stage may be ✅ with an unticked box; say why in an annotation beside it.**
 

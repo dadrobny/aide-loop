@@ -45,9 +45,11 @@ that moved everything.
   *"an excluded item is never offered"*, *"whichever builds second inherits the
   first's edits"*, *"an item awaiting review or deferred has not shipped"* and
   *"each attestation was made separately and is corrected or withdrawn
-  separately"* (`progress`), *"the stage is deferred or dropped, so its bullets
-  no longer speak for it"* (`check`) — rationale for a rule pinned beside them,
-  not a second rule.
+  separately"* and *"a deferral is a decision about order, not a finding"*
+  (`progress`), *"the stage is dropped, so its bullets no longer speak for
+  it"* (`check`) — rationale for a rule pinned beside them, not a second rule.
+* *"reopen a ✅ item first"* (`progress`) — a pointer at another action, the
+  refusal it follows being pinned.
 * *"since the row is dropped from every check it would have fed"*, *"the
   goal-level mirror of that over-claim"*, *"a normal state rather than a
   defect"* (twice), *"a satisfied profile under an unverified row is a row
@@ -255,10 +257,24 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("every human gate still blocking",
          ("test_aide_gates::test_awaiting_gate_warns_with_its_reach",
           "test_aide_help_pins::test_a_warning_alone_still_exits_zero")),
-        # `if summ in ("deferred", "excluded"): continue` — before all three
-        # of the comparisons above, not just the warning.
-        ("A summary row marked \u23f8\ufe0f or \u274c is left out of all three "
+        # `if summ == "excluded": continue` — before all three of the
+        # comparisons above, not just the warning.
+        ("A summary row marked \u274c is left out of all three "
          "stage comparisons above, deliverables and header alike",
+         ("test_aide_help_pins::"
+          "test_a_rolled_up_stage_under_a_lesser_summary_row_is_a_warning",
+          "test_aide_defer::test_an_excluded_summary_row_is_still_left_out")),
+        # The `off` list in `run_checks` (issue #281): a ⏸️ cell the rollup
+        # does not compute, or a computed ⏸️ under a cell that is not.
+        ("A summary row or header marked \u23f8\ufe0f over deliverables that "
+         "do not roll up to \u23f8\ufe0f is a warning, and so is a stage whose "
+         "deliverables roll up to \u23f8\ufe0f under a summary row or header "
+         "that is not",
+         ("test_aide_defer::test_a_hand_set_deferred_summary_over_open_bullets_is_a_warning",
+          "test_aide_defer::test_a_stage_rolling_up_to_deferred_under_a_lesser_summary_is_a_warning")),
+        # `if off: continue`, after the ✅-summary error and before the two
+        # warnings.
+        ("the stage's other two warnings are then not raised",
          "test_aide_help_pins::"
          "test_a_rolled_up_stage_under_a_lesser_summary_row_is_a_warning"),
         # `_CAPABILITIES` is `error=False`: `unreadable_row_warnings` reports
@@ -398,6 +414,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # stage's bullets writes the header and the summary row.
         ("flip an item's deliverable bullet and roll its stage up",
          "test_aide_core::test_set_item_done_completes_stage_without_touching_acceptance"),
+        # `_cmd_progress_defer` -> `defer_item`: the flip, and the
+        # `_DEFERRED_PREFIX` line through `_insert_trail_line` (issue #281).
+        ("`set NNN deferred --reason TEXT` flips it to \u23f8\ufe0f and writes "
+         "a dated `deferred: <reason>` line under it",
+         ("test_aide_defer::test_defer_flips_the_bullet_and_writes_the_reason_under_it",
+          "test_aide_defer::test_set_deferred_writes_no_insight")),
         # `_split_multi_item_bullets` runs first, then only `num` is flipped.
         ("a marker naming several items is desugared into one bullet per item "
          "first, and only the named item moves \u2014 the others keep the "
@@ -453,6 +475,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("\U0001f6a7 when any bullet is \u2705, \U0001f6a7 or \U0001f50d; "
          "otherwise \U0001f4cb",
          "test_aide_core::test_progress_help_states_the_rollup_the_code_applies"),
+        # The ⏸️ arm (issue #281), in the same predicate.
+        ("\u23f8\ufe0f when every bullet is \u2705, \u274c or \u23f8\ufe0f "
+         "and at least one is \u23f8\ufe0f",
+         ("test_aide_core::test_progress_help_states_the_rollup_the_code_applies",
+          "test_aide_core::test_a_deferred_deliverable_keeps_its_stage_open")),
         # Neither is in the `("complete", "excluded")` set of the ✅ rule.
         ("\U0001f50d and \u23f8\ufe0f are both kept out of the \u2705 rule",
          ("test_aide_core::test_a_deferred_deliverable_keeps_its_stage_open",
@@ -462,8 +489,9 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("\U0001f50d also satisfies the \U0001f6a7 rule, so a stage holding "
          "one is always \U0001f6a7",
          "test_aide_git::test_in_review_rolls_a_stage_up_to_in_progress_not_complete"),
-        ("a stage whose bullets are only \u23f8\ufe0f, \U0001f4cb and \u274c "
-         "reads \U0001f4cb",
+        # The ⏸️ arm requires every bullet ✅/❌/⏸️, so any 📋 fails it.
+        ("\u23f8\ufe0f gives way to any open bullet \u2014 a stage holding "
+         "\u23f8\ufe0f and \U0001f4cb reads \U0001f4cb",
          "test_aide_core::test_a_deferred_deliverable_keeps_its_stage_open"),
         # `_set_stage_header`, `_set_summary_row`, `_apply_objective_rollup`.
         ("The stage header, its summary-table row, and any Objective row "
@@ -471,12 +499,26 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_core::test_set_item_done_completes_stage_without_touching_acceptance",
           "test_aide_core::test_met_target_does_not_block_objective")),
         # `_apply_objective_rollup` consults `outcome_targets` first.
+        # `_apply_objective_rollup`'s all-✅-or-⏸️ branch, written from any
+        # status (issue #281).
+        ("as does an Objective row whose stages are all \u2705 or "
+         "\u23f8\ufe0f, which reads \u23f8\ufe0f",
+         "test_aide_defer::test_deferring_every_open_item_moves_header_summary_and_objective_to_deferred"),
+        # `_held_by_hand`, and `set_item_status`'s touched stages.
+        ("A header, summary row or Objective row marked \u23f8\ufe0f by hand "
+         "stays as it reads until a verb moves a bullet of its stage",
+         "test_aide_defer::test_a_hand_set_deferred_stage_is_left_alone_by_a_set_elsewhere"),
         ("an objective linked to an Outcome target that is not \u2705 Met "
          "never rolls up",
          "test_aide_core::test_unmet_target_blocks_objective_rollup_not_stage"),
         # `RANK` guards the write: a lower-ranked status is not applied.
-        ("set never downgrades a status",
-         "test_aide_core::test_set_item_never_downgrades"),
+        ("Apart from deferring, set never downgrades a status",
+         ("test_aide_core::test_set_item_never_downgrades",
+          "test_aide_defer::test_deferring_the_only_in_progress_item_rolls_the_stage_back_to_planned")),
+        # ⏸️ ranks below 🚧, 🔍 and ✅ in `RANK`, so the forward flip applies.
+        ("a \u23f8\ufe0f item resumes under any other status set names",
+         ("test_aide_defer::test_a_deferred_item_resumes_under_any_forward_status",
+          "test_aide_defer::test_resuming_a_deferred_item_moves_the_stage_back_up")),
         # `reopen_item` refuses any bullet not ✅, and is the one caller that
         # passes `downgrade_stages` to `_recompute_rollups` (issue #271).
         ("only reopen moves one back, and only from \u2705",
@@ -547,6 +589,26 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("one \u2705 again since reads as reopened and completed again, never "
          "as open",
          "test_aide_reopen::test_an_item_completed_again_is_never_reported_as_open"),
+
+        # `_cmd_progress_defer` / `defer_item` (issue #281).
+        ("set NNN deferred refuses, writing nothing, without a stated reason, "
+         "or when a deliverable bullet whose trailing marker names the item "
+         "is \u2705 or \u274c",
+         ("test_aide_defer::test_set_deferred_refuses_without_a_stated_reason_and_writes_nothing",
+          "test_aide_defer::test_set_deferred_on_a_done_item_exits_one_and_writes_nothing",
+          "test_aide_defer::test_defer_refuses_a_finished_item_and_names_its_status",
+          "test_aide_defer::test_defer_refuses_when_one_of_the_items_bullets_is_done")),
+        ("Each \U0001f4cb, \U0001f6a7 or \U0001f50d bullet it flips gets the "
+         "reason on a trail line, and its stage rolls up again, moving down "
+         "where its bullets now say less",
+         ("test_aide_defer::test_defer_takes_planned_and_in_review_items",
+          "test_aide_defer::test_defer_flips_the_bullet_and_writes_the_reason_under_it",
+          "test_aide_defer::test_deferring_the_only_in_progress_item_rolls_the_stage_back_to_planned")),
+        ("an item already \u23f8\ufe0f throughout is no change",
+         "test_aide_defer::test_deferring_a_deferred_item_again_is_no_change"),
+        ("No insight is captured",
+         ("test_aide_defer::test_set_deferred_writes_no_insight",
+          "test_aide_defer::test_set_deferred_on_a_done_item_exits_one_and_writes_nothing")),
     ],
 
     # ------------------------------------------------------------- insights --
@@ -1206,11 +1268,13 @@ def test_a_rolled_up_stage_under_a_lesser_summary_row_is_a_warning(tmp_path: Pat
     summary row is the warning, and the pre-1.49.4 wording ("deliverables are
     all ✅") predicted silence.
 
-    The second half is `if summ in ("deferred", "excluded"): continue`, which
-    sits above **all three** stage comparisons rather than above this one: a
-    ⏸️ or ❌ summary row is a stage deferred or dropped, and its bullets no
-    longer speak for it, so neither the warning, the error, nor the
-    header-disagreement warning is raised over it.
+    The second half is `if summ == "excluded": continue`, which sits above
+    **all three** stage comparisons rather than above this one: a ❌ summary
+    row is a stage dropped, and its bullets no longer speak for it, so
+    neither the warning, the error, nor the header-disagreement warning is
+    raised over it. A ⏸️ row was left out the same way until issue #281; the
+    rollup computes ⏸️ now, so a ⏸️ row over bullets that roll up to ✅ gets
+    the one warning that says so, and the other two are not raised.
     """
     text = PROGRESS.replace("- 📋 Bounds. *(Item 027)*", "- ✅ Bounds. *(Item 027)*")
     text = text.replace("- 📋 Coverage. *(Item 028)*", "- ❌ Coverage. *(Item 028)*")
@@ -1228,6 +1292,15 @@ def test_a_rolled_up_stage_under_a_lesser_summary_row_is_a_warning(tmp_path: Pat
                        for w in warnings), (icon, warnings)
         assert not any("disagrees with summary" in w for w in warnings), (icon, warnings)
         assert not any("non-complete deliverables" in e for e in errors), (icon, errors)
+        deferred_rule = [w for w in warnings
+                         if "but its deliverables roll up to" in w]
+        if name == "deferred":
+            assert deferred_rule == [
+                "stage 1: summary ⏸️ deferred but its deliverables roll up "
+                "to ✅ complete — nothing is left open to defer, so "
+                "restore ✅"], warnings
+        else:
+            assert deferred_rule == [], warnings
 
 
 def test_a_stage_header_disagreeing_with_its_summary_row_is_a_warning(

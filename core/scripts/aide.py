@@ -11,6 +11,7 @@ Subcommands::
     python .aide/scripts/aide.py check [--queue NNN]   # consistency gate over docs/aide
     python .aide/scripts/aide.py scope [NNN]           # branch diff vs the item's authorised paths
     python .aide/scripts/aide.py progress set NNN <in-progress|in-review|done>
+    python .aide/scripts/aide.py progress set NNN deferred --reason TEXT  # ⏸️, with its why
     python .aide/scripts/aide.py gate list|approve|decline [N]  # human gates in progress.md
     python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
@@ -542,6 +543,18 @@ def rollup_status(statuses: List[str]) -> Optional[str]:
     # the distinction `scope` already draws one layer down, where the spent set
     # is `{complete, excluded}` and the comment says ⏸ claims are "dormant, not
     # dead"; the two read the same icon the same way now.
+    #
+    # ⏸ is a stage state of its own once nothing else is left open (issue
+    # #281): every bullet ✅, ❌ or ⏸ with at least one ⏸ means the only work
+    # the stage still holds is work someone decided to do later. Until 2.5.0
+    # that stage read 📋 (or 🚧 beside a ✅), so a whole stage an owner had
+    # deferred was indistinguishable from one nobody had started, in the file,
+    # in `aide status` and in the planner's input. A 📋, 🚧 or 🔍 bullet beside
+    # the ⏸ one still wins: that work is open, and the stage is not deferred.
+    if any(s == "deferred" for s in statuses) and all(
+        s in ("complete", "excluded", "deferred") for s in statuses
+    ):
+        return "deferred"
     if any(s in ("complete", "in-progress", "in-review") for s in statuses):
         return "in-progress"
     return "planned"
@@ -1067,15 +1080,32 @@ def _sub_status_cell(line: str, status: str) -> str:
     return _ICON_RE.sub(STATUS_TO_ICON[status], line, count=1)
 
 
+def _held_by_hand(current: Optional[str], allow_downgrade: bool,
+                  touched: bool) -> bool:
+    """Whether a rolled-up cell is left exactly as it reads.
+
+    ❌ always is: an excluded stage or objective is a decision no bullet
+    speaks for. ⏸️ is until a verb moves a bullet of that stage (issue #281):
+    the rollup computes ⏸️ itself now, so a ⏸️ it did not compute was set by
+    hand, and it stands — `aide check` names the disagreement — rather than
+    being rewritten by a `set` for some other stage's item. A verb acting on
+    the stage's own bullets is the owner's next decision about it, and the
+    cell then follows the bullets like any other.
+    """
+    if current == "excluded":
+        return True
+    return current == "deferred" and not (allow_downgrade or touched)
+
+
 def _set_summary_row(lines: List[str], stage_num: str, status: str,
-                     allow_downgrade: bool = False) -> None:
+                     allow_downgrade: bool = False, touched: bool = False) -> None:
     for i, line in enumerate(lines):
         if not line.strip().startswith("|"):
             continue
         cells = _split_row(line)
         if len(cells) == 4 and cells[0] == stage_num and _icon_status(cells[3]):
             current = _icon_status(cells[3])
-            if current in ("deferred", "excluded"):
+            if _held_by_hand(current, allow_downgrade, touched):
                 return
             if allow_downgrade or RANK[status] >= RANK[current]:
                 lines[i] = _sub_status_cell(line, status)
@@ -1083,10 +1113,10 @@ def _set_summary_row(lines: List[str], stage_num: str, status: str,
 
 
 def _set_stage_header(lines: List[str], start: int, status: str,
-                      allow_downgrade: bool = False) -> None:
+                      allow_downgrade: bool = False, touched: bool = False) -> None:
     line = lines[start]
     current = _header_status(line)
-    if current in ("deferred", "excluded"):
+    if _held_by_hand(current, allow_downgrade, touched):
         return
     if current is None:
         lines[start] = line.rstrip() + f" — {STATUS_TO_ICON[status]}"
@@ -1575,12 +1605,16 @@ def _objective_stages(delivered_by: str) -> List[str]:
 
 
 def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
-                            downgrade_stages: Set[str] = frozenset()) -> None:
+                            downgrade_stages: Set[str] = frozenset(),
+                            touched_stages: Set[str] = frozenset()) -> None:
     """Roll each Objective row up from the stages its Delivered-by cell names.
 
     Never downgrades a row, except one naming a stage in *downgrade_stages* —
-    the stages a reopen just sent back (issue #271), and nothing else, so an
-    unrelated row is never rewritten by it."""
+    the stages a reopen or a deferral just sent back (issues #271, #281), and
+    nothing else, so an unrelated row is never rewritten by it — and except to
+    ⏸️: a row whose stages are all ✅ or ⏸️, at least one ⏸️, is ⏸️ whatever
+    it read, since the work it still waits on is work deferred. A ⏸️ row is
+    left alone unless it names a stage in either set (`_held_by_hand`)."""
     # An objective linked to an outcome target that is not ✅ Met can never
     # roll up to ✅: its stages shipping is necessary but not sufficient.
     blocked = {g for t in outcome_targets(lines) if t.kind != "met"
@@ -1597,12 +1631,17 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
             if not nums:
                 continue
             current = _icon_status(cells[2])
-            if current in ("deferred", "excluded"):
+            allow_downgrade = any(n in downgrade_stages for n in nums)
+            if _held_by_hand(current, allow_downgrade,
+                             any(n in touched_stages for n in nums)):
                 continue
             statuses = [stage_status.get(n) for n in nums if stage_status.get(n)]
-            allow_downgrade = any(n in downgrade_stages for n in nums)
             if statuses and all(s == "complete" for s in statuses):
                 derived = "complete"
+            elif statuses and all(s in ("complete", "deferred") for s in statuses):
+                # Some stage is ⏸️ and the rest shipped (issue #281): the
+                # objective waits on deferred work alone, as its stage does.
+                derived = "deferred"
             elif any(s in ("complete", "in-progress", "in-review") for s in statuses):
                 derived = "in-progress"
             elif allow_downgrade and statuses:
@@ -1613,7 +1652,8 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
                 derived = current
             if derived == "complete" and gm.group(0) in blocked:
                 derived = "in-progress"
-            if allow_downgrade or RANK[derived] >= RANK[current]:
+            if (allow_downgrade or derived == "deferred"
+                    or RANK[derived] >= RANK[current]):
                 lines[i] = _sub_status_cell(line, derived)
 
 
@@ -1771,6 +1811,8 @@ def set_item_status(text: str, num: int, status: str,
     objective rows only for stages that fully complete. Never downgrades an
     existing status (additive log), and never touches an acceptance checkbox —
     those are human attestations, ticked only by ``aide progress accept``.
+    A ⏸️ bullet ranks below all three, so setting one resumes deferred work
+    (issue #281); ``defer_item`` is the way in, and takes a reason.
 
     A bullet whose marker names several items is split into one bullet per item
     first (see ``_split_multi_item_bullets``), so no sibling is carried along by
@@ -1786,26 +1828,39 @@ def set_item_status(text: str, num: int, status: str,
     # Flip the icon of every bullet whose trailing marker names this item —
     # the same ownership rule `_parse_item_status` reads by (issue #99), so a
     # bullet that merely mentions the item in prose is never flipped.
+    touched: Set[str] = set()
     for start, last in _deliverable_bullet_spans(lines):
         if num not in _bullet_marker_item_numbers(lines[last]):
             continue
         current = ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
         if current and RANK[status] > RANK[current]:
             lines[start] = _replace_first_icon(lines[start], status)
+            stage = _stage_of_line(lines, start)
+            if stage is not None:
+                touched.add(stage)
 
-    # Recompute rollups for every stage (never downgrading).
-    _recompute_rollups(lines)
+    # Recompute rollups for every stage (never downgrading); a stage whose
+    # bullet this moved lets go of a ⏸️ it no longer computes (issue #281).
+    _recompute_rollups(lines, touched_stages=touched)
     return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
 
 def _recompute_rollups(lines: List[str],
-                       downgrade_stages: Set[str] = frozenset()) -> None:
+                       downgrade_stages: Set[str] = frozenset(),
+                       touched_stages: Set[str] = frozenset()) -> None:
     """Roll every stage header, summary row and Objective row up, in place.
 
     Never downgrades, except a stage in *downgrade_stages* and the Objective
-    rows naming one: the stages a reopen just sent back (issue #271), whose
-    rolled-up cells must follow the bullet down or `aide check` reports the
-    drift the moment the reopen lands.
+    rows naming one: the stages a reopen or a deferral just sent back (issues
+    #271, #281), whose rolled-up cells must follow the bullet down or
+    `aide check` reports the drift the moment the verb lands. A stage that
+    rolls up to ⏸️ is written ⏸️ from any status but ❌: ⏸️ ranks below 🚧,
+    yet a stage whose last open bullet merged beside a deferred one has
+    nothing in progress, and leaving it 🚧 would be the drift `check` reports.
+
+    *touched_stages* are the stages whose bullets the calling verb moved; a
+    ⏸️ cell there follows the rollup, where elsewhere it is left as set by
+    hand (`_held_by_hand`).
     """
     stage_status: Dict[str, str] = {}
     for start, end, stage_num in stage_sections(lines):
@@ -1813,10 +1868,13 @@ def _recompute_rollups(lines: List[str],
         if derived is None:
             continue
         stage_status[stage_num] = derived
-        down = stage_num in downgrade_stages
-        _set_stage_header(lines, start, derived, allow_downgrade=down)
-        _set_summary_row(lines, stage_num, derived, allow_downgrade=down)
-    _apply_objective_rollup(lines, stage_status, downgrade_stages)
+        down = stage_num in downgrade_stages or derived == "deferred"
+        touched = stage_num in touched_stages
+        _set_stage_header(lines, start, derived, allow_downgrade=down,
+                          touched=touched)
+        _set_summary_row(lines, stage_num, derived, allow_downgrade=down,
+                         touched=touched)
+    _apply_objective_rollup(lines, stage_status, downgrade_stages, touched_stages)
 
 
 #: The trail prefix a reopen writes under a deliverable bullet — read back by
@@ -1893,6 +1951,68 @@ def reopen_item(text: str, num: int, reason: str, date: str,
     _recompute_rollups(lines, stages)
     return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""),
             f"item {num:03d}: reopened — {reason}")
+
+
+#: The trail prefix a deferral writes under a deliverable bullet (issue #281):
+#: the why of a ⏸️, kept on the record the way a reopening's is.
+_DEFERRED_PREFIX = "deferred: "
+#: What `defer_item` moves to ⏸️. ✅ has shipped (`reopen` first) and ❌ was
+#: decided against, so neither is work to postpone.
+_DEFERRABLE = ("planned", "in-progress", "in-review")
+
+
+def defer_item(text: str, num: int, reason: str, date: str,
+               splits: Optional[List[BulletSplit]] = None) -> Tuple[str, str]:
+    """Defer item NNN — its bullets to ⏸️, append-only; ``(updated text, message)``.
+
+    Every deliverable bullet whose trailing marker names *num* and is 📋, 🚧 or
+    🔍 flips to ⏸️ and gains a dated ``deferred: <reason>`` trail line — the
+    grammar `reopen_item` writes — and the stages holding them roll up with a
+    downgrade allowed, so a stage left with nothing but ⏸️ open reads ⏸️ and one
+    whose 🚧 bullet was deferred falls back to what its other bullets say.
+
+    Refuses when any such bullet is ✅ or ❌, naming the status found: shipped
+    work is reopened first, and excluded work is not postponed. An item already
+    ⏸️ throughout is no change, as a repeated `set` is. A shared marker is
+    desugared first, as `set` does, so no sibling is deferred with it.
+    """
+    lines = text.splitlines()
+    owned = [(s, l) for s, l in _deliverable_bullet_spans(lines)
+             if num in _bullet_marker_item_numbers(lines[l])]
+    if not owned:
+        raise ValueError(
+            f"no deliverable bullet's trailing *(Item {num:03d})* marker names "
+            f"item {num:03d}, so there is nothing to defer")
+    statuses = [ICON_TO_STATUS[_BULLET_RE.match(lines[s]).group("icon")]
+                for s, _ in owned]
+    final = [st for st in statuses if st not in _DEFERRABLE + ("deferred",)]
+    if final:
+        shown = ", ".join(sorted({f"{STATUS_TO_ICON[st]} {st}" for st in final}))
+        hint = (" — send it back with `aide progress reopen` first"
+                if "complete" in final else "")
+        raise ValueError(
+            f"item {num:03d} is {shown}; only a 📋, 🚧 or 🔍 item can be "
+            f"deferred{hint}")
+    if all(st == "deferred" for st in statuses):
+        return text, f"item {num:03d}: no change (already deferred)"
+    lines = _split_multi_item_bullets(lines, num, "deferred", splits, downgrade=True)
+    stages: Set[str] = set()
+    # Bottom-up, so an inserted trail line never shifts a span still to visit.
+    for start, last in reversed(_deliverable_bullet_spans(lines)):
+        if num not in _bullet_marker_item_numbers(lines[last]):
+            continue
+        current = ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
+        if current == "deferred":
+            continue
+        lines[start] = _replace_first_icon(lines[start], "deferred")
+        _insert_trail_line(lines, last, deliverable_bullet_trail(lines, last),
+                           date, _DEFERRED_PREFIX + reason)
+        stage = _stage_of_line(lines, start)
+        if stage is not None:
+            stages.add(stage)
+    _recompute_rollups(lines, stages)
+    return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""),
+            f"item {num:03d}: deferred — {reason}")
 
 
 class Reopening(NamedTuple):
@@ -4742,7 +4862,36 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
         header_status = _header_status(lines[start])
         derived = rollup_status(stage_deliverable_statuses(lines, start, end))
         summ = summary_status.get(num)
-        if summ in ("deferred", "excluded"):
+        if summ == "excluded":
+            continue
+        # ⏸️ on a stage is the rollup's to compute (issue #281), so a ⏸️ cell
+        # over bullets that do not roll up to it — or a stage that does roll
+        # up to ⏸️ under a cell that is not — is a hand edit the bullets
+        # disagree with. The writers leave a hand-set ⏸️ alone (it is the
+        # owner's intent until a verb moves the stage), so this is where it
+        # is named. A file the verbs wrote never trips it.
+        off = [(where, s) for where, s in (("summary", summ),
+                                           ("header", header_status))
+               if s and s != "excluded" and derived
+               and (s == "deferred") != (derived == "deferred")]
+        if off:
+            shown = " and ".join(f"{where} {STATUS_TO_ICON[s]} {s}"
+                                 for where, s in off)
+            if derived == "deferred":
+                fix = (f"every open deliverable is ⏸️, so set the "
+                       f"{'cells' if len(off) > 1 else off[0][0]} to ⏸️")
+            elif derived == "complete":
+                fix = "nothing is left open to defer, so restore ✅"
+            else:
+                fix = (f"defer the stage's open items with 'aide progress "
+                       f"set NNN deferred --reason …', or restore "
+                       f"{STATUS_TO_ICON[derived]}")
+            warnings.append(
+                f"stage {num}: {shown} but its deliverables roll up to "
+                f"{STATUS_TO_ICON[derived]} {derived} — {fix}")
+        if summ == "complete" and derived and derived != "complete":
+            errors.append(f"stage {num}: summary marked ✅ but has non-complete deliverables")
+        if off:
             continue
         if derived == "complete" and summ and summ != "complete":
             warnings.append(
@@ -4750,8 +4899,6 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                 f"if the work shipped but the stage's goal is unmet, record the "
                 f"goal as an Outcome target (❌ Not met) and close the stage; "
                 f"stages track shipped work, targets track measured outcomes")
-        if summ == "complete" and derived and derived != "complete":
-            errors.append(f"stage {num}: summary marked ✅ but has non-complete deliverables")
         if header_status and summ and header_status != summ:
             warnings.append(f"stage {num}: header {header_status} disagrees with summary {summ}")
 
@@ -5470,14 +5617,19 @@ def cmd_progress(args: argparse.Namespace) -> int:
         return _cmd_progress_reopen(args)
     if args.action != "set":
         print("usage: aide progress set NNN <in-progress|in-review|done> | "
+              "set NNN deferred --reason TEXT | "
               "reopen NNN --reason TEXT | accept|amend|retract|reword STAGE "
               "(see aide progress -h)", file=sys.stderr)
         return 2
     if args.status is None:
-        print("usage: aide progress set NNN <in-progress|in-review|done>", file=sys.stderr)
+        print("usage: aide progress set NNN <in-progress|in-review|done> | "
+              "set NNN deferred --reason TEXT", file=sys.stderr)
         return 2
+    if args.status == "deferred":
+        return _cmd_progress_defer(args)
     if args.status not in _SET_STATUS_MAP:
-        print("status must be 'in-progress', 'in-review' or 'done'", file=sys.stderr)
+        print("status must be 'in-progress', 'in-review', 'done' or "
+              "'deferred'", file=sys.stderr)
         return 2
     status_map = _SET_STATUS_MAP
     repo_root = find_repo_root(args.repo)
@@ -5799,6 +5951,55 @@ def _cmd_progress_reopen(args: argparse.Namespace) -> int:
         _commit_docs_files(
             repo_root, config,
             f"progress(aide): item {args.number:03d} reopen", rels)
+    return 0
+
+
+def _cmd_progress_defer(args: argparse.Namespace) -> int:
+    """``aide progress set NNN deferred --reason TEXT`` — postpone an item.
+
+    The one way to write ⏸️ on a deliverable (issue #281): it used to be a hand
+    edit, with no record of why, and a whole stage deferred that way read as
+    one nobody had started. The reason goes on a trail line under each flipped
+    bullet, as `reopen`'s does. No insight is captured: a deferral is a
+    decision about order, not a finding about the work.
+    """
+    usage = ("usage: aide progress set NNN deferred --reason TEXT "
+             "[--date YYYY-MM-DD]")
+    if args.criterion is not None or args.all_criteria:
+        print(f"{usage}\naide progress set: an item is deferred whole — it "
+              f"takes no --criterion or --all", file=sys.stderr)
+        return 2
+    if not (args.reason or "").strip():
+        print("aide progress set NNN deferred: --reason is required — the "
+              "reason is what the record keeps", file=sys.stderr)
+        return 2
+    reason = args.reason.strip()
+    if "\n" in reason or "\r" in reason:
+        print("aide progress set NNN deferred: the reason may not contain a "
+              "line break — it is written into one trail line", file=sys.stderr)
+        return 2
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    progress_path = docs_dir(repo_root, config) / "progress.md"
+    if not progress_path.is_file():
+        print(f"error: {progress_path} not found", file=sys.stderr)
+        return 1
+    import datetime as _dt
+    date = args.date or _dt.date.today().isoformat()
+    text = progress_path.read_text(encoding=_ENCODING)
+    splits: List[BulletSplit] = []
+    try:
+        updated, message = defer_item(text, args.number, reason, date, splits)
+    except ValueError as exc:
+        print(f"error: {exc}; progress.md NOT changed", file=sys.stderr)
+        return 1
+    print(message)
+    if updated == text:
+        return 0
+    progress_path.write_text(updated, encoding="utf-8")
+    _report_bullet_splits(args.number, updated.splitlines(), splits)
+    if not args.no_commit and (repo_root / ".git").exists():
+        _commit_progress(repo_root, config, args.number, "deferred")
     return 0
 
 
@@ -9975,9 +10176,14 @@ def build_parser() -> argparse.ArgumentParser:
             "Met, an Outcome target or human gate whose Status is not one of "
             "its table's marks, and every human gate still blocking \u2014 a "
             "normal state rather than a defect. A summary row marked "
-            "\u23f8\ufe0f or \u274c is left out of all three stage comparisons "
-            "above, deliverables and header alike: the stage is deferred or "
-            "dropped, so its bullets no longer speak for it.\n"
+            "\u274c is left out of all three stage comparisons "
+            "above, deliverables and header alike: the stage is "
+            "dropped, so its bullets no longer speak for it. A summary row "
+            "or header marked \u23f8\ufe0f over deliverables that do not "
+            "roll up to \u23f8\ufe0f is a warning, and so is a stage whose "
+            "deliverables roll up to \u23f8\ufe0f under a summary row or "
+            "header that is not; the stage's other two warnings are then "
+            "not raised.\n"
             "\n"
             "Over the Environment-Gated Capability Verification table, "
             "warnings only, since no other check gates on it: a row its "
@@ -10036,7 +10242,9 @@ def build_parser() -> argparse.ArgumentParser:
             "set:     flip an item's deliverable bullet and roll its stage "
             "up; a marker naming several items is desugared into one bullet "
             "per item first, and only the named item moves \u2014 the others "
-            "keep the status they had\n"
+            "keep the status they had. `set NNN deferred --reason TEXT` "
+            "flips it to \u23f8\ufe0f and writes a dated "
+            "`deferred: <reason>` line under it\n"
             "accept:  tick one acceptance criterion (--criterion N) or every "
             "one in the stage (--all), with --evidence\n"
             "amend:   append a dated correction under a ticked box; the tick "
@@ -10054,18 +10262,26 @@ def build_parser() -> argparse.ArgumentParser:
             "\n"
             "The rollup, applied by set and read by `aide check`: a stage is "
             "\u2705 when every deliverable bullet in it is \u2705 or \u274c "
-            "and at least one is \u2705; \U0001f6a7 when any bullet is "
+            "and at least one is \u2705; \u23f8\ufe0f when every bullet is "
+            "\u2705, \u274c or \u23f8\ufe0f and at least one is "
+            "\u23f8\ufe0f; \U0001f6a7 when any bullet is "
             "\u2705, \U0001f6a7 or \U0001f50d; otherwise \U0001f4cb. "
             "\U0001f50d and \u23f8\ufe0f are both kept out of the \u2705 "
             "rule \u2014 an item awaiting review or deferred has not shipped. "
             "They differ below it: \U0001f50d also satisfies the \U0001f6a7 "
             "rule, so a stage holding one is always \U0001f6a7, while "
-            "\u23f8\ufe0f does not \u2014 a stage whose bullets are only "
-            "\u23f8\ufe0f, \U0001f4cb and \u274c reads \U0001f4cb. "
+            "\u23f8\ufe0f gives way to any open bullet \u2014 a stage "
+            "holding \u23f8\ufe0f and \U0001f4cb reads \U0001f4cb. "
             "The stage header, its summary-table "
             "row, and any Objective row delivered solely by \u2705 stages "
-            "follow; an objective linked to an Outcome target that is not "
-            "\u2705 Met never rolls up. set never downgrades a status; only "
+            "follow, as does an Objective row whose stages are all \u2705 "
+            "or \u23f8\ufe0f, which reads \u23f8\ufe0f; an objective "
+            "linked to an Outcome target that is not "
+            "\u2705 Met never rolls up. A header, summary row or Objective "
+            "row marked \u23f8\ufe0f by hand stays as it reads until a verb "
+            "moves a bullet of its stage. Apart from deferring, set never "
+            "downgrades a status, and a \u23f8\ufe0f item resumes under any "
+            "other status set names; only "
             "reopen moves one back, and only from \u2705. No rollup ever "
             "ticks an acceptance box.\n"
             "\n"
@@ -10087,7 +10303,17 @@ def build_parser() -> argparse.ArgumentParser:
             "they were. `aide check` warns on every reopened item and "
             "`aide status` prints it, worded by the item's status today: one "
             "\u2705 again since reads as reopened and completed again, never "
-            "as open."))
+            "as open.\n"
+            "\n"
+            "set NNN deferred refuses, writing nothing, without a stated "
+            "reason, or when a deliverable bullet whose trailing marker names "
+            "the item is \u2705 or \u274c \u2014 reopen a \u2705 item "
+            "first. Each \U0001f4cb, \U0001f6a7 or \U0001f50d bullet it "
+            "flips gets the reason on a trail line, and its stage rolls "
+            "up again, moving down where its bullets now say less; an item "
+            "already "
+            "\u23f8\ufe0f throughout is no change. No insight is "
+            "captured: a deferral is a decision about order, not a finding."))
     p_prog.add_argument("action",
                         choices=["set", "accept", "amend", "retract", "reword",
                                  "reopen"])
@@ -10095,8 +10321,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="item number (set, reopen) | stage number "
                              "(every other action)")
     p_prog.add_argument("status", nargs="?", default=None,
-                        help="set: in-progress | in-review | done "
-                             "(in-review = pushed, awaiting a human's merge)")
+                        help="set: in-progress | in-review | done | deferred "
+                             "(in-review = pushed, awaiting a human's merge; "
+                             "deferred needs --reason)")
     p_prog.add_argument("--criterion", type=int, default=None,
                         help="1-based acceptance-criterion index within the stage")
     p_prog.add_argument("--all", action="store_true", dest="all_criteria",
@@ -10107,12 +10334,14 @@ def build_parser() -> argparse.ArgumentParser:
                              "amend: the corrected evidence, appended as a dated line")
     p_prog.add_argument("--reason", default=None,
                         help="retract: why the attestation is withdrawn; "
-                             "reopen: why the item is not done after all "
-                             "(required for both)")
+                             "reopen: why the item is not done after all; "
+                             "set deferred: why the item waits "
+                             "(required for all three)")
     p_prog.add_argument("--text", default=None,
                         help="reword: the criterion's new wording (required)")
     p_prog.add_argument("--date", default=None,
-                        help="amend/retract/reopen: ISO date for the trail "
+                        help="amend/retract/reopen/set deferred: ISO date "
+                             "for the trail "
                              "line (default: today)")
     p_prog.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
     p_prog.set_defaults(func=cmd_progress)

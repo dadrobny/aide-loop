@@ -121,6 +121,60 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.5.0] — 2026-09-24
+
+### Added
+
+- **`aide progress set NNN deferred --reason TEXT` records a deferral, and a
+  stage whose only open work is deferred rolls up to ⏸️ (issue #281).** A
+  project owner deferred a whole roadmap stage and nothing in the CLI could
+  record it. `set` accepted only in-progress, in-review and done, so ⏸️ on a
+  bullet was a hand edit with no reason on the record. The rollup never
+  produced ⏸️, so a deferred stage read 📋 in `progress.md`, in `aide status`
+  and in the queue-planner's input, indistinguishable from one nobody had
+  started. `aide check` skipped a hand-set ⏸️ summary row without a word.
+  The new status flips every 📋, 🚧 or 🔍 bullet whose trailing marker names
+  the item to ⏸️ and writes `- **YYYY-MM-DD** → deferred: <reason>` under
+  each, through the writer and grammar `reopen` uses; a shared
+  `*(Items …)*` marker is desugared first, so no sibling is deferred with
+  it. It refuses, writing nothing, without a stated reason (exit 2) and
+  over a ✅ or ❌ bullet (exit 1, naming the status, and pointing a ✅ item at
+  `reopen`). An item already ⏸️ throughout is "no change", as a repeated
+  `set` is. No insight is captured, unlike `reopen`: a deferral is a
+  decision about order, not a finding.
+  - **The rollup gains a ⏸️ arm.** A stage whose bullets are all ✅, ❌ or ⏸️,
+    at least one ⏸️, reads ⏸️ — so ✅+⏸️, ⏸️+❌ and all-⏸️ all read ⏸️
+    (they read 🚧, 📋 and 📋 until now). Any 📋, 🚧 or 🔍 bullet beside the ⏸️
+    one still wins, and ✅ still needs every bullet ✅ or ❌, so a ⏸️ bullet
+    never rolls a stage up to ✅ (#173). An Objective row whose stages are all
+    ✅ or ⏸️, at least one ⏸️, reads ⏸️ too. A stage or Objective row that
+    rolls up to ⏸️ is written ⏸️ from any status but ❌, even though ⏸️
+    ranks below 🚧: a stage whose last open item merged beside a deferred one
+    has nothing in progress.
+  - **Resuming.** A ⏸️ item resumes under any forward `set` (in-progress,
+    in-review, done), with no reason required, and its stage's header,
+    summary row and Objective rows follow it back up.
+  - **A hand-set ⏸️ stage stands until a verb moves a bullet of its stage.**
+    The header, summary and Objective writers still leave a ⏸️ they did not
+    compute alone on a `set` for some other stage's item, so an owner's
+    deferral is not erased unseen; a `set` or deferral of one of that
+    stage's own items lets the cells follow the bullets again.
+  - **`aide check` warns where a ⏸️ cell and the rollup disagree**, replacing
+    the silent skip: a stage whose summary row or header reads ⏸️ over
+    deliverables that do not roll up to ⏸️, or whose deliverables roll up to
+    ⏸️ under a summary row or header that does not. The warning names both
+    values and the fix, and the stage's other two warnings (the ✅-rollup
+    one and header-vs-summary) are not raised on top of it; the error over a
+    ✅ summary row still is. A ❌ summary row is left out as before. A file
+    the verbs wrote never trips it.
+  - **What a consumer may see on update.** A stage already holding ⏸️
+    bullets beside ✅ ones reads ⏸️ from the next `progress set` on, and
+    `aide check` warns about it until then. A stage deferred by hand over
+    bullets still 📋 or 🚧 is now a `check` warning: run `aide progress set
+    NNN deferred --reason …` on its open items to put the deferral on
+    record, or restore the rolled-up icon. §1 → `progress.md` and §1 →
+    status icons state the rule, and `aide-progress-file` delivers it.
+
 ## [2.4.0] — 2026-09-24
 
 ### Fixed

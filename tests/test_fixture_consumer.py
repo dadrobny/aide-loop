@@ -1049,6 +1049,54 @@ def test_a_prose_mention_on_a_done_bullet_leaves_the_sibling_claimable(
     assert _branch(consumer) == "aide/002-the-farewell"
 
 
+def test_deferring_every_item_defers_the_stage_and_resuming_reopens_it(
+        aide, consumer: Path, capsys):
+    """Issue #281 through the installed engine: `progress set NNN deferred`
+    needs a reason, writes ⏸️ with the reason under the bullet, rolls a stage
+    whose only open work is deferred up to ⏸️ — header, summary and objective
+    — and leaves nothing to claim; a forward `set` resumes it; `check` passes
+    over every step with no stage warning."""
+    ppath = consumer / "docs" / "aide" / "progress.md"
+    prog = ["--repo", str(consumer), "progress", "set"]
+
+    before = ppath.read_bytes()
+    assert aide.main([*prog, "1", "deferred"]) == 2
+    assert ppath.read_bytes() == before
+
+    for n in ("1", "2"):
+        assert aide.main([*prog, n, "deferred", "--reason", "owner postponed",
+                          "--date", "2026-09-24"]) == 0
+    text = ppath.read_text(encoding="utf-8")
+    assert "- ⏸️ The greeter. *(Item 001)*" in text
+    assert "- ⏸️ The farewell. *(Item 002)*" in text
+    assert text.count("  - **2026-09-24** → deferred: owner postponed") == 2
+    assert "## Stage 1 — Foundations — ⏸️" in text
+    assert "| 1 | Foundations | G1 | ⏸️ |" in text
+    assert "| G1 Foundations | Stage 1 | ⏸️ |" in text
+    # The verb commits its own edit, as every `progress` verb does.
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "stage 1:" not in capsys.readouterr().out
+    assert _claim(aide, consumer) == 1  # nothing open: deferred is not work to do
+
+    assert aide.main([*prog, "1", "in-progress"]) == 0
+    text = ppath.read_text(encoding="utf-8")
+    assert "- 🚧 The greeter. *(Item 001)*" in text
+    assert "## Stage 1 — Foundations — 🚧" in text
+    assert "| 1 | Foundations | G1 | 🚧 |" in text
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "stage 1:" not in capsys.readouterr().out
+
+    # Shipped work is not postponed: refused, file untouched.
+    assert aide.main([*prog, "1", "done"]) == 0
+    before = ppath.read_bytes()
+    assert aide.main([*prog, "1", "deferred", "--reason", "too late"]) == 1
+    assert ppath.read_bytes() == before
+
+
 def test_an_exhausted_queue_is_no_longer_open_to_claim_from(aide, consumer: Path, capsys):
     """Every item ✅ makes the queue closed, not empty — so `claim` exits 1 and
     says there is no open queue. That non-zero exit is what stops

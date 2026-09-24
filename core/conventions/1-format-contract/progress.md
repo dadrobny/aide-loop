@@ -71,6 +71,17 @@ deterministic rule `aide progress` and `aide check` both apply — `aide progres
 -h` states the rule. Write the bullets and let the stage follow; an icon typed
 over a derived cell is drift `aide check` reports.
 
+**Deferral is recorded on the item, with its reason, and the stage follows.**
+Postpone an item with `aide progress set NNN deferred --reason …`, never by
+typing ⏸️ over a bullet or a stage: the verb keeps the why on the bullet's
+trail, and a stage whose only open work is deferred rolls up to ⏸️ by itself —
+never to ✅. Deferred work resumes through any forward `aide progress set`. A
+⏸️ stage header or summary row the rollup does not compute is a hand edit that
+stands until a verb moves a bullet of that stage, and `aide check` warns on it
+for as long as it disagrees, as it does on a stage that rolls up to ⏸️ under a
+cell that says otherwise. A ❌ summary row is outside the comparison: its
+bullets no longer speak for the stage.
+
 **Acceptance boxes are attestations, and no rollup ever ticks one.** They are
 outside the derivation entirely: the rollup skips checkbox lines, `aide check`
 never gates a ✅ stage on them, and `aide progress set` leaves them exactly as
@@ -158,6 +169,20 @@ Semantics
   went with it: a ✅ summary row over unfinished work, or a ✅ objective over a
   ❌ target, passed clean. Failing on the row, and naming its line, is the only
   reading that cannot pass an over-claim, and its cost is one edit.
+- **Why deferral has a verb, and ⏸️ a rollup.** Issue #281: a project owner
+  deferred a whole roadmap stage, and nothing could record it. `progress set`
+  took no ⏸️, so the icon was a hand edit with no reason on the record; the
+  rollup never produced ⏸️, so a deferred stage read 📋 like one nobody had
+  started — in the file, in `aide status` and in the queue-planner's input;
+  and `aide check` skipped a hand-set ⏸️ summary row without a word, a
+  deliberate but unstated exemption. The verb now keeps the reason the way
+  `reopen` does, the rollup yields ⏸️ once nothing else is open (still never
+  ✅ over a ⏸️ bullet, which is #173's rule), and the silent skip became a
+  warning. A hand-set ⏸️ is left standing rather than overwritten by the next
+  unrelated `set`, because it is an owner's intent: `check` names it and a
+  person resolves it, where a rewrite would have erased it unseen. No insight
+  is captured on a deferral, unlike a reopening — postponing work is a
+  decision about order, not a finding about the work.
 - **Why a shared marker is desugared.** One bullet carries one icon, so while
   items share a marker they share a status — and the first flip would
   otherwise carry the siblings with it.
