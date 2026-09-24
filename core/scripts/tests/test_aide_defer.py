@@ -208,6 +208,62 @@ def test_a_hand_set_deferred_stage_is_left_alone_by_a_set_elsewhere():
     assert "| G2 Reports | Stage 2 | 🚧 |" in moved
 
 
+PRE_25 = """\
+# Demo — Progress
+
+## Stage summary
+
+| Stage | Title | Objectives | Status |
+|-------|-------|-----------|--------|
+| 2 | Reports | G1 | 🚧 |
+| 4 | Charts | G1 | 📋 |
+| 5 | Other | G2 | 📋 |
+
+## Objective coverage
+
+| Objective | Delivered by | Status |
+|-----------|--------------|--------|
+| G1 Reports | Stage 2, Stage 4 | {g1} |
+| G2 Other | Stage 5 | 📋 |
+
+## Stage 2 — Reports — 🚧
+
+**Deliverables.**
+- ✅ Summary. *(Item 030)*
+- ⏸️ Export. *(Item 031)*
+
+## Stage 4 — Charts — 📋
+
+**Deliverables.**
+- 📋 Charts. *(Item 040)*
+
+## Stage 5 — Other — 📋
+
+**Deliverables.**
+- 📋 Other. *(Item 050)*
+"""
+
+
+def test_an_objective_follows_a_stage_that_self_heals_to_deferred():
+    """PR #284 review: a pre-2.5.0 file with a ✅+⏸️ stage still under 🚧. A
+    `set` for an unrelated stage's item heals that stage to ⏸️; the Objective
+    row over it and a 📋 stage must follow down to what the rollup of those
+    two says — 📋 — rather than stay 🚧 over stages that no longer say so."""
+    out = aide.set_item_status(PRE_25.format(g1="🚧"), 50, "in-progress")
+    assert "## Stage 2 — Reports — ⏸️" in out
+    assert "| 2 | Reports | G1 | ⏸️ |" in out
+    assert "| G1 Reports | Stage 2, Stage 4 | 📋 |" in out
+    assert "| G2 Other | Stage 5 | 🚧 |" in out
+
+
+def test_the_self_heal_leaves_a_hand_set_deferred_objective_alone():
+    """The promotion frees the downgrade, not the hand-held ⏸️: no verb moved
+    a bullet of stage 2 or 4, so the owner's ⏸️ on G1 stands."""
+    out = aide.set_item_status(PRE_25.format(g1="⏸️"), 50, "in-progress")
+    assert "## Stage 2 — Reports — ⏸️" in out
+    assert "| G1 Reports | Stage 2, Stage 4 | ⏸️ |" in out
+
+
 # --------------------------------------------------------------------------- #
 # check — the ⏸️ rule (ask 3)
 # --------------------------------------------------------------------------- #
@@ -293,6 +349,18 @@ def test_set_deferred_refuses_without_a_stated_reason_and_writes_nothing(
         assert aide.main(["--repo", str(repo), "progress", "set", "31",
                           "deferred", *extra, "--no-commit"]) == 2, extra
     assert "--reason is required" in capsys.readouterr().err
+    assert (repo / "docs" / "aide" / "progress.md").read_bytes() == before
+
+
+def test_set_deferred_refuses_a_criterion_or_all_and_writes_nothing(
+        tmp_path: Path):
+    """An item is deferred whole, as it is reopened whole."""
+    repo = _repo(tmp_path)
+    before = (repo / "docs" / "aide" / "progress.md").read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", "31", "deferred",
+                      "--criterion", "1", "--reason", "x", "--no-commit"]) == 2
+    assert aide.main(["--repo", str(repo), "progress", "set", "31", "deferred",
+                      "--all", "--reason", "x", "--no-commit"]) == 2
     assert (repo / "docs" / "aide" / "progress.md").read_bytes() == before
 
 

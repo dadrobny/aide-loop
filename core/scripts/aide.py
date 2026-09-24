@@ -1613,8 +1613,10 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
     the stages a reopen or a deferral just sent back (issues #271, #281), and
     nothing else, so an unrelated row is never rewritten by it — and except to
     ⏸️: a row whose stages are all ✅ or ⏸️, at least one ⏸️, is ⏸️ whatever
-    it read, since the work it still waits on is work deferred. A ⏸️ row is
-    left alone unless it names a stage in either set (`_held_by_hand`)."""
+    it read, since the work it still waits on is work deferred — and except a
+    row naming a stage that rolls up to ⏸️, which `_recompute_rollups` writes
+    down from any status, so the row follows it. A ⏸️ row is left alone
+    unless it names a stage in either set (`_held_by_hand`)."""
     # An objective linked to an outcome target that is not ✅ Met can never
     # roll up to ✅: its stages shipping is necessary but not sufficient.
     blocked = {g for t in outcome_targets(lines) if t.kind != "met"
@@ -1631,10 +1633,19 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
             if not nums:
                 continue
             current = _icon_status(cells[2])
-            allow_downgrade = any(n in downgrade_stages for n in nums)
-            if _held_by_hand(current, allow_downgrade,
+            # Released by a verb only: a stage the calling verb moved. A ⏸️ row
+            # set by hand stands through a `set` elsewhere (`_held_by_hand`).
+            by_verb = any(n in downgrade_stages for n in nums)
+            if _held_by_hand(current, by_verb,
                              any(n in touched_stages for n in nums)):
                 continue
+            # The downgrade itself mirrors `_recompute_rollups`: a stage that
+            # rolls up to ⏸️ is written ⏸️ from any status, so a row naming
+            # one must be free to follow it down too, or a stage that
+            # self-heals from 🚧 to ⏸️ leaves its objective 🚧 over stages that
+            # say ⏸️ and 📋 (issue #281, PR #284 review).
+            allow_downgrade = by_verb or any(
+                stage_status.get(n) == "deferred" for n in nums)
             statuses = [stage_status.get(n) for n in nums if stage_status.get(n)]
             if statuses and all(s == "complete" for s in statuses):
                 derived = "complete"
@@ -1645,8 +1656,11 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
             elif any(s in ("complete", "in-progress", "in-review") for s in statuses):
                 derived = "in-progress"
             elif allow_downgrade and statuses:
-                # Only a reopen gets here with stages to read: every stage the
-                # row names is 📋, so the objective is too.
+                # A reopen or a deferral gets here, or a row over a stage
+                # that rolls up to ⏸️: no stage the row names is started, so
+                # every one is 📋 or ⏸️ with at least one 📋 (all ✅/⏸️ was
+                # taken above) — the objective is 📋, as a stage of those
+                # bullets would be.
                 derived = "planned"
             else:
                 derived = current
