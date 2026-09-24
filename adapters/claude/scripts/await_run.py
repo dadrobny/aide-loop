@@ -177,7 +177,7 @@ def start_run(kind: str, argv: List[str], cwd: Path, directory: Path) -> str:
         label = f"{stem}-{n}"
     paths = {s: directory / f"{label}.{s}" for s in ("start", "log", "exit")}
     record = {"label": label, "argv": argv, "cwd": str(cwd), "started": now}
-    paths["start"].write_text(json.dumps(record), encoding="utf-8")
+    _write_atomic(paths["start"], json.dumps(record))
     spec = json.dumps({"argv": argv, "cwd": str(cwd), "log": str(paths["log"]),
                        "exit": str(paths["exit"]),
                        "not_started": EXIT_NOT_STARTED})
@@ -197,8 +197,15 @@ def start_run(kind: str, argv: List[str], cwd: Path, directory: Path) -> str:
         paths["start"].unlink()
         raise UsageError(f"could not launch the run: {exc}") from exc
     record["pid"] = proc.pid
-    paths["start"].write_text(json.dumps(record), encoding="utf-8")
+    _write_atomic(paths["start"], json.dumps(record))
     return label
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    """Write *path* whole or not at all, as the supervisor writes ``.exit``."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(str(tmp), str(path))
 
 
 def _tail(log: Path, lines: int = TAIL_LINES) -> str:
@@ -221,7 +228,10 @@ def wait_run(label: str, directory: Path, seconds: float) -> int:
         known = sorted(p.stem for p in directory.glob("*.start"))
         raise UsageError(f"no run {label} under {directory}"
                          + (f"; known: {', '.join(known)}" if known else ""))
-    record = json.loads(start.read_text(encoding="utf-8"))
+    try:
+        record = json.loads(start.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise UsageError(f"unreadable run record {start}: {exc}") from exc
     exit_file = directory / f"{label}.exit"
     log = directory / f"{label}.log"
     deadline = time.monotonic() + seconds

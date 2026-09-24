@@ -143,6 +143,7 @@ instead — that is the bump policy above, and it is enforced by
   `command_hygiene_guard.py` and `sibling_instructions.py` still read
   `.aide/local.toml` from the cwd. In a worktree that file is absent, which
   makes the guard stricter, never looser.
+
 ### Added
 
 - **A command that can outlast a tool call is run detached and waited on in

@@ -276,6 +276,8 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
 - The item needs a **major structural change** or an edit to a framework/process
   file (`CLAUDE.md`, `aide.toml`, `.aide/**`, `vision.md`, `roadmap.md`,
   `.claude/skills|commands|agents/**`) — needs a reviewed PR, never a direct merge.
+- A validator hands back **INCOMPLETE** (step 6): a run reached its limit.
+  Report the command, elapsed time and log tail; do not re-dispatch.
 - The **build↔validate cycle stops** (step 6: a failure survived an escalated
   round, or `loop.validation_rounds` was reached), or the item is blocked /
   contradictory. Document the blocker and suggest `/aide-feedback-loop`.

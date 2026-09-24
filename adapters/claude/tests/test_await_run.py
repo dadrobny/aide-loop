@@ -169,6 +169,17 @@ def test_two_starts_in_one_second_get_two_labels(repo: Path):
         assert ar.wait_run(label, directory, 60) == 0
 
 
+def test_a_torn_run_record_is_a_usage_error_not_a_traceback(repo: Path, capsys):
+    directory = ar.state_dir(repo)
+    label = ar.start_run("suite", _py("pass"), repo, directory)
+    ar.wait_run(label, directory, 30)
+    (directory / f"{label}.start").write_text('{"label": ', encoding="utf-8")
+    assert ar.main(["wait", label], root=repo) == ar.EXIT_USAGE
+    assert "unreadable run record" in capsys.readouterr().err
+    # The record is written whole: no temporary file is left beside it.
+    assert not list(directory.glob("*.tmp"))
+
+
 def test_the_wait_is_capped_under_the_tool_ceiling(repo: Path, monkeypatch):
     seen = {}
     monkeypatch.setattr(ar, "wait_run",

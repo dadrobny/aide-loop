@@ -7,7 +7,8 @@ roles that perform either read rather than pointing at it.
 this branch meet the Acceptance Criteria of the spec it was built from* — the
 suite is green, every AC has a test that measures it, the diff is inside the
 authorised paths, the Assumptions still hold. Every term is measured against
-the item spec, the verdict is PASS/FAIL, and it **gates the merge**. Review
+the item spec, the verdict is PASS/FAIL — or none, when a run outlasts its
+limit (below) — and it **gates the merge**. Review
 asks *is this code correct, and does it fit the codebase* — it reads the diff
 adversarially for what the spec never anticipated, and it **produces findings**,
 not a verdict.
