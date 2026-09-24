@@ -4266,9 +4266,11 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide",
         # exactly that — so a path the spec also authorises itself to change
         # is a contradiction authored into the spec: the moment the item uses
         # the authorisation, scope fails it with no spec-side fix visible
-        # (issue #94). Exact double-listing only: a literal pin under a May
-        # change glob is the legitimate carve-out shape ("I may edit docs/**
-        # but not docs/api.md") and scope stays the judge of whether it held.
+        # (issue #94). The same holds when a pin glob covers a May change
+        # entry (issue #269): every change that entry authorises is inside the
+        # pin. One direction only — a literal pin under a May change glob is
+        # the legitimate carve-out shape ("I may edit docs/** but not
+        # docs/api.md") and scope stays the judge of whether it held.
         # Silent narrowing, made loud where it is authored (issue #119): the
         # spans after a bullet's first are dropped, and so is anything on a
         # continuation line, so the item is authorised for less than its spec
@@ -4285,6 +4287,7 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide",
         may_normalised = {_strip_dot_slash(p.strip())
                          for p in (parsed.may_change if parsed else [])}
         for pin in (parsed.asserts_against if parsed else []):
+            covered = [m for m in parsed.may_change if pattern_covers(pin, m)]
             if _strip_dot_slash(pin.strip()) in may_normalised:
                 out.append(
                     f"items/{path.name}: '{pin}' is listed under both May "
@@ -4293,6 +4296,16 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide",
                     f"change to it as a contradiction. If the item writes the "
                     f"file and its tests assert against the final state, list "
                     f"it only under May change and say so in prose")
+            elif covered:
+                shown = ", ".join(f"'{m}'" for m in covered)
+                out.append(
+                    f"items/{path.name}: '{pin}' under Asserts against covers "
+                    f"{shown}, which May change names — Asserts against means "
+                    f"pinned-not-changed, so `aide scope` will report every "
+                    f"change May change authorises there as a contradiction. "
+                    f"Narrow the pin so it leaves the May change path out, or "
+                    f"put the read-only check in an acceptance criterion's "
+                    f"test instead")
     if missing_assumptions:
         shown = ", ".join(missing_assumptions[:8])
         more = (f" (+{len(missing_assumptions) - 8} more)"
@@ -4724,6 +4737,25 @@ class SpecFinding(NamedTuple):
     message: str
 
 
+def pattern_covers(outer: str, inner: str) -> bool:
+    """True when every file *inner* can name is also covered by *outer*.
+
+    The directional half of `patterns_overlap`, deciding the same three cases:
+    an identical pattern, a subtree wildcard over the other, and a literal path
+    under the other's glob. The direction is what a spec-time lint needs when
+    one side's carve-out is legitimate and the other side's is not.
+    """
+    outer = _strip_dot_slash(outer.strip())
+    inner = _strip_dot_slash(inner.strip())
+    if outer == inner:
+        return True
+    if outer.endswith("/**"):
+        prefix = outer[: -len("/**")]
+        if inner == prefix or inner.startswith(prefix + "/"):
+            return True
+    return not any(c in inner for c in "*?[") and path_matches(inner, outer)
+
+
 def patterns_overlap(a: str, b: str) -> bool:
     """True when two ``## Authorised paths`` patterns can cover the same file.
 
@@ -4734,20 +4766,7 @@ def patterns_overlap(a: str, b: str) -> bool:
     reporting those would mean guessing at a future tree, and this check exists
     to be trusted, not to be argued with.
     """
-    a = _strip_dot_slash(a.strip())
-    b = _strip_dot_slash(b.strip())
-    if a == b:
-        return True
-    for x, y in ((a, b), (b, a)):
-        if x.endswith("/**"):
-            prefix = x[: -len("/**")]
-            if y == prefix or y.startswith(prefix + "/"):
-                return True
-    if not any(c in a for c in "*?[") and path_matches(a, b):
-        return True
-    if not any(c in b for c in "*?[") and path_matches(b, a):
-        return True
-    return False
+    return pattern_covers(a, b) or pattern_covers(b, a)
 
 
 def _built_after(graph: Dict[int, List[int]]) -> Dict[int, Set[int]]:
@@ -8352,9 +8371,14 @@ def _bullet_path(line: str) -> Optional[str]:
     backticks. Returns None for a bullet that declares no path — an unfilled
     ``{{slot}}`` (``aide check`` already errors on those, so failing here as
     well would report one authoring slip twice) or a literal "None."
+
+    A line is a bullet only when its marker is followed by whitespace
+    (`_LIST_MARKER_RE`, issue #270): a wrapped reason whose continuation line
+    opens on ``**bold**`` is emphasis, and reading it as a bullet granted its
+    first backtick span as a phantom authorised path.
     """
     stripped = line.strip()
-    if not stripped or stripped[0] not in "-*+":
+    if not _LIST_MARKER_RE.match(stripped):
         return None
     body = stripped[1:].strip()
     if not body or "{{" in body:
@@ -8381,13 +8405,12 @@ _BACKTICK_SPAN_RE = re.compile(r"`([^`]+)`")
 #: the whole reason for more path position.
 _BULLET_REASON_RE = re.compile(r"\s+[—–-](?:\s+|$)|:")
 
-#: A Markdown list marker, which `_bullet_path` tests only by its first
-#: character. The lint needs the stricter form: a continuation line opening
-#: `**not** in the project group …` is emphasis, not a bullet, and reading it
-#: as one attributes the reason's own spans to a path it invented. The parser
-#: is left alone — its looser test yields a junk pattern that matches no file,
-#: while a lint that reports MORE than the parser reads is a lint nobody
-#: believes twice.
+#: A Markdown list marker: the marker character, then whitespace. A
+#: continuation line opening `**not** in the project group …` is emphasis, not
+#: a bullet. The parser (`_bullet_path`) and the lint both gate on this one
+#: pattern, so they cannot disagree about which lines are bullets — until issue
+#: #270 the parser tested only the first character, and a continuation line
+#: opening on `**Relationship to `vision.md`**` authorised `vision.md`.
 _LIST_MARKER_RE = re.compile(r"[-*+]\s")
 
 
@@ -9646,9 +9669,10 @@ def build_parser() -> argparse.ArgumentParser:
             "place of every other spec lint; an Authorised paths bullet whose "
             "second backtick span or continuation line is silently dropped, "
             "named span by span; one path listed under both May change and "
-            "Asserts against (the exact double-listing only \u2014 a literal "
-            "pin under a May-change glob is the legitimate carve-out, left "
-            "for `aide scope` to judge); an always-authorised path pinned "
+            "Asserts against, or an Asserts-against glob covering a "
+            "May-change path (one direction only \u2014 a literal pin under "
+            "a May-change glob is the legitimate carve-out, left for "
+            "`aide scope` to judge); an always-authorised path pinned "
             "under Asserts against; a marked assumption pinning an engine "
             "whose feature line predates the installed one; every "
             "retracted acceptance criterion, a normal state rather than a "

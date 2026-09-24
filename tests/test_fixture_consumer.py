@@ -1127,6 +1127,41 @@ def test_scope_fails_for_one_file_outside_them(aide, consumer: Path, capsys):
     assert "README.md" in capsys.readouterr().out
 
 
+def test_scope_grants_nothing_to_bold_opening_a_continuation_line(
+        aide, consumer: Path, capsys):
+    """Issue #270: a wrapped reason whose continuation line opened on
+    `**Relationship to `vision.md`**` was read as a bullet, so scope accepted
+    an edit to a repo-root `vision.md` the spec never authorised."""
+    spec = consumer / "docs" / "aide" / "items" / "001-the-greeter.md"
+    spec.write_text(SPEC_001.replace(
+        "- `src/greeter.py` — the function itself",
+        "- `src/greeter.py` — the function itself, and the\n"
+        "  **Relationship to `vision.md`** note in its docstring"),
+        encoding="utf-8")
+    _commit(consumer, "docs: wrap a reason")
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    (consumer / "vision.md").write_text("phantom\n", encoding="utf-8")
+    _commit(consumer, "docs: vision")
+    assert aide.main(["--repo", str(consumer), "scope"]) == 1
+    assert "vision.md" in capsys.readouterr().out
+
+
+def test_check_warns_when_a_pin_glob_covers_a_may_change_path(
+        aide, consumer: Path, capsys):
+    """Issue #269: an Asserts-against glob over a file May change names is a
+    scope FAIL the moment the item uses its authorisation. `check` says so at
+    spec time, and — a warning — still exits 0."""
+    spec = consumer / "docs" / "aide" / "items" / "001-the-greeter.md"
+    spec.write_text(SPEC_001.replace(
+        "- `tests/test_greeter.py` — its tests\n",
+        "- `tests/test_greeter.py` — its tests\n\n**Asserts against:**\n\n"
+        "- `src/*.py` — a read-only sweep over the package\n"),
+        encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "covers 'src/greeter.py'" in capsys.readouterr().out
+
+
 def test_scope_warns_on_a_test_the_spec_did_not_ask_for(aide, consumer: Path, capsys):
     """`test_greet` names neither AC1 nor a Testing Strategy case: a warning
     on the installed verb, and still exit 0 (issue #242)."""

@@ -300,7 +300,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # The double-listing lint compares the two sub-lists by exact path.
         ("one path listed under both May change and Asserts against",
          "test_aide_doc_shape::test_double_listing_a_path_is_reported"),
-        # …and deliberately does not match a glob against a literal.
+        # `pattern_covers(pin, m)` — a pin glob swallowing a May change entry.
+        ("or an Asserts-against glob covering a May-change path",
+         "test_aide_doc_shape::test_a_pin_glob_covering_a_may_change_path_is_reported"),
+        # …and deliberately not the other direction.
         ("a literal pin under a May-change glob is the legitimate carve-out",
          "test_aide_doc_shape::test_a_literal_pin_under_a_may_change_glob_is_silent"),
         # `_always_authorised_paths(ddir_rel)` matched against Asserts against.
