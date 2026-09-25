@@ -168,7 +168,9 @@ python .aide/scripts/aide.py queue tidy <NNN-1>
 ```
 
 Then, if any of its item lines still read 📋, reflect their final `progress.md`
-state (✅ done, ⏸️/❌ if carried or dropped). Skip if this is the first queue.
+state (✅ done, ⏸️/❌ if carried or dropped — a carried item is deferred in
+`progress.md` with `aide progress set NNN deferred --reason …` first, so the
+why is on record). Skip if this is the first queue.
 
 ### Output
 
