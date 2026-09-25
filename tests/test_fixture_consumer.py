@@ -2252,6 +2252,46 @@ def test_check_warns_on_a_positional_insight_citation_without_failing(
     assert aide.main(["--repo", str(consumer), "check"]) == 0
 
 
+def test_check_warns_on_a_test_that_reads_the_live_inbox_or_cites_a_position(
+        aide, consumer: Path):
+    """§6: a living document is no fixture, and a test's positional citation
+    goes stale like a spec's (#295). Warnings, so the gate still passes."""
+    (consumer / "tests" / "test_inbox.py").write_text(
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "def test_the_claim_is_unedited():\n"
+        "    # the claim insight 2 made\n"
+        '    text = (ROOT / "docs" / "aide" / "insights.md").read_text()\n'
+        "    assert text\n", encoding="utf-8")
+    errors, warnings = aide.run_checks(consumer, aide.load_config(consumer))
+    assert errors == []
+    iid = _insight_id(aide, consumer, "greet() does not strip whitespace")
+    assert [w for w in warnings
+            if w.startswith("tests/test_inbox.py:4:") and iid in w]
+    assert [w for w in warnings if w.startswith("tests/test_inbox.py:5:")]
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+
+def test_archive_lists_the_positions_it_renumbers_and_still_moves(
+        aide, consumer: Path, capsys):
+    """The archive run is the last point a position means what its author
+    wrote, so it prints the ID each cited position holds before the move —
+    and proceeds (#295)."""
+    spec = consumer / "docs" / "aide" / "items" / "001-the-greeter.md"
+    spec.write_text(spec.read_text(encoding="utf-8") + "\nFixes insight 3.\n",
+                    encoding="utf-8")
+    _commit(consumer, "cite by position")
+    iid = _insight_id(aide, consumer, "nothing checks the farewell")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "insights", "archive",
+                      "--before", "2026-06-01", "--yes"]) == 0
+    out = capsys.readouterr().out
+    assert [ln for ln in out.splitlines()
+            if ln.strip().startswith("docs/aide/items/001-the-greeter.md:") and iid in ln]
+    assert (consumer / "docs" / "aide" / "insights" / "archive-2026-Q1.md").is_file()
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
 def test_scope_authorises_the_archive_the_verb_just_wrote(aide, consumer: Path):
     """`insights archive` is loop bookkeeping, so item 001 is not out of scope."""
     assert _claim(aide, consumer) == 0

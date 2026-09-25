@@ -2819,6 +2819,60 @@ def _citation_files(repo_root: Path, config: Dict[str, Dict[str, object]],
     return docs, tests
 
 
+def _positional_citations(line: str, pool_size: Callable[[], int]) -> List["re.Match"]:
+    """The citations of an insight *by position* on one line — the one detector.
+
+    ``insight 28``, ``insights.md entry 28`` and ``inbox entry #28`` anywhere;
+    a bare ``entry 28`` only on a line that also says *insight* or *inbox*,
+    since a ledger row or a table entry is an "entry" too. *pool_size* is
+    called only when a match looks like a year: "insights 2026" is a year, not
+    entry 2026, so a bare number that reads as one counts only after "entry"
+    or "#", or when the inbox and its archives really hold that many entries.
+    Shared by `aide check` (``insight_reference_findings``) and by `insights
+    archive` (``insight_position_citations``), so the two can never disagree
+    on what a positional citation is.
+    """
+    positions = list(_INSIGHT_POSITION_RE.finditer(line))
+    if _INSIGHT_CONTEXT_RE.search(line):
+        covered = {m.span("n") for m in positions}
+        positions += [m for m in _ENTRY_POSITION_RE.finditer(line)
+                      if m.span("n") not in covered]
+    out = []
+    for m in positions:
+        n = int(m.group("n"))
+        if (1900 <= n <= 2099 and not re.search(r"(?i)entr|#", m.group(0))
+                and n > pool_size()):
+            continue
+        out.append(m)
+    return out
+
+
+def insight_position_citations(repo_root: Path,
+                               config: Dict[str, Dict[str, object]],
+                               ddir: Path,
+                               pool_size: int) -> List[Tuple[str, int, str, int]]:
+    """Every citation of an insight by position in docs_dir and tests_dir.
+
+    ``(where, lineno, cited text, position)``, in file then line order, over
+    the files ``insight_reference_findings`` reads (``_citation_files`` — the
+    inbox and its archives excepted). What `insights archive` lists before it
+    renumbers the inbox (issue #295): the run is the last point at which a
+    position still means what its author wrote.
+    """
+    out: List[Tuple[str, int, str, int]] = []
+    docs, tests = _citation_files(repo_root, config, ddir)
+    for path in docs + tests:
+        try:
+            text = path.read_text(encoding=_ENCODING)
+        except (OSError, UnicodeDecodeError):
+            continue
+        where = _rel_display(path, repo_root)
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            for m in _positional_citations(line, lambda: pool_size):
+                out.append((where, lineno, m.group(0).strip(), int(m.group("n"))))
+    return out
+
+
 def insight_reference_findings(repo_root: Path,
                                config: Dict[str, Dict[str, object]],
                                ddir: Path) -> Tuple[List[str], List[str]]:
@@ -2833,8 +2887,10 @@ def insight_reference_findings(repo_root: Path,
     * an **ID that matches two different claims** — a warning naming the
       longer IDs that tell them apart; it resolved when written, and only a
       later same-day capture made its short form ambiguous;
-    * in docs_dir only, a **citation by position** — a warning naming the ID
-      the position holds today, since an archive or a merge renumbers it.
+    * a **citation by position** (``_positional_citations``) — a warning
+      naming the ID the position holds today, since an archive or a merge
+      renumbers it. Tests are read too (issue #295): a comment or an assertion
+      message naming "insight 28" goes stale on the same archive a spec does.
 
     Only the cited form is read (``_INSIGHT_ID_CITATION_RE``): the word
     *insight* before the ID, or *entry* on a line that also says *insight* or
@@ -2846,7 +2902,6 @@ def insight_reference_findings(repo_root: Path,
     docs, tests = _citation_files(repo_root, config, ddir)
     if not docs and not tests:
         return errors, warnings
-    doc_set = set(docs)
     # Read lazily and once: most files cite nothing, and a repo whose tests
     # cite no insight never opens the inbox or an archive for this check.
     cache: Dict[str, object] = {}
@@ -2890,21 +2945,8 @@ def insight_reference_findings(repo_root: Path,
                         f"{where}:{lineno}: insight {ref} matches more than one "
                         f"claim captured that day — cite the longer ID of the "
                         f"one meant: {names}")
-            if path not in doc_set:
-                continue
-            positions = list(_INSIGHT_POSITION_RE.finditer(line))
-            if _INSIGHT_CONTEXT_RE.search(line):
-                covered = {m.span("n") for m in positions}
-                positions += [m for m in _ENTRY_POSITION_RE.finditer(line)
-                              if m.span("n") not in covered]
-            for m in positions:
+            for m in _positional_citations(line, lambda: len(_entries())):
                 n = int(m.group("n"))
-                # "insights 2026" is a year, not entry 2026: a bare number that
-                # reads as a year counts only after "entry" or "#", or when the
-                # inbox and its archives really hold that many entries.
-                if (1900 <= n <= 2099 and not re.search(r"(?i)entr|#", m.group(0))
-                        and n > len(_entries())):
-                    continue
                 _entries()
                 live_ids = cache["live_ids"]
                 now = ""
@@ -3806,6 +3848,303 @@ def scope_claim_test_warnings(repo_root: Path,
                 f"pinned file under '## Asserts against' instead "
                 f"(conventions.md §1 → authorised-paths-proof, §6)")
             break
+    return out
+
+
+#: Calls whose first argument is a path the result still names: a `Path`
+#: built from it, a file opened on it, a string joined onto it. The rest of the
+#: arguments of the joining ones are appended as further pieces.
+_PATH_BUILDERS = frozenset({"Path", "PurePath", "PurePosixPath", "PureWindowsPath",
+                            "WindowsPath", "PosixPath", "open", "join", "joinpath",
+                            "resolve", "absolute"})
+#: Calls that stand for the directory the suite runs from — the repository,
+#: under every runner that starts in it.
+_CWD_CALLS = frozenset({"cwd", "getcwd"})
+
+
+def _path_pieces(value: str) -> Optional[List[str]]:
+    """A literal path's pieces, either separator; None for an absolute one."""
+    if value.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:", value):
+        return None
+    return [p for p in re.split(r"[\\/]+", value) if p not in ("", ".")]
+
+
+def _repo_path(node: ast.AST, env: Dict[str, Tuple[str, List[str]]]
+               ) -> Optional[Tuple[str, List[str]]]:
+    """Where *node* points, as far as literals say: ``(root, pieces)``.
+
+    *root* is ``"repo"`` for anything derived from ``__file__``, ``"cwd"`` for
+    a relative literal or ``Path.cwd()``/``os.getcwd()``, ``"other"`` for any
+    name the module never bound to one of those (``tmp_path``, a fixture
+    argument). *pieces* are the literal path components appended after it.
+    ``None`` when the expression is not a path built this way at all.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        pieces = _path_pieces(node.value)
+        return None if pieces is None else ("cwd", pieces)
+    if isinstance(node, ast.Name):
+        if node.id == "__file__":
+            return ("repo", [])
+        return env.get(node.id, ("other", []))
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        left = _repo_path(node.left, env)
+        if left is None or not (isinstance(node.right, ast.Constant)
+                                and isinstance(node.right.value, str)):
+            return None
+        right = _path_pieces(node.right.value)
+        return None if right is None else (left[0], left[1] + right)
+    if isinstance(node, (ast.Attribute, ast.Subscript)):
+        # `Path(__file__).resolve().parents[2]`, `ROOT.parent`: navigation
+        # keeps the anchor and drops the pieces — they no longer end the path.
+        inner = _repo_path(node.value, env)
+        return None if inner is None else (inner[0], [])
+    if isinstance(node, ast.Call):
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        if name in _CWD_CALLS:
+            return ("cwd", [])
+        if name not in _PATH_BUILDERS:
+            return None
+        receiver = (func.value if isinstance(func, ast.Attribute)
+                    and name in ("joinpath", "resolve", "absolute") else None)
+        args = list(node.args)
+        if receiver is not None:
+            base = _repo_path(receiver, env)
+        elif args:
+            base = _repo_path(args.pop(0), env)
+        else:
+            return None
+        if base is None:
+            return None
+        pieces = list(base[1])
+        for a in args:
+            if not (isinstance(a, ast.Constant) and isinstance(a.value, str)):
+                return None
+            more = _path_pieces(a.value)
+            if more is None:
+                return None
+            pieces += more
+        return (base[0], pieces)
+    return None
+
+
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef,
+                *_COMPREHENSIONS)
+#: Capture patterns bind the name they carry (``case [ROOT]:``). Read by type
+#: name, never as ``ast.MatchAs``: the engine's floor is Python 3.9, which has
+#: no ``match`` statement and no such classes.
+_MATCH_CAPTURES = {"MatchAs": "name", "MatchStar": "name", "MatchMapping": "rest"}
+
+
+def _comprehension_walrus_targets(comp: ast.AST) -> Set[str]:
+    """Names a walrus inside *comp* binds — in the enclosing function, as
+    Python does, however deep the comprehensions nest (lambdas and functions
+    inside stop it)."""
+    names: Set[str] = set()
+    stack = [comp]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, ast.NamedExpr) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+        for child in ast.iter_child_nodes(node):
+            if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                      ast.Lambda, ast.ClassDef)):
+                stack.append(child)
+    return names
+
+
+def _scope_parts(scope: ast.AST) -> Tuple[List[ast.AST], List[ast.AST]]:
+    """``(own nodes, child scopes)`` of a module, function, lambda, class or
+    comprehension.
+
+    A nested scope's decorators and default values, and a comprehension's
+    outermost iterable, are evaluated in the enclosing one, so they are walked
+    as its nodes; the rest of the nested scope is not.
+    """
+    if isinstance(scope, _COMPREHENSIONS):
+        roots: List[ast.AST] = ([scope.key, scope.value] if isinstance(scope, ast.DictComp)
+                                else [scope.elt])
+        for i, g in enumerate(scope.generators):
+            roots += [g.target] + ([g.iter] if i else []) + list(g.ifs)
+    elif isinstance(scope, ast.Lambda):
+        roots = [scope.body]
+    elif isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        roots = list(scope.body)
+    else:
+        roots = [scope]
+    own: List[ast.AST] = []
+    children: List[ast.AST] = []
+    stack = list(reversed(roots))
+    while stack:
+        node = stack.pop()
+        if node is not scope and isinstance(node, _SCOPE_NODES):
+            children.append(node)
+            outer: List[ast.AST] = list(getattr(node, "decorator_list", []))
+            if isinstance(node, _COMPREHENSIONS):
+                outer.append(node.generators[0].iter)
+            elif isinstance(node, ast.ClassDef):
+                outer += node.bases + [k.value for k in node.keywords]
+            else:
+                outer += [d for d in node.args.defaults + node.args.kw_defaults if d]
+            stack.extend(reversed(outer))
+            continue
+        own.append(node)
+        stack.extend(reversed(list(ast.iter_child_nodes(node))))
+    return own, children
+
+
+def _local_names(scope: ast.AST, own: List[ast.AST],
+                 children: List[ast.AST]) -> Set[str]:
+    """Every name *scope* binds, so shadows for its whole body — as Python does.
+
+    A comprehension binds its targets and nothing else: a walrus inside one
+    binds in the enclosing scope, so it is counted there.
+    """
+    names: Set[str] = set()
+    if isinstance(scope, _COMPREHENSIONS):
+        for g in scope.generators:
+            names.update(n.id for n in ast.walk(g.target) if isinstance(n, ast.Name))
+        return names
+    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        a = scope.args
+        for arg in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg]:
+            if arg is not None:
+                names.add(arg.arg)
+    declared: Set[str] = set()
+    for node in own:
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            names.add(node.id)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names.update((al.asname or al.name).split(".")[0] for al in node.names)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            names.add(node.name)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            declared.update(node.names)
+        elif type(node).__name__ in _MATCH_CAPTURES:
+            bound = getattr(node, _MATCH_CAPTURES[type(node).__name__], None)
+            if bound:
+                names.add(bound)
+    for c in children:
+        if isinstance(c, _COMPREHENSIONS):
+            names.update(_comprehension_walrus_targets(c))
+        elif not isinstance(c, ast.Lambda):
+            names.add(c.name)
+    return names - declared
+
+
+def _repo_rooted_reads(tree: ast.AST, target: List[str]) -> List[ast.AST]:
+    """Nodes building a repo-rooted path ending in *target*, scope by scope.
+
+    Each module, function, lambda, class body and comprehension resolves
+    names in its own
+    environment: the enclosing one's bindings, minus every name this scope
+    binds anywhere (a parameter such as ``tmp_path``, an assignment, an
+    import), plus its own repo- or cwd-rooted bindings, found to a fixpoint so
+    ``DOCS = ROOT / "docs"`` resolves whichever order the two are written in.
+    A class body's names are not seen by its methods, as in Python.
+    """
+    hits: List[ast.AST] = []
+
+    def visit(scope: ast.AST, parent: Dict[str, Tuple[str, List[str]]]) -> None:
+        own, children = _scope_parts(scope)
+        local = _local_names(scope, own, children) if not isinstance(scope, ast.Module) else set()
+        env = {k: v for k, v in parent.items() if k not in local}
+        assigns = [n for n in own if isinstance(n, (ast.Assign, ast.AnnAssign))]
+        for _ in range(len(assigns) + 1):
+            changed = False
+            for a in assigns:
+                if a.value is None:
+                    continue
+                where = _repo_path(a.value, env)
+                if where is None or where[0] == "other":
+                    continue
+                targets = a.targets if isinstance(a, ast.Assign) else [a.target]
+                for t in targets:
+                    if isinstance(t, ast.Name) and env.get(t.id) != where:
+                        env[t.id] = where
+                        changed = True
+            if not changed:
+                break
+        for node in own:
+            if not isinstance(node, (ast.BinOp, ast.Call)):
+                continue
+            where = _repo_path(node, env)
+            if (where is not None and where[0] in ("repo", "cwd")
+                    and where[1][-len(target):] == target):
+                hits.append(node)
+        inherit = parent if isinstance(scope, ast.ClassDef) else env
+        for child in children:
+            visit(child, inherit)
+
+    visit(tree, {})
+    return hits
+
+
+def insights_fixture_test_warnings(repo_root: Path,
+                                   config: Dict[str, Dict[str, object]]) -> List[str]:
+    """Tests reading the live insight inbox as a fixture.
+
+    conventions.md §6: a test never uses a living document as a fixture. The
+    inbox is the one that cost most (issue #276): merged tests asserted
+    properties of specific ticked entries by reading ``insights.md`` itself,
+    so an archive turned six of them red and the inbox could not be archived
+    until they changed; and a test that pinned one entry's checkbox as
+    unticked blocked every merge the moment triage ticked it.
+
+    **What is recognised.** A path whose last pieces are docs_dir's pieces
+    then ``insights.md``, rooted at the repository: built from ``__file__``
+    (directly, or through a name the module binds to such a path, followed
+    through reassignment), from ``Path.cwd()``/``os.getcwd()``, or given as a
+    relative literal to ``Path(...)``/``open(...)``/``os.path.join(...)``.
+    The pieces may be written as one literal, in either separator, or split
+    across ``/`` operands and join arguments — so ``ROOT / "docs" / "aide" /
+    "insights.md"``, ``ROOT / r"docs\\aide" / "insights.md"`` and
+    ``DOCS / "insights.md"`` after ``DOCS = ROOT / "docs/aide"`` all match.
+
+    **What is not, deliberately.** The same path under any name the module
+    never anchored — ``tmp_path / "docs" / "aide" / "insights.md"`` is how a
+    test *should* build its inbox, and a helper argument named ``repo`` is
+    indistinguishable from it — and a bare string that no path call receives
+    (a docstring, an assertion message).
+
+    **The limit, stated rather than left to be discovered:** literals only. A
+    root imported from another module or returned by a fixture, a path
+    assembled by an f-string or ``+``, a glob, or docs_dir itself read from
+    ``aide.toml`` at test time is not seen; nor is any other living document
+    under docs_dir, which §6's rule covers and this lint does not. Those are
+    the misses. Names are resolved per scope, as Python does
+    (``_repo_rooted_reads``): a function that binds ``ROOT = tmp_path``, takes
+    a parameter of that name or captures it in a ``case`` pattern shadows the
+    module's ``ROOT`` for its whole body, and a comprehension's target shadows
+    it inside that comprehension only. What scoping cannot settle is order
+    within one scope: bindings there are not read by control flow, so a name
+    bound both to the repository and, on another branch or line, to
+    ``tmp_path`` reads as the repository — a false positive. Silence means
+    "no read of the recorded shape", never "this suite builds its own
+    fixtures".
+    """
+    ddir = docs_dir(repo_root, config)
+    try:
+        rel = ddir.resolve().relative_to(repo_root.resolve())
+    except ValueError:
+        return []           # a docs_dir outside the repo is no test's fixture
+    target = [p for p in rel.parts if p not in ("", ".")] + ["insights.md"]
+    out: List[str] = []
+    for path in _test_files(repo_root, config):
+        try:
+            tree = ast.parse(path.read_text(encoding=_ENCODING))
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        hits = _repo_rooted_reads(tree, target)
+        hit = min(hits, key=lambda n: (n.lineno, n.col_offset)) if hits else None
+        if hit is not None:
+            out.append(
+                f"{_rel_display(path, repo_root)}:{hit.lineno}: reads the live "
+                f"{'/'.join(target)} — a living document is no fixture: an "
+                f"archive, a tick or a merge changes it under the test. Build "
+                f"the entries the test needs in tmp_path instead "
+                f"(conventions.md §6)")
     return out
 
 
@@ -5243,11 +5582,13 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     """Return ``(errors, warnings)``. Empty errors == pass.
 
     Every check above the two early returns below runs before, and survives,
-    them, for one of two reasons. The six test-hygiene lints —
+    them, for one of two reasons. The seven test-hygiene lints —
     `absolute_path_test_warnings`, `separator_dependent_test_warnings`,
     `cli_subprocess_test_warnings`, `subprocess_encoding_test_warnings`,
-    `gitattributes_eol_pin_warnings`, `scope_claim_test_warnings` — read
-    `tests_dir` and never touch `docs_dir`, and `insight_reference_findings`
+    `gitattributes_eol_pin_warnings`, `scope_claim_test_warnings`,
+    `insights_fixture_test_warnings` — read `tests_dir` and never touch
+    `docs_dir` (the last reads docs_dir's *name* from the config, to know
+    what path a test must not open), and `insight_reference_findings`
     reads both, so they are the ones that make this function worth calling in
     a repo with no document set. The rest *are* document checks; they simply
     find nothing to say when `docs_dir` is absent, so keeping them costs
@@ -5281,6 +5622,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(subprocess_encoding_test_warnings(repo_root, config))
     warnings.extend(gitattributes_eol_pin_warnings(repo_root, config))
     warnings.extend(scope_claim_test_warnings(repo_root, config))
+    warnings.extend(insights_fixture_test_warnings(repo_root, config))
     warnings.extend(header_blockquote_warnings(ddir))
     warnings.extend(root_document_warnings(ddir))
     # A docs_dir outside the repo falls back to its absolute spelling, which
@@ -6992,6 +7334,62 @@ def _cmd_insights_tick(path: Path, text: str, ddir: Path, ddir_rel: str,
     return 0
 
 
+def archive_position_map(text: str, remaining: str) -> Dict[int, Optional[int]]:
+    """Old live position → new live position (None: archived) for one archive.
+
+    ``archive_insight_text`` only removes whole entries and never reorders, so
+    the remaining entries are a subsequence of the original with their entry
+    lines unchanged — a walk matching entry lines in order recovers where each
+    one went. Only positions that change are returned: an entry above the
+    first moved one keeps its number and every citation of it stays true.
+    """
+    before = parse_insights(text)
+    after = parse_insights(remaining)
+    out: Dict[int, Optional[int]] = {}
+    j = 0
+    for e in before:
+        if j < len(after) and after[j].raw == e.raw:
+            if after[j].ordinal != e.ordinal:
+                out[e.ordinal] = after[j].ordinal
+            j += 1
+        else:
+            out[e.ordinal] = None
+    return out
+
+
+def _print_invalidated_citations(text: str, remaining: str, ddir: Path,
+                                 repo_root: Path, config, dry_run: bool) -> None:
+    """List every positional citation this archive changes the meaning of.
+
+    Each with the ID its position holds *before* the move, which is the
+    mapping an author needs to rewrite it and the one thing the archive run is
+    the last to know (issue #295). A warning, not a refusal: the listing
+    itself preserves the mapping, and the move already waits on --yes.
+    """
+    shifted = archive_position_map(text, remaining)
+    if not shifted:
+        return
+    pool = load_insight_pool(ddir)
+    ids = insight_ids([e for _, e in pool])
+    live_ids = [i for (rel, _), i in zip(pool, ids) if rel == "insights.md"]
+    hits = [c for c in insight_position_citations(repo_root, config, ddir, len(pool))
+            if c[3] in shifted]
+    if not hits:
+        return
+    verb = "would renumber" if dry_run else "renumbers"
+    print(f"aide insights archive: this archive {verb} {len(hits)} citation"
+          f"{'' if len(hits) == 1 else 's'} by position — rewrite each as the "
+          f"ID its position holds before the move (conventions.md §1 → "
+          f"insights.md):")
+    for where, lineno, cited, n in hits:
+        iid = live_ids[n - 1] if n <= len(live_ids) else None
+        dest = shifted[n]
+        fate = "archived" if dest is None else f"entry {dest} after it"
+        print(f"  {where}:{lineno}: `{cited}` is insight "
+              f"{iid or '(no ID — the entry does not parse)'} before the move "
+              f"({fate})")
+
+
 def _cmd_insights_archive(path: Path, text: str, ddir: Path, ddir_rel: str,
                           repo_root: Path, config, args: argparse.Namespace) -> int:
     if not _DATE_RE.match(args.before or ""):
@@ -7018,6 +7416,8 @@ def _cmd_insights_archive(path: Path, text: str, ddir: Path, ddir_rel: str,
         total += entries
         print(f"  {insight_archive_path(ddir, quarter).relative_to(repo_root).as_posix()}"
               f" ← {entries} closed entr{'y' if entries == 1 else 'ies'}")
+    _print_invalidated_citations(text, remaining, ddir, repo_root, config,
+                                 dry_run=not args.yes)
     if not args.yes:
         print(f"aide insights archive: dry run — {total} entr"
               f"{'y' if total == 1 else 'ies'} would move; re-run with --yes")
@@ -11589,11 +11989,11 @@ def build_parser() -> argparse.ArgumentParser:
             "insight, or after entry on a line that says insight or inbox, "
             "that resolves to no entry in insights.md or "
             "insights/archive-*.md is an ERROR; one that matches two "
-            "different claims is a warning naming their longer IDs; and, in "
-            "docs/aide only, a citation by position \u2014 insight 28, "
-            "insights.md entry 28, or entry 28 on a line that says insight "
-            "or inbox \u2014 is a warning naming the ID that position holds "
-            "today."))
+            "different claims is a warning naming their longer IDs; and a "
+            "citation by position \u2014 insight 28, insights.md entry 28, "
+            "or entry 28 on a line that says insight or inbox \u2014 is a "
+            "warning naming the ID that position holds today, in a test as "
+            "in a document."))
     p_check.add_argument("--queue", type=int, default=None,
                          help="also check this queue's specs against each other "
                               "(scope overlaps, pinned state, dependency graph)")
@@ -11755,7 +12155,11 @@ def build_parser() -> argparse.ArgumentParser:
             "insights/archive-YYYY-QN.md, each with its trail, line for line; "
             "an entry it cannot date is named and left behind; the archive is "
             "frozen and no longer shape-checked; what remains is renumbered, "
-            "so re-run list\n"
+            "so re-run list. Every citation by position in docs/aide or "
+            "tests_dir whose number the move changes is listed before "
+            "anything moves, dry run or not, with the ID that position holds before the move and "
+            "whether it is archived or renumbered; the archive still "
+            "proceeds\n"
             "resolve: write the union of a conflicted inbox — the shared "
             "history, then each side's new entries in capture order; a tick "
             "on either side stands and keeps its pointer, trail lines merge "

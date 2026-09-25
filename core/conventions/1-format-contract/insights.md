@@ -75,8 +75,10 @@ that just ran `list`, and nowhere else.
 - **`aide check` holds citations to the inbox.** A cited ID that names no
   entry in `insights.md` or its archives is an **error** — it blocks a merge,
   like every check error. A cited ID matching two different claims, and a
-  citation by position in `docs/aide/**`, are warnings naming the ID to write.
-  The inbox and its archives are not swept.
+  citation by position in `docs/aide/**` or `tests_dir`, are warnings naming
+  the ID to write. The inbox and its archives are not swept. `insights
+  archive` lists the positional citations it is about to renumber, each with
+  the ID its position holds before the move — rewrite them from that list.
 - **Human gates are not covered.** A gate in `progress.md` is still cited by
   its row; whether it gets a durable handle too is aide-loop issue #293.
 
@@ -190,7 +192,15 @@ whichever of them the entry is heading for.
   word costs the author nothing and makes a match a citation by construction.
   A positional citation is only a warning, because what a number meant when
   written cannot be recovered from the file — the warning names what that
-  number holds *today*, which the author confirms.
+  number holds *today*, which the author confirms. Except once: the archive
+  run still knows what every number meant, so it prints the mapping before
+  the move rather than refusing — the listing preserves it, and the move
+  already waits on `--yes` (issue #295). After it, the warning's "today" names
+  whatever now sits at that number.
+- **Why tests are read for positions too.** A test comment or assertion
+  message naming "insight 28" goes stale on the next archive or merge exactly
+  as a spec does, and it is the test, not the spec, that the next author
+  trusts (issue #295).
 - **Why the inbox and its archives are not swept.** Their claims are immutable,
   so a finding on one could never be cleared — the same reason archived
   entries are not shape-checked.

@@ -121,6 +121,57 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.10.0] — 2026-09-25
+
+### Added
+
+- **§6: a test never uses a living document as a fixture, and `aide check`
+  warns on a test that reads the live insight inbox (issue #295).** The part
+  of #276 that cost the consumer most was tests: merged tests asserted
+  properties of specific ticked entries by reading `docs/aide/insights.md`
+  itself, so a measured `insights archive` turned six of them red, and a test
+  that pinned an entry's checkbox as unticked blocked every merge the moment
+  triage ticked it. §6 now says so in its core — nothing under `docs/aide/**`
+  supplies a test's input or expected value; the test builds the minimal
+  shape it needs in `tmp_path` — and it reaches the test-writer through the
+  generated `aide-test-hygiene` skill with no second copy. The new lint,
+  `insights_fixture_test_warnings`, is the seventh test-hygiene lint: a path
+  whose last pieces are the configured docs_dir then `insights.md`, rooted at
+  the repository — built from `__file__` (directly or through a name the
+  module binds), from `Path.cwd()`/`os.getcwd()`, or a relative literal given
+  to `Path`/`open`/`os.path.join` — in one literal of either separator or
+  split across `/` and join arguments. Names resolve per scope, as Python's
+  do: a function that binds `ROOT = tmp_path`, takes a parameter of that
+  name or captures it in a `case` pattern shadows the module's `ROOT` for
+  its whole body, and a comprehension's target shadows it inside that
+  comprehension only. The same path under `tmp_path` or a helper argument is
+  not reported; neither is a bare string no path call receives. Its docstring
+  states the limits: it reads literals only, so a root imported from another
+  module or returned by a fixture, an f-string or `+` path, a glob, or any
+  other living document goes unseen; and within one scope bindings are not
+  ordered by control flow, so a name bound both to the repository and to
+  `tmp_path` reads as the repository.
+- **`aide insights archive` lists the positional citations it is about to
+  renumber (issue #295).** After an archive the positional warning's hint
+  names whatever now sits at that number; the archive run is the last point
+  at which a position still means what its author wrote. Before anything
+  moves — in the dry run and with `--yes` alike — the verb prints each
+  citation by position in `docs/aide/**` and `tests_dir` whose number the
+  move changes, with the ID that position holds *before* the move and
+  whether that entry is archived or becomes entry M. It warns rather than
+  refusing: the listing preserves the mapping, the move already waits on
+  `--yes`, and a new required flag would change the verb for scripted
+  callers. Exit codes are unchanged. `insights -h` states it; §1 →
+  `insights.md` names it.
+
+### Changed
+
+- **The positional-citation warning reads `tests_dir` too (issue #295).** A
+  test comment or assertion message naming "insight 28" goes stale on the
+  next archive or merge exactly as a spec does; 2.9.0 read `docs/aide/**`
+  only. One detector (`_positional_citations`) now serves both `aide check`
+  and `insights archive`. `aide check -h` and §1 → `insights.md` say so.
+
 ## [2.9.0] — 2026-09-25
 
 ### Added
