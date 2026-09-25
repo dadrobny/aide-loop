@@ -8833,14 +8833,33 @@ def base_suite_run(repo_root: Path, argv: List[str], sha: str,
     if not tree_is_clean(repo_root):
         return None, ("the post-merge run left tracked changes in the tree, "
                       "so the base cannot be checked out beside them")
-    switched = git(["switch", "--detach", sha], repo_root, check=False)
-    if switched.returncode != 0:
-        return None, (f"the base could not be checked out: "
-                      f"{(switched.stderr or switched.stdout).strip()}")
+    # The switch sits inside the `try`, and the `finally` asks git where HEAD
+    # is rather than trusting a flag: a signal landing between the switch and
+    # the line after it would otherwise leave HEAD detached with no restore.
     try:
-        return recorded_suite_run(repo_root, argv, identify=True), ""
+        switched = git(["switch", "--detach", sha], repo_root, check=False)
+        if switched.returncode != 0:
+            return None, (f"the base could not be checked out: "
+                          f"{(switched.stderr or switched.stdout).strip()}")
+        run = recorded_suite_run(repo_root, argv, identify=True)
     finally:
-        git(["switch", "--discard-changes", base], repo_root, check=False)
+        back = None
+        if _current_branch(repo_root) != base:
+            back = git(["switch", "--discard-changes", base], repo_root,
+                       check=False)
+    # Verified, never assumed: every commit after this — the tick, the ledger
+    # row, the inbox entry — lands on whatever HEAD is, and a detached one
+    # carries them onto no branch at all.
+    if _current_branch(repo_root) != base:
+        detail = ((back.stderr or back.stdout).strip() if back is not None
+                  else "")
+        raise RuntimeError(
+            f"after the run at the base, {base} could not be checked out "
+            f"again, so HEAD is still detached at {sha[:10]}"
+            + (f" ({detail})" if detail else "")
+            + f". Run 'git switch {base}' before anything else, then re-run "
+              f"the merge")
+    return run, ""
 
 
 def _judge_red_run(repo_root: Path, argv: List[str], post: SuiteRun,

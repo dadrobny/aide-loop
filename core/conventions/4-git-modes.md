@@ -143,7 +143,11 @@ tag, a raw commit or a remote-tracking ref (`origin/main`) is refused.
   runner's output would admit on a misreading. An order-dependent option
   (`-x`, `--maxfail`, `--lf`, `--ff`, `--sw`) makes the set a property of the
   run, and an exit other than "tests failed" means the report is not the whole
-  suite — both would compare two partial pictures.
+  suite — both would compare two partial pictures. Order set in the project's
+  own configuration — a random-order plugin enabled by default, say — is not
+  visible in the command, and is not detected: such a suite's failure set is
+  as much the run's as the tree's, and a comparison over it can admit an
+  order-sensitive regression by coincidence.
 - **Why the base run is stored.** A retried merge — after a fix commit, or a
   failed push — would otherwise re-run the base it has already run. Results
   are kept under git's own directory, keyed by tree and exact command, never

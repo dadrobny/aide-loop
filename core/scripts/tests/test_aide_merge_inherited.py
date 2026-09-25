@@ -544,6 +544,58 @@ def test_a_signal_during_the_base_run_leaves_the_base_checked_out(
     assert _status(repo, 1) != "complete"
 
 
+def test_a_signal_just_after_the_base_checkout_still_switches_back(
+        tmp_path: Path, fake, monkeypatch):
+    """The detaching switch is inside the restoring `try`: a signal landing
+    before the suite starts still puts the base branch back."""
+    repo = _init_repo(tmp_path / "repo")
+    _claim(repo)
+    _work(repo, "b")
+    real_git = aide.git
+
+    def git(args, repo_root, check=True):
+        res = real_git(args, repo_root, check)
+        if args[:2] == ["switch", "--detach"]:
+            raise aide._Terminated(15)
+        return res
+
+    monkeypatch.setattr(aide, "git", git)
+    with pytest.raises(aide._Terminated):
+        _merge(repo, 1)
+    monkeypatch.setattr(aide, "git", real_git)
+
+    assert _current(repo) == "main"
+    assert "aide/001-bounds" in _branches(repo)
+    assert _status(repo, 1) != "complete"
+
+
+def test_a_failed_switch_back_stops_before_the_tick(
+        tmp_path: Path, fake, monkeypatch):
+    """Nothing is committed onto a detached HEAD: a base branch that cannot be
+    checked out again after the base run stops the merge, and says how."""
+    repo = _init_repo(tmp_path / "repo")
+    _claim(repo)
+    _work(repo, "b")
+    head = _run(["git", "rev-parse", "HEAD"], repo).stdout.strip()
+    real_git = aide.git
+
+    def git(args, repo_root, check=True):
+        if args[:2] == ["switch", "--discard-changes"]:
+            return subprocess.CompletedProcess(args, 128, "", "index.lock exists")
+        return real_git(args, repo_root, check)
+
+    monkeypatch.setattr(aide, "git", git)
+    with pytest.raises(RuntimeError, match="git switch main"):
+        _merge(repo, 1)
+    monkeypatch.setattr(aide, "git", real_git)
+
+    assert _current(repo) == "HEAD"
+    assert "aide/001-bounds" in _branches(repo)
+    assert _run(["git", "rev-parse", "HEAD"], repo).stdout.strip() != head
+    _run(["git", "switch", "main"], repo)
+    assert _status(repo, 1) != "complete"
+
+
 def test_the_claim_branch_is_deleted_inside_the_restoring_window(
         tmp_path: Path, monkeypatch):
     """A signal landing just after `git branch -d` must still restore the
