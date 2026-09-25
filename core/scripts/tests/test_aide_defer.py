@@ -339,6 +339,234 @@ def test_a_file_the_verbs_wrote_raises_no_warning(tmp_path: Path, capsys):
 
 
 # --------------------------------------------------------------------------- #
+# check — every derived cell against the rollup (issue #285)
+# --------------------------------------------------------------------------- #
+def _stage2(text: str, icon: str) -> str:
+    """Stage 2's header and summary row both typed *icon*."""
+    text = text.replace("## Stage 2 — Reports — 🚧", f"## Stage 2 — Reports — {icon}")
+    return text.replace("| 2 | Reports | G2 | 🚧 |", f"| 2 | Reports | G2 | {icon} |")
+
+
+def _about(findings, prefix):
+    return [f for f in findings if f.startswith(prefix)]
+
+
+ALL_PLANNED = (PROGRESS.replace("- ✅ Summary. *(Item 030)*", "- 📋 Summary. *(Item 030)*")
+               .replace("- 🚧 Export, a", "- 📋 Export, a")
+               .replace("| G2 Reports | Stage 2 | 🚧 |", "| G2 Reports | Stage 2 | 📋 |"))
+
+
+@pytest.mark.parametrize("text, cells, derived", [
+    # 1: 🚧 cells over bullets that are all 📋.
+    (ALL_PLANNED, "summary 🚧 in-progress and header 🚧 in-progress", "📋 planned"),
+    # 2: 📋 cells over bullets rolling up to 🚧.
+    (_stage2(PROGRESS, "📋"), "summary 📋 planned and header 📋 planned", "🚧 in-progress"),
+    # 3: 🔍 cells — the rollup never yields 🔍; a 🔍 item holds its stage at 🚧.
+    (_stage2(PROGRESS, "🔍"), "summary 🔍 in-review and header 🔍 in-review", "🚧 in-progress"),
+], ids=["cells-over-planned", "planned-over-started", "in-review"])
+def test_a_stage_cell_the_rollup_does_not_derive_is_one_warning(
+        tmp_path: Path, text, cells, derived):
+    errors, warnings = _checks(_repo(tmp_path, text))
+    assert errors == []
+    hits = _about(warnings, "stage 2:")
+    assert len(hits) == 1, warnings
+    assert hits[0].startswith(f"stage 2: {cells} but its deliverables roll up to {derived}")
+    assert not _about(warnings, "objective "), warnings
+
+
+def test_a_header_marked_done_with_no_summary_row_is_an_error(tmp_path: Path):
+    """Case 4: the ✅ error and the header comparison both used to need a
+    summary row to compare against."""
+    text = PROGRESS.replace("| 2 | Reports | G2 | 🚧 |\n", "")
+    text = text.replace("## Stage 2 — Reports — 🚧", "## Stage 2 — Reports — ✅")
+    errors, warnings = _checks(_repo(tmp_path, text))
+    assert errors == ["stage 2: header marked ✅ but has non-complete deliverables "
+                      "— they roll up to 🚧 in-progress"], errors
+    assert not _about(warnings, "stage 2:"), warnings
+
+
+def test_an_objective_marked_done_over_an_open_stage_is_an_error(tmp_path: Path):
+    """Case 5: the ✅-summary over-claim, one table over."""
+    text = PROGRESS.replace("| G2 Reports | Stage 2 | 🚧 |", "| G2 Reports | Stage 2 | ✅ |")
+    errors, warnings = _checks(_repo(tmp_path, text))
+    assert len(errors) == 1 and errors[0].startswith(
+        "objective G2 marked ✅ but the stages it names (stage 2 🚧) roll up "
+        "to 🚧 in-progress"), errors
+    assert not _about(warnings, "objective "), warnings
+
+
+@pytest.mark.parametrize("icon, name, fix", [
+    ("📋", "planned", "set it to ✅"),
+    ("⏸️", "deferred", "restore ✅"),
+])
+def test_an_objective_row_below_its_done_stage_is_a_warning(
+        tmp_path: Path, icon, name, fix):
+    """Case 6, and the hand-set ⏸️ Objective row: the writer leaves it
+    standing (`_held_by_hand`), and check names it while it disagrees."""
+    text = PROGRESS.replace("| G1 Rules | Stage 1 | ✅ |", f"| G1 Rules | Stage 1 | {icon} |")
+    errors, warnings = _checks(_repo(tmp_path, text))
+    assert errors == []
+    hits = _about(warnings, "objective G1")
+    assert len(hits) == 1, warnings
+    assert hits[0].startswith(f"objective G1: {icon} {name} but the stages it "
+                              f"names (stage 1 ✅) roll up to ✅ complete")
+    assert hits[0].endswith(fix), hits[0]
+
+
+def test_a_hand_set_deferred_objective_over_open_stages_is_a_warning(tmp_path: Path):
+    text = PROGRESS.replace("| G2 Reports | Stage 2 | 🚧 |", "| G2 Reports | Stage 2 | ⏸️ |")
+    assert aide.set_item_status(text, 27, "complete") == text  # left standing
+    _, warnings = _checks(_repo(tmp_path, text))
+    hits = _about(warnings, "objective G2")
+    assert len(hits) == 1 and "roll up to 🚧 in-progress" in hits[0], warnings
+    assert "aide progress set NNN deferred --reason" in hits[0]
+
+
+def test_an_objective_naming_no_stage_section_is_a_warning(tmp_path: Path):
+    """Case 7: `Stage 9` has no section, so nothing derives the row's ✅."""
+    text = PROGRESS.replace("| G1 Rules | Stage 1 | ✅ |", "| G1 Rules | Stage 9 | ✅ |")
+    errors, warnings = _checks(_repo(tmp_path, text))
+    assert errors == []
+    hits = _about(warnings, "objective G1")
+    assert hits == ["objective G1: Delivered by 'Stage 9' names no stage with a "
+                    "'## Stage N' section, so nothing derives its ✅ — name the "
+                    "stage that delivers it"], warnings
+
+
+TARGET_G1 = ("\n## Outcome targets\n\n"
+             "| Target | Objective | Attempted by | Status | Evidence / follow-up |\n"
+             "|--------|-----------|--------------|--------|----------------------|\n"
+             "| Rules hold | G1 | Stage 1 | ❓ Unverified | — |\n")
+
+
+def test_an_objective_held_by_its_target_is_compared_with_in_progress(tmp_path: Path):
+    """The writer holds a ✅ derivation at 🚧 under a target not ✅ Met, so
+    🚧 is what the row is compared with: 🚧 passes, 📋 is a warning, and a
+    ✅ row is the target comparisons' alone (their warning, not ours)."""
+    base = PROGRESS + TARGET_G1
+    for icon, expect in (("🚧", None), ("📋", "roll up to 🚧 in-progress (held "
+                                            "below ✅ by an Outcome target not ✅ Met)")):
+        text = base.replace("| G1 Rules | Stage 1 | ✅ |", f"| G1 Rules | Stage 1 | {icon} |")
+        errors, warnings = _checks(_repo(tmp_path, text, name=f"g1-{icon}"))
+        hits = _about(warnings, "objective G1")
+        assert errors == []
+        if expect is None:
+            assert hits == [], warnings
+        else:
+            assert len(hits) == 1 and expect in hits[0], warnings
+    errors, warnings = _checks(_repo(tmp_path, base, name="g1-done"))
+    assert errors == []
+    g1 = [w for w in warnings if "G1" in w]
+    assert len(g1) == 1 and "outcome target 'Rules hold' is not ✅ Met" in g1[0], g1
+
+
+def test_an_excluded_header_or_objective_is_not_compared(tmp_path: Path):
+    """❌ is a scope decision the bullets do not speak for: a ❌ Objective
+    row over a ✅ stage is silent, and a ❌ header over 🚧 bullets meets only
+    the header-against-summary comparison, never the rollup."""
+    text = PROGRESS.replace("| G1 Rules | Stage 1 | ✅ |", "| G1 Rules | Stage 1 | ❌ |")
+    text = text.replace("## Stage 2 — Reports — 🚧", "## Stage 2 — Reports — ❌")
+    errors, warnings = _checks(_repo(tmp_path, text))
+    assert errors == []
+    assert not _about(warnings, "objective "), warnings
+    assert _about(warnings, "stage 2:") == [
+        "stage 2: header excluded disagrees with summary in-progress"], warnings
+
+
+def test_each_cell_gets_one_message(tmp_path: Path):
+    """A ✅ summary row over bullets that roll up to ⏸️ is the error alone —
+    until 2.6.0 it was the error and the ⏸️ warning. A ⏸️ header beside it is
+    the header's own warning, and no header-against-summary warning joins
+    them. A ✅ Objective row over an open stage and a ❌ Not met target is
+    the derived-cell error alone, not the target's too."""
+    text = PROGRESS.replace("- 🚧 Export, a", "- ⏸️ Export, a")
+    text = text.replace("- 📋 Charts.", "- ⏸️ Charts.")
+    text = text.replace("| 2 | Reports | G2 | 🚧 |", "| 2 | Reports | G2 | ✅ |")
+    text = text.replace("## Stage 2 — Reports — 🚧", "## Stage 2 — Reports — 🔍")
+    text = text.replace("| G2 Reports | Stage 2 | 🚧 |", "| G2 Reports | Stage 2 | ✅ |")
+    text += ("\n## Outcome targets\n\n"
+             "| Target | Objective | Attempted by | Status | Evidence / follow-up |\n"
+             "|--------|-----------|--------------|--------|----------------------|\n"
+             "| Reports read | G2 | Stage 2 | ❌ Not met | — |\n")
+    errors, warnings = _checks(_repo(tmp_path, text))
+    assert _about(errors, "stage 2:") == [
+        "stage 2: summary marked ✅ but has non-complete deliverables — they "
+        "roll up to ⏸️ deferred"], errors
+    assert len(_about(warnings, "stage 2:")) == 1, warnings
+    assert _about(warnings, "stage 2:")[0].startswith(
+        "stage 2: header 🔍 in-review but its deliverables roll up to ⏸️ deferred")
+    g2 = [f for f in errors + warnings if "G2" in f]
+    assert len(g2) == 1 and g2[0].startswith("objective G2 marked ✅ but the stages"), g2
+
+
+MULTI = """\
+# Demo — Progress
+
+## Stage summary
+
+| Stage | Title | Objectives | Status |
+|-------|-------|-----------|--------|
+| 1 | Rules | G1 | 📋 |
+| 2 | Reports | G1, G2 | 📋 |
+| 3 | Charts | G2 | 📋 |
+
+## Objective coverage
+
+| Objective | Delivered by | Status |
+|-----------|--------------|--------|
+| G1 Rules and reports | Stage 1, Stage 2 | 📋 |
+| G2 Everything shown | Stages 2, 3 | 📋 |
+
+## Stage 1 — Rules — 📋
+
+**Deliverables.**
+- 📋 Bounds. *(Item 010)*
+- 📋 Limits. *(Item 011)*
+
+## Stage 2 — Reports — 📋
+
+**Deliverables.**
+- 📋 Summary. *(Item 020)*
+
+## Stage 3 — Charts — 📋
+
+**Deliverables.**
+- 📋 Charts. *(Item 030)*
+"""
+
+
+def test_a_multi_stage_file_the_verbs_wrote_trips_no_derived_cell(tmp_path: Path):
+    """Objective rows over two stages each, driven by every verb that moves a
+    bullet — forward, deferred, resumed, reopened — with the file checked
+    after each step. The comparison is the writer's derivation, so a verb
+    can never write what `check` then reports."""
+    date = "2026-09-25"
+    steps = [
+        lambda t: aide.set_item_status(t, 10, "in-progress"),
+        lambda t: aide.set_item_status(t, 20, "in-review"),
+        lambda t: aide.defer_item(t, 11, "later", date)[0],
+        lambda t: aide.set_item_status(t, 10, "complete"),
+        lambda t: aide.set_item_status(t, 20, "complete"),
+        lambda t: aide.defer_item(t, 30, "later", date)[0],
+        lambda t: aide.reopen_item(t, 20, "regressed", date)[0],
+        lambda t: aide.set_item_status(t, 30, "in-progress"),
+        lambda t: aide.set_item_status(t, 11, "complete"),
+        lambda t: aide.set_item_status(t, 20, "complete"),
+        lambda t: aide.set_item_status(t, 30, "complete"),
+    ]
+    text = MULTI
+    assert aide.derived_cell_findings(text.splitlines()) == ([], [], set())
+    for n, step in enumerate(steps):
+        text = step(text)
+        assert aide.derived_cell_findings(text.splitlines()) == ([], [], set()), (n, text)
+    assert "| G1 Rules and reports | Stage 1, Stage 2 | ✅ |" in text
+    assert "| G2 Everything shown | Stages 2, 3 | ✅ |" in text
+    errors, warnings = _checks(_repo(tmp_path, text))
+    assert errors == []
+    assert not [w for w in warnings if w.startswith(("stage ", "objective "))], warnings
+
+
+# --------------------------------------------------------------------------- #
 # the CLI — refusals
 # --------------------------------------------------------------------------- #
 def test_set_deferred_refuses_without_a_stated_reason_and_writes_nothing(

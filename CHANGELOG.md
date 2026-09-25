@@ -121,6 +121,57 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.6.0] — 2026-09-25
+
+### Changed
+
+- **`aide check` compares every derived cell with the rollup — stage header,
+  summary row and Objective row — for every status, not only ✅ and ⏸️
+  (issue #285).** §1 → `progress.md` has said that an icon typed over a
+  derived cell is drift `aide check` reports; until now the check held that
+  for a ✅ summary row, ✅ bullets under a lesser summary row, a header
+  disagreeing with its summary row and (2.5.0) a ⏸️ cell, and nothing else. A
+  🚧 over bullets that are all 📋, a 📋 over bullets that roll up to 🚧, a 🔍
+  the rollup never yields, a ✅ header on a stage with no summary row, and
+  every Objective row — a ✅ one over an open stage included, the over-claim
+  the ✅-summary error exists to stop, one table over — passed clean, as did
+  an Objective row whose Delivered by names a stage with no section.
+  - **One derivation.** The check takes the writer's own rollup:
+    `rollup_status` over a stage's bullets, and for an Objective row the same
+    rule over the rollups of the stages it names (`objective_rollup`, which
+    `aide progress` now calls too), 🚧 in place of ✅ under an Outcome target
+    not yet ✅ Met. None of the writer's restraint applies — it never
+    downgrades a cell outside a reopen or a deferral, and leaves a hand-set
+    ⏸️ standing, which are rules about when a verb may write, not about what
+    a cell should say — so no sequence of verbs writes a file `check` then
+    reports, and a hand-set ⏸️ Objective row is now named while it disagrees,
+    as a ⏸️ stage cell already was.
+  - **Severity follows the stage rules.** A ✅ the rollup does not support is
+    an **error** — on a summary row as before, and now on a stage header and
+    an Objective row. Every other disagreement is a warning, and so is an
+    Objective row whose Delivered by cell names no stage with a section.
+  - **One message per cell.** A ✅ cell over a rollup that is not ✅ is its
+    error alone (a ✅ summary row over a ⏸️ rollup was the error and the ⏸️
+    warning); a stage's other off cells share one warning, which names each
+    and the rollup; the header-against-summary warning is raised only where
+    neither cell was named, which leaves a stage with no deliverable bullet
+    and a ❌ header; and an Objective row named against its rollup gets no
+    Outcome target message on top. A ❌ cell is never compared with the
+    rollup — it is a scope decision the bullets do not speak for, and the
+    rollup never derives ❌ — and a ❌ summary row still drops its stage,
+    header included.
+  - **What a consumer may see on update.** A `progress.md` whose summary
+    rows, headers or Objective rows were maintained by hand will meet new
+    warnings wherever a cell is not what its bullets roll up to, and a new
+    **error** wherever a stage header or Objective row says ✅ over work that
+    has not all shipped. An error moves the exit code, and since 1.53.0
+    (#232) `aide merge` runs these checks before it ticks an item, so an
+    unsupported ✅ blocks `aide merge` until it is corrected: set the cell to
+    the rollup the message names, or move the bullets with `aide progress
+    set`. `aide check -h` states the comparison, and §1 → `progress.md`
+    extends the hand-set ⏸️ rule to Objective rows and says a ❌ cell is
+    outside the comparison.
+
 ## [2.5.0] — 2026-09-24
 
 ### Added
