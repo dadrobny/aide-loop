@@ -121,6 +121,52 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.9.0] — 2026-09-25
+
+### Added
+
+- **Insight entries have an ID, and `aide check` holds citations to it (issue
+  #276).** An entry's only handle was its position, which an archive
+  renumbers and a merge of two appending branches shifts; one consumer found
+  a spec and a test citing an entry number the inbox never held, rewrote
+  forty citations by hand after one merge, and could not archive because
+  tests located entries in the live file. Every entry now has an ID — its
+  capture date and the leading hex of a SHA-256 of its claim text,
+  whitespace collapsed (`2026-09-24-3fa1`) — computed, never written, so
+  capture stays one appended line. The claim is immutable, so no tick, trail
+  line, archive or `resolve` changes the ID. Four hex digits, lengthened only
+  where two different claims of one date would share them; any longer prefix
+  names the same entry. `aide insights list` prints each entry's ID;
+  `list N|ID` prints one entry with its trail, and finds an ID in the
+  archives too; `tick` takes an ID as well as a position, refuses an
+  archived, unknown or ambiguous one, and its commit message names the ID.
+  `aide check` sweeps `docs/aide/**` and `tests_dir` (the inbox and its
+  archives excepted, their claims being immutable): an ID cited after the
+  word *insight* (or *entry* on a line that names an insight or the inbox —
+  an audit "entry 2026-05-11-1530" is a timestamp) that names no entry in
+  the inbox or its archives
+  is an **error** — so, since `aide merge` runs the checks (1.53.0), it blocks a merge — one
+  matching two different claims is a warning, and a citation by position in
+  `docs/aide/**` (`insight 28`, `insights.md entry 28`, or `entry 28` on a
+  line naming the inbox) is a warning naming the ID that position holds
+  today. §1 → `insights.md` states the handle and the check; the §1 index's
+  cross-reference rule names it. Human gates, positional in the same way,
+  are issue #293.
+
+### Changed
+
+- **A `framework` hand-over's provenance is the entry's ID** (§1 →
+  `insights-triage.md`), not its number and date, and its header's
+  parenthesis is `(insight <ID>)`. `aide-review-insights`, `queue-planner`,
+  `aide-create-queue` and `aide-queue-and-inbox` say to write the ID
+  wherever a queue file, spec or trail line names an entry.
+- **The hand-over header's `(consumer)` label belongs to the public
+  alternative only (issue #283)**: `**Project:** <`owner/repo` (consumer),
+  or "a private consumer">.`, so a private report no longer reads "a private
+  consumer (consumer)". Changed in §1 → `insights-triage.md`,
+  `aide-review-insights` and the repository's consumer-report issue
+  template together.
+
 ## [2.8.0] — 2026-09-25
 
 ### Added

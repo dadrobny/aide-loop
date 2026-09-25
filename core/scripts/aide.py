@@ -44,6 +44,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import unicodedata
 from pathlib import Path, PurePosixPath, PurePath
 from typing import Callable, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
@@ -2616,6 +2617,308 @@ def _find_entry(entries: List[InsightEntry], ordinal: int) -> InsightEntry:
         f"current numbers (an archive renumbers what remains)")
 
 
+# --------------------------------------------------------------------------- #
+# insight IDs — the durable handle (conventions.md §1 → insights.md, #276)
+# --------------------------------------------------------------------------- #
+#: The shortest hex an ID is printed with. Lengthened per entry only as far as
+#: it takes to tell apart two *different* claims captured on the same date —
+#: see ``insight_ids``.
+INSIGHT_ID_MIN_HEX = 4
+#: An insight ID as written: the capture date, a hyphen, then lowercase hex —
+#: a prefix of the claim's SHA-256, never shorter than the minimum.
+_INSIGHT_ID_SHAPE = r"\d{4}-\d{2}-\d{2}-[0-9a-f]{%d,64}" % INSIGHT_ID_MIN_HEX
+_INSIGHT_ID_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})-(?P<hex>[0-9a-f]{%d,64})$"
+                            % INSIGHT_ID_MIN_HEX)
+
+
+def insight_claim_hash(entry: InsightEntry) -> Optional[str]:
+    """The full SHA-256 hex of an entry's claim, or None when it has no ID.
+
+    Only the claim is hashed — the free text between the type's dash and the
+    ``*(…)*`` marker, which conventions.md §1 makes immutable. Everything
+    triage writes is outside it: the checkbox, the ``→`` pointer after the
+    marker, the trail lines under the entry. So a tick, a trail line, an
+    archive (which moves the line unchanged) and a ``resolve`` (which never
+    retypes one) all leave the hash where it was.
+
+    Normalised by collapsing whitespace runs to one space and composing
+    Unicode (NFC), so a rewrap by an editor or a composed/decomposed accent is
+    not a different claim; nothing else is folded — the claim is compared as
+    written. A line too malformed to parse, or one without a date, has no ID:
+    the date is half of it.
+    """
+    if entry.type is None or entry.date is None:
+        return None
+    claim = " ".join(unicodedata.normalize("NFC", entry.text).split())
+    return hashlib.sha256(claim.encode("utf-8")).hexdigest()
+
+
+def insight_ids(entries: List[InsightEntry]) -> List[Optional[str]]:
+    """The printed ID of each entry in *entries*, aligned with it.
+
+    ``<date>-<hex>``, where hex is the claim hash cut to
+    ``INSIGHT_ID_MIN_HEX`` characters, or longer only as far as it takes to
+    differ from every *different* claim captured on the same date among
+    *entries*. The pool a caller passes is the inbox **and** its archives, so
+    an ID printed today is unambiguous across both. Two entries with the same
+    claim on the same date — two independent captures, which §1 keeps both of —
+    share one ID: they are the same claim.
+
+    A longer prefix of the same hash is the same ID, so an ID once written
+    never stops resolving; a later same-day collision can only make its short
+    form *ambiguous*, which ``resolve_insight_ref`` reports rather than guesses.
+    """
+    hashes = [insight_claim_hash(e) for e in entries]
+    by_date: Dict[str, Set[str]] = {}
+    for e, h in zip(entries, hashes):
+        if h is not None:
+            by_date.setdefault(e.date, set()).add(h)
+    out: List[Optional[str]] = []
+    for e, h in zip(entries, hashes):
+        if h is None:
+            out.append(None)
+            continue
+        others = [o for o in by_date[e.date] if o != h]
+        n = INSIGHT_ID_MIN_HEX
+        while n < len(h) and any(o.startswith(h[:n]) for o in others):
+            n += 1
+        out.append(f"{e.date}-{h[:n]}")
+    return out
+
+
+def is_insight_id(ref: str) -> bool:
+    """Does *ref* have the shape of an insight ID (not: does it resolve)?"""
+    return _INSIGHT_ID_RE.match(ref) is not None
+
+
+def resolve_insight_ref(ref: str, entries: List[InsightEntry]) -> List[int]:
+    """Indices into *entries* whose claim the ID *ref* names.
+
+    Matching is by date and hash **prefix**, so every length of an ID ≥ the
+    minimum names the same entry. The caller reads the result: empty is a
+    dangling ID; entries whose claims differ (``insight_claim_hash``) is an
+    ambiguous one; one claim — even held by two entries — is resolved.
+    """
+    m = _INSIGHT_ID_RE.match(ref)
+    if m is None:
+        return []
+    date, hexpart = m.group("date"), m.group("hex")
+    return [i for i, e in enumerate(entries)
+            if e.date == date
+            and (insight_claim_hash(e) or "").startswith(hexpart)]
+
+
+def insight_archive_files(ddir: Path) -> List[Path]:
+    """The archives `aide insights archive` writes, in name (= quarter) order."""
+    adir = ddir / "insights"
+    if not adir.is_dir():
+        return []
+    return sorted(p for p in adir.glob("archive-*.md") if p.is_file())
+
+
+def load_insight_pool(ddir: Path) -> List[Tuple[str, InsightEntry]]:
+    """Every entry an ID may name: the live inbox, then each archive.
+
+    Pairs each entry with the file it sits in, relative to *ddir* in POSIX
+    form (``insights.md``, ``insights/archive-2026-Q3.md``). An archive is
+    written in the inbox's own entry shape, so the one parser reads both.
+    """
+    pool: List[Tuple[str, InsightEntry]] = []
+    live = ddir / "insights.md"
+    files = ([live] if live.is_file() else []) + insight_archive_files(ddir)
+    for path in files:
+        rel = path.relative_to(ddir).as_posix()
+        for e in parse_insights(path.read_text(encoding=_ENCODING)):
+            pool.append((rel, e))
+    return pool
+
+
+def live_ordinal_for_ref(ref: str, pool: List[Tuple[str, InsightEntry]]) -> int:
+    """The live-inbox position an ``N`` or an ID names, for a verb that edits.
+
+    ``N`` is taken as it stands (``_find_entry`` reports one out of range). An
+    ID is resolved against the whole pool so that its answer is the same one
+    `aide check` gives, and then refused unless it names exactly one entry in
+    the live file: an archived entry is frozen, an ambiguous ID names no one
+    claim, and two live captures of one claim can only be told apart by
+    position. Raises ``ValueError`` with the reason.
+    """
+    if ref.isdigit():
+        return int(ref)
+    if not is_insight_id(ref):
+        raise ValueError(
+            f"{ref!r} is neither an entry number nor an insight ID "
+            f"(YYYY-MM-DD-<hex>, as `insights list` prints it)")
+    entries = [e for _, e in pool]
+    hits = resolve_insight_ref(ref, entries)
+    if not hits:
+        raise ValueError(f"no entry {ref} in insights.md or its archives")
+    if len({insight_claim_hash(entries[i]) for i in hits}) > 1:
+        ids = insight_ids(entries)
+        raise ValueError(
+            f"{ref} matches more than one claim captured that day — use the "
+            f"longer ID of the one meant: {', '.join(sorted({ids[i] for i in hits}))}")
+    live = [entries[i] for i in hits if pool[i][0] == "insights.md"]
+    if not live:
+        raise ValueError(
+            f"insight {ref} is archived in {pool[hits[0]][0]} — an archive is "
+            f"frozen, so there is nothing to tick")
+    if len(live) > 1:
+        raise ValueError(
+            f"insight {ref} is one claim captured {len(live)} times (entries "
+            f"{', '.join(str(e.ordinal) for e in live)}) — tick by position")
+    return live[0].ordinal
+
+
+#: A citation of an insight by ID, as `aide check` reads one: the word
+#: *insight* (either plural, either case, optionally followed by *entry* and
+#: then *ID*), then the ID itself, backticks or emphasis allowed between. The
+#: word is required — see ``insight_reference_findings`` for why a bare
+#: date-shaped token is not enough.
+_INSIGHT_ID_CITATION_RE = re.compile(
+    r"(?i:\b(?:insights?)(?:\s+(?:entry|entries))?(?:\s+id)?)[\s`*]+"
+    r"(?P<id>" + _INSIGHT_ID_SHAPE + r")(?![0-9A-Za-z_-])")
+#: The bare ``entry <ID>`` form — read as a citation only on a line that says
+#: *insight* or *inbox* somewhere, as with ``_ENTRY_POSITION_RE``: an audit or
+#: ledger "entry 2026-05-11-1530" is a timestamp, and a false error there
+#: would block a merge.
+_ENTRY_ID_CITATION_RE = re.compile(
+    r"(?i:\b(?:entry|entries)(?:\s+id)?)[\s`*]+"
+    r"(?P<id>" + _INSIGHT_ID_SHAPE + r")(?![0-9A-Za-z_-])")
+#: A citation of an insight by position: ``insight 28``, ``insights.md entry
+#: 28``, ``inbox entry #28``. The number may not run on into a date, a version
+#: or a word (``insight 2026-…`` is the ID form, ``entry 1.2`` is not a
+#: position).
+_INSIGHT_POSITION_RE = re.compile(
+    r"(?i:\b(?:insights?(?:\.md)?|inbox)(?:\s+(?:entry|entries))?)\s+#?"
+    r"(?P<n>\d{1,4})(?![\w-]|\.\d)")
+#: The bare ``entry 28`` form — read as an insight citation only on a line that
+#: says *insight* or *inbox* somewhere, since a ledger row or a table entry is
+#: an "entry" too.
+_ENTRY_POSITION_RE = re.compile(r"(?i:\b(?:entry|entries))\s+#?(?P<n>\d{1,4})(?![\w-]|\.\d)")
+_INSIGHT_CONTEXT_RE = re.compile(r"(?i)\b(?:insights?|inbox)")
+
+
+def _citation_files(repo_root: Path, config: Dict[str, Dict[str, object]],
+                    ddir: Path) -> Tuple[List[Path], List[Path]]:
+    """``(docs files, test files)`` an insight citation is looked for in.
+
+    The docs half is every ``*.md`` under docs_dir **except** the inbox and
+    its archives, whose claims are immutable — a finding there could never be
+    cleared. The tests half is the files the test-hygiene lints read
+    (``_test_files``). A test file that also sits under docs_dir is read once,
+    as a docs file.
+    """
+    docs: List[Path] = []
+    if ddir.is_dir():
+        frozen = {ddir / "insights.md", *insight_archive_files(ddir)}
+        docs = [p for p in sorted(ddir.rglob("*.md"))
+                if p.is_file() and p not in frozen]
+    seen = set(docs)
+    tests = [p for p in _test_files(repo_root, config) if p not in seen]
+    return docs, tests
+
+
+def insight_reference_findings(repo_root: Path,
+                               config: Dict[str, Dict[str, object]],
+                               ddir: Path) -> Tuple[List[str], List[str]]:
+    """``(errors, warnings)`` for insight citations in durable artefacts.
+
+    conventions.md §1 → insights.md: an entry is cited by its ID. Three
+    findings, over docs_dir and tests_dir:
+
+    * an **ID that resolves to no entry** in the inbox or its archives — an
+      error, since it names a claim no reader can find (issue #276's
+      fabricated index was exactly this, found by accident);
+    * an **ID that matches two different claims** — a warning naming the
+      longer IDs that tell them apart; it resolved when written, and only a
+      later same-day capture made its short form ambiguous;
+    * in docs_dir only, a **citation by position** — a warning naming the ID
+      the position holds today, since an archive or a merge renumbers it.
+
+    Only the cited form is read (``_INSIGHT_ID_CITATION_RE``): the word
+    *insight* before the ID, or *entry* on a line that also says *insight* or
+    *inbox* (``_ENTRY_ID_CITATION_RE``). A bare ``YYYY-MM-DD-<hex>`` token is
+    also a timestamp, a slug, a file name, and an error here blocks `merge`.
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+    docs, tests = _citation_files(repo_root, config, ddir)
+    if not docs and not tests:
+        return errors, warnings
+    doc_set = set(docs)
+    # Read lazily and once: most files cite nothing, and a repo whose tests
+    # cite no insight never opens the inbox or an archive for this check.
+    cache: Dict[str, object] = {}
+
+    def _entries() -> List[InsightEntry]:
+        if "pool" not in cache:
+            pool = load_insight_pool(ddir) if ddir.is_dir() else []
+            cache["pool"] = pool
+            cache["entries"] = [e for _, e in pool]
+            cache["ids"] = insight_ids(cache["entries"])
+            cache["live_ids"] = [i for (rel, _), i in zip(pool, cache["ids"])
+                                 if rel == "insights.md"]
+        return cache["entries"]  # type: ignore[return-value]
+
+    for path in docs + tests:
+        try:
+            text = path.read_text(encoding=_ENCODING)
+        except (OSError, UnicodeDecodeError):
+            continue
+        where = _rel_display(path, repo_root)
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            cited = list(_INSIGHT_ID_CITATION_RE.finditer(line))
+            if _INSIGHT_CONTEXT_RE.search(line):
+                seen = {m.span("id") for m in cited}
+                cited += [m for m in _ENTRY_ID_CITATION_RE.finditer(line)
+                          if m.span("id") not in seen]
+            for m in cited:
+                ref = m.group("id")
+                entries = _entries()
+                hits = resolve_insight_ref(ref, entries)
+                if not hits:
+                    errors.append(
+                        f"{where}:{lineno}: insight {ref} resolves to no entry "
+                        f"in insights.md or its archives — cite an ID "
+                        f"`aide insights list` prints (conventions.md §1 → "
+                        f"insights.md)")
+                elif len({insight_claim_hash(entries[i]) for i in hits}) > 1:
+                    ids = cache["ids"]
+                    names = ", ".join(sorted({ids[i] for i in hits}))  # type: ignore[index]
+                    warnings.append(
+                        f"{where}:{lineno}: insight {ref} matches more than one "
+                        f"claim captured that day — cite the longer ID of the "
+                        f"one meant: {names}")
+            if path not in doc_set:
+                continue
+            positions = list(_INSIGHT_POSITION_RE.finditer(line))
+            if _INSIGHT_CONTEXT_RE.search(line):
+                covered = {m.span("n") for m in positions}
+                positions += [m for m in _ENTRY_POSITION_RE.finditer(line)
+                              if m.span("n") not in covered]
+            for m in positions:
+                n = int(m.group("n"))
+                # "insights 2026" is a year, not entry 2026: a bare number that
+                # reads as a year counts only after "entry" or "#", or when the
+                # inbox and its archives really hold that many entries.
+                if (1900 <= n <= 2099 and not re.search(r"(?i)entr|#", m.group(0))
+                        and n > len(_entries())):
+                    continue
+                _entries()
+                live_ids = cache["live_ids"]
+                now = ""
+                if 1 <= n <= len(live_ids) and live_ids[n - 1]:  # type: ignore[arg-type,index]
+                    now = (f"; entry {n} of the inbox is insight "
+                           f"{live_ids[n - 1]} today — cite that if it is "  # type: ignore[index]
+                           f"the one meant")
+                warnings.append(
+                    f"{where}:{lineno}: `{m.group(0).strip()}` cites an insight "
+                    f"by position, which an archive or a merge renumbers — "
+                    f"cite its ID (`aide insights list`){now}")
+    return errors, warnings
+
+
 def tick_insight_text(text: str, ordinal: int, pointer: str,
                       date: str, trail_only: bool = False) -> Tuple[str, str]:
     """Tick entry *ordinal*, or append a dated trail line if already ticked.
@@ -4939,14 +5242,15 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                branches: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
     """Return ``(errors, warnings)``. Empty errors == pass.
 
-    The first thirteen checks all run before, and survive, the two early returns
-    below, but for two different reasons. Six of them —
+    Every check above the two early returns below runs before, and survives,
+    them, for one of two reasons. The six test-hygiene lints —
     `absolute_path_test_warnings`, `separator_dependent_test_warnings`,
     `cli_subprocess_test_warnings`, `subprocess_encoding_test_warnings`,
     `gitattributes_eol_pin_warnings`, `scope_claim_test_warnings` — read
-    `tests_dir` and never touch `docs_dir`, so they are the ones that make this
-    function worth calling in a repo with no document set. The other seven *are* document checks; they
-    simply find nothing to say when `docs_dir` is absent, so keeping them costs
+    `tests_dir` and never touch `docs_dir`, and `insight_reference_findings`
+    reads both, so they are the ones that make this function worth calling in
+    a repo with no document set. The rest *are* document checks; they simply
+    find nothing to say when `docs_dir` is absent, so keeping them costs
     nothing and they still report on a `docs_dir` that exists but has no
     `progress.md`.
 
@@ -4965,6 +5269,11 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     errors.extend(conflict_marker_errors(ddir))
     warnings.extend(stray_icon_warnings(ddir))
     warnings.extend(insight_warnings(ddir))
+    # Reads tests_dir as well as docs_dir, so it runs before the early
+    # returns below, like the test-hygiene lints (issue #276).
+    ref_errors, ref_warnings = insight_reference_findings(repo_root, config, ddir)
+    errors.extend(ref_errors)
+    warnings.extend(ref_warnings)
     warnings.extend(ledger_warnings(ddir))
     warnings.extend(absolute_path_test_warnings(repo_root, config))
     warnings.extend(separator_dependent_test_warnings(repo_root, config))
@@ -6539,45 +6848,62 @@ def cmd_insights(args: argparse.Namespace) -> int:
     ddir_rel = ddir.relative_to(repo_root).as_posix()
 
     if args.action == "list":
-        return _cmd_insights_list(parse_insights(text), args)
+        return _cmd_insights_list(parse_insights(text), load_insight_pool(ddir), args)
     if args.action == "tick":
-        return _cmd_insights_tick(path, text, ddir_rel, repo_root, config, args,
-                                  _dt.date.today().isoformat())
+        return _cmd_insights_tick(path, text, ddir, ddir_rel, repo_root, config,
+                                  args, _dt.date.today().isoformat())
     if args.action == "resolve":
         return _cmd_insights_resolve(path, text, ddir_rel, repo_root, args,
                                      _dt.date.today().isoformat())
     return _cmd_insights_archive(path, text, ddir, ddir_rel, repo_root, config, args)
 
 
-def _cmd_insights_list(entries: List[InsightEntry], args: argparse.Namespace) -> int:
+def _render_insight(e: InsightEntry, label: str, iid: Optional[str],
+                    trail: bool, where: str = "") -> None:
+    if e.type is None:
+        # Nothing parsed, so render the line as it stands rather than
+        # dressing it in fields this listing only guessed at — no ID either,
+        # since a line with no parsed claim has none.
+        print(f"  {label} ?? {e.raw}{where}")
+        return
+    # The whole marker is reprinted verbatim: "where did this come from"
+    # is half of what triage routes on, and a listing that drops it — or
+    # re-derives it from the item number, which can only print back the
+    # single-item form — sends the reader to the file it exists to replace.
+    # The trailing note is reprinted for the same reason: it carries the
+    # engine version a `framework` entry is triaged against, and triage
+    # reads this listing rather than the file.
+    prov = (f" *({e.source + ', ' if e.source else ''}{e.date}"
+            f"{', ' + e.note if e.note else ''})*") if e.date else ""
+    mark = "x" if e.ticked else " "
+    print(f"  {label} {iid + ' ' if iid else ''}[{mark}] {e.type:<10} — "
+          f"{e.text}{prov}{_INSIGHT_POINTER + e.pointer if e.pointer else ''}"
+          f"{where}")
+    if trail:
+        for line in e.trail:
+            print(f"        {line.strip()}")
+
+
+def _cmd_insights_list(entries: List[InsightEntry],
+                       pool: List[Tuple[str, InsightEntry]],
+                       args: argparse.Namespace) -> int:
     if args.type and args.type not in _INSIGHT_TYPES:
         print(f"aide insights: --type must be one of {', '.join(_INSIGHT_TYPES)}",
               file=sys.stderr)
         return 2
+    # IDs are computed over the inbox *and* its archives, so the one printed
+    # here is the one `aide check` resolves — unambiguous across both.
+    pool_ids = insight_ids([e for _, e in pool])
+    live_ids = [i for (rel, _), i in zip(pool, pool_ids) if rel == "insights.md"]
+    if args.number is not None:
+        return _cmd_insights_list_one(args.number, entries, live_ids, pool,
+                                      pool_ids, args)
     shown = [e for e in entries
              if (not args.open_only or not e.ticked)
              and (not args.type or e.type == args.type)]
     for e in shown:
-        if e.type is None:
-            # Nothing parsed, so render the line as it stands rather than
-            # dressing it in fields this listing only guessed at.
-            print(f"  {e.ordinal:>3}. ?? {e.raw}")
-            continue
-        # The whole marker is reprinted verbatim: "where did this come from"
-        # is half of what triage routes on, and a listing that drops it — or
-        # re-derives it from the item number, which can only print back the
-        # single-item form — sends the reader to the file it exists to replace.
-        # The trailing note is reprinted for the same reason: it carries the
-        # engine version a `framework` entry is triaged against, and triage
-        # reads this listing rather than the file.
-        prov = (f" *({e.source + ', ' if e.source else ''}{e.date}"
-                f"{', ' + e.note if e.note else ''})*") if e.date else ""
-        mark = "x" if e.ticked else " "
-        print(f"  {e.ordinal:>3}. [{mark}] {e.type:<10} — {e.text}{prov}"
-              f"{_INSIGHT_POINTER + e.pointer if e.pointer else ''}")
-        if args.trail:
-            for line in e.trail:
-                print(f"        {line.strip()}")
+        iid = live_ids[e.ordinal - 1] if e.ordinal <= len(live_ids) else None
+        _render_insight(e, f"{e.ordinal:>3}.", iid, args.trail)
     open_entries = [e for e in entries if not e.ticked]
     by_type = {t: sum(1 for e in open_entries if e.type == t) for t in _INSIGHT_TYPES}
     breakdown = ", ".join(f"{n} {t}" for t, n in by_type.items() if n)
@@ -6591,27 +6917,77 @@ def _cmd_insights_list(entries: List[InsightEntry], args: argparse.Namespace) ->
     return 0
 
 
-def _cmd_insights_tick(path: Path, text: str, ddir_rel: str, repo_root: Path,
-                       config, args: argparse.Namespace, today: str) -> int:
+def _cmd_insights_list_one(ref: str, entries: List[InsightEntry],
+                           live_ids: List[Optional[str]],
+                           pool: List[Tuple[str, InsightEntry]],
+                           pool_ids: List[Optional[str]],
+                           args: argparse.Namespace) -> int:
+    """`insights list N|ID` — the one entry a citation names, trail included.
+
+    An ID is looked up in the archives too, which is what makes a citation of
+    an archived entry findable by a verb; a position only ever means the live
+    file.
+    """
+    if ref.isdigit():
+        try:
+            e = _find_entry(entries, int(ref))
+        except ValueError as exc:
+            print(f"aide insights list: {exc}", file=sys.stderr)
+            return 1
+        _render_insight(e, f"{e.ordinal:>3}.", live_ids[e.ordinal - 1]
+                        if e.ordinal <= len(live_ids) else None, True)
+        return 0
+    if not is_insight_id(ref):
+        print(f"aide insights list: {ref!r} is neither an entry number nor an "
+              f"insight ID (YYYY-MM-DD-<hex>)", file=sys.stderr)
+        return 2
+    hits = resolve_insight_ref(ref, [e for _, e in pool])
+    if not hits:
+        print(f"aide insights list: no entry {ref} in insights.md or its "
+              f"archives", file=sys.stderr)
+        return 1
+    for i in hits:
+        rel, e = pool[i]
+        if rel == "insights.md":
+            _render_insight(e, f"{e.ordinal:>3}.", pool_ids[i], True)
+        else:
+            _render_insight(e, "   -", pool_ids[i], True, f"  [{rel}]")
+    if len({pool_ids[i] for i in hits}) > 1:
+        print(f"aide insights list: {ref} matches more than one claim — cite "
+              f"the longer ID of the one meant")
+    return 0
+
+
+def _cmd_insights_tick(path: Path, text: str, ddir: Path, ddir_rel: str,
+                       repo_root: Path, config, args: argparse.Namespace,
+                       today: str) -> int:
     if args.number is None:
-        print("usage: aide insights tick N --pointer TEXT", file=sys.stderr)
+        print("usage: aide insights tick N|ID --pointer TEXT", file=sys.stderr)
         return 2
     if not (args.pointer or "").strip():
         print("aide insights tick: --pointer says where the claim landed — a "
               "doc, an item, an issue. A tick without one records that triage "
               "happened and loses what it decided.", file=sys.stderr)
         return 2
+    pool = load_insight_pool(ddir)
     try:
-        updated, message = tick_insight_text(text, args.number, args.pointer.strip(),
+        ordinal = live_ordinal_for_ref(args.number, pool)
+        updated, message = tick_insight_text(text, ordinal, args.pointer.strip(),
                                              args.date or today,
                                              trail_only=args.trail)
     except ValueError as exc:
         print(f"aide insights tick: {exc}", file=sys.stderr)
         return 1
+    # The commit names the entry by its ID, which is what a reader of the log
+    # can still find after an archive; a malformed line has none, so falls
+    # back to the position it was ticked at.
+    live_ids = [i for (rel, _), i in zip(pool, insight_ids([e for _, e in pool]))
+                if rel == "insights.md"]
+    handle = (live_ids[ordinal - 1] if ordinal <= len(live_ids) else None) or str(ordinal)
     path.write_text(updated, encoding="utf-8")
-    print(message)
+    print(f"{message} (insight {handle})" if handle != str(ordinal) else message)
     if not args.no_commit and (repo_root / ".git").exists():
-        _commit_docs_files(repo_root, config, f"docs(aide): triage insight {args.number}",
+        _commit_docs_files(repo_root, config, f"docs(aide): triage insight {handle}",
                            [f"{ddir_rel}/insights.md"])
     return 0
 
@@ -11206,7 +11582,18 @@ def build_parser() -> argparse.ArgumentParser:
             "item spec "
             "until its item is \u2705 or \u274c, and never on a document with "
             "no such line. A \U0001f50d item's claim branch "
-            "is not reported stale."))
+            "is not reported stale.\n"
+            "\n"
+            "Over insight citations in docs/aide and tests_dir, the inbox and "
+            "its archives excepted: an insight ID written after the word "
+            "insight, or after entry on a line that says insight or inbox, "
+            "that resolves to no entry in insights.md or "
+            "insights/archive-*.md is an ERROR; one that matches two "
+            "different claims is a warning naming their longer IDs; and, in "
+            "docs/aide only, a citation by position \u2014 insight 28, "
+            "insights.md entry 28, or entry 28 on a line that says insight "
+            "or inbox \u2014 is a warning naming the ID that position holds "
+            "today."))
     p_check.add_argument("--queue", type=int, default=None,
                          help="also check this queue's specs against each other "
                               "(scope overlaps, pinned state, dependency graph)")
@@ -11352,8 +11739,14 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "list:    number the entries by position and print them all, "
             "ticked ones included; --open narrows to the untriaged, and an "
-            "archived entry is in neither\n"
-            "tick:    the one in-place edit — tick entry N with --pointer; on "
+            "archived entry is in neither. Each entry is printed with its ID "
+            "— the capture date and the leading hex of a SHA-256 of the "
+            "claim text, whitespace collapsed — which no tick, trail, "
+            "archive or merge changes; four hex digits, more only where two "
+            "different claims of one date would share them. list N or list "
+            "ID prints that one entry with its trail, and an ID is found in "
+            "the archives too\n"
+            "tick:    the one in-place edit — tick entry N (or ID) with --pointer; on "
             "an entry already ticked, append a dated trail line instead; "
             "with --trail, append the dated line under entry N and leave "
             "its checkbox as it is, which is how a judgement that keeps an "
@@ -11376,8 +11769,9 @@ def build_parser() -> argparse.ArgumentParser:
             "git can — on a branch, with an identity; otherwise it is left "
             "untracked and the notice says why."))
     p_ins.add_argument("action", choices=["list", "tick", "archive", "resolve"])
-    p_ins.add_argument("number", type=int, nargs="?", default=None,
-                       help="tick: the entry number from `insights list`")
+    p_ins.add_argument("number", nargs="?", default=None, metavar="N|ID",
+                       help="tick: the entry number or ID from `insights list`; "
+                            "list: print that one entry")
     p_ins.add_argument("--open", action="store_true", dest="open_only",
                        help="list: only entries still untriaged")
     p_ins.add_argument("--type", default=None,

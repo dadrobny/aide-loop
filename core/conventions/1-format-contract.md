@@ -35,8 +35,9 @@ section fixes:
    scheduled in.
 2. **Cross-reference by resolvable identity.** An issue number, a file path, a
    commit, a stage number, a dated `insights.md` entry — something a reader can
-   look up. Never "the conventions issue", "the companion PR", or "as discussed
-   above" pointing outside the artifact.
+   look up. An inbox entry's identity is its ID, never its position in the
+   file (§1 → `insights.md`). Never "the conventions issue", "the companion
+   PR", or "as discussed above" pointing outside the artifact.
 3. **Record the decision and why it holds, not the route to it.** "My earlier
    lean was wrong", "agreed direction", "settled while drafting" narrate a
    process the reader was not part of. A superseded decision is recorded by

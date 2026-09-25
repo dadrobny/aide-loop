@@ -209,7 +209,9 @@ PR anyway.
 ### Tick every inbox entry you queued
 
 The verb owns that edit and commits the file when git can; `N` is the entry
-number `insights list --open` printed:
+number `insights list --open` printed, or the entry's ID from the same listing.
+The queue file and the specs name an entry by that ID (`insight <ID>`), never
+by `N`, which the next archive renumbers:
 
 ```
 python .aide/scripts/aide.py insights tick N --pointer "item NNN"

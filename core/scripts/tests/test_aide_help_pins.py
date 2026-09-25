@@ -402,6 +402,28 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `insight_warnings` reads insights.md only; archive-*.md is skipped.
         ("never applied to an archived entry",
          "test_aide_insights::test_an_archive_is_frozen_and_not_shape_checked"),
+        # `insight_reference_findings` (issue #276): `_citation_files` leaves
+        # the inbox and its archives out; `_INSIGHT_ID_CITATION_RE` requires
+        # the word; an unresolved ID goes to `errors`.
+        ("Over insight citations in docs/aide and tests_dir, the inbox and "
+         "its archives excepted",
+         "test_aide_insights::test_the_inbox_and_its_archives_are_not_swept"),
+        ("an insight ID written after the word insight, or after entry on a "
+         "line that says insight or inbox, that resolves to no entry in "
+         "insights.md or insights/archive-*.md is an ERROR",
+         ("test_aide_insights::test_a_dangling_insight_id_is_an_error_in_docs_and_in_tests",
+          "test_aide_insights::test_a_date_shaped_token_without_the_word_is_not_a_citation",
+          "test_aide_insights::test_a_bare_entry_before_a_date_shaped_token_is_not_a_citation",
+          "test_aide_insights::test_a_citation_that_resolves_is_clean_even_once_archived")),
+        # Same function: more than one claim hash among the hits.
+        ("one that matches two different claims is a warning naming their "
+         "longer IDs",
+         "test_aide_insights::test_a_short_id_two_claims_share_is_a_warning"),
+        # Same function: the two position patterns, docs files only.
+        ("in docs/aide only, a citation by position \u2014 insight 28, "
+         "insights.md entry 28, or entry 28 on a line that says insight or "
+         "inbox \u2014 is a warning naming the ID that position holds today",
+         "test_aide_insights::test_a_positional_citation_is_a_warning_naming_the_id"),
         # `ledger_warnings` over `ledger_rows`: the cell count, the Item cell
         # and each of `LEDGER_INTEGER_COLUMNS`, appended to `warnings` and
         # never to `errors`.
@@ -666,8 +688,33 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_aide_insights::test_list_open_hides_the_closed_history"),
         # `tick_insight_text` — the only function in the CLI that rewrites an
         # existing entry's line.
-        ("the one in-place edit — tick entry N with --pointer",
-         "test_aide_insights::test_tick_flips_the_box_and_records_where_it_landed"),
+        # ... and `live_ordinal_for_ref` turns an ID into that position.
+        ("the one in-place edit — tick entry N (or ID) with --pointer",
+         ("test_aide_insights::test_tick_flips_the_box_and_records_where_it_landed",
+          "test_aide_insights::test_tick_by_id_ticks_that_entry_and_the_commit_names_the_id")),
+        # `insight_claim_hash` over `InsightEntry.text`, `insight_ids` for the
+        # printed form, `_render_insight` for the listing (issue #276).
+        ("Each entry is printed with its ID \u2014 the capture date and the "
+         "leading hex of a SHA-256 of the claim text, whitespace collapsed",
+         ("test_aide_insights::test_an_id_is_the_capture_date_and_four_hex_of_the_claim",
+          "test_aide_insights::test_the_id_survives_a_rewrap_but_not_a_reword",
+          "test_aide_insights::test_list_prints_each_entry_with_its_id")),
+        # The hash reads the claim alone: the checkbox, pointer and trail are
+        # outside it, and archive/resolve move lines without retyping them.
+        ("which no tick, trail, archive or merge changes",
+         ("test_aide_insights::test_the_id_is_blind_to_everything_triage_writes",
+          "test_aide_insights::test_an_archived_entry_keeps_its_id_and_list_finds_it")),
+        # `insight_ids`: lengthened only against a different hash of one date.
+        ("four hex digits, more only where two different claims of one date "
+         "would share them",
+         ("test_aide_insights::test_two_different_claims_sharing_four_hex_are_printed_longer",
+          "test_aide_insights::test_the_same_claim_captured_twice_shares_one_id")),
+        # `_cmd_insights_list_one`: a position reads the live file, an ID the
+        # whole pool `load_insight_pool` returns.
+        ("list N or list ID prints that one entry with its trail, and an ID "
+         "is found in the archives too",
+         ("test_aide_insights::test_list_one_by_position_prints_that_entry_with_its_trail",
+          "test_aide_insights::test_an_archived_entry_keeps_its_id_and_list_finds_it")),
         # Same function, the `entry.ticked` branch: `_append_trail`-shaped line.
         ("on an entry already ticked, append a dated trail line instead",
          "test_aide_insights::"

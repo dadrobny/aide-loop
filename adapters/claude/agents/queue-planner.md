@@ -107,8 +107,10 @@ Follow the `aide-create-queue` skill in full. In brief:
    ```
    python .aide/scripts/aide.py insights tick N --pointer "item NNN"
    ```
-   `N` is the entry number `insights list --open` printed. **After the commit of
-   step 6, not before** — the verb rebases onto the upstream before committing,
+   `N` is the entry number `insights list --open` printed, or the entry's ID
+   from the same listing; the queue file and the specs name the entry by that
+   ID (`insight <ID>`), never by `N`, which the next archive renumbers. **After
+   the commit of step 6, not before** — the verb rebases onto the upstream before committing,
    and a working tree still holding the queue and the back-fill is exactly the
    state that makes the rebase fail; `aide-create-queue` orders it the same way.
    An entry you passed over stays open and unticked — it is still a candidate
