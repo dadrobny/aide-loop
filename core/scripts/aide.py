@@ -33,6 +33,7 @@ import argparse
 import ast
 import contextlib
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -40,6 +41,8 @@ import shlex
 import signal
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path, PurePosixPath, PurePath
 from typing import Callable, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
@@ -6781,11 +6784,16 @@ def _cmd_insights_resolve(path: Path, text: str, ddir_rel: str, repo_root: Path,
 #: `test_aide_ledger.py` holds the pair.
 LEDGER_COLUMNS = ("Item", "Queue", "Stage", "Kind", "Outcome", "ACs", "Tests",
                   "Files", "Rounds", "Blocking", "Minor", "Nit", "Engine",
-                  "Date")
+                  "Date", "Suite s", "Inherited")
+#: How many of those a row written under `ledger template 2` carries — every
+#: column up to `Date`. Such a row is still a whole row (§1 → `ledger.md`):
+#: the two columns after it were appended in 2.7.0 (issue #275), a row is
+#: never edited, and a reader reads a missing trailing cell as a blank one.
+LEDGER_TEMPLATE_2_WIDTH = 14
 #: Cells whose value is an integer or nothing at all — what `ledger_warnings`
 #: reads, and the blank-cell rule's whole surface.
 LEDGER_INTEGER_COLUMNS = ("ACs", "Tests", "Files", "Rounds", "Blocking",
-                          "Minor", "Nit")
+                          "Minor", "Nit", "Suite s", "Inherited")
 #: The three ranks `--findings` accepts, in the order they are written.
 LEDGER_FINDING_RANKS = ("blocking", "minor", "nit")
 #: What the three finding cells hold where the project runs with no reviewer
@@ -6989,7 +6997,9 @@ def ledger_cells(repo_root: Path, config, number: int, outcome: str,
                  branch: Optional[str] = None,
                  base: Optional[str] = None,
                  date: Optional[str] = None,
-                 no_review: bool = False) -> List[str]:
+                 no_review: bool = False,
+                 suite_seconds: Optional[int] = None,
+                 inherited: Optional[int] = None) -> List[str]:
     """One row's cells, in `LEDGER_COLUMNS` order.
 
     Everything but *rounds* and *findings* is derived here, from the documents,
@@ -7024,6 +7034,8 @@ def ledger_cells(repo_root: Path, config, number: int, outcome: str,
         "Files": files,
         "Engine": installed_engine_version() or "",
         "Date": date or _dt.date.today().isoformat(),
+        "Suite s": "" if suite_seconds is None else str(suite_seconds),
+        "Inherited": "" if inherited is None else str(inherited),
     }
     cells.update(zip(LEDGER_COUNT_COLUMNS,
                      _ledger_count_cells(rounds=rounds, findings=findings,
@@ -7151,10 +7163,12 @@ def ledger_warnings(ddir: Path) -> List[str]:
         return []
     out: List[str] = []
     for lineno, cells in ledger_rows(path.read_text(encoding=_ENCODING)):
-        if len(cells) != len(LEDGER_COLUMNS):
+        if len(cells) not in (len(LEDGER_COLUMNS), LEDGER_TEMPLATE_2_WIDTH):
             out.append(f"ledger.md:{lineno}: {len(cells)} cell(s), not "
                        f"{len(LEDGER_COLUMNS)} — the columns "
-                       f"`.aide/templates/ledger.md` draws")
+                       f"`.aide/templates/ledger.md` draws (a row written "
+                       f"under ledger template 2 has "
+                       f"{LEDGER_TEMPLATE_2_WIDTH}, and is read as it stands)")
             continue
         row = dict(zip(LEDGER_COLUMNS, cells))
         if not _LEDGER_ITEM_RE.match(row["Item"]):
@@ -7165,7 +7179,7 @@ def ledger_warnings(ddir: Path) -> List[str]:
                        f"'{row['Outcome']}' is not one of "
                        f"{', '.join(LEDGER_OUTCOMES)}")
         for column in LEDGER_INTEGER_COLUMNS:
-            value = row[column]
+            value = row.get(column, "")
             # The three finding columns may also carry the no-review marker,
             # which the writing verbs put there themselves (§1 → ledger.md).
             if (value == LEDGER_NO_REVIEW_CELL
@@ -8410,6 +8424,547 @@ def _promote_item_to_complete(repo_root: Path, config, number: int,
                            f"progress(aide): item {number:03d} -> done", rels)
 
 
+# --------------------------------------------------------------------------- #
+# the merge's suite run — failure identity, the base run, the result store
+# (issue #275, §4)
+# --------------------------------------------------------------------------- #
+#: pytest's exit code for "the run finished and some tests failed" — the one
+#: red exit whose report names every failure. 2 (interrupted), 3 (internal
+#: error), 4 (usage) and 5 (nothing collected) each leave a report that is not
+#: the whole suite, so a comparison drawn from one would be a guess.
+_PYTEST_TESTS_FAILED = 1
+#: Long options that make what a run executes depend on the order failures
+#: arrive in, or on an earlier run's cache. Either way the failure set stops
+#: being a property of the tree, and comparing two of them compares runs.
+_ORDER_DEPENDENT_LONG = ("--exitfirst", "--maxfail", "--lf", "--last-failed",
+                         "--ff", "--failed-first", "--sw", "--stepwise",
+                         "--sw-skip", "--stepwise-skip")
+#: pytest's short options that take a value, which may be attached to them
+#: (`-rxs`, `-kfoo`): an `x` after one of these is the value, not `-x`.
+_PYTEST_VALUED_SHORT = "kmprWoc"
+#: How long a stored result is kept. Long enough for a merge retried the next
+#: day to reuse its base run, short enough that the store never needs a verb.
+SUITE_RESULT_MAX_AGE = 7 * 24 * 3600
+#: The most failure ids one inbox line names before it says how many more.
+_INHERITED_LISTED_MAX = 20
+
+
+class SuiteRun(NamedTuple):
+    """One run of the test command, as the merge gate reads it.
+
+    *failures* is the set of failing test ids, sorted — ``()`` for a green
+    run — or ``None`` when the run cannot say which tests failed, with
+    *unidentified* saying why. *reused* marks a result read back from the
+    store rather than run now.
+    """
+    returncode: int
+    seconds: float
+    failures: Optional[Tuple[str, ...]]
+    unidentified: str = ""
+    reused: bool = False
+
+
+def is_pytest_command(argv: List[str]) -> bool:
+    """Whether *argv* runs pytest as a module: ``<python> -m pytest …``.
+
+    Read from the resolved command, so it holds whether the leading `python`
+    was bound to the venv or named an interpreter outright — the shape
+    `_test_runner_module` reads from the configured string, one token wider.
+    """
+    return len(argv) >= 3 and argv[1] == "-m" and argv[2] == "pytest"
+
+
+def order_dependent_flag(argv: List[str]) -> Optional[str]:
+    """The first argument that makes a pytest run's failure set order-bound."""
+    for token in argv[3:]:
+        if token.startswith("--"):
+            if token.split("=", 1)[0] in _ORDER_DEPENDENT_LONG:
+                return token
+        elif token.startswith("-") and len(token) > 1:
+            for letter in token[1:]:
+                if letter == "x":
+                    return token
+                if letter in _PYTEST_VALUED_SHORT or not letter.isalpha():
+                    break
+    return None
+
+
+def failure_identity_refusal(argv: List[str]) -> Optional[str]:
+    """Why a red run of *argv* cannot be compared with the base, or ``None``."""
+    if not is_pytest_command(argv):
+        return ("the test command is not `<python> -m pytest`, and pytest's "
+                "report is the only one this verb reads failures from")
+    flag = order_dependent_flag(argv)
+    if flag is not None:
+        return (f"the test command carries {flag}, which makes which tests "
+                f"fail depend on the run rather than on the tree")
+    return None
+
+
+def _module_path(parts: List[str], root: Optional[Path]) -> Tuple[Optional[str], List[str]]:
+    """The longest prefix of dotted *parts* that is a ``.py`` file under *root*."""
+    if root is not None:
+        for i in range(len(parts), 0, -1):
+            rel = "/".join(parts[:i]) + ".py"
+            if (root / rel).is_file():
+                return rel, parts[i:]
+    return None, parts
+
+
+def _junit_node_id(classname: str, name: str, root: Optional[Path]) -> str:
+    """A pytest-style node id from a JUnit ``testcase``'s two attributes.
+
+    pytest writes ``classname="tests.test_x.TestC"`` and ``name="test_a[1]"``
+    for ``tests/test_x.py::TestC::test_a[1]``, and for a collection error an
+    empty classname with the module, dotted, as the name. The module is found
+    by asking which dotted prefix is a file under *root*; where none is, the
+    dotted form stands. Both sides of a comparison are read by this function
+    in the same checkout, so what matters is that it is deterministic.
+    """
+    if classname:
+        path, rest = _module_path(classname.split("."), root)
+        return "::".join([path, *rest, name]) if path else f"{classname}::{name}"
+    path, rest = _module_path(name.split("."), root)
+    return path if path and not rest else name
+
+
+def junit_failure_ids(xml_text: str,
+                      root: Optional[Path] = None) -> Optional[Tuple[str, ...]]:
+    """The ids of every failed or errored test case in a JUnit XML report.
+
+    ``None`` when the text is not a report — unparseable, or with no
+    ``testsuite`` in it — so an unreadable file is never read as a green one.
+    A collection error is a case with an ``error`` child like any other.
+    """
+    import xml.etree.ElementTree as ET
+    try:
+        tree = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return None
+    if tree.tag not in ("testsuites", "testsuite"):
+        return None
+    ids: Set[str] = set()
+    for case in tree.iter("testcase"):
+        if case.find("failure") is None and case.find("error") is None:
+            continue
+        ids.add(_junit_node_id(case.get("classname", "") or "",
+                               case.get("name", "") or "", root))
+    return tuple(sorted(ids))
+
+
+def run_test_suite(repo_root: Path, argv: List[str],
+                   identify: bool) -> SuiteRun:
+    """Run *argv* in *repo_root* and time it; with *identify*, name the failures.
+
+    Identification appends two pytest options to this run only:
+    ``--junitxml`` into a temporary directory, and
+    ``--continue-on-collection-errors``, without which one module that fails
+    to import stops the session before any test runs — exit 2, and a report
+    naming nothing else. The report is read, then deleted with its directory.
+    """
+    if not identify:
+        start = time.monotonic()
+        res = subprocess.run(argv, cwd=str(repo_root))
+        return SuiteRun(res.returncode, time.monotonic() - start, None,
+                        "failures were not identified")
+    with tempfile.TemporaryDirectory(prefix="aide-junit-") as tmp:
+        report = Path(tmp) / "report.xml"
+        start = time.monotonic()
+        res = subprocess.run([*argv, "--continue-on-collection-errors",
+                              f"--junitxml={report}"], cwd=str(repo_root))
+        seconds = time.monotonic() - start
+        if res.returncode == 0:
+            return SuiteRun(0, seconds, ())
+        if res.returncode != _PYTEST_TESTS_FAILED:
+            return SuiteRun(res.returncode, seconds, None,
+                            f"pytest exited {res.returncode}, not "
+                            f"{_PYTEST_TESTS_FAILED}, so its report is not "
+                            f"the whole suite")
+        try:
+            text = report.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return SuiteRun(res.returncode, seconds, None,
+                            "pytest wrote no readable JUnit report")
+        ids = junit_failure_ids(text, repo_root)
+        if not ids:
+            return SuiteRun(res.returncode, seconds, None,
+                            "pytest's JUnit report names no failing test")
+        return SuiteRun(res.returncode, seconds, ids)
+
+
+def suite_results_dir(repo_root: Path) -> Optional[Path]:
+    """Where suite results are kept: ``<git common dir>/aide/test-results``.
+
+    Inside git's own directory, so nothing there is ever committed, pushed or
+    reported as untracked, and shared by every worktree of the repository
+    since a result is keyed by tree rather than by checkout.
+    """
+    try:
+        res = git(["rev-parse", "--git-common-dir"], repo_root, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    common = res.stdout.strip()
+    if res.returncode != 0 or not common:
+        return None
+    path = Path(common)
+    if not path.is_absolute():
+        path = repo_root / path
+    return path / "aide" / "test-results"
+
+
+def suite_result_key(tree: str, argv: List[str]) -> str:
+    """The store's key: the tree, and a digest of the exact command run."""
+    digest = hashlib.sha256("\0".join(argv).encode("utf-8")).hexdigest()[:16]
+    return f"{tree}-{digest}"
+
+
+def head_tree(repo_root: Path) -> Optional[str]:
+    """``HEAD``'s tree id, or ``None`` where git cannot say."""
+    res = git(["rev-parse", "HEAD^{tree}"], repo_root, check=False)
+    return res.stdout.strip() or None if res.returncode == 0 else None
+
+
+def tree_is_clean(repo_root: Path) -> bool:
+    """No tracked change and no half-finished operation — a run of this
+    checkout is a run of ``HEAD``'s tree. Untracked files do not count, as in
+    ``_unsafe_tree_state``: a suite run leaves caches behind routinely."""
+    return not _interrupted_op(repo_root) and not _dirty_paths(repo_root)
+
+
+def read_suite_result(repo_root: Path, tree: str, argv: List[str],
+                     now: Optional[float] = None) -> Optional[SuiteRun]:
+    """A stored run of exactly *argv* over *tree*, or ``None``.
+
+    Only a result the gate can compare is returned: exit 0 or pytest's
+    tests-failed exit, with its failures named, recorded within
+    ``SUITE_RESULT_MAX_AGE``. Anything else — absent, unreadable, another
+    command, a record that does not say what it claims to — is a miss, and a
+    miss costs a run rather than a wrong answer.
+    """
+    folder = suite_results_dir(repo_root)
+    if folder is None:
+        return None
+    path = folder / f"{suite_result_key(tree, argv)}.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    now = time.time() if now is None else now
+    try:
+        if (data["tree"] != tree or data["argv"] != list(argv)
+                or now - float(data["timestamp"]) > SUITE_RESULT_MAX_AGE):
+            return None
+        returncode = int(data["returncode"])
+        failures = data["failures"]
+        seconds = float(data["seconds"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if returncode not in (0, _PYTEST_TESTS_FAILED) or not isinstance(failures, list):
+        return None
+    if (returncode == 0) != (not failures):
+        return None
+    return SuiteRun(returncode, seconds, tuple(str(f) for f in failures),
+                    reused=True)
+
+
+def write_suite_result(repo_root: Path, tree: str, argv: List[str],
+                      run: SuiteRun, now: Optional[float] = None) -> Optional[Path]:
+    """Record *run* of *argv* over *tree*, and prune what has aged out.
+
+    The caller decides that the run was of *tree* — `tree_is_clean` before it
+    started — since only the caller knows. Best effort: a store that cannot be
+    written costs the next run a re-run and nothing else, so an error here is
+    ``None`` rather than an exception.
+    """
+    folder = suite_results_dir(repo_root)
+    if folder is None:
+        return None
+    now = time.time() if now is None else now
+    record = {"tree": tree, "argv": list(argv), "returncode": run.returncode,
+              "failures": None if run.failures is None else list(run.failures),
+              "seconds": round(run.seconds, 3), "timestamp": now}
+    path = folder / f"{suite_result_key(tree, argv)}.json"
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        prune_suite_results(folder, now)
+        partial = path.with_suffix(".json.tmp")
+        partial.write_text(json.dumps(record, indent=1), encoding="utf-8")
+        os.replace(str(partial), str(path))
+    except OSError:
+        return None
+    return path
+
+
+def prune_suite_results(folder: Path, now: Optional[float] = None) -> List[Path]:
+    """Delete every stored result older than ``SUITE_RESULT_MAX_AGE``.
+
+    Age is the record's own timestamp, or the file's mtime where the record
+    cannot be read. Returns what was removed.
+    """
+    now = time.time() if now is None else now
+    removed: List[Path] = []
+    for path in sorted(folder.glob("*.json")):
+        try:
+            stamp = float(json.loads(path.read_text(encoding="utf-8"))["timestamp"])
+        except (OSError, ValueError, KeyError, TypeError):
+            try:
+                stamp = path.stat().st_mtime
+            except OSError:
+                continue
+        if now - stamp > SUITE_RESULT_MAX_AGE:
+            try:
+                path.unlink()
+                removed.append(path)
+            except OSError:
+                pass
+    return removed
+
+
+def recorded_suite_run(repo_root: Path, argv: List[str], identify: bool,
+                       reuse: bool = False) -> SuiteRun:
+    """Run the suite over ``HEAD`` — or, with *reuse*, read back a run of it.
+
+    The store's one reader and writer: a run starting from a clean tree is
+    recorded under ``HEAD``'s tree, and a run over any other tree is not,
+    since its result belongs to no commit.
+    """
+    tree = head_tree(repo_root) if tree_is_clean(repo_root) else None
+    if reuse and tree is not None and identify:
+        stored = read_suite_result(repo_root, tree, argv)
+        if stored is not None:
+            return stored
+    run = run_test_suite(repo_root, argv, identify)
+    if tree is not None:
+        write_suite_result(repo_root, tree, argv, run)
+    return run
+
+
+def _first_parent_ancestor(repo_root: Path, rev: str) -> Optional[str]:
+    res = git(["rev-parse", "--verify", "--quiet", f"{rev}^1"], repo_root, check=False)
+    return res.stdout.strip() or None if res.returncode == 0 else None
+
+
+def _contains(repo_root: Path, ancestor: str, rev: str) -> bool:
+    return git(["merge-base", "--is-ancestor", ancestor, rev], repo_root,
+               check=False).returncode == 0
+
+
+#: How far back along the base's first-parent line `landed_pre_merge_base`
+#: walks before it gives up — a retry comes after a handful of fix commits.
+_PRE_MERGE_WALK_MAX = 200
+
+
+def landed_pre_merge_base(repo_root: Path, base: str, branch: str,
+                          tip: str) -> Optional[str]:
+    """The commit *base* stood at just before *branch* (tip *tip*) merged in.
+
+    For a retried merge, where the merge happened in an earlier run. Two
+    readings, and ``None`` unless one of them is unambiguous:
+
+    * **A merge commit.** Walk *base*'s first-parent line back to the first
+      commit whose first parent does not contain *tip*. Where that commit is a
+      merge, its first parent is the base as it stood.
+    * **A fast-forward.** The walk reaches *tip* itself, and the history no
+      longer records where the base stood. The base's reflog does: the one
+      entry git wrote as ``merge <branch>: …`` holds the value it moved from.
+    """
+    current = git(["rev-parse", "--verify", "--quiet", base], repo_root,
+                  check=False).stdout.strip()
+    if not current or not _contains(repo_root, tip, current):
+        return None
+    for _ in range(_PRE_MERGE_WALK_MAX):
+        if current == tip:
+            return _reflog_pre_merge(repo_root, base, branch, tip)
+        parent = _first_parent_ancestor(repo_root, current)
+        if parent is None:
+            return None
+        if not _contains(repo_root, tip, parent):
+            parents = git(["rev-list", "--parents", "-n", "1", current],
+                          repo_root, check=False).stdout.split()
+            return parent if len(parents) >= 3 else None
+        current = parent
+    return None
+
+
+def _reflog_pre_merge(repo_root: Path, base: str, branch: str,
+                      tip: str) -> Optional[str]:
+    res = git(["rev-parse", "--git-path", f"logs/refs/heads/{base}"],
+              repo_root, check=False)
+    rel = res.stdout.strip()
+    if res.returncode != 0 or not rel:
+        return None
+    path = Path(rel) if Path(rel).is_absolute() else repo_root / rel
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    olds = []
+    for line in lines:
+        head, _, message = line.partition("\t")
+        if message.startswith(f"merge {branch}:"):
+            olds.append(head.split(" ", 1)[0])
+    if len(olds) != 1 or not _contains(repo_root, olds[0], tip):
+        return None
+    return olds[0]
+
+
+def base_suite_run(repo_root: Path, argv: List[str], sha: str,
+                   base: str) -> Tuple[Optional[SuiteRun], str]:
+    """The suite over commit *sha*, run in place, with *base* checked out after.
+
+    A stored result for *sha*'s tree is used where there is one. Otherwise
+    HEAD is detached at *sha*, the suite runs, and *base* is switched back —
+    in a `finally`, so an exception or a signal turned into one
+    (`_restore_on_signal`) still leaves the branch checked out. Changes the run
+    made to tracked files are discarded on the way back: the tree was clean
+    before the switch, so any there are the base run's own.
+
+    In place and not in a separate worktree: the post-merge run saw this
+    checkout's untracked and ignored inputs — data, a built extension, the
+    venv — and a worktree without them fails more tests at the base, which is
+    exactly the error that would admit a regression as inherited.
+    ``(run, "")``, or ``(None, why)``.
+    """
+    tree = git(["rev-parse", f"{sha}^{{tree}}"], repo_root, check=False).stdout.strip()
+    if tree:
+        stored = read_suite_result(repo_root, tree, argv)
+        if stored is not None:
+            return stored, ""
+    if not tree_is_clean(repo_root):
+        return None, ("the post-merge run left tracked changes in the tree, "
+                      "so the base cannot be checked out beside them")
+    # The switch sits inside the `try`, and the `finally` asks git where HEAD
+    # is rather than trusting a flag: a signal landing between the switch and
+    # the line after it would otherwise leave HEAD detached with no restore.
+    try:
+        switched = git(["switch", "--detach", sha], repo_root, check=False)
+        if switched.returncode != 0:
+            return None, (f"the base could not be checked out: "
+                          f"{(switched.stderr or switched.stdout).strip()}")
+        run = recorded_suite_run(repo_root, argv, identify=True)
+    finally:
+        back = None
+        if _current_branch(repo_root) != base:
+            back = git(["switch", "--discard-changes", base], repo_root,
+                       check=False)
+    # Verified, never assumed: every commit after this — the tick, the ledger
+    # row, the inbox entry — lands on whatever HEAD is, and a detached one
+    # carries them onto no branch at all.
+    if _current_branch(repo_root) != base:
+        detail = ((back.stderr or back.stdout).strip() if back is not None
+                  else "")
+        raise RuntimeError(
+            f"after the run at the base, {base} could not be checked out "
+            f"again, so HEAD is still detached at {sha[:10]}"
+            + (f" ({detail})" if detail else "")
+            + f". Run 'git switch {base}' before anything else, then re-run "
+              f"the merge")
+    return run, ""
+
+
+def _judge_red_run(repo_root: Path, argv: List[str], post: SuiteRun,
+                   refusal: Optional[str], pre_merge: Optional[str],
+                   landed: bool, base: str, branch: str,
+                   tip: str) -> Tuple[Optional[Tuple[str, ...]], str]:
+    """Read a red post-merge run against the base: ``(inherited, report)``.
+
+    *inherited* is the failures the gate admits — every post-merge failure,
+    each one also failing where *base* stood before the merge — or ``None``
+    when the gate refuses: a failure the base does not have, or a run that
+    cannot be compared at all. *report* says which and lists the sets; on a
+    refusal it is appended to the refusal message, so it opens with a newline.
+    """
+    why = refusal or (post.unidentified if post.failures is None else "")
+    if not why and pre_merge is None and landed:
+        pre_merge = landed_pre_merge_base(repo_root, base, branch, tip)
+    if not why and pre_merge is None:
+        why = (f"where {base} stood before this merge cannot be identified "
+               f"from its history or its reflog")
+    base_run: Optional[SuiteRun] = None
+    if not why:
+        base_run, why = base_suite_run(repo_root, argv, pre_merge, base)
+        if not why and (base_run is None or base_run.failures is None):
+            why = (f"the run at the base could not name its failures: "
+                   f"{base_run.unidentified if base_run else 'no result'}")
+    if why or base_run is None or base_run.failures is None or post.failures is None:
+        return None, (f"\naide merge: the failures were not compared with "
+                      f"the base, so any failure refuses: {why}.")
+    where = (f"{pre_merge[:10]}, where {base} stood before the merge"
+             + (" (a stored result for that tree, not re-run)"
+                if base_run.reused else ""))
+    at_base = set(base_run.failures)
+    new = [f for f in post.failures if f not in at_base]
+    old = [f for f in post.failures if f in at_base]
+    if new:
+        return None, (f"\naide merge: {len(new)} failure(s) are this item's — "
+                      f"they do not fail at {where}:" + _listed(new)
+                      + (f"\naide merge: {len(old)} other(s) fail there too, "
+                         f"and are inherited:" + _listed(old) if old else ""))
+    return tuple(old), (f"aide merge: the post-merge run has {len(old)} "
+                        f"failure(s), and every one also fails at {where}, "
+                        f"which has {len(at_base)} — inherited, not this "
+                        f"item's, so the gate admits the merge. Inherited:"
+                        + _listed(old))
+
+
+def _open_insight_text(text: str) -> str:
+    """Every open entry of an inbox, trail included, as one string to search."""
+    return "\n".join("\n".join([e.raw, *e.trail])
+                     for e in parse_insights(text) if not e.ticked)
+
+
+def _names_id(haystack: str, test_id: str) -> bool:
+    """Whether *haystack* names *test_id* as a whole id, not inside a longer one."""
+    return re.search(r"(?<![\w./:\[-])" + re.escape(test_id) + r"(?![\w.:\[-])",
+                     haystack) is not None
+
+
+def inherited_failures_entry(text: str, ids: List[str], number: int, base: str,
+                             date: str) -> Optional[str]:
+    """The one ``defect`` line naming the ids no open entry names yet, or None."""
+    open_text = _open_insight_text(text)
+    fresh = [i for i in ids if not _names_id(open_text, i)]
+    if not fresh:
+        return None
+    shown = fresh[:_INHERITED_LISTED_MAX]
+    listed = ", ".join(f"`{i}`" for i in shown)
+    if len(fresh) > len(shown):
+        listed += f" (+{len(fresh) - len(shown)} more)"
+    stamp = _engine_stamp()
+    marker = f"*(item {number:03d}, {date}" + (f", {stamp}" if stamp else "") + ")*"
+    plural = "s" if len(fresh) != 1 else ""
+    return (f"- [ ] defect — {len(fresh)} test{plural} failing on {base} "
+            f"before item {number:03d} merged, admitted by `aide merge` as "
+            f"inherited: {listed} {marker}")
+
+
+def route_inherited_failures(repo_root: Path, config, number: int, base: str,
+                             ids: List[str], date: str) -> Tuple[Optional[str], str]:
+    """Append the inherited-failures entry; ``(rel_path, message)``.
+
+    No path when nothing was written — no inbox, or every id already named by
+    an open entry — and the message says which.
+    """
+    path = insights_path(docs_dir(repo_root, config))
+    if not path.is_file():
+        return None, ("no insights.md, so the inherited failures were not "
+                      "captured — they are listed above")
+    text = path.read_text(encoding=_ENCODING)
+    entry = inherited_failures_entry(text, ids, number, base, date)
+    if entry is None:
+        return None, ("insights.md: every inherited failure is already named "
+                      "by an open entry, so none was added")
+    if text and not text.endswith("\n"):
+        text += "\n"
+    path.write_text(text + entry + "\n", encoding="utf-8")
+    rel = str(config["project"].get("docs_dir", "docs/aide")) + "/insights.md"
+    return rel, "insights.md: captured a defect entry for the inherited failures"
+
+
+def _listed(ids, indent: str = "  ") -> str:
+    return "".join(f"\n{indent}{i}" for i in ids)
+
+
 def cmd_merge(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
@@ -8545,6 +9100,10 @@ def cmd_merge(args: argparse.Namespace) -> int:
     # is what makes the verb re-runnable, which a loop needs it to be.
     landed = git(["merge-base", "--is-ancestor", branch, main],
                  repo_root, check=False).returncode == 0
+    # Where the base stood before this merge — what a red post-merge run is
+    # compared with (§4). Read now for a merge this run makes; for one an
+    # earlier run made, only if the run turns out red (`landed_pre_merge_base`).
+    pre_merge: Optional[str] = None
     if landed:
         print(f"aide merge: {branch} is already merged into {main} — skipping "
               f"the merge; the tick, the push and the cleanup still run.")
@@ -8578,6 +9137,8 @@ def cmd_merge(args: argparse.Namespace) -> int:
                           f"intact on {branch}. Re-run once {main} is settled.",
                           file=sys.stderr)
                     return 1
+        pre_merge = git(["rev-parse", "HEAD"], repo_root,
+                        check=False).stdout.strip() or None
         merge_res = git(["merge", "--no-edit", branch], repo_root, check=False)
         if merge_res.returncode != 0:
             # The one conflict this loop produces as a matter of course gets
@@ -8601,14 +9162,6 @@ def cmd_merge(args: argparse.Namespace) -> int:
     # one with the ref and a retry must land where this run did (issue #167).
     branch_tip = git(["rev-parse", branch], repo_root, check=False).stdout.strip()
     branch_base = main
-    # `-d` can refuse even though the work landed (e.g. `pull --rebase` rewrote
-    # main so the branch tip is no longer an ancestor); this process just
-    # established that the branch is merged, so escalating to -D is safe. VERIFY
-    # the outcome, never assume it.
-    del_res = git(["branch", "-d", branch], repo_root, check=False)
-    if del_res.returncode != 0:
-        del_res = git(["branch", "-D", branch], repo_root, check=False)
-    local_gone = branch not in _local_branches(repo_root)
 
     # Every exit from here to the push must put the branch back, not just the
     # two this function writes out longhand: the window covers a whole test
@@ -8625,23 +9178,48 @@ def cmd_merge(args: argparse.Namespace) -> int:
     # repository and the retry has nothing left to do, so putting the branch
     # back would leave a stale claim branch behind a ✅ item — the very state
     # deleting it before the tests avoids.
+    #
+    # It begins BEFORE the deletion, with the tip already read: a signal
+    # landing between `branch -d` and a handler installed after it ended the
+    # process with the claim branch gone and nothing to put it back (#275).
     with _restore_on_signal():
         try:
+            # `-d` can refuse even though the work landed (e.g. `pull
+            # --rebase` rewrote main so the branch tip is no longer an
+            # ancestor); this process just established that the branch is
+            # merged, so escalating to -D is safe. VERIFY the outcome, never
+            # assume it.
+            del_res = git(["branch", "-d", branch], repo_root, check=False)
+            if del_res.returncode != 0:
+                del_res = git(["branch", "-D", branch], repo_root, check=False)
+            local_gone = branch not in _local_branches(repo_root)
+
+            suite_seconds: Optional[int] = None
+            inherited: Optional[Tuple[str, ...]] = None
             if not args.no_test:
                 cmd = resolve_test_command(repo_root, config)
-                test_res = subprocess.run(cmd, cwd=str(repo_root))
-                if test_res.returncode != 0:
-                    _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
-                    print(f"aide merge: the post-merge test run FAILED, so item "
-                          f"{args.number:03d} is NOT ✅ and nothing was pushed — the "
-                          f"tick and the push are what this run refuses, not the merge "
-                          f"itself. {branch} is merged into {main} in THIS repository "
-                          f"only, and the claim branch is back with its base. Fix the "
-                          f"failures on {main}, commit, then re-run "
-                          f"'merge {args.number:03d} --base {main}': the merge is "
-                          f"already an ancestor, so the retry only re-tests, ticks and "
-                          f"pushes.", file=sys.stderr)
-                    return 1
+                refusal = failure_identity_refusal(cmd)
+                post = recorded_suite_run(repo_root, cmd, identify=refusal is None)
+                suite_seconds = int(round(post.seconds))
+                if post.returncode == 0:
+                    inherited = () if refusal is None else None
+                else:
+                    inherited, report = _judge_red_run(
+                        repo_root, cmd, post, refusal, pre_merge, landed,
+                        main, branch, branch_tip)
+                    if inherited is None:
+                        _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
+                        print(f"aide merge: the post-merge test run FAILED, so item "
+                              f"{args.number:03d} is NOT ✅ and nothing was pushed — the "
+                              f"tick and the push are what this run refuses, not the merge "
+                              f"itself. {branch} is merged into {main} in THIS repository "
+                              f"only, and the claim branch is back with its base. Fix the "
+                              f"failures on {main}, commit, then re-run "
+                              f"'merge {args.number:03d} --base {main}': the merge is "
+                              f"already an ancestor, so the retry only re-tests, ticks and "
+                              f"pushes.{report}", file=sys.stderr)
+                        return 1
+                    print(report)
 
             # The document gate, beside the test run and refusing the same two
             # things: the tick and the push, so the item stays 🔍. Nothing else
@@ -8684,6 +9262,10 @@ def cmd_merge(args: argparse.Namespace) -> int:
             # code — capture is worth a sentence, never a landed item.
             ledger_rel = None
             if pending_row is not None:
+                pending_row[LEDGER_COLUMNS.index("Suite s")] = (
+                    "" if suite_seconds is None else str(suite_seconds))
+                pending_row[LEDGER_COLUMNS.index("Inherited")] = (
+                    "" if inherited is None else str(len(inherited)))
                 try:
                     ledger_rel = append_ledger_row(repo_root, config,
                                                    pending_row, "merge")
@@ -8691,9 +9273,30 @@ def cmd_merge(args: argparse.Namespace) -> int:
                     print(f"aide merge: item {args.number:03d} merged, but its "
                           f"ledger row could not be written "
                           f"({type(exc).__name__}: {exc})", file=sys.stderr)
+            extra_rels = [ledger_rel] if ledger_rel else []
+            if inherited:
+                # One engine-written `defect` for the failures it just
+                # admitted, in the tick's commit so it is pushed with it (§4).
+                # Like the row: a sentence on failure, never an exit code.
+                import datetime as _dt
+                try:
+                    inbox_rel, note = route_inherited_failures(
+                        repo_root, config, args.number, main, list(inherited),
+                        _dt.date.today().isoformat())
+                except (OSError, UnicodeDecodeError) as exc:
+                    inbox_rel, note = None, (
+                        f"the inherited failures could not be captured in "
+                        f"insights.md ({type(exc).__name__}: {exc})")
+                # Both outcomes that wrote or needed nothing open with the
+                # file's name; anything else is a capture that did not happen.
+                print(f"aide merge: {note}",
+                      file=sys.stdout if note.startswith("insights.md:")
+                      else sys.stderr)
+                if inbox_rel and inbox_rel not in extra_rels:
+                    extra_rels.append(inbox_rel)
             _promote_item_to_complete(repo_root, config, args.number,
                                       getattr(args, "no_commit", False),
-                                      (ledger_rel,) if ledger_rel else ())
+                                      tuple(extra_rels))
 
             remote_gone = True
             if mode != "local":
@@ -10689,8 +11292,10 @@ def register_git_subcommands(sub) -> None:
             "carries, how many test functions and files the branch added "
             "against the base this run resolved \u2014 less the tests "
             "`aide scope` reports as reconciled in another item's test file, "
-            "which are that item's \u2014 the engine version and "
-            "today's date. The exceptions are --rounds and --findings, which "
+            "which are that item's \u2014 the engine version, "
+            "today's date, the post-merge suite run's wall time in whole "
+            "seconds and how many inherited failures it admitted (below). The "
+            "exceptions are --rounds and --findings, which "
             "no document holds and only the caller has.\n"
             "\n"
             "A count nobody passed is a blank cell and never a 0 \u2014 an "
@@ -10712,7 +11317,25 @@ def register_git_subcommands(sub) -> None:
             "caller made. Where review is on and --findings is absent the "
             "run warns on stderr, writes the row and still exits 0. The "
             "counts are of in-scope findings; one outside the item is an "
-            "insights.md line and no cell here."))
+            "insights.md line and no cell here.\n"
+            "\n"
+            "A red post-merge run is compared with the base where the test "
+            "command runs pytest as a module (`<python> -m pytest ...`): the "
+            "run writes a JUnit report, and the same command is then run on "
+            "the base as it stood before this merge, in this checkout, or its "
+            "result reused where this repository already recorded a run of "
+            "that tree. When every failure after the merge also fails at the "
+            "base, the failures are inherited rather than this item's: the "
+            "merge is admitted, both sets are printed, the row's Inherited "
+            "cell counts them, and one defect entry naming those no open "
+            "insights.md entry names yet is committed with the tick. A "
+            "failure the base does not have refuses the tick and the push, "
+            "listed apart from the inherited ones. Any other runner, an "
+            "order-dependent flag (-x, --maxfail, --lf, --ff, --sw), a pytest "
+            "exit other than 1 and a base that cannot be identified keep the "
+            "plain gate, where any red run refuses. The Suite s cell is blank "
+            "under --no-test, and Inherited is blank wherever no comparison "
+            "could be made."))
     p_merge.add_argument("number", type=int)
     p_merge.add_argument("branch", nargs="?", default=None, help="claim branch (default: found from number)")
     p_merge.add_argument("--base", default=None,
@@ -10724,7 +11347,8 @@ def register_git_subcommands(sub) -> None:
                               "still refuses the tick and the push")
     p_merge.add_argument("--no-commit", action="store_true",
                          help="do not commit the progress.md status the merge "
-                              "records, nor the ledger row beside it")
+                              "records, nor the ledger row and any inbox "
+                              "entry beside it")
     p_merge.add_argument("--rounds", type=_non_negative_argument, default=None,
                          help="build\u2194validate rounds this item took, for "
                               "the ledger row (absent: a blank cell)")

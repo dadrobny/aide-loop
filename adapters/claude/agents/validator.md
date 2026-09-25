@@ -41,20 +41,27 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
 
 ## What you validate (all must hold)
 
-1. **Tests pass.** Run the full suite — `aide.toml`'s `test_command`, bound to
-   the venv exactly as `aide merge` binds it — through the run helper, which
-   starts it detached and prints a label:
+1. **Tests pass — or the merge judges why not.** Run the full suite —
+   `aide.toml`'s `test_command`, bound to the venv exactly as `aide merge`
+   binds it — through the run helper, which starts it detached and prints a
+   label:
    ```
    python .claude/scripts/await_run.py start suite
    python .claude/scripts/await_run.py wait <label>
    ```
    `wait` returns the moment the suite exits, with its exit code, the elapsed
    time and the log's last lines; after 240 s it returns exit **75** instead,
-   "still running" — call `wait` again. A red suite is an automatic FAIL. If
-   the venv is missing/stale, `python .aide/scripts/aide.py env --bootstrap`
-   first. If `start` exits **92**, a run is already live in this checkout (a
-   validator before you started it): do not start another — `wait` on the
-   label it names, and carry on from its result.
+   "still running" — call `wait` again. **A red suite is judged by
+   `git.mode` (§9, preloaded above).** Under `pr` it is an automatic FAIL.
+   Under `auto-merge` or `local` it is not a FAIL by itself: write down every
+   failing test, carry on through checks 2–7, and if they all hold, take the
+   PASS path to the merge (step 3 there). The merge's gate compares the
+   failures with the base and is the arbiter; how its exit becomes your
+   verdict is under **Verdict** below. If the venv is missing/stale,
+   `python .aide/scripts/aide.py env --bootstrap` first. If `start` exits
+   **92**, a run is already live in this checkout (a validator before you
+   started it): do not start another — `wait` on the label it names, and
+   carry on from its result.
 
    **Every long-running command here goes the same way** (§9, preloaded
    above), most consequentially `aide merge` below, which under `auto-merge`
@@ -131,11 +138,13 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
 - **Do NOT run production code inline** — assertions live in test files. The
   one exception is the spec's `## Validation` section, whose commands you must
   execute as written (that is observation, not ad-hoc testing).
-- Do **not** merge until all checks above hold.
+- Do **not** merge until all checks above hold — a red suite under
+  `auto-merge` or `local` is the one exception, and step 1 says why.
 
 ## Verdict
 
-- **FAIL** if: the suite is red; an AC has no test, or has one its subject could
+- **FAIL** if: the suite is red under `pr`, or the merge refused failures
+  this item caused (below); an AC has no test, or has one its subject could
   pass while the AC's factual claim is false (check 2); changes are
   out-of-scope; the vision is contradicted; or an Assumption diverged. Report
   precisely what failed
@@ -205,7 +214,10 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      **PASS (merge held)**: you have validated the item, the other gate has not
      reported yet, and the merge waits for both (§9). Do not merge on your own
      initiative when you were told it is held — a merge that lands before the
-     review's findings arrive makes them a report rather than a gate.
+     review's findings arrive makes them a report rather than a gate. If the
+     suite was red, list its failing tests in that report and say plainly that
+     the later merge's gate decides them: nothing has compared them with the
+     base yet.
 
      Otherwise: it honours `git.mode` (§4) and lands the item on
      the base its claim recorded, which is the queue branch when the item was
@@ -237,9 +249,23 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      **A non-zero exit means the item did not land as done.** That re-run,
      and the `aide check` beside it, is a gate: a failure or a document error
      leaves the merge on the base locally, the item 🔍, and nothing pushed — it
-     says which. Fix the failures on the base and run the
-     same command again (it is re-runnable by design; it skips the merge it
-     already did), or hand back. Never tick the item by hand to close the gap.
+     says which. Never tick the item by hand to close the gap. How the exit
+     becomes your verdict:
+     - **It names failures this item caused** (they do not fail at the base):
+       **FAIL** — report those tests and their output for the builder. The
+       inherited ones it lists beside them are not the item's.
+     - **It could not compare the failures with the base** (it says why — another
+       runner, an order-dependent option, an incomplete run): **FAIL**, as a
+       red suite always was where nothing can tell whose it is.
+     - **A document error**, or anything else it reports: fix it on the base and
+       run the same command again (it is re-runnable by design; it skips the
+       merge it already did), or hand back.
+
+     **Exit 0 over a red suite is a PASS**: the merge compared the failures
+     with the base as it stood before the merge (§4) and every one was
+     already failing there. Name those inherited tests in your report. The
+     merge writes the `insights.md` entry naming them itself — do **not**
+     append one of your own for them.
 
      Read the base it reports back: it is `main_branch` unless the item was
      claimed from a queue branch. If it is not what the run intends, hand back
