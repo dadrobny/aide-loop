@@ -926,3 +926,23 @@ def test_a_run_whose_head_moved_is_not_recorded(tmp_path: Path, monkeypatch,
 
     assert _records(repo) == []
     assert "NOT recorded" in capsys.readouterr().err
+
+
+def test_a_run_whose_tree_changed_is_not_recorded(tmp_path: Path, monkeypatch,
+                                                  capsys):
+    """A tracked file edited mid-run leaves a result that is of no commit."""
+    repo = _init_repo(tmp_path / "repo", fails="")
+    _claim(repo)
+
+    def run(repo_root, argv, identify):
+        (Path(repo_root) / "src" / "a.py").write_text("x = 2\n",
+                                                      encoding="utf-8")
+        return aide.SuiteRun(0, 1.0, ())
+
+    monkeypatch.setattr(aide, "run_test_suite", run)
+    capsys.readouterr()
+
+    assert _test(repo) == 0
+
+    assert _records(repo) == []
+    assert "NOT recorded" in capsys.readouterr().err

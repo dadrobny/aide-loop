@@ -8774,14 +8774,16 @@ def recorded_suite_run(repo_root: Path, argv: List[str], identify: bool,
     The store's one writer: a run starting from a clean tree is recorded under
     ``HEAD``'s tree, with *by*, the branch and the commit it ran at — and a
     run over any other tree is not, since its result belongs to no commit.
-    Nor is one whose ``HEAD`` moved while it ran. ``(run, tree)``, *tree*
+    Nor is one whose ``HEAD`` moved, or whose tree gained a tracked change,
+    while it ran. ``(run, tree)``, *tree*
     being what it was recorded under, or ``None`` where it was not.
     """
     tree = head_tree(repo_root) if tree_is_clean(repo_root) else None
     commit = _head_commit(repo_root) if tree is not None else None
     branch = _current_branch(repo_root) if tree is not None else ""
     run = run_test_suite(repo_root, argv, identify)
-    if tree is None or commit is None or _head_commit(repo_root) != commit:
+    if (tree is None or commit is None or _head_commit(repo_root) != commit
+            or not tree_is_clean(repo_root)):
         return run, None
     written = write_suite_result(repo_root, tree, argv, run, provenance={
         "by": by, "branch": branch, "commit": commit,
@@ -9142,7 +9144,7 @@ def cmd_test(args: argparse.Namespace) -> int:
     else:
         why = ("the tree has tracked changes or an operation in progress, so "
                "the run is of no commit" if not clean else
-               "HEAD moved while it ran, or the result store could not be "
+               "HEAD or a tracked file changed while it ran, or the result store could not be "
                "written")
         print(f"aide test: {outcome}. NOT recorded: {why}.", file=sys.stderr)
     code = run.returncode
