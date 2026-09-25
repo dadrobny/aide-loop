@@ -1604,32 +1604,73 @@ def _objective_stages(delivered_by: str) -> List[str]:
     return re.findall(r"\bStage[s]?\s+([\d,\s]+)", delivered_by)
 
 
+def stage_rollups(lines: List[str]) -> Dict[str, str]:
+    """Each stage's rollup over its Deliverables bullets, by stage number.
+
+    A stage with no deliverable bullet has nothing to derive, and is absent.
+    The one reading of "what the bullets say" that both the writer
+    (`_recompute_rollups`) and `aide check` take a stage's status from.
+    """
+    out: Dict[str, str] = {}
+    for start, end, stage_num in stage_sections(lines):
+        derived = rollup_status(stage_deliverable_statuses(lines, start, end))
+        if derived is not None:
+            out[stage_num] = derived
+    return out
+
+
+def _objective_row_stages(delivered_by: str) -> List[str]:
+    """The stage numbers an Objective row's Delivered-by cell is read as naming."""
+    return re.findall(r"\d+", delivered_by)
+
+
+def objective_rollup(nums: List[str], stage_status: Dict[str, str]) -> Optional[str]:
+    """What an Objective row derives to from the stages it names — in full.
+
+    The stage rule over the stages' own rollups (a stage never rolls up to
+    ❌, so `rollup_status` reads them exactly as it reads bullets): ✅ when
+    every named stage is ✅, ⏸️ when every one is ✅ or ⏸️, 🚧 when any is
+    ✅ or 🚧, otherwise 📋. Both callers then hold a ✅ at 🚧 for a row linked
+    to an Outcome target not ✅ Met (`_blocked_objectives`). A named number
+    with no stage section, or one whose section has no bullet, contributes
+    nothing; None when none does. No never-downgrade and no hand-held cell:
+    those are the writer's (`_apply_objective_rollup`), and `aide check`
+    compares a row with this (`derived_cell_findings`).
+    """
+    return rollup_status([stage_status[n] for n in nums if n in stage_status])
+
+
+def _blocked_objectives(lines: List[str]) -> Set[str]:
+    """G-codes linked to an Outcome target that is not ✅ Met."""
+    return {g for t in outcome_targets(lines) if t.kind != "met"
+            for g in t.objectives}
+
+
 def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
                             downgrade_stages: Set[str] = frozenset(),
                             touched_stages: Set[str] = frozenset()) -> None:
     """Roll each Objective row up from the stages its Delivered-by cell names.
 
-    Never downgrades a row, except one naming a stage in *downgrade_stages* —
-    the stages a reopen or a deferral just sent back (issues #271, #281), and
-    nothing else, so an unrelated row is never rewritten by it — and except to
-    ⏸️: a row whose stages are all ✅ or ⏸️, at least one ⏸️, is ⏸️ whatever
-    it read, since the work it still waits on is work deferred — and except a
-    row naming a stage that rolls up to ⏸️, which `_recompute_rollups` writes
-    down from any status, so the row follows it. A ⏸️ row is left alone
-    unless it names a stage in either set (`_held_by_hand`)."""
+    The derivation is `objective_rollup`'s; what this adds is when a row may
+    be written. Never downgrades a row, except one naming a stage in
+    *downgrade_stages* — the stages a reopen or a deferral just sent back
+    (issues #271, #281), and nothing else, so an unrelated row is never
+    rewritten by it — and except to ⏸️: a row whose stages are all ✅ or ⏸️,
+    at least one ⏸️, is ⏸️ whatever it read, since the work it still waits on
+    is work deferred — and except a row naming a stage that rolls up to ⏸️,
+    which `_recompute_rollups` writes down from any status, so the row
+    follows it. A ⏸️ row is left alone unless it names a stage in either set
+    (`_held_by_hand`)."""
     # An objective linked to an outcome target that is not ✅ Met can never
     # roll up to ✅: its stages shipping is necessary but not sufficient.
-    blocked = {g for t in outcome_targets(lines) if t.kind != "met"
-               for g in t.objectives}
+    blocked = _blocked_objectives(lines)
     for i, line in enumerate(lines):
         if not line.strip().startswith("|"):
             continue
         cells = _split_row(line)
         gm = re.match(r"G\d+", cells[0]) if len(cells) == 3 else None
         if gm and _icon_status(cells[2]):
-            nums: List[str] = []
-            for chunk in re.findall(r"\d+", cells[1]):
-                nums.append(chunk)
+            nums = _objective_row_stages(cells[1])
             if not nums:
                 continue
             current = _icon_status(cells[2])
@@ -1646,23 +1687,10 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
             # say ⏸️ and 📋 (issue #281, PR #284 review).
             allow_downgrade = by_verb or any(
                 stage_status.get(n) == "deferred" for n in nums)
-            statuses = [stage_status.get(n) for n in nums if stage_status.get(n)]
-            if statuses and all(s == "complete" for s in statuses):
-                derived = "complete"
-            elif statuses and all(s in ("complete", "deferred") for s in statuses):
-                # Some stage is ⏸️ and the rest shipped (issue #281): the
-                # objective waits on deferred work alone, as its stage does.
-                derived = "deferred"
-            elif any(s in ("complete", "in-progress", "in-review") for s in statuses):
-                derived = "in-progress"
-            elif allow_downgrade and statuses:
-                # A reopen or a deferral gets here, or a row over a stage
-                # that rolls up to ⏸️: no stage the row names is started, so
-                # every one is 📋 or ⏸️ with at least one 📋 (all ✅/⏸️ was
-                # taken above) — the objective is 📋, as a stage of those
-                # bullets would be.
-                derived = "planned"
-            else:
+            derived = objective_rollup(nums, stage_status)
+            if derived is None or (derived == "planned" and not allow_downgrade):
+                # 📋 only on a way down — a reopen or a deferral, or a row over
+                # a stage that rolls up to ⏸️; otherwise the row stays as set.
                 derived = current
             if derived == "complete" and gm.group(0) in blocked:
                 derived = "in-progress"
@@ -1876,12 +1904,11 @@ def _recompute_rollups(lines: List[str],
     ⏸️ cell there follows the rollup, where elsewhere it is left as set by
     hand (`_held_by_hand`).
     """
-    stage_status: Dict[str, str] = {}
+    stage_status = stage_rollups(lines)
     for start, end, stage_num in stage_sections(lines):
         derived = rollup_status(stage_deliverable_statuses(lines, start, end))
         if derived is None:
             continue
-        stage_status[stage_num] = derived
         down = stage_num in downgrade_stages or derived == "deferred"
         touched = stage_num in touched_stages
         _set_stage_header(lines, start, derived, allow_downgrade=down,
@@ -4751,6 +4778,148 @@ def stray_icon_warnings(ddir: Path) -> List[str]:
     return out
 
 
+def _cells_shown(cells: List[Tuple[str, str]]) -> str:
+    return " and ".join(f"{where} {STATUS_TO_ICON[st]} {st}" for where, st in cells)
+
+
+def _stage_drift_fix(off: List[Tuple[str, str]], derived: str) -> str:
+    """The remedy a stage's drift warning names, by what the cells and the
+    bullets disagree about."""
+    target = "cells" if len(off) > 1 else off[0][0]
+    if derived == "deferred":
+        return f"every open deliverable is ⏸️, so set the {target} to ⏸️"
+    if any(st == "deferred" for _, st in off):
+        if derived == "complete":
+            return "nothing is left open to defer, so restore ✅"
+        return (f"defer the stage's open items with 'aide progress set NNN "
+                f"deferred --reason …', or restore {STATUS_TO_ICON[derived]}")
+    return (f"a stage's cells follow its bullets, so set the {target} to "
+            f"{STATUS_TO_ICON[derived]}, or move the bullets with "
+            f"'aide progress set'")
+
+
+def derived_cell_findings(lines: List[str]
+                          ) -> Tuple[List[str], List[str], Set[str]]:
+    """``(errors, warnings, objectives named)`` over every derived cell (#285).
+
+    A stage's header and summary row are compared with `rollup_status` over
+    its bullets, an Objective row with `objective_rollup` over the stages it
+    names — the writer's own derivation, with none of the writer's restraint:
+    no never-downgrade and no hand-held ⏸️, which are rules about when a verb
+    may *write* a cell, not about what the cell should say. So a file the
+    verbs alone wrote never trips this, while a hand-set ⏸️ the writer leaves
+    standing is named for as long as it disagrees.
+
+    A ✅ the derivation does not support is an error, as the ✅ summary row
+    always was — one per cell; every other disagreement is a warning, a
+    stage's off cells named together in one. One message per cell: the
+    header-against-summary comparison runs only where neither cell was named
+    — which leaves it the stage with no bullet to derive from, and a ❌
+    header. ❌ is never compared: it is a scope decision, not a rollup, and a
+    ❌ summary row drops its whole stage (header included) as before. An
+    Objective row whose stages roll up to ✅ under a target that is not ✅ Met
+    is the target comparisons' to report, which already do, so a ✅ row
+    there is not reported twice; and the third value, the G-codes this named,
+    is what `run_checks` leaves out of those target comparisons in turn.
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+    named: Set[str] = set()
+    summary_status: Dict[str, str] = {}
+    for line in lines:
+        cells = _split_row(line) if line.strip().startswith("|") else []
+        if cells and _reads(_STAGE_SUMMARY, cells):
+            summary_status[cells[0]] = _icon_status(cells[3])
+
+    for start, end, num in stage_sections(lines):
+        header_status = _header_status(lines[start])
+        derived = rollup_status(stage_deliverable_statuses(lines, start, end))
+        summ = summary_status.get(num)
+        if summ == "excluded":
+            continue
+        off = [(where, st) for where, st in (("summary", summ),
+                                             ("header", header_status))
+               if st and st != "excluded" and derived and st != derived]
+        over = [(w, st) for w, st in off if st == "complete"]
+        rest = [(w, st) for w, st in off if st != "complete"]
+        for where, _ in over:
+            errors.append(
+                f"stage {num}: {where} marked ✅ but has non-complete "
+                f"deliverables — they roll up to {STATUS_TO_ICON[derived]} "
+                f"{derived}")
+        if rest:
+            if derived == "complete" and not any(st == "deferred" for _, st in rest):
+                shown = " and ".join(f"{w} shows {st}" for w, st in rest)
+                warnings.append(
+                    f"stage {num}: all deliverables ✅ but {shown} — if the "
+                    f"work shipped but the stage's goal is unmet, record the "
+                    f"goal as an Outcome target (❌ Not met) and close the "
+                    f"stage; stages track shipped work, targets track "
+                    f"measured outcomes")
+            else:
+                warnings.append(
+                    f"stage {num}: {_cells_shown(rest)} but its deliverables "
+                    f"roll up to {STATUS_TO_ICON[derived]} {derived} — "
+                    f"{_stage_drift_fix(rest, derived)}")
+        if not off and header_status and summ and header_status != summ:
+            warnings.append(
+                f"stage {num}: header {header_status} disagrees with summary {summ}")
+
+    stage_status = stage_rollups(lines)
+    section_nums = {num for _, _, num in stage_sections(lines)}
+    blocked = _blocked_objectives(lines)
+    for line in lines:
+        cells = _split_row(line) if line.strip().startswith("|") else []
+        if not (cells and _reads(_OBJECTIVE_COVERAGE, cells)):
+            continue
+        g = re.match(r"G\d+", cells[0]).group(0)
+        current = _icon_status(cells[2])
+        nums = _objective_row_stages(cells[1])
+        if nums and not any(n in section_nums for n in nums):
+            warnings.append(
+                f"objective {g}: Delivered by '{cells[1]}' names no stage "
+                f"with a '## Stage N' section, so nothing derives its "
+                f"{STATUS_TO_ICON[current]} — name the stage that delivers it")
+            continue
+        if current == "excluded":
+            continue
+        derived = objective_rollup(nums, stage_status)
+        if derived is None:
+            continue
+        held = derived == "complete" and g in blocked
+        if held:
+            if current == "complete":
+                continue  # the Outcome target comparisons name this row
+            derived = "in-progress"
+        if current == derived:
+            continue
+        named.add(g)
+        stages = ", ".join(f"{n} {STATUS_TO_ICON[stage_status[n]]}"
+                           for n in nums if n in stage_status)
+        why = (" (held below ✅ by an Outcome target not ✅ Met)"
+               if held else "")
+        if current == "complete":
+            errors.append(
+                f"objective {g} marked ✅ but the stages it names (stage "
+                f"{stages}) roll up to {STATUS_TO_ICON[derived]} {derived} — "
+                f"an objective is delivered only when every stage that "
+                f"delivers it is ✅")
+            continue
+        if derived == "deferred":
+            fix = "every stage it names is ✅ or ⏸️, so set it to ⏸️"
+        elif current == "deferred":
+            fix = (f"defer the open items with 'aide progress set NNN "
+                   f"deferred --reason …', or restore {STATUS_TO_ICON[derived]}")
+        else:
+            fix = (f"an Objective row follows its stages, so set it to "
+                   f"{STATUS_TO_ICON[derived]}")
+        warnings.append(
+            f"objective {g}: {STATUS_TO_ICON[current]} {current} but the "
+            f"stages it names (stage {stages}) roll up to "
+            f"{STATUS_TO_ICON[derived]} {derived}{why} — {fix}")
+    return errors, warnings, named
+
+
 def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                branches: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
     """Return ``(errors, warnings)``. Empty errors == pass.
@@ -4864,57 +5033,15 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     if not sections:
         errors.append("progress.md: no '## Stage N' sections")
 
-    # Summary row status vs. section header + rollup consistency.
+    # Every derived cell against the rollup (issue #285).
+    cell_errors, cell_warnings, named_objectives = derived_cell_findings(lines)
+    errors.extend(cell_errors)
+    warnings.extend(cell_warnings)
     summary_status: Dict[str, str] = {}
     for cells in table_rows:
         if _reads(_STAGE_SUMMARY, cells):
             summary_status[cells[0]] = _icon_status(cells[3])
-
-    section_nums = set()
-    for start, end, num in sections:
-        section_nums.add(num)
-        header_status = _header_status(lines[start])
-        derived = rollup_status(stage_deliverable_statuses(lines, start, end))
-        summ = summary_status.get(num)
-        if summ == "excluded":
-            continue
-        # ⏸️ on a stage is the rollup's to compute (issue #281), so a ⏸️ cell
-        # over bullets that do not roll up to it — or a stage that does roll
-        # up to ⏸️ under a cell that is not — is a hand edit the bullets
-        # disagree with. The writers leave a hand-set ⏸️ alone (it is the
-        # owner's intent until a verb moves the stage), so this is where it
-        # is named. A file the verbs wrote never trips it.
-        off = [(where, s) for where, s in (("summary", summ),
-                                           ("header", header_status))
-               if s and s != "excluded" and derived
-               and (s == "deferred") != (derived == "deferred")]
-        if off:
-            shown = " and ".join(f"{where} {STATUS_TO_ICON[s]} {s}"
-                                 for where, s in off)
-            if derived == "deferred":
-                fix = (f"every open deliverable is ⏸️, so set the "
-                       f"{'cells' if len(off) > 1 else off[0][0]} to ⏸️")
-            elif derived == "complete":
-                fix = "nothing is left open to defer, so restore ✅"
-            else:
-                fix = (f"defer the stage's open items with 'aide progress "
-                       f"set NNN deferred --reason …', or restore "
-                       f"{STATUS_TO_ICON[derived]}")
-            warnings.append(
-                f"stage {num}: {shown} but its deliverables roll up to "
-                f"{STATUS_TO_ICON[derived]} {derived} — {fix}")
-        if summ == "complete" and derived and derived != "complete":
-            errors.append(f"stage {num}: summary marked ✅ but has non-complete deliverables")
-        if off:
-            continue
-        if derived == "complete" and summ and summ != "complete":
-            warnings.append(
-                f"stage {num}: all deliverables ✅ but summary shows {summ} — "
-                f"if the work shipped but the stage's goal is unmet, record the "
-                f"goal as an Outcome target (❌ Not met) and close the stage; "
-                f"stages track shipped work, targets track measured outcomes")
-        if header_status and summ and header_status != summ:
-            warnings.append(f"stage {num}: header {header_status} disagrees with summary {summ}")
+    section_nums = {num for _, _, num in sections}
 
     for num in summary_status:
         if num not in section_nums:
@@ -4935,7 +5062,9 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                 f"unrecognised Status (expected '✅ Met', '❌ Not met' or "
                 f"'❓ Unverified')")
         for g in t.objectives:
-            if obj_status.get(g) != "complete":
+            # A row the derived-cell pass already named gets no second
+            # message: its stages do not support the ✅ to begin with.
+            if obj_status.get(g) != "complete" or g in named_objectives:
                 continue
             if t.kind == "not-met":
                 errors.append(
@@ -10170,7 +10299,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Over progress.md's tables, ERRORS: a missing stage summary "
             "table, objective coverage table or stage section; a stage "
             "summary row marked \u2705 over a stage whose deliverables do not "
-            "roll up to \u2705 (`aide progress -h` states the rollup); an "
+            "roll up to \u2705 (`aide progress -h` states the rollup), and a "
+            "stage header or Objective row so marked over a rollup that is "
+            "not \u2705 \u2014 an Objective row's rollup being the same "
+            "rule over the rollups of the stages its Delivered by cell "
+            "names; an "
             "objective marked \u2705 over an "
             "Outcome target that is \u274c Not met \u2014 the goal-level "
             "mirror of that over-claim; and a row of the stage summary, "
@@ -10183,21 +10316,34 @@ def build_parser() -> argparse.ArgumentParser:
             "have fed. Each table is read under its template heading, or, "
             "for a summary or objective table without one, wherever its rows "
             "are found. Warnings, and a warning never moves the exit "
-            "code \u2014 only an error does: a stage whose deliverables roll "
-            "up to \u2705 under a summary row that is not, a stage header "
-            "disagreeing with its summary row, a summary row with no stage "
+            "code \u2014 only an error does: any other stage header, "
+            "summary row or Objective row whose status is not its rollup, "
+            "compared in full \u2014 a cell `aide progress set` would leave "
+            "as it reads, one it never downgrades or a \u23f8\ufe0f set by "
+            "hand, is named all the same, and an Objective row whose Outcome "
+            "target is not \u2705 Met is compared with \U0001f6a7 where its "
+            "stages roll up to \u2705; a stage whose deliverables roll "
+            "up to \u2705 under a summary row that is not; a stage header "
+            "disagreeing with its summary row, where neither was named "
+            "against the rollup; an Objective row whose Delivered by "
+            "cell names no stage with a section; a summary row with no stage "
             "section, an objective marked \u2705 over a target not yet \u2705 "
             "Met, an Outcome target or human gate whose Status is not one of "
             "its table's marks, and every human gate still blocking \u2014 a "
             "normal state rather than a defect. A summary row marked "
-            "\u274c is left out of all three stage comparisons "
+            "\u274c is left out of every stage comparison "
             "above, deliverables and header alike: the stage is "
-            "dropped, so its bullets no longer speak for it. A summary row "
+            "dropped, so its bullets no longer speak for it; a header or "
+            "Objective row marked \u274c is not compared with its rollup "
+            "either. A summary row "
             "or header marked \u23f8\ufe0f over deliverables that do not "
             "roll up to \u23f8\ufe0f is a warning, and so is a stage whose "
             "deliverables roll up to \u23f8\ufe0f under a summary row or "
-            "header that is not; the stage's other two warnings are then "
-            "not raised.\n"
+            "header that is not. Each cell is named once: a \u2705 cell "
+            "over a rollup that is not \u2705 is its error alone, a "
+            "stage's other off cells share one warning, and an Objective "
+            "row named against its rollup is not compared with its Outcome "
+            "targets.\n"
             "\n"
             "Over the Environment-Gated Capability Verification table, "
             "warnings only, since no other check gates on it: a row its "

@@ -110,15 +110,15 @@ PROGRESS = """\
 
 | Stage | Title | Objectives | Status |
 |-------|-------|-----------|--------|
-| 1 | Foundations | G1 | 🚧 |
+| 1 | Foundations | G1 | 📋 |
 
 ## Objective coverage
 
 | Objective | Delivered by | Status |
 |-----------|--------------|--------|
-| G1 Foundations | Stage 1 | 🚧 |
+| G1 Foundations | Stage 1 | 📋 |
 
-## Stage 1 — Foundations — 🚧
+## Stage 1 — Foundations — 📋
 
 **Deliverables.**
 - 📋 The greeter. *(Item 001)*
@@ -783,10 +783,48 @@ def test_check_fails_on_a_table_row_its_reader_cannot_use(
     """Issue #202: a stray `|` in a stage summary row used to drop the row from
     every check in silence — taking with it the error a ✅ over unfinished work
     would have raised. It is now the error itself, and moves the exit code."""
-    _mis_shape(consumer, "| 1 | Foundations | G1 | 🚧 |",
-               "| 1 | Foundations | G1 | a | 🚧 |")
+    _mis_shape(consumer, "| 1 | Foundations | G1 | 📋 |",
+               "| 1 | Foundations | G1 | a | 📋 |")
     assert aide.main(["--repo", str(consumer), "check"]) == 1
     assert "stage summary row has 5 cells, not 4" in capsys.readouterr().out
+
+
+def test_check_compares_every_derived_cell_with_the_rollup(
+        aide, consumer: Path, capsys):
+    """Issue #285: an Objective row typed ✅ over a stage whose bullets are
+    all 📋 is the same over-claim as a ✅ summary row, and moves the exit code;
+    a stage's cells typed 🚧 over the same bullets are a warning, which does
+    not. Before 2.6.0 both passed clean."""
+    _mis_shape(consumer, "| G1 Foundations | Stage 1 | 📋 |",
+               "| G1 Foundations | Stage 1 | ✅ |")
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
+    assert "objective G1 marked ✅" in capsys.readouterr().out
+
+    _mis_shape(consumer, "| G1 Foundations | Stage 1 | ✅ |",
+               "| G1 Foundations | Stage 1 | 📋 |")
+    _mis_shape(consumer, "| 1 | Foundations | G1 | 📋 |",
+               "| 1 | Foundations | G1 | 🚧 |")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "aide check: OK (1 warning(s))" in capsys.readouterr().out
+
+
+def test_a_file_the_progress_verbs_wrote_passes_every_derived_cell(
+        aide, consumer: Path, capsys):
+    """Issue #285: the comparison takes the writer's own derivation, so no
+    sequence of `aide progress set` can trip it — forward, deferred, resumed
+    and done, `check` exits 0 with no stage or objective finding over the
+    installed engine. (The queue's decorative Live line is another lint's.)"""
+    prog = ["--repo", str(consumer), "progress", "set"]
+    steps = (["1", "in-progress"], ["2", "deferred", "--reason", "later"],
+             ["1", "done"], ["2", "in-progress"], ["2", "done"])
+    for step in steps:
+        assert aide.main([*prog, *step]) == 0, step
+        capsys.readouterr()
+        assert aide.main(["--repo", str(consumer), "check"]) == 0, step
+        out = capsys.readouterr().out
+        assert "warning: stage " not in out and "warning: objective " not in out, out
+    text = (consumer / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    assert "| G1 Foundations | Stage 1 | ✅ |" in text
 
 
 def test_claim_holds_every_item_behind_an_unreadable_gate_row(

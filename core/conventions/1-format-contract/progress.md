@@ -76,11 +76,12 @@ Postpone an item with `aide progress set NNN deferred --reason …`, never by
 typing ⏸️ over a bullet or a stage: the verb keeps the why on the bullet's
 trail, and a stage whose only open work is deferred rolls up to ⏸️ by itself —
 never to ✅. Deferred work resumes through any forward `aide progress set`. A
-⏸️ stage header or summary row the rollup does not compute is a hand edit that
-stands until a verb moves a bullet of that stage, and `aide check` warns on it
-for as long as it disagrees, as it does on a stage that rolls up to ⏸️ under a
-cell that says otherwise. A ❌ summary row is outside the comparison: its
-bullets no longer speak for the stage.
+⏸️ stage header, summary row or Objective row the rollup does not compute is a
+hand edit that stands until a verb moves a bullet of that stage, and `aide
+check` warns on it for as long as it disagrees, as it does on a stage that
+rolls up to ⏸️ under a cell that says otherwise. A ❌ cell is outside the
+comparison, and a ❌ summary row takes its stage's header with it: its bullets
+no longer speak for the stage.
 
 **Acceptance boxes are attestations, and no rollup ever ticks one.** They are
 outside the derivation entirely: the rollup skips checkbox lines, `aide check`
@@ -183,6 +184,16 @@ Semantics
   person resolves it, where a rewrite would have erased it unseen. No insight
   is captured on a deferral, unlike a reopening — postponing work is a
   decision about order, not a finding about the work.
+- **Why every derived cell is compared, with none of the writer's restraint.**
+  Issue #285: the sentence that a typed-over derived cell is drift `aide check`
+  reports held for ✅ and ⏸️ only. A 🚧 over bullets all 📋, a 🔍 the rollup
+  never yields, a ✅ header on a stage with no summary row and every Objective
+  row — a ✅ one over an open stage included — passed clean. Diffing against
+  the writer would not have closed it: the writer never downgrades a cell
+  outside a reopen or a deferral and leaves a hand-set ⏸️ standing, both rules
+  about when a verb may *write*, not about what a cell should say. So `check`
+  takes the same derivation with neither, which is also why no sequence of
+  verbs can write a file it then reports.
 - **Why a shared marker is desugared.** One bullet carries one icon, so while
   items share a marker they share a status — and the first flip would
   otherwise carry the siblings with it.

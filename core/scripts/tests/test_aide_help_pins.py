@@ -202,11 +202,23 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "section",
          "test_aide_help_pins::"
          "test_check_errors_on_each_missing_table_and_on_missing_stage_sections"),
-        # `if summ == "complete" and derived and derived != "complete"` — the
-        # measure is `rollup_status`, under which a ❌ bullet counts toward ✅.
+        # `derived_cell_findings`' `over` list — the measure is
+        # `rollup_status`, under which a ❌ bullet counts toward ✅.
         ("a stage summary row marked ✅ over a stage whose deliverables do "
          "not roll up to ✅",
          "test_aide_help_pins::test_the_summary_over_claim_is_measured_by_the_rollup"),
+        # The same list for the header, and the Objective loop's
+        # `current == "complete"` error (issue #285).
+        ("and a stage header or Objective row so marked over a rollup that "
+         "is not ✅",
+         ("test_aide_defer::test_a_header_marked_done_with_no_summary_row_is_an_error",
+          "test_aide_defer::test_an_objective_marked_done_over_an_open_stage_is_an_error")),
+        # `objective_rollup`: `rollup_status` over `stage_rollups` of the
+        # numbers `_objective_row_stages` reads — the writer's derivation too.
+        ("an Objective row's rollup being the same rule over the rollups of "
+         "the stages its Delivered by cell names",
+         ("test_aide_defer::test_an_objective_marked_done_over_an_open_stage_is_an_error",
+          "test_aide_defer::test_a_multi_stage_file_the_verbs_wrote_trips_no_derived_cell")),
         # `if t.kind == "not-met"` under an objective whose status is complete.
         ("an objective marked ✅ over an Outcome target that is ❌ Not met",
          "test_aide_core::test_check_flags_objective_complete_over_unmet_target"),
@@ -229,16 +241,38 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `cmd_check`: `return 1` iff `errors`; warnings are only printed.
         ("a warning never moves the exit code — only an error does",
          "test_aide_help_pins::test_a_warning_alone_still_exits_zero"),
-        # `if derived == "complete" and summ and summ != "complete"` — the
-        # mirror of the error above, and the same measure.
+        # `derived_cell_findings`' `rest` list with a ✅ rollup — the mirror
+        # of the error above, and the same measure.
         ("a stage whose deliverables roll up to ✅ under a summary row "
          "that is not",
          "test_aide_help_pins::"
          "test_a_rolled_up_stage_under_a_lesser_summary_row_is_a_warning"),
-        # `if header_status and summ and header_status != summ`.
-        ("a stage header disagreeing with its summary row",
+        # The `off` lists against `rollup_status` / `objective_rollup`, with
+        # no `downgrade_stages` and no `_held_by_hand` (issue #285).
+        ("any other stage header, summary row or Objective row whose status "
+         "is not its rollup",
+         ("test_aide_defer::test_a_stage_cell_the_rollup_does_not_derive_is_one_warning",
+          "test_aide_defer::test_an_objective_row_below_its_done_stage_is_a_warning")),
+        # 🚧 over 📋 is a cell `set` never downgrades; the ⏸️ Objective row is
+        # one `_held_by_hand` leaves standing through a `set` elsewhere.
+        ("a cell `aide progress set` would leave as it reads, one it never "
+         "downgrades or a ⏸️ set by hand, is named all the same",
+         ("test_aide_defer::test_a_stage_cell_the_rollup_does_not_derive_is_one_warning",
+          "test_aide_defer::test_a_hand_set_deferred_objective_over_open_stages_is_a_warning")),
+        # `held` in the Objective loop: a ✅ derivation over a blocked G-code
+        # is compared as 🚧.
+        ("an Objective row whose Outcome target is not ✅ Met is compared "
+         "with 🚧 where its stages roll up to ✅",
+         "test_aide_defer::test_an_objective_held_by_its_target_is_compared_with_in_progress"),
+        # `if not off and header_status and summ and header_status != summ`.
+        ("a stage header disagreeing with its summary row, where neither was "
+         "named against the rollup",
          "test_aide_help_pins::"
          "test_a_stage_header_disagreeing_with_its_summary_row_is_a_warning"),
+        # `if nums and not any(n in section_nums for n in nums)`.
+        ("an Objective row whose Delivered by cell names no stage with a "
+         "section",
+         "test_aide_defer::test_an_objective_naming_no_stage_section_is_a_warning"),
         # `for num in summary_status: if num not in section_nums`.
         ("a summary row with no stage section",
          "test_aide_help_pins::test_a_summary_row_with_no_stage_section_is_a_warning"),
@@ -257,13 +291,18 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("every human gate still blocking",
          ("test_aide_gates::test_awaiting_gate_warns_with_its_reach",
           "test_aide_help_pins::test_a_warning_alone_still_exits_zero")),
-        # `if summ == "excluded": continue` — before all three of the
-        # comparisons above, not just the warning.
-        ("A summary row marked \u274c is left out of all three "
-         "stage comparisons above, deliverables and header alike",
+        # `if summ == "excluded": continue` — before every stage comparison
+        # in `derived_cell_findings`, not just the warning.
+        ("A summary row marked \u274c is left out of every "
+         "stage comparison above, deliverables and header alike",
          ("test_aide_help_pins::"
           "test_a_rolled_up_stage_under_a_lesser_summary_row_is_a_warning",
           "test_aide_defer::test_an_excluded_summary_row_is_still_left_out")),
+        # `st != "excluded"` in the stage `off` list, `current == "excluded"`
+        # in the Objective loop.
+        ("a header or Objective row marked \u274c is not compared with its "
+         "rollup either",
+         "test_aide_defer::test_an_excluded_header_or_objective_is_not_compared"),
         # The `off` list in `run_checks` (issue #281): a ⏸️ cell the rollup
         # does not compute, or a computed ⏸️ under a cell that is not.
         ("A summary row or header marked \u23f8\ufe0f over deliverables that "
@@ -272,11 +311,16 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "that is not",
          ("test_aide_defer::test_a_hand_set_deferred_summary_over_open_bullets_is_a_warning",
           "test_aide_defer::test_a_stage_rolling_up_to_deferred_under_a_lesser_summary_is_a_warning")),
-        # `if off: continue`, after the ✅-summary error and before the two
-        # warnings.
-        ("the stage's other two warnings are then not raised",
-         "test_aide_help_pins::"
-         "test_a_rolled_up_stage_under_a_lesser_summary_row_is_a_warning"),
+        # `over` / `rest` partition the off cells; `not off` gates the
+        # header-against-summary warning; `named_objectives` is skipped by
+        # the Outcome target loop in `run_checks` (issue #285).
+        ("Each cell is named once: a ✅ cell over a rollup that is not ✅ is "
+         "its error alone, a stage's other off cells share one warning, and "
+         "an Objective row named against its rollup is not compared with its "
+         "Outcome targets",
+         ("test_aide_defer::test_each_cell_gets_one_message",
+          "test_aide_help_pins::"
+          "test_a_rolled_up_stage_under_a_lesser_summary_row_is_a_warning")),
         # `_CAPABILITIES` is `error=False`: `unreadable_row_warnings` reports
         # its rows, and `unreadable_row_errors` leaves them out (issue #207).
         ("warnings only, since no other check gates on it: a row its reader "
@@ -1295,21 +1339,35 @@ def test_a_rolled_up_stage_under_a_lesser_summary_row_is_a_warning(tmp_path: Pat
         deferred_rule = [w for w in warnings
                          if "but its deliverables roll up to" in w]
         if name == "deferred":
+            # One message for the stage, naming both off cells (#285: the
+            # 🚧 header is compared with the rollup too, not just with ⏸️).
             assert deferred_rule == [
-                "stage 1: summary ⏸️ deferred but its deliverables roll up "
-                "to ✅ complete — nothing is left open to defer, so "
-                "restore ✅"], warnings
+                "stage 1: summary ⏸️ deferred and header 🚧 in-progress but "
+                "its deliverables roll up to ✅ complete — nothing is left "
+                "open to defer, so restore ✅"], warnings
         else:
             assert deferred_rule == [], warnings
 
 
 def test_a_stage_header_disagreeing_with_its_summary_row_is_a_warning(
         tmp_path: Path):
-    """Two records of one status, and nothing else compares them."""
-    text = PROGRESS.replace("## Stage 1 — Rules — 🚧", "## Stage 1 — Rules — 📋")
-    _, warnings = _checks(_repo(tmp_path, progress=text))
+    """Two records of one status, and on a stage with no deliverable bullet
+    nothing else compares them. Where there are bullets, each cell is
+    compared with their rollup instead (#285), and the cell that is off is
+    named once — the header-against-summary warning is not raised beside it."""
+    bare = PROGRESS.replace("- 📋 Bounds. *(Item 027)*\n- 📋 Coverage. *(Item 028)*\n", "")
+    bare = bare.replace("## Stage 1 — Rules — 🚧", "## Stage 1 — Rules — 📋")
+    _, warnings = _checks(_repo(tmp_path, progress=bare, name="bare"))
     assert any("header planned disagrees with summary in-progress" in w
                for w in warnings), warnings
+
+    text = PROGRESS.replace("## Stage 1 — Rules — 🚧", "## Stage 1 — Rules — 📋")
+    _, warnings = _checks(_repo(tmp_path, progress=text))
+    stage = [w for w in warnings if w.startswith("stage 1:")]
+    assert stage == [
+        "stage 1: summary 🚧 in-progress but its deliverables roll up to 📋 "
+        "planned — a stage's cells follow its bullets, so set the summary "
+        "to 📋, or move the bullets with 'aide progress set'"], warnings
 
 
 def test_a_summary_row_with_no_stage_section_is_a_warning(tmp_path: Path):

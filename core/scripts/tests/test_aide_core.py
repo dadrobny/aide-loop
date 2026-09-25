@@ -904,8 +904,17 @@ def test_check_clean_with_targets_table(tmp_path: Path):
     assert not any("outcome target" in w for w in warnings), warnings
 
 
+def _shipped(text: str) -> str:
+    """Stage 1 rolled up to ✅, so an Objective ✅ over it is judged by its
+    Outcome targets alone — over a 🚧 stage the derived-cell comparison
+    names the row instead (issue #285), and the target rule stays silent."""
+    return (text.replace("- 📋 Bounds. *(Item 003)*", "- ✅ Bounds. *(Item 003)*")
+            .replace("| 1 | Rule Engine | G2 | 🚧 |", "| 1 | Rule Engine | G2 | ✅ |")
+            .replace("## Stage 1 — Rule Engine — 🚧", "## Stage 1 — Rule Engine — ✅"))
+
+
 def test_check_flags_objective_complete_over_unmet_target(tmp_path: Path):
-    lying = (PROGRESS + TARGETS).replace(
+    lying = _shipped(PROGRESS + TARGETS).replace(
         "| G2 Rules | Stage 1 | 🚧 |", "| G2 Rules | Stage 1 | ✅ |")
     root = _docs(tmp_path, progress=lying)
     cfg = aide.load_config(root)
@@ -914,7 +923,7 @@ def test_check_flags_objective_complete_over_unmet_target(tmp_path: Path):
 
 
 def test_check_warns_objective_complete_over_unverified_target(tmp_path: Path):
-    doc = (PROGRESS + TARGETS).replace("❌ Not met", "❓ Unverified").replace(
+    doc = _shipped(PROGRESS + TARGETS).replace("❌ Not met", "❓ Unverified").replace(
         "| G2 Rules | Stage 1 | 🚧 |", "| G2 Rules | Stage 1 | ✅ |")
     root = _docs(tmp_path, progress=doc)
     cfg = aide.load_config(root)
