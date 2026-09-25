@@ -142,7 +142,9 @@ instead — that is the bump policy above, and it is enforced by
   archived, unknown or ambiguous one, and its commit message names the ID.
   `aide check` sweeps `docs/aide/**` and `tests_dir` (the inbox and its
   archives excepted, their claims being immutable): an ID cited after the
-  word *insight* or *entry* that names no entry in the inbox or its archives
+  word *insight* (or *entry* on a line that names an insight or the inbox —
+  an audit "entry 2026-05-11-1530" is a timestamp) that names no entry in
+  the inbox or its archives
   is an **error** — so, since `aide merge` runs the checks (1.53.0), it blocks a merge — one
   matching two different claims is a warning, and a citation by position in
   `docs/aide/**` (`insight 28`, `insights.md entry 28`, or `entry 28` on a

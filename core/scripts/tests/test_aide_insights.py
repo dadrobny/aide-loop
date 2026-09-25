@@ -1075,6 +1075,17 @@ def _resolve(text, base=None, date="2026-03-01"):
     return aide.resolve_insights_text(text, date, base)
 
 
+def test_resolve_keeps_every_entry_id():
+    """The ID survives the merge a position does not: theirs lands after ours."""
+    text = _conflicted(_C + "\n", _D + "\n")
+    ours, theirs, _ = aide.split_conflict_sides(text)
+    before = set(aide.insight_ids(aide.parse_insights(ours))
+                 + aide.insight_ids(aide.parse_insights(theirs)))
+    merged, _, refusals = _resolve(text)
+    assert refusals == []
+    assert set(aide.insight_ids(aide.parse_insights(merged))) == before
+
+
 def test_split_reconstructs_each_side_as_a_whole_document():
     """Positional ordinals are the identity every insight verb takes, so a side
     read as a hunk alone has no idea which entry it starts at."""
@@ -1539,7 +1550,7 @@ def _findings(repo: Path):
 def test_a_dangling_insight_id_is_an_error_in_docs_and_in_tests(tmp_path: Path):
     repo = _repo(tmp_path)
     _cite(repo, "docs/aide/items/007-x.md", "Chartered by insight 2026-05-11-ffff.\n")
-    _cite(repo, "tests/test_x.py", "# corrects entry `2026-05-11-ffff`\n")
+    _cite(repo, "tests/test_x.py", "# corrects inbox entry `2026-05-11-ffff`\n")
     errors, _ = _findings(repo)
     assert len(errors) == 2
     assert any(e.startswith("docs/aide/items/007-x.md:1:") for e in errors)
@@ -1563,6 +1574,30 @@ def test_a_date_shaped_token_without_the_word_is_not_a_citation(tmp_path: Path):
           "Log: run-2026-05-11-1530.log, and 2026-05-11-beef on its own.\n")
     _cite(repo, "tests/test_x.py", 'STAMP = "2026-05-11-1530"\n')
     assert _findings(repo) == ([], [])
+
+
+def test_a_bare_entry_before_a_date_shaped_token_is_not_a_citation(tmp_path: Path):
+    """"entry" alone is an audit or ledger entry too; it reads as an insight
+    citation only on a line that says insight or inbox, as the positional
+    form does — else a timestamp blocks `merge`."""
+    repo = _repo(tmp_path)
+    _cite(repo, "docs/aide/items/007-x.md",
+          "The audit entry 2026-05-11-1530 recorded a timeout.\n")
+    _cite(repo, "tests/test_x.py", "# ledger entries 2026-05-11-1530\n")
+    assert _findings(repo) == ([], [])
+    _cite(repo, "docs/aide/items/008-y.md",
+          "The inbox entry 2026-05-11-1530 is gone.\n")
+    errors, _ = _findings(repo)
+    assert [e.split(":")[0] for e in errors] == ["docs/aide/items/008-y.md"]
+
+
+def test_a_year_after_insights_is_not_a_position(tmp_path: Path):
+    repo = _repo(tmp_path)
+    _cite(repo, "docs/aide/items/007-x.md",
+          "See the insights 2026 dashboard.\n"
+          "Fixes insight #2026.\n")
+    _, warnings = _findings(repo)
+    assert [w.split(":")[1] for w in warnings] == ["2"]
 
 
 def test_the_inbox_and_its_archives_are_not_swept(tmp_path: Path):

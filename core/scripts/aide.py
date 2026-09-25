@@ -2771,12 +2771,19 @@ def live_ordinal_for_ref(ref: str, pool: List[Tuple[str, InsightEntry]]) -> int:
 
 
 #: A citation of an insight by ID, as `aide check` reads one: the word
-#: *insight* or *entry* (either plural, either case, optionally followed by
-#: *ID*), then the ID itself, backticks or emphasis allowed between. The word
-#: is required — see ``insight_reference_findings`` for why a bare date-shaped
-#: token is not enough.
+#: *insight* (either plural, either case, optionally followed by *entry* and
+#: then *ID*), then the ID itself, backticks or emphasis allowed between. The
+#: word is required — see ``insight_reference_findings`` for why a bare
+#: date-shaped token is not enough.
 _INSIGHT_ID_CITATION_RE = re.compile(
-    r"(?i:\b(?:insights?|entry|entries)(?:\s+id)?)[\s`*]+"
+    r"(?i:\b(?:insights?)(?:\s+(?:entry|entries))?(?:\s+id)?)[\s`*]+"
+    r"(?P<id>" + _INSIGHT_ID_SHAPE + r")(?![0-9A-Za-z_-])")
+#: The bare ``entry <ID>`` form — read as a citation only on a line that says
+#: *insight* or *inbox* somewhere, as with ``_ENTRY_POSITION_RE``: an audit or
+#: ledger "entry 2026-05-11-1530" is a timestamp, and a false error there
+#: would block a merge.
+_ENTRY_ID_CITATION_RE = re.compile(
+    r"(?i:\b(?:entry|entries)(?:\s+id)?)[\s`*]+"
     r"(?P<id>" + _INSIGHT_ID_SHAPE + r")(?![0-9A-Za-z_-])")
 #: A citation of an insight by position: ``insight 28``, ``insights.md entry
 #: 28``, ``inbox entry #28``. The number may not run on into a date, a version
@@ -2830,7 +2837,8 @@ def insight_reference_findings(repo_root: Path,
       the position holds today, since an archive or a merge renumbers it.
 
     Only the cited form is read (``_INSIGHT_ID_CITATION_RE``): the word
-    *insight* or *entry* before the ID. A bare ``YYYY-MM-DD-<hex>`` token is
+    *insight* before the ID, or *entry* on a line that also says *insight* or
+    *inbox* (``_ENTRY_ID_CITATION_RE``). A bare ``YYYY-MM-DD-<hex>`` token is
     also a timestamp, a slug, a file name, and an error here blocks `merge`.
     """
     errors: List[str] = []
@@ -2860,7 +2868,12 @@ def insight_reference_findings(repo_root: Path,
             continue
         where = _rel_display(path, repo_root)
         for lineno, line in enumerate(text.splitlines(), start=1):
-            for m in _INSIGHT_ID_CITATION_RE.finditer(line):
+            cited = list(_INSIGHT_ID_CITATION_RE.finditer(line))
+            if _INSIGHT_CONTEXT_RE.search(line):
+                seen = {m.span("id") for m in cited}
+                cited += [m for m in _ENTRY_ID_CITATION_RE.finditer(line)
+                          if m.span("id") not in seen]
+            for m in cited:
                 ref = m.group("id")
                 entries = _entries()
                 hits = resolve_insight_ref(ref, entries)
@@ -2886,6 +2899,10 @@ def insight_reference_findings(repo_root: Path,
                               if m.span("n") not in covered]
             for m in positions:
                 n = int(m.group("n"))
+                # "insights 2026" is a year, not entry 2026: a bare four-digit
+                # number that reads as a year counts only after "entry" or "#".
+                if 1900 <= n <= 2099 and not re.search(r"(?i)entr|#", m.group(0)):
+                    continue
                 _entries()
                 live_ids = cache["live_ids"]
                 now = ""
@@ -5223,14 +5240,15 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                branches: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
     """Return ``(errors, warnings)``. Empty errors == pass.
 
-    The first thirteen checks all run before, and survive, the two early returns
-    below, but for two different reasons. Six of them —
+    Every check above the two early returns below runs before, and survives,
+    them, for one of two reasons. The six test-hygiene lints —
     `absolute_path_test_warnings`, `separator_dependent_test_warnings`,
     `cli_subprocess_test_warnings`, `subprocess_encoding_test_warnings`,
     `gitattributes_eol_pin_warnings`, `scope_claim_test_warnings` — read
-    `tests_dir` and never touch `docs_dir`, so they are the ones that make this
-    function worth calling in a repo with no document set. The other seven *are* document checks; they
-    simply find nothing to say when `docs_dir` is absent, so keeping them costs
+    `tests_dir` and never touch `docs_dir`, and `insight_reference_findings`
+    reads both, so they are the ones that make this function worth calling in
+    a repo with no document set. The rest *are* document checks; they simply
+    find nothing to say when `docs_dir` is absent, so keeping them costs
     nothing and they still report on a `docs_dir` that exists but has no
     `progress.md`.
 
@@ -11566,7 +11584,8 @@ def build_parser() -> argparse.ArgumentParser:
             "\n"
             "Over insight citations in docs/aide and tests_dir, the inbox and "
             "its archives excepted: an insight ID written after the word "
-            "insight or entry that resolves to no entry in insights.md or "
+            "insight, or after entry on a line that says insight or inbox, "
+            "that resolves to no entry in insights.md or "
             "insights/archive-*.md is an ERROR; one that matches two "
             "different claims is a warning naming their longer IDs; and, in "
             "docs/aide only, a citation by position \u2014 insight 28, "

@@ -408,10 +408,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("Over insight citations in docs/aide and tests_dir, the inbox and "
          "its archives excepted",
          "test_aide_insights::test_the_inbox_and_its_archives_are_not_swept"),
-        ("an insight ID written after the word insight or entry that resolves "
-         "to no entry in insights.md or insights/archive-*.md is an ERROR",
+        ("an insight ID written after the word insight, or after entry on a "
+         "line that says insight or inbox, that resolves to no entry in "
+         "insights.md or insights/archive-*.md is an ERROR",
          ("test_aide_insights::test_a_dangling_insight_id_is_an_error_in_docs_and_in_tests",
           "test_aide_insights::test_a_date_shaped_token_without_the_word_is_not_a_citation",
+          "test_aide_insights::test_a_bare_entry_before_a_date_shaped_token_is_not_a_citation",
           "test_aide_insights::test_a_citation_that_resolves_is_clean_even_once_archived")),
         # Same function: more than one claim hash among the hits.
         ("one that matches two different claims is a warning naming their "
