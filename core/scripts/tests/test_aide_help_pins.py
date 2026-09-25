@@ -1111,6 +1111,90 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_no_test_leaves_both_suite_cells_blank",
           "test_aide_merge_inherited::"
           "test_a_green_run_nothing_could_compare_leaves_inherited_blank")),
+        # `validated_suite_run` before `recorded_suite_run`; its `why` is
+        # printed where it finds nothing to take. `--no-test` skips both.
+        ("Before running the suite it looks for a run `aide test` recorded "
+         "of the same tree on the claim branch, and takes that run in place "
+         "of its own where `aide test -h` says it may",
+         ("test_aide_merge_inherited::"
+          "test_a_fast_forward_merge_takes_the_validated_run",
+          "test_aide_merge_inherited::"
+          "test_no_test_takes_no_recorded_run_either")),
+        ("Any other merge runs the suite, and prints why it could not reuse "
+         "one",
+         ("test_aide_merge_inherited::"
+          "test_a_merge_over_a_moved_base_runs_the_suite",
+          "test_aide_merge_inherited::"
+          "test_a_run_from_before_a_code_change_is_not_taken")),
+    ],
+
+    # ----------------------------------------------------------------- test --
+    "test": [
+        # `cmd_test` returns `run.returncode` from `recorded_suite_run`.
+        ("exits with the command's own exit code",
+         ("test_aide_merge_inherited::"
+          "test_aide_test_records_its_run_with_the_branch_and_commit",
+          "test_aide_merge_inherited::"
+          "test_aide_test_over_a_dirty_tree_records_nothing_and_says_so")),
+        # `recorded_suite_run(by=SUITE_RECORDED_BY_TEST)` writes `by`,
+        # `branch` and `commit` beside PR A's fields, under the same key.
+        ("the branch and commit it ran at, in the same store under the git "
+         "directory that `aide merge` keeps its base runs in",
+         "test_aide_merge_inherited::"
+         "test_aide_test_records_its_run_with_the_branch_and_commit"),
+        # `recorded_suite_run`: `tree_is_clean` before the run, and
+        # `_head_commit` compared before and after it.
+        ("The result is recorded where the tree has no tracked change and "
+         "HEAD does not move during the run",
+         ("test_aide_merge_inherited::"
+          "test_aide_test_over_a_dirty_tree_records_nothing_and_says_so",
+          "test_aide_merge_inherited::"
+          "test_a_run_whose_head_moved_is_not_recorded")),
+        # `tree_is_clean` is false -> `tree` None -> nothing written, and
+        # `cmd_test` prints NOT recorded on stderr.
+        ("A run over a tree with tracked changes is not recorded, and says so "
+         "on stderr",
+         "test_aide_merge_inherited::"
+         "test_aide_test_over_a_dirty_tree_records_nothing_and_says_so"),
+        # `validated_suite_run`: HEAD's tree == the tip's tree, else the
+        # base-had-moved reason and `recorded_suite_run`.
+        ("`aide merge` takes a recorded run in place of its own suite run "
+         "when the post-merge tree is the claim branch's tip tree",
+         ("test_aide_merge_inherited::"
+          "test_a_fast_forward_merge_takes_the_validated_run",
+          "test_aide_merge_inherited::"
+          "test_a_merge_over_a_moved_base_runs_the_suite")),
+        # `data["by"] == "aide test"`, `data["branch"] == branch` and
+        # `data["checkout"] == _checkout_id(repo_root)`.
+        ("the run was recorded by this verb on that claim branch in the same "
+         "checkout",
+         ("test_aide_merge_inherited::"
+          "test_a_run_recorded_on_another_branch_is_not_taken",
+          "test_aide_merge_inherited::"
+          "test_a_run_recorded_in_another_checkout_is_not_taken")),
+        # `_contains(commit, tip)`, then `git diff --name-only commit tip`
+        # minus progress.md must be empty.
+        ("at a commit the tip contains, with nothing but the progress "
+         "document changed since",
+         ("test_aide_merge_inherited::"
+          "test_a_fast_forward_merge_takes_the_validated_run",
+          "test_aide_merge_inherited::"
+          "test_a_run_from_before_a_code_change_is_not_taken")),
+        # `cmd_merge`: `post = validated.run`, then the unchanged green /
+        # `_judge_red_run` branches.
+        ("judges the run exactly as one of its own",
+         ("test_aide_merge_inherited::"
+          "test_a_red_validated_run_still_meets_the_base",
+          "test_aide_merge_inherited::"
+          "test_a_red_validated_run_with_a_new_failure_is_refused")),
+        # `suite_cell` + `LEDGER_REUSED_SUFFIX`; `ledger_warnings` accepts it
+        # in Suite s alone.
+        ("writes the row's Suite s cell as the recorded run's seconds "
+         "followed by (reused)",
+         ("test_aide_merge_inherited::"
+          "test_a_fast_forward_merge_takes_the_validated_run",
+          "test_aide_merge_inherited::"
+          "test_a_reused_suite_cell_reads_and_nothing_else_does")),
     ],
 
     # --------------------------------------------------------------- ledger --

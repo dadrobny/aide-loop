@@ -121,6 +121,51 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.8.0] — 2026-09-25
+
+### Added
+
+- **`aide test`, and a merge that does not run a validated tree twice (issue
+  #275, part two).** Under `auto-merge` the validator ran the whole suite on
+  the claim branch and `aide merge` ran it again; when the base had not
+  moved, the merge is a fast-forward and the second run was over a
+  byte-identical tree. The new verb runs `test_command` exactly as the merge
+  runs it (venv-bound `python`, JUnit failure ids for pytest as a module),
+  exits with the command's own code, and records the result in the store
+  2.7.0 added under the git common directory — now with who ran it, the
+  branch, the commit and the checkout. Before running the suite, `aide merge`
+  takes a recorded run in place of its own where the post-merge tree is the
+  claim branch's tip tree, the command matches, and the run was recorded by
+  `aide test` on that claim branch in the same checkout, at a commit the tip
+  contains, with nothing but the progress document changed since — the
+  validator's `progress set in-review` and attestations land after its run,
+  and the merge's own `aide check` reads that file. It says so, and judges
+  the run exactly as one of its own: a red one still meets the base.
+  Everything else runs the suite as before and prints why it could not take
+  one: a moved base, a later commit, tracked changes (a run over those is
+  never recorded), a run from another branch or worktree, or one past the
+  seven-day age. `--no-test` is unchanged and takes nothing. §4 and §9 state
+  the rules; `aide test -h` and `aide merge -h` the mechanism.
+
+### Changed
+
+- **The validator runs the suite through `aide test`.** `validator.md` step 1,
+  the `/aide-run-item` brief and `aide-execute-item` name the verb, and
+  `.claude/scripts/await_run.py start suite` now launches
+  `.aide/scripts/aide.py test` rather than the bare test command — the same
+  allow-listed helper and the same stop semantics, with the engine recording
+  the run. A narrower diagnostic run is still run directly.
+- **`AGENT-CONTEXT.md`'s verb list names `test`**, so the always-on floor
+  moves from 9,052 to 9,059 content bytes.
+- **A reused run's ledger cell.** Where the merge took a recorded run, its
+  row's `Suite s` cell is that run's seconds followed by ` (reused)` —
+  `41 (reused)` — and `aide check` reads it as well formed in that column
+  only (§1 → `ledger.md`). No new column, so `ledger template 3` stands; the
+  template's header comment names the shape.
+- **A green run of any runner records `()` failures** rather than none named,
+  so a green non-pytest run reads back from the store; a red one of another
+  runner still names nothing and is never reused.
+
 ## [2.7.0] — 2026-09-25
 
 ### Added

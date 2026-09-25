@@ -15,8 +15,9 @@
   A cell left empty is one nothing supplied or nothing could measure. It is
   blank rather than 0, which would read as a measurement. One of the three
   finding cells may instead hold `-`; which verb writes that mark, and when,
-  is at `python .aide/scripts/aide.py merge -h`. A row written before the
-  last two columns existed has fourteen cells and is read as it stands.
+  is at `python .aide/scripts/aide.py merge -h`. So is when the Suite s cell
+  reads like `41 (reused)`. A row written before the last two columns
+  existed has fourteen cells and is read as it stands.
 -->
 <!-- aide-template: ledger 3 -->
 # Run Ledger

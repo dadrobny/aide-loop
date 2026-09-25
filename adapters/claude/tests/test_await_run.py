@@ -234,20 +234,19 @@ def test_a_flag_shaped_base_is_refused_at_the_cli(repo: Path, monkeypatch):
                    engine=ENGINE) == ar.EXIT_USAGE
 
 
-def test_suite_is_the_test_command_the_engine_resolves(tmp_path: Path):
-    """No venv: the configured command as written, exactly as `aide merge` runs it."""
+def test_suite_is_aide_test_so_the_run_is_recorded(tmp_path: Path):
+    """The engine's `test` verb, which runs the configured command exactly as
+    `aide merge` does and records the result the merge may take (#275)."""
     (tmp_path / "aide.toml").write_text(
         '[python]\ntest_command = "python -m pytest -q tests/unit"\n', encoding="utf-8")
-    assert ar.suite_command(tmp_path, ENGINE) == [
-        "python", "-m", "pytest", "-q", "tests/unit"]
+    assert ar.suite_command(tmp_path, ENGINE) == [sys.executable, str(ENGINE), "test"]
 
 
-def test_suite_binds_python_to_the_venv_like_the_engine(tmp_path: Path):
-    venv_py = (tmp_path / ".venv" / ("Scripts" if sys.platform == "win32" else "bin")
-               / ("python.exe" if sys.platform == "win32" else "python"))
-    venv_py.parent.mkdir(parents=True)
-    venv_py.write_text("", encoding="utf-8")
-    assert ar.suite_command(tmp_path, ENGINE)[0] == str(venv_py)
+def test_an_empty_test_command_is_refused_before_launch(tmp_path: Path):
+    (tmp_path / "aide.toml").write_text(
+        '[python]\ntest_command = ""\n', encoding="utf-8")
+    with pytest.raises(ar.UsageError, match="test_command is empty"):
+        ar.suite_command(tmp_path, ENGINE)
 
 
 def test_a_missing_engine_is_a_usage_error(repo: Path, capsys):

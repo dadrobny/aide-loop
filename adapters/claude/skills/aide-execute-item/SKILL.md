@@ -70,8 +70,10 @@ or, resuming an existing claim, `python .aide/scripts/aide.py sync --item NNN`
 
 ### On completion
 
-Run the test suite via the venv (`.venv/Scripts/python -m pytest` or
-`.venv/bin/python -m pytest`). Once green — or, under `auto-merge` or `local`,
+Run the test suite with `python .aide/scripts/aide.py test`, which runs the
+configured `test_command` through the venv exactly as the merge will and
+records the result, so a merge of that same tree does not run it again. Once
+green — or, under `auto-merge` or `local`,
 red with every other check done, since the merge's gate then decides a red
 suite (§9) — merge per the configured git mode:
 

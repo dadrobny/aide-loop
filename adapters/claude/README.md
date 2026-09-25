@@ -195,7 +195,9 @@ allow-list" framing** are adapter-local and documented here.
 - **`scripts/await_run.py`** — how the `validator` (and the orchestrator's own
   held merge) follows §9's rule for a command that can outlast one tool call:
   `start suite` or `start merge NNN …` launches it detached with its output to
-  a log under the git directory, and `wait <label>` blocks up to 240 s, below a
+  a log under the git directory — `suite` being `aide test`, so the engine
+  records the run and a merge of the same tree can take it rather than run
+  the suite again — and `wait <label>` blocks up to 240 s, below a
   sub-agent's default 5-minute prompt cache and the Bash tool's 10-minute
   ceiling, returning the command's exit code or 75 for "still running". The
   supervisor holds a lock on `<label>.lock` for its whole life, so a run whose

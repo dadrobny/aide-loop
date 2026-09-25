@@ -147,8 +147,8 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
 
 5. **Validate → spawn a fresh `validator`** (a *different* agent). Brief:
    > Independently validate AIDE item NNN on branch `aide/NNN-short-name`.
-   > Run the full pytest suite; a red one is judged as your spec's step 1
-   > says (§9), by `git.mode`. Check every AC in `docs/aide/items/NNN-*.md` has a
+   > Run the full suite with `aide test`, as your spec's step 1 says; a red
+   > one is judged as that step says (§9), by `git.mode`. Check every AC in `docs/aide/items/NNN-*.md` has a
    > test; check builder's `source_dir` changes are in scope; check alignment with
    > `docs/aide/vision.md` and the spec's Assumptions. **Do NOT write or modify
    > tests.**
