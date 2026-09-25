@@ -2899,9 +2899,11 @@ def insight_reference_findings(repo_root: Path,
                               if m.span("n") not in covered]
             for m in positions:
                 n = int(m.group("n"))
-                # "insights 2026" is a year, not entry 2026: a bare four-digit
-                # number that reads as a year counts only after "entry" or "#".
-                if 1900 <= n <= 2099 and not re.search(r"(?i)entr|#", m.group(0)):
+                # "insights 2026" is a year, not entry 2026: a bare number that
+                # reads as a year counts only after "entry" or "#", or when the
+                # inbox and its archives really hold that many entries.
+                if (1900 <= n <= 2099 and not re.search(r"(?i)entr|#", m.group(0))
+                        and n > len(_entries())):
                     continue
                 _entries()
                 live_ids = cache["live_ids"]

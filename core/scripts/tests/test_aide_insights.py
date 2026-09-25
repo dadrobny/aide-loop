@@ -1600,6 +1600,16 @@ def test_a_year_after_insights_is_not_a_position(tmp_path: Path):
     assert [w.split(":")[1] for w in warnings] == ["2"]
 
 
+def test_a_year_shaped_position_the_inbox_holds_still_warns(tmp_path: Path):
+    """The year skip is for numbers no entry could have: an inbox of 1900+
+    entries is cited by position like any other."""
+    inbox = "".join(f"- [ ] gap — claim {i} *(2026-01-01)*\n" for i in range(1, 1901))
+    repo = _repo(tmp_path, inbox)
+    _cite(repo, "docs/aide/items/007-x.md", "Fixes insight 1900.\n")
+    _, warnings = _findings(repo)
+    assert len(warnings) == 1 and "insight 1900" in warnings[0]
+
+
 def test_the_inbox_and_its_archives_are_not_swept(tmp_path: Path):
     """A claim is immutable, so a finding on one could never be cleared."""
     repo = _repo(tmp_path, INBOX + "- [ ] gap — see insight 2026-01-01-ffff and entry 3 *(2026-08-20)*\n")
