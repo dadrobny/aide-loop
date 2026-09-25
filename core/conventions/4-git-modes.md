@@ -37,6 +37,19 @@ still skips the whole run. The role that started the merge does not capture
 the inherited failures itself: the entry is the engine's. `aide merge -h`
 states which options and exits keep the plain gate.
 
+**A merge that lands exactly the tree validation ran does not run the suite
+again.** Validation runs the suite through `aide test`, which records the
+result against the tree, the command, the claim branch and the commit. Where
+the post-merge tree is the claim branch's own and that branch changed nothing
+but the progress document after the recorded run, `aide merge` takes the
+recorded result in place of a second run — through the same gate, so a red one
+still meets the base — says so, and marks the ledger row's `Suite s` cell as
+reused. Every other merge runs the suite as above: a base that moved, a
+commit after the run, a tree with tracked changes, a run recorded on another
+branch, in another checkout or by anything but `aide test`. Taking a recorded run is not an
+override, and `--no-test` takes none. `aide test -h` states the conditions
+exactly.
+
 **The mode also decides what kind of CI gate can see a claim branch — pick it for
 that too.** Per-item scope is checked as each claim branch merges (§1). Whether a
 CI job can run that check depends on what the mode leaves behind for CI to
@@ -152,7 +165,36 @@ tag, a raw commit or a remote-tracking ref (`origin/main`) is refused.
   failed push — would otherwise re-run the base it has already run. Results
   are kept under git's own directory, keyed by tree and exact command, never
   committed, and pruned after seven days; a run over a tree with tracked
-  changes is never stored, since it belongs to no tree.
+  changes, or one that leaves a tracked change behind, is never stored, since
+  it belongs to no tree — a base run's included, so a suite that rewrites a
+  tracked file re-runs its base on every retry.
+- **Why a validated tree is not run twice.** Under `auto-merge` validation ran
+  the whole suite on the claim branch and the merge ran it again, and when the
+  base had not moved the merge is a fast-forward: the second run was over a
+  byte-identical tree and could prove nothing the first had not. It was the
+  loop's second long wait, which on a runtime with a short idle cache also
+  costs the waiting agent its context (issues #274, #275). One store serves
+  both reads, the base run and the validated run, so there is one record of
+  what ran where.
+- **Why the progress document may differ.** Validation writes its verdict
+  after its suite run — `progress set in-review` and each attested criterion
+  are commits on the claim branch — so a rule demanding the identical tree
+  would never be met by the loop it was built for. The progress document is
+  the one file allowed to differ because the merge's own `aide check` reads it
+  in full beside the gate, and what validation writes there is the engine's
+  bookkeeping. Anything else, `insights.md` included, forces a run: a
+  consumer's test has already gone red on an inbox checkbox (above).
+- **Why the claim branch and its commit, not only the tree.** A tree key alone
+  would let a run recorded for an earlier item, or on the base before this
+  claim existed, stand for this one whenever the trees happened to agree. The
+  recorded branch and a commit the tip contains tie the run to this claim, so
+  a reused result is always one this item's own validation produced.
+- **Why tracked changes refuse and untracked files do not.** A run over a tree
+  with a tracked change is a run of no commit, so it is neither recorded nor
+  taken. Untracked and ignored inputs — data, a built extension, the venv — are
+  not in the tree at all, so a run is taken only in the checkout that
+  recorded it: there the validated run and the merge saw the same ones, and
+  the base run's rationale (above) is why the merge does not try to see fewer.
 - **Why a CI gate can decay silently.** With no PR a PR-context scope job
   either never triggers, or triggers on a branch whose name yields no item
   number and correctly skips — so a gate can decay from a mode change alone,

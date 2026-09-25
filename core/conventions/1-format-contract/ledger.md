@@ -59,7 +59,10 @@ project's own ratios and their trend.
   that run's failures the gate admitted as failing on the base too (§4), `0`
   for a green run it could have compared. `Suite s` is blank where no run
   happened — `--no-test`, an abandoned item — and `Inherited` wherever no
-  comparison was possible. *(aide merge, ledger abandon, check)*
+  comparison was possible. **Where the merge took the run validation recorded
+  instead of running the suite (§4), `Suite s` is that run's seconds followed
+  by ` (reused)`** — `41 (reused)` — the one cell that may hold more than an
+  integer or a blank. *(aide merge, ledger abandon, check)*
 - **`outcome` is `merged` or `abandoned`** — how the item left the loop, which
   is the one thing a row cannot be read without: an item that cost three
   rounds and landed and one that cost three rounds and was dropped are
@@ -112,6 +115,11 @@ project's own ratios and their trend.
   merge admitted over a red base is a different fact from a green one, and
   the row is the one place a queue's reader sees both without re-running
   anything (issue #275).
+- **Why a reused run keeps its seconds and says so.** The time is still the
+  suite's wall time over this item's tree, which is what a validator sizing
+  its waits reads; a blank would claim no run gated the merge. The mark keeps
+  a reader from taking the row for a second run, and it lives in the cell
+  rather than a new column, so no row already written needs to change.
 - **Why a fourteen-cell row still reads.** A row is never edited, so a
   reader that demanded sixteen cells would warn on every row written before
   2.7.0 for the life of the project. A missing trailing cell read as blank

@@ -2012,6 +2012,102 @@ def test_an_order_dependent_flag_keeps_the_plain_gate(aide, consumer: Path, caps
 
 
 # --------------------------------------------------------------------------- #
+# aide test — the validator's run, recorded, and taken by merge (issue #275)
+# --------------------------------------------------------------------------- #
+COUNTING_SUITE = (
+    "from pathlib import Path\n"
+    "with Path('suite-runs.log').open('a', encoding='utf-8') as log:\n"
+    "    log.write('run\\n')\n")
+
+
+def _counting_suite(consumer: Path) -> None:
+    """A green test command that appends one line per run to an untracked log,
+    so a test can count how often the suite actually ran."""
+    (consumer / "run_suite.py").write_text(COUNTING_SUITE, encoding="utf-8")
+    command = f"{Path(sys.executable).as_posix()} run_suite.py"
+    toml = consumer / "aide.toml"
+    text = toml.read_text(encoding="utf-8")
+    (old,) = [l for l in text.splitlines() if l.startswith("test_command = ")]
+    toml.write_text(text.replace(old, f"test_command = '{command}'"),
+                    encoding="utf-8")
+    _commit(consumer, "chore: a suite that counts its runs")
+
+
+def _suite_runs(consumer: Path) -> int:
+    log = consumer / "suite-runs.log"
+    return len(log.read_text(encoding="utf-8").splitlines()) if log.is_file() else 0
+
+
+def test_a_fast_forward_merge_takes_the_run_aide_test_recorded(
+        aide, consumer: Path):
+    _counting_suite(consumer)
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+
+    assert aide.main(["--repo", str(consumer), "test"]) == 0
+    assert _suite_runs(consumer) == 1
+    # The validator's bookkeeping lands between its run and the merge.
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "in-review"]) == 0
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 0
+
+    assert _suite_runs(consumer) == 1                    # no second run
+    assert _item_status(aide, consumer, 1) == "complete"
+    (row,) = _ledger_rows(aide, consumer)
+    assert row["Suite s"].endswith(" (reused)")
+    assert row["Suite s"].split()[0].isdigit()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+
+def test_a_merge_over_a_moved_base_runs_the_suite_again(aide, consumer: Path):
+    _counting_suite(consumer)
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "test"]) == 0
+    _git(["switch", "main"], consumer)
+    (consumer / "NOTES.md").write_text("moved on\n", encoding="utf-8")
+    _git(["add", "NOTES.md"], consumer)
+    _git(["commit", "-m", "chore: main moves on"], consumer)
+    _git(["switch", "aide/001-the-greeter"], consumer)
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 0
+
+    assert _suite_runs(consumer) == 2
+    (row,) = _ledger_rows(aide, consumer)
+    assert row["Suite s"].isdigit()
+
+
+def test_a_run_over_a_dirty_tree_is_neither_recorded_nor_taken(
+        aide, consumer: Path):
+    _counting_suite(consumer)
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    greeter = consumer / "src" / "greeter.py"
+    committed = greeter.read_text(encoding="utf-8")
+    greeter.write_text(committed + "# unsaved\n", encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "test"]) == 0
+    greeter.write_text(committed, encoding="utf-8")
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 0
+
+    assert _suite_runs(consumer) == 2
+    assert _ledger_rows(aide, consumer)[0]["Suite s"].isdigit()
+
+
+def test_a_run_recorded_before_the_claim_is_not_taken(aide, consumer: Path):
+    """Same tree, same command, recorded on main: another claim's run, or
+    none, but never this one's."""
+    _counting_suite(consumer)
+    assert aide.main(["--repo", str(consumer), "test"]) == 0
+    assert _claim(aide, consumer) == 0
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 0
+
+    assert _suite_runs(consumer) == 2
+    assert _ledger_rows(aide, consumer)[0]["Suite s"].isdigit()
+
+
+# --------------------------------------------------------------------------- #
 # insights — the inbox verbs, against the installed engine
 # --------------------------------------------------------------------------- #
 def test_insights_list_numbers_the_whole_inbox(aide, consumer: Path, capsys):

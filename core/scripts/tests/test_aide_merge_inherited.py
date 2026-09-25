@@ -10,6 +10,11 @@ carries its own answer and the base run is exercised by what is checked out
 when it runs — no pytest is spawned here. `tests/test_fixture_consumer.py`
 runs the real pytest against an installed engine.
 
+A fifth layer closes the module: `aide test` recording the validator's run in
+the same store, with who ran it, where and at which commit, and `aide merge`
+taking that run in place of its own where the tree it lands is the tree that
+ran — and not otherwise.
+
 Asserted on cells, files and exit codes; prose only where
 `test_aide_help_pins.py` names a test here as the guard of a sentence.
 """
@@ -690,3 +695,273 @@ def test_a_green_run_nothing_could_compare_leaves_inherited_blank(
     assert _merge(repo, 1) == 0
     (row,) = _rows(repo)
     assert (row["Suite s"], row["Inherited"]) == ("3", "")
+
+
+# --------------------------------------------------------------------------- #
+# aide test — the validator's run, recorded; aide merge taking it (PR B)
+# --------------------------------------------------------------------------- #
+def _test(repo: Path) -> int:
+    return aide.main(["--repo", str(repo), "test"])
+
+
+def _records(repo: Path) -> list:
+    folder = aide.suite_results_dir(repo)
+    if folder is None or not folder.is_dir():
+        return []
+    return [json.loads(p.read_text(encoding="utf-8"))
+            for p in sorted(folder.glob("*.json"))]
+
+
+def _in_review(repo: Path) -> None:
+    assert aide.main(["--repo", str(repo), "progress", "set", "001",
+                      "in-review"]) == 0
+
+
+def test_aide_test_records_its_run_with_the_branch_and_commit(
+        tmp_path: Path, fake, capsys):
+    repo = _init_repo(tmp_path / "repo")
+    _claim(repo)
+    _work(repo, "b")
+    head = _run(["git", "rev-parse", "HEAD"], repo).stdout.strip()
+
+    assert _test(repo) == 1                 # the command's own exit code
+
+    (record,) = _records(repo)
+    assert (record["by"], record["branch"], record["commit"]) == (
+        "aide test", "aide/001-bounds", head)
+    assert record["failures"] == [LEGACY] and record["returncode"] == 1
+    assert [c[0] for c in fake.calls] == ["aide/001-bounds"]
+    assert "NOT recorded" not in capsys.readouterr().err
+
+
+def test_aide_test_over_a_dirty_tree_records_nothing_and_says_so(
+        tmp_path: Path, fake, capsys):
+    repo = _init_repo(tmp_path / "repo", fails="")
+    _claim(repo)
+    (repo / "src" / "a.py").write_text("x = 'edited'\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert _test(repo) == 0
+
+    assert _records(repo) == []
+    assert "NOT recorded" in capsys.readouterr().err
+
+
+def test_a_fast_forward_merge_takes_the_validated_run(
+        tmp_path: Path, fake, capsys):
+    """The validator's bookkeeping commit sits between its run and the merge:
+    only progress.md changed, so the run still stands for the tree."""
+    repo = _init_repo(tmp_path / "repo", fails="")
+    _claim(repo)
+    _work(repo, "b")
+    assert _test(repo) == 0
+    _in_review(repo)
+    fake.calls.clear()
+    capsys.readouterr()
+
+    assert _merge(repo, 1) == 0
+
+    assert fake.calls == []                  # no second suite run
+    assert "reusing that run" in capsys.readouterr().out
+    (row,) = _rows(repo)
+    assert (row["Suite s"], row["Inherited"]) == ("3 (reused)", "0")
+    assert aide.ledger_warnings(repo / "docs" / "aide") == []
+    assert _status(repo, 1) == "complete"
+
+
+def test_a_merge_over_a_moved_base_runs_the_suite(tmp_path: Path, fake, capsys):
+    repo = _init_repo(tmp_path / "repo", fails="")
+    _claim(repo)
+    _work(repo, "b")
+    assert _test(repo) == 0
+    _run(["git", "switch", "main"], repo)
+    _work(repo, "elsewhere")
+    _run(["git", "switch", "aide/001-bounds"], repo)
+    fake.calls.clear()
+    capsys.readouterr()
+
+    assert _merge(repo, 1) == 0
+
+    assert [c[0] for c in fake.calls] == ["main"]
+    assert "the base had moved" in capsys.readouterr().out
+    (row,) = _rows(repo)
+    assert row["Suite s"] == "3"
+
+
+def test_a_run_from_before_a_code_change_is_not_taken(
+        tmp_path: Path, fake, capsys):
+    repo = _init_repo(tmp_path / "repo", fails="")
+    _claim(repo)
+    _work(repo, "b")
+    assert _test(repo) == 0
+    _work(repo, "c")                         # a fix after the recorded run
+    fake.calls.clear()
+    capsys.readouterr()
+
+    assert _merge(repo, 1) == 0
+
+    assert [c[0] for c in fake.calls] == ["main"]
+    assert "src/c.py" in capsys.readouterr().out
+    assert _rows(repo)[0]["Suite s"] == "3"
+
+
+def test_a_run_recorded_on_another_branch_is_not_taken(tmp_path: Path, fake):
+    """Same tree, same command — but recorded before this claim existed."""
+    repo = _init_repo(tmp_path / "repo", fails="")
+    assert _test(repo) == 0                  # on main, before the claim
+    _claim(repo)                             # no commits: the tip is main's
+    fake.calls.clear()
+
+    assert _merge(repo, 1) == 0
+
+    assert [c[0] for c in fake.calls] == ["main"]
+    assert _rows(repo)[0]["Suite s"] == "3"
+
+
+def test_an_aged_out_run_is_not_taken(tmp_path: Path, fake):
+    repo = _init_repo(tmp_path / "repo", fails="")
+    _claim(repo)
+    _work(repo, "b")
+    assert _test(repo) == 0
+    (path,) = aide.suite_results_dir(repo).glob("*.json")
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["timestamp"] -= aide.SUITE_RESULT_MAX_AGE + 60
+    path.write_text(json.dumps(record), encoding="utf-8")
+    fake.calls.clear()
+
+    assert _merge(repo, 1) == 0
+
+    assert [c[0] for c in fake.calls] == ["main"]
+
+
+def test_a_red_validated_run_still_meets_the_base(tmp_path: Path, fake, capsys):
+    """Taken, not trusted: its failures go to the base exactly as a run the
+    merge made would, and are admitted only as a subset."""
+    repo = _init_repo(tmp_path / "repo")
+    _claim(repo)
+    _work(repo, "b")
+    assert _test(repo) == 1
+    _in_review(repo)
+    fake.calls.clear()
+
+    assert _merge(repo, 1) == 0
+
+    assert [c[0] for c in fake.calls] == ["(detached)"]   # the base run only
+    (row,) = _rows(repo)
+    assert (row["Suite s"], row["Inherited"]) == ("3 (reused)", "1")
+    assert len(_open_defects(repo)) == 1
+
+
+def test_a_red_validated_run_with_a_new_failure_is_refused(tmp_path: Path, fake):
+    repo = _init_repo(tmp_path / "repo")
+    _claim(repo)
+    _work(repo, "b", extra_failure="tests/test_b.py::test_new")
+    assert _test(repo) == 1
+    fake.calls.clear()
+
+    assert _merge(repo, 1) == 1
+
+    assert [c[0] for c in fake.calls] == ["(detached)"]
+    assert _status(repo, 1) != "complete"
+    assert "aide/001-bounds" in _branches(repo)
+
+
+def test_no_test_takes_no_recorded_run_either(tmp_path: Path, fake):
+    repo = _init_repo(tmp_path / "repo", fails="")
+    _claim(repo)
+    _work(repo, "b")
+    assert _test(repo) == 0
+
+    assert _merge(repo, 1, "--no-test") == 0
+
+    assert _rows(repo)[0]["Suite s"] == ""
+
+
+def test_a_reused_suite_cell_reads_and_nothing_else_does(tmp_path: Path):
+    d = tmp_path / "docs"
+    d.mkdir()
+    base = ["001", "001", "1", "normal", "merged", "2", "1", "2", "2", "1",
+            "0", "0", "2.8.0", "2026-09-25"]
+    (d / "ledger.md").write_text(
+        aide.ledger_row(base + ["41 (reused)", "0"]) + "\n"
+        + aide.ledger_row(base + ["41 (maybe)", "0"]) + "\n"
+        + aide.ledger_row(base[:5] + ["2 (reused)"] + base[6:] + ["", ""]) + "\n",
+        encoding="utf-8")
+    first, second = aide.ledger_warnings(d)
+    assert "Suite s cell '41 (maybe)'" in first
+    assert "ACs cell '2 (reused)'" in second
+
+
+def test_a_run_recorded_in_another_checkout_is_not_taken(tmp_path: Path, fake):
+    """The store is shared by every worktree; their untracked inputs are not."""
+    repo = _init_repo(tmp_path / "repo", fails="")
+    _claim(repo)
+    _work(repo, "b")
+    assert _test(repo) == 0
+    (path,) = aide.suite_results_dir(repo).glob("*.json")
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["checkout"] = str(tmp_path / "another-worktree")
+    path.write_text(json.dumps(record), encoding="utf-8")
+    fake.calls.clear()
+
+    assert _merge(repo, 1) == 0
+
+    assert [c[0] for c in fake.calls] == ["main"]
+
+
+def test_a_run_whose_head_moved_is_not_recorded(tmp_path: Path, monkeypatch,
+                                                capsys):
+    """A commit landing mid-run leaves a result that is of neither commit."""
+    repo = _init_repo(tmp_path / "repo", fails="")
+    _claim(repo)
+
+    def run(repo_root, argv, identify):
+        _work(Path(repo_root), "mid-run")
+        return aide.SuiteRun(0, 1.0, ())
+
+    monkeypatch.setattr(aide, "run_test_suite", run)
+    capsys.readouterr()
+
+    assert _test(repo) == 0
+
+    assert _records(repo) == []
+    assert "NOT recorded" in capsys.readouterr().err
+
+
+def test_a_run_whose_tree_changed_is_not_recorded(tmp_path: Path, monkeypatch,
+                                                  capsys):
+    """A tracked file edited mid-run leaves a result that is of no commit."""
+    repo = _init_repo(tmp_path / "repo", fails="")
+    _claim(repo)
+
+    def run(repo_root, argv, identify):
+        (Path(repo_root) / "src" / "a.py").write_text("x = 2\n",
+                                                      encoding="utf-8")
+        return aide.SuiteRun(0, 1.0, ())
+
+    monkeypatch.setattr(aide, "run_test_suite", run)
+    capsys.readouterr()
+
+    assert _test(repo) == 0
+
+    assert _records(repo) == []
+    assert "NOT recorded" in capsys.readouterr().err
+
+
+def test_a_base_run_that_dirties_the_tree_is_not_recorded(tmp_path: Path,
+                                                          monkeypatch):
+    """The store's clean-tree rule is the store's, not `aide test`'s alone."""
+    repo = _init_repo(tmp_path / "repo", fails="")
+
+    def run(repo_root, argv, identify):
+        (Path(repo_root) / "src" / "a.py").write_text("x = 2\n",
+                                                      encoding="utf-8")
+        return aide.SuiteRun(0, 1.0, ())
+
+    monkeypatch.setattr(aide, "run_test_suite", run)
+
+    _, tree = aide.recorded_suite_run(repo, ["pytest"], True,
+                                      by=aide.SUITE_RECORDED_BY_MERGE)
+
+    assert tree is None
+    assert _records(repo) == []

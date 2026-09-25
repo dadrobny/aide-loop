@@ -40,9 +40,10 @@ under ``start.lock`` in the state directory: a run still being launched holds
 it, so it is never mistaken for a dead one.
 
 It runs **only** those two commands, so allow-listing it lets nothing else
-through: ``suite`` is the project's ``[python] test_command``, resolved by the
-engine exactly as ``aide merge`` resolves it (a leading ``python`` bound to the
-venv), and ``merge`` is ``.aide/scripts/aide.py merge`` under this interpreter.
+through: ``suite`` is ``.aide/scripts/aide.py test``, which runs the project's
+``[python] test_command`` exactly as ``aide merge`` runs it (a leading
+``python`` bound to the venv) and records the result for the merge to reuse,
+and ``merge`` is ``.aide/scripts/aide.py merge``, both under this interpreter.
 
 Exit codes:
 
@@ -212,16 +213,21 @@ def _load_engine(engine: Path):
 
 
 def suite_command(root: Path, engine: Path) -> List[str]:
-    """The project's test command, resolved by the engine as `aide merge` does."""
+    """``aide test`` under this interpreter: the project's test command, run
+    and resolved by the engine as `aide merge` runs it, with the result
+    recorded where the merge can take it in place of a second run.
+
+    The configuration is read here first, so a broken `aide.toml` or an empty
+    test command is refused before anything is launched.
+    """
     aide = _load_engine(engine)
     try:
         config = aide.load_config(root)
     except Exception as exc:  # the engine's ConfigError names the file
         raise UsageError(str(exc)) from exc
-    cmd = aide.resolve_test_command(root, config)
-    if not cmd:
+    if not aide.resolve_test_command(root, config):
         raise UsageError("[python] test_command is empty in aide.toml")
-    return cmd
+    return [sys.executable, str(engine), "test"]
 
 
 def merge_command(engine: Path, number: int, rounds: Optional[int],
@@ -609,7 +615,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_start = sub.add_parser("start", help="launch the suite or a merge detached; "
                                            "prints its label")
     what = p_start.add_subparsers(dest="what", required=True, parser_class=_Parser)
-    what.add_parser("suite", help="the project's [python] test_command")
+    what.add_parser("suite", help="the project's [python] test_command, "
+                                   "through .aide/scripts/aide.py test")
     p_merge = what.add_parser("merge", help=".aide/scripts/aide.py merge NNN")
     p_merge.add_argument("number", type=int)
     p_merge.add_argument("--rounds", type=int, default=None)

@@ -25,6 +25,13 @@ the merge runs no gate, a red suite is a FAIL. A validation whose merge is
 held for a concurrent review reports its PASS with the failing tests listed,
 and says that the later merge's gate decides them.
 
+**Validation runs the whole suite through `aide test`, never as the bare test
+command.** The verb runs the configured command as the merge runs it, exits
+with its exit code, and records the result, so a merge that lands exactly the
+tree validation ran takes that result instead of a second run (§4). A narrower
+run — one file, one case, while diagnosing — is run directly: it is not the
+suite, and nothing takes it in the suite's place.
+
 **A green validator is not a review, and a clean review does not discharge
 validation.** The two fail in opposite directions and neither covers for the
 other: a check measured against the spec cannot find what the spec never
@@ -96,6 +103,13 @@ output in place of a verdict.
   base itself, and the merge already does, so the verdict on a red suite
   moves to the one step that can separate the two. Under `pr` nothing in the
   loop compares, so the old rule stands there.
+
+- **Why the suite goes through a verb.** A bare run leaves nothing the engine
+  can read, so the merge re-ran the whole suite over a tree validation had
+  tested minutes earlier — under `auto-merge`, every fast-forward merge paid
+  for the suite twice, and the second wait is the one that outlasts a
+  waiting agent's cache (issues #274, #275). Recording the run where the
+  engine keeps its base runs is what lets the merge see it.
 
 - **Why delivered.** A role that has not been told the difference will collapse
   the two, and the collapse is silent — both reads end in a report that says

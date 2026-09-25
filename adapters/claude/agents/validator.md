@@ -41,14 +41,20 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
 
 ## What you validate (all must hold)
 
-1. **Tests pass — or the merge judges why not.** Run the full suite —
-   `aide.toml`'s `test_command`, bound to the venv exactly as `aide merge`
-   binds it — through the run helper, which starts it detached and prints a
-   label:
+1. **Tests pass — or the merge judges why not.** Run the full suite with
+   `python .aide/scripts/aide.py test`, never `test_command` bare: the verb
+   runs `aide.toml`'s `test_command` exactly as `aide merge` does and records
+   the result, which is what lets the merge skip its own run when it lands
+   the same tree (§9, preloaded above). Start it through the run helper,
+   whose `suite` is that verb, detached, with a label printed:
    ```
    python .claude/scripts/await_run.py start suite
    python .claude/scripts/await_run.py wait <label>
    ```
+   Run it on the claim branch with every change committed: a run over
+   uncommitted changes is not recorded (the log's last line says so), and
+   the merge then runs the suite again. A single test file you run while
+   diagnosing is run directly; it is not the suite.
    `wait` returns the moment the suite exits, with its exit code, the elapsed
    time and the log's last lines; after 240 s it returns exit **75** instead,
    "still running" — call `wait` again. **A red suite is judged by
@@ -228,7 +234,9 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      ```
      That is `python .aide/scripts/aide.py merge NNN --rounds R`, run the way
      step 1 runs the suite, inside what is left of the same 50-minute budget.
-     Under `auto-merge` it re-runs the full suite, so it should take about as
+     Where the base has not moved since your run, the merge takes the result
+     step 1 recorded, says so, and finishes quickly. Otherwise, under
+     `auto-merge`, it re-runs the full suite, so it should take about as
      long as your suite run did: **treat it as hung once it passes 3× the
      elapsed time your suite run's `wait` reported, or 10 minutes if that is
      more** — then `stop` it and hand back INCOMPLETE, saying it hung. The

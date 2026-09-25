@@ -18,6 +18,7 @@ Subcommands::
     python .aide/scripts/aide.py insights list|tick|archive|resolve  # the insight inbox
     python .aide/scripts/aide.py ledger abandon NNN --rounds N  # the ledger row for an item that never merged
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
+    python .aide/scripts/aide.py test                  # run the suite, recorded for merge to reuse
     python .aide/scripts/aide.py merge NNN [--base R]  # merge a validated item per git.mode
     python .aide/scripts/aide.py env                   # venv existence / import check + bootstrap
     python .aide/scripts/aide.py sync [--item NNN]     # preflight: fetch, clean-tree check, right branch
@@ -6794,6 +6795,10 @@ LEDGER_TEMPLATE_2_WIDTH = 14
 #: reads, and the blank-cell rule's whole surface.
 LEDGER_INTEGER_COLUMNS = ("ACs", "Tests", "Files", "Rounds", "Blocking",
                           "Minor", "Nit", "Suite s", "Inherited")
+#: What follows a `Suite s` cell's seconds where `aide merge` took the run
+#: `aide test` recorded rather than running the suite (§1 → ledger.md): the
+#: seconds are that run's, and the mark says whose.
+LEDGER_REUSED_SUFFIX = " (reused)"
 #: The three ranks `--findings` accepts, in the order they are written.
 LEDGER_FINDING_RANKS = ("blocking", "minor", "nit")
 #: What the three finding cells hold where the project runs with no reviewer
@@ -7184,6 +7189,10 @@ def ledger_warnings(ddir: Path) -> List[str]:
             # which the writing verbs put there themselves (§1 → ledger.md).
             if (value == LEDGER_NO_REVIEW_CELL
                     and column in LEDGER_FINDING_COLUMNS):
+                continue
+            if (column == "Suite s"
+                    and re.fullmatch(r"[0-9]+" + re.escape(LEDGER_REUSED_SUFFIX),
+                                     value)):
                 continue
             if value and not re.fullmatch(r"[0-9]+", value):
                 out.append(f"ledger.md:{lineno}: {column} cell '{value}' is "
@@ -8565,6 +8574,10 @@ def run_test_suite(repo_root: Path, argv: List[str],
     if not identify:
         start = time.monotonic()
         res = subprocess.run(argv, cwd=str(repo_root))
+        # A green run has no failures to name whatever the runner, so it
+        # reads back from the store as green (`read_suite_result`).
+        if res.returncode == 0:
+            return SuiteRun(0, time.monotonic() - start, ())
         return SuiteRun(res.returncode, time.monotonic() - start, None,
                         "failures were not identified")
     with tempfile.TemporaryDirectory(prefix="aide-junit-") as tmp:
@@ -8641,6 +8654,14 @@ def read_suite_result(repo_root: Path, tree: str, argv: List[str],
     command, a record that does not say what it claims to — is a miss, and a
     miss costs a run rather than a wrong answer.
     """
+    found = _read_suite_record(repo_root, tree, argv, now)
+    return None if found is None else found[0]
+
+
+def _read_suite_record(repo_root: Path, tree: str, argv: List[str],
+                       now: Optional[float] = None
+                       ) -> Optional[Tuple[SuiteRun, Dict[str, object]]]:
+    """`read_suite_result`, with the record it was read from beside it."""
     folder = suite_results_dir(repo_root)
     if folder is None:
         return None
@@ -8663,18 +8684,22 @@ def read_suite_result(repo_root: Path, tree: str, argv: List[str],
         return None
     if (returncode == 0) != (not failures):
         return None
-    return SuiteRun(returncode, seconds, tuple(str(f) for f in failures),
-                    reused=True)
+    return (SuiteRun(returncode, seconds, tuple(str(f) for f in failures),
+                     reused=True), data)
 
 
 def write_suite_result(repo_root: Path, tree: str, argv: List[str],
-                      run: SuiteRun, now: Optional[float] = None) -> Optional[Path]:
+                      run: SuiteRun, now: Optional[float] = None,
+                      provenance: Optional[Dict[str, str]] = None) -> Optional[Path]:
     """Record *run* of *argv* over *tree*, and prune what has aged out.
 
     The caller decides that the run was of *tree* — `tree_is_clean` before it
-    started — since only the caller knows. Best effort: a store that cannot be
-    written costs the next run a re-run and nothing else, so an error here is
-    ``None`` rather than an exception.
+    started — since only the caller knows. *provenance* is who ran it, on
+    which branch and at which commit (`recorded_suite_run`); the key never
+    includes it, so a later run of the same tree and command replaces the
+    record whoever made it. Best effort: a store that cannot be written costs
+    the next run a re-run and nothing else, so an error here is ``None``
+    rather than an exception.
     """
     folder = suite_results_dir(repo_root)
     if folder is None:
@@ -8682,7 +8707,8 @@ def write_suite_result(repo_root: Path, tree: str, argv: List[str],
     now = time.time() if now is None else now
     record = {"tree": tree, "argv": list(argv), "returncode": run.returncode,
               "failures": None if run.failures is None else list(run.failures),
-              "seconds": round(run.seconds, 3), "timestamp": now}
+              "seconds": round(run.seconds, 3), "timestamp": now,
+              **(provenance or {})}
     path = folder / f"{suite_result_key(tree, argv)}.json"
     try:
         folder.mkdir(parents=True, exist_ok=True)
@@ -8720,23 +8746,145 @@ def prune_suite_results(folder: Path, now: Optional[float] = None) -> List[Path]
     return removed
 
 
-def recorded_suite_run(repo_root: Path, argv: List[str], identify: bool,
-                       reuse: bool = False) -> SuiteRun:
-    """Run the suite over ``HEAD`` — or, with *reuse*, read back a run of it.
+#: Who recorded a stored run, in its record's ``by``: the `test` verb, whose
+#: run `aide merge` may take in place of its own (`validated_suite_run`), or
+#: the merge's gate itself, whose runs only ever stand in for a base run.
+SUITE_RECORDED_BY_TEST = "aide test"
+SUITE_RECORDED_BY_MERGE = "aide merge"
 
-    The store's one reader and writer: a run starting from a clean tree is
-    recorded under ``HEAD``'s tree, and a run over any other tree is not,
-    since its result belongs to no commit.
+
+def _head_commit(repo_root: Path) -> Optional[str]:
+    res = git(["rev-parse", "--verify", "--quiet", "HEAD"], repo_root, check=False)
+    return res.stdout.strip() or None if res.returncode == 0 else None
+
+
+def _checkout_id(repo_root: Path) -> str:
+    """This working tree, as a record names it: the store is shared by every
+    worktree of the repository, and their untracked inputs are not."""
+    try:
+        return str(Path(repo_root).resolve())
+    except OSError:
+        return str(repo_root)
+
+
+def recorded_suite_run(repo_root: Path, argv: List[str], identify: bool,
+                       by: str = SUITE_RECORDED_BY_MERGE) -> Tuple[SuiteRun, Optional[str]]:
+    """Run the suite over ``HEAD``, and record the run where it is ``HEAD``'s.
+
+    The store's one writer: a run starting from a clean tree is recorded under
+    ``HEAD``'s tree, with *by*, the branch and the commit it ran at — and a
+    run over any other tree is not, since its result belongs to no commit.
+    Nor is one whose ``HEAD`` moved, or whose tree gained a tracked change,
+    while it ran. ``(run, tree)``, *tree*
+    being what it was recorded under, or ``None`` where it was not.
     """
     tree = head_tree(repo_root) if tree_is_clean(repo_root) else None
-    if reuse and tree is not None and identify:
-        stored = read_suite_result(repo_root, tree, argv)
-        if stored is not None:
-            return stored
+    commit = _head_commit(repo_root) if tree is not None else None
+    branch = _current_branch(repo_root) if tree is not None else ""
     run = run_test_suite(repo_root, argv, identify)
-    if tree is not None:
-        write_suite_result(repo_root, tree, argv, run)
-    return run
+    if (tree is None or commit is None or _head_commit(repo_root) != commit
+            or not tree_is_clean(repo_root)):
+        return run, None
+    written = write_suite_result(repo_root, tree, argv, run, provenance={
+        "by": by, "branch": branch, "commit": commit,
+        "checkout": _checkout_id(repo_root)})
+    return run, (tree if written is not None else None)
+
+
+class ValidatedRun(NamedTuple):
+    """What `validated_suite_run` found: the run, and the commit it ran at."""
+    run: SuiteRun
+    commit: str
+    changed: Tuple[str, ...]
+
+
+def validated_suite_run(repo_root: Path, config, argv: List[str], branch: str,
+                        tip: str) -> Tuple[Optional[ValidatedRun], str]:
+    """The run `aide test` recorded that stands for this checkout, or why none does.
+
+    What `aide merge` asks before it runs the suite itself. A stored run
+    stands for the post-merge tree only where all of these hold:
+
+    * the tree has no tracked change, and ``HEAD``'s tree is the claim
+      branch's at *tip* — the merge brought in nothing the branch did not
+      have: a fast-forward, or a merge commit over a base that had not moved;
+    * the run is of exactly *argv*, and was recorded by `aide test` in this
+      checkout with the claim branch *branch* checked out, at a commit *tip*
+      contains — so a run from another item, from before this branch existed,
+      or from another worktree with other untracked inputs, never stands in;
+    * nothing changed between that commit and *tip* but the progress document,
+      which is what validation writes after its suite run (`progress set
+      in-review`, `progress accept`) and what the `aide check` beside the
+      merge's gate reads in full.
+
+    The newest such run wins. ``(found, "")``, or ``(None, why)``.
+    """
+    if not tree_is_clean(repo_root):
+        return None, "the tree has tracked changes, so no stored run is its run"
+    tree = head_tree(repo_root)
+    tip_tree = git(["rev-parse", "--verify", "--quiet", f"{tip}^{{tree}}"],
+                   repo_root, check=False).stdout.strip()
+    if tree is None or not tip_tree:
+        return None, "git could not name the trees to compare"
+    if tree != tip_tree:
+        return None, (f"the post-merge tree is not {branch}'s at {tip[:10]} — "
+                      f"the base had moved, so the merge made a tree no run "
+                      f"has seen")
+    folder = suite_results_dir(repo_root)
+    records: List[Dict[str, object]] = []
+    for path in sorted(folder.glob("*.json")) if folder and folder.is_dir() else []:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if (isinstance(data, dict) and data.get("by") == SUITE_RECORDED_BY_TEST
+                and data.get("branch") == branch and data.get("argv") == list(argv)
+                and data.get("checkout") == _checkout_id(repo_root)):
+            records.append(data)
+    if not records:
+        return None, (f"no `aide test` run of this test command is recorded "
+                      f"on {branch} in this checkout")
+
+    def _stamp(record) -> float:
+        try:
+            return float(record.get("timestamp", 0))
+        except (TypeError, ValueError):
+            return 0.0
+
+    progress_rel = str(PurePosixPath(
+        str(config["project"].get("docs_dir", "docs/aide")).replace("\\", "/"))
+        / "progress.md")
+    why = (f"no `aide test` run recorded on {branch} is one of {tip[:10]}'s "
+           f"commits that this gate can read")
+    for data in sorted(records, key=_stamp, reverse=True):
+        commit = str(data.get("commit") or "")
+        if not commit or not _contains(repo_root, commit, tip):
+            continue
+        commit_tree = git(["rev-parse", "--verify", "--quiet",
+                           f"{commit}^{{tree}}"], repo_root,
+                          check=False).stdout.strip()
+        if not commit_tree or commit_tree != data.get("tree"):
+            continue
+        # Read back through the store's own reader: its age, exit and failure
+        # checks apply, and a later run of that tree may have replaced it.
+        found = _read_suite_record(repo_root, commit_tree, argv)
+        if found is None or found[1].get("commit") != commit:
+            continue
+        diff = git(["diff", "--name-only", "--no-renames", commit, tip],
+                   repo_root, check=False)
+        if diff.returncode != 0:
+            continue
+        changed = tuple(sorted(l.strip() for l in diff.stdout.splitlines()
+                               if l.strip()))
+        others = [c for c in changed if c != progress_rel]
+        if others:
+            why = (f"{branch} changed {others[0]}"
+                   + (f" and {len(others) - 1} other path(s)" if len(others) > 1 else "")
+                   + f" after the last `aide test` run recorded on it, at "
+                     f"{commit[:10]}")
+            break
+        return ValidatedRun(found[0], commit, changed), ""
+    return None, why
 
 
 def _first_parent_ancestor(repo_root: Path, rev: str) -> Optional[str]:
@@ -8841,7 +8989,7 @@ def base_suite_run(repo_root: Path, argv: List[str], sha: str,
         if switched.returncode != 0:
             return None, (f"the base could not be checked out: "
                           f"{(switched.stderr or switched.stdout).strip()}")
-        run = recorded_suite_run(repo_root, argv, identify=True)
+        run, _ = recorded_suite_run(repo_root, argv, identify=True)
     finally:
         back = None
         if _current_branch(repo_root) != base:
@@ -8963,6 +9111,44 @@ def route_inherited_failures(repo_root: Path, config, number: int, base: str,
 
 def _listed(ids, indent: str = "  ") -> str:
     return "".join(f"\n{indent}{i}" for i in ids)
+
+
+def cmd_test(args: argparse.Namespace) -> int:
+    """Run the suite as `aide merge` runs it, and record the result (#275)."""
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    cmd = resolve_test_command(repo_root, config)
+    if not cmd:
+        print("aide test: [python] test_command is empty in aide.toml",
+              file=sys.stderr)
+        return 2
+    refusal = failure_identity_refusal(cmd)
+    clean = tree_is_clean(repo_root)
+    sys.stdout.flush()
+    run, tree = recorded_suite_run(repo_root, cmd, identify=refusal is None,
+                                   by=SUITE_RECORDED_BY_TEST)
+    seconds = int(round(run.seconds))
+    if run.returncode == 0:
+        outcome = f"green in {seconds}s"
+    elif run.failures:
+        outcome = (f"exit {run.returncode} in {seconds}s, "
+                   f"{len(run.failures)} failing test(s) named")
+    else:
+        outcome = (f"exit {run.returncode} in {seconds}s, failures not named: "
+                   f"{run.unidentified or refusal}")
+    if tree is not None:
+        commit = _head_commit(repo_root) or ""
+        print(f"aide test: {outcome}. Recorded for {_current_branch(repo_root)} "
+              f"at {commit[:10]}, where `aide merge` can take it in place of "
+              f"its own run.")
+    else:
+        why = ("the tree has tracked changes or an operation in progress, so "
+               "the run is of no commit" if not clean else
+               "HEAD or a tracked file changed while it ran, or the result store could not be "
+               "written")
+        print(f"aide test: {outcome}. NOT recorded: {why}.", file=sys.stderr)
+    code = run.returncode
+    return code if code >= 0 else 128 - code
 
 
 def cmd_merge(args: argparse.Namespace) -> int:
@@ -9194,13 +9380,33 @@ def cmd_merge(args: argparse.Namespace) -> int:
                 del_res = git(["branch", "-D", branch], repo_root, check=False)
             local_gone = branch not in _local_branches(repo_root)
 
-            suite_seconds: Optional[int] = None
+            suite_cell = ""
             inherited: Optional[Tuple[str, ...]] = None
             if not args.no_test:
                 cmd = resolve_test_command(repo_root, config)
                 refusal = failure_identity_refusal(cmd)
-                post = recorded_suite_run(repo_root, cmd, identify=refusal is None)
-                suite_seconds = int(round(post.seconds))
+                # The run validation recorded, where it is a run of this very
+                # tree (issue #275): taken in place of a second suite run, and
+                # judged exactly as one — a red one still meets the base.
+                validated, why_not = validated_suite_run(
+                    repo_root, config, cmd, branch, branch_tip)
+                if validated is not None:
+                    post = validated.run
+                    since = list(validated.changed)
+                    print(f"aide merge: the post-merge tree is the one `aide "
+                          f"test` ran over on {branch} at "
+                          f"{validated.commit[:10]}"
+                          + (f", but for {', '.join(since)}" if since else "")
+                          + f" — reusing that run (exit {post.returncode}, "
+                            f"{int(round(post.seconds))}s) rather than running "
+                            f"the suite again.")
+                else:
+                    print(f"aide merge: running the suite: {why_not}.")
+                    sys.stdout.flush()
+                    post, _ = recorded_suite_run(repo_root, cmd,
+                                                 identify=refusal is None)
+                suite_cell = str(int(round(post.seconds))) + (
+                    LEDGER_REUSED_SUFFIX if validated is not None else "")
                 if post.returncode == 0:
                     inherited = () if refusal is None else None
                 else:
@@ -9262,8 +9468,7 @@ def cmd_merge(args: argparse.Namespace) -> int:
             # code — capture is worth a sentence, never a landed item.
             ledger_rel = None
             if pending_row is not None:
-                pending_row[LEDGER_COLUMNS.index("Suite s")] = (
-                    "" if suite_seconds is None else str(suite_seconds))
+                pending_row[LEDGER_COLUMNS.index("Suite s")] = suite_cell
                 pending_row[LEDGER_COLUMNS.index("Inherited")] = (
                     "" if inherited is None else str(len(inherited)))
                 try:
@@ -11335,7 +11540,15 @@ def register_git_subcommands(sub) -> None:
             "exit other than 1 and a base that cannot be identified keep the "
             "plain gate, where any red run refuses. The Suite s cell is blank "
             "under --no-test, and Inherited is blank wherever no comparison "
-            "could be made."))
+            "could be made.\n"
+            "\n"
+            "Before running the suite it looks for a run `aide test` recorded "
+            "of the same tree on the claim branch, and takes that run in "
+            "place of its own where `aide test -h` says it may: the run is "
+            "judged the same way, the output names the commit it ran at, and "
+            "the Suite s cell reads its seconds followed by (reused). Any "
+            "other merge runs the suite, and prints why it could not reuse "
+            "one."))
     p_merge.add_argument("number", type=int)
     p_merge.add_argument("branch", nargs="?", default=None, help="claim branch (default: found from number)")
     p_merge.add_argument("--base", default=None,
@@ -11357,6 +11570,34 @@ def register_git_subcommands(sub) -> None:
                               "blocking=A,minor=B,nit=C \u2014 any subset, "
                               "any order")
     p_merge.set_defaults(func=cmd_merge)
+
+    p_test = sub.add_parser(
+        "test", help="run the test command and record the result for merge",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Runs [python] test_command exactly as `aide merge` runs it \u2014 "
+            "a leading python bound to the venv, and, where the command runs "
+            "pytest as a module with no order-dependent flag, a JUnit report "
+            "naming each failure \u2014 and exits with the command's own exit "
+            "code.\n"
+            "\n"
+            "The result is recorded where the tree has no tracked change and "
+            "HEAD does not move during the run: the tree, the command, the "
+            "exit code, the failing tests, the wall time, and the branch and "
+            "commit it ran at, in the same store under the git directory that "
+            "`aide merge` keeps its base runs in. A run over a tree with "
+            "tracked changes is not recorded, and says so on stderr.\n"
+            "\n"
+            "`aide merge` takes a recorded run in place of its own suite run "
+            "when the post-merge tree is the claim branch's tip tree, the "
+            "command is the same, and the run was recorded by this verb on "
+            "that claim branch in the same checkout, at a commit the tip "
+            "contains, with nothing "
+            "but the progress document changed since. It says so, judges the "
+            "run exactly as one of its own, and writes the row's Suite s cell "
+            "as the recorded run's seconds followed by (reused). Where the "
+            "base had moved, or anything else changed, it runs the suite."))
+    p_test.set_defaults(func=cmd_test)
 
     p_env = sub.add_parser("env", help="venv health (exists, bootstrap finished, "
                                         "interpreter matches, imports, test runner) + bootstrap")
