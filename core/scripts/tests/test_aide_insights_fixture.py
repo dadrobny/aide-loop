@@ -121,6 +121,53 @@ def test_a_function_using_the_module_root_is_still_reported(
     assert len(warnings) == 1 and warnings[0].startswith(f"tests/test_thing.py:{line}:")
 
 
+_READ = "    inbox = ROOT / 'docs' / 'aide' / 'insights.md'\n"
+
+
+@pytest.mark.parametrize("source", [
+    # A comprehension's target is local to the comprehension: it must not
+    # shadow the module's ROOT for the function around it.
+    _MODULE_ROOT + "\ndef test_x(tmp_path):\n" + _READ +
+    "    names = [str(ROOT) for ROOT in ['a', 'b']]\n",
+    _MODULE_ROOT + "\ndef test_x(tmp_path):\n" + _READ +
+    "    names = list(str(ROOT) for ROOT in ['a', 'b'])\n",
+], ids=["listcomp-target", "genexp-target"])
+def test_a_comprehension_target_does_not_shadow_the_enclosing_scope(
+        tmp_path: Path, source: str):
+    warnings = _warn(_repo(tmp_path), source)
+    assert len(warnings) == 1
+    assert warnings[0].startswith("tests/test_thing.py:6:")
+
+
+def test_a_walrus_inside_a_comprehension_shadows_in_the_enclosing_function(
+        tmp_path: Path):
+    """A walrus in a comprehension binds in the function around it, as
+    Python does — so it shadows the module's ROOT there."""
+    source = (_MODULE_ROOT + "\ndef test_x(tmp_path):\n"
+              "    found = [(ROOT := tmp_path) for _ in [0]]\n" + _READ)
+    assert _warn(_repo(tmp_path), source) == []
+
+
+def test_a_read_inside_a_comprehension_whose_target_shadows_root_is_not_reported(
+        tmp_path: Path):
+    source = (_MODULE_ROOT + "\ndef test_x(tmp_path):\n"
+              "    inboxes = [ROOT / 'docs' / 'aide' / 'insights.md'\n"
+              "               for ROOT in [tmp_path]]\n")
+    assert _warn(_repo(tmp_path), source) == []
+
+
+@pytest.mark.skipif(sys.version_info < (3, 10), reason="match needs Python 3.10")
+@pytest.mark.parametrize("pattern", ["[ROOT]", "[*ROOT]", "{'k': 1, **ROOT}",
+                                     "ROOT"])
+def test_a_match_capture_shadows_the_module_root(tmp_path: Path, pattern: str):
+    # Built as a string so this module still parses on Python 3.9.
+    source = (_MODULE_ROOT + "\ndef helper(value):\n"
+              "    match value:\n"
+              f"        case {pattern}:\n"
+              "            return ROOT / 'docs' / 'aide' / 'insights.md'\n")
+    assert _warn(_repo(tmp_path), source) == []
+
+
 def test_the_configured_docs_dir_is_the_one_read(tmp_path: Path):
     repo = _repo(tmp_path, docs_dir="documentation/loop")
     assert _warn(repo, ROOT + 'P = ROOT / "docs" / "aide" / "insights.md"\n') == []

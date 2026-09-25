@@ -141,10 +141,16 @@ instead — that is the bump policy above, and it is enforced by
   module binds), from `Path.cwd()`/`os.getcwd()`, or a relative literal given
   to `Path`/`open`/`os.path.join` — in one literal of either separator or
   split across `/` and join arguments. Names resolve per scope, as Python's
-  do: a function that binds `ROOT = tmp_path`, or takes a parameter of that
-  name, shadows the module's `ROOT` for its whole body. The same path under
-  `tmp_path` or a helper argument is not reported; neither is a bare string
-  no path call receives. Literals only, stated in its docstring.
+  do: a function that binds `ROOT = tmp_path`, takes a parameter of that
+  name or captures it in a `case` pattern shadows the module's `ROOT` for
+  its whole body, and a comprehension's target shadows it inside that
+  comprehension only. The same path under `tmp_path` or a helper argument is
+  not reported; neither is a bare string no path call receives. Its docstring
+  states the limits: it reads literals only, so a root imported from another
+  module or returned by a fixture, an f-string or `+` path, a glob, or any
+  other living document goes unseen; and within one scope bindings are not
+  ordered by control flow, so a name bound both to the repository and to
+  `tmp_path` reads as the repository.
 - **`aide insights archive` lists the positional citations it is about to
   renumber (issue #295).** After an archive the positional warning's hint
   names whatever now sits at that number; the archive run is the last point

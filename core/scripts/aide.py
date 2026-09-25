@@ -3928,17 +3928,47 @@ def _repo_path(node: ast.AST, env: Dict[str, Tuple[str, List[str]]]
     return None
 
 
-_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef,
+                *_COMPREHENSIONS)
+#: Capture patterns bind the name they carry (``case [ROOT]:``). Read by type
+#: name, never as ``ast.MatchAs``: the engine's floor is Python 3.9, which has
+#: no ``match`` statement and no such classes.
+_MATCH_CAPTURES = {"MatchAs": "name", "MatchStar": "name", "MatchMapping": "rest"}
+
+
+def _comprehension_walrus_targets(comp: ast.AST) -> Set[str]:
+    """Names a walrus inside *comp* binds — in the enclosing function, as
+    Python does, however deep the comprehensions nest (lambdas and functions
+    inside stop it)."""
+    names: Set[str] = set()
+    stack = [comp]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, ast.NamedExpr) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+        for child in ast.iter_child_nodes(node):
+            if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                      ast.Lambda, ast.ClassDef)):
+                stack.append(child)
+    return names
 
 
 def _scope_parts(scope: ast.AST) -> Tuple[List[ast.AST], List[ast.AST]]:
-    """``(own nodes, child scopes)`` of a module, function, lambda or class.
+    """``(own nodes, child scopes)`` of a module, function, lambda, class or
+    comprehension.
 
-    A nested scope's decorators and default values are evaluated in the
-    enclosing one, so they are walked as its nodes; its body is not.
+    A nested scope's decorators and default values, and a comprehension's
+    outermost iterable, are evaluated in the enclosing one, so they are walked
+    as its nodes; the rest of the nested scope is not.
     """
-    if isinstance(scope, ast.Lambda):
-        roots: List[ast.AST] = [scope.body]
+    if isinstance(scope, _COMPREHENSIONS):
+        roots: List[ast.AST] = ([scope.key, scope.value] if isinstance(scope, ast.DictComp)
+                                else [scope.elt])
+        for i, g in enumerate(scope.generators):
+            roots += [g.target] + ([g.iter] if i else []) + list(g.ifs)
+    elif isinstance(scope, ast.Lambda):
+        roots = [scope.body]
     elif isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
         roots = list(scope.body)
     else:
@@ -3951,7 +3981,9 @@ def _scope_parts(scope: ast.AST) -> Tuple[List[ast.AST], List[ast.AST]]:
         if node is not scope and isinstance(node, _SCOPE_NODES):
             children.append(node)
             outer: List[ast.AST] = list(getattr(node, "decorator_list", []))
-            if isinstance(node, ast.ClassDef):
+            if isinstance(node, _COMPREHENSIONS):
+                outer.append(node.generators[0].iter)
+            elif isinstance(node, ast.ClassDef):
                 outer += node.bases + [k.value for k in node.keywords]
             else:
                 outer += [d for d in node.args.defaults + node.args.kw_defaults if d]
@@ -3964,8 +3996,16 @@ def _scope_parts(scope: ast.AST) -> Tuple[List[ast.AST], List[ast.AST]]:
 
 def _local_names(scope: ast.AST, own: List[ast.AST],
                  children: List[ast.AST]) -> Set[str]:
-    """Every name *scope* binds, so shadows for its whole body — as Python does."""
+    """Every name *scope* binds, so shadows for its whole body — as Python does.
+
+    A comprehension binds its targets and nothing else: a walrus inside one
+    binds in the enclosing scope, so it is counted there.
+    """
     names: Set[str] = set()
+    if isinstance(scope, _COMPREHENSIONS):
+        for g in scope.generators:
+            names.update(n.id for n in ast.walk(g.target) if isinstance(n, ast.Name))
+        return names
     if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
         a = scope.args
         for arg in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg]:
@@ -3981,14 +4021,23 @@ def _local_names(scope: ast.AST, own: List[ast.AST],
             names.add(node.name)
         elif isinstance(node, (ast.Global, ast.Nonlocal)):
             declared.update(node.names)
-    names.update(c.name for c in children if not isinstance(c, ast.Lambda))
+        elif type(node).__name__ in _MATCH_CAPTURES:
+            bound = getattr(node, _MATCH_CAPTURES[type(node).__name__], None)
+            if bound:
+                names.add(bound)
+    for c in children:
+        if isinstance(c, _COMPREHENSIONS):
+            names.update(_comprehension_walrus_targets(c))
+        elif not isinstance(c, ast.Lambda):
+            names.add(c.name)
     return names - declared
 
 
 def _repo_rooted_reads(tree: ast.AST, target: List[str]) -> List[ast.AST]:
     """Nodes building a repo-rooted path ending in *target*, scope by scope.
 
-    Each module, function, lambda and class body resolves names in its own
+    Each module, function, lambda, class body and comprehension resolves
+    names in its own
     environment: the enclosing one's bindings, minus every name this scope
     binds anywhere (a parameter such as ``tmp_path``, an assignment, an
     import), plus its own repo- or cwd-rooted bindings, found to a fixpoint so
@@ -4063,14 +4112,17 @@ def insights_fixture_test_warnings(repo_root: Path,
     root imported from another module or returned by a fixture, a path
     assembled by an f-string or ``+``, a glob, or docs_dir itself read from
     ``aide.toml`` at test time is not seen; nor is any other living document
-    under docs_dir, which §6's rule covers and this lint does not. Names are
-    resolved per scope, as Python does (``_repo_rooted_reads``): a function
-    that binds ``ROOT = tmp_path``, or takes a parameter of that name, shadows
-    the module's ``ROOT`` for its whole body. Within one scope bindings are
-    not ordered by control flow, so a name bound both to the repository and,
-    on another branch or line, to ``tmp_path`` reads as the repository — the
-    one false positive left. Silence means "no read of the recorded shape",
-    never "this suite builds its own fixtures".
+    under docs_dir, which §6's rule covers and this lint does not. Those are
+    the misses. Names are resolved per scope, as Python does
+    (``_repo_rooted_reads``): a function that binds ``ROOT = tmp_path``, takes
+    a parameter of that name or captures it in a ``case`` pattern shadows the
+    module's ``ROOT`` for its whole body, and a comprehension's target shadows
+    it inside that comprehension only. What scoping cannot settle is order
+    within one scope: bindings there are not read by control flow, so a name
+    bound both to the repository and, on another branch or line, to
+    ``tmp_path`` reads as the repository — a false positive. Silence means
+    "no read of the recorded shape", never "this suite builds its own
+    fixtures".
     """
     ddir = docs_dir(repo_root, config)
     try:
