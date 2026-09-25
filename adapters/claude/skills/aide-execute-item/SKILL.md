@@ -71,16 +71,19 @@ or, resuming an existing claim, `python .aide/scripts/aide.py sync --item NNN`
 ### On completion
 
 Run the test suite via the venv (`.venv/Scripts/python -m pytest` or
-`.venv/bin/python -m pytest`). Once green, merge per the configured git mode:
+`.venv/bin/python -m pytest`). Once green — or, under `auto-merge` or `local`,
+red with every other check done, since the merge's gate then decides a red
+suite (§9) — merge per the configured git mode:
 
 ```
 python .aide/scripts/aide.py merge NNN
 ```
 
 (`auto-merge` direct-merges + deletes the claim branch + re-tests, and ticks
-and pushes only when that run is green — a red one exits non-zero with the
-merge still local and the item still 🔍; `pr` pushes and stops for a human PR;
-`local` merges offline.)
+and pushes only when that run is green or its every failure was already
+failing on the base before the merge (§4) — any other red run exits non-zero
+with the merge still local and the item still 🔍; `pr` pushes and stops for a
+human PR; `local` merges offline.)
 
 ### On issues
 

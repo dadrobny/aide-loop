@@ -433,7 +433,7 @@ def test_a_row_no_reader_can_use_is_a_warning_and_never_an_error(tmp_path: Path,
         encoding="utf-8")
     warnings = aide.ledger_warnings(ddir)
     assert len(warnings) == 3, warnings
-    assert "3 cell(s), not 14" in warnings[0]
+    assert "3 cell(s), not 16" in warnings[0]
     assert "Item cell 'stage two'" in warnings[1]
     assert "ACs cell 'two'" in warnings[2]
     # …and the whole check still passes: a record nobody can rewrite must not

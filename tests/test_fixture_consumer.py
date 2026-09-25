@@ -1912,6 +1912,106 @@ def test_ledger_abandon_records_an_item_no_merge_will(aide, consumer: Path):
 
 
 # --------------------------------------------------------------------------- #
+# the gate over a red base — inherited failures (issue #275, §4)
+# --------------------------------------------------------------------------- #
+LEGACY_ID = "tests/test_legacy.py::test_old"
+
+
+def _pytest_over_a_red_base(consumer: Path, *flags: str) -> None:
+    """A real pytest as the test command, and one test already red on main.
+
+    The interpreter running this suite has pytest, and is named outright:
+    the fixture has no venv, and a bare `python` is the CI runner's business.
+    A TOML literal string, so a Windows path needs no escaping.
+    """
+    command = " ".join([Path(sys.executable).as_posix(), "-m", "pytest", "-q",
+                        "-p", "no:cacheprovider", *flags, "tests"])
+    toml = consumer / "aide.toml"
+    text = toml.read_text(encoding="utf-8")
+    (old,) = [l for l in text.splitlines() if l.startswith("test_command = ")]
+    toml.write_text(text.replace(old, f"test_command = '{command}'"),
+                    encoding="utf-8")
+    (consumer / "tests" / "test_legacy.py").write_text(
+        "def test_old():\n    assert False, 'red before any item'\n",
+        encoding="utf-8")
+    _commit(consumer, "chore: pytest, over a base with one red test")
+
+
+def _inherited_entries(consumer: Path) -> list:
+    text = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    return [l for l in text.splitlines()
+            if l.startswith("- [ ] defect") and LEGACY_ID in l]
+
+
+def test_a_failure_already_red_on_the_base_is_admitted_once(aide, consumer: Path):
+    _pytest_over_a_red_base(consumer)
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 0
+
+    assert _item_status(aide, consumer, 1) == "complete"
+    assert _branch(consumer) == "main"
+    (row,) = _ledger_rows(aide, consumer)
+    assert row["Inherited"] == "1"
+    assert row["Suite s"].isdigit()
+    assert len(_inherited_entries(consumer)) == 1
+    shown = _git(["show", "--name-only", "--format=", "HEAD"], consumer).stdout
+    assert "docs/aide/insights.md" in shown and "docs/aide/ledger.md" in shown
+
+    # A second item over the same red base: admitted again, captured once.
+    assert _claim(aide, consumer) == 0
+    (consumer / "src" / "farewell.py").write_text(
+        "def bye():\n    return 'bye'\n", encoding="utf-8")
+    # Named, not `add -A`: the first merge's pytest runs left bytecode caches
+    # under tests/, and committing them would make every later run dirty the
+    # tree it is measuring.
+    _git(["add", "src/farewell.py"], consumer)
+    _git(["commit", "-m", "feat: farewell"], consumer)
+    assert aide.main(["--repo", str(consumer), "merge", "2"]) == 0
+    assert _item_status(aide, consumer, 2) == "complete"
+    assert [r["Inherited"] for r in _ledger_rows(aide, consumer)] == ["1", "1"]
+    assert len(_inherited_entries(consumer)) == 1
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+
+def test_a_failure_the_item_introduced_is_refused_over_a_red_base(
+        aide, consumer: Path, capsys):
+    _pytest_over_a_red_base(consumer)
+    assert _claim(aide, consumer) == 0
+    (consumer / "src" / "greeter.py").write_text(
+        'def greet(name):\n    return f"hello {name}"\n', encoding="utf-8")
+    (consumer / "tests" / "test_greeter.py").write_text(
+        "def test_greet():\n    assert False\n", encoding="utf-8")
+    _commit(consumer, "feat: greeter, with a red test")
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 1
+
+    err = capsys.readouterr().err
+    caused, _, inherited = err.partition("inherited:")
+    assert "tests/test_greeter.py::test_greet" in caused
+    assert LEGACY_ID in inherited
+    assert _item_status(aide, consumer, 1) != "complete"
+    assert _branch(consumer) == "main"
+    assert "aide/001-the-greeter" in _branches(consumer)
+    assert _inherited_entries(consumer) == []
+
+
+def test_an_order_dependent_flag_keeps_the_plain_gate(aide, consumer: Path, capsys):
+    _pytest_over_a_red_base(consumer, "-x")
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 1
+
+    assert "-x" in capsys.readouterr().err
+    assert _item_status(aide, consumer, 1) != "complete"
+    assert _inherited_entries(consumer) == []
+
+
+# --------------------------------------------------------------------------- #
 # insights — the inbox verbs, against the installed engine
 # --------------------------------------------------------------------------- #
 def test_insights_list_numbers_the_whole_inbox(aide, consumer: Path, capsys):

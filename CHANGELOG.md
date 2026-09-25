@@ -121,6 +121,76 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.7.0] — 2026-09-25
+
+### Added
+
+- **`aide merge` admits a failure the base already had (issue #275).** The
+  post-merge gate refused the tick and the push on any red test anywhere, so
+  one failure an item never touched blocked every item behind it; a consumer
+  item passed all sixteen of its criteria and was refused on nine failures
+  identical at the merge-base, and `--no-test` was the only way past. Where
+  `test_command` runs pytest as a module (`<python> -m pytest …`), the merge's
+  run now writes a JUnit report, and a red run is compared with the base as it
+  stood before the merge: the same command runs there, in the same checkout
+  (HEAD detached at that commit, then the base branch switched back, also on a
+  signal). When every post-merge failure also fails at the base, the merge is
+  admitted and both sets are printed; any failure the base does not have is
+  the item's, and is refused as before with the item's failures listed apart
+  from the inherited ones. Another runner, an order-dependent option (`-x`,
+  `--maxfail`, `--lf`, `--ff`, `--sw` and their long forms), a pytest exit
+  other than 1 and a base the history cannot identify keep the plain gate.
+  The merge's run also passes `--continue-on-collection-errors`, so a module
+  that fails to import is one failure in a whole report rather than an
+  interrupted session. No flag and no `aide.toml` key: the rule is automatic,
+  and `--no-test` is unchanged. §4 states the rule; `aide merge -h` the
+  mechanism.
+- **An engine-written inbox entry for what was admitted.** An admitted merge
+  appends one `defect` line to `insights.md` naming the inherited test ids
+  (twenty at most, then `+N more`), skipping any an open entry already names —
+  so a queue landing ten items over one red base carries one entry — and
+  commits it with the ✅ and the ledger row. A role that ran the merge does
+  not capture them again; `validator.md`, `/aide-run-item` and
+  `aide-execute-item` say so.
+
+### Changed
+
+- **Under `auto-merge` and `local`, the merge's gate decides a red suite, not
+  validation (§9).** Validation ran the same whole suite, so an inherited
+  failure failed the item before the merge could compare it — the case #275
+  was filed for. §9 now says what validation checks is that the suite has no
+  failure *the item caused*. Where the merge runs the test gate, a red suite
+  is not a FAIL by itself: the validator records the failing tests, finishes
+  every other check and runs the merge. A refusal naming failures the item
+  caused, or one that could not compare at all, is a FAIL for the builder;
+  an exit 0 admitting inherited failures is a PASS that names them. Under
+  `pr` a red suite is still a FAIL, and a PASS with the merge held lists the
+  failing tests and says the later merge decides them. `validator.md` step 1
+  and its Verdict, `/aide-run-item`'s brief and verdict handling, and
+  `aide-execute-item`'s completion step follow.
+- **A suite-result store.** Every merge run over a clean tree is recorded
+  under `<git common dir>/aide/test-results/`, keyed by tree and exact
+  command — never committed, pruned after seven days. The base run reads it,
+  so a retried merge does not re-run a base it already ran, and says so.
+- **Two ledger columns, `Suite s` and `Inherited`** — the post-merge run's
+  wall time in whole seconds and the count of inherited failures admitted.
+  `Suite s` is blank under `--no-test` and on an abandoned row; `Inherited`
+  wherever no comparison could be made. **ledger template 3** adds the two
+  header cells. **A consumer edits nothing required**: rows already written
+  keep their fourteen cells and read as whole rows (`aide check` warns on
+  neither shape). To follow the template, add `| Suite s | Inherited |` and
+  two separator cells to the header of `docs/aide/ledger.md`, optionally
+  pad old rows with two empty cells, then set the file's aide-template line
+  to 3.
+
+### Fixed
+
+- **A signal just after `aide merge` deleted the claim branch no longer loses
+  it.** The branch was deleted a few lines before the restoring handler was
+  installed, so a SIGTERM in that gap ended the process with the merge on the
+  base, nothing ticked and no claim branch for the retry. The tip is read and
+  the handler installed before the deletion now.
+
 ## [2.6.1] — 2026-09-25
 
 ### Fixed

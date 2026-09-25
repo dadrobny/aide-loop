@@ -147,7 +147,8 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
 
 5. **Validate → spawn a fresh `validator`** (a *different* agent). Brief:
    > Independently validate AIDE item NNN on branch `aide/NNN-short-name`.
-   > Run the full pytest suite. Check every AC in `docs/aide/items/NNN-*.md` has a
+   > Run the full pytest suite; a red one is judged as your spec's step 1
+   > says (§9), by `git.mode`. Check every AC in `docs/aide/items/NNN-*.md` has a
    > test; check builder's `source_dir` changes are in scope; check alignment with
    > `docs/aide/vision.md` and the spec's Assumptions. **Do NOT write or modify
    > tests.**
@@ -156,7 +157,8 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    > `python .aide/scripts/aide.py merge NNN --rounds R`, started and waited on
    > through `.claude/scripts/await_run.py` as your spec says (honours git.mode: direct-merge +
    > branch cleanup + re-test for auto-merge, where a red re-test blocks the ✅
-   > and the push and exits non-zero; push-and-stop for pr; local merge for
+   > and the push and exits non-zero unless every failure was already failing
+   > on the base; push-and-stop for pr; local merge for
    > local). **`in-review`, never `done`** — ✅ means merged and is written by
    > `merge` itself, so under `pr` the item stays 🔍 until a human merges the PR;
    > marking it done here is what once let the exhaustion sweep target an open
@@ -184,7 +186,9 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
    from `aide.toml` (5 when unset): it is the ceiling on rounds per item. Read
    the verdict:
    - **FAIL — suite red (code bug)** → fresh builder on the same branch with the
-     reproduce steps; then a fresh `validator`.
+     reproduce steps; then a fresh `validator`. Under `auto-merge` or `local`
+     this is the merge refusing failures the item caused (§9): brief the
+     builder with those tests, not the inherited ones listed beside them.
    - **FAIL — missing AC coverage** → fresh `test-writer`; then a fresh `validator`.
    - **FAIL — out-of-scope / vision conflict** → fresh builder to revert/fix;
      then a fresh `validator`.
@@ -220,9 +224,13 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
      re-run — and if the validator reports the merge **still running**
      (`stop` exited 93), say that first.
    - **PASS**, `loop.review = "off"` → the validator has reconciled progress and
-     merged. Done.
+     merged. Done. A PASS may name inherited failures the merge admitted; the
+     merge has already put them in `insights.md`.
    - **PASS (merge held)**, `loop.review = "background"` → wait for the reviewer
-     if it has not returned, then triage its findings (§9). Rank every one of
+     if it has not returned, then triage its findings (§9). If the validator
+     listed failing tests, the merge you run below decides them: a refusal
+     naming failures the item caused is a FAIL, handled like the first bullet
+     above, and counts as a round. Rank every one of
      them as you triage it: the reviewer's rank is a proposal, this call is
      yours, and where the repo's `REVIEW.md` ranks differently it wins. Keep a
      running total per rank — it is what you pass to the merge.
@@ -268,7 +276,9 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
        the item did not land** — under `auto-merge` it re-runs the full suite and
        `aide check`, and a red re-run or a document error leaves the item 🔍
        with nothing pushed; report it and stop
-       rather than ticking anything by hand. Under `pr` it pushes and stops:
+       rather than ticking anything by hand. A red re-run whose failures all
+       predate the merge is admitted with exit 0 (§4); `merge` records those
+       in `insights.md` itself, so report them and capture nothing more. Under `pr` it pushes and stops:
        leave the item 🔍 and report that it awaits review.
 
 7. **Report.** Return a one- or two-line summary (item, merged/failed, key facts).

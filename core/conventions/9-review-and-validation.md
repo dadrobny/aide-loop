@@ -5,13 +5,25 @@ roles that perform either read rather than pointing at it.
 
 **Validation and review answer different questions.** Validation asks *does
 this branch meet the Acceptance Criteria of the spec it was built from* — the
-suite is green, every AC has a test that measures it, the diff is inside the
-authorised paths, the Assumptions still hold. Every term is measured against
+suite has no failure the item caused, every AC has a test that measures it,
+the diff is inside the authorised paths, the Assumptions still hold. Every term is measured against
 the item spec, the verdict is PASS/FAIL — or none, when a run outlasts its
 limit (below) — and it **gates the merge**. Review
 asks *is this code correct, and does it fit the codebase* — it reads the diff
 adversarially for what the spec never anticipated, and it **produces findings**,
 not a verdict.
+
+**Where the merge compares a red run with its base, the merge decides a red
+suite.** Under a `git.mode` whose merge runs the test gate (§4: `auto-merge`,
+`local`), a failing test is not by itself a FAIL: validation records the
+failing tests, completes every other check, and when those pass it runs the
+merge as usual. The merge's gate is the arbiter. A refusal that names failures
+the item caused is a FAIL, returned to the builder with those failures, and so
+is a refusal that could not compare the failures with the base at all; an
+admission of inherited failures is a PASS that names them. Under `pr`, where
+the merge runs no gate, a red suite is a FAIL. A validation whose merge is
+held for a concurrent review reports its PASS with the failing tests listed,
+and says that the later merge's gate decides them.
 
 **A green validator is not a review, and a clean review does not discharge
 validation.** The two fail in opposite directions and neither covers for the
@@ -74,6 +86,16 @@ states, stop waiting and hand back the command, the elapsed time and its last
 output in place of a verdict.
 
 ### Rationale
+
+- **Why a red suite waits for the merge.** Validation ran the same whole suite
+  the merge's gate runs, so a failure already on the base failed every item
+  at validation, before the merge could tell an inherited failure from the
+  item's own. A consumer's item met all sixteen of
+  its criteria and was held on nine failures identical at the merge-base
+  (issue #275). The validator cannot make that comparison without running the
+  base itself, and the merge already does, so the verdict on a red suite
+  moves to the one step that can separate the two. Under `pr` nothing in the
+  loop compares, so the old rule stands there.
 
 - **Why delivered.** A role that has not been told the difference will collapse
   the two, and the collapse is silent — both reads end in a report that says

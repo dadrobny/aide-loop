@@ -22,7 +22,11 @@ project's own ratios and their trend.
 - **The template draws the row.** Its header row fixes which columns exist and
   the order they are written in, and every row carries one cell per column;
   `aide check` reads the shape and reports — never fails — a row no reader can
-  use. *(aide merge, ledger abandon, check)*
+  use. **A row written under `ledger template 2` stops at `Date`**, fourteen
+  cells, and is still a whole row: every reader takes the columns after it as
+  blank, so an old row needs no edit, and one padded with two empty cells
+  reads the same. *(aide merge, ledger
+  abandon, check)*
 - **What the verb can derive, it derives; the round and finding counts are the
   caller's.** The item, its queue, its stage, its kind, how many acceptance
   criteria the spec carries, how many test functions and files the branch
@@ -50,6 +54,12 @@ project's own ratios and their trend.
   `aide.toml`, so no caller supplies it — which leaves a blank in those three
   meaning one thing only: a count that should have been passed and was not.
   *(aide merge, ledger abandon, check)*
+- **`Suite s` and `Inherited` are the merge's own test run.** `Suite s` is
+  the post-merge run's wall time in whole seconds; `Inherited` is how many of
+  that run's failures the gate admitted as failing on the base too (§4), `0`
+  for a green run it could have compared. `Suite s` is blank where no run
+  happened — `--no-test`, an abandoned item — and `Inherited` wherever no
+  comparison was possible. *(aide merge, ledger abandon, check)*
 - **`outcome` is `merged` or `abandoned`** — how the item left the loop, which
   is the one thing a row cannot be read without: an item that cost three
   rounds and landed and one that cost three rounds and was dropped are
@@ -94,6 +104,19 @@ project's own ratios and their trend.
   and the ranks are its judgement of what a reviewer returned. Passing them at
   the merge is the one moment both are still in hand and a verb is running
   anyway.
+- **Why the suite's wall time is here.** Merge runs the suite itself, so it
+  has the number; a row is committed, shared across machines and read at the
+  queue boundary, where a timing history kept under `.git` would be invisible
+  and never cleaned up. It is what sizes a validator's waits on the first
+  suite run of a dispatch (issue #274). **Why the inherited count is.** A
+  merge admitted over a red base is a different fact from a green one, and
+  the row is the one place a queue's reader sees both without re-running
+  anything (issue #275).
+- **Why a fourteen-cell row still reads.** A row is never edited, so a
+  reader that demanded sixteen cells would warn on every row written before
+  2.7.0 for the life of the project. A missing trailing cell read as blank
+  loses nothing, since those runs recorded no timing; padding one with empty
+  cells changes no value, which is why it is allowed and never asked for.
 - **Why a reconciled test is not counted.** Until 2.1.0 the Tests cell
   counted every test function new at the base, so an item that renamed a test
   in an earlier item's file, as its spec prescribed, was charged with a test

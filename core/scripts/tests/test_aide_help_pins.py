@@ -962,8 +962,9 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
     ],
 
     # ---------------------------------------------------------------- merge --
-    # The ledger row (issue #244); everything else `merge` does is stated in
-    # its option help, which this register does not read.
+    # The ledger row (issue #244) and the inherited-failure gate (issue
+    # #275); everything else `merge` does is stated in its option help, which
+    # this register does not read.
     "merge": [
         # `pending_row` -> `append_ledger_row`, one row, `ledger_path(ddir)`.
         ("The row is one per item, in docs/aide/ledger.md",
@@ -1038,6 +1039,78 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_merge_with_review_on_and_no_findings_warns_and_still_lands",
           "test_aide_ledger::"
           "test_merge_with_review_off_and_no_findings_does_not_warn")),
+        # `recorded_suite_run` -> `run_test_suite`'s `seconds`, rounded into
+        # `suite_seconds`; `inherited` is `()` for a green comparable run.
+        ("the post-merge suite run's wall time in whole seconds and how many "
+         "inherited failures it admitted",
+         "test_aide_merge_inherited::"
+         "test_a_green_run_records_its_time_and_zero_inherited"),
+
+        # The inherited-failure gate (issue #275). `failure_identity_refusal`
+        # is `None` only for `<python> -m pytest`; `run_test_suite` then adds
+        # `--junitxml` and reads it.
+        ("A red post-merge run is compared with the base where the test "
+         "command runs pytest as a module",
+         ("test_aide_merge_inherited::test_only_pytest_run_as_a_module_is_comparable",
+          "test_aide_merge_inherited::test_a_tests_failed_exit_reads_the_report")),
+        # `_judge_red_run` ->
+        # `base_suite_run`: `git switch --detach <pre_merge>`, the run, then
+        # `git switch --discard-changes <base>` in a `finally`.
+        ("the same command is then run on the base as it stood before this "
+         "merge, in this checkout",
+         ("test_aide_merge_inherited::"
+          "test_failures_the_base_already_had_are_admitted_and_recorded",
+          "test_aide_merge_inherited::"
+          "test_a_retried_fast_forward_finds_its_base_in_the_reflog")),
+        # `base_suite_run` reads `read_suite_result` for the base's tree first.
+        ("or its result reused where this repository already recorded a run "
+         "of that tree",
+         "test_aide_merge_inherited::test_a_retry_reuses_the_base_run_it_stored"),
+        # `_judge_red_run`: no id outside the base's set -> `tuple(old)`;
+        # `cmd_merge` prints the report and writes `len(inherited)`.
+        ("When every failure after the merge also fails at the base, the "
+         "failures are inherited rather than this item's: the merge is "
+         "admitted, both sets are printed, the row's Inherited cell counts "
+         "them",
+         "test_aide_merge_inherited::"
+         "test_failures_the_base_already_had_are_admitted_and_recorded"),
+        # `route_inherited_failures` -> `inherited_failures_entry`, which
+        # drops ids `_names_id` finds in an open entry; the path joins
+        # `extra_rels` for the tick's one commit.
+        ("one defect entry naming those no open insights.md entry names yet "
+         "is committed with the tick",
+         ("test_aide_merge_inherited::"
+          "test_failures_the_base_already_had_are_admitted_and_recorded",
+          "test_aide_merge_inherited::"
+          "test_a_second_item_over_the_same_red_base_adds_no_second_entry",
+          "test_aide_merge_inherited::"
+          "test_the_entry_skips_ids_an_open_entry_names_and_caps_its_list")),
+        # `_judge_red_run`: `new` non-empty -> `None`, with both lists.
+        ("A failure the base does not have refuses the tick and the push, "
+         "listed apart from the inherited ones",
+         "test_aide_merge_inherited::"
+         "test_a_failure_the_base_does_not_have_is_refused_and_listed_apart"),
+        # `failure_identity_refusal`, `run_test_suite`'s exit check and
+        # `landed_pre_merge_base` returning None each set `why`.
+        ("Any other runner, an order-dependent flag (-x, --maxfail, --lf, "
+         "--ff, --sw), a pytest exit other than 1 and a base that cannot be "
+         "identified keep the plain gate, where any red run refuses",
+         ("test_aide_merge_inherited::"
+          "test_a_command_that_cannot_be_compared_keeps_the_plain_gate",
+          "test_aide_merge_inherited::"
+          "test_an_order_dependent_flag_is_found_and_a_value_is_not_one",
+          "test_aide_merge_inherited::"
+          "test_a_pytest_exit_other_than_one_names_no_failures",
+          "test_aide_merge_inherited::"
+          "test_a_fast_forward_the_reflog_does_not_record_is_not_guessed")),
+        # `suite_seconds` stays None under `args.no_test`; `inherited` stays
+        # None wherever `failure_identity_refusal` answered.
+        ("The Suite s cell is blank under --no-test, and Inherited is blank "
+         "wherever no comparison could be made",
+         ("test_aide_merge_inherited::"
+          "test_no_test_leaves_both_suite_cells_blank",
+          "test_aide_merge_inherited::"
+          "test_a_green_run_nothing_could_compare_leaves_inherited_blank")),
     ],
 
     # --------------------------------------------------------------- ledger --
