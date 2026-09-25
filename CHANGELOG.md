@@ -121,6 +121,28 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.6.1] — 2026-09-25
+
+### Fixed
+
+- **A queue's `> **Status:** 🚧 Live` line reads as Live (issue #287).** Both
+  readers of a declared queue status took it as live only when the raw text
+  began with `live`, so an icon-first line — the form `aide queue tidy`
+  writes for `✅ Completed — …` — did not. `aide check` then warned
+  `marked completed but still has open items` on a queue that was open and
+  said so, and the claim path's fallback with no `progress.md` found no live
+  queue. One reader, `declares_live`, now serves both, and drops a leading
+  status icon first (⏸ with or without its variation selector). Queue state
+  is still derived; the Status line stays decoration.
+- **§1 → status icons says which stray icons `aide check` warns on (issue
+  #286).** The section said `check` warns on "such stray icons" — an icon in
+  prose, mid-bullet or a title — in `progress.md` and queue files. Since
+  1.3.2 (#13) the lint warns only on an icon in a heading outside its
+  trailing slot, because the rest is free text by the same section's rule.
+  The sentence now says that, in the section and in both places the
+  `aide-document-format` skill carries it; the skill no longer tells an
+  author to keep icons out of those documents. No lint changed.
+
 ## [2.6.0] — 2026-09-25
 
 ### Changed

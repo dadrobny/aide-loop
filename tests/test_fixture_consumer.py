@@ -766,6 +766,19 @@ def test_check_leaves_an_existing_inbox_byte_for_byte(aide, consumer: Path):
     assert inbox.read_bytes() == before
 
 
+def test_check_reads_an_icon_first_live_line_as_live(aide, consumer: Path, capsys):
+    """Issue #287: the icon-first form `aide queue tidy` writes, used for a
+    live line, on a queue that is open — nothing to warn about."""
+    queue = consumer / "docs" / "aide" / "queue" / "queue-001.md"
+    queue.write_text(queue.read_text(encoding="utf-8").replace(
+        "> **Status:** Live", "> **Status:** 🚧 Live"), encoding="utf-8")
+    _commit(consumer, "an icon-first live line")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    captured = capsys.readouterr()
+    assert "marked completed" not in captured.out + captured.err
+
+
 def test_check_fails_when_the_document_set_lost_its_progress(aide, consumer: Path):
     (consumer / "docs" / "aide" / "progress.md").unlink()
     assert aide.main(["--repo", str(consumer), "check"]) == 1

@@ -2241,9 +2241,20 @@ def queue_status(text: str) -> Optional[str]:
     return None
 
 
+#: A declared status may lead with an icon, the form `aide queue tidy` writes
+#: (``✅ Completed — …``); ⏸ is matched with or without its variation selector.
+_LEADING_STATUS_ICON_RE = re.compile(r"^(?:" + _ICON_ALT + r"|⏸)\ufe0f?\s*")
+
+
+def declares_live(status: str) -> bool:
+    """Whether a queue's declared ``> **Status:**`` text says Live — the one
+    reader for both `aide check` and the no-progress.md fallback, so
+    ``🚧 Live`` reads as ``Live`` (issue #287)."""
+    return _LEADING_STATUS_ICON_RE.sub("", status.strip()).lower().startswith("live")
+
+
 def is_live_queue(text: str) -> bool:
-    status = queue_status(text) or ""
-    return status.lower().startswith("live")
+    return declares_live(queue_status(text) or "")
 
 
 def queue_item_numbers(text: str) -> List[int]:
@@ -5086,7 +5097,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
             derived_open = queue_is_open(qtext, istat)
             declared = queue_status(qtext)
             if declared:
-                declared_live = declared.lower().startswith("live")
+                declared_live = declares_live(declared)
                 if declared_live and not derived_open:
                     warnings.append(
                         f"{qpath.name}: declares 'Live' but every item is finished — "
