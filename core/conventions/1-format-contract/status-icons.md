@@ -38,9 +38,9 @@ positions: a table row's **Status (last) cell**, a stage header's **trailing**
 `— <icon>`, and the **leading** icon of a deliverable bullet. An icon anywhere
 else — prose, mid-bullet, a title — is plain text and is never read as status,
 so authors need not avoid the icon vocabulary in free text. `aide check` still
-*warns* on such stray icons in the status-bearing documents (`progress.md`,
-queue files) so they stay unambiguous for human readers; other documents are
-not scanned.
+*warns* on an icon in a heading anywhere but its trailing slot, in the
+status-bearing documents (`progress.md`, queue files), where a reader could
+take it for the header's status; other documents are not scanned.
 
 #### Rationale
 

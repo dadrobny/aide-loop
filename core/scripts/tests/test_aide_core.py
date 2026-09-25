@@ -725,6 +725,17 @@ def test_is_live_queue():
     assert not aide.is_live_queue(QUEUE_OLD)
 
 
+def test_declares_live_reads_past_a_leading_status_icon():
+    """Issue #287: `aide queue tidy` writes the icon first, so an author
+    writing a live line in the same form must still read as Live."""
+    for status in ("Live", "🚧 Live · **Created:** 2026-07-01", "⏸️ live",
+                   "⏸ Live", "  📋  Live"):
+        assert aide.declares_live(status), status
+    for status in ("✅ Completed — superseded by queue-003 (2026-07-02).",
+                   "🚧", "Delivered", "Not live", ""):
+        assert not aide.declares_live(status), status
+
+
 def test_queue_item_numbers():
     assert aide.queue_item_numbers(QUEUE_LIVE) == [2, 3]
 
@@ -823,6 +834,28 @@ def test_live_queue_text_is_lowest_open_regardless_of_declared_status(tmp_path: 
             "> **Status:** ✅ Completed — superseded by queue-002 (2026-06-01).",
             "> **Created:** 2026-06-01"),
     )
+    cfg = aide.load_config(root)
+    text = aide._live_queue_text(root, cfg, None)
+    assert text is not None and "Work Queue 002" in text
+
+
+def test_check_silent_on_an_icon_first_live_line_over_an_open_queue(tmp_path: Path):
+    """Issue #287: `> **Status:** 🚧 Live` on queue-002 (item 003 is 📋) is
+    true, and used to be reported as 'marked completed'."""
+    root = _docs(tmp_path, live=QUEUE_LIVE.replace(
+        "> **Status:** Live", "> **Status:** 🚧 Live"))
+    cfg = aide.load_config(root)
+    errors, warnings = aide.run_checks(root, cfg, branches=[])
+    assert errors == []
+    assert not any("queue-002.md" in w for w in warnings), warnings
+
+
+def test_live_queue_fallback_finds_an_icon_first_live_line(tmp_path: Path):
+    """Issue #287, second reader: with no progress.md, the newest queue
+    declaring Live is the live one — and `🚧 Live` declares it."""
+    root = _docs(tmp_path, live=QUEUE_LIVE.replace(
+        "> **Status:** Live", "> **Status:** 🚧 Live"))
+    (root / "docs" / "aide" / "progress.md").unlink()
     cfg = aide.load_config(root)
     text = aide._live_queue_text(root, cfg, None)
     assert text is not None and "Work Queue 002" in text
