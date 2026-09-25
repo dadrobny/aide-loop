@@ -419,11 +419,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("one that matches two different claims is a warning naming their "
          "longer IDs",
          "test_aide_insights::test_a_short_id_two_claims_share_is_a_warning"),
-        # Same function: the two position patterns, docs files only.
-        ("in docs/aide only, a citation by position \u2014 insight 28, "
-         "insights.md entry 28, or entry 28 on a line that says insight or "
-         "inbox \u2014 is a warning naming the ID that position holds today",
-         "test_aide_insights::test_a_positional_citation_is_a_warning_naming_the_id"),
+        # Same function: `_positional_citations` over docs and test files
+        # alike (issue #295).
+        ("a citation by position \u2014 insight 28, insights.md entry 28, or "
+         "entry 28 on a line that says insight or inbox \u2014 is a warning "
+         "naming the ID that position holds today, in a test as in a document",
+         ("test_aide_insights::test_a_positional_citation_is_a_warning_naming_the_id",
+          "test_aide_insights::test_a_positional_citation_in_a_test_is_a_warning_too")),
         # `ledger_warnings` over `ledger_rows`: the cell count, the Item cell
         # and each of `LEDGER_INTEGER_COLUMNS`, appended to `warnings` and
         # never to `errors`.
@@ -749,6 +751,18 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `parse_insights` numbers by position, so a move renumbers the rest.
         ("what remains is renumbered, so re-run list",
          "test_aide_insights::test_archive_says_the_numbers_have_shifted"),
+        # `_print_invalidated_citations` (issue #295): `insight_position_citations`
+        # filtered to the positions `archive_position_map` says change, printed
+        # before the dry-run return and before any write; exit stays 0.
+        ("Every citation by position in docs/aide or tests_dir whose number "
+         "the move changes is listed before anything moves, dry run or not, "
+         "with the ID that position holds before the move and whether it is "
+         "archived or renumbered; the archive still proceeds",
+         ("test_aide_insights::"
+          "test_a_dry_run_archive_lists_each_positional_citation_with_its_id_before",
+          "test_aide_insights::test_an_archive_that_moves_lists_them_and_still_proceeds",
+          "test_aide_insights::test_an_archive_lists_no_citation_whose_number_it_leaves_alone",
+          "test_aide_insights::test_the_position_map_names_what_moves_and_what_shifts")),
         # `resolve_insights_text`: shared prefix, then each side's tail.
         ("write the union of a conflicted inbox — the shared history, then "
          "each side's new entries in capture order",
