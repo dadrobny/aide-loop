@@ -1149,7 +1149,9 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_merge_inherited::"
           "test_aide_test_over_a_dirty_tree_records_nothing_and_says_so",
           "test_aide_merge_inherited::"
-          "test_a_run_whose_head_moved_is_not_recorded")),
+          "test_a_run_whose_head_moved_is_not_recorded",
+          "test_aide_merge_inherited::"
+          "test_a_run_whose_tree_changed_is_not_recorded")),
         # `tree_is_clean` is false -> `tree` None -> nothing written, and
         # `cmd_test` prints NOT recorded on stderr.
         ("A run over a tree with tracked changes is not recorded, and says so "

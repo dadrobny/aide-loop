@@ -946,3 +946,22 @@ def test_a_run_whose_tree_changed_is_not_recorded(tmp_path: Path, monkeypatch,
 
     assert _records(repo) == []
     assert "NOT recorded" in capsys.readouterr().err
+
+
+def test_a_base_run_that_dirties_the_tree_is_not_recorded(tmp_path: Path,
+                                                          monkeypatch):
+    """The store's clean-tree rule is the store's, not `aide test`'s alone."""
+    repo = _init_repo(tmp_path / "repo", fails="")
+
+    def run(repo_root, argv, identify):
+        (Path(repo_root) / "src" / "a.py").write_text("x = 2\n",
+                                                      encoding="utf-8")
+        return aide.SuiteRun(0, 1.0, ())
+
+    monkeypatch.setattr(aide, "run_test_suite", run)
+
+    _, tree = aide.recorded_suite_run(repo, ["pytest"], True,
+                                      by=aide.SUITE_RECORDED_BY_MERGE)
+
+    assert tree is None
+    assert _records(repo) == []

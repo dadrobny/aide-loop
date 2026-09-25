@@ -165,7 +165,9 @@ tag, a raw commit or a remote-tracking ref (`origin/main`) is refused.
   failed push — would otherwise re-run the base it has already run. Results
   are kept under git's own directory, keyed by tree and exact command, never
   committed, and pruned after seven days; a run over a tree with tracked
-  changes is never stored, since it belongs to no tree.
+  changes, or one that leaves a tracked change behind, is never stored, since
+  it belongs to no tree — a base run's included, so a suite that rewrites a
+  tracked file re-runs its base on every retry.
 - **Why a validated tree is not run twice.** Under `auto-merge` validation ran
   the whole suite on the claim branch and the merge ran it again, and when the
   base had not moved the merge is a fast-forward: the second run was over a

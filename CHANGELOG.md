@@ -165,6 +165,10 @@ instead — that is the bump policy above, and it is enforced by
 - **A green run of any runner records `()` failures** rather than none named,
   so a green non-pytest run reads back from the store; a red one of another
   runner still names nothing and is never reused.
+- **A run that leaves a tracked change behind is not recorded**, whether
+  `aide test`'s or a merge's base run: the store keeps runs of a commit, and
+  the check now also runs after the suite. A suite that rewrites a tracked
+  file therefore re-runs its base on each retry of a refused merge.
 
 ## [2.7.0] — 2026-09-25
 
