@@ -319,7 +319,8 @@ def test_tick_writes_and_commits(tmp_path: Path):
                       "--pointer", "item 121", "--date", "2026-08-24"]) == 0
     assert "*(2026-05-11)* → item 121" in _inbox(repo)
     log = _run(["git", "log", "-1", "--pretty=%s"], repo).stdout
-    assert "triage insight 2" in log
+    iid = aide.insight_ids(aide.parse_insights(INBOX))[1]
+    assert f"triage insight {iid}" in log
     assert _run(["git", "status", "--porcelain"], repo).stdout.strip() == ""
 
 
@@ -1384,3 +1385,217 @@ def test_tick_trail_from_the_cli_writes_and_commits(tmp_path: Path):
     assert ("- [ ] defect — the reach check calls its own happy path a typo *(2026-05-11)*\n"
             "  - **2026-09-17** → duplicate of entry 4\n") in inbox
     assert _run(["git", "status", "--porcelain"], repo).stdout.strip() == ""
+
+
+# --------------------------------------------------------------------------- #
+# insight IDs — the durable handle (issue #276)
+#
+# A position is stable only until an archive or a merge; the ID is computed
+# from what never changes — the capture date and the claim text — so a
+# citation written today still resolves after both.
+# --------------------------------------------------------------------------- #
+def _sha(claim: str) -> str:
+    import hashlib
+    return hashlib.sha256(claim.encode("utf-8")).hexdigest()
+
+
+def _colliding_claims(n: int = aide.INSIGHT_ID_MIN_HEX) -> "tuple[str, str]":
+    """Two different claims whose hashes share their first *n* hex digits."""
+    seen = {}
+    i = 0
+    while True:
+        claim = f"claim number {i}"
+        key = _sha(claim)[:n]
+        if key in seen:
+            return seen[key], claim
+        seen[key] = claim
+        i += 1
+
+
+def test_an_id_is_the_capture_date_and_four_hex_of_the_claim():
+    entries = aide.parse_insights(INBOX)
+    ids = aide.insight_ids(entries)
+    claim = "the reach check calls its own happy path a typo"
+    assert ids[1] == f"2026-05-11-{_sha(claim)[:4]}"
+    assert all(i is not None and aide.is_insight_id(i) for i in ids)
+
+
+def test_the_id_is_blind_to_everything_triage_writes():
+    """Checkbox, pointer and trail are bookkeeping; only the claim is hashed."""
+    before = aide.insight_ids(aide.parse_insights(INBOX))
+    ticked, _ = aide.tick_insight_text(INBOX, 2, "item 121", "2026-08-24")
+    trailed, _ = aide.tick_insight_text(ticked, 2, "later", "2026-08-25")
+    assert aide.insight_ids(aide.parse_insights(trailed)) == before
+
+
+def test_the_id_survives_a_rewrap_but_not_a_reword():
+    one = aide.parse_insights("- [ ] gap — a  claim\twith gaps *(2026-01-01)*\n")
+    two = aide.parse_insights("- [ ] gap — a claim with gaps *(2026-01-01)*\n")
+    three = aide.parse_insights("- [ ] gap — a claim with holes *(2026-01-01)*\n")
+    assert aide.insight_ids(one) == aide.insight_ids(two)
+    assert aide.insight_ids(one) != aide.insight_ids(three)
+
+
+def test_a_malformed_or_undated_line_has_no_id():
+    entries = aide.parse_insights("- [ ] nonsense\n")
+    assert aide.insight_ids(entries) == [None]
+
+
+def test_the_same_claim_captured_twice_shares_one_id():
+    text = ("- [ ] gap — one claim *(item 001, 2026-01-01)*\n"
+            "- [ ] gap — one claim *(item 002, 2026-01-01)*\n")
+    a, b = aide.insight_ids(aide.parse_insights(text))
+    assert a == b
+
+
+def test_two_different_claims_sharing_four_hex_are_printed_longer():
+    first, second = _colliding_claims()
+    text = (f"- [ ] gap — {first} *(2026-01-01)*\n"
+            f"- [ ] gap — {second} *(2026-01-01)*\n"
+            f"- [ ] gap — {second} *(2026-01-02)*\n")
+    entries = aide.parse_insights(text)
+    a, b, c = aide.insight_ids(entries)
+    assert len(a) > len("2026-01-01-") + 4 and len(b) > len("2026-01-01-") + 4
+    assert a != b
+    assert c == f"2026-01-02-{_sha(second)[:4]}"   # another date: no collision
+    # The short form both share is ambiguous, and each long form resolves.
+    short = f"2026-01-01-{_sha(first)[:4]}"
+    assert len(aide.resolve_insight_ref(short, entries)) == 2
+    assert aide.resolve_insight_ref(a, entries) == [0]
+    assert aide.resolve_insight_ref(b, entries) == [1]
+
+
+def test_any_longer_prefix_of_the_same_hash_is_the_same_id():
+    entries = aide.parse_insights(INBOX)
+    claim = "the reach check calls its own happy path a typo"
+    assert aide.resolve_insight_ref(f"2026-05-11-{_sha(claim)[:10]}", entries) == [1]
+    assert aide.resolve_insight_ref(f"2026-05-12-{_sha(claim)[:4]}", entries) == []
+
+
+def test_list_prints_each_entry_with_its_id(tmp_path: Path, capsys):
+    repo = _repo(tmp_path)
+    assert aide.main(["--repo", str(repo), "insights", "list"]) == 0
+    out = capsys.readouterr().out
+    for iid in aide.insight_ids(aide.parse_insights(INBOX)):
+        assert iid in out
+
+
+def test_tick_by_id_ticks_that_entry_and_the_commit_names_the_id(tmp_path: Path):
+    repo = _repo(tmp_path)
+    iid = aide.insight_ids(aide.parse_insights(INBOX))[3]
+    assert aide.main(["--repo", str(repo), "insights", "tick", iid,
+                      "--pointer", "item 121", "--date", "2026-08-24"]) == 0
+    assert "*(item 118, 2026-08-15)* → item 121" in _inbox(repo)
+    log = _run(["git", "log", "-1", "--pretty=%s"], repo).stdout
+    assert f"triage insight {iid}" in log
+
+
+def test_tick_by_id_refuses_what_it_cannot_name_exactly(tmp_path: Path, capsys):
+    repo = _repo(tmp_path)
+    before = _inbox(repo)
+    for ref in ("2026-05-11-ffff", "not-an-id"):
+        assert aide.main(["--repo", str(repo), "insights", "tick", ref,
+                          "--pointer", "x", "--no-commit"]) == 1
+    assert _inbox(repo) == before
+
+
+def test_an_archived_entry_keeps_its_id_and_list_finds_it(tmp_path: Path, capsys):
+    repo = _repo(tmp_path)
+    iid = aide.insight_ids(aide.parse_insights(INBOX))[0]
+    assert aide.main(["--repo", str(repo), "insights", "archive",
+                      "--before", "2026-08-01", "--yes", "--no-commit"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "insights", "list", iid]) == 0
+    out = capsys.readouterr().out
+    assert "insights.md has no verb" in out and "archive-2026-Q1.md" in out
+    # Frozen: an archived entry is named, never ticked.
+    assert aide.main(["--repo", str(repo), "insights", "tick", iid,
+                      "--pointer", "x", "--no-commit"]) == 1
+    assert "archived" in capsys.readouterr().err
+
+
+def test_list_one_by_position_prints_that_entry_with_its_trail(tmp_path: Path, capsys):
+    repo = _repo(tmp_path)
+    assert aide.main(["--repo", str(repo), "insights", "list", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "insights.md has no verb" in out and "accepted into wave 3" in out
+    assert "utf-8-sig" not in out
+
+
+# --------------------------------------------------------------------------- #
+# aide check — insight citations in durable artefacts (issue #276)
+# --------------------------------------------------------------------------- #
+def _cite(repo: Path, rel: str, body: str) -> None:
+    path = repo / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+
+
+def _findings(repo: Path):
+    config = aide.load_config(repo)
+    return aide.insight_reference_findings(repo, config, aide.docs_dir(repo, config))
+
+
+def test_a_dangling_insight_id_is_an_error_in_docs_and_in_tests(tmp_path: Path):
+    repo = _repo(tmp_path)
+    _cite(repo, "docs/aide/items/007-x.md", "Chartered by insight 2026-05-11-ffff.\n")
+    _cite(repo, "tests/test_x.py", "# corrects entry `2026-05-11-ffff`\n")
+    errors, _ = _findings(repo)
+    assert len(errors) == 2
+    assert any(e.startswith("docs/aide/items/007-x.md:1:") for e in errors)
+    assert any(e.startswith("tests/test_x.py:1:") for e in errors)
+
+
+def test_a_citation_that_resolves_is_clean_even_once_archived(tmp_path: Path):
+    repo = _repo(tmp_path)
+    iid = aide.insight_ids(aide.parse_insights(INBOX))[0]
+    _cite(repo, "docs/aide/items/007-x.md", f"Chartered by insight {iid}.\n")
+    assert _findings(repo) == ([], [])
+    assert aide.main(["--repo", str(repo), "insights", "archive",
+                      "--before", "2026-08-01", "--yes", "--no-commit"]) == 0
+    assert _findings(repo) == ([], [])
+
+
+def test_a_date_shaped_token_without_the_word_is_not_a_citation(tmp_path: Path):
+    """An error here blocks `merge`; a timestamp or a slug must never trip it."""
+    repo = _repo(tmp_path)
+    _cite(repo, "docs/aide/items/007-x.md",
+          "Log: run-2026-05-11-1530.log, and 2026-05-11-beef on its own.\n")
+    _cite(repo, "tests/test_x.py", 'STAMP = "2026-05-11-1530"\n')
+    assert _findings(repo) == ([], [])
+
+
+def test_the_inbox_and_its_archives_are_not_swept(tmp_path: Path):
+    """A claim is immutable, so a finding on one could never be cleared."""
+    repo = _repo(tmp_path, INBOX + "- [ ] gap — see insight 2026-01-01-ffff and entry 3 *(2026-08-20)*\n")
+    _cite(repo, "docs/aide/insights/archive-2026-Q1.md",
+          "# Insight Archive\n\n- [x] gap — insight 28, insight 2026-01-01-ffff *(2026-01-01)* → x\n")
+    assert _findings(repo) == ([], [])
+
+
+def test_a_short_id_two_claims_share_is_a_warning(tmp_path: Path):
+    first, second = _colliding_claims()
+    repo = _repo(tmp_path, f"- [ ] gap — {first} *(2026-01-01)*\n"
+                           f"- [ ] gap — {second} *(2026-01-01)*\n")
+    _cite(repo, "docs/aide/queue/queue-001.md",
+          f"Routes insight 2026-01-01-{_sha(first)[:4]}.\n")
+    errors, warnings = _findings(repo)
+    assert errors == [] and len(warnings) == 1 and "more than one claim" in warnings[0]
+    entries = aide.parse_insights(_inbox(repo))
+    assert all(iid in warnings[0] for iid in aide.insight_ids(entries))
+
+
+def test_a_positional_citation_is_a_warning_naming_the_id(tmp_path: Path):
+    repo = _repo(tmp_path)
+    iid = aide.insight_ids(aide.parse_insights(INBOX))[1]
+    _cite(repo, "docs/aide/items/007-x.md",
+          "Fixes insight 2.\n"
+          "The lint the inbox entry #2 describes.\n"
+          "See insights.md entry 2.\n"
+          "Ledger entry 2 is a different thing.\n"
+          "Released in insight 1.2 and entry 1.2.\n")
+    _cite(repo, "tests/test_x.py", "# insight 2\n")
+    errors, warnings = _findings(repo)
+    assert errors == []
+    assert [w.split(":")[1] for w in warnings] == ["1", "2", "3"]
+    assert all(iid in w for w in warnings)

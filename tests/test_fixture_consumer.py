@@ -2199,6 +2199,59 @@ def test_check_stays_clean_after_an_archive(aide, consumer: Path):
     assert aide.main(["--repo", str(consumer), "check"]) == 0
 
 
+def _insight_id(aide, consumer: Path, claim: str) -> str:
+    """The ID `insights list` prints for the entry carrying *claim*."""
+    pool = aide.load_insight_pool(consumer / "docs" / "aide")
+    ids = aide.insight_ids([e for _, e in pool])
+    (iid,) = [i for (_, e), i in zip(pool, ids) if e.text == claim]
+    return iid
+
+
+def test_insights_tick_by_id_in_the_consumer(aide, consumer: Path):
+    """The ID names the entry wherever it sits, so a tick by ID survives the
+    archive that renumbers every position below the moved entry (#276)."""
+    iid = _insight_id(aide, consumer, "nothing checks the farewell")
+    assert aide.main(["--repo", str(consumer), "insights", "archive",
+                      "--before", "2026-06-01", "--yes"]) == 0
+    assert aide.main(["--repo", str(consumer), "insights", "tick", iid,
+                      "--pointer", "item 002", "--date", "2026-08-24"]) == 0
+    text = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert "*(2026-08-21)* → item 002" in text
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
+def test_check_errors_on_a_dangling_insight_id_and_passes_once_it_resolves(
+        aide, consumer: Path):
+    """A cited ID that names no entry is an error — it blocks `merge` — and an
+    archived entry's ID still resolves (#276)."""
+    spec = consumer / "docs" / "aide" / "items" / "001-the-greeter.md"
+    original = spec.read_text(encoding="utf-8")
+    spec.write_text(original + "\nChartered by insight 2026-01-09-ffff.\n",
+                    encoding="utf-8")
+    real = _insight_id(aide, consumer, "the inbox has no verb")
+    if real.endswith("ffff"):   # vanishingly unlikely; keep the case honest
+        pytest.skip("the fixture's own claim hashes to the dangling ID")
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
+
+    spec.write_text(original + f"\nChartered by insight {real}.\n", encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert aide.main(["--repo", str(consumer), "insights", "archive",
+                      "--before", "2026-06-01", "--yes", "--no-commit"]) == 0
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+
+def test_check_warns_on_a_positional_insight_citation_without_failing(
+        aide, consumer: Path):
+    spec = consumer / "docs" / "aide" / "items" / "001-the-greeter.md"
+    spec.write_text(spec.read_text(encoding="utf-8") + "\nFixes insight 2.\n",
+                    encoding="utf-8")
+    errors, warnings = aide.run_checks(consumer, aide.load_config(consumer))
+    assert errors == []
+    iid = _insight_id(aide, consumer, "greet() does not strip whitespace")
+    assert [w for w in warnings if "by position" in w and iid in w]
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+
 def test_scope_authorises_the_archive_the_verb_just_wrote(aide, consumer: Path):
     """`insights archive` is loop bookkeeping, so item 001 is not out of scope."""
     assert _claim(aide, consumer) == 0
