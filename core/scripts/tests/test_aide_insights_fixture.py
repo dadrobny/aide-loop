@@ -83,6 +83,44 @@ def test_what_is_not_a_repo_rooted_read_is_not_reported(tmp_path: Path, source: 
     assert _warn(_repo(tmp_path), source) == []
 
 
+_MODULE_ROOT = ("from pathlib import Path\n"
+                "ROOT = Path(__file__).resolve().parents[1]\n"
+                "TARGET = ROOT / 'core' / 'scripts' / 'aide.py'\n")
+
+
+@pytest.mark.parametrize("source", [
+    # A local assignment shadows the module's ROOT for the whole function.
+    _MODULE_ROOT + "\ndef test_builds_its_own_inbox(tmp_path):\n"
+    "    ROOT = tmp_path\n"
+    "    inbox = ROOT / 'docs' / 'aide' / 'insights.md'\n",
+    # So does a parameter of the same name.
+    _MODULE_ROOT + "\ndef helper(ROOT):\n"
+    "    return ROOT / 'docs' / 'aide' / 'insights.md'\n",
+    # A nested function inherits its enclosing function's shadow.
+    _MODULE_ROOT + "\ndef test_x(tmp_path):\n"
+    "    ROOT = tmp_path\n"
+    "    def inbox():\n"
+    "        return ROOT / 'docs' / 'aide' / 'insights.md'\n",
+], ids=["local-assignment", "parameter", "nested-inherits-shadow"])
+def test_a_function_that_shadows_the_module_root_is_not_reported(
+        tmp_path: Path, source: str):
+    assert _warn(_repo(tmp_path), source) == []
+
+
+@pytest.mark.parametrize("source, line", [
+    (_MODULE_ROOT + "\ndef test_reads_the_live_inbox(tmp_path):\n"
+     "    other = tmp_path\n"
+     "    inbox = ROOT / 'docs' / 'aide' / 'insights.md'\n", 7),
+    (_MODULE_ROOT + "\ndef test_x(tmp_path):\n"
+     "    def inbox():\n"
+     "        return ROOT / 'docs' / 'aide' / 'insights.md'\n", 7),
+], ids=["module-name-unshadowed", "nested-reaches-module"])
+def test_a_function_using_the_module_root_is_still_reported(
+        tmp_path: Path, source: str, line: int):
+    warnings = _warn(_repo(tmp_path), source)
+    assert len(warnings) == 1 and warnings[0].startswith(f"tests/test_thing.py:{line}:")
+
+
 def test_the_configured_docs_dir_is_the_one_read(tmp_path: Path):
     repo = _repo(tmp_path, docs_dir="documentation/loop")
     assert _warn(repo, ROOT + 'P = ROOT / "docs" / "aide" / "insights.md"\n') == []

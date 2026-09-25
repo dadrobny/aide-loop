@@ -3928,6 +3928,110 @@ def _repo_path(node: ast.AST, env: Dict[str, Tuple[str, List[str]]]
     return None
 
 
+_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
+
+def _scope_parts(scope: ast.AST) -> Tuple[List[ast.AST], List[ast.AST]]:
+    """``(own nodes, child scopes)`` of a module, function, lambda or class.
+
+    A nested scope's decorators and default values are evaluated in the
+    enclosing one, so they are walked as its nodes; its body is not.
+    """
+    if isinstance(scope, ast.Lambda):
+        roots: List[ast.AST] = [scope.body]
+    elif isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        roots = list(scope.body)
+    else:
+        roots = [scope]
+    own: List[ast.AST] = []
+    children: List[ast.AST] = []
+    stack = list(reversed(roots))
+    while stack:
+        node = stack.pop()
+        if node is not scope and isinstance(node, _SCOPE_NODES):
+            children.append(node)
+            outer: List[ast.AST] = list(getattr(node, "decorator_list", []))
+            if isinstance(node, ast.ClassDef):
+                outer += node.bases + [k.value for k in node.keywords]
+            else:
+                outer += [d for d in node.args.defaults + node.args.kw_defaults if d]
+            stack.extend(reversed(outer))
+            continue
+        own.append(node)
+        stack.extend(reversed(list(ast.iter_child_nodes(node))))
+    return own, children
+
+
+def _local_names(scope: ast.AST, own: List[ast.AST],
+                 children: List[ast.AST]) -> Set[str]:
+    """Every name *scope* binds, so shadows for its whole body — as Python does."""
+    names: Set[str] = set()
+    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        a = scope.args
+        for arg in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg]:
+            if arg is not None:
+                names.add(arg.arg)
+    declared: Set[str] = set()
+    for node in own:
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            names.add(node.id)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names.update((al.asname or al.name).split(".")[0] for al in node.names)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            names.add(node.name)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            declared.update(node.names)
+    names.update(c.name for c in children if not isinstance(c, ast.Lambda))
+    return names - declared
+
+
+def _repo_rooted_reads(tree: ast.AST, target: List[str]) -> List[ast.AST]:
+    """Nodes building a repo-rooted path ending in *target*, scope by scope.
+
+    Each module, function, lambda and class body resolves names in its own
+    environment: the enclosing one's bindings, minus every name this scope
+    binds anywhere (a parameter such as ``tmp_path``, an assignment, an
+    import), plus its own repo- or cwd-rooted bindings, found to a fixpoint so
+    ``DOCS = ROOT / "docs"`` resolves whichever order the two are written in.
+    A class body's names are not seen by its methods, as in Python.
+    """
+    hits: List[ast.AST] = []
+
+    def visit(scope: ast.AST, parent: Dict[str, Tuple[str, List[str]]]) -> None:
+        own, children = _scope_parts(scope)
+        local = _local_names(scope, own, children) if not isinstance(scope, ast.Module) else set()
+        env = {k: v for k, v in parent.items() if k not in local}
+        assigns = [n for n in own if isinstance(n, (ast.Assign, ast.AnnAssign))]
+        for _ in range(len(assigns) + 1):
+            changed = False
+            for a in assigns:
+                if a.value is None:
+                    continue
+                where = _repo_path(a.value, env)
+                if where is None or where[0] == "other":
+                    continue
+                targets = a.targets if isinstance(a, ast.Assign) else [a.target]
+                for t in targets:
+                    if isinstance(t, ast.Name) and env.get(t.id) != where:
+                        env[t.id] = where
+                        changed = True
+            if not changed:
+                break
+        for node in own:
+            if not isinstance(node, (ast.BinOp, ast.Call)):
+                continue
+            where = _repo_path(node, env)
+            if (where is not None and where[0] in ("repo", "cwd")
+                    and where[1][-len(target):] == target):
+                hits.append(node)
+        inherit = parent if isinstance(scope, ast.ClassDef) else env
+        for child in children:
+            visit(child, inherit)
+
+    visit(tree, {})
+    return hits
+
+
 def insights_fixture_test_warnings(repo_root: Path,
                                    config: Dict[str, Dict[str, object]]) -> List[str]:
     """Tests reading the live insight inbox as a fixture.
@@ -3959,9 +4063,14 @@ def insights_fixture_test_warnings(repo_root: Path,
     root imported from another module or returned by a fixture, a path
     assembled by an f-string or ``+``, a glob, or docs_dir itself read from
     ``aide.toml`` at test time is not seen; nor is any other living document
-    under docs_dir, which §6's rule covers and this lint does not. Silence
-    means "no read of the recorded shape", never "this suite builds its own
-    fixtures".
+    under docs_dir, which §6's rule covers and this lint does not. Names are
+    resolved per scope, as Python does (``_repo_rooted_reads``): a function
+    that binds ``ROOT = tmp_path``, or takes a parameter of that name, shadows
+    the module's ``ROOT`` for its whole body. Within one scope bindings are
+    not ordered by control flow, so a name bound both to the repository and,
+    on another branch or line, to ``tmp_path`` reads as the repository — the
+    one false positive left. Silence means "no read of the recorded shape",
+    never "this suite builds its own fixtures".
     """
     ddir = docs_dir(repo_root, config)
     try:
@@ -3975,35 +4084,8 @@ def insights_fixture_test_warnings(repo_root: Path,
             tree = ast.parse(path.read_text(encoding=_ENCODING))
         except (OSError, UnicodeDecodeError, SyntaxError):
             continue
-        # The names a module binds to a repo-rooted path, to a fixpoint so
-        # `DOCS = ROOT / "docs"` after `ROOT = Path(__file__)...` resolves
-        # whichever order the two are written in.
-        env: Dict[str, Tuple[str, List[str]]] = {}
-        assigns = [n for n in ast.walk(tree) if isinstance(n, (ast.Assign, ast.AnnAssign))]
-        for _ in range(len(assigns) + 1):
-            changed = False
-            for a in assigns:
-                if a.value is None:
-                    continue
-                where = _repo_path(a.value, env)
-                if where is None or where[0] == "other":
-                    continue
-                targets = a.targets if isinstance(a, ast.Assign) else [a.target]
-                for t in targets:
-                    if isinstance(t, ast.Name) and env.get(t.id) != where:
-                        env[t.id] = where
-                        changed = True
-            if not changed:
-                break
-        hit = None
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.BinOp, ast.Call)):
-                continue
-            where = _repo_path(node, env)
-            if (where is not None and where[0] in ("repo", "cwd")
-                    and where[1][-len(target):] == target):
-                hit = node
-                break
+        hits = _repo_rooted_reads(tree, target)
+        hit = min(hits, key=lambda n: (n.lineno, n.col_offset)) if hits else None
         if hit is not None:
             out.append(
                 f"{_rel_display(path, repo_root)}:{hit.lineno}: reads the live "
