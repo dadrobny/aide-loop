@@ -111,16 +111,19 @@ tag, a raw commit or a remote-tracking ref (`origin/main`) is refused.
 rebasing.** A queue started on the queue branch below it — `aide queue start M
 --base <prefix>queue-N` — makes a stack, `main` ← queue N ← queue M, each
 queue one PR against the branch below. `aide queue restack` merges a moved
-lower branch into every branch above it, bottom up; once the bottom has
-landed in `main_branch` it merges `main_branch` into the next branch up and
-records `main_branch` as that branch's base, so `merge`, `scope` and
-`status` resolve against the right ref. The bottom may land by a merge
-commit, a squash or a rebase merge, or by a fast-forward of a branch
-`aide queue start` created, which records the commit it started from; a
-fast-forwarded branch with no such record (started before 2.14.0, or on
-another machine) stops the run until a person says which it was. Whether it
-landed is judged from git; the verb reads no pull request, so a PR closed without merging
-looks open to it and its caller checks for one first. A conflict stops the
+lower branch into every branch above it, bottom up; once any branch of the
+stack has landed in `main_branch` it merges `main_branch` into the next
+branch up and records `main_branch` as that branch's base, so `merge`,
+`scope` and `status` resolve against the right ref — whatever lies below the
+landed branch, and an open branch left beneath it is not touched. A branch
+may land by a merge commit, a squash or a rebase merge, or by a
+fast-forward, which is told from a branch with no commits of its own by
+where the branch started: the commit `aide queue start` records, or the tip
+of the branch below it. A bottom with no such record (started before
+2.14.0, or on another machine) whose tip is on `main_branch`'s first-parent
+history stops the run until a person says which it was. Whether a branch
+landed is judged from git; the verb reads no pull request, so a PR closed
+without merging looks open to it and its caller checks for one first. A conflict stops the
 run with nothing resolved, for a person. `aide queue restack -h` states the
 mechanism.
 
@@ -233,7 +236,7 @@ mechanism.
   already trusts before a force-delete. That a PR was closed unmerged is not:
   the branch simply stays, so the caller that can read PRs checks, and the
   verb does not guess.
-- **Why these merge styles may land the bottom.** Measured in the fixture:
+- **Why these merge styles may land a branch.** Measured in the fixture:
   after a squash merge `main_branch` holds the bottom's changes as one commit
   while the branch above holds the originals, so git's own merge base is the
   stack's fork point and the bottom's changes meet themselves. That merge is
@@ -248,8 +251,17 @@ mechanism.
   later commits from the stack. A branch `main_branch` was fast-forwarded to —
   how `local` mode lands a linear queue — has the same shape in git, so the
   first review round of #301 found such a landing reported as "consistent"
-  and never handed on. Only where the branch started tells the two apart; with
-  no record the run stops rather than guess either way.
+  and never handed on. Only where the branch started tells the two apart; above
+  another branch that branch's tip says it, so only a bottom with no record is
+  undecidable, and the run stops rather than guess either way.
+- **Why each branch's own landing is judged.** Asking only whether the branch
+  below had landed missed a middle queue fast-forwarded onto `main_branch`
+  above an empty, open bottom — "consistent", with the top queue never handed
+  `main_branch` (the second review round of #301). A branch that landed holds
+  everything beneath it that it contains, so the branch above is owed
+  `main_branch` whatever the bottom is; the open bottom gets nothing, since
+  `main_branch` already holds all of it, and with nothing stacked on it any
+  more it no longer holds a stack.
 - **Why no commit hook runs and signing is honoured.** The merge-tree path
   writes its commit with `commit-tree`, which runs no hook and ignores
   `commit.gpgSign`; the fallback's `git merge` did both. One behaviour on

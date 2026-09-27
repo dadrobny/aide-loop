@@ -677,3 +677,58 @@ def test_a_detached_head_start_is_restored(tmp_path: Path, monkeypatch, old_git)
     assert _restack(repo) == 0
     assert _contains(repo, Q1, Q2)
     assert _head(repo) == "HEAD" and _sha(repo, "HEAD") == at
+
+
+# --------------------------------------------------------------------------- #
+# review round 2 (PR #306) — a branch's own landing, whatever lies below it
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("starts", [True, False], ids=["starts", "no-starts"])
+def test_a_middle_branch_landed_over_an_open_empty_bottom_hands_on_its_upper(
+        tmp_path: Path, capsys, starts: bool):
+    """main <- queue-001 (no commits) <- queue-002 <- queue-003; main is
+    fast-forwarded to queue-002 and moves on. queue-002 has commits beyond
+    its lower, so it landed however queue-001 is read; queue-001 is open,
+    empty and wholly in main, and is left alone."""
+    repo = _init(tmp_path / "r")
+    _start(repo, 1)
+    _start(repo, 2, Q1)
+    _tick(repo, 2)
+    _start(repo, 3, Q2)
+    _tick(repo, 3)
+    if not starts:
+        for b in (Q1, Q2, Q3):
+            _git(["config", "--unset", f"branch.{b}.aide-start"], repo)
+    _git(["switch", "main"], repo)
+    _git(["merge", "--ff-only", Q2], repo)
+    _commit_file(repo, "hotfix.txt", "hotfix\n", "hotfix")
+    bottom, middle = _sha(repo, Q1), _sha(repo, Q2)
+
+    assert _restack(repo) == 0
+    assert _contains(repo, "main", Q3)
+    assert _base(repo, Q3) == "main" and _base(repo, Q2) == "main"
+    assert (_sha(repo, Q1), _sha(repo, Q2)) == (bottom, middle)
+    assert _base(repo, Q1) == "main"
+    capsys.readouterr()
+    assert _restack(repo) == 0
+    assert "nothing" in capsys.readouterr().out
+
+
+def test_two_lowers_squash_landed_before_any_restack(tmp_path: Path):
+    """Lines 1 and 4 are apart, so git's own `merge --squash` of the second
+    lower goes through, as a human's would; the top queue ticks line 5, next
+    to line 4, which only the landed tip as merge base keeps clean."""
+    repo = _init(tmp_path / "r")
+    _start(repo, 1)
+    _tick(repo, 1)
+    _start(repo, 2, Q1)
+    _tick(repo, 4)
+    _start(repo, 3, Q2)
+    _tick(repo, 5)
+    _squash(repo, Q1)
+    _squash(repo, Q2)
+
+    assert _restack(repo) == 0
+    assert _contains(repo, "main", Q3) and _base(repo, Q3) == "main"
+    assert _base(repo, Q2) == "main"
+    text = _git(["show", f"{Q3}:ledger.txt"], repo).stdout
+    assert all(f"line {n} done" in text for n in (1, 4, 5))

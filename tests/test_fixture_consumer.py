@@ -1272,6 +1272,28 @@ def test_restack_after_the_bottom_lands_by_fast_forward(
         assert _recorded_base(aide, consumer, Q2) == Q1
 
 
+def test_restack_hands_main_to_the_top_when_the_middle_queue_landed(
+        aide, consumer: Path):
+    """Three queues, the bottom one never given a commit: main takes the
+    middle one by fast-forward, and the top queue is still owed main."""
+    q3 = "aide/queue-003"
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    assert aide.main(["--repo", str(consumer), "queue", "start", "2",
+                      "--base", Q1]) == 0
+    _tick_bullet(consumer, "The greeter. *(Item 001)*", "✅", "queue 2 work")
+    assert aide.main(["--repo", str(consumer), "queue", "start", "3",
+                      "--base", Q2]) == 0
+    _tick_bullet(consumer, "The farewell. *(Item 002)*", "🚧", "queue 3 work")
+    _git(["switch", "main"], consumer)
+    _git(["merge", "--ff-only", Q2], consumer)
+    (consumer / "hotfix.txt").write_text("hotfix\n", encoding="utf-8")
+    _commit(consumer, "hotfix")
+
+    assert _restack(aide, consumer) == 0
+    assert _contains(consumer, "main", q3)
+    assert _recorded_base(aide, consumer, q3) == "main"
+
+
 def test_restack_stops_on_a_conflict_with_the_tree_clean_and_nothing_pushed(
         aide, consumer: Path, tmp_path: Path):
     origin = _to_pr_mode_with_origin(consumer, tmp_path)

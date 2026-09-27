@@ -9024,13 +9024,10 @@ def _queue_restack(args: argparse.Namespace) -> int:
     steps: List[Tuple[str, str, str, Optional[str]]] = []  # (kind, upper, other, merge_base)
     changed: Set[str] = set()
     landed: Set[str] = set()
-    held: List[str] = []        # lowers git cannot judge, and what resolves each
-    blocked: Set[str] = set()   # branches above one of them, left untouched
+    held: List[str] = []        # bottoms git cannot judge, and what resolves each
+    blocked: Dict[str, str] = {}  # branch -> the unjudged bottom beneath it
     base_now = dict(bases)
     starts = {b: _recorded_branch_start(repo_root, b) for b in members}
-
-    def judged(b: str) -> Optional[bool]:
-        return _stack_branch_landed(repo_root, eff(main), eff(b), starts.get(b))
 
     def number(b: str) -> str:
         return b[len(prefix) + len(_QUEUE_TOKEN):]
@@ -9039,8 +9036,44 @@ def _queue_restack(args: argparse.Namespace) -> int:
         if b not in members:
             continue
         lower = base_now[b]
+        # Each branch's own landing is judged at its own step, whatever lies
+        # below it: a branch main_branch took whole (by merge, squash, rebase
+        # or fast-forward) has everything beneath it that it holds, so the
+        # branch above it is owed main_branch even while a lower stays open.
+        # Only a branch with commits beyond its lower can have landed on its
+        # own; one without has landed exactly when its lower has. Above a
+        # lower, the lower's tip is where the branch started, recorded or not
+        # — so only a bottom can be undecidable.
+        if lower == main:
+            verdict = _stack_branch_landed(repo_root, eff(main), eff(b),
+                                           starts.get(b))
+        elif _is_ancestor(repo_root, eff(b), eff(lower)):
+            verdict = False
+        else:
+            verdict = _stack_branch_landed(
+                repo_root, eff(main), eff(b),
+                starts.get(b) or _rev(repo_root, eff(lower)))
+        if verdict:
+            landed.add(b)
+            if lower != main:
+                base_now[b] = main
+                steps.append(("record", b, main, None))
+            continue
         if lower in blocked:
-            blocked.add(b)
+            root = blocked[lower]
+            blocked[b] = root
+            if root == lower:
+                held.append(
+                    f"{lower}'s tip is on {main}'s first-parent history and "
+                    f"no start is recorded for it, so git cannot tell whether "
+                    f"{main} was fast-forwarded to it (it landed) or it has no "
+                    f"commits of its own (it is open); {b} above it is left "
+                    f"as it is. If it landed: 'queue restack {number(b)} "
+                    f"--base {main}'. If it is open: 'queue restack "
+                    f"{number(lower)} --base {main}' records its start")
+            continue
+        if verdict is None:             # a bottom only, see above
+            blocked[b] = b
             continue
         if lower == main:
             # Not into a branch with nothing main_branch lacks: that merge is
@@ -9053,38 +9086,12 @@ def _queue_restack(args: argparse.Namespace) -> int:
             if b == forced and _recorded_branch_base(repo_root, b) != main:
                 steps.append(("record", b, main, None))
             continue
-        # A lower is judged landed only while it stands on main_branch and
-        # this run has merged nothing into it: its content then either is in
-        # main_branch or is not, and no step below can change the answer.
-        if lower not in landed and base_now[lower] == main and lower not in changed:
-            verdict = judged(lower)
-            if verdict is None:
-                held.append(
-                    f"{lower}'s tip is on {main}'s first-parent history and "
-                    f"no start is recorded for it, so git cannot tell whether "
-                    f"{main} was fast-forwarded to it (it landed) or it has no "
-                    f"commits of its own (it is open); {b} above it is left "
-                    f"as it is. If it landed: 'queue restack {number(b)} "
-                    f"--base {main}'. If it is open: 'queue restack "
-                    f"{number(lower)} --base {main}' records its start")
-                blocked.add(b)
-                continue
-            if verdict:
-                landed.add(lower)
         if lower not in landed:
             if lower in changed or not _is_ancestor(repo_root, eff(lower), eff(b)):
                 steps.append(("merge", b, lower, None))
                 changed.add(b)
             continue
         base_now[b] = main
-        if (not _is_ancestor(repo_root, eff(b), eff(lower))
-                and judged(b)):
-            # Landed as well, with work of its own beyond the lower's: the
-            # branch above it takes main_branch next, and this one is left
-            # alone like the lower.
-            landed.add(b)
-            steps.append(("record", b, main, None))
-            continue
         if not _is_ancestor(repo_root, eff(lower), eff(b)):
             steps.append(("merge", b, lower, None))
             changed.add(b)
@@ -13246,23 +13253,31 @@ def build_parser() -> argparse.ArgumentParser:
             "is ever force-pushed. Its merge commits honour commit.gpgSign "
             "and run no commit hook, on every git version.\n"
             "\n"
-            "A lower branch whose content has landed in main_branch — by "
-            "a merge commit, a squash or a rebase merge, judged by the same "
-            "merge-tree comparison `gc` uses, or by a fast-forward past the "
-            "start commit `queue start` recorded for it — is left "
-            "alone, and "
-            "main_branch is merged into the branch above it with the landed "
-            "branch's tip as the merge base, so a squash merge does not "
-            "conflict with the commits it squashed; that branch's recorded "
-            "base becomes main_branch. A lower branch whose tip is on "
-            "main_branch's first-parent history and still at its recorded "
-            "start has no commits of its own, and is open. With no start "
-            "recorded (a branch started before 2.14.0, or on another "
-            "machine) git cannot tell a fast-forward landing from a branch "
-            "with no commits of its own: the branch above it is left as it "
-            "is, the run exits 1 and never reports the stack consistent, "
-            "and the message names both remedies. On git older than 2.38 only an ancestry merge "
-            "is seen, so a squash-merged branch reads as still open; before "
+            "Each stack branch's own landing is judged at its own step, "
+            "whatever lies below it. A branch whose content has landed in "
+            "main_branch — by a merge commit, a squash or a rebase "
+            "merge, judged by the same merge-tree comparison `gc` uses, or by "
+            "a fast-forward past the commit it started from — is left "
+            "alone, and main_branch is merged into the branch above it with "
+            "the landed branch's tip as the merge base, so a squash merge "
+            "does not conflict with the commits it squashed; that branch's "
+            "recorded base becomes main_branch. Where a branch started is "
+            "the start commit `queue start` recorded for it, or, above "
+            "another branch, that branch's tip; a branch with no commits "
+            "beyond its lower is not judged on its own, and is handed "
+            "main_branch when its lower has landed. A "
+            "branch whose tip is on main_branch's first-parent history and "
+            "still at its start has no commits of its own, and is open; an "
+            "open branch beneath one that landed keeps its record and is "
+            "left alone, and once the branch above it is handed to "
+            "main_branch it holds no stack. Only a bottom branch can go "
+            "unjudged: with no start recorded (one started before 2.14.0, or "
+            "on another machine) git cannot tell a fast-forward landing from "
+            "a branch with no commits of its own, so each branch above it "
+            "that has not itself landed is left as it is, the run exits 1 "
+            "and never reports the stack consistent, and the message names "
+            "both remedies. On git older than 2.38 only an ancestry merge is "
+            "seen, so a squash-merged branch reads as still open; before "
             "2.40 main_branch is merged over git's own merge base.\n"
             "\n"
             "It reads git and never a pull request: a PR closed without "

@@ -1412,6 +1412,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("It merges and never rebases, so nothing is ever force-pushed",
          ("test_aide_restack::test_a_moved_lower_branch_is_merged_forward_and_never_rebased",
           "test_aide_restack::test_review_edits_on_origin_are_fetched_merged_forward_and_pushed")),
+        # The plan loop judges `b` itself first — `_stack_branch_landed` on
+        # its own tip, before `lower in landed` is looked at.
+        ("Each stack branch's own landing is judged at its own step, whatever "
+         "lies below it",
+         ("test_aide_restack::test_a_middle_branch_landed_over_an_open_empty_bottom_hands_on_its_upper",
+          "test_aide_restack::test_two_lowers_squash_landed_before_any_restack")),
         # `_stack_branch_landed`, then the `squashed` merge base and the
         # `record` step; the landed branch gets no step at all.
         ("is left alone, and main_branch is merged into the branch above it "
@@ -1419,25 +1425,39 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "does not conflict with the commits it squashed; that branch's "
          "recorded base becomes main_branch",
          ("test_aide_restack::test_a_squash_merged_bottom_hands_its_upper_to_main",
-          "test_aide_restack::test_a_merge_commit_landed_bottom_hands_its_upper_to_main")),
-        # `_on_first_parent_chain`, then the recorded start (`aide-start`,
-        # written by `queue start`): past it is a fast-forward landing.
-        ("or by a fast-forward past the start commit `queue start` recorded "
-         "for it",
+          "test_aide_restack::test_a_merge_commit_landed_bottom_hands_its_upper_to_main",
+          "test_aide_restack::test_two_lowers_squash_landed_before_any_restack")),
+        # `_on_first_parent_chain`, then the start: past it is a
+        # fast-forward landing.
+        ("or by a fast-forward past the commit it started from",
          ("test_aide_restack::test_a_bottom_landed_by_fast_forward_past_its_start_hands_on_its_upper",
-          "test_aide_restack::test_queue_start_records_the_commit_it_started_from")),
-        ("A lower branch whose tip is on main_branch's first-parent history "
-         "and still at its recorded start has no commits of its own, and is "
-         "open",
-         "test_aide_restack::test_a_lower_with_no_commits_of_its_own_is_not_read_as_landed"),
-        # `_stack_branch_landed` -> None; `held` and `blocked`, `return 1`.
-        ("With no start recorded (a branch started before 2.14.0, or on "
-         "another machine) git cannot tell a fast-forward landing from a "
-         "branch with no commits of its own: the branch above it is left as "
-         "it is, the run exits 1 and never reports the stack consistent, and "
-         "the message names both remedies",
+          "test_aide_restack::test_a_middle_branch_landed_over_an_open_empty_bottom_hands_on_its_upper")),
+        # `starts.get(b) or _rev(eff(lower))`; `_is_ancestor(b, lower)` ->
+        # False, then the landed-lower arm.
+        ("Where a branch started is the start commit `queue start` recorded "
+         "for it, or, above another branch, that branch's tip; a branch with "
+         "no commits beyond its lower is not judged on its own, and is handed "
+         "main_branch when its lower has landed",
+         ("test_aide_restack::test_queue_start_records_the_commit_it_started_from",
+          "test_aide_restack::test_a_middle_branch_landed_over_an_open_empty_bottom_hands_on_its_upper")),
+        ("A branch whose tip is on main_branch's first-parent history and "
+         "still at its start has no commits of its own, and is open; an open "
+         "branch beneath one that landed keeps its record and is left alone, "
+         "and once the branch above it is handed to main_branch it holds no "
+         "stack",
+         ("test_aide_restack::test_a_lower_with_no_commits_of_its_own_is_not_read_as_landed",
+          "test_aide_restack::test_a_middle_branch_landed_over_an_open_empty_bottom_hands_on_its_upper")),
+        # `_stack_branch_landed` -> None for a bottom only; `blocked`, `held`
+        # for each upper not landed itself, `return 1`.
+        ("Only a bottom branch can go unjudged: with no start recorded (one "
+         "started before 2.14.0, or on another machine) git cannot tell a "
+         "fast-forward landing from a branch with no commits of its own, so "
+         "each branch above it that has not itself landed is left as it is, "
+         "the run exits 1 and never reports the stack consistent, and the "
+         "message names both remedies",
          ("test_aide_restack::test_a_fast_forwarded_bottom_with_no_start_record_is_a_stop_not_consistent",
-          "test_aide_restack::test_an_empty_bottom_with_no_start_record_is_resolved_by_recording_it")),
+          "test_aide_restack::test_an_empty_bottom_with_no_start_record_is_resolved_by_recording_it",
+          "test_aide_restack::test_a_middle_branch_landed_over_an_open_empty_bottom_hands_on_its_upper")),
         # `_branch_content_landed` is None below 2.38 -> `_is_ancestor`.
         ("On git older than 2.38 only an ancestry merge is seen, so a "
          "squash-merged branch reads as still open",

@@ -131,9 +131,11 @@ instead — that is the bump policy above, and it is enforced by
   queue M, and until now nothing kept it consistent: a review edit pushed to
   queue N's PR never reached queue M, and once N landed, M's PR still showed
   N's changes. The verb merges each moved lower branch into the branch above
-  it, bottom up, and once the bottom has landed in `main_branch` merges
-  `main_branch` into the next branch up and re-records that branch's base as
-  `main_branch`, so `merge`, `scope` and `status` resolve against it. It
+  it, bottom up, and once any branch of the stack has landed in
+  `main_branch` — each judged at its own step, whatever lies below it —
+  merges `main_branch` into the next branch up and re-records that branch's
+  base as `main_branch`, so `merge`, `scope` and `status` resolve against
+  it. An open branch left beneath a landed one is not touched. It
   **merges and never rebases**, so every push is a plain one.
   - **Git only.** "Landed" is the content comparison `gc` already trusts
     (`git merge-tree --write-tree`, git 2.38+), so a squash or rebase merge
@@ -144,19 +146,21 @@ instead — that is the bump policy above, and it is enforced by
   - **A fast-forward landing is recognised by its start.** `queue start` now
     also records the commit a queue branch started from
     (`branch.<name>.aide-start`, local git config beside `aide-base`). A
-    lower branch whose tip is on `main_branch`'s first-parent history has
+    stack branch whose tip is on `main_branch`'s first-parent history has
     landed by fast-forward — `local` mode's own landing — when it is past
-    that start, and is open with no commits of its own when it is at it.
-    With no start recorded (a branch started before 2.14.0, or on another
-    machine) git cannot tell the two apart: the branch above it is left
-    alone, the run exits 1 and never reports the stack consistent, and the
-    message names both remedies.
+    where it started, and is open with no commits of its own when it is at
+    it. Where it started is that record, or, above another branch, that
+    branch's tip, so only a bottom can be undecidable: with no start
+    recorded (started before 2.14.0, or on another machine) each branch
+    above it that has not itself landed is left alone, the run exits 1 and
+    never reports the stack consistent, and the message names both
+    remedies.
   - **Squash merges are clean.** The fixture measured it: after a squash, a
     plain forward merge of `main_branch` meets the bottom's changes twice and
     conflicts wherever the upper edited next to them — which is every queue,
     in `progress.md`. The verb uses the landed branch's tip as the merge base
     (`merge-tree --merge-base`, git 2.40+), so a merge commit, a squash or a
-    rebase merge may land the bottom, and §4 asks for none of them.
+    rebase merge may land a stack branch, and §4 asks for none of them.
   - **The stack is read from the recorded bases** of `<prefix>queue-NNN`
     branches (a specs-queue branch is never in one). A queue branch with no
     record — started on another machine, or before stacking — is listed and
