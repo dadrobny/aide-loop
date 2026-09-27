@@ -63,10 +63,35 @@ Semantics *(aide claim, check, status, gate)*:
   defect.
 - **Resolving is a CLI operation**, never a hand edit:
   ```
-  aide gate (list | approve <n> | decline <n>) [--evidence "…"]
+  aide gate (list | approve <n|ID> | decline <n|ID>) [--evidence "…"]
   ```
 
 Agents *read* gates — to know why they must stop — and stop.
+
+**Cite a gate by its ID, never by its position.** Every gate has an ID —
+`gate-` and the leading hex of a hash of its Gate cell, as in `gate-3fa1` —
+which `aide gate list` prints and no one writes: the row keeps its four cells.
+The ID is computed from the Gate cell alone, so approving, declining,
+re-planning what it blocks and a merge that renumbers the rows all leave it
+where it was. Wherever a durable artifact names a gate — an item spec, a queue
+file, a roadmap stage, another `progress.md` row — write its ID. A position
+(`gate list`'s `n`) is for the session that just ran `list`, and nowhere else.
+
+- **The Gate cell is the gate's identity.** Rewording it — including to
+  "change what the gate asks" after a decline — makes a different gate with a
+  different ID, and every citation of the old one stops resolving. That is
+  the intent: they cited a question no longer asked. Re-point each at the new
+  ID, or drop it.
+- **A longer ID is the same ID.** `list` prints four hex digits, and more only
+  where two different Gate cells would share them; any longer prefix of the
+  same hash names the same gate. Two rows asking the same question share an
+  ID, and a verb takes a position for them.
+- **`aide check` holds citations to the table.** Over `docs_dir`, the inbox
+  and its archives excepted: a cited gate ID that names no row is an
+  **error** — it blocks a merge, like every check error. A cited ID matching
+  two different Gate cells, and a citation by position (`gate 3`, `human gate
+  #3`) while `progress.md` has a `## Human gates` table, are warnings naming
+  the ID to write.
 
 #### Rationale
 
@@ -97,6 +122,21 @@ Agents *read* gates — to know why they must stop — and stop.
   repairs it. The header row costs a line; the mistake costs the programme.
   The error itself is one rule across the four `progress.md` tables a check
   gates on (§1 → `progress.md`).
+- **Why an ID, and why over the Gate cell alone.** A position was the only
+  handle a durable artifact had, and it moves: a long-lived queue branch took
+  `main` in, the merge renumbered a gate, and items went on citing it under
+  its new number with nothing to check that the number still named the gate
+  meant (aide-loop #276's second incident; #293). The inbox's fix carried over
+  with one change. An insight's claim is immutable, so the whole claim is
+  hashed; a gate row is not — Status and evidence are what `approve` and
+  `decline` write, and Blocks is re-planned while the question stands — so
+  only the question is hashed. An explicit slug cell was rejected: a fifth
+  cell is a row of the wrong width in every existing table, which holds every
+  item. "Never cite by number" alone was rejected: a quoted question has no
+  resolvability check, which is the gap that let the renumbering pass.
+- **Why the check reads `docs_dir` only.** Gates are cited by the documents
+  that plan work. `gate-` and hex is ordinary vocabulary in a test suite,
+  where an error would block a merge over a word that was never a citation.
 - **Why `check` warns and `status` prints.** A gate that is still blocking is
   visible on every run instead of buried in a spec's prose; `aide status -h`
   names open gates among what it reports.

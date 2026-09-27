@@ -79,8 +79,9 @@ that just ran `list`, and nowhere else.
   the ID to write. The inbox and its archives are not swept. `insights
   archive` lists the positional citations it is about to renumber, each with
   the ID its position holds before the move — rewrite them from that list.
-- **Human gates are not covered.** A gate in `progress.md` is still cited by
-  its row; whether it gets a durable handle too is aide-loop issue #293.
+- **Human gates have IDs of their own.** A gate is cited by the `gate-<hex>`
+  ID `aide gate list` prints, under the same resolvability check (§1 → human
+  gates).
 
 **`resolve` writes the union of a conflicted inbox**, so this file's conflict
 is never resolved by hand. **It refuses anything that is not a pure append** —
