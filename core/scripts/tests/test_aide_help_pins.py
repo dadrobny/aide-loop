@@ -383,8 +383,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_forward_deps::"
           "test_a_forward_dependency_is_a_warning_naming_stage_and_later_stage",
           "test_aide_forward_deps::test_check_reports_it_as_a_warning_and_never_an_error")),
-        ("the text up to its first semicolon, spaced dash or sentence end, "
-         "where a stage number is one after the word Stage or Stages, or a "
+        ("the text up to its first semicolon, spaced dash, sentence end, "
+         "'independent of' or 'queue before'/'after', where a stage number is one after the word Stage or Stages, or a "
          "slot of bare numbers",
          "test_aide_forward_deps::test_the_blocking_slot_is_read_and_nothing_after_it"),
         ("unless progress.md shows that stage \u23f8\ufe0f on its header or "

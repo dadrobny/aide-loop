@@ -37,6 +37,13 @@ _spec.loader.exec_module(aide)  # type: ignore[union-attr]
     ("Stages 3, 4", [3, 4]),
     ("Stage 3 and Stage 6", [3, 6]),
     ("Stages 3–5", [3, 5]),
+    # A comma before the final conjunction does not drop the last stage.
+    ("Depends on Stages 10, 11, and 12.", [10, 11, 12]),
+    ("3, 4, and 5", [3, 4, 5]),
+    # The template's ordering phrasings, written with no `None.` before them.
+    ("independent of Stage 9; may be queued in either order.", []),
+    ("Queue before Stage 9, whose retuning is safer once this exists.", []),
+    ("Stage 2, independent of Stage 9", [2]),
     # Bare numbers — the template slot says "blocking stage numbers".
     ("3, 4", [3, 4]),
     ("3 and 4", [3, 4]),

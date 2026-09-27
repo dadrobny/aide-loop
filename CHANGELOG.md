@@ -136,8 +136,9 @@ instead — that is the bump policy above, and it is enforced by
   stage (⏸️ in `progress.md`), the one forward dependency tolerated. The new
   lint, `forward_dependency_warnings`, reads each `## Stage N` section's
   `**Dependencies.**` blocking slot — the text up to its first `;`, spaced
-  dash or sentence end, so the template's `None. Independent of Stage 17 — …`
-  ordering sentence is not read — takes stage numbers after `Stage`/`Stages`
+  dash, sentence end or ordering lead-in (`independent of`, `queue
+  before`/`after`), so the template's `None. Independent of Stage 17 — …`
+  ordering sentence is not read, with or without its `None.` — takes stage numbers after `Stage`/`Stages`
   or from a slot of bare numbers, and names each stage whose slot holds a
   number greater than its own, unless `progress.md` shows that stage ⏸️ on its
   header or summary row. A warning, never an error: exit codes are unchanged.
