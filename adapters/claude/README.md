@@ -110,8 +110,9 @@ session, so the nesting is real, not a manual runbook.
 - **`aide-run-queue`** — `aide claim` each item, `aide-run-item` it, until the queue
   empties. Does **not** create the next queue.
 - **`aide-run-roadmap`** — generate a queue → run it → generate the next, until the
-  roadmap is exhausted. Each new queue lands via a **human-reviewed PR** — the batch
-  checkpoint, one review per ~10 items. It is also what an external scheduler
+  roadmap is exhausted. Each queue is built on its own branch and lands as one
+  **human-reviewed PR** — the batch checkpoint, one review per ~10 items —
+  after a human gate has held its build until the plan was reviewed. It is also what an external scheduler
   launches for an unattended run (`execution-surfaces.md`).
 
 Two more commands are not orchestrators: **`aide-review-permissions`** belongs to

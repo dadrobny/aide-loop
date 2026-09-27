@@ -88,8 +88,11 @@ spawns a sub-agent per leaf task and gates approvals.
 - **`/aide-run-queue [NNN]`** — claims each item (`aide claim`) then runs it via
   `/aide-run-item`, until the queue empties. Does **not** create the next queue.
 - **`/aide-run-roadmap`** — loops over queues: generate a queue → run it → generate
-  the next, until the roadmap is exhausted. **Each new queue lands via a
-  human-reviewed PR** — the batch checkpoint, one review per ~10 items.
+  the next, until the roadmap is exhausted. **Each queue lives on its own
+  branch and lands as one human-reviewed PR** carrying its plan, specs and
+  code — the batch checkpoint, one review per ~10 items. The plan is reviewed
+  first: a human gate over the queue's items (§1 → human gates) holds every
+  claim until a person approves it.
 
 If your runtime can't nest prompt-expansions the way Claude Code does, satisfy
 the contract with a manual runbook calling the same `aide.py` steps in the same
@@ -128,8 +131,9 @@ design, implementation, quality judgment.
 
 ## Merge policy
 
-- **Work-item execution** may merge straight to `main` (no PR) once green —
-  `aide merge` does it per `aide.toml`'s `git.mode`. Still branch per item for
+- **Work-item execution** may merge straight to its base (no PR) once green —
+  `main`, or the queue branch it was claimed from (§4) — and `aide merge` does
+  it per `aide.toml`'s `git.mode`. Still branch per item for
   the claim signal.
 - **Framework / process changes require a reviewed PR**: `aide.toml`, `.aide/**`,
   `docs/aide/vision.md`, `docs/aide/roadmap.md`, `CLAUDE.md`, the `.claude/`
@@ -151,13 +155,13 @@ only *executes* the current item, merge it.
 
 ## Unattended long runs
 
-`/aide-run-roadmap` pauses at each queue PR by design, and between those gates a
-run is one session. **The engine relaunches nothing.** Keeping a repo working
-across usage windows is an external scheduler's job — any scheduler will do, and
-a shell loop around the launch command is the minimum — because a relaunch is
-cheap here: durable state is in the git history and the living documents, so a
-fresh session reads where things stand and carries on. There is no in-process
-headless nesting.
+`/aide-run-roadmap` pauses twice per queue by design — for the plan's gate and
+for the queue PR's merge — and between those stops a run is one session. **The
+engine relaunches nothing.** Keeping a repo working across usage windows is an
+external scheduler's job — any scheduler will do, and a shell loop around the
+launch command is the minimum — because a relaunch is cheap here: durable state
+is in the git history and the living documents, so a fresh session reads where
+things stand and carries on. There is no in-process headless nesting.
 
 What a scheduler must respect is the **launch contract** the runtime's adapter
 documents: which surface the command is launched on, how permissions resolve

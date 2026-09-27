@@ -118,7 +118,8 @@ Follow the `aide-create-queue` skill in full. In brief:
 8. **Return** a tight summary: the queue number — or **both**, saying which is
    the maintenance queue and which the stage queue — the item-number range and
    one-line titles, and confirmation the previous queue was tidied and every
-   item wired into `progress.md`. Name the inbox entries you queued (with the item numbers
+   item wired into `progress.md`, and the plan gate's ID when you raised one.
+   Name the inbox entries you queued (with the item numbers
    they became) **and the ones you passed over, with why** — a pass-over is
    stated where the queue is reviewed, not left for the next reader to
    re-derive. Name the two ways to proceed (`/aide-spec-queue NNN` up
@@ -152,6 +153,23 @@ an out-of-band prerequisite a person must supply — make sure `progress.md` has
 the matching row in its `## Human gates` table before the queue lands. A gate
 written only in the roadmap blocks nothing; the table is what `aide claim`
 reads. Reach is usually `stage N` for a roadmap-declared gate.
+
+**The plan-review gate.** When your brief asks for one — `/aide-run-roadmap`'s
+always does — add one more row before step 6's commit, so it lands in the same
+commit on the queue branch and travels in the queue's draft PR: a gate over
+every item you just queued, so none of them can be claimed until a person has
+reviewed the plan.
+
+```
+| Queue NNN plan reviewed before build | 231–240 | ⏳ Awaiting | — |
+```
+
+The Gate cell names the queue number, which keeps it — and so its ID — apart
+from every earlier queue's. For a maintenance queue and a stage queue, raise
+one gate for the pair (`Queues NNN–<NNN+1> plan reviewed before build`) whose
+Blocks cell spans both queues' items. Blocks lists the items, never the queue
+(§1 → human gates, preloaded above). Name the gate's ID, as
+`python .aide/scripts/aide.py gate list` prints it, in step 8's summary.
 
 **Raise, never resolve.** Adding a gate is safe — the worst case is work pausing
 for a human. Never run `aide gate approve`/`decline`: the decision is not yours,

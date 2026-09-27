@@ -121,6 +121,54 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.13.1] — 2026-09-27
+
+### Fixed
+
+- **`/aide-run-roadmap` describes the queue-branch flow that is actually used
+  (issue #300, part of #258).** It opened a PR carrying only `queue-NNN.md`,
+  told the human to merge it before anything was built, and then ran "a
+  merged queue that still has 📋 items" from `main`, so items landed on
+  `main`. §4 and `aide claim`'s own help already described the stacked flow,
+  in which each item branches off the queue branch and merges back into it
+  and the queue lands as one reviewed PR; the roadmap command was the odd one
+  out, and `/aide-run-queue`'s exhaustion pointer repeated it ("re-enters this
+  command for that queue once you merge it"). Now:
+  - **Generate the next queue**: `aide queue start NNN` → `queue-planner` →
+    `git push` → `gh pr create --draft` → stop for the pre-build review. The
+    PR stays open while the queue is built on its branch, and at queue end it
+    is marked ready (`gh pr ready`) and the loop stops until it merges.
+  - **The pre-build review is mechanical.** The planner raises one
+    `⏳ Awaiting` human gate over the new queue's items (both queues' when it
+    writes a maintenance queue and a stage queue), with a Gate cell naming
+    the queue number, in the same commit as the queue, so it travels in the
+    draft PR. `aide claim` already refuses a gated item, so an unattended
+    relaunch cannot build a plan nobody reviewed; the human approves it on
+    the queue branch with `aide gate approve`, and the approved row stays in
+    the PR, and in `progress.md` after the merge, as the record — one row per
+    queue, which `aide check` does not warn on.
+  - **The state table is derived from branch, PR and gate state**: a merged
+    queue PR (clean up, re-read `main`), a queue PR closed unmerged (stop and
+    ask — never built on), a built-out queue branch (mark the
+    PR ready, stop), a queue branch whose plan gate is unresolved (stop), an
+    approved one (run it on its branch), a legacy queue already on `main`
+    (run it from `main` as before), nothing open (generate). What `aide
+    status` reports and what needs `gh` are named apart.
+  - **`/aide-spec-queue` commits onto the queue branch** when the queue has
+    one, so plan, specs and code land in one PR and the specs are reviewed
+    before the plan gate is approved. `aide queue start NNN --specs` remains
+    only for a queue whose file is already on `main`.
+  - `/aide-run-queue`'s exhaustion pointer says the queue's PR is the thing to
+    mark ready when it ran on a queue branch; `aide-create-queue`,
+    `core/README.md` and the adapter README describe the same flow.
+
+  `gh pr create` and `gh pr ready` stay on the `ask` list: each sits directly
+  before a stop that needs a person anyway, and an unattended session is
+  refused without prompting, so the loop reports the command for the human
+  rather than stalling. **What a consumer edits:** nothing. A queue planned
+  after the update carries a plan gate, which a person approves before its
+  items are built; a queue already on `main` runs as before.
+
 ## [2.13.0] — 2026-09-27
 
 ### Added

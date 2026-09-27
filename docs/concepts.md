@@ -162,8 +162,9 @@ allow-list (see [`../adapters/claude/README.md`](../adapters/claude/README.md)).
 
 ## Unattended runs
 
-The loop pauses at each queue PR by design, and between those checkpoints a run is
-one session. **Nothing in the framework relaunches it.** Continuous operation —
+The loop pauses twice per queue by design — for the plan's gate before build, and
+for the queue PR's merge after — and between those checkpoints a run is one
+session. **Nothing in the framework relaunches it.** Continuous operation —
 across usage windows, or across several AIDE repos — is an external scheduler's
 job ([`vision.md`](vision.md) → *Not a scheduler*); the engine's side of that
 bargain is that relaunching is cheap, because state lives in git commits and the

@@ -202,8 +202,9 @@ PR anyway.
 
 - **Run standalone (manual)** — also `git pull --rebase` then `git push`.
 - **Invoked as the `queue-planner` subagent inside `/aide-run-roadmap`** — commit
-  only; the orchestrator pushes the `aide/queue-NNN` branch and opens the
-  human-reviewed queue PR. Say in your summary that you wrote two queues, so it
+  only, with the plan-review gate the agent spec describes in the same commit;
+  the orchestrator pushes the `aide/queue-NNN` branch and opens its draft PR,
+  which the built items later join. Say in your summary that you wrote two queues, so it
   knows there is a second batch behind the one it is about to open a PR for.
 
 ### Tick every inbox entry you queued
