@@ -131,13 +131,15 @@ instead — that is the bump policy above, and it is enforced by
   is now a warning — a missing row under-reports rather than over-claims —
   and exit codes are unchanged:
   - **A `progress.md` stage section with no Stage summary row**, ⏸️ and ❌
-    stages included, since the summary row is where a deferral or an
-    exclusion is read. §1 → `progress.md` now says the summary is complete.
+    stages included: a ❌ summary row is what drops a stage from the rollup
+    comparisons, and a ✅ one what closes it for the capability table.
+    §1 → `progress.md` now says the summary is complete.
     A row its reader cannot use still counts for the stage its Stage cell
     names — it is the unreadable-row error's to report, once.
   - **A `vision.md` G-code with no row in `roadmap.md`'s coverage table**, a
     withdrawn objective's too for as long as the vision lists its code. A
-    coverage row is read by the G-codes opening its first cell, past one
+    coverage row is read by the G-codes opening its first cell (`G2`,
+    `G2, G7`, `G2 and G7`, `G2/G7` — each joined element a G-code), past one
     leading parenthetical, so a row kept as `*(out of scope …)* G5 …` still
     maps G5.
   - **A stage a `roadmap.md` coverage row names with no `## Stage N` section

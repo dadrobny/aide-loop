@@ -414,6 +414,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_coverage_completeness::"
           "test_a_coverage_row_is_read_by_the_codes_opening_its_first_cell",
           "test_aide_coverage_completeness::"
+          "test_the_codes_run_joins_g_codes_and_nothing_else",
+          "test_aide_coverage_completeness::"
           "test_a_g_code_later_in_the_first_cell_is_not_a_coverage_row")),
         ("a stage a roadmap.md coverage row names with no '## Stage N' "
          "section in roadmap.md, the Delivered by cell read as the "

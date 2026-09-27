@@ -26,9 +26,9 @@ Mandatory, in order (consumer in brackets):
      `aide progress accept` — never derived. *(validator)*
 
 **The Stage summary table is complete.** Every stage section has its row, a
-⏸️ or ❌ stage too: the summary row is where a deferral or an exclusion is read
-from. `aide check` warns on a section with no row, as it does on a row with no
-section.
+⏸️ or ❌ stage too: a ❌ summary row is what excludes a stage, and a ⏸️ one
+records its deferral where the table is read. `aide check` warns on a section
+with no row, as it does on a row with no section.
 
 **A table row its reader cannot use is an `aide check` error** in each of the
 four tables the engine reads: the two above, Outcome targets (below) and §1 →
@@ -201,8 +201,10 @@ Semantics
   verbs can write a file it then reports.
 - **Why a stage section needs its summary row.** Since issue #285 a stage's
   header and bullets are compared whatever the summary says, so a stage the
-  summary left out was still checked — but `aide status` and the queue-planner
-  read the summary, and it silently under-reported a stage the file tracks.
+  summary left out was still checked — but the summary row is the one cell
+  `aide check` reads a ❌ exclusion from, and the one it reads a stage's ✅
+  from before holding a capability row to it, so a table that left a stage
+  out silently under-reported a stage the file tracks.
   Found in the #285 audit and filed as issue #289; a warning, because a
   missing row under-reports rather than over-claims.
 - **Why a shared marker is desugared.** One bullet carries one icon, so while

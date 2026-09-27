@@ -5315,11 +5315,16 @@ def forward_dependency_warnings(ddir: Path) -> List[str]:
 
 
 #: The G-code(s) opening a roadmap coverage row's first cell — `G2`, or a
-#: leading run `G2, G7` — after emphasis, code spans and one leading
-#: parenthetical annotation are set aside: a consumer keeps a withdrawn
-#: objective's row as `*(out of scope 2026-07-25)* G5 Deploy on XNAT`, and
-#: that row still maps G5 to its stages.
-_COVERAGE_CODES_RE = re.compile(r"^\s*(?:\([^)]*\)\s*)?(G\d+(?:\s*[,/&]\s*G\d+)*)\b")
+#: leading run `G2, G7`, `G2 and G7`, `G2/G7` — after emphasis, code spans and
+#: one leading parenthetical annotation are set aside: a consumer keeps a
+#: withdrawn objective's row as `*(out of scope 2026-07-25)* G5 Deploy on
+#: XNAT`, and that row still maps G5 to its stages. The separators are
+#: `_DEPS_SEP`'s, with `/` added and no range dash (`G2–G4` is not a
+#: coverage-row shape); each element must be a G-code, so `G2 and more`
+#: reads G2 alone.
+_COVERAGE_SEP = r"(?:\s*,\s*(?:(?:and|or)\b\s*)?|\s*(?:&|/|\band\b|\bor\b)\s*)"
+_COVERAGE_CODES_RE = re.compile(
+    r"^\s*(?:\([^)]*\)\s*)?(G\d+(?:" + _COVERAGE_SEP + r"G\d+)*)\b")
 
 
 def _coverage_row_codes(cells: List[str]) -> List[int]:
@@ -5339,10 +5344,13 @@ def coverage_completeness_warnings(ddir: Path) -> List[str]:
 
     1. **Every `## Stage N` section of progress.md has a Stage summary row.**
        Since #285 the header and bullets of such a stage are compared, but
-       the summary — what `aide status` and the queue-planner read — left it
-       out without a word. A ⏸️ or ❌ stage is no exception: the summary row
-       is where a deferral or an exclusion is read from (the ❌ row is what
-       drops the stage from every comparison), so it needs its row most. A
+       the summary left it out without a word — and `aide check` reads the
+       summary row for three things no other cell gives it: a ❌ row drops
+       the stage from every rollup comparison (`derived_cell_findings`), a
+       ✅ row closes the stage for the capability table
+       (`capability_warnings`), and a ⏸️ row exempts it from the forward
+       dependency lint (`forward_dependency_warnings`, which reads the
+       header too). A ⏸️ or ❌ stage is therefore no exception. A
        row the reader cannot use still counts as the stage's row when its
        Stage cell holds that number: it is `unreadable_row_errors`'s to
        report, once.
@@ -5384,9 +5392,10 @@ def coverage_completeness_warnings(ddir: Path) -> List[str]:
                 if int(num) not in in_summary:
                     out.append(
                         f"progress.md: stage {int(num)} has a '## Stage "
-                        f"{int(num)}' section but no Stage summary row — the "
-                        f"summary is what `aide status` and the queue-planner "
-                        f"read, so it silently leaves out a stage this file "
+                        f"{int(num)}' section but no Stage summary row — "
+                        f"`aide check` reads a stage's ❌ exclusion and its ✅ "
+                        f"closure for the capability table from that row, so "
+                        f"the summary silently leaves out a stage this file "
                         f"tracks; add its row — §1 → progress.md")
 
     rpath = ddir / "roadmap.md"

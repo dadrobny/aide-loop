@@ -167,11 +167,28 @@ def test_a_withdrawn_objective_still_needs_its_row(tmp_path: Path):
 
 
 @pytest.mark.parametrize("first_cell", ["G02 Measure", "**G2** Measure",
-                                        "G1, G2 Both", "(note) G2 Measure"])
+                                        "G1, G2 Both", "G1 and G2 Both",
+                                        "G1 or G2 Either", "G1/G2 Both",
+                                        "(note) G2 Measure"])
 def test_a_coverage_row_is_read_by_the_codes_opening_its_first_cell(
         tmp_path: Path, first_cell):
     roadmap = ROADMAP.replace("| G2 Measure |", f"| {first_cell} |")
     assert _warnings(tmp_path, roadmap=roadmap) == []
+
+
+@pytest.mark.parametrize("first_cell, expected", [
+    ("G2 and G7 Something", [2, 7]),
+    ("G2 or G7 Something", [2, 7]),
+    ("G2, and G7", [2, 7]),
+    ("G2 & G7", [2, 7]),
+    # A conjunction joins codes only: the word after it must be one.
+    ("G2 and more", [2]),
+    ("G2 or Gx", [2]),
+    ("G2 and G7x", [2]),
+    ("Measure, as G2", []),
+])
+def test_the_codes_run_joins_g_codes_and_nothing_else(first_cell, expected):
+    assert aide._coverage_row_codes([first_cell, "Stage 3"]) == expected
 
 
 def test_a_g_code_later_in_the_first_cell_is_not_a_coverage_row(tmp_path: Path):
