@@ -85,6 +85,13 @@ entire loop, indefinitely.
   item ships, and asserts on what it reads — so when the shape changes, one
   test changes. A literal of another item's output written into this item's
   test is a second copy of that shape, and it is the copy that goes red.
+- **A test never uses a living document as a fixture.** Nothing under
+  `docs/aide/**` — the insight inbox above all — is read by a test to supply
+  its input or its expected value: the loop edits those files as it runs, so
+  an archive, a tick or a merge turns the test red with no code changed. A
+  test that needs an inbox, a progress file or a spec builds the minimal
+  shape it needs in a temporary directory (`tmp_path`). A test that names an
+  insight cites it by ID, never by position (§1 → insights.md).
 
 **Tests that can actually fail.**
 
@@ -120,11 +127,14 @@ entire loop, indefinitely.
   taken from a failed `find()` — each yields a value that flows into the
   assertion and passes while checking nothing.
 
-`aide check` decides the ones a script can, six of them: the repository's own
+`aide check` decides the ones a script can, seven of them: the repository's own
 absolute path written into a test file, a `str()` around a `relative_to(...)`,
 a shell-out to the CLI whose function was importable, a text capture that names
-no codec, a byte-compared fixture no `eol=lf` pattern covers, and a diff-time
-scope claim written as a suite assertion. The rest of this section binds
+no codec, a byte-compared fixture no `eol=lf` pattern covers, a diff-time
+scope claim written as a suite assertion, and a path to the live insight inbox
+rooted at the repository — reached from `__file__`, from the working
+directory, or as a relative literal. A test that builds the same path under
+`tmp_path` is the fix, and is not reported. The rest of this section binds
 identically and is checked by nobody, so read a warning as authoritative and
 silence as partial throughout — not only on the pin.
 
@@ -205,3 +215,14 @@ silence as partial throughout — not only on the pin.
   producer pins what is read, in the form it is read — and this is the
   test-side half, since a fixture the producer ships is the one copy of the
   shape that changes with it.
+- **Why no living document is a fixture.** Tests merged in one consumer
+  asserted properties of specific ticked inbox entries — a claim's text
+  unedited, a dated correction present — by reading `insights.md` itself. One
+  measured `insights archive --before <date>` turned at least six tests in
+  four modules red, so the inbox could not be archived until they changed;
+  and a test that pinned an entry's checkbox as unticked blocked every merge
+  the moment triage ticked that entry (aide-loop issue #276). The files are
+  the loop's working state, edited by verbs that never read the suite, so a
+  test built on one is a test whose truth the next triage pass decides. The
+  lint is narrowed to the inbox and to a repo-rooted path because a
+  `tmp_path` inbox — the fix — spells the same path under another root.

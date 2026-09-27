@@ -1639,8 +1639,84 @@ def test_a_positional_citation_is_a_warning_naming_the_id(tmp_path: Path):
           "See insights.md entry 2.\n"
           "Ledger entry 2 is a different thing.\n"
           "Released in insight 1.2 and entry 1.2.\n")
-    _cite(repo, "tests/test_x.py", "# insight 2\n")
     errors, warnings = _findings(repo)
     assert errors == []
     assert [w.split(":")[1] for w in warnings] == ["1", "2", "3"]
     assert all(iid in w for w in warnings)
+
+
+def test_a_positional_citation_in_a_test_is_a_warning_too(tmp_path: Path):
+    """A test comment or assertion message naming "insight 2" goes stale on
+    the same archive a spec does (issue #295)."""
+    repo = _repo(tmp_path)
+    iid = aide.insight_ids(aide.parse_insights(INBOX))[1]
+    _cite(repo, "tests/test_x.py",
+          "# corrects insight 2\n"
+          'assert ok, "the ledger entry 2 is fine"\n'
+          'assert ok, "see inbox entry #2"\n')
+    errors, warnings = _findings(repo)
+    assert errors == []
+    assert [w.split(":")[:2] for w in warnings] == [["tests/test_x.py", "1"],
+                                                    ["tests/test_x.py", "3"]]
+    assert all("by position" in w and iid in w for w in warnings)
+
+
+# --------------------------------------------------------------------------- #
+# insights archive — the citations it renumbers, listed before it moves
+# (issue #295)
+# --------------------------------------------------------------------------- #
+def test_the_position_map_names_what_moves_and_what_shifts():
+    remaining, _, _ = aide.archive_insight_text(INBOX, "2026-08-01")
+    # Entries 1 and 3 are closed and old; 2 and 4 stay, as 1 and 2.
+    assert aide.archive_position_map(INBOX, remaining) == {
+        1: None, 2: 1, 3: None, 4: 2}
+    remaining, _, _ = aide.archive_insight_text(INBOX, "2026-06-01")
+    # Only entry 1 moves; nothing above it, so every later one shifts by one.
+    assert aide.archive_position_map(INBOX, remaining) == {1: None, 2: 1, 3: 2, 4: 3}
+
+
+def test_an_entry_above_the_first_moved_one_keeps_its_number():
+    inbox = INBOX + "- [x] gap — late and closed *(2026-01-02)* → x\n"
+    remaining, _, _ = aide.archive_insight_text(inbox, "2026-01-03")
+    assert aide.archive_position_map(inbox, remaining) == {5: None}
+
+
+def _archive_citing(tmp_path: Path, capsys, *extra: str):
+    repo = _repo(tmp_path)
+    _cite(repo, "docs/aide/items/007-x.md", "Fixes insight 2.\nSee insight 4.\n")
+    _cite(repo, "tests/test_x.py", "# the claim inbox entry #3 made\n")
+    ids = aide.insight_ids(aide.parse_insights(INBOX))
+    capsys.readouterr()
+    code = aide.main(["--repo", str(repo), "insights", "archive",
+                      "--before", "2026-08-01", *extra])
+    return repo, ids, code, capsys.readouterr().out
+
+
+def test_a_dry_run_archive_lists_each_positional_citation_with_its_id_before(
+        tmp_path: Path, capsys):
+    repo, ids, code, out = _archive_citing(tmp_path, capsys)
+    assert code == 0
+    listed = [ln for ln in out.splitlines() if ln.startswith("  ") and "`" in ln]
+    assert [ln.split(":")[0].strip() for ln in listed] == [
+        "docs/aide/items/007-x.md", "docs/aide/items/007-x.md", "tests/test_x.py"]
+    assert ids[1] in listed[0] and "entry 1 after" in listed[0]
+    assert ids[3] in listed[1] and "entry 2 after" in listed[1]
+    assert ids[2] in listed[2] and "archived" in listed[2]
+    assert _inbox(repo) == INBOX                        # still a dry run
+
+
+def test_an_archive_that_moves_lists_them_and_still_proceeds(tmp_path: Path, capsys):
+    repo, ids, code, out = _archive_citing(tmp_path, capsys, "--yes", "--no-commit")
+    assert code == 0
+    assert ids[1] in out and ids[3] in out and ids[2] in out
+    assert len(aide.parse_insights(_inbox(repo))) == 2   # the move happened
+
+
+def test_an_archive_lists_no_citation_whose_number_it_leaves_alone(
+        tmp_path: Path, capsys):
+    repo = _repo(tmp_path, INBOX + "- [x] gap — late and closed *(2026-01-02)* → x\n")
+    _cite(repo, "docs/aide/items/007-x.md", "Fixes insight 2.\n")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "insights", "archive",
+                      "--before", "2026-01-03"]) == 0
+    assert "by position" not in capsys.readouterr().out
