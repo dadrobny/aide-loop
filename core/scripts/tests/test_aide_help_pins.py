@@ -426,6 +426,30 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "naming the ID that position holds today, in a test as in a document",
          ("test_aide_insights::test_a_positional_citation_is_a_warning_naming_the_id",
           "test_aide_insights::test_a_positional_citation_in_a_test_is_a_warning_too")),
+        # `gate_reference_findings` (issue #293): `_citation_files`' docs half
+        # only; an unresolved `gate-<hex>` goes to `errors`.
+        ("a gate-<hex> token that names no row of progress.md's Human gates "
+         "table is an ERROR",
+         ("test_aide_gates::test_check_errors_on_a_citation_naming_no_gate",
+          "test_aide_gates::test_check_accepts_a_citation_that_resolves")),
+        # Same function: more than one Gate-cell hash among the hits.
+        ("one that matches two different Gate cells is a warning naming "
+         "their longer IDs",
+         "test_aide_gates::test_check_warns_on_an_ambiguous_gate_id"),
+        # Same function: `_GATE_POSITION_RE`, gated on the section heading.
+        ("a citation by position \u2014 gate 3, human gate #3 \u2014 is a "
+         "warning naming the ID that row holds today, read only while "
+         "progress.md has a Human gates section",
+         ("test_aide_gates::test_check_warns_on_a_positional_citation_and_names_the_id",
+          "test_aide_gates::test_positional_reading_needs_a_gates_section",
+          "test_aide_gates::test_an_empty_gates_section_still_reads_positions")),
+        # `_GATE_ID_CITATION_RE`'s look-arounds.
+        ("A token inside a path, a file name, a URL or a heading anchor is "
+         "not a citation",
+         "test_aide_gates::test_a_path_a_file_name_or_an_anchor_is_not_a_citation"),
+        # `gate_reference_findings` reads the docs half of `_citation_files`.
+        ("tests_dir is not read",
+         "test_aide_gates::test_tests_dir_is_not_swept_for_gate_ids"),
         # `ledger_warnings` over `ledger_rows`: the cell count, the Item cell
         # and each of `LEDGER_INTEGER_COLUMNS`, appended to `warnings` and
         # never to `errors`.

@@ -79,9 +79,8 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
 
 - **The Gate cell is the gate's identity.** Rewording it — including to
   "change what the gate asks" after a decline — makes a different gate with a
-  different ID, and every citation of the old one stops resolving. That is
-  the intent: they cited a question no longer asked. Re-point each at the new
-  ID, or drop it.
+  different ID, and every citation of the old one stops resolving. Re-point
+  each at the new ID, or drop it.
 - **A longer ID is the same ID.** `list` prints four hex digits, and more only
   where two different Gate cells would share them; any longer prefix of the
   same hash names the same gate. Two rows asking the same question share an
@@ -90,8 +89,8 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   and its archives excepted: a cited gate ID that names no row is an
   **error** — it blocks a merge, like every check error. A cited ID matching
   two different Gate cells, and a citation by position (`gate 3`, `human gate
-  #3`) while `progress.md` has a `## Human gates` table, are warnings naming
-  the ID to write.
+  #3`) while `progress.md` has a `## Human gates` section, are warnings
+  naming the ID to write.
 
 #### Rationale
 
@@ -134,6 +133,10 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   cell is a row of the wrong width in every existing table, which holds every
   item. "Never cite by number" alone was rejected: a quoted question has no
   resolvability check, which is the gap that let the renumbering pass.
+- **Why a reworded Gate cell is a new gate.** Its citations cited the
+  question it asked, and that question is no longer asked; a check that kept
+  them resolving would let an item go on waiting for — or be released by — a
+  decision about something else.
 - **Why the check reads `docs_dir` only.** Gates are cited by the documents
   that plan work. `gate-` and hex is ordinary vocabulary in a test suite,
   where an error would block a merge over a word that was never a citation.

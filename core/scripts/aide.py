@@ -1059,6 +1059,8 @@ def gate_index_for_ref(ref: str, gates: List[HumanGate]) -> int:
         raise ValueError(
             f"{ref!r} is neither a gate number nor a gate ID "
             f"(gate-<hex>, as `aide gate list` prints it)")
+    if not gates:
+        raise ValueError("no '## Human gates' table in progress.md")
     hits = resolve_gate_ref(ref, gates)
     if not hits:
         raise ValueError(
@@ -3064,9 +3066,12 @@ def insight_reference_findings(repo_root: Path,
 
 
 #: A citation of a human gate by ID: the ``gate-<hex>`` token itself, standing
-#: alone — not the tail of a longer hyphenated word or a hex run.
+#: alone. The word is inside the token, so there is no context word to
+#: require; instead a token that is part of a path, a file name, a URL or a
+#: heading anchor (``/gate-cafe``, ``gate-0001.md``, ``#gate-2026``) is not
+#: read — an error here blocks a merge, and none of those is a citation.
 _GATE_ID_CITATION_RE = re.compile(
-    r"(?<![\w-])(?P<id>" + _GATE_ID_SHAPE + r")(?![\w-])")
+    r"(?<![\w\-#/.])(?P<id>" + _GATE_ID_SHAPE + r")(?![\w\-/]|\.\w)")
 #: A citation of a human gate by position: ``gate 3``, ``human gate #3``,
 #: ``gates 2`` — the word, then the number. The number may not run on into a
 #: word, a hyphen or a version (``gate 1.2`` is not a position).
@@ -3091,8 +3096,8 @@ def gate_reference_findings(repo_root: Path,
     * a **gate ID that matches two different Gate cells** — a warning naming
       the longer IDs that tell them apart;
     * a **citation by position** — a warning naming the ID that row holds
-      today, and only while progress.md has a ``## Human gates`` table: with
-      none, "gate 3" is some other gate.
+      today, and only while progress.md has a ``## Human gates`` section:
+      with none, "gate 3" is some other gate.
 
     tests_dir is not read: a gate is cited by the documents that plan work,
     and "gate-" followed by hex is ordinary vocabulary in a test suite.
@@ -3101,7 +3106,8 @@ def gate_reference_findings(repo_root: Path,
     warnings: List[str] = []
     docs, _ = _citation_files(repo_root, config, ddir)
     gates = human_gates(lines)
-    has_table = bool(gates) or bool(unreadable_gate_rows(lines))
+    has_section = any(_GATES_HEADING_RE.match(ln) for ln in lines)
+    unreadable = bool(unreadable_gate_rows(lines))
     ids = gate_ids(gates)
     for path in docs:
         try:
@@ -3114,17 +3120,23 @@ def gate_reference_findings(repo_root: Path,
                 ref = m.group("id")
                 hits = resolve_gate_ref(ref, gates)
                 if not hits:
+                    # An unreadable row is dropped before IDs are computed, so
+                    # its citations dangle too; the row's own error is the fix.
+                    also = (" — or it is one of the unreadable gate rows "
+                            "reported above, which has no ID until it is fixed"
+                            if unreadable else "")
                     errors.append(
                         f"{where}:{lineno}: {ref} names no human gate in "
                         f"progress.md — its row was removed, or its Gate cell "
-                        f"reworded into a different gate; cite an ID `aide "
-                        f"gate list` prints (conventions.md §1 → human gates)")
+                        f"reworded into a different gate{also}; cite an ID "
+                        f"`aide gate list` prints (conventions.md §1 → human "
+                        f"gates)")
                 elif len({gate_hash(gates[i]) for i in hits}) > 1:
                     names = ", ".join(sorted({ids[i] for i in hits}))  # type: ignore[misc]
                     warnings.append(
                         f"{where}:{lineno}: {ref} matches more than one human "
                         f"gate — cite the longer ID of the one meant: {names}")
-            if not has_table:
+            if not has_section:
                 continue
             for m in _GATE_POSITION_RE.finditer(line):
                 n = int(m.group("n"))
@@ -8606,7 +8618,7 @@ def _queue_titles(text: str) -> Dict[int, str]:
 #: parser (and a human skimming the section) can tell the two apart.
 _DEPENDENCIES_DOWNSTREAM_MARKER_RE = re.compile(r"\*\*Downstream\b", re.IGNORECASE)
 
-#: Marks a quoted human-gate reach ("waits on Gate 3 — `Blocks: items 119,
+#: Marks a quoted human-gate reach ("waits on gate-3fa1 — `Blocks: items 119,
 #: 120, 121`"). Transcribing the gate row's cell is the natural way to say
 #: which gate holds this item, and the numbers in the quote are the GATE's
 #: reach, not items this one depends on — read as blockers they grew edges
@@ -12187,7 +12199,17 @@ def build_parser() -> argparse.ArgumentParser:
             "citation by position \u2014 insight 28, insights.md entry 28, "
             "or entry 28 on a line that says insight or inbox \u2014 is a "
             "warning naming the ID that position holds today, in a test as "
-            "in a document."))
+            "in a document.\n"
+            "\n"
+            "Over human-gate citations in docs/aide, the inbox and its "
+            "archives excepted: a gate-<hex> token that names no row of "
+            "progress.md's Human gates table is an ERROR; one that matches "
+            "two different Gate cells is a warning naming their longer IDs; "
+            "and a citation by position \u2014 gate 3, human gate #3 \u2014 "
+            "is a warning naming the ID that row holds today, read only "
+            "while progress.md has a Human gates section. A token inside a "
+            "path, a file name, a URL or a heading anchor is not a citation, "
+            "and tests_dir is not read."))
     p_check.add_argument("--queue", type=int, default=None,
                          help="also check this queue's specs against each other "
                               "(scope overlaps, pinned state, dependency graph)")
