@@ -145,9 +145,11 @@ instead — that is the bump policy above, and it is enforced by
     draft PR. `aide claim` already refuses a gated item, so an unattended
     relaunch cannot build a plan nobody reviewed; the human approves it on
     the queue branch with `aide gate approve`, and the approved row stays in
-    the PR as the record.
+    the PR, and in `progress.md` after the merge, as the record — one row per
+    queue, which `aide check` does not warn on.
   - **The state table is derived from branch, PR and gate state**: a merged
-    queue PR (clean up, re-read `main`), a built-out queue branch (mark the
+    queue PR (clean up, re-read `main`), a queue PR closed unmerged (stop and
+    ask — never built on), a built-out queue branch (mark the
     PR ready, stop), a queue branch whose plan gate is unresolved (stop), an
     approved one (run it on its branch), a legacy queue already on `main`
     (run it from `main` as before), nothing open (generate). What `aide

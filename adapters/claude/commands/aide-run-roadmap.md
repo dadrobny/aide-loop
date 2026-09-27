@@ -81,9 +81,10 @@ series of improvised git/gh probes:
    authenticated).
 3. If a `<prefix>queue-NNN` branch exists — listed by `status`, or the head of
    an open PR — ask the forge what became of it:
-   `gh pr view <prefix>queue-NNN --json number,state,isDraft`. A queue branch
-   whose PR is merged is done with; one whose PR is open, or that has no PR
-   yet, is **open**. For an open one, `git switch` to it and `git pull`, and
+   `gh pr view <prefix>queue-NNN --json number,state,isDraft`. The state is
+   one of three: a queue branch whose PR is `MERGED` is done with; one whose
+   PR is `CLOSED` without merging was rejected, and is never built on; one
+   whose PR is `OPEN`, or that has no PR yet, is **open**. For an open one, `git switch` to it and `git pull`, and
    run `status` **again there**: the queue file, its items' states and its
    plan gate live on that branch only, so a `status` on `main` cannot see
    them. `python .aide/scripts/aide.py gate list` prints each gate's ID.
@@ -96,7 +97,8 @@ primary checkout** (see *Working in parallel* below if you need isolation).
 | State | Action |
 |---|---|
 | **Roadmap exhausted** — no open queue branch, every stage ✅ / deferred / excluded | Report done. Stop. |
-| **A queue branch's PR has merged** | `git switch` to `main`, `git pull`, then `python .aide/scripts/aide.py gc --merged` to preview and `--yes` to delete the landed branches — a squash-merged queue branch is not an ancestor of `main`, so `gc` leaves it and the human deletes it. Re-read the state on `main`. |
+| **A queue branch's PR has merged** | `git switch` to `main`, `git pull`, then `python .aide/scripts/aide.py gc --merged` to preview and `--yes` to delete the landed branches (a squash-merged queue branch too: `--merged` compares content, not ancestry, where git is recent enough to measure it). Re-read the state on `main`. |
+| **A queue branch's PR was closed without merging** | **Stop.** Say the PR was closed unmerged and ask the human whether the queue is abandoned (delete the branch and re-plan, via `/aide-feedback-loop` if the roadmap needs it) or the PR should be reopened. Never build on, approve for, or reopen a closed queue PR yourself. |
 | **An open queue branch is built out** — its queue has no 📋/🚧 item left | Go to **Queue end**: mark the PR ready if it is still a draft, then **stop** — awaiting the human's merge. |
 | **An open queue branch has 📋 items and its plan gate is still ⏳ Awaiting** (or ❌ Declined) | **Stop.** Tell the human to review the draft PR, and to approve the gate on that branch (see **Generate the next queue**); a declined one is re-planned, not approved. If the branch has no PR yet, open it as that section says first. |
 | **An open queue branch has 📋 items and its plan gate is ✅ Approved** | Run the queue on its branch → go to **Run a queue**. |
