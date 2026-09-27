@@ -107,6 +107,20 @@ branch's starting point and its recorded base are the same commit by
 construction, so an item can never merge back somewhere it did not come from. A
 tag, a raw commit or a remote-tracking ref (`origin/main`) is refused.
 
+**A stack of queue branches is kept consistent by merging forward, never by
+rebasing.** A queue started on the queue branch below it — `aide queue start M
+--base <prefix>queue-N` — makes a stack, `main` ← queue N ← queue M, each
+queue one PR against the branch below. `aide queue restack` merges a moved
+lower branch into every branch above it, bottom up; once the bottom has
+landed in `main_branch` it merges `main_branch` into the next branch up and
+records `main_branch` as that branch's base, so `merge`, `scope` and
+`status` resolve against the right ref. Any merge style may land the bottom
+— merge commit, squash or rebase merge. Whether it landed is judged from git,
+by content; the verb reads no pull request, so a PR closed without merging
+looks open to it and its caller checks for one first. A conflict stops the
+run with nothing resolved, for a person. `aide queue restack -h` states the
+mechanism.
+
 ### Rationale
 
 - **Why the claim branch goes before the gate run.** So the run sees what a
@@ -206,3 +220,30 @@ tag, a raw commit or a remote-tracking ref (`origin/main`) is refused.
 - **Why a base must be a local branch.** `git switch` to a tag, a commit or a
   remote-tracking ref would detach HEAD, and a merge into a detached HEAD
   updates no branch while still reporting success.
+- **Why a stack merges and never rebases.** Rebasing an upper branch onto its
+  moved lower rewrites commits its open PR already shows, and publishing that
+  takes a force-push — a §3 stop in an unattended run. A merge only adds
+  commits, so a plain push publishes it (issue #301).
+- **Why landed is judged from git.** Pull-request state needs the host's CLI,
+  which is best effort and absent in `local` mode. That a branch's work is in
+  `main_branch` is a fact git establishes from content — the oracle `gc`
+  already trusts before a force-delete. That a PR was closed unmerged is not:
+  the branch simply stays, so the caller that can read PRs checks, and the
+  verb does not guess.
+- **Why any merge style may land the bottom.** Measured in the fixture: after
+  a squash merge `main_branch` holds the bottom's changes as one commit while
+  the branch above holds the originals, so git's own merge base is the
+  stack's fork point and the bottom's changes meet themselves. That merge is
+  clean when the upper touched nothing near them and conflicts when it did —
+  and queues tick adjacent lines of `progress.md`. The landed tip is an
+  ancestor of the upper and its content is in `main_branch`, so as the merge
+  base it yields `main_branch` plus the upper's own changes, cleanly; a
+  merge-commit rule for the human was the alternative, and is not needed.
+- **Why a branch with no commits of its own is not landed.** It has nothing
+  `main_branch` lacks, which the content check reads as landed; handing the
+  branch above it to `main_branch` would then drop the lower's later commits
+  from the stack. A branch `main_branch` fast-forwarded to looks the same to
+  git, so it is read the same way — as still open.
+- **Why no record means no stack.** The records are local git config, and
+  queue branches from before stacking sit beside a stack; chaining them by
+  number would merge unrelated queues. `--base` records one, bottom up.

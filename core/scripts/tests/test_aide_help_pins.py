@@ -57,6 +57,10 @@ that moved everything.
   head branch"*, *"Because in `pr` mode nothing inside the loop observes the
   merge"*, *"so none of them lives only in one commit's diff"*, *"since what it
   blocks is unknown"* — same: the reason a pinned behaviour is what it is.
+* *"It reads git and never a pull request: a PR closed without merging looks
+  exactly like one still open, so a caller checks for a closed PR before it
+  restacks"* (`queue`) — what the verb does not read, which a test cannot
+  observe as an absence, and the obligation that leaves its caller.
 * *"left for `aide scope` to judge"*, *"`aide progress -h` states the rollup"*,
   *"(like `aide sync`)"*, *"the same merge-tree comparison `gc` uses"*, *"The
   rollup, applied by set and read by `aide check`"* — pointers at another verb,
@@ -1378,6 +1382,103 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_ledger::test_abandon_under_review_off_marks_the_finding_cells",
           "test_aide_ledger::"
           "test_abandon_run_twice_under_review_off_still_records_the_item_once")),
+    ],
+
+    # ---------------------------------------------------------------- queue --
+    # The description block is `restack`'s (issue #301); `start` and `tidy`
+    # are stated in their option help, which this row does not cover.
+    "queue": [
+        # `_queue_restack` reads `_recorded_branch_base` for every
+        # `_is_stack_branch`, which matches `queue-NNN` and not `specs-queue-`.
+        ("The stack is read from the base each queue branch recorded at "
+         "`queue start`",
+         ("test_aide_restack::test_a_moved_lower_branch_is_merged_forward_and_never_rebased",
+          "test_aide_restack::test_an_unrecorded_queue_branch_is_listed_and_never_chained")),
+        ("a specs-queue branch is never part of one",
+         "test_aide_restack::test_a_specs_queue_branch_is_never_part_of_a_stack"),
+        # The plan loop: `lower in changed or not _is_ancestor(lower, b)`.
+        ("Bottom up, each lower branch is merged into the one above it "
+         "wherever the upper does not already contain it",
+         ("test_aide_restack::test_a_moved_lower_branch_is_merged_forward_and_never_rebased",
+          "test_aide_restack::test_a_merge_propagates_up_a_stack_of_three")),
+        # `_restack_merge` writes a two-parent commit or fast-forwards; no
+        # `rebase`, and `_push_new_branch` is `push -u`, never `--force`.
+        ("It merges and never rebases, so nothing is ever force-pushed",
+         ("test_aide_restack::test_a_moved_lower_branch_is_merged_forward_and_never_rebased",
+          "test_aide_restack::test_review_edits_on_origin_are_fetched_merged_forward_and_pushed")),
+        # `_stack_branch_landed`, then the `squashed` merge base and the
+        # `record` step; the landed branch gets no step at all.
+        ("is left alone, and main_branch is merged into the branch above it "
+         "with the landed branch's tip as the merge base, so a squash merge "
+         "does not conflict with the commits it squashed; that branch's "
+         "recorded base becomes main_branch",
+         ("test_aide_restack::test_a_squash_merged_bottom_hands_its_upper_to_main",
+          "test_aide_restack::test_a_merge_commit_landed_bottom_hands_its_upper_to_main")),
+        # `_on_first_parent_chain`, checked before the content oracle.
+        ("A lower branch whose tip is on main_branch's first-parent history "
+         "(one main_branch was fast-forwarded to, or one with no commits of "
+         "its own) is never read as landed",
+         "test_aide_restack::test_a_lower_with_no_commits_of_its_own_is_not_read_as_landed"),
+        # `_branch_content_landed` is None below 2.38 -> `_is_ancestor`.
+        ("On git older than 2.38 only an ancestry merge is seen, so a "
+         "squash-merged branch reads as still open",
+         "test_aide_restack::test_on_old_git_a_squash_merged_bottom_reads_as_still_open"),
+        # `_MERGE_BASE_OPTION_MIN_GIT` gates `--merge-base`.
+        ("before 2.40 main_branch is merged over git's own merge base",
+         "test_aide_restack::test_between_git_2_38_and_2_40_main_is_merged_over_git_s_own_base"),
+        # `unread`: no record and not landed -> listed on stderr, no step.
+        ("A queue branch with no recorded base (this checkout did not start "
+         "it) is not read into any stack, and is listed with the remedy",
+         "test_aide_restack::test_an_unrecorded_queue_branch_is_listed_and_never_chained"),
+        # The `args.number` block: `branch --track`, `_record_branch_base`,
+        # and `forced`, whose base is merged in.
+        ("`restack NNN --base REF` records REF as queue NNN's base, creating "
+         "the local branch from origin where only origin has it, and merges "
+         "REF in",
+         ("test_aide_restack::test_base_records_a_branch_s_base_and_restacks_it",
+          "test_aide_restack::test_base_creates_a_branch_only_origin_has")),
+        # `broken` -> `return 1` before any fast-forward or merge.
+        ("A recorded base naming a queue branch this checkout does not have, "
+         "or a cycle, refuses the run before anything changes",
+         ("test_aide_restack::test_a_recorded_base_this_checkout_lacks_refuses",
+          "test_aide_restack::test_a_cycle_of_recorded_bases_refuses")),
+        # `remote_on`: fetch, `behind` -> `_advance_branch`, `diverged` -> 1.
+        ("Off local mode it fetches first, fast-forwards each stack branch "
+         "origin is ahead on, refuses a branch that has diverged from origin",
+         ("test_aide_restack::test_review_edits_on_origin_are_fetched_merged_forward_and_pushed",
+          "test_aide_restack::test_a_branch_diverged_from_origin_is_refused")),
+        # `to_push`: `changed` or `ahead`, after the execute loop finished.
+        ("once every merge has succeeded pushes, without force, each stack "
+         "branch it merged into or that is ahead of origin",
+         ("test_aide_restack::test_review_edits_on_origin_are_fetched_merged_forward_and_pushed",
+          "test_aide_restack::test_a_stack_branch_ahead_of_origin_is_pushed_by_a_re_run")),
+        ("local mode never fetches or pushes",
+         "test_aide_restack::test_local_mode_never_fetches_or_pushes"),
+        # `_unsafe_tree_state` -> `return 1`.
+        ("It needs a clean tree",
+         "test_aide_restack::test_an_unclean_tree_is_refused"),
+        # `stopped` -> `return 1` before the push loop; the `finally` aborts
+        # a half-merge and switches back to `start`.
+        ("A conflict aborts that merge, leaves the tree clean and HEAD where "
+         "it started, pushes nothing, and names both branches",
+         ("test_aide_restack::test_a_conflict_stops_with_the_tree_clean_and_head_restored",
+          "test_aide_restack::test_a_conflict_pushes_nothing")),
+        ("Merges made before it stay local, and a re-run pushes them",
+         "test_aide_restack::test_a_stack_branch_ahead_of_origin_is_pushed_by_a_re_run"),
+        # `if dry:` prints every step and push, writes none.
+        ("--dry-run prints the merges, base records and pushes it would make "
+         "and changes nothing",
+         "test_aide_restack::test_dry_run_prints_the_merges_and_changes_nothing"),
+        # `if not steps and not to_push: ... return 0`.
+        ("Exit 0: the stack is consistent, whether or not this run merged "
+         "anything; a re-run with nothing moved merges nothing and says so",
+         "test_aide_restack::test_a_second_run_with_nothing_moved_merges_nothing"),
+        ("1: stopped",
+         ("test_aide_restack::test_a_conflict_stops_with_the_tree_clean_and_head_restored",
+          "test_aide_restack::test_a_branch_diverged_from_origin_is_refused")),
+        # `(args.number is None) != (args.base is None)` -> 2.
+        ("2: usage (NNN without --base, or --base without NNN)",
+         "test_aide_restack::test_number_and_base_go_together"),
     ],
 }
 
