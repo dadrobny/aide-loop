@@ -5321,8 +5321,9 @@ def forward_dependency_warnings(ddir: Path) -> List[str]:
 #: XNAT`, and that row still maps G5 to its stages. The separators are
 #: `_DEPS_SEP`'s, with `/` added and no range dash (`G2–G4` is not a
 #: coverage-row shape); each element must be a G-code, so `G2 and more`
-#: reads G2 alone.
-_COVERAGE_SEP = r"(?:\s*,\s*(?:(?:and|or)\b\s*)?|\s*(?:&|/|\band\b|\bor\b)\s*)"
+#: reads G2 alone. The joining words match in any case (`G2 Or G7`), as
+#: `_DEPS_SEP`'s do; the G-codes themselves stay upper-case, as the vision's are.
+_COVERAGE_SEP = r"(?:\s*,\s*(?:(?i:and|or)\b\s*)?|\s*(?:&|/|\b(?i:and|or)\b)\s*)"
 _COVERAGE_CODES_RE = re.compile(
     r"^\s*(?:\([^)]*\)\s*)?(G\d+(?:" + _COVERAGE_SEP + r"G\d+)*)\b")
 

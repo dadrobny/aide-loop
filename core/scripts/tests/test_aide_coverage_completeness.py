@@ -181,6 +181,10 @@ def test_a_coverage_row_is_read_by_the_codes_opening_its_first_cell(
     ("G2 or G7 Something", [2, 7]),
     ("G2, and G7", [2, 7]),
     ("G2 & G7", [2, 7]),
+    ("G2 AND G7", [2, 7]),
+    ("G2 Or G7", [2, 7]),
+    ("G2, OR G7", [2, 7]),
+    ("G2 and g7", [2]),
     # A conjunction joins codes only: the word after it must be one.
     ("G2 and more", [2]),
     ("G2 or Gx", [2]),
