@@ -1138,6 +1138,203 @@ def test_queue_start_refuses_to_recreate_an_existing_branch(aide, consumer: Path
 
 
 # --------------------------------------------------------------------------- #
+# queue restack — a stack of queue branches kept merged forward (issue #301)
+# --------------------------------------------------------------------------- #
+Q1, Q2 = "aide/queue-001", "aide/queue-002"
+
+
+def _tick_bullet(repo: Path, bullet: str, icon: str, message: str) -> None:
+    """Re-icon one deliverable bullet of progress.md — the edit every queue
+    makes, on adjacent lines, which is what a squash merge meets again."""
+    path = repo / "docs" / "aide" / "progress.md"
+    text = path.read_text(encoding="utf-8")
+    line = next(l for l in text.splitlines() if bullet in l)
+    path.write_text(text.replace(line, f"- {icon} {bullet}"), encoding="utf-8")
+    _commit(repo, message)
+
+
+def _queue_stack(aide, repo: Path) -> None:
+    """main <- queue-001 (ticks the greeter) <- queue-002 (the farewell)."""
+    assert aide.main(["--repo", str(repo), "queue", "start", "1"]) == 0
+    _tick_bullet(repo, "The greeter. *(Item 001)*", "✅", "queue 1 work")
+    assert aide.main(["--repo", str(repo), "queue", "start", "2",
+                      "--base", Q1]) == 0
+    _tick_bullet(repo, "The farewell. *(Item 002)*", "🚧", "queue 2 work")
+
+
+def _restack(aide, repo: Path, *extra: str) -> int:
+    return aide.main(["--repo", str(repo), "queue", "restack", *extra])
+
+
+def _sha(repo: Path, ref: str) -> str:
+    return _git(["rev-parse", ref], repo).stdout.strip()
+
+
+def _contains(repo: Path, ancestor: str, ref: str) -> bool:
+    return _git(["merge-base", "--is-ancestor", ancestor, ref], repo,
+                check=False).returncode == 0
+
+
+def _recorded_base(aide, repo: Path, branch: str) -> str:
+    return _git(["config", "--get", f"branch.{branch}.{aide._BASE_CONFIG_KEY}"],
+                repo, check=False).stdout.strip()
+
+
+def _to_pr_mode_with_origin(repo: Path, tmp_path: Path) -> Path:
+    origin = tmp_path / "origin.git"
+    _git(["init", "--bare", "-b", "main", str(origin)], tmp_path)
+    _git(["remote", "add", "origin", str(origin)], repo)
+    toml = repo / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        'mode = "local"', 'mode = "pr"'), encoding="utf-8")
+    _commit(repo, "chore: pr mode")
+    _git(["push", "-u", "origin", "main"], repo)
+    return origin
+
+
+def test_restack_in_local_mode_merges_a_moved_lower_queue_forward(
+        aide, consumer: Path):
+    _queue_stack(aide, consumer)
+    upper = _sha(consumer, Q2)
+    _git(["switch", Q1], consumer)
+    (consumer / "src" / "review.txt").write_text("edit\n", encoding="utf-8")
+    _commit(consumer, "review edit")
+
+    assert _restack(aide, consumer) == 0
+    assert _contains(consumer, Q1, Q2) and _contains(consumer, upper, Q2)
+    assert _branch(consumer) == Q1
+
+
+def test_restack_fetches_a_review_edit_merges_it_forward_and_pushes(
+        aide, consumer: Path, tmp_path: Path):
+    origin = _to_pr_mode_with_origin(consumer, tmp_path)
+    _queue_stack(aide, consumer)
+    _git(["push", "origin", Q1, Q2], consumer)
+    human = tmp_path / "human"
+    _git(["clone", "--branch", Q1, str(origin), str(human)], tmp_path)
+    _git(["config", "user.email", "h@example.com"], human)
+    _git(["config", "user.name", "Human"], human)
+    (human / "review.txt").write_text("edit\n", encoding="utf-8")
+    _commit(human, "review edit on the PR")
+    _git(["push", "origin", Q1], human)
+
+    assert _restack(aide, consumer) == 0
+    assert _contains(consumer, _sha(human, "HEAD"), Q2)
+    assert _sha(origin, Q2) == _sha(consumer, Q2)
+
+
+@pytest.mark.parametrize("how", ["squash", "merge-commit"])
+def test_restack_after_the_bottom_lands_merges_main_into_the_next_queue(
+        aide, consumer: Path, how: str):
+    """The squash case is the open point #301 raised: main holds queue 1 as
+    one commit while queue 2 holds the originals, on an adjacent line."""
+    _queue_stack(aide, consumer)
+    bottom = _sha(consumer, Q1)
+    _git(["switch", "main"], consumer)
+    if how == "squash":
+        _land_by_squash(consumer, Q1)
+    else:
+        _git(["merge", "--no-ff", "--no-edit", Q1], consumer)
+
+    assert _restack(aide, consumer) == 0
+    assert _contains(consumer, "main", Q2)
+    assert _recorded_base(aide, consumer, Q2) == "main"
+    assert _sha(consumer, Q1) == bottom
+    progress = _git(["show", f"{Q2}:docs/aide/progress.md"], consumer).stdout
+    assert "- ✅ The greeter." in progress and "- 🚧 The farewell." in progress
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
+@pytest.mark.parametrize("start_recorded", [True, False],
+                         ids=["start-recorded", "no-start-record"])
+def test_restack_after_the_bottom_lands_by_fast_forward(
+        aide, consumer: Path, start_recorded: bool):
+    """`local` mode lands a linear queue branch by fast-forward. With the
+    start `queue start` recorded that is a landing; without it git cannot
+    tell it from an empty branch, and the run stops rather than say
+    "consistent"."""
+    _queue_stack(aide, consumer)
+    if not start_recorded:
+        _git(["config", "--unset", f"branch.{Q1}.aide-start"], consumer)
+    _git(["switch", "main"], consumer)
+    _git(["merge", "--ff-only", Q1], consumer)
+    (consumer / "later.txt").write_text("x\n", encoding="utf-8")
+    _commit(consumer, "main moves on")
+    before = _sha(consumer, Q2)
+
+    if start_recorded:
+        assert _restack(aide, consumer) == 0
+        assert _contains(consumer, "main", Q2)
+        assert _recorded_base(aide, consumer, Q2) == "main"
+    else:
+        assert _restack(aide, consumer) == 1
+        assert _sha(consumer, Q2) == before
+        assert _recorded_base(aide, consumer, Q2) == Q1
+
+
+def test_restack_hands_main_to_the_top_when_the_middle_queue_landed(
+        aide, consumer: Path):
+    """Three queues, the bottom one never given a commit: main takes the
+    middle one by fast-forward, and the top queue is still owed main."""
+    q3 = "aide/queue-003"
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    assert aide.main(["--repo", str(consumer), "queue", "start", "2",
+                      "--base", Q1]) == 0
+    _tick_bullet(consumer, "The greeter. *(Item 001)*", "✅", "queue 2 work")
+    assert aide.main(["--repo", str(consumer), "queue", "start", "3",
+                      "--base", Q2]) == 0
+    _tick_bullet(consumer, "The farewell. *(Item 002)*", "🚧", "queue 3 work")
+    _git(["switch", "main"], consumer)
+    _git(["merge", "--ff-only", Q2], consumer)
+    (consumer / "hotfix.txt").write_text("hotfix\n", encoding="utf-8")
+    _commit(consumer, "hotfix")
+
+    assert _restack(aide, consumer) == 0
+    assert _contains(consumer, "main", q3)
+    assert _recorded_base(aide, consumer, q3) == "main"
+
+
+def test_restack_stops_on_a_conflict_with_the_tree_clean_and_nothing_pushed(
+        aide, consumer: Path, tmp_path: Path):
+    origin = _to_pr_mode_with_origin(consumer, tmp_path)
+    _queue_stack(aide, consumer)
+    _tick_bullet(consumer, "The greeter. *(Item 001)*", "🔍", "queue 2 re-icons")
+    _git(["push", "origin", Q1, Q2], consumer)
+    _git(["switch", Q1], consumer)
+    _tick_bullet(consumer, "The greeter. *(Item 001)*", "❌", "queue 1 re-icons")
+    before, pushed = _sha(consumer, Q2), _sha(origin, Q2)
+
+    assert _restack(aide, consumer) == 1
+    assert _sha(consumer, Q2) == before and _sha(origin, Q2) == pushed
+    assert _branch(consumer) == Q1
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
+def test_restack_dry_run_writes_nothing(aide, consumer: Path):
+    _queue_stack(aide, consumer)
+    _git(["switch", "main"], consumer)
+    _land_by_squash(consumer, Q1)
+    tips = (_sha(consumer, Q1), _sha(consumer, Q2))
+
+    assert _restack(aide, consumer, "--dry-run") == 0
+    assert (_sha(consumer, Q1), _sha(consumer, Q2)) == tips
+    assert _recorded_base(aide, consumer, Q2) == Q1
+    assert _branch(consumer) == "main"
+
+
+def test_restack_a_second_time_with_nothing_moved_changes_nothing(
+        aide, consumer: Path):
+    _queue_stack(aide, consumer)
+    _git(["switch", "main"], consumer)
+    _land_by_squash(consumer, Q1)
+    assert _restack(aide, consumer) == 0
+    tips = (_sha(consumer, Q1), _sha(consumer, Q2))
+
+    assert _restack(aide, consumer) == 0
+    assert (_sha(consumer, Q1), _sha(consumer, Q2)) == tips
+
+
+# --------------------------------------------------------------------------- #
 # claim — creates the branch and records its base
 # --------------------------------------------------------------------------- #
 def test_claim_creates_switches_to_and_records_the_branch(aide, consumer: Path):

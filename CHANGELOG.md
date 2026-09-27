@@ -121,6 +121,76 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.14.0] — 2026-09-27
+
+### Added
+
+- **`aide queue restack` keeps a stack of queue branches merged forward
+  (issue #301, part of #258).** A queue started on the one below it (`aide
+  queue start M --base <prefix>queue-N`) makes a stack, `main` ← queue N ←
+  queue M, and until now nothing kept it consistent: a review edit pushed to
+  queue N's PR never reached queue M, and once N landed, M's PR still showed
+  N's changes. The verb merges each moved lower branch into the branch above
+  it, bottom up, and once any branch of the stack has landed in
+  `main_branch` — each judged at its own step, whatever lies below it —
+  merges `main_branch` into the next branch up and re-records that branch's
+  base as `main_branch`, so `merge`, `scope` and `status` resolve against
+  it. An open branch left beneath a landed one is not touched. It
+  **merges and never rebases**, so every push is a plain one.
+  - **Git only.** "Landed" is the content comparison `gc` already trusts
+    (`git merge-tree --write-tree`, git 2.38+), so a squash or rebase merge
+    counts; older git falls back to ancestry and sees only a merge commit. No
+    pull request is read and no host CLI is called, so it works in `local`
+    mode and with no `gh`; a PR closed without merging looks open to it, and
+    the caller checks for one first.
+  - **A fast-forward landing is recognised by its start.** `queue start` now
+    also records the commit a queue branch started from
+    (`branch.<name>.aide-start`, local git config beside `aide-base`). A
+    stack branch whose tip is on `main_branch`'s first-parent history has
+    landed by fast-forward — `local` mode's own landing — when it is past
+    where it started, and is open with no commits of its own when it is at
+    it. Where it started is that record, or, above another branch, that
+    branch's tip, so only a bottom can be undecidable: with no start
+    recorded (started before 2.14.0, or on another machine) each branch
+    above it that has not itself landed is left alone, the run exits 1 and
+    never reports the stack consistent, and the message names both
+    remedies.
+  - **Squash merges are clean.** The fixture measured it: after a squash, a
+    plain forward merge of `main_branch` meets the bottom's changes twice and
+    conflicts wherever the upper edited next to them — which is every queue,
+    in `progress.md`. The verb uses the landed branch's tip as the merge base
+    (`merge-tree --merge-base`, git 2.40+), so a merge commit, a squash or a
+    rebase merge may land a stack branch, and §4 asks for none of them.
+  - **The stack is read from the recorded bases** of `<prefix>queue-NNN`
+    branches (a specs-queue branch is never in one). A queue branch with no
+    record — started on another machine, or before stacking — is listed and
+    left alone, never chained by number; `queue restack NNN --base REF`
+    records one, bottom up, creating the local branch from origin where only
+    origin has it, and a start where none is recorded; the base is written
+    only after the merge it implies, so a run that stops keeps the record it
+    found. A recorded base this checkout lacks, or a cycle, refuses
+    before anything changes.
+  - **Off `local` mode** it fetches, fast-forwards stack branches origin is
+    ahead on, refuses one that has diverged, and pushes each branch it merged
+    into or that is ahead of origin, only after every merge succeeded.
+    `local` mode never fetches or pushes.
+  - **One commit behaviour on every git version:** the merge commits honour
+    `commit.gpgSign` (a signing failure stops the run with nothing moved) and
+    run no commit hook.
+  - **A conflict is a stop:** nothing is resolved, the tree is left clean and
+    HEAD where it started, nothing is pushed, and both branches are named.
+    `--dry-run` prints the plan and changes nothing. Exit 0 when the stack is
+    consistent (a re-run with nothing moved says so), 1 when stopped, 2 on
+    usage.
+
+  `aide queue -h` states the mechanism, pinned in `test_aide_help_pins.py`;
+  §4 states the rule and its rationale, and §3's verb list names the verb.
+  `queue start` and `queue tidy` now exit 2 with a sentence when the number
+  is missing, since `NNN` is optional for `restack`. **`AGENT-CONTEXT.md`'s
+  verb list names `restack`**, and with §3's the always-on floor moves
+  from 9,059 to 9,136 content bytes. Nothing to edit in a consumer: the verb
+  is new, and `/aide-run-roadmap` does not call it yet (issue #302).
+
 ## [2.13.1] — 2026-09-27
 
 ### Fixed

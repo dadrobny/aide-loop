@@ -15,6 +15,7 @@ Subcommands::
     python .aide/scripts/aide.py gate list|approve|decline [N|ID]  # human gates in progress.md
     python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
+    python .aide/scripts/aide.py queue restack         # merge a stack of queue branches forward
     python .aide/scripts/aide.py insights list|tick|archive|resolve  # the insight inbox
     python .aide/scripts/aide.py ledger abandon NNN --rounds N  # the ledger row for an item that never merged
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
@@ -8516,10 +8517,17 @@ def cmd_ledger(args: argparse.Namespace) -> int:
 
 
 def cmd_queue(args: argparse.Namespace) -> int:
+    if args.action == "restack":
+        return _queue_restack(args)
+    if args.number is None:
+        print(f"usage: aide queue {args.action} NNN — {args.action} takes a "
+              f"queue number", file=sys.stderr)
+        return 2
     if args.action == "start":
         return _queue_start(args)
     if args.action != "tidy":
-        print("usage: aide queue {start|tidy} NNN", file=sys.stderr)
+        print("usage: aide queue {start|tidy} NNN | aide queue restack "
+              "[NNN --base REF]", file=sys.stderr)
         return 2
     import datetime as _dt
     repo_root = find_repo_root(args.repo)
@@ -8594,6 +8602,10 @@ def _queue_start(args: argparse.Namespace) -> int:
     # disagree with the base it records.
     git(["switch", "-c", branch, base], repo_root)
     _record_branch_base(repo_root, branch, base)
+    # The commit it forked from: what lets `queue restack` tell a queue
+    # branch main_branch was fast-forwarded to from one with no commits of
+    # its own (issue #301).
+    _record_branch_start(repo_root, branch, _rev(repo_root, base))
     # `/aide-run-roadmap` (queue-planner) and `/aide-spec-queue` (spec-author,
     # spec-reviewer) start here and reach a role before any `check` runs, so
     # the inbox is guaranteed at the same point `claim` guarantees it.
@@ -8610,6 +8622,579 @@ def _queue_start(args: argparse.Namespace) -> int:
             return 1
     note = "" if base == str(config["git"].get("main_branch", "main")) else f" (base {base})"
     print(f"started {branch}{note}")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# queue restack — keep a stack of queue branches merged forward (issue #301)
+# --------------------------------------------------------------------------- #
+#: Only `<prefix>queue-NNN` stacks. A specs-queue branch is where a queue's
+#: specs were authored in the two-branch flow and lands on its own queue
+#: branch, so it is never the base of another queue's PR; since 2.13.1 the
+#: specs are written on the queue branch itself.
+_STACK_TOKEN_RE = re.compile(re.escape(_QUEUE_TOKEN) + r"\d+$")
+#: `merge-tree --merge-base` — what lets a squash-merged lower be merged past.
+_MERGE_BASE_OPTION_MIN_GIT = (2, 40)
+
+
+def _is_stack_branch(branch: str, prefix: str) -> bool:
+    return (branch.startswith(prefix)
+            and _STACK_TOKEN_RE.match(branch[len(prefix):]) is not None)
+
+
+def _rev(repo_root: Path, ref: str) -> str:
+    return git(["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+               repo_root, check=False).stdout.strip()
+
+
+def _is_ancestor(repo_root: Path, ancestor: str, ref: str) -> bool:
+    return git(["merge-base", "--is-ancestor", ancestor, ref],
+               repo_root, check=False).returncode == 0
+
+
+def _on_first_parent_chain(repo_root: Path, tip: str, main: str) -> bool:
+    """Is *tip* a commit on *main*'s first-parent history?
+
+    The first-parent walk from *main* down to the first commit *tip* reaches:
+    the commit below the oldest one listed is *tip* itself exactly when *tip*
+    sits on the chain. That is the shape of a branch with no commits of its
+    own, and of one *main* was fast-forwarded to — git alone cannot tell the
+    two apart; the start commit `queue start` records can.
+    """
+    tip_sha, main_sha = _rev(repo_root, tip), _rev(repo_root, main)
+    if not tip_sha or not main_sha:
+        return False
+    if tip_sha == main_sha:
+        return True
+    out = git(["rev-list", "--first-parent", f"{tip_sha}..{main_sha}"],
+              repo_root, check=False).stdout.split()
+    if not out:
+        return False
+    return _rev(repo_root, f"{out[-1]}^1") == tip_sha
+
+
+def _stack_branch_landed(repo_root: Path, main: str, ref: str,
+                         start: Optional[str] = None) -> Optional[bool]:
+    """Has *ref*'s work landed in *main*? Git only — never a pull request.
+
+    A tip on *main*'s first-parent history is a fast-forward landing when the
+    branch has moved past its recorded *start*, and a branch with no commits
+    of its own when it has not; with no *start* the two cannot be told apart,
+    and the answer is None — a caller must neither read it as landed nor
+    report the stack consistent over it. Off that history,
+    `_branch_content_landed` is the oracle `gc` trusts before `-D`, and it sees
+    a squash or rebase merge; where git is too old for it, ancestry is the
+    fallback, which sees only a merge commit.
+    """
+    tip = _rev(repo_root, ref)
+    if not tip:
+        return False
+    if _on_first_parent_chain(repo_root, ref, main):
+        if not start:
+            return None
+        return tip != start and _is_ancestor(repo_root, start, tip)
+    content = _branch_content_landed(repo_root, main, ref)
+    if content is None:
+        return _is_ancestor(repo_root, ref, main)
+    return content
+
+
+def _other_worktree_branches(repo_root: Path) -> Set[str]:
+    """Branches checked out in a worktree other than this one."""
+    here = git(["rev-parse", "--show-toplevel"], repo_root, check=False).stdout.strip()
+    out: Set[str] = set()
+    path: Optional[str] = None
+    for line in git(["worktree", "list", "--porcelain"],
+                    repo_root, check=False).stdout.splitlines():
+        if line.startswith("worktree "):
+            path = line[len("worktree "):].strip()
+        elif line.startswith("branch refs/heads/") and path is not None:
+            try:
+                same = Path(path).resolve() == Path(here).resolve()
+            except OSError:
+                same = False
+            if not same:
+                out.add(line[len("branch refs/heads/"):].strip())
+    return out
+
+
+def _advance_branch(repo_root: Path, branch: str, new: str,
+                    current: str) -> Optional[str]:
+    """Move *branch* forward to *new*: None, or git's words for why not.
+
+    The checked-out branch moves with its working tree (`merge --ff-only` over
+    the clean tree the verb requires); any other branch by `update-ref`, which
+    names the old value so a concurrent change to the ref is refused rather
+    than overwritten.
+    """
+    if branch == current:
+        res = git(["merge", "--ff-only", "--quiet", new], repo_root, check=False)
+    else:
+        old = _rev(repo_root, branch)
+        res = git(["update-ref", "-m", "aide queue restack",
+                   f"refs/heads/{branch}", new, old], repo_root, check=False)
+    if res.returncode == 0:
+        return None
+    return (res.stderr.strip() or res.stdout.strip()
+            or f"git exited {res.returncode}")
+
+
+def _restack_merge(repo_root: Path, upper: str, other: str, current: str,
+                   merge_base: Optional[str] = None) -> Optional[str]:
+    """Merge *other* into *upper*: None on success, else why it stopped.
+
+    With `merge-tree --write-tree` (git 2.38+) the merge is computed without
+    touching the working tree, so a conflict leaves nothing to abort; the
+    commit is then written with both parents and *upper* moved forward to it.
+    *merge_base* is honoured where git has `--merge-base` (2.40+): it is how a
+    squash-merged lower's tip stands in for the ancestry main_branch lacks.
+    On older git the merge runs in the working tree, and a conflict is aborted
+    here; the caller restores the branch the run started on. Both paths honour
+    `commit.gpgSign` and run no commit hook.
+    """
+    if _is_ancestor(repo_root, upper, other):
+        # Nothing of *upper*'s own to keep: the merge git would make is a
+        # fast-forward, so make that rather than a two-parent commit.
+        return _advance_branch(repo_root, upper, _rev(repo_root, other), current)
+    if _has_merge_tree(repo_root):
+        cmd = ["merge-tree", "--write-tree", "--name-only", "--no-messages"]
+        version = _git_version(repo_root)
+        if merge_base and version is not None and version >= _MERGE_BASE_OPTION_MIN_GIT:
+            cmd.append(f"--merge-base={merge_base}")
+        res = git([*cmd, upper, other], repo_root, check=False)
+        lines = res.stdout.splitlines()
+        if res.returncode == 1:
+            paths = [l.strip() for l in lines[1:] if l.strip()]
+            return f"conflicts in {', '.join(paths) or 'the tree'}"
+        if res.returncode != 0 or not lines:
+            return (res.stderr.strip() or f"git merge-tree exited {res.returncode}")
+        # `commit-tree` ignores `commit.gpgSign`; `git merge` below honours
+        # it. Asked for here, so both paths sign, and a signing failure stops
+        # the run with nothing moved on either.
+        sign = git(["config", "--type=bool", "--get", "commit.gpgSign"],
+                   repo_root, check=False).stdout.strip() == "true"
+        commit = git(["commit-tree", *(["-S"] if sign else []),
+                      lines[0].strip(), "-p", upper, "-p", other,
+                      "-m", f"Merge {other} into {upper} (aide queue restack)"],
+                     repo_root, check=False)
+        if commit.returncode != 0:
+            return commit.stderr.strip() or "git commit-tree failed"
+        return _advance_branch(repo_root, upper, commit.stdout.strip(), current)
+    switched = git(["switch", "--quiet", upper], repo_root, check=False)
+    if switched.returncode != 0:
+        return switched.stderr.strip() or f"could not switch to {upper}"
+    # `--no-verify`: `commit-tree` above runs no hook, so neither does this —
+    # one behaviour on every git version (issue #301).
+    res = git(["merge", "--no-edit", "--no-verify", "--quiet", "-m",
+               f"Merge {other} into {upper} (aide queue restack)", other],
+              repo_root, check=False)
+    if res.returncode == 0:
+        return None
+    paths = _unmerged_paths(repo_root)
+    if (_git_dir(repo_root) / "MERGE_HEAD").exists():
+        git(["merge", "--abort"], repo_root, check=False)
+    if paths:
+        return f"conflicts in {', '.join(paths)}"
+    return res.stderr.strip() or res.stdout.strip() or "git merge failed"
+
+
+def _queue_restack(args: argparse.Namespace) -> int:
+    """Merge a stack of queue branches forward; see `aide queue -h`.
+
+    Git only, by decision (issue #301): no pull-request state is read and no
+    host CLI is called, so the verb behaves the same in `local` mode, on a
+    machine with no `gh`, and on any host. "Landed" is the content oracle
+    `gc` already trusts. "Closed without merging" is not visible to git — the
+    branch is simply still there — so a caller that can see PRs checks for
+    that before calling this.
+    """
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    mode = str(config["git"].get("mode", "auto-merge"))
+    main = str(config["git"].get("main_branch", "main"))
+    dry = bool(args.dry_run)
+    say = "would " if dry else ""
+    tag = "aide queue restack"
+
+    if (args.number is None) != (args.base is None):
+        print(f"usage: aide queue restack [NNN --base REF] — NNN and --base "
+              f"go together: they record REF as queue NNN's base",
+              file=sys.stderr)
+        return 2
+    unsafe = _unsafe_tree_state(repo_root)
+    if unsafe:
+        print(f"{tag}: refusing — {unsafe}. Restacking merges into branches "
+              f"and may move the checked-out one; commit, stash or finish "
+              f"that state, then re-run.", file=sys.stderr)
+        return 1
+    if not _local_branch_exists(repo_root, main):
+        print(f"{tag}: main_branch '{main}' is not a local branch here, so "
+              f"there is no bottom to read a stack from", file=sys.stderr)
+        return 1
+
+    remote_on = mode != "local" and _has_origin(repo_root)
+    if remote_on:
+        fetched = git(["fetch", "--prune", "origin"], repo_root, check=False)
+        if fetched.returncode != 0:
+            detail = fetched.stderr.strip() or f"git exited {fetched.returncode}"
+            print(f"{tag}: fetching origin FAILED — {detail}\nNothing was "
+                  f"changed: without the fetch a lower branch's review edits "
+                  f"on origin would be missed. Re-run once origin is "
+                  f"reachable.", file=sys.stderr)
+            return 1
+
+    local = set(_local_branches(repo_root))
+    remote = set(_remote_branches(repo_root)) if remote_on else set()
+    stack_names = sorted(b for b in local | remote if _is_stack_branch(b, prefix))
+
+    def ref(b: str) -> str:
+        return b if b in local else f"origin/{b}"
+
+    bases: Dict[str, str] = {b: _recorded_branch_base(repo_root, b) or ""
+                             for b in stack_names if b in local}
+    forced: Optional[str] = None
+    if args.number is not None:
+        target = queue_branch_name(prefix, args.number)
+        given = args.base
+        if target not in local and target not in remote:
+            print(f"{tag}: {target} exists neither here nor on origin",
+                  file=sys.stderr)
+            return 1
+        if given != main and not (_is_stack_branch(given, prefix)
+                                  and given in local):
+            print(f"{tag}: --base '{given}' must be main_branch ('{main}') or "
+                  f"a <prefix>queue-NNN branch this checkout has — record a "
+                  f"lower branch first ('queue restack <its NNN> --base "
+                  f"<its base>'), bottom up", file=sys.stderr)
+            return 1
+        if given == target:
+            print(f"{tag}: {target} cannot be its own base", file=sys.stderr)
+            return 1
+        if given != main and not bases.get(given):
+            print(f"{tag}: {given} has no recorded base of its own, so a "
+                  f"branch stacked on it cannot be read either — record it "
+                  f"first ('queue restack "
+                  f"{given[len(prefix) + len(_QUEUE_TOKEN):]} --base <its "
+                  f"base>'), bottom up. Nothing was changed.", file=sys.stderr)
+            return 1
+        if not dry and target not in local:
+            made = git(["branch", "--track", target, f"origin/{target}"],
+                       repo_root, check=False)
+            if made.returncode != 0:
+                print(f"{tag}: could not create {target} from origin — "
+                      f"{made.stderr.strip()}", file=sys.stderr)
+                return 1
+            local.add(target)
+        # The base itself is written as a planned step, after the merges it
+        # implies: a run that stops on a conflict must leave the record it
+        # found, or the next run reads a stack the branches do not have.
+        # A missing start record is written now — it is a fact about where
+        # the branch forked, true whatever the merge does.
+        if not dry and not _recorded_branch_start(repo_root, target):
+            _record_branch_start(repo_root, target, git(
+                ["merge-base", ref(target), given], repo_root,
+                check=False).stdout.strip())
+        bases[target] = given
+        forced = target
+
+    # ---- read the stack --------------------------------------------------- #
+    unread: List[str] = []
+    outside: List[str] = []
+    broken: List[str] = []
+    for b in stack_names:
+        base = bases.get(b, "")
+        if not base:
+            if not _stack_branch_landed(repo_root, main, ref(b)):
+                unread.append(b)       # None (cannot tell) included
+        elif base in bases and not bases[base]:
+            broken.append(f"{b} records {base} as its base, which has no "
+                          f"recorded base of its own")
+        elif base == main or (base in bases and base != b):
+            continue
+        elif _is_stack_branch(base, prefix):
+            broken.append(f"{b} records {base} as its base, and this "
+                          f"checkout has no local {base}")
+        else:
+            outside.append(f"{b} (based on {base})")
+    uppers: Dict[str, List[str]] = {}
+    for b, base in bases.items():
+        if base and base != main and base in bases:
+            uppers.setdefault(base, []).append(b)
+    order: List[str] = []
+    queue_ = sorted(b for b, base in bases.items() if base == main)
+    while queue_:
+        b = queue_.pop(0)
+        order.append(b)
+        queue_.extend(sorted(uppers.get(b, [])))
+    # Only a real cycle is named as one: a branch left out of `order` because
+    # a base below it is unrecorded is already in `broken` for that reason.
+    cyclic: List[str] = []
+    for b in bases:
+        seen, x = [b], bases[b]
+        while x in bases and x not in seen and bases[x] and bases[x] != main:
+            seen.append(x)
+            x = bases[x]
+        if x == b:
+            cyclic.append(b)
+    cyclic.sort()
+    if cyclic:
+        broken.append(f"{', '.join(cyclic)} record bases that form a cycle")
+    if broken:
+        print(f"{tag}: the stack cannot be read, and nothing was changed — "
+              f"{'; '.join(broken)}. If the missing branch landed in {main}, "
+              f"'queue restack <NNN> --base {main}' re-records the branch "
+              f"above it; if it is on origin, 'queue restack <its NNN> --base "
+              f"<its base>' creates and records it.", file=sys.stderr)
+        return 1
+    for b in unread:
+        print(f"{tag}: {b} has no recorded base (this checkout did not start "
+              f"it), so it is not read into any stack; if it belongs to one, "
+              f"'queue restack {b[len(prefix) + len(_QUEUE_TOKEN):]} --base "
+              f"<its base>' records it", file=sys.stderr)
+    for b in outside:
+        print(f"{tag}: {b} is not stacked on main_branch or a queue branch, "
+              f"so it is left alone")
+
+    # Only branches in a stack of two or more — or the one --base named — are
+    # touched. A lone queue branch on main_branch is the ordinary one-queue
+    # flow, and restacking it would merge main_branch into it unasked.
+    members = [b for b in order
+               if b == forced or bases[b] != main or uppers.get(b)]
+    if not members:
+        print(f"{tag}: no stack of queue branches to restack — nothing to do")
+        return 0
+
+    # ---- bring the stack level with origin -------------------------------- #
+    behind: Dict[str, str] = {}
+    ahead: Set[str] = set()
+    if remote_on:
+        diverged: List[str] = []
+        for b in [main, *members]:
+            if b not in local or b not in remote:
+                continue
+            here, there = _rev(repo_root, b), _rev(repo_root, f"origin/{b}")
+            if here == there:
+                continue
+            if _is_ancestor(repo_root, here, there):
+                behind[b] = there
+            elif _is_ancestor(repo_root, there, here):
+                ahead.add(b)
+            else:
+                diverged.append(b)
+        if diverged:
+            print(f"{tag}: refusing — {', '.join(diverged)} "
+                  f"{'has' if len(diverged) == 1 else 'have'} diverged from "
+                  f"origin. Restacking merges and pushes without force, so it "
+                  f"will not choose a side: reconcile "
+                  f"{'it' if len(diverged) == 1 else 'them'} with origin, "
+                  f"then re-run. Nothing was changed.", file=sys.stderr)
+            return 1
+    others = _other_worktree_branches(repo_root)
+    busy = sorted(b for b in set(members) | set(behind) if b in others)
+    if busy:
+        print(f"{tag}: refusing — {', '.join(busy)} "
+              f"{'is' if len(busy) == 1 else 'are'} checked out in another "
+              f"worktree, and moving a branch under a checkout desynchronises "
+              f"it. Nothing was changed.", file=sys.stderr)
+        return 1
+
+    start = _current_branch(repo_root)
+    start_sha = _rev(repo_root, "HEAD")
+
+    def eff(b: str) -> str:
+        """The ref *b* is judged by: origin's where this run fast-forwards to it."""
+        return f"origin/{b}" if dry and b in behind else ref(b)
+
+    if not dry:
+        for b, sha in behind.items():
+            failure = _advance_branch(repo_root, b, sha, start)
+            if failure:
+                print(f"{tag}: fast-forwarding {b} to origin FAILED — "
+                      f"{failure}", file=sys.stderr)
+                return 1
+    for b in behind:
+        print(f"{tag}: {say}fast-forward {b} to origin/{b}")
+
+    # ---- plan ------------------------------------------------------------- #
+    # Every step is decided from the refs as they stand, before any merge is
+    # made: which lower landed and which upper already contains its lower do
+    # not change under a merge into a *different* branch, and a branch this
+    # run merges into is marked `changed`, so the one above it takes the merge.
+    steps: List[Tuple[str, str, str, Optional[str]]] = []  # (kind, upper, other, merge_base)
+    changed: Set[str] = set()
+    landed: Set[str] = set()
+    held: List[str] = []        # bottoms git cannot judge, and what resolves each
+    blocked: Dict[str, str] = {}  # branch -> the unjudged bottom beneath it
+    base_now = dict(bases)
+    starts = {b: _recorded_branch_start(repo_root, b) for b in members}
+
+    def number(b: str) -> str:
+        return b[len(prefix) + len(_QUEUE_TOKEN):]
+
+    for b in order:
+        if b not in members:
+            continue
+        lower = base_now[b]
+        # Each branch's own landing is judged at its own step, whatever lies
+        # below it: a branch main_branch took whole (by merge, squash, rebase
+        # or fast-forward) has everything beneath it that it holds, so the
+        # branch above it is owed main_branch even while a lower stays open.
+        # Only a branch with commits beyond its lower can have landed on its
+        # own; one without has landed exactly when its lower has. Above a
+        # lower, the lower's tip is where the branch started, recorded or not
+        # — so only a bottom can be undecidable.
+        if lower == main:
+            verdict = _stack_branch_landed(repo_root, eff(main), eff(b),
+                                           starts.get(b))
+        elif _is_ancestor(repo_root, eff(b), eff(lower)):
+            verdict = False
+        else:
+            verdict = _stack_branch_landed(
+                repo_root, eff(main), eff(b),
+                starts.get(b) or _rev(repo_root, eff(lower)))
+        if verdict:
+            landed.add(b)
+            if lower != main:
+                base_now[b] = main
+                steps.append(("record", b, main, None))
+            continue
+        if lower in blocked:
+            root = blocked[lower]
+            blocked[b] = root
+            if root == lower:
+                held.append(
+                    f"{lower}'s tip is on {main}'s first-parent history and "
+                    f"no start is recorded for it, so git cannot tell whether "
+                    f"{main} was fast-forwarded to it (it landed) or it has no "
+                    f"commits of its own (it is open); {b} above it is left "
+                    f"as it is. If it landed: 'queue restack {number(b)} "
+                    f"--base {main}'. If it is open: 'queue restack "
+                    f"{number(lower)} --base {main}' records its start")
+            continue
+        if verdict is None:             # a bottom only, see above
+            blocked[b] = b
+            continue
+        if lower == main:
+            # Not into a branch with nothing main_branch lacks: that merge is
+            # a fast-forward, after which an open branch reads as one that
+            # landed.
+            if (b == forced and not _is_ancestor(repo_root, eff(main), eff(b))
+                    and not _is_ancestor(repo_root, eff(b), eff(main))):
+                steps.append(("merge", b, main, None))
+                changed.add(b)
+            if b == forced and _recorded_branch_base(repo_root, b) != main:
+                steps.append(("record", b, main, None))
+            continue
+        if lower not in landed:
+            if lower in changed or not _is_ancestor(repo_root, eff(lower), eff(b)):
+                steps.append(("merge", b, lower, None))
+                changed.add(b)
+            continue
+        base_now[b] = main
+        if not _is_ancestor(repo_root, eff(lower), eff(b)):
+            steps.append(("merge", b, lower, None))
+            changed.add(b)
+        if not _is_ancestor(repo_root, eff(main), eff(b)):
+            # A squash or rebase merge leaves main_branch without the lower's
+            # commits, so git's own merge base is the stack's fork point and
+            # the lower's changes meet themselves — a conflict wherever the
+            # upper edited next to them. The lower's tip, inside `b` by now,
+            # is the base that says "already in both".
+            squashed = not _is_ancestor(repo_root, eff(lower), eff(main))
+            steps.append(("merge", b, main,
+                          _rev(repo_root, eff(lower)) if squashed else None))
+            changed.add(b)
+        steps.append(("record", b, main, None))
+    if forced and forced not in blocked and forced in members and not any(
+            k == "record" and u == forced for k, u, _o, _m in steps) \
+            and _recorded_branch_base(repo_root, forced) != bases[forced]:
+        # Right after the forced branch's own merges, before any branch above
+        # it: a stop further up must not cost a record whose merges landed.
+        rank = {b: i for i, b in enumerate(order)}
+        at = sum(1 for _k, u, _o, _m in steps if rank[u] <= rank[forced])
+        steps.insert(at, ("record", forced, bases[forced], None))
+
+    to_push: List[str] = []
+    if mode != "local":
+        to_push = [b for b in members
+                   if b not in landed and (b in changed or b in ahead)]
+
+    if not steps and not to_push and not held:
+        print(f"{tag}: every stack is consistent — nothing to merge")
+        return 0
+
+    # ---- execute ---------------------------------------------------------- #
+    done: List[str] = []
+    stopped: Optional[str] = None
+    if dry:
+        for kind, upper, other, _mb in steps:
+            print(f"{tag}: would merge {other} into {upper}" if kind == "merge"
+                  else f"{tag}: would record {other} as {upper}'s base")
+    else:
+        try:
+            with _restore_on_signal():
+                for kind, upper, other, mb in steps:
+                    if kind == "record":
+                        _record_branch_base(repo_root, upper, other)
+                        print(f"{tag}: recorded {other} as {upper}'s base")
+                        continue
+                    if _is_ancestor(repo_root, other, upper):
+                        continue
+                    failure = _restack_merge(repo_root, upper, other,
+                                             _current_branch(repo_root), mb)
+                    if failure:
+                        stopped = (f"merging {other} into {upper} stopped — "
+                                   f"{failure}. The merge was not made and "
+                                   f"{upper} is as it was: resolving it is a "
+                                   f"person's call, never this verb's")
+                        break
+                    done.append(upper)
+                    print(f"{tag}: merged {other} into {upper}")
+        finally:
+            if (_git_dir(repo_root) / "MERGE_HEAD").exists():
+                git(["merge", "--abort"], repo_root, check=False)
+            if _current_branch(repo_root) != start or start == "HEAD":
+                if start == "HEAD":
+                    git(["switch", "--quiet", "--detach", start_sha],
+                        repo_root, check=False)
+                else:
+                    git(["switch", "--quiet", start], repo_root, check=False)
+    for line in held if stopped else []:
+        print(f"{tag}: {line}.", file=sys.stderr)
+    if stopped:
+        kept = sorted(set(done))
+        print(f"{tag}: {stopped}.\n"
+              + (f"Merges made before it stay local and unpushed "
+                 f"({', '.join(kept)}); a re-run after the conflict is "
+                 f"settled pushes them.\n" if kept else "")
+              + "Nothing was pushed.", file=sys.stderr)
+        return 1
+
+    failures: List[str] = []
+    for b in to_push:
+        if dry:
+            print(f"{tag}: would push {b}")
+            continue
+        failure = _push_new_branch(repo_root, b)
+        if failure:
+            failures.append(failure)
+        else:
+            print(f"{tag}: pushed {b}")
+    if failures:
+        print(f"{tag}: " + "\n".join(failures) + "\nThe merges are made "
+              f"locally and nothing is lost; re-run 'aide queue restack' once "
+              f"origin is reachable — it pushes every stack branch ahead of "
+              f"origin.", file=sys.stderr)
+        return 1
+    if dry:
+        print(f"{tag}: dry run — nothing was changed")
+    if held:
+        # Never "consistent" over a lower git cannot judge: the branch above
+        # it may be owed main_branch, and nothing here can say.
+        for line in held:
+            print(f"{tag}: {line}.", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -10961,6 +11546,23 @@ def _record_branch_base(repo_root: Path, branch: str, base: str) -> None:
         repo_root, check=False)
 
 
+#: Beside the base, and local for the same reason: the commit a queue branch
+#: was started from, recorded by `queue start` (issue #301).
+_START_CONFIG_KEY = "aide-start"
+
+
+def _record_branch_start(repo_root: Path, branch: str, sha: str) -> None:
+    if sha:
+        git(["config", f"branch.{branch}.{_START_CONFIG_KEY}", sha],
+            repo_root, check=False)
+
+
+def _recorded_branch_start(repo_root: Path, branch: str) -> Optional[str]:
+    res = git(["config", "--get", f"branch.{branch}.{_START_CONFIG_KEY}"],
+              repo_root, check=False)
+    return res.stdout.strip() or None
+
+
 def _recorded_branch_base(repo_root: Path, branch: str) -> Optional[str]:
     if not branch:
         return None
@@ -12636,15 +13238,96 @@ def build_parser() -> argparse.ArgumentParser:
     p_gate.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
     p_gate.set_defaults(func=cmd_gate)
 
-    p_queue = sub.add_parser("queue", help="queue branch creation / maintenance")
-    p_queue.add_argument("action", choices=["start", "tidy"])
-    p_queue.add_argument("number", type=int)
+    p_queue = sub.add_parser(
+        "queue", help="queue branch creation / maintenance, and keeping a "
+        "stack of queue branches merged forward (restack)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "restack keeps a stack of queue branches consistent: main_branch "
+            "<- <prefix>queue-N <- <prefix>queue-M <- ..., each started with "
+            "`aide queue start M --base <prefix>queue-N`. The stack is read "
+            "from the base each queue branch recorded at `queue start`; a "
+            "specs-queue branch is never part of one. Bottom up, each lower "
+            "branch is merged into the one above it wherever the upper does "
+            "not already contain it. It merges and never rebases, so nothing "
+            "is ever force-pushed. Its merge commits honour commit.gpgSign "
+            "and run no commit hook, on every git version.\n"
+            "\n"
+            "Each stack branch's own landing is judged at its own step, "
+            "whatever lies below it. A branch whose content has landed in "
+            "main_branch — by a merge commit, a squash or a rebase "
+            "merge, judged by the same merge-tree comparison `gc` uses, or by "
+            "a fast-forward past the commit it started from — is left "
+            "alone, and main_branch is merged into the branch above it with "
+            "the landed branch's tip as the merge base, so a squash merge "
+            "does not conflict with the commits it squashed; that branch's "
+            "recorded base becomes main_branch. Where a branch started is "
+            "the start commit `queue start` recorded for it, or, above "
+            "another branch, that branch's tip; a branch with no commits "
+            "beyond its lower is not judged on its own, and is handed "
+            "main_branch when its lower has landed. A "
+            "branch whose tip is on main_branch's first-parent history and "
+            "still at its start has no commits of its own, and is open; an "
+            "open branch beneath one that landed keeps its record and is "
+            "left alone, and once the branch above it is handed to "
+            "main_branch it holds no stack. Only a bottom branch can go "
+            "unjudged: with no start recorded (one started before 2.14.0, or "
+            "on another machine) git cannot tell a fast-forward landing from "
+            "a branch with no commits of its own, so each branch above it "
+            "that has not itself landed is left as it is, the run exits 1 "
+            "and never reports the stack consistent, and the message names "
+            "both remedies. On git older than 2.38 only an ancestry merge is "
+            "seen, so a squash-merged branch reads as still open; before "
+            "2.40 main_branch is merged over git's own merge base.\n"
+            "\n"
+            "It reads git and never a pull request: a PR closed without "
+            "merging looks exactly like one still open, so a caller checks "
+            "for a closed PR before it restacks.\n"
+            "\n"
+            "A queue branch with no recorded base (this checkout did not "
+            "start it) is not read into any stack, and is listed with the "
+            "remedy: `restack NNN --base REF` records REF as queue NNN's "
+            "base, creating the local branch from origin where only origin "
+            "has it, and merges REF in unless the branch has nothing REF "
+            "lacks; the base is written after that merge, so a run that "
+            "stops keeps the record it found. Where no start is recorded it "
+            "records one, the branch's merge base with REF. A recorded base naming a queue "
+            "branch this checkout does not have, or a cycle, refuses the run "
+            "before anything changes.\n"
+            "\n"
+            "Off local mode it fetches first, fast-forwards each stack "
+            "branch origin is ahead on, refuses a branch that has diverged "
+            "from origin, and once every merge has succeeded pushes, without "
+            "force, each stack branch it merged into or that is ahead of "
+            "origin. local mode never fetches or pushes.\n"
+            "\n"
+            "It needs a clean tree, and refuses a stack branch checked out "
+            "in another worktree. A conflict aborts that merge, leaves the "
+            "tree clean and HEAD where it started, pushes nothing, and names "
+            "both branches: a stop, never a resolution. Merges made before "
+            "it stay local, and a re-run pushes them. --dry-run prints the "
+            "merges, base records and pushes it would make and changes "
+            "nothing.\n"
+            "\n"
+            "Exit 0: the stack is consistent, whether or not this run merged "
+            "anything; a re-run with nothing moved merges nothing and says "
+            "so. 1: stopped — a conflict, an unclean tree, a diverged "
+            "or unreadable stack branch, a lower branch it cannot judge, a "
+            "failed signature, or a failed fetch or push. 2: usage "
+            "(NNN without --base, or --base without NNN)."))
+    p_queue.add_argument("action", choices=["start", "tidy", "restack"])
+    p_queue.add_argument("number", type=int, nargs="?", default=None,
+                         help="queue number (start, tidy; restack only "
+                              "with --base)")
     p_queue.add_argument("--specs", action="store_true",
                          help="start: create the specs-queue branch instead")
     p_queue.add_argument("--base", default=None,
-                         help="start: branch from this ref (default: main_branch)")
+                         help="start: branch from this ref (default: "
+                              "main_branch); restack: record this ref as "
+                              "queue NNN's base, then restack")
     p_queue.add_argument("--dry-run", action="store_true",
-                         help="start: print what would be created, create nothing")
+                         help="start, restack: print what would be done, "
+                              "change nothing")
     p_queue.add_argument("--date", default=None, help="tidy: override the supersede date (YYYY-MM-DD)")
     p_queue.set_defaults(func=cmd_queue)
 
