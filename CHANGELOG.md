@@ -144,8 +144,8 @@ instead — that is the bump policy above, and it is enforced by
   - `aide check` reads `docs_dir` (the inbox and its archives excepted): a
     cited gate ID naming no row is an **error**; one matching two different
     Gate cells, and a citation by position (`gate 3`, `human gate #3`) while
-    `progress.md` has a `## Human gates` section, are warnings naming the ID
-    to write. A `gate-<hex>` inside a path, a file name, a URL or a heading
+    the `## Human gates` table has a row, are warnings naming the ID to
+    write. A `gate-<hex>` inside a path, a file name, a URL or a heading
     anchor is not a citation, and `tests_dir` is not read; `aide check -h`
     states all of it.
   - `aide check`'s gate warnings, `aide claim`'s "none left" report and
@@ -153,7 +153,8 @@ instead — that is the bump policy above, and it is enforced by
   - The `aide-human-gates` section skill delivers the citation rule to the
     two roles that raise a gate.
   - §1 → items and the item template's guidance quoted a gate's reach as
-    "waits on Gate 3"; the example now cites `gate-3fa1`. Guidance only, so
+    "waits on Gate 3"; the example now reads `gate-<hex>`, a placeholder no
+    check reads as a citation. Guidance only, so
     the item template's version is unmoved.
 
   **What a consumer edits:** nothing to update. Afterwards, a spec or queue

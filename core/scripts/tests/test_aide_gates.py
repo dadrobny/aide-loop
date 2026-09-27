@@ -762,13 +762,13 @@ def test_a_hyphenated_word_or_a_version_is_not_a_citation():
     assert not list(aide._GATE_POSITION_RE.finditer(line))
 
 
-def test_an_empty_gates_section_still_reads_positions(tmp_path: Path):
-    """A section with its header row and no gates yet is still the gates
-    table the citation meant — it names a row that is not there."""
+def test_an_empty_gates_table_reads_no_positions(tmp_path: Path):
+    """The progress template ships the section with no rows, so a consumer
+    that never raised a gate keeps it — and its "quality gate 2" is not one."""
     repo = _repo(tmp_path, "")
-    _cite(repo, "Waits on gate 1.\n")
+    _cite(repo, "Passes quality gate 2.\n")
     _, warnings = aide.run_checks(repo, aide.load_config(repo))
-    assert [w for w in warnings if "by position" in w]
+    assert not [w for w in warnings if "by position" in w]
 
 
 def test_check_warns_on_an_ambiguous_gate_id(tmp_path: Path, monkeypatch):
@@ -788,7 +788,8 @@ def test_a_path_a_file_name_or_an_anchor_is_not_a_citation(tmp_path: Path):
     """Each of these would be an error blocking a merge if read as a citation."""
     repo = _repo(tmp_path, AWAITING)
     _cite(repo, "See [it](roadmap.md#gate-2026), notes/gate-0001.md, "
-                "https://x.example/gate-cafe and gate-face/index.\n")
+                "https://x.example/gate-cafe, https://x.example/?id=gate-beef "
+                "and gate-face/index.\n")
     errors, _ = aide.run_checks(repo, aide.load_config(repo))
     assert not [e for e in errors if "names no human gate" in e]
     # A citation at the end of a sentence, or in backticks, still is one.
@@ -823,3 +824,15 @@ def test_approve_by_id_without_a_gates_table_names_the_missing_table(
     assert aide.main(["--repo", str(repo), "gate", "approve", "gate-0000",
                       "--no-commit"]) == 2
     assert "no '## Human gates' table" in capsys.readouterr().err
+
+
+def test_no_shipped_template_carries_a_gate_citation():
+    """A template's guidance survives into a consumer's document unless its
+    author deletes it, and every document built from one sits in docs_dir —
+    so a `gate-<hex>` example there is a dangling citation, an `aide check`
+    error, in every consumer, gate or no gate. Examples use `gate-<hex>`."""
+    templates = _MODULE_PATH.parents[1] / "templates"
+    found = [(p.name, m.group("id"))
+             for p in sorted(templates.glob("*.md"))
+             for m in aide._GATE_ID_CITATION_RE.finditer(p.read_text(encoding="utf-8"))]
+    assert found == []

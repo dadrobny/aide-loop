@@ -89,8 +89,8 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   and its archives excepted: a cited gate ID that names no row is an
   **error** — it blocks a merge, like every check error. A cited ID matching
   two different Gate cells, and a citation by position (`gate 3`, `human gate
-  #3`) while `progress.md` has a `## Human gates` section, are warnings
-  naming the ID to write.
+  #3`) while the `## Human gates` table has a row, are warnings naming the
+  ID to write.
 
 #### Rationale
 

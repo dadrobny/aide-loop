@@ -436,13 +436,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("one that matches two different Gate cells is a warning naming "
          "their longer IDs",
          "test_aide_gates::test_check_warns_on_an_ambiguous_gate_id"),
-        # Same function: `_GATE_POSITION_RE`, gated on the section heading.
+        # Same function: `_GATE_POSITION_RE`, gated on a gate row existing.
         ("a citation by position \u2014 gate 3, human gate #3 \u2014 is a "
          "warning naming the ID that row holds today, read only while "
-         "progress.md has a Human gates section",
+         "progress.md's Human gates table has a row",
          ("test_aide_gates::test_check_warns_on_a_positional_citation_and_names_the_id",
           "test_aide_gates::test_positional_reading_needs_a_gates_section",
-          "test_aide_gates::test_an_empty_gates_section_still_reads_positions")),
+          "test_aide_gates::test_an_empty_gates_table_reads_no_positions")),
         # `_GATE_ID_CITATION_RE`'s look-arounds.
         ("A token inside a path, a file name, a URL or a heading anchor is "
          "not a citation",

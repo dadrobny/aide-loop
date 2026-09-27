@@ -3068,10 +3068,11 @@ def insight_reference_findings(repo_root: Path,
 #: A citation of a human gate by ID: the ``gate-<hex>`` token itself, standing
 #: alone. The word is inside the token, so there is no context word to
 #: require; instead a token that is part of a path, a file name, a URL or a
-#: heading anchor (``/gate-cafe``, ``gate-0001.md``, ``#gate-2026``) is not
+#: heading anchor (``/gate-cafe``, ``gate-0001.md``, ``#gate-2026``,
+#: ``?id=gate-beef``) is not
 #: read — an error here blocks a merge, and none of those is a citation.
 _GATE_ID_CITATION_RE = re.compile(
-    r"(?<![\w\-#/.])(?P<id>" + _GATE_ID_SHAPE + r")(?![\w\-/]|\.\w)")
+    r"(?<![\w\-#/.=?&])(?P<id>" + _GATE_ID_SHAPE + r")(?![\w\-/]|\.\w)")
 #: A citation of a human gate by position: ``gate 3``, ``human gate #3``,
 #: ``gates 2`` — the word, then the number. The number may not run on into a
 #: word, a hyphen or a version (``gate 1.2`` is not a position).
@@ -3096,8 +3097,8 @@ def gate_reference_findings(repo_root: Path,
     * a **gate ID that matches two different Gate cells** — a warning naming
       the longer IDs that tell them apart;
     * a **citation by position** — a warning naming the ID that row holds
-      today, and only while progress.md has a ``## Human gates`` section:
-      with none, "gate 3" is some other gate.
+      today, and only while progress.md's ``## Human gates`` table has a
+      row: with none, "gate 3" is some other gate.
 
     tests_dir is not read: a gate is cited by the documents that plan work,
     and "gate-" followed by hex is ordinary vocabulary in a test suite.
@@ -3106,8 +3107,10 @@ def gate_reference_findings(repo_root: Path,
     warnings: List[str] = []
     docs, _ = _citation_files(repo_root, config, ddir)
     gates = human_gates(lines)
-    has_section = any(_GATES_HEADING_RE.match(ln) for ln in lines)
     unreadable = bool(unreadable_gate_rows(lines))
+    # Rows, not the heading: the progress template ships the section empty,
+    # and in a table with no row "gate 2" names nothing it could mean.
+    has_rows = bool(gates) or unreadable
     ids = gate_ids(gates)
     for path in docs:
         try:
@@ -3136,7 +3139,7 @@ def gate_reference_findings(repo_root: Path,
                     warnings.append(
                         f"{where}:{lineno}: {ref} matches more than one human "
                         f"gate — cite the longer ID of the one meant: {names}")
-            if not has_section:
+            if not has_rows:
                 continue
             for m in _GATE_POSITION_RE.finditer(line):
                 n = int(m.group("n"))
@@ -8618,7 +8621,7 @@ def _queue_titles(text: str) -> Dict[int, str]:
 #: parser (and a human skimming the section) can tell the two apart.
 _DEPENDENCIES_DOWNSTREAM_MARKER_RE = re.compile(r"\*\*Downstream\b", re.IGNORECASE)
 
-#: Marks a quoted human-gate reach ("waits on gate-3fa1 — `Blocks: items 119,
+#: Marks a quoted human-gate reach ("waits on gate-<hex> — `Blocks: items 119,
 #: 120, 121`"). Transcribing the gate row's cell is the natural way to say
 #: which gate holds this item, and the numbers in the quote are the GATE's
 #: reach, not items this one depends on — read as blockers they grew edges
@@ -12207,7 +12210,7 @@ def build_parser() -> argparse.ArgumentParser:
             "two different Gate cells is a warning naming their longer IDs; "
             "and a citation by position \u2014 gate 3, human gate #3 \u2014 "
             "is a warning naming the ID that row holds today, read only "
-            "while progress.md has a Human gates section. A token inside a "
+            "while progress.md's Human gates table has a row. A token inside a "
             "path, a file name, a URL or a heading anchor is not a citation, "
             "and tests_dir is not read."))
     p_check.add_argument("--queue", type=int, default=None,
