@@ -1245,6 +1245,33 @@ def test_restack_after_the_bottom_lands_merges_main_into_the_next_queue(
     assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
 
 
+@pytest.mark.parametrize("start_recorded", [True, False],
+                         ids=["start-recorded", "no-start-record"])
+def test_restack_after_the_bottom_lands_by_fast_forward(
+        aide, consumer: Path, start_recorded: bool):
+    """`local` mode lands a linear queue branch by fast-forward. With the
+    start `queue start` recorded that is a landing; without it git cannot
+    tell it from an empty branch, and the run stops rather than say
+    "consistent"."""
+    _queue_stack(aide, consumer)
+    if not start_recorded:
+        _git(["config", "--unset", f"branch.{Q1}.aide-start"], consumer)
+    _git(["switch", "main"], consumer)
+    _git(["merge", "--ff-only", Q1], consumer)
+    (consumer / "later.txt").write_text("x\n", encoding="utf-8")
+    _commit(consumer, "main moves on")
+    before = _sha(consumer, Q2)
+
+    if start_recorded:
+        assert _restack(aide, consumer) == 0
+        assert _contains(consumer, "main", Q2)
+        assert _recorded_base(aide, consumer, Q2) == "main"
+    else:
+        assert _restack(aide, consumer) == 1
+        assert _sha(consumer, Q2) == before
+        assert _recorded_base(aide, consumer, Q2) == Q1
+
+
 def test_restack_stops_on_a_conflict_with_the_tree_clean_and_nothing_pushed(
         aide, consumer: Path, tmp_path: Path):
     origin = _to_pr_mode_with_origin(consumer, tmp_path)

@@ -140,26 +140,39 @@ instead — that is the bump policy above, and it is enforced by
     counts; older git falls back to ancestry and sees only a merge commit. No
     pull request is read and no host CLI is called, so it works in `local`
     mode and with no `gh`; a PR closed without merging looks open to it, and
-    the caller checks for one first. A lower branch whose tip is on
-    `main_branch`'s first-parent history — one with no commits of its own —
-    is never read as landed.
+    the caller checks for one first.
+  - **A fast-forward landing is recognised by its start.** `queue start` now
+    also records the commit a queue branch started from
+    (`branch.<name>.aide-start`, local git config beside `aide-base`). A
+    lower branch whose tip is on `main_branch`'s first-parent history has
+    landed by fast-forward — `local` mode's own landing — when it is past
+    that start, and is open with no commits of its own when it is at it.
+    With no start recorded (a branch started before 2.14.0, or on another
+    machine) git cannot tell the two apart: the branch above it is left
+    alone, the run exits 1 and never reports the stack consistent, and the
+    message names both remedies.
   - **Squash merges are clean.** The fixture measured it: after a squash, a
     plain forward merge of `main_branch` meets the bottom's changes twice and
     conflicts wherever the upper edited next to them — which is every queue,
     in `progress.md`. The verb uses the landed branch's tip as the merge base
-    (`merge-tree --merge-base`, git 2.40+), so any merge style may land the
-    bottom, and §4 asks for none.
+    (`merge-tree --merge-base`, git 2.40+), so a merge commit, a squash or a
+    rebase merge may land the bottom, and §4 asks for none of them.
   - **The stack is read from the recorded bases** of `<prefix>queue-NNN`
     branches (a specs-queue branch is never in one). A queue branch with no
     record — started on another machine, or before stacking — is listed and
     left alone, never chained by number; `queue restack NNN --base REF`
     records one, bottom up, creating the local branch from origin where only
-    origin has it. A recorded base this checkout lacks, or a cycle, refuses
+    origin has it, and a start where none is recorded; the base is written
+    only after the merge it implies, so a run that stops keeps the record it
+    found. A recorded base this checkout lacks, or a cycle, refuses
     before anything changes.
   - **Off `local` mode** it fetches, fast-forwards stack branches origin is
     ahead on, refuses one that has diverged, and pushes each branch it merged
     into or that is ahead of origin, only after every merge succeeded.
     `local` mode never fetches or pushes.
+  - **One commit behaviour on every git version:** the merge commits honour
+    `commit.gpgSign` (a signing failure stops the run with nothing moved) and
+    run no commit hook.
   - **A conflict is a stop:** nothing is resolved, the tree is left clean and
     HEAD where it started, nothing is pushed, and both branches are named.
     `--dry-run` prints the plan and changes nothing. Exit 0 when the stack is

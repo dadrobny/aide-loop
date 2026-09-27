@@ -1403,6 +1403,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_restack::test_a_merge_propagates_up_a_stack_of_three")),
         # `_restack_merge` writes a two-parent commit or fast-forwards; no
         # `rebase`, and `_push_new_branch` is `push -u`, never `--force`.
+        # `_restack_merge`: `-S` when `commit.gpgSign`, on `commit-tree`;
+        # `git merge` honours it natively and takes `--no-verify`.
+        ("Its merge commits honour commit.gpgSign and run no commit hook, on "
+         "every git version",
+         ("test_aide_restack::test_a_signing_failure_stops_the_run_with_nothing_moved",
+          "test_aide_restack::test_no_commit_hook_runs_on_either_path")),
         ("It merges and never rebases, so nothing is ever force-pushed",
          ("test_aide_restack::test_a_moved_lower_branch_is_merged_forward_and_never_rebased",
           "test_aide_restack::test_review_edits_on_origin_are_fetched_merged_forward_and_pushed")),
@@ -1414,11 +1420,24 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "recorded base becomes main_branch",
          ("test_aide_restack::test_a_squash_merged_bottom_hands_its_upper_to_main",
           "test_aide_restack::test_a_merge_commit_landed_bottom_hands_its_upper_to_main")),
-        # `_on_first_parent_chain`, checked before the content oracle.
+        # `_on_first_parent_chain`, then the recorded start (`aide-start`,
+        # written by `queue start`): past it is a fast-forward landing.
+        ("or by a fast-forward past the start commit `queue start` recorded "
+         "for it",
+         ("test_aide_restack::test_a_bottom_landed_by_fast_forward_past_its_start_hands_on_its_upper",
+          "test_aide_restack::test_queue_start_records_the_commit_it_started_from")),
         ("A lower branch whose tip is on main_branch's first-parent history "
-         "(one main_branch was fast-forwarded to, or one with no commits of "
-         "its own) is never read as landed",
+         "and still at its recorded start has no commits of its own, and is "
+         "open",
          "test_aide_restack::test_a_lower_with_no_commits_of_its_own_is_not_read_as_landed"),
+        # `_stack_branch_landed` -> None; `held` and `blocked`, `return 1`.
+        ("With no start recorded (a branch started before 2.14.0, or on "
+         "another machine) git cannot tell a fast-forward landing from a "
+         "branch with no commits of its own: the branch above it is left as "
+         "it is, the run exits 1 and never reports the stack consistent, and "
+         "the message names both remedies",
+         ("test_aide_restack::test_a_fast_forwarded_bottom_with_no_start_record_is_a_stop_not_consistent",
+          "test_aide_restack::test_an_empty_bottom_with_no_start_record_is_resolved_by_recording_it")),
         # `_branch_content_landed` is None below 2.38 -> `_is_ancestor`.
         ("On git older than 2.38 only an ancestry merge is seen, so a "
          "squash-merged branch reads as still open",
@@ -1430,18 +1449,26 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("A queue branch with no recorded base (this checkout did not start "
          "it) is not read into any stack, and is listed with the remedy",
          "test_aide_restack::test_an_unrecorded_queue_branch_is_listed_and_never_chained"),
-        # The `args.number` block: `branch --track`, `_record_branch_base`,
-        # and `forced`, whose base is merged in.
+        # The `args.number` block: `branch --track`, then `forced`, whose
+        # base is merged in and recorded as planned steps, in that order.
         ("`restack NNN --base REF` records REF as queue NNN's base, creating "
          "the local branch from origin where only origin has it, and merges "
-         "REF in",
+         "REF in unless the branch has nothing REF lacks; the base is written "
+         "after that merge, so a run that stops keeps the record it found",
          ("test_aide_restack::test_base_records_a_branch_s_base_and_restacks_it",
-          "test_aide_restack::test_base_creates_a_branch_only_origin_has")),
+          "test_aide_restack::test_base_creates_a_branch_only_origin_has",
+          "test_aide_restack::test_a_forced_base_whose_merge_conflicts_keeps_the_old_record",
+          "test_aide_restack::test_an_empty_bottom_with_no_start_record_is_resolved_by_recording_it")),
+        # `_record_branch_start(target, merge-base(target, REF))` when unset.
+        ("Where no start is recorded it records one, the branch's merge base "
+         "with REF",
+         "test_aide_restack::test_an_empty_bottom_with_no_start_record_is_resolved_by_recording_it"),
         # `broken` -> `return 1` before any fast-forward or merge.
         ("A recorded base naming a queue branch this checkout does not have, "
          "or a cycle, refuses the run before anything changes",
          ("test_aide_restack::test_a_recorded_base_this_checkout_lacks_refuses",
-          "test_aide_restack::test_a_cycle_of_recorded_bases_refuses")),
+          "test_aide_restack::test_a_cycle_of_recorded_bases_refuses",
+          "test_aide_restack::test_an_unrecorded_base_below_is_not_called_a_cycle")),
         # `remote_on`: fetch, `behind` -> `_advance_branch`, `diverged` -> 1.
         ("Off local mode it fetches first, fast-forwards each stack branch "
          "origin is ahead on, refuses a branch that has diverged from origin",
@@ -1455,14 +1482,17 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("local mode never fetches or pushes",
          "test_aide_restack::test_local_mode_never_fetches_or_pushes"),
         # `_unsafe_tree_state` -> `return 1`.
-        ("It needs a clean tree",
-         "test_aide_restack::test_an_unclean_tree_is_refused"),
+        ("It needs a clean tree, and refuses a stack branch checked out in "
+         "another worktree",
+         ("test_aide_restack::test_an_unclean_tree_is_refused",
+          "test_aide_restack::test_a_stack_branch_checked_out_in_another_worktree_refuses")),
         # `stopped` -> `return 1` before the push loop; the `finally` aborts
         # a half-merge and switches back to `start`.
         ("A conflict aborts that merge, leaves the tree clean and HEAD where "
          "it started, pushes nothing, and names both branches",
          ("test_aide_restack::test_a_conflict_stops_with_the_tree_clean_and_head_restored",
-          "test_aide_restack::test_a_conflict_pushes_nothing")),
+          "test_aide_restack::test_a_conflict_pushes_nothing",
+          "test_aide_restack::test_a_detached_head_start_is_restored")),
         ("Merges made before it stay local, and a re-run pushes them",
          "test_aide_restack::test_a_stack_branch_ahead_of_origin_is_pushed_by_a_re_run"),
         # `if dry:` prints every step and push, writes none.
@@ -1475,7 +1505,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_aide_restack::test_a_second_run_with_nothing_moved_merges_nothing"),
         ("1: stopped",
          ("test_aide_restack::test_a_conflict_stops_with_the_tree_clean_and_head_restored",
-          "test_aide_restack::test_a_branch_diverged_from_origin_is_refused")),
+          "test_aide_restack::test_a_branch_diverged_from_origin_is_refused",
+          "test_aide_restack::test_a_failed_push_exits_one_with_the_merge_kept_local")),
         # `(args.number is None) != (args.base is None)` -> 2.
         ("2: usage (NNN without --base, or --base without NNN)",
          "test_aide_restack::test_number_and_base_go_together"),

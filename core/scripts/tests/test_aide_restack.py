@@ -509,3 +509,171 @@ def test_between_git_2_38_and_2_40_main_is_merged_over_git_s_own_base(
 
     assert _restack(repo) == 1
     assert _sha(repo, Q2) == before and _base(repo, Q2) == Q1
+
+
+# --------------------------------------------------------------------------- #
+# review round 1 (PR #306)
+# --------------------------------------------------------------------------- #
+def _old_git(monkeypatch, old: bool) -> None:
+    if old:
+        monkeypatch.setattr(aide, "_git_version", lambda _root: (2, 30))
+
+
+def _move_lower(repo: Path) -> None:
+    _git(["switch", Q1], repo)
+    _commit_file(repo, "q1.txt", "one, reviewed\n", "review edit")
+
+
+def test_a_forced_base_whose_merge_conflicts_keeps_the_old_record(tmp_path: Path):
+    """The record is a step after its merge, so a stop leaves the one found."""
+    repo = _init(tmp_path / "r")
+    _stack(repo)
+    _git(["switch", "main"], repo)
+    _tick(repo, 3, "clashes")          # queue-002 ticked line 3 differently
+    before = _sha(repo, Q2)
+
+    assert _restack(repo, "2", "--base", "main") == 1
+    assert _base(repo, Q2) == Q1
+    assert _sha(repo, Q2) == before
+
+
+def test_queue_start_records_the_commit_it_started_from(tmp_path: Path):
+    repo = _init(tmp_path / "r")
+    main = _sha(repo, "main")
+    _start(repo, 1)
+    assert _git(["config", "--get", f"branch.{Q1}.aide-start"],
+                repo).stdout.strip() == main
+
+
+def _land_by_fast_forward(repo: Path) -> None:
+    """`local` mode's own landing: main fast-forwarded to the bottom."""
+    _git(["switch", "main"], repo)
+    _git(["merge", "--ff-only", Q1], repo)
+    _commit_file(repo, "other.txt", "x\n", "main moves on")
+
+
+def test_a_bottom_landed_by_fast_forward_past_its_start_hands_on_its_upper(
+        tmp_path: Path):
+    repo = _init(tmp_path / "r")
+    _stack(repo)
+    _land_by_fast_forward(repo)
+
+    assert _restack(repo) == 0
+    assert _contains(repo, "main", Q2)
+    assert _base(repo, Q2) == "main"
+
+
+def test_a_fast_forwarded_bottom_with_no_start_record_is_a_stop_not_consistent(
+        tmp_path: Path, capsys):
+    repo = _init(tmp_path / "r")
+    _stack(repo)
+    _git(["config", "--unset", f"branch.{Q1}.aide-start"], repo)
+    _land_by_fast_forward(repo)
+    before = _sha(repo, Q2)
+
+    assert _restack(repo) == 1
+    assert _sha(repo, Q2) == before and _base(repo, Q2) == Q1
+    out = capsys.readouterr()
+    assert "consistent" not in out.out and "--base main" in out.err
+    # The remedy it names for a landed lower:
+    assert _restack(repo, "2", "--base", "main") == 0
+    assert _contains(repo, "main", Q2) and _base(repo, Q2) == "main"
+
+
+def test_an_empty_bottom_with_no_start_record_is_resolved_by_recording_it(
+        tmp_path: Path):
+    repo = _init(tmp_path / "r")
+    _start(repo, 1)
+    _start(repo, 2, Q1)
+    _tick(repo, 3)
+    _git(["config", "--unset", f"branch.{Q1}.aide-start"], repo)
+    _git(["switch", "main"], repo)
+    _commit_file(repo, "other.txt", "x\n", "main moves on")
+    tips = (_sha(repo, Q1), _sha(repo, Q2))
+
+    assert _restack(repo) == 1
+    # The remedy it names for an open lower records the start, moves nothing.
+    assert _restack(repo, "1", "--base", "main") == 0
+    assert (_sha(repo, Q1), _sha(repo, Q2)) == tips
+    assert _restack(repo) == 0
+    assert _base(repo, Q2) == Q1
+
+
+@pytest.mark.parametrize("old_git", [False, True], ids=["merge-tree", "in-tree"])
+def test_a_signing_failure_stops_the_run_with_nothing_moved(
+        tmp_path: Path, monkeypatch, old_git):
+    """`commit.gpgSign` is honoured on both paths; a signer that cannot run
+    must stop the merge, never let it through unsigned."""
+    repo = _init(tmp_path / "r")
+    _stack(repo)
+    _move_lower(repo)
+    _git(["config", "commit.gpgSign", "true"], repo)
+    _git(["config", "gpg.program", str(tmp_path / "no-such-signer")], repo)
+    _old_git(monkeypatch, old_git)
+    before = _sha(repo, Q2)
+
+    assert _restack(repo) == 1
+    assert _sha(repo, Q2) == before
+    assert _head(repo) == Q1 and _clean(repo)
+
+
+@pytest.mark.parametrize("old_git", [False, True], ids=["merge-tree", "in-tree"])
+def test_no_commit_hook_runs_on_either_path(tmp_path: Path, monkeypatch, old_git):
+    repo = _init(tmp_path / "r")
+    _stack(repo)
+    _move_lower(repo)
+    hooks = repo / ".git" / "hooks"
+    for name in ("pre-merge-commit", "commit-msg"):
+        (hooks / name).write_bytes(b"#!/bin/sh\nexit 1\n")
+        (hooks / name).chmod(0o755)
+    _old_git(monkeypatch, old_git)
+
+    assert _restack(repo) == 0
+    assert _contains(repo, Q1, Q2)
+
+
+def test_an_unrecorded_base_below_is_not_called_a_cycle(tmp_path: Path, capsys):
+    repo = _init(tmp_path / "r")
+    _stack(repo)
+    _start(repo, 3, Q2)
+    _git(["config", "--unset", f"branch.{Q1}.aide-base"], repo)
+
+    assert _restack(repo) == 1
+    err = capsys.readouterr().err
+    assert "cycle" not in err and Q1 in err
+
+
+def test_a_stack_branch_checked_out_in_another_worktree_refuses(tmp_path: Path):
+    repo = _init(tmp_path / "r")
+    _stack(repo)
+    _move_lower(repo)
+    _git(["worktree", "add", str(tmp_path / "wt"), Q2], repo)
+    before = _sha(repo, Q2)
+
+    assert _restack(repo) == 1
+    assert _sha(repo, Q2) == before
+
+
+def test_a_failed_push_exits_one_with_the_merge_kept_local(tmp_path: Path):
+    origin, repo, _other = _with_origin(tmp_path)
+    on_origin = _sha(origin, Q2)
+    _git(["config", "remote.origin.pushurl", str(tmp_path / "nowhere.git")], repo)
+    _move_lower(repo)
+
+    assert _restack(repo) == 1
+    assert _contains(repo, Q1, Q2)
+    assert _sha(origin, Q2) == on_origin
+
+
+@pytest.mark.parametrize("old_git", [False, True], ids=["merge-tree", "in-tree"])
+def test_a_detached_head_start_is_restored(tmp_path: Path, monkeypatch, old_git):
+    repo = _init(tmp_path / "r")
+    _stack(repo)
+    _move_lower(repo)
+    _git(["switch", "--detach", "main"], repo)
+    at = _sha(repo, "HEAD")
+    _old_git(monkeypatch, old_git)
+
+    assert _restack(repo) == 0
+    assert _contains(repo, Q1, Q2)
+    assert _head(repo) == "HEAD" and _sha(repo, "HEAD") == at
