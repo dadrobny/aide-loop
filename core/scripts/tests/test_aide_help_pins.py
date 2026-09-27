@@ -374,6 +374,23 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("a marked assumption pinning an engine whose feature line predates "
          "the installed one",
          "test_aide_doc_shape::test_an_assumption_pinned_to_an_older_engine_is_reported"),
+        # `forward_dependency_warnings` (issue #282), called from run_checks
+        # on the warnings side; `blocking_dependency_stages` cuts the slot at
+        # `_DEPS_SLOT_END_RE` and reads numbers by `_DEPS_STAGE_LIST_RE` or
+        # `_DEPS_BARE_LIST_RE`; the ⏸️ exemption reads header and summary row.
+        ("a roadmap.md stage whose Dependencies name a later-numbered stage "
+         "in the blocking slot",
+         ("test_aide_forward_deps::"
+          "test_a_forward_dependency_is_a_warning_naming_stage_and_later_stage",
+          "test_aide_forward_deps::test_check_reports_it_as_a_warning_and_never_an_error")),
+        ("the text up to its first semicolon, spaced dash or sentence end, "
+         "where a stage number is one after the word Stage or Stages, or a "
+         "slot of bare numbers",
+         "test_aide_forward_deps::test_the_blocking_slot_is_read_and_nothing_after_it"),
+        ("unless progress.md shows that stage \u23f8\ufe0f on its header or "
+         "summary row",
+         ("test_aide_forward_deps::test_a_deferred_stage_is_exempt",
+          "test_aide_forward_deps::test_any_other_status_is_not_exempt")),
         # `for stg, cn, cdate, creason in retracted_criteria(lines)` in
         # run_checks, appending to `warnings`.
         ("every retracted acceptance criterion",

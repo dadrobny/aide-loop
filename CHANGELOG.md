@@ -121,6 +121,29 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.11.0] — 2026-09-27
+
+### Added
+
+- **§1 → roadmap.md: a stage's blocking Dependencies name only
+  earlier-numbered stages, and `aide check` warns on one that does not
+  (issue #282).** A consumer's roadmap had a stage whose Dependencies read
+  `Depends on Stage N+2; … may be delivered after it`; stages close in number
+  order, so it could not close in its turn, and a queue cut from it said
+  outright that it did not close the stage. The section now states the rule
+  in its core: reorder the 📋 Planned stages involved so the dependency comes
+  first, or — where a started stage stands in the way — defer the dependent
+  stage (⏸️ in `progress.md`), the one forward dependency tolerated. The new
+  lint, `forward_dependency_warnings`, reads each `## Stage N` section's
+  `**Dependencies.**` blocking slot — the text up to its first `;`, spaced
+  dash or sentence end, so the template's `None. Independent of Stage 17 — …`
+  ordering sentence is not read — takes stage numbers after `Stage`/`Stages`
+  or from a slot of bare numbers, and names each stage whose slot holds a
+  number greater than its own, unless `progress.md` shows that stage ⏸️ on its
+  header or summary row. A warning, never an error: exit codes are unchanged.
+  `check -h` states it; the roadmap template's Dependencies guidance and the
+  create-roadmap skill point at the section. No template version moves.
+
 ## [2.10.0] — 2026-09-25
 
 ### Added

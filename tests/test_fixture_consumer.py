@@ -935,6 +935,36 @@ def test_check_warns_on_roadmap_progress_acceptance_drift(
     assert "0 warning(s)" not in out
 
 
+def test_check_warns_on_a_stage_depending_on_a_later_stage(
+        aide, consumer: Path, capsys):
+    """Issue #282: a stage whose blocking Dependencies name a later-numbered
+    stage cannot close in number order. `check` names it and still exits 0 —
+    a warning, since a started stage is frozen and its one remaining fix, a
+    deferral, is the human's call. Deferring the stage (⏸️ in progress.md)
+    silences it: that is the one forward dependency §1 tolerates."""
+    (consumer / "docs" / "aide" / "roadmap.md").write_text(
+        "# Fixture — Roadmap\n\n"
+        "## Stage 1 — Foundations\n\n"
+        "**Dependencies.** Depends on Stage 3; the rest may land after it.\n\n"
+        "## Stage 2 — Hardening\n\n"
+        "**Dependencies.** None. Independent of Stage 3 — either order.\n\n"
+        "## Stage 3 — Polish\n\n"
+        "**Dependencies.** Stages 1 and 2.\n",
+        encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "stage 1's Dependencies name later stage 3" in out
+    assert "stage 2's Dependencies" not in out
+    assert "stage 3's Dependencies" not in out
+
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "## Stage 1 — Foundations — 📋", "## Stage 1 — Foundations — ⏸️"),
+        encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "Dependencies name later" not in capsys.readouterr().out
+
+
 def test_check_warns_when_a_bullet_authorises_more_paths_than_scope_reads(
         aide, consumer: Path, capsys):
     """Issue #119: `aide scope` reads the FIRST backtick span of a bullet's

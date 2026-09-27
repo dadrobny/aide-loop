@@ -4978,6 +4978,122 @@ def root_document_warnings(ddir: Path) -> List[str]:
     return out
 
 
+#: A roadmap stage's Dependencies block opener, and the text on its line.
+_ROADMAP_DEPS_RE = re.compile(r"^\*\*Dependencies\s*[.:]?\*\*\s*:?\s*(?P<text>.*)$",
+                              re.IGNORECASE)
+#: Where the blocking slot ends: the first `;`, dash-set clause or sentence end.
+#: The template keeps the slot to blocking stages and puts ordering without
+#: blocking in a sentence after it (`None. Independent of Stage 17 — …`), and a
+#: consumer's forward dependency read `Depends on Stage 5; … may be delivered
+#: after it` — both are read correctly by stopping at the first of these.
+_DEPS_SLOT_END_RE = re.compile(r";|\s[—–]\s|\s-\s|[.!?](?=\s|$)")
+#: Stage numbers in the slot: after `Stage`/`Stages`, a list of numbers joined
+#: by commas, `and`, `or`, `&` or a range dash, each optionally re-prefixed.
+_DEPS_STAGE_LIST_RE = re.compile(
+    r"\bStages?\s+(\d+(?:\s*(?:,|&|\band\b|\bor\b|\bto\b|[-–—])\s*"
+    r"(?:Stages?\s+)?\d+)*)", re.IGNORECASE)
+#: A slot holding bare stage numbers only — `3`, `3, 4`, `3 and 4`.
+_DEPS_BARE_LIST_RE = re.compile(r"^\s*\d+(?:\s*(?:,|&|\band\b)\s*\d+)*\s*$",
+                                re.IGNORECASE)
+
+
+def blocking_dependency_stages(text: str) -> List[int]:
+    """Stage numbers named in the blocking slot of a Dependencies block's *text*.
+
+    The slot is the text up to its first `;`, spaced dash or sentence end —
+    §1 → roadmap.md reads the slot only, and a sentence after it about
+    ordering without blocking names what it likes. Numbers are taken after
+    `Stage`/`Stages`, or from a slot of bare numbers and nothing else, so an
+    item number or a version in the slot is not read as a stage.
+    """
+    slot = _DEPS_SLOT_END_RE.split(text.strip(), maxsplit=1)[0]
+    slot = slot.replace("*", "").replace("`", "")
+    runs = [m.group(1) for m in _DEPS_STAGE_LIST_RE.finditer(slot)]
+    if not runs and _DEPS_BARE_LIST_RE.match(slot):
+        runs = [slot]
+    out: List[int] = []
+    for run in runs:
+        for n in re.findall(r"\d+", run):
+            if int(n) not in out:
+                out.append(int(n))
+    return out
+
+
+def _roadmap_dependency_text(lines: List[str], start: int, end: int) -> Optional[str]:
+    """The text of the stage section's Dependencies block, wrapped lines joined.
+
+    ``None`` when the section has no Dependencies block. The block runs from
+    its opener to the first blank line, list bullet, guidance line or next
+    bold block opener.
+    """
+    head = next((i for i in range(start, end)
+                 if _ROADMAP_DEPS_RE.match(lines[i])), None)
+    if head is None:
+        return None
+    parts = [_ROADMAP_DEPS_RE.match(lines[head]).group("text")]
+    for i in range(head + 1, end):
+        line = lines[i]
+        if (not line.strip() or _ROADMAP_BLOCK_END_RE.match(line)
+                or _GUIDANCE_RE.match(line) or re.match(r"^\s*[-*]\s", line)):
+            break
+        parts.append(line.strip())
+    return " ".join(p for p in parts if p)
+
+
+def forward_dependency_warnings(ddir: Path) -> List[str]:
+    """Roadmap stages whose blocking Dependencies name a later-numbered stage.
+
+    §1 → roadmap.md (issue #282): stages close in number order, so a stage
+    waiting on a later one cannot close when its turn comes, and a queue cut
+    from it either leaves the stage open or queues work toward a closure that
+    cannot happen yet. The observed case read `Depends on Stage N+2; … may be
+    delivered after it`, and nothing said so until the owner swept the
+    roadmap by hand.
+
+    Silent for a stage `progress.md` shows at ⏸️ — on its header or its
+    summary row — since a deferral is the one forward dependency the section
+    tolerates; a missing `progress.md` exempts nothing. A missing
+    `roadmap.md` is silent, as in `root_document_warnings`.
+
+    A warning, never an error: roadmaps written before the rule exist, and a
+    started stage is frozen, so an error would fail a document the author has
+    no edit left to fix but a deferral — a decision for the human at the
+    queue boundary, who reads warnings.
+    """
+    rpath = ddir / "roadmap.md"
+    if not rpath.is_file():
+        return []
+    rlines = rpath.read_text(encoding=_ENCODING).splitlines()
+    deferred: Set[str] = set()
+    ppath = ddir / "progress.md"
+    if ppath.is_file():
+        plines = ppath.read_text(encoding=_ENCODING).splitlines()
+        for start, _end, num in stage_sections(plines):
+            if _header_status(plines[start]) == "deferred":
+                deferred.add(str(int(num)))
+        for line in plines:
+            cells = _split_row(line) if line.strip().startswith("|") else []
+            if (cells and _reads(_STAGE_SUMMARY, cells) and cells[0].isdigit()
+                    and _icon_status(cells[3]) == "deferred"):
+                deferred.add(str(int(cells[0])))
+    out: List[str] = []
+    for start, end, num in stage_sections(rlines):
+        text = _roadmap_dependency_text(rlines, start, end)
+        if text is None:
+            continue
+        later = [n for n in blocking_dependency_stages(text) if n > int(num)]
+        if not later or str(int(num)) in deferred:
+            continue
+        named = ", ".join(str(n) for n in later)
+        out.append(
+            f"roadmap.md: stage {int(num)}'s Dependencies name later "
+            f"stage{'' if len(later) == 1 else 's'} {named} — stages close in "
+            f"number order, so it cannot close when its turn comes; reorder "
+            f"the planned stages so the dependency comes first, or defer "
+            f"stage {int(num)} (⏸️ in progress.md) — §1 → roadmap.md")
+    return out
+
+
 #: The line every template carries after its header comment, and every document
 #: created from one keeps: ``<!-- aide-template: progress 1 -->``. The name is
 #: the template's file stem and the number its own integer version, which moves
@@ -5625,6 +5741,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(insights_fixture_test_warnings(repo_root, config))
     warnings.extend(header_blockquote_warnings(ddir))
     warnings.extend(root_document_warnings(ddir))
+    warnings.extend(forward_dependency_warnings(ddir))
     # A docs_dir outside the repo falls back to its absolute spelling, which
     # cannot appear in a spec's repo-relative paths — the always-authorised
     # pin lint then has nothing to match; the other spec-shape lints still
@@ -11961,7 +12078,13 @@ def build_parser() -> argparse.ArgumentParser:
             "a May-change glob is the legitimate carve-out, left for "
             "`aide scope` to judge); an always-authorised path pinned "
             "under Asserts against; a marked assumption pinning an engine "
-            "whose feature line predates the installed one; every "
+            "whose feature line predates the installed one; a roadmap.md "
+            "stage whose Dependencies name a later-numbered stage in the "
+            "blocking slot \u2014 the text up to its first semicolon, "
+            "spaced dash or sentence end, where a stage number is one "
+            "after the word Stage or Stages, or a slot of bare numbers "
+            "\u2014 unless progress.md shows that stage \u23f8\ufe0f on "
+            "its header or summary row; every "
             "retracted acceptance criterion and every reopened item, a "
             "normal state rather than a defect, each reported once, by its "
             "latest retraction or reopening, and never as open once the box "
