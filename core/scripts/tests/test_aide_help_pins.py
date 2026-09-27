@@ -391,6 +391,42 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "summary row",
          ("test_aide_forward_deps::test_a_deferred_stage_is_exempt",
           "test_aide_forward_deps::test_any_other_status_is_not_exempt")),
+        # `coverage_completeness_warnings` (issue #289), called from
+        # run_checks on the warnings side. Case 1 takes every row
+        # `_table_rows(_STAGE_SUMMARY)` yields, an unusable one by the number
+        # in its Stage cell; case 2 reads roadmap rows by
+        # `_COVERAGE_CODES_RE`; case 3 reads the cell by
+        # `named_stage_numbers`, which `blocking_dependency_stages` calls too.
+        ("a progress.md stage section with no Stage summary row, ⏸️ "
+         "and ❌ stages included, where a row the reader cannot use still "
+         "counts for the stage its Stage cell names",
+         ("test_aide_coverage_completeness::"
+          "test_a_stage_section_with_no_summary_row_is_named",
+          "test_aide_coverage_completeness::"
+          "test_an_unreadable_summary_row_still_counts_for_its_stage",
+          "test_aide_coverage_completeness::"
+          "test_check_reports_each_case_as_a_warning_and_never_an_error")),
+        ("a vision.md G-code with no row in roadmap.md's coverage table, whose "
+         "rows are read by the G-codes opening their first cell, past one "
+         "leading parenthetical",
+         ("test_aide_coverage_completeness::"
+          "test_a_vision_g_code_with_no_coverage_row_is_named",
+          "test_aide_coverage_completeness::"
+          "test_a_coverage_row_is_read_by_the_codes_opening_its_first_cell",
+          "test_aide_coverage_completeness::"
+          "test_the_codes_run_joins_g_codes_and_nothing_else",
+          "test_aide_coverage_completeness::"
+          "test_a_g_code_later_in_the_first_cell_is_not_a_coverage_row")),
+        ("a stage a roadmap.md coverage row names with no '## Stage N' "
+         "section in roadmap.md, the Delivered by cell read as the "
+         "Dependencies slot is, by number after the word Stage or Stages or "
+         "from a cell of bare numbers",
+         ("test_aide_coverage_completeness::"
+          "test_a_named_stage_with_no_section_is_named",
+          "test_aide_coverage_completeness::"
+          "test_the_delivered_by_cell_is_read_as_the_dependencies_slot_is",
+          "test_aide_coverage_completeness::"
+          "test_a_bare_number_cell_naming_a_missing_stage_is_read")),
         # `for stg, cn, cdate, creason in retracted_criteria(lines)` in
         # run_checks, appending to `warnings`.
         ("every retracted acceptance criterion",

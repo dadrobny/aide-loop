@@ -1006,6 +1006,47 @@ def test_check_warns_on_a_stage_depending_on_a_later_stage(
     assert "Dependencies name later" not in capsys.readouterr().out
 
 
+def test_check_warns_on_an_incomplete_coverage_table(
+        aide, consumer: Path, capsys):
+    """Issue #289: `check` said each coverage table existed, never that it was
+    complete. A progress.md stage section with no summary row, a vision
+    G-code with no roadmap coverage row, and a coverage row naming a stage
+    the roadmap has no section for each passed clean. Each is now a warning —
+    a missing row under-reports rather than over-claims — so the exit code
+    stays 0, and the documents made complete are silent again."""
+    ddir = consumer / "docs" / "aide"
+    (ddir / "vision.md").write_text(
+        "# Fixture — Vision\n\n| Code | Objective |\n|---|---|\n"
+        "| G1 | Foundations |\n| G2 | Polish |\n", encoding="utf-8")
+    roadmap = ("# Fixture — Roadmap\n\n| Objective | Delivered by |\n|---|---|\n"
+               "| G1 Foundations | Stage 1 (then Stage 4) |\n\n"
+               "## Stage 1 — Foundations\n\n## Stage 2 — Hardening\n")
+    (ddir / "roadmap.md").write_text(roadmap, encoding="utf-8")
+    progress = ddir / "progress.md"
+    original = progress.read_text(encoding="utf-8")
+    progress.write_text(original + (
+        "\n## Stage 2 — Hardening — 📋\n\n**Deliverables.**\n"
+        "- 📋 The hardening. *(Item 003)*\n"), encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "stage 2 has a '## Stage 2' section but no Stage summary row" in out
+    assert "vision objective G2 has no row" in out
+    assert "the coverage row for G1 names stage 4" in out
+
+    (ddir / "roadmap.md").write_text(roadmap.replace(" (then Stage 4)", "").replace(
+        "|---|---|\n", "|---|---|\n| G2 Polish | Stage 2 |\n"), encoding="utf-8")
+    progress.write_text(original.replace(
+        "| 1 | Foundations | G1 | 📋 |\n",
+        "| 1 | Foundations | G1 | 📋 |\n| 2 | Hardening | G2 | 📋 |\n") + (
+        "\n## Stage 2 — Hardening — 📋\n\n**Deliverables.**\n"
+        "- 📋 The hardening. *(Item 003)*\n"), encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "no Stage summary row" not in out
+    assert "has no row in the objective" not in out
+    assert "which has no '## Stage N' section" not in out
+
+
 def test_check_warns_when_a_bullet_authorises_more_paths_than_scope_reads(
         aide, consumer: Path, capsys):
     """Issue #119: `aide scope` reads the FIRST backtick span of a bullet's

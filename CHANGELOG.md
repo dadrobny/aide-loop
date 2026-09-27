@@ -121,6 +121,42 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.13.0] — 2026-09-27
+
+### Added
+
+- **The coverage tables are complete, and `aide check` warns on one that is
+  not (issue #289, from the #285 audit).** The check said each table existed
+  and never that it left nothing out, so three omissions passed clean. Each
+  is now a warning — a missing row under-reports rather than over-claims —
+  and exit codes are unchanged:
+  - **A `progress.md` stage section with no Stage summary row**, ⏸️ and ❌
+    stages included: a ❌ summary row is what drops a stage from the rollup
+    comparisons, and a ✅ one what closes it for the capability table.
+    §1 → `progress.md` now says the summary is complete.
+    A row its reader cannot use still counts for the stage its Stage cell
+    names — it is the unreadable-row error's to report, once.
+  - **A `vision.md` G-code with no row in `roadmap.md`'s coverage table**, a
+    withdrawn objective's too for as long as the vision lists its code. A
+    coverage row is read by the G-codes opening its first cell (`G2`,
+    `G2, G7`, `G2 and G7`, `G2/G7` — each joined element a G-code), past one
+    leading parenthetical, so a row kept as `*(out of scope …)* G5 …` still
+    maps G5.
+  - **A stage a `roadmap.md` coverage row names with no `## Stage N` section
+    in the roadmap** — the roadmap-side counterpart of #285's Objective row
+    naming no stage with a section, checked per stage. The Delivered-by cell
+    is read by the new `named_stage_numbers`, the reading the Dependencies
+    slot already took (`blocking_dependency_stages` now calls it): numbers
+    after `Stage`/`Stages` wherever they sit in the cell's prose, or a cell of
+    bare numbers — never a bare number in prose, which is what #285 found the
+    `\d+` reading of a Delivered-by cell matching.
+
+  §1 → `roadmap.md` states the coverage table complete both ways and
+  §1 → `vision.md` points at it; the new lint is
+  `coverage_completeness_warnings`, and `check -h` states all three. A
+  missing file or a missing table is silent here, being reported already.
+  The create-roadmap skill points at the section. No template version moves.
+
 ## [2.12.0] — 2026-09-27
 
 ### Added
