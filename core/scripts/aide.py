@@ -12,7 +12,7 @@ Subcommands::
     python .aide/scripts/aide.py scope [NNN]           # branch diff vs the item's authorised paths
     python .aide/scripts/aide.py progress set NNN <in-progress|in-review|done>
     python .aide/scripts/aide.py progress set NNN deferred --reason TEXT  # ⏸️, with its why
-    python .aide/scripts/aide.py gate list|approve|decline [N]  # human gates in progress.md
+    python .aide/scripts/aide.py gate list|approve|decline [N|ID]  # human gates in progress.md
     python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
     python .aide/scripts/aide.py insights list|tick|archive|resolve  # the insight inbox
@@ -973,6 +973,110 @@ def gate_blocked_items(lines: List[str]) -> Tuple[set, List[HumanGate]]:
         else:
             blocked.update(g.blocks)
     return blocked, everything
+
+
+# --------------------------------------------------------------------------- #
+# gate IDs — the durable handle (conventions.md §1 → human gates, #293)
+# --------------------------------------------------------------------------- #
+#: The shortest hex a gate ID is printed with; lengthened per gate only as far
+#: as it takes to tell apart two *different* Gate cells — see ``gate_ids``.
+GATE_ID_MIN_HEX = 4
+#: A gate ID as written: ``gate-`` then lowercase hex, a prefix of the Gate
+#: cell's SHA-256. The word is part of the token, so the ID is its own
+#: citation — no digit-only form, which is what a position looks like.
+_GATE_ID_SHAPE = r"gate-[0-9a-f]{%d,64}" % GATE_ID_MIN_HEX
+_GATE_ID_RE = re.compile(r"^gate-(?P<hex>[0-9a-f]{%d,64})$" % GATE_ID_MIN_HEX)
+
+
+def gate_hash(gate: HumanGate) -> Optional[str]:
+    """The full SHA-256 hex of a gate's Gate cell, or None when it has no ID.
+
+    Only the Gate cell is hashed — the question the gate asks, which
+    conventions.md §1 makes its identity. Status and Decision / evidence are
+    what ``aide gate approve``/``decline`` write, and Blocks is re-planned
+    while the question stands, so none of them moves the ID; nor does a merge
+    that renumbers the rows, which is the defect the ID exists for (#293).
+
+    Normalised like an insight claim: whitespace runs collapse to one space,
+    Unicode is composed (NFC), nothing else is folded. An empty Gate cell asks
+    nothing nameable and has no ID.
+    """
+    text = " ".join(unicodedata.normalize("NFC", gate.text).split())
+    if not text:
+        return None
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def gate_ids(gates: List[HumanGate]) -> List[Optional[str]]:
+    """The printed ID of each gate in *gates*, aligned with it.
+
+    ``gate-<hex>``, the hash cut to ``GATE_ID_MIN_HEX`` characters or longer
+    only as far as it takes to differ from every *different* Gate cell in the
+    table. Two rows asking the same question share an ID; ``resolve_gate_ref``
+    reports that rather than guessing. A longer prefix of the same hash is the
+    same ID, so one once written keeps resolving while its row stands.
+    """
+    hashes = [gate_hash(g) for g in gates]
+    distinct = {h for h in hashes if h is not None}
+    out: List[Optional[str]] = []
+    for h in hashes:
+        if h is None:
+            out.append(None)
+            continue
+        others = [o for o in distinct if o != h]
+        n = GATE_ID_MIN_HEX
+        while n < len(h) and any(o.startswith(h[:n]) for o in others):
+            n += 1
+        out.append(f"gate-{h[:n]}")
+    return out
+
+
+def is_gate_id(ref: str) -> bool:
+    """Does *ref* have the shape of a gate ID (not: does it resolve)?"""
+    return _GATE_ID_RE.match(ref) is not None
+
+
+def resolve_gate_ref(ref: str, gates: List[HumanGate]) -> List[int]:
+    """Indices into *gates* whose Gate cell the ID *ref* names (hash prefix)."""
+    m = _GATE_ID_RE.match(ref)
+    if m is None:
+        return []
+    return [i for i, g in enumerate(gates)
+            if (gate_hash(g) or "").startswith(m.group("hex"))]
+
+
+def gate_index_for_ref(ref: str, gates: List[HumanGate]) -> int:
+    """The 1-based position an ``N`` or a gate ID names, for a verb that edits.
+
+    ``N`` is taken as it stands (``set_gate_status`` reports one out of
+    range). An ID must name exactly one row: none is a gate that was removed
+    or re-asked, and two is one question asked twice, which only a position
+    tells apart. Raises ``ValueError`` with the reason.
+    """
+    if ref.isdigit():
+        return int(ref)
+    if not is_gate_id(ref):
+        raise ValueError(
+            f"{ref!r} is neither a gate number nor a gate ID "
+            f"(gate-<hex>, as `aide gate list` prints it)")
+    if not gates:
+        raise ValueError("no '## Human gates' table in progress.md")
+    hits = resolve_gate_ref(ref, gates)
+    if not hits:
+        raise ValueError(
+            f"no gate {ref} in progress.md — its row was removed, or its Gate "
+            f"cell reworded, which makes it a different gate; see `aide gate list`")
+    if len({gate_hash(gates[i]) for i in hits}) > 1:
+        ids = gate_ids(gates)
+        raise ValueError(
+            f"{ref} matches more than one gate — use the longer ID of the one "
+            f"meant: {', '.join(sorted({ids[i] for i in hits}))}")
+    if len(hits) > 1:
+        raise ValueError(
+            f"{ref} names {len(hits)} rows asking the same question (gates "
+            f"{', '.join(str(i + 1) for i in hits)}) — resolve by position, "
+            f"and reword one of them so each has its own ID")
+    return hits[0] + 1
 
 
 def outcome_targets(lines: List[str]) -> List[OutcomeTarget]:
@@ -2961,6 +3065,95 @@ def insight_reference_findings(repo_root: Path,
     return errors, warnings
 
 
+#: A citation of a human gate by ID: the ``gate-<hex>`` token itself, standing
+#: alone. The word is inside the token, so there is no context word to
+#: require; instead a token that is part of a path, a file name, a URL or a
+#: heading anchor (``/gate-cafe``, ``gate-0001.md``, ``#gate-2026``,
+#: ``?id=gate-beef``) is not
+#: read — an error here blocks a merge, and none of those is a citation.
+_GATE_ID_CITATION_RE = re.compile(
+    r"(?<![\w\-#/.=?&])(?P<id>" + _GATE_ID_SHAPE + r")(?![\w\-/]|\.\w)")
+#: A citation of a human gate by position: ``gate 3``, ``human gate #3``,
+#: ``gates 2`` — the word, then the number. The number may not run on into a
+#: word, a hyphen or a version (``gate 1.2`` is not a position).
+_GATE_POSITION_RE = re.compile(
+    r"(?i:\b(?:human\s+)?gates?)\s+#?(?P<n>\d{1,3})(?![\w-]|\.\d)")
+
+
+def gate_reference_findings(repo_root: Path,
+                            config: Dict[str, Dict[str, object]],
+                            ddir: Path,
+                            lines: List[str]) -> Tuple[List[str], List[str]]:
+    """``(errors, warnings)`` for human-gate citations in docs_dir.
+
+    conventions.md §1 → human gates: a durable artefact cites a gate by its ID
+    (issue #293). *lines* is progress.md, read once by the caller. Three
+    findings, over the files ``insight_reference_findings`` reads in docs_dir
+    (the inbox and its archives excepted — their claims are immutable):
+
+    * a **gate ID that names no row** — an error: the row was removed, or its
+      Gate cell reworded into a different question, and a citation of it now
+      names a decision no one can find;
+    * a **gate ID that matches two different Gate cells** — a warning naming
+      the longer IDs that tell them apart;
+    * a **citation by position** — a warning naming the ID that row holds
+      today, and only while progress.md's ``## Human gates`` table has a
+      row: with none, "gate 3" is some other gate.
+
+    tests_dir is not read: a gate is cited by the documents that plan work,
+    and "gate-" followed by hex is ordinary vocabulary in a test suite.
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+    docs, _ = _citation_files(repo_root, config, ddir)
+    gates = human_gates(lines)
+    unreadable = bool(unreadable_gate_rows(lines))
+    # Rows, not the heading: the progress template ships the section empty,
+    # and in a table with no row "gate 2" names nothing it could mean.
+    has_rows = bool(gates) or unreadable
+    ids = gate_ids(gates)
+    for path in docs:
+        try:
+            text = path.read_text(encoding=_ENCODING)
+        except (OSError, UnicodeDecodeError):
+            continue
+        where = _rel_display(path, repo_root)
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            for m in _GATE_ID_CITATION_RE.finditer(line):
+                ref = m.group("id")
+                hits = resolve_gate_ref(ref, gates)
+                if not hits:
+                    # An unreadable row is dropped before IDs are computed, so
+                    # its citations dangle too; the row's own error is the fix.
+                    also = (" — or it is one of the unreadable gate rows "
+                            "reported above, which has no ID until it is fixed"
+                            if unreadable else "")
+                    errors.append(
+                        f"{where}:{lineno}: {ref} names no human gate in "
+                        f"progress.md — its row was removed, or its Gate cell "
+                        f"reworded into a different gate{also}; cite an ID "
+                        f"`aide gate list` prints (conventions.md §1 → human "
+                        f"gates)")
+                elif len({gate_hash(gates[i]) for i in hits}) > 1:
+                    names = ", ".join(sorted({ids[i] for i in hits}))  # type: ignore[misc]
+                    warnings.append(
+                        f"{where}:{lineno}: {ref} matches more than one human "
+                        f"gate — cite the longer ID of the one meant: {names}")
+            if not has_rows:
+                continue
+            for m in _GATE_POSITION_RE.finditer(line):
+                n = int(m.group("n"))
+                now = ""
+                if 1 <= n <= len(ids) and ids[n - 1]:
+                    now = (f"; gate {n} is {ids[n - 1]} today — cite that if "
+                           f"it is the one meant")
+                warnings.append(
+                    f"{where}:{lineno}: `{m.group(0).strip()}` cites a human "
+                    f"gate by position, which a merge renumbers — cite its ID "
+                    f"(`aide gate list`){now}")
+    return errors, warnings
+
+
 def tick_insight_text(text: str, ordinal: int, pointer: str,
                       date: str, trail_only: bool = False) -> Tuple[str, str]:
     """Tick entry *ordinal*, or append a dated trail line if already ticked.
@@ -3554,18 +3747,20 @@ def gate_warnings(lines: List[str]) -> List[str]:
     ``unreadable_row_errors``.
     """
     out: List[str] = []
-    for n, g in enumerate(human_gates(lines), start=1):
+    gates = human_gates(lines)
+    for n, (g, gid) in enumerate(zip(gates, gate_ids(gates)), start=1):
         if g.kind == "approved":
             continue
+        name = f"human gate {n}{', ' + gid if gid else ''} ({g.text})"
         if g.kind is None:
             out.append(
-                f"progress.md:{g.lineno}: human gate {n} ({g.text}) has an "
+                f"progress.md:{g.lineno}: {name} has an "
                 f"unrecognised status — use ⏳ Awaiting, ✅ Approved or ❌ Declined; "
                 f"until it reads one of those the gate counts as unresolved")
             continue
         if g.kind == "declined":
             out.append(
-                f"progress.md:{g.lineno}: human gate {n} ({g.text}) was DECLINED "
+                f"progress.md:{g.lineno}: {name} was DECLINED "
                 f"and still blocks {_reach_with_breadth(lines, g)} — a refusal does not release the "
                 f"work it guards; drop those items or change what the gate asks")
             continue
@@ -3592,7 +3787,7 @@ def gate_warnings(lines: List[str]) -> List[str]:
         else:
             reach = ("nothing named — the Blocks cell names no item, no "
                      "'stage N', and is not 'all', so this gate holds nothing")
-        out.append(f"progress.md:{g.lineno}: human gate {n} ({g.text}) is "
+        out.append(f"progress.md:{g.lineno}: {name} is "
                    f"awaiting a decision — blocks {reach}")
     return out
 
@@ -5786,6 +5981,10 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     # every check below, including the ones that would have errored on it.
     errors.extend(unreadable_row_errors(lines))
     warnings.extend(gate_warnings(lines))
+    gate_errors, gate_ref_warnings = gate_reference_findings(repo_root, config,
+                                                             ddir, lines)
+    errors.extend(gate_errors)
+    warnings.extend(gate_ref_warnings)
     warnings.extend(capability_warnings(lines, config.get("validation") or {}))
     # A withdrawn attestation is normal, not a defect — the point is that it
     # stays visible. Retracting is append-only, so without a surfacing rule the
@@ -6468,10 +6667,11 @@ def cmd_gate(args: argparse.Namespace) -> int:
         if not gates and not unreadable:
             print("aide gate: no '## Human gates' table (nothing gated)")
             return 0
-        for n, g in enumerate(gates, start=1):
+        for n, (g, gid) in enumerate(zip(gates, gate_ids(gates)), start=1):
             reach = g.reach
             mark = {"approved": "✅", "declined": "❌", "awaiting": "⏳"}.get(g.kind, "⚠")
-            print(f"  {n}. {mark} {g.text} — blocks {reach}")
+            print(f"  {n}. {mark} {gid or '(no ID — empty Gate cell)'} "
+                  f"{g.text} — blocks {reach}")
         # Unnumbered: `approve <n>` counts readable gates only, and a row the
         # parser cannot read is not one a verb should write into.
         for lineno, problem in unreadable:
@@ -6484,12 +6684,13 @@ def cmd_gate(args: argparse.Namespace) -> int:
         return 0
 
     if args.number is None:
-        print(f"aide gate: '{args.action}' needs a gate number — see `aide gate list`",
-              file=sys.stderr)
+        print(f"aide gate: '{args.action}' needs a gate number or ID — see "
+              f"`aide gate list`", file=sys.stderr)
         return 2
     kind = "approved" if args.action == "approve" else "declined"
     try:
-        updated = set_gate_status(text, args.number, kind, args.note)
+        index = gate_index_for_ref(args.number, gates)
+        updated = set_gate_status(text, index, kind, args.note)
     except ValueError as exc:
         print(f"aide gate: {exc}", file=sys.stderr)
         return 2
@@ -6499,10 +6700,14 @@ def cmd_gate(args: argparse.Namespace) -> int:
     # other writer in this module already writes plain "utf-8"; this was the
     # one outlier. Read tolerantly, write clean.
     ppath.write_text(updated, encoding="utf-8")
-    print(f"gate {args.number}: {kind}")
+    # Named by its ID, which a reader of the log can still find after a merge
+    # renumbers the rows; an empty Gate cell has none, so falls back to the
+    # position it was resolved at.
+    handle = gate_ids(gates)[index - 1] or f"gate {index}"
+    print(f"{handle}: {kind}")
     if not args.no_commit:
         _commit_progress_file(repo_root, config,
-                              f"docs: human gate {args.number} {kind}")
+                              f"docs: human {handle} {kind}")
     return 0
 
 
@@ -8540,7 +8745,7 @@ def _queue_titles(text: str) -> Dict[int, str]:
 #: parser (and a human skimming the section) can tell the two apart.
 _DEPENDENCIES_DOWNSTREAM_MARKER_RE = re.compile(r"\*\*Downstream\b", re.IGNORECASE)
 
-#: Marks a quoted human-gate reach ("waits on Gate 3 — `Blocks: items 119,
+#: Marks a quoted human-gate reach ("waits on gate-<hex> — `Blocks: items 119,
 #: 120, 121`"). Transcribing the gate row's cell is the natural way to say
 #: which gate holds this item, and the numbers in the quote are the GATE's
 #: reach, not items this one depends on — read as blockers they grew edges
@@ -8728,17 +8933,19 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
             return set(stage_item_numbers(plines, g.stage)) & open_items
         return set(g.blocks) & open_items
 
-    relevant = [(n, g) for n, g in enumerate(human_gates(plines), start=1)
+    all_gates = human_gates(plines)
+    relevant = [(n, g, gid) for n, (g, gid)
+                in enumerate(zip(all_gates, gate_ids(all_gates)), start=1)
                 if g.kind != "approved" and (g.blocks_all or _reached(g))]
     if relevant:
         print("none left — held by an unresolved human gate:")
-        for n, g in relevant:
+        for n, g, gid in relevant:
             held = sorted(_reached(g))
             where = "everything" if g.blocks_all else (
                 f"{g.reach} — holding " + ", ".join(f"{i:03d}" for i in held))
-            print(f"  gate {n}: {g.text} — blocks {where}")
+            print(f"  gate {n}: {g.text}{f' ({gid})' if gid else ''} — blocks {where}")
         print("  A person decides these, never an agent. Once decided: "
-              "aide gate approve <n> --evidence \"…\" (or gate decline <n>).")
+              "aide gate approve <n|ID> --evidence \"…\" (or gate decline <n|ID>).")
         return 0
 
     if not open_items:
@@ -11553,13 +11760,15 @@ def cmd_status(args: argparse.Namespace) -> int:
     ppath = docs_dir(repo_root, config) / "progress.md"
     if ppath.is_file():
         plines = ppath.read_text(encoding=_ENCODING).splitlines()
-        for n, g in enumerate(human_gates(plines), start=1):
+        gates = human_gates(plines)
+        for n, (g, gid) in enumerate(zip(gates, gate_ids(gates)), start=1):
             if g.kind == "approved":
                 continue
             reach = g.reach
             label = {"declined": "❌ declined", "awaiting": "⏳ awaiting a decision"}.get(
                 g.kind, "⚠ unrecognised status")
-            print(f"  gate {n}: {g.text} [blocks {reach}] — {label}")
+            print(f"  gate {n}: {g.text}{f' ({gid})' if gid else ''} "
+                  f"[blocks {reach}] — {label}")
         # Every table, not only gates: a row no reader can use is missing
         # from the lines above, and would otherwise be missing from here.
         for table, i, _, problem in _unreadable_rows(plines):
@@ -12124,7 +12333,17 @@ def build_parser() -> argparse.ArgumentParser:
             "citation by position \u2014 insight 28, insights.md entry 28, "
             "or entry 28 on a line that says insight or inbox \u2014 is a "
             "warning naming the ID that position holds today, in a test as "
-            "in a document."))
+            "in a document.\n"
+            "\n"
+            "Over human-gate citations in docs/aide, the inbox and its "
+            "archives excepted: a gate-<hex> token that names no row of "
+            "progress.md's Human gates table is an ERROR; one that matches "
+            "two different Gate cells is a warning naming their longer IDs; "
+            "and a citation by position \u2014 gate 3, human gate #3 \u2014 "
+            "is a warning naming the ID that row holds today, read only "
+            "while progress.md's Human gates table has a row. A token inside a "
+            "path, a file name, a URL or a heading anchor is not a citation, "
+            "and tests_dir is not read."))
     p_check.add_argument("--queue", type=int, default=None,
                          help="also check this queue's specs against each other "
                               "(scope overlaps, pinned state, dependency graph)")
@@ -12245,8 +12464,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_gate = sub.add_parser("gate", help="list / resolve human gates in progress.md")
     p_gate.add_argument("action", choices=["list", "approve", "decline"])
-    p_gate.add_argument("number", type=int, nargs="?", default=None,
-                        help="1-based gate row (approve/decline); see `aide gate list`")
+    p_gate.add_argument("number", nargs="?", default=None, metavar="N|ID",
+                        help="the gate to resolve (approve/decline): its "
+                             "gate-<hex> ID, or its 1-based row as `aide gate "
+                             "list` numbers it today")
     p_gate.add_argument("--evidence", "--reason", dest="note", default=None,
                         help="decision note written into the gate's last cell")
     p_gate.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")

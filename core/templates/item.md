@@ -146,7 +146,7 @@ _Item numbers before the marker are blockers; item numbers after it are not
 block this item on something that hasn't happened yet. A quoted human-gate
 reach is also safe when the `Blocks:` label keeps its markup: item numbers
 after a backticked or bold `Blocks:` on the same line are not read as
-blockers, so "waits on Gate 3 — `Blocks: items 119, 120, 121`" names the
+blockers, so "waits on gate-<hex> — `Blocks: items 119, 120, 121`" names the
 gate's reach without creating three dependency edges. Keep the quote on one
 line, and never let plain prose carry the word — unmarked "blocks:" excludes
 nothing._

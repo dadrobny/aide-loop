@@ -860,6 +860,47 @@ def test_claim_holds_every_item_behind_an_unreadable_gate_row(
     assert aide.main(["--repo", str(consumer), "check"]) == 1
 
 
+def test_a_gate_is_cited_and_resolved_by_its_id_across_a_renumbering(
+        aide, consumer: Path, capsys):
+    """Issue #293: a merge put a gate above the one an item cited, and the
+    position now named another gate. The ID a spec cites survives the move,
+    `gate approve <ID>` resolves the row it names, and a citation of a gate
+    that no longer exists fails `check`."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    header = ("\n## Human gates\n\n"
+              "| Gate | Blocks | Status | Decision / evidence |\n"
+              "|------|--------|--------|---------------------|\n")
+    schema = "| Schema approved | 002 | ⏳ Awaiting | — |\n"
+    base = progress.read_text(encoding="utf-8")
+    progress.write_text(base + header + schema, encoding="utf-8")
+    _commit(consumer, "raise the schema gate")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "gate", "list"]) == 0
+    [gid] = [w for w in capsys.readouterr().out.split() if w.startswith("gate-")]
+    (consumer / "docs" / "aide" / "items").mkdir(exist_ok=True)
+    (consumer / "docs" / "aide" / "items" / "002-note.md").write_text(
+        f"Held by {gid}.\n", encoding="utf-8")
+    # The merge: another gate lands above it.
+    progress.write_text(base + header + "| Budget signed | 001 | ⏳ Awaiting | — |\n"
+                        + schema, encoding="utf-8")
+    _commit(consumer, "a merge renumbers the gates")
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert aide.main(["--repo", str(consumer), "gate", "approve", gid,
+                      "--evidence", "reviewed"]) == 0
+    text = progress.read_text(encoding="utf-8")
+    assert "| Schema approved | 002 | ✅ Approved (" in text
+    assert "| Budget signed | 001 | ⏳ Awaiting | — |" in text
+
+    progress.write_text(text.replace("Schema approved", "Schema v2 approved"),
+                        encoding="utf-8")
+    _commit(consumer, "re-ask the gate")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
+    assert f"{gid} names no human gate" in capsys.readouterr().out
+
+
 def test_check_warns_on_a_root_document_missing_its_mandatory_sections(
         aide, consumer: Path, capsys):
     """Issue #86: a vision written free-hand, missing every section its

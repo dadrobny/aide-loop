@@ -52,6 +52,8 @@ paths:
      - The remedy is to re-plan: drop the blocked items, or change what the
        gate asks
      - Resolving is a CLI operation, never a hand edit
+     - Cite a gate by its ID, never by its position
+     - The Gate cell is the gate's identity
 -->
 
 # Human gates
@@ -90,6 +92,13 @@ Validation or Assumptions block, implying `Blocks: NNN`; `progress.md` holds
 the **authoritative row**, always — a gate that exists only as prose in a
 roadmap or a spec blocks nothing. **A declined gate keeps blocking.** The
 remedy is to re-plan: drop the blocked items, or change what the gate asks.
+
+**Cite a gate by its ID, never by its position** — the `gate-<hex>` that
+`aide gate list` prints, in an item spec, a queue file, a roadmap stage or
+another `progress.md` row; a merge renumbers the rows, and `aide check` errors
+on a cited ID that names no gate. **The Gate cell is the gate's identity**:
+the ID is a hash of it, so rewording it makes a different gate, and every
+citation of the old one must be re-pointed.
 
 Adding the row is a hand edit because it has no verb. Everything after it does:
 **resolving is a CLI operation, never a hand edit** (`aide gate` only lists,

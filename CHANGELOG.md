@@ -121,6 +121,46 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.12.0] — 2026-09-27
+
+### Added
+
+- **Human gates have a durable ID, and `aide check` holds citations to it
+  (issue #293, split from #276).** A gate was addressable only by its row's
+  position, and a merge that put another gate above it renumbered it: items
+  went on citing the gate under its new number, and nothing checked that the
+  number still named the gate meant. Every gate now has an ID — `gate-` and
+  the leading hex of a SHA-256 of its **Gate cell alone**, four digits,
+  longer only where two different Gate cells would share them — which
+  `aide gate list` prints and no one writes: the row keeps its four cells.
+  Status and evidence (what `approve`/`decline` write) and Blocks (re-planned
+  while the question stands) are outside the hash, so resolving, re-planning
+  and renumbering all leave the ID where it was. §1 → human gates now says a
+  durable artifact cites a gate by its ID, never its position, and that the
+  Gate cell is the gate's identity: rewording it makes a different gate.
+  - `aide gate approve`/`decline` take `N|ID`; an ID naming no row, or two
+    rows asking the same question, is refused and writes nothing. The commit
+    subject names the gate by ID.
+  - `aide check` reads `docs_dir` (the inbox and its archives excepted): a
+    cited gate ID naming no row is an **error**; one matching two different
+    Gate cells, and a citation by position (`gate 3`, `human gate #3`) while
+    the `## Human gates` table has a row, are warnings naming the ID to
+    write. A `gate-<hex>` inside a path, a file name, a URL or a heading
+    anchor is not a citation, and `tests_dir` is not read; `aide check -h`
+    states all of it.
+  - `aide check`'s gate warnings, `aide claim`'s "none left" report and
+    `aide status` print each gate's ID beside its number.
+  - The `aide-human-gates` section skill delivers the citation rule to the
+    two roles that raise a gate.
+  - §1 → items and the item template's guidance quoted a gate's reach as
+    "waits on Gate 3"; the example now reads `gate-<hex>`, a placeholder no
+    check reads as a citation. Guidance only, so
+    the item template's version is unmoved.
+
+  **What a consumer edits:** nothing to update. Afterwards, a spec or queue
+  file citing a gate by number draws a warning naming the ID to write, and
+  any `gate-<hex>` token in `docs_dir` that names no gate is an error.
+
 ## [2.11.0] — 2026-09-27
 
 ### Added

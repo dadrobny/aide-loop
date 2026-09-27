@@ -589,3 +589,250 @@ def test_a_bom_already_in_the_file_is_stripped_not_preserved(tmp_path: Path):
     assert aide.main(["--repo", str(repo), "gate", "approve", "1",
                       "--no-commit"]) == 0
     assert not ppath.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
+# --------------------------------------------------------------------------- #
+# gate IDs — the durable handle (issue #293)
+# --------------------------------------------------------------------------- #
+def _ids(rows: str):
+    return aide.gate_ids(aide.human_gates(_lines(rows)))
+
+
+def test_every_named_gate_has_an_id_of_the_documented_shape():
+    [gid] = _ids(AWAITING)
+    assert aide.is_gate_id(gid) and len(gid) == len("gate-") + aide.GATE_ID_MIN_HEX
+
+
+def test_resolving_a_gate_does_not_move_its_id():
+    """Status and evidence are what `approve` writes — hashing them would make
+    the ID move on the one edit every gate receives."""
+    assert _ids(AWAITING) == _ids(APPROVED)
+
+
+def test_re_planning_the_reach_does_not_move_the_id():
+    assert _ids(AWAITING) == _ids("| Golden retirement approved | stage 1 | ⏳ Awaiting | — |")
+
+
+def test_renumbering_the_rows_does_not_move_the_id():
+    """The #293 incident: a merge put another gate above this one."""
+    before = _ids(AWAITING)[0]
+    after = _ids(f"{ALL}\n{AWAITING}")[1]
+    assert before == after
+
+
+def test_rewrapping_the_gate_cell_is_the_same_gate():
+    assert _ids(AWAITING) == _ids("| Golden  retirement approved | 028 | ⏳ Awaiting | — |")
+
+
+def test_rewording_the_gate_cell_is_a_different_gate():
+    assert _ids(AWAITING) != _ids("| Golden retirement signed off | 028 | ⏳ Awaiting | — |")
+
+
+def test_an_empty_gate_cell_has_no_id():
+    assert _ids("| | 028 | ⏳ Awaiting | — |") == [None]
+
+
+def test_ids_lengthen_only_to_tell_different_gates_apart(monkeypatch):
+    """Two Gate cells sharing four hex digits get five; a third that shares
+    nothing with them keeps four."""
+    gates = [aide.HumanGate(i, t, [], None, False, "awaiting")
+             for i, t in enumerate("abc", start=1)]
+    fake = {"a": "abcd1" + "0" * 59, "b": "abcd2" + "0" * 59, "c": "ef01" + "0" * 60}
+    monkeypatch.setattr(aide, "gate_hash", lambda g: fake[g.text])
+    assert aide.gate_ids(gates) == ["gate-abcd1", "gate-abcd2", "gate-ef01"]
+
+
+def test_two_rows_asking_the_same_question_share_an_id():
+    ids = _ids(f"{AWAITING}\n| Golden retirement approved | 027 | ⏳ Awaiting | — |")
+    assert ids[0] == ids[1]
+
+
+def test_index_for_ref_takes_a_position_or_an_id():
+    gates = aide.human_gates(_lines(f"{AWAITING}\n{ALL}"))
+    ids = aide.gate_ids(gates)
+    assert aide.gate_index_for_ref("2", gates) == 2
+    assert aide.gate_index_for_ref(ids[1], gates) == 2
+    # A longer prefix of the same hash is the same ID.
+    full = "gate-" + aide.gate_hash(gates[1])
+    assert aide.gate_index_for_ref(full, gates) == 2
+
+
+def test_index_for_ref_refuses_a_dangling_a_duplicate_and_a_malformed_ref():
+    import pytest
+    gates = aide.human_gates(_lines(f"{AWAITING}\n| Golden retirement approved | 027 | ⏳ Awaiting | — |"))
+    with pytest.raises(ValueError, match="reworded"):
+        aide.gate_index_for_ref("gate-0000", gates)
+    with pytest.raises(ValueError, match="same question"):
+        aide.gate_index_for_ref(aide.gate_ids(gates)[0], gates)
+    with pytest.raises(ValueError, match="neither a gate number nor a gate ID"):
+        aide.gate_index_for_ref("golden", gates)
+
+
+def test_gate_list_prints_each_id(tmp_path: Path, capsys):
+    repo = _repo(tmp_path, f"{AWAITING}\n{ALL}")
+    assert aide.main(["--repo", str(repo), "gate", "list"]) == 0
+    out = capsys.readouterr().out
+    for gid in _ids(f"{AWAITING}\n{ALL}"):
+        assert gid in out
+
+
+def test_approve_by_id_resolves_the_row_it_names(tmp_path: Path, capsys):
+    """The ID survives the renumbering a position does not: approving the
+    second row by ID writes that row and no other."""
+    repo = _repo(tmp_path, f"{AWAITING}\n{ALL}")
+    gid = _ids(ALL)[0]
+    assert aide.main(["--repo", str(repo), "gate", "approve", gid,
+                      "--evidence", "data landed", "--no-commit"]) == 0
+    assert f"{gid}: approved" in capsys.readouterr().out
+    gates = aide.human_gates((repo / "docs/aide/progress.md")
+                             .read_text(encoding="utf-8").splitlines())
+    assert [g.kind for g in gates] == ["awaiting", "approved"]
+
+
+def test_approve_by_an_unknown_id_is_an_error_not_a_noop(tmp_path: Path, capsys):
+    repo = _repo(tmp_path, AWAITING)
+    before = (repo / "docs/aide/progress.md").read_text(encoding="utf-8")
+    assert aide.main(["--repo", str(repo), "gate", "approve", "gate-0000",
+                      "--no-commit"]) == 2
+    assert "no gate gate-0000" in capsys.readouterr().err
+    assert (repo / "docs/aide/progress.md").read_text(encoding="utf-8") == before
+
+
+def test_the_commit_names_the_gate_by_its_id(tmp_path: Path, capsys):
+    repo = _repo(tmp_path, AWAITING)
+    assert aide.main(["--repo", str(repo), "gate", "approve", "1"]) == 0
+    subject = _run(["git", "log", "-1", "--format=%s"], repo).stdout.strip()
+    assert subject == f"docs: human {_ids(AWAITING)[0]} approved"
+
+
+def test_warnings_and_claim_name_the_id(tmp_path: Path, capsys):
+    gid = _ids(ALL)[0]
+    assert any(gid in w for w in aide.gate_warnings(_lines(ALL)))
+    repo = _repo(tmp_path, ALL)
+    assert aide.main(["--repo", str(repo), "claim", "--dry-run"]) == 0
+    assert gid in capsys.readouterr().out
+
+
+def _cite(repo: Path, text: str) -> None:
+    (repo / "docs/aide/items").mkdir(exist_ok=True)
+    (repo / "docs/aide/items/027-alpha.md").write_text(text, encoding="utf-8")
+
+
+def test_check_accepts_a_citation_that_resolves(tmp_path: Path):
+    repo = _repo(tmp_path, AWAITING)
+    _cite(repo, f"Blocked on {_ids(AWAITING)[0]} until sign-off.\n")
+    errors, warnings = aide.run_checks(repo, aide.load_config(repo))
+    assert not [e for e in errors if "gate-" in e]
+    assert not [w for w in warnings if "by position" in w]
+
+
+def test_check_errors_on_a_citation_naming_no_gate(tmp_path: Path):
+    """The row went, or its question was reworded: the citation names a
+    decision no reader can find, which is the silent failure #293 reports."""
+    repo = _repo(tmp_path, AWAITING)
+    _cite(repo, "Blocked on gate-0000 until sign-off.\n")
+    errors, _ = aide.run_checks(repo, aide.load_config(repo))
+    assert any("items/027-alpha.md:1: gate-0000 names no human gate" in e
+               for e in errors)
+
+
+def test_check_warns_on_a_positional_citation_and_names_the_id(tmp_path: Path):
+    repo = _repo(tmp_path, f"{AWAITING}\n{ALL}")
+    _cite(repo, "Waits on human gate 2.\n")
+    _, warnings = aide.run_checks(repo, aide.load_config(repo))
+    [w] = [w for w in warnings if "by position" in w]
+    assert "`human gate 2`" in w and _ids(ALL)[0] in w
+
+
+def test_positional_reading_needs_a_gates_section(tmp_path: Path):
+    """With no `## Human gates` table, "gate 3" is some other gate."""
+    repo = _repo(tmp_path, AWAITING)
+    p = repo / "docs/aide/progress.md"
+    text = p.read_text(encoding="utf-8")
+    head, _, tail = text.partition("## Human gates")
+    p.write_text(head + "## Stage 1" + tail.split("## Stage 1", 1)[1], encoding="utf-8")
+    _cite(repo, "Passes quality gate 3.\n")
+    _, warnings = aide.run_checks(repo, aide.load_config(repo))
+    assert not [w for w in warnings if "by position" in w]
+
+
+def test_a_hyphenated_word_or_a_version_is_not_a_citation():
+    line = "the logic-gate-cafe module; gate-beefy; gate 1.2; gate-3fa1x"
+    assert not list(aide._GATE_ID_CITATION_RE.finditer(line))
+    assert not list(aide._GATE_POSITION_RE.finditer(line))
+
+
+def test_an_empty_gates_table_reads_no_positions(tmp_path: Path):
+    """The progress template ships the section with no rows, so a consumer
+    that never raised a gate keeps it — and its "quality gate 2" is not one."""
+    repo = _repo(tmp_path, "")
+    _cite(repo, "Passes quality gate 2.\n")
+    _, warnings = aide.run_checks(repo, aide.load_config(repo))
+    assert not [w for w in warnings if "by position" in w]
+
+
+def test_check_warns_on_an_ambiguous_gate_id(tmp_path: Path, monkeypatch):
+    rows = f"{AWAITING}\n{ALL}"
+    fake = {"Golden retirement approved": "abcd1" + "0" * 59,
+            "Real segmenter output arrived": "abcd2" + "0" * 59}
+    monkeypatch.setattr(aide, "gate_hash", lambda g: fake.get(g.text))
+    repo = _repo(tmp_path, rows)
+    _cite(repo, "Blocked on gate-abcd.\n")
+    errors, warnings = aide.run_checks(repo, aide.load_config(repo))
+    assert not [e for e in errors if "gate-abcd" in e]
+    [w] = [w for w in warnings if "matches more than one human gate" in w]
+    assert "gate-abcd1" in w and "gate-abcd2" in w
+
+
+def test_a_path_a_file_name_or_an_anchor_is_not_a_citation(tmp_path: Path):
+    """Each of these would be an error blocking a merge if read as a citation."""
+    repo = _repo(tmp_path, AWAITING)
+    _cite(repo, "See [it](roadmap.md#gate-2026), notes/gate-0001.md, "
+                "https://x.example/gate-cafe, https://x.example/?id=gate-beef "
+                "and gate-face/index.\n")
+    errors, _ = aide.run_checks(repo, aide.load_config(repo))
+    assert not [e for e in errors if "names no human gate" in e]
+    # A citation at the end of a sentence, or in backticks, still is one.
+    assert [m.group("id") for m in aide._GATE_ID_CITATION_RE.finditer(
+        "Held by gate-0000. And `gate-0001`, too.")] == ["gate-0000", "gate-0001"]
+
+
+def test_tests_dir_is_not_swept_for_gate_ids(tmp_path: Path):
+    repo = _repo(tmp_path, AWAITING)
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_logic.py").write_text(
+        'def test_x():\n    assert "gate-0000"\n', encoding="utf-8")
+    errors, _ = aide.run_checks(repo, aide.load_config(repo))
+    assert not [e for e in errors if "gate-0000" in e]
+
+
+def test_a_citation_of_an_unreadable_row_says_so(tmp_path: Path):
+    repo = _repo(tmp_path, "| Golden retirement approved | 028 | ⏳ Awaiting | a | b |")
+    _cite(repo, f"Blocked on {_ids(AWAITING)[0]}.\n")
+    errors, _ = aide.run_checks(repo, aide.load_config(repo))
+    [e] = [e for e in errors if "names no human gate" in e]
+    assert "unreadable gate rows" in e
+
+
+def test_approve_by_id_without_a_gates_table_names_the_missing_table(
+        tmp_path: Path, capsys):
+    repo = _repo(tmp_path, AWAITING)
+    p = repo / "docs/aide/progress.md"
+    text = p.read_text(encoding="utf-8")
+    head, _, tail = text.partition("## Human gates")
+    p.write_text(head + "## Stage 1" + tail.split("## Stage 1", 1)[1], encoding="utf-8")
+    assert aide.main(["--repo", str(repo), "gate", "approve", "gate-0000",
+                      "--no-commit"]) == 2
+    assert "no '## Human gates' table" in capsys.readouterr().err
+
+
+def test_no_shipped_template_carries_a_gate_citation():
+    """A template's guidance survives into a consumer's document unless its
+    author deletes it, and every document built from one sits in docs_dir —
+    so a `gate-<hex>` example there is a dangling citation, an `aide check`
+    error, in every consumer, gate or no gate. Examples use `gate-<hex>`."""
+    templates = _MODULE_PATH.parents[1] / "templates"
+    found = [(p.name, m.group("id"))
+             for p in sorted(templates.glob("*.md"))
+             for m in aide._GATE_ID_CITATION_RE.finditer(p.read_text(encoding="utf-8"))]
+    assert found == []
