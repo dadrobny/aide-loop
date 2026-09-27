@@ -18,6 +18,13 @@ Mandatory (consumer in brackets):
    says which is which. *(aide check, aide progress reword, create-progress,
    queue-planner, spec-author)*
 
+**The coverage table is complete both ways.** Every G-code in `vision.md` has
+a row — an objective withdrawn from scope too, for as long as the vision lists
+its code — and every stage a row names has a `## Stage N` section of its own
+here. A stage held only as a bullet under a grouped heading has none: the
+objective is then mapped to a stage the plan does not lay out. `aide check`
+warns on a G-code with no row and on a named stage with no section.
+
 **An existing roadmap is updated, never regenerated.** Read `progress.md`
 first: it is the only record of which stages have started.
 
@@ -77,6 +84,17 @@ warns on a forward dependency whose stage is not ⏸️.
   does not reach it. The consumer's own swept roadmap kept exactly one forward
   dependency, on a stage it had deferred. 🚧 and 📋 are not exempt — a stage in
   either is still expected to close in its turn.
+- **Why the coverage table is checked for completeness.** The check said
+  only that the table existed, so a G-code no row mapped — an objective no
+  stage was planned to deliver — and a row naming a stage the roadmap never
+  laid out both passed clean. Both were found in the audit for issue #285,
+  whose Objective-row check is the `progress.md` counterpart of the second,
+  and filed as issue #289. A warning, because a missing row under-reports
+  rather than over-claims.
+- **Why a withdrawn objective keeps its row.** Its code is never reused, and
+  the row is where the roadmap says which stage delivered what it did before
+  it left scope; a code the vision lists and the roadmap does not is
+  indistinguishable from one it forgot.
 - **Why the blocking slot only.** The template keeps the slot to blocking
   stages and puts ordering without blocking in a sentence after it
   (`None. Independent of Stage 17 — may be queued in either order.`); reading

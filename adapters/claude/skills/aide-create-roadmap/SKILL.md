@@ -62,7 +62,8 @@ read it before editing. In practice:
    `Target:` bullet instead, which progress.md tracks in its Outcome targets
    table (gating the objective, not the stage).
 3. **Objective → stage coverage table is mandatory** — every vision G-code maps
-   to at least one stage (progress mirrors this table).
+   to at least one stage (progress mirrors this table); what a complete table
+   holds is `.aide/conventions.md` §1 → roadmap.md.
 4. **Prescriptive detail** — most work is done by AI; be specific.
 5. **Realistic scope** — each stage deployable locally, roughly a week.
 

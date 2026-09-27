@@ -5208,11 +5208,29 @@ def blocking_dependency_stages(text: str) -> List[int]:
     `Stage`/`Stages`, or from a slot of bare numbers and nothing else, so an
     item number or a version in the slot is not read as a stage.
     """
-    slot = _DEPS_SLOT_END_RE.split(text.strip(), maxsplit=1)[0]
-    slot = slot.replace("*", "").replace("`", "")
-    runs = [m.group(1) for m in _DEPS_STAGE_LIST_RE.finditer(slot)]
-    if not runs and _DEPS_BARE_LIST_RE.match(slot):
-        runs = [slot]
+    return named_stage_numbers(_DEPS_SLOT_END_RE.split(text.strip(),
+                                                       maxsplit=1)[0])
+
+
+def named_stage_numbers(text: str) -> List[int]:
+    """Stage numbers *text* names, in order and without repeats.
+
+    One reading for every cell or slot whose job is to name stages — the
+    blocking slot of a Dependencies block (issue #282) and a roadmap
+    coverage row's Delivered-by cell (issue #289). Emphasis and code spans are
+    stripped first. A number is taken after `Stage`/`Stages`, in a list
+    joined by commas, `and`, `or`, `&` or a range dash, each element
+    optionally re-prefixed — wherever that run sits, so prose around it
+    (`Stages 4, 5 (specification: **Stage 30**)`) is read for its stages and
+    nothing else — or from a text of bare numbers and nothing else. A number
+    anywhere else (`extended by 2–4`, `item 012`, `v2`) is not a stage: the
+    bare `\\d+` reading of a Delivered-by cell matched exactly that prose
+    (issue #285). A range names its two endpoints, as written.
+    """
+    plain = text.replace("*", "").replace("`", "")
+    runs = [m.group(1) for m in _DEPS_STAGE_LIST_RE.finditer(plain)]
+    if not runs and _DEPS_BARE_LIST_RE.match(plain):
+        runs = [plain]
     out: List[int] = []
     for run in runs:
         for n in re.findall(r"\d+", run):
@@ -5293,6 +5311,131 @@ def forward_dependency_warnings(ddir: Path) -> List[str]:
             f"number order, so it cannot close when its turn comes; reorder "
             f"the planned stages so the dependency comes first, or defer "
             f"stage {int(num)} (⏸️ in progress.md) — §1 → roadmap.md")
+    return out
+
+
+#: The G-code(s) opening a roadmap coverage row's first cell — `G2`, or a
+#: leading run `G2, G7` — after emphasis, code spans and one leading
+#: parenthetical annotation are set aside: a consumer keeps a withdrawn
+#: objective's row as `*(out of scope 2026-07-25)* G5 Deploy on XNAT`, and
+#: that row still maps G5 to its stages.
+_COVERAGE_CODES_RE = re.compile(r"^\s*(?:\([^)]*\)\s*)?(G\d+(?:\s*[,/&]\s*G\d+)*)\b")
+
+
+def _coverage_row_codes(cells: List[str]) -> List[int]:
+    """The objective numbers a table row maps, read from its first cell."""
+    if len(cells) < 2:
+        return []
+    m = _COVERAGE_CODES_RE.match(cells[0].replace("*", "").replace("`", ""))
+    return [int(n) for n in re.findall(r"G(\d+)", m.group(1))] if m else []
+
+
+def coverage_completeness_warnings(ddir: Path) -> List[str]:
+    """The three coverage tables, each checked for completeness (issue #289).
+
+    `root_document_warnings` and the progress.md presence errors say that
+    each table *exists*; this says that it leaves nothing out, which §1
+    states for each table:
+
+    1. **Every `## Stage N` section of progress.md has a Stage summary row.**
+       Since #285 the header and bullets of such a stage are compared, but
+       the summary — what `aide status` and the queue-planner read — left it
+       out without a word. A ⏸️ or ❌ stage is no exception: the summary row
+       is where a deferral or an exclusion is read from (the ❌ row is what
+       drops the stage from every comparison), so it needs its row most. A
+       row the reader cannot use still counts as the stage's row when its
+       Stage cell holds that number: it is `unreadable_row_errors`'s to
+       report, once.
+    2. **Every vision.md G-code has a roadmap.md coverage row**, or no stage
+       is mapped to deliver the objective. A G-code the vision has withdrawn
+       keeps its identity, and its row: the codes are never reused.
+    3. **Every stage a roadmap.md coverage row names has a `## Stage N`
+       section in roadmap.md** — the roadmap-side counterpart of #285's
+       Objective row naming no stage with a section, per stage rather than
+       per row, since a coverage row is read for every stage it maps. The
+       Delivered-by cell is read by `named_stage_numbers`, the reading the
+       Dependencies slot takes: stages after `Stage`/`Stages` wherever they
+       sit in the cell's prose, or a cell of bare numbers, never a bare number
+       in prose. A stage's status does not enter: a deferred or excluded
+       stage keeps its roadmap section like any other.
+
+    Stage numbers and G-codes are matched by value, so `Stage 07` is stage 7.
+    A missing file is silent for the cases that need it, as in
+    `root_document_warnings`; so is a missing table (or, for case 3, a
+    roadmap with no `## Stage N` section at all), since that is reported
+    already and one missing table would otherwise be reported once per row.
+
+    A warning, never an error: a missing row under-reports rather than
+    over-claims, and documents written before the rule exist.
+    """
+    out: List[str] = []
+    ppath = ddir / "progress.md"
+    if ppath.is_file():
+        plines = ppath.read_text(encoding=_ENCODING).splitlines()
+        rows = list(_table_rows(plines, _STAGE_SUMMARY))
+        in_summary: Set[int] = set()
+        for _i, cells, problem in rows:
+            m = (re.fullmatch(r"\d+", cells[0]) if problem is None
+                 else re.search(r"\d+", cells[0]))
+            if m:
+                in_summary.add(int(m.group(0)))
+        if rows:
+            for _start, _end, num in stage_sections(plines):
+                if int(num) not in in_summary:
+                    out.append(
+                        f"progress.md: stage {int(num)} has a '## Stage "
+                        f"{int(num)}' section but no Stage summary row — the "
+                        f"summary is what `aide status` and the queue-planner "
+                        f"read, so it silently leaves out a stage this file "
+                        f"tracks; add its row — §1 → progress.md")
+
+    rpath = ddir / "roadmap.md"
+    if not rpath.is_file():
+        return out
+    rlines = rpath.read_text(encoding=_ENCODING).splitlines()
+    covered: Set[int] = set()
+    coverage_rows: List[Tuple[List[int], str]] = []
+    for line in rlines:
+        if not line.strip().startswith("|"):
+            continue
+        cells = _split_row(line)
+        codes = _coverage_row_codes(cells)
+        if codes:
+            covered.update(codes)
+            coverage_rows.append((codes, cells[1]))
+
+    vpath = ddir / "vision.md"
+    if vpath.is_file() and _has_g_code_row(rlines):
+        vision_codes: List[int] = []
+        for line in vpath.read_text(encoding=_ENCODING).splitlines():
+            cells = _split_row(line) if line.strip().startswith("|") else []
+            m = re.match(r"G(\d+)\b", cells[0]) if cells else None
+            if m and int(m.group(1)) not in vision_codes:
+                vision_codes.append(int(m.group(1)))
+        for g in vision_codes:
+            if g not in covered:
+                out.append(
+                    f"roadmap.md: vision objective G{g} has no row in the "
+                    f"objective → stage coverage table, so no stage is "
+                    f"mapped to deliver it; add a 'G{g} | Stage N' row — "
+                    f"§1 → roadmap.md")
+
+    sections = {int(num) for _s, _e, num in stage_sections(rlines)}
+    if sections:
+        for codes, cell in coverage_rows:
+            missing = [n for n in named_stage_numbers(cell) if n not in sections]
+            if not missing:
+                continue
+            named = ", ".join(str(n) for n in missing)
+            plural = len(missing) != 1
+            out.append(
+                f"roadmap.md: the coverage row for "
+                f"{', '.join(f'G{g}' for g in codes)} names "
+                f"stage{'s' if plural else ''} {named}, which "
+                f"{'have' if plural else 'has'} no '## Stage N' section in "
+                f"roadmap.md, so the objective is mapped to a stage the plan "
+                f"does not lay out; name the stage that delivers it, or give "
+                f"that stage its section — §1 → roadmap.md")
     return out
 
 
@@ -5944,6 +6087,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(header_blockquote_warnings(ddir))
     warnings.extend(root_document_warnings(ddir))
     warnings.extend(forward_dependency_warnings(ddir))
+    warnings.extend(coverage_completeness_warnings(ddir))
     # A docs_dir outside the repo falls back to its absolute spelling, which
     # cannot appear in a spec's repo-relative paths — the always-authorised
     # pin lint then has nothing to match; the other spec-shape lints still
@@ -12301,7 +12445,16 @@ def build_parser() -> argparse.ArgumentParser:
             "before', where a stage number is one "
             "after the word Stage or Stages, or a slot of bare numbers "
             "\u2014 unless progress.md shows that stage \u23f8\ufe0f on "
-            "its header or summary row; every "
+            "its header or summary row; a progress.md stage section with no "
+            "Stage summary row, \u23f8\ufe0f and \u274c stages included, "
+            "where a row the reader cannot use still counts for the stage "
+            "its Stage cell names; a vision.md G-code with no row in "
+            "roadmap.md's coverage table, whose rows are read by the G-codes "
+            "opening their first cell, past one leading parenthetical; a "
+            "stage a roadmap.md coverage row names with no '## Stage N' "
+            "section in roadmap.md, the Delivered by cell read as the "
+            "Dependencies slot is, by number after the word Stage or Stages "
+            "or from a cell of bare numbers; every "
             "retracted acceptance criterion and every reopened item, a "
             "normal state rather than a defect, each reported once, by its "
             "latest retraction or reopening, and never as open once the box "
