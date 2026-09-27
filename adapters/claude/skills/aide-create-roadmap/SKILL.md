@@ -53,7 +53,8 @@ read it before editing. In practice:
 ### Requirements
 
 1. **Staged delivery** — incremental stages that build on each other, numbered
-   from 0.
+   from 0; which stages a stage's Dependencies may name is
+   `.aide/conventions.md` §1 → roadmap.md.
 2. **Each stage is demonstrable and testable** — a runnable deliverable plus
    clear validation/acceptance criteria per stage. Acceptance bullets are
    observable checks *of the built thing*; a measured outcome the work cannot
