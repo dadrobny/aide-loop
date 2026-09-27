@@ -44,6 +44,8 @@ _spec.loader.exec_module(aide)  # type: ignore[union-attr]
     ("independent of Stage 9; may be queued in either order.", []),
     ("Queue before Stage 9, whose retuning is safer once this exists.", []),
     ("Stage 2, independent of Stage 9", [2]),
+    # "Queued after" states a block, not an ordering preference: still read.
+    ("Blocked on Stage 5, queued after Stage 3 lands.", [5, 3]),
     # Bare numbers — the template slot says "blocking stage numbers".
     ("3, 4", [3, 4]),
     ("3 and 4", [3, 4]),

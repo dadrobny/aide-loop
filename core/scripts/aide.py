@@ -4983,7 +4983,7 @@ _ROADMAP_DEPS_RE = re.compile(r"^\*\*Dependencies\s*[.:]?\*\*\s*:?\s*(?P<text>.*
                               re.IGNORECASE)
 #: Where the blocking slot ends: the first `;`, dash-set clause, sentence end,
 #: or one of the template's two ordering lead-ins (`independent of`, `queue
-#: before`/`after`). The template keeps the slot to blocking stages and puts
+#: before`). The template keeps the slot to blocking stages and puts
 #: ordering without blocking in a sentence after it (`None. Independent of
 #: Stage 17 — …`), and a consumer's forward dependency read `Depends on Stage
 #: 5; … may be delivered after it` — both are read correctly by stopping at the
@@ -4991,7 +4991,7 @@ _ROADMAP_DEPS_RE = re.compile(r"^\*\*Dependencies\s*[.:]?\*\*\s*:?\s*(?P<text>.*
 #: unread when an author writes them with no `None.` before them.
 _DEPS_SLOT_END_RE = re.compile(
     r";|\s[—–]\s|\s-\s|[.!?](?=\s|$)"
-    r"|\bindependent\s+of\b|\bqueued?\s+(?:before|after)\b", re.IGNORECASE)
+    r"|\bindependent\s+of\b|\bqueued?\s+before\b", re.IGNORECASE)
 #: Stage numbers in the slot: after `Stage`/`Stages`, a list of numbers joined
 #: by commas, `and`, `or`, `&` or a range dash, each optionally re-prefixed; a
 #: comma before the conjunction (`Stages 10, 11, and 12`) is one separator.
@@ -5007,7 +5007,7 @@ def blocking_dependency_stages(text: str) -> List[int]:
     """Stage numbers named in the blocking slot of a Dependencies block's *text*.
 
     The slot is the text up to its first `;`, spaced dash, sentence end or
-    ordering lead-in (`independent of`, `queue before`/`after`) —
+    ordering lead-in (`independent of`, `queue before`) —
     §1 → roadmap.md reads the slot only, and a sentence after it about
     ordering without blocking names what it likes. Numbers are taken after
     `Stage`/`Stages`, or from a slot of bare numbers and nothing else, so an
@@ -12089,7 +12089,7 @@ def build_parser() -> argparse.ArgumentParser:
             "stage whose Dependencies name a later-numbered stage in the "
             "blocking slot \u2014 the text up to its first semicolon, "
             "spaced dash, sentence end, 'independent of' or 'queue "
-            "before'/'after', where a stage number is one "
+            "before', where a stage number is one "
             "after the word Stage or Stages, or a slot of bare numbers "
             "\u2014 unless progress.md shows that stage \u23f8\ufe0f on "
             "its header or summary row; every "
