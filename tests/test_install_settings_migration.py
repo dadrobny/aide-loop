@@ -312,6 +312,17 @@ def test_a_project_without_hooks_gets_no_registration(tmp_path: Path):
     assert "hooks" not in _read(dst)
 
 
+def test_a_project_without_the_events_list_gets_no_registration(
+        tmp_path: Path):
+    settings = _without_2_19_0(_base())
+    del settings["hooks"]["PreToolUse"]
+    dst = tmp_path / "settings.json"
+    _write(dst, settings)
+    edits = install.migrate_settings(_base(), dst, [])
+    assert "PreToolUse" not in _read(dst)["hooks"]
+    assert not any("spawn_model_guard" in e for e in edits)
+
+
 def test_a_depth_the_project_set_is_kept(tmp_path: Path):
     settings = _without_2_19_0(_base())
     settings["env"] = {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "3"}

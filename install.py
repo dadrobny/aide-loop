@@ -1520,7 +1520,7 @@ def _migrate_hooks(base: dict, settings: dict) -> List[str]:
                    if _group_script(g) == script), None)
         if at is None:
             continue
-        groups = hooks.setdefault(event, [])
+        groups = hooks.get(event)
         if not isinstance(groups, list):
             continue
         before = _group_script(base_groups[at - 1]) if at else None

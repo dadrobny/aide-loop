@@ -175,7 +175,8 @@ instead — that is the bump policy above, and it is enforced by
   `spawn_model_guard.py`; and `env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`,
   with `env` created if missing, only when the key is absent — a depth the
   consumer set is left alone, as are its other `env` keys, a registration it
-  moved or edited, and a file with no `hooks` at all. Both are idempotent. A
+  moved or edited, and a file with no `hooks` or no `PreToolUse` list. Both
+  are idempotent. A
   consumer with `settings.overlay.json` gets them through the regenerated
   file, and the `disallowedTools` half arrives with the agent specs.
 
