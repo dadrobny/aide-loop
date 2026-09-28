@@ -83,9 +83,11 @@ python .aide/scripts/aide.py merge NNN
 
 (`auto-merge` direct-merges + deletes the claim branch + re-tests, and ticks
 and pushes only when that run is green or its every failure was already
-failing on the base before the merge (§4) — any other red run exits non-zero
-with the merge still local and the item still 🔍; `pr` pushes and stops for a
-human PR; `local` merges offline.)
+failing on the base before the merge (§4) and the tick is committed — any
+other red run, or a tick it cannot commit, exits non-zero with the merge still
+local and the item still 🔍 (a tick committed but not replayed onto origin
+leaves it ✅ here only, and says so); `pr` pushes and stops for a human PR;
+`local` merges offline.)
 
 ### On issues
 

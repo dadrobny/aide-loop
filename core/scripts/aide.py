@@ -7561,6 +7561,45 @@ def _snapshot(paths: List[Path]) -> Dict[Path, Optional[bytes]]:
     return {p: (p.read_bytes() if p.is_file() else None) for p in paths}
 
 
+def _commit_or_put_back(repo_root: Path, config, message: str,
+                        rels: List[str], before: Dict[Path, Optional[bytes]],
+                        pull: bool = True) -> Tuple[Optional[str], bool]:
+    """Commit *rels*; ``(None, False)`` when the edit is in ``HEAD``, else
+    ``(reason, committed)`` — with every file in *before* put back when the
+    reason stopped the commit itself.
+
+    The mechanism under `_commit_or_restore` and under `aide merge`'s tick,
+    which differ only in what they say and what they refuse next (issues
+    #309, #312). *committed* is read from git rather than from the reason:
+    ``HEAD`` moved, so the edit is in a commit and is kept — the replay onto
+    origin stopped, or a path was left out of it — and the reason is what
+    that commit still lacks. ``HEAD`` did not move, so nothing of this edit
+    is anywhere but the worktree, and each file goes back to its bytes (line
+    endings and all; a file that did not exist is removed). "Nothing to
+    commit" is no reason at all: the edit is already in ``HEAD``.
+    """
+    try:
+        head: Optional[str] = _rev(repo_root, "HEAD")
+    except (OSError, subprocess.SubprocessError):
+        head = None
+    failure = _commit_docs_files(repo_root, config, message, rels, pull=pull)
+    if not failure or failure == "nothing to commit":
+        return None, False
+    try:
+        # An unborn branch reads as "", so a HEAD afterwards is still a move.
+        moved = head is not None and _rev(repo_root, "HEAD") != head
+    except (OSError, subprocess.SubprocessError):
+        moved = False
+    if moved:
+        return failure, True
+    for path, data in before.items():
+        if data is not None:
+            path.write_bytes(data)
+        elif path.exists():
+            path.unlink()
+    return failure, False
+
+
 def _commit_or_restore(repo_root: Path, config, tag: str, what: str,
                        message: str, rels: List[str],
                        before: Dict[Path, Optional[bytes]],
@@ -7583,26 +7622,13 @@ def _commit_or_restore(repo_root: Path, config, tag: str, what: str,
     here: the inbox is a file `check` creates on the caller's behalf, and its
     commit failing is a notice on a check, never the check's exit.
     """
-    try:
-        head: Optional[str] = _rev(repo_root, "HEAD")
-    except (OSError, subprocess.SubprocessError):
-        head = None
-    failure = _commit_docs_files(repo_root, config, message, rels, pull=pull)
-    if not failure or failure == "nothing to commit":
+    failure, committed = _commit_or_put_back(repo_root, config, message, rels,
+                                             before, pull=pull)
+    if failure is None:
         return 0
-    try:
-        # An unborn branch reads as "", so a HEAD afterwards is still a move.
-        moved = head is not None and _rev(repo_root, "HEAD") != head
-    except (OSError, subprocess.SubprocessError):
-        moved = False
-    if moved:
+    if committed:
         print(f"{tag}: {what} is committed, but {failure}", file=sys.stderr)
         return 1
-    for path, data in before.items():
-        if data is not None:
-            path.write_bytes(data)
-        elif path.exists():
-            path.unlink()
     names = [p.name for p in before]
     state = (f"{names[0]} is as it was" if len(names) == 1
              else f"{', '.join(names)} are as they were")
@@ -7637,8 +7663,14 @@ def _commit_docs_files(repo_root: Path, config, message: str,
     ``ensure_insights_inbox`` keeps the reason a printed notice: the inbox is
     a file ``check`` creates on its caller's behalf, and a check's exit is
     the documents' verdict, not the commit's. The no-op sweep in `progress
-    set` and `merge`'s tick are best effort too — the first wrote nothing, and
-    the second follows a merge that has already landed.
+    set` is best effort too: it wrote nothing, so it has nothing to lose.
+    `merge`'s tick is not, though it once was on the ground that the merge had
+    already landed: it had landed in this repository only, and the push after
+    it carried the merge to origin without the ✅, the ledger row or the
+    inbox entry, deleted the claim branch a re-run needed, and left the tree
+    dirty for the next `aide sync` (issue #312). It goes through
+    `_commit_or_put_back`, the mechanism under `_commit_or_restore`, and a
+    reason there stops the merge before its push.
 
     A commit that fails — no ``user.name`` on a fresh clone, a hook, a path
     ``.gitignore`` reaches — leaves *rels* unstaged again, so the tree degrades
@@ -7671,8 +7703,11 @@ def _commit_docs_files(repo_root: Path, config, message: str,
     commit origin has not seen is never rebased by a bookkeeping verb: the
     rebase drops the merge and replays both parents, bringing back every
     conflict resolved inside it (issue #133) — and `aide merge` reaches here
-    with exactly that commit on ``HEAD``, having integrated origin itself a
-    moment earlier, so the skip is silent there by design.
+    with exactly that commit on ``HEAD`` whenever its merge was not a
+    fast-forward, having integrated origin itself before the suite ran, so
+    the skip is silent there by design. A fast-forward leaves no merge
+    commit, and the tick is then rebased like any other; a replay that stops
+    is a reason `merge` refuses its push on (issue #312).
     """
     joined = ", ".join(rels)
     try:
@@ -7689,8 +7724,13 @@ def _commit_docs_files(repo_root: Path, config, message: str,
                       f"— {_stopped_state(repo_root, config, what)}")
             print(f"aide: could not commit {joined} — {reason}", file=sys.stderr)
             return reason
+        refused_add = ""
         for rel in rels:
-            git(["add", "--", rel], repo_root, check=False)
+            added = git(["add", "--", rel], repo_root, check=False)
+            if added.returncode != 0 and not refused_add:
+                refused_add = next(
+                    (l.strip() for l in (added.stderr + added.stdout).splitlines()
+                     if l.strip()), "")
         res = git(["commit", "-m", message, "--", *rels], repo_root, check=False)
         if res.returncode != 0:
             git(["reset", "-q", "--", *rels], repo_root, check=False)
@@ -7699,6 +7739,13 @@ def _commit_docs_files(repo_root: Path, config, message: str,
                 return "nothing to commit"
             first = next((l.strip() for l in text.splitlines() if l.strip()),
                          "git commit failed")
+            if refused_add and refused_add != first:
+                # The commit's own complaint about a path a refused `add`
+                # never staged — "pathspec … did not match" for a file this
+                # verb has just created — names the casualty; the add's names
+                # the cause, a held index.lock say, which is what a person has
+                # to fix before the re-run (issue #312).
+                first = f"{first} (git add: {refused_add})"
             print(f"aide: could not commit {joined} — {first}", file=sys.stderr)
             return first
         # One path per line, never whitespace-split: a `docs_dir` with a space
@@ -10696,15 +10743,29 @@ def _restore_claim_branch(repo_root: Path, branch: str, tip: str,
 
 
 def _promote_item_to_complete(repo_root: Path, config, number: int,
+                              before: Dict[Path, Optional[bytes]],
                               no_commit: bool = False,
-                              extra_rels: Tuple[str, ...] = ()) -> None:
-    """Record item *number* as ✅ in progress.md — best effort, never fatal.
+                              extra_rels: Tuple[str, ...] = ()
+                              ) -> Optional[Tuple[str, bool]]:
+    """Record item *number* as ✅ in progress.md and commit it with *extra_rels*.
+
+    Returns ``None`` when there is nothing more to do — the commit made, or
+    none owed — else ``(reason, committed)`` from `_commit_or_put_back`, for
+    `cmd_merge` to refuse its push on (issue #312). *before* is the snapshot
+    `cmd_merge` took ahead of every file the tick's commit carries — this
+    progress.md and whatever *extra_rels* name — so a commit that did not
+    happen leaves each of them as it was before the ledger row and the inbox
+    entry were written, and the re-run writes them once. Not "best effort,
+    never fatal" any longer: that held while the merge counted as landed the
+    moment it was made, and the push after it then carried the merge to
+    origin without any of this (the docstring of `_commit_docs_files` has
+    the rest).
 
     Deliberately quiet about a no-op: the item may already be ✅ (a re-run, or a
     consumer still driving the old `progress set NNN done` ordering), and the
     merge itself is the thing that succeeded. It is *not* quiet about a missing
-    progress.md, which is a real misconfiguration — but even that must not fail
-    a merge that has already landed.
+    progress.md, which is a real misconfiguration — but that alone is a
+    sentence, never a refused push: there is nothing to tick.
 
     Since 1.53.0 `cmd_merge`'s document gate reaches a lost progress.md first:
     with `docs_dir` present it is an `aide check` error, and the merge is
@@ -10717,7 +10778,8 @@ def _promote_item_to_complete(repo_root: Path, config, number: int,
     ✅ are one fact about one item: two would let a run land the tick and lose
     the row, leaving a ledger a reader has to reconcile against progress.md.
     They are committed even where the tick itself is a no-op (a re-run over an
-    item already ✅), since the row is new either way.
+    item already ✅), since the row is new either way. With no path to commit
+    — a no-op tick and no row — nothing is committed and nothing is owed.
     """
     progress_path = docs_dir(repo_root, config) / "progress.md"
     rels = list(extra_rels)
@@ -10735,8 +10797,12 @@ def _promote_item_to_complete(repo_root: Path, config, number: int,
             rels.insert(0, str(config["project"].get("docs_dir", "docs/aide"))
                         + "/progress.md")
     if rels and not no_commit and (repo_root / ".git").exists():
-        _commit_docs_files(repo_root, config,
-                           f"progress(aide): item {number:03d} -> done", rels)
+        failure, committed = _commit_or_put_back(
+            repo_root, config, f"progress(aide): item {number:03d} -> done",
+            rels, before)
+        if failure is not None:
+            return failure, committed
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -11771,7 +11837,15 @@ def cmd_merge(args: argparse.Namespace) -> int:
             # Beside the tick and in the same commit as it: one item, one
             # row, whatever it took to get there (§1 → `ledger.md`). A ledger
             # write that fails is a warning after the merge and never an exit
-            # code — capture is worth a sentence, never a landed item.
+            # code — capture is worth a sentence, never a landed item. The
+            # COMMIT of what was written is another matter (below).
+            #
+            # Every file the tick's commit may carry, as it is before any of
+            # them is written: a commit that does not happen puts each back,
+            # so the re-run appends the row and the entry once (issue #312).
+            ddir = docs_dir(repo_root, config)
+            before = _snapshot([ddir / "progress.md", ledger_path(ddir),
+                                insights_path(ddir)])
             ledger_rel = None
             if pending_row is not None:
                 pending_row[LEDGER_COLUMNS.index("Suite s")] = suite_cell
@@ -11805,9 +11879,49 @@ def cmd_merge(args: argparse.Namespace) -> int:
                       else sys.stderr)
                 if inbox_rel and inbox_rel not in extra_rels:
                     extra_rels.append(inbox_rel)
-            _promote_item_to_complete(repo_root, config, args.number,
-                                      getattr(args, "no_commit", False),
-                                      tuple(extra_rels))
+            failed = _promote_item_to_complete(
+                repo_root, config, args.number, before,
+                getattr(args, "no_commit", False), tuple(extra_rels))
+            if failed is not None:
+                # The tick's commit did not land, so the push must not run:
+                # it is the one that carries `main` to origin, and it would
+                # carry the merge without the ✅, the row or the entry, then
+                # delete the claim branch a re-run needs (issue #312). This
+                # used to be best effort on the ground that the merge had
+                # landed — in THIS repository only, which is the same state
+                # a red run or a document error leaves, and is refused the
+                # same way: the branch back with its base, nothing pushed,
+                # exit 1. `local` mode pushes nothing but stops here too, so
+                # the claim branch is there for the retry.
+                reason, committed = failed
+                _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
+                if committed:
+                    # HEAD moved: the ✅ is in a commit here and is kept, and
+                    # what it lacks — its replay onto origin stopped, or a path
+                    # it should carry is not in it — `_commit_docs_files` has
+                    # already printed in full.
+                    print(f"aide merge: item {args.number:03d} is ✅ in a "
+                          f"commit on {main}, but {reason}\n"
+                          f"aide merge: nothing was pushed — {branch} is "
+                          f"merged into {main} in THIS "
+                          f"repository only, and the claim branch is back "
+                          f"with its base. Fix what the message above names "
+                          f"— settle a stopped replay on {main}, or un-ignore "
+                          f"a path the commit left out — then re-run "
+                          f"'merge {args.number:03d} --base {main}'.",
+                          file=sys.stderr)
+                else:
+                    print(f"aide merge: item {args.number:03d} is NOT ✅ and "
+                          f"nothing was pushed — the commit recording it "
+                          f"could not be made: {reason}\n"
+                          f"aide merge: {branch} is merged into {main} in "
+                          f"THIS repository only, the claim branch is back "
+                          f"with its base, and the files the tick wrote are "
+                          f"as they were. Fix that cause, then re-run "
+                          f"'merge {args.number:03d} --base {main}': the "
+                          f"merge is already an ancestor, so the retry only "
+                          f"re-tests, ticks and pushes.", file=sys.stderr)
+                return 1
 
             remote_gone = True
             if mode != "local":
@@ -14025,8 +14139,15 @@ def register_git_subcommands(sub) -> None:
             "whose spec or branch has gone still gets its row. Under pr mode "
             "this verb pushes and stops, so it writes neither the tick nor a "
             "row. A ledger write that fails is reported after the merge and "
-            "never changes the exit code: the merge landed, and capture is "
-            "worth a sentence rather than an item. An item stopped at the "
+            "never changes the exit code: the merge is made, and capture is "
+            "worth a sentence rather than an item. A commit of what was "
+            "written that git does not make is another matter: the run "
+            "pushes nothing, puts the claim branch back with its base, leaves "
+            "progress.md, the ledger and insights.md as they were before the "
+            "tick, and exits 1, so the re-run writes the row once. A commit "
+            "that is made but whose replay onto origin stops is kept, and "
+            "refuses the push the same way. An item "
+            "stopped at the "
             "validation-round cap never reaches this verb, and "
             "`aide ledger abandon` writes its row instead.\n"
             "\n"

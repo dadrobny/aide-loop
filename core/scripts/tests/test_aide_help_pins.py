@@ -1161,6 +1161,25 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "changes the exit code",
          "test_aide_ledger::"
          "test_a_ledger_that_cannot_be_written_does_not_fail_the_merge"),
+        # `_promote_item_to_complete` -> `_commit_or_put_back` over the
+        # snapshot `cmd_merge` took before the row; a reason there takes
+        # `_restore_claim_branch` and `return 1` ahead of the push (#312).
+        ("A commit of what was written that git does not make is another "
+         "matter: the run pushes nothing, puts the claim branch back with its "
+         "base, leaves progress.md, the ledger and insights.md as they were "
+         "before the tick, and exits 1",
+         ("test_aide_ledger::"
+          "test_a_tick_whose_commit_fails_refuses_the_push_and_puts_everything_back",
+          "test_aide_ledger::"
+          "test_the_re_run_after_a_failed_tick_lands_the_item_with_one_row")),
+        ("so the re-run writes the row once",
+         "test_aide_ledger::"
+         "test_the_re_run_after_a_failed_tick_lands_the_item_with_one_row"),
+        # `committed` (HEAD moved) keeps the commit, same refusal.
+        ("A commit that is made but whose replay onto origin stops is kept, "
+         "and refuses the push the same way",
+         "test_aide_ledger::"
+         "test_a_tick_whose_replay_stopped_keeps_its_commit_and_pushes_nothing"),
         # `review_is_off(config)` -> `_ledger_count_cells(no_review=...)`,
         # which renders `LEDGER_NO_REVIEW_CELL` for every rank the caller left
         # out. Both guards, because the marker would be unconditional and the

@@ -121,6 +121,37 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.15.2] — 2026-09-28
+
+### Fixed
+
+- **`aide merge` whose tick cannot be committed now stops before its push and
+  exits 1 (issue #312).** After the merge, the ✅ in `progress.md`, the ledger
+  row and any inherited-failure `defect` entry in `insights.md` are committed
+  together, and that commit was best effort: a failure (a held
+  `.git/index.lock`, a failing hook, a full disk) was a printed notice and
+  the run carried on. Under `auto-merge` it pushed `main` anyway, so origin
+  got the merge without the tick, the row or the entry; it deleted the claim
+  branch locally and on origin, so a re-run found no claim branch; it left
+  the three files dirty for the next `aide sync` to stop on; and it exited 0.
+  Now the refusal is the one a red post-merge run or a document error
+  already gives: nothing is pushed, the claim branch is put back with its
+  base, the files the tick wrote go back to their bytes (a `ledger.md` it
+  created is removed), and the verb exits 1 naming git's reason. `merge NNN
+  --base <base>` then finds the merge already an ancestor, ticks, writes the
+  row once and pushes. A commit that was made but whose replay onto origin
+  stopped is kept, and refuses the push the same way. `local` mode refuses
+  the same way with nothing to push. Unchanged: `--no-commit`, a repository
+  with no `.git`, a tick with nothing to commit, and a ledger row or inbox
+  entry that cannot be *written* — still a sentence, never an exit code.
+  `merge -h` states the new exit, and the validator spec, `/aide-run-item`
+  and `aide-execute-item` now read a non-zero exit as "nothing was pushed"
+  rather than "the item stays 🔍": a tick committed but not replayed onto
+  origin stays ✅ locally, and the refusal says so. A commit that fails because a refused
+  `git add` never staged a new file now names the add's reason beside the
+  commit's "pathspec … did not match", for every verb that records through
+  the shared committer.
+
 ## [2.15.1] — 2026-09-28
 
 ### Fixed
