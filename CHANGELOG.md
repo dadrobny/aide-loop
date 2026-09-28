@@ -121,6 +121,38 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.18.1] — 2026-09-28
+
+### Fixed
+
+- **The permission reviewer ranks only the calls that still prompt (issue
+  #316).** `review_permissions.py` grouped every call by its normalised rule
+  first and marked the whole group `new` if any call in it was uncovered, with
+  the count, grant/deny split and `e.g.` sample taken over the covered calls
+  too. A multi-word allow rule never removed its calls from the ranking:
+  with `Bash(sed -n:*)` allowed, a consumer's top row was `Bash(sed:*)` at
+  3,818 calls with an allowed `sed -n` as its example, when only 81 `sed -i`
+  calls prompted. Coverage is now decided per call before grouping. The
+  calls an allow rule covers are tallied apart into their own `auto-allowed`
+  row, so one rule can carry an `auto-allowed` row beside a `new` one, and
+  each row's numbers and sample come from its own calls. A call an `ask`
+  rule also matches is no longer counted as covered, since the runtime
+  prompts for it: it ranks as `ask-gated`.
+
+### Changed
+
+- **The shipped allow-list carries the read-only inspection commands
+  consumers kept promoting (issue #317).** `sed -n`; the git queries and
+  plumbing `grep`, `rev-list`, `merge-base`, `cat-file`, `diff-tree`,
+  `merge-tree` and `check-attr`; `diff`, `cmp`, `nl`, `sha256sum` and
+  `md5sum`; and `ps`, `pgrep`, `date`, `sleep`, `true` and `printf`. They are
+  the same class as the `cat`/`grep`/`git log` already shipped, and one
+  consumer promoted them across three reviews. `sed -i`, bare `sed`, `awk`
+  and `mkdir` still prompt. A consumer that wants one of the new rules
+  prompting drops it with `remove` in `.claude/settings.overlay.json`; a
+  consumer without an overlay has its `settings.json` left alone and gets the
+  new rules in the `.aide-merge` diff to reconcile, as before.
+
 ## [2.18.0] — 2026-09-28
 
 ### Added
