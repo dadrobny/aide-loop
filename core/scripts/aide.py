@@ -6993,7 +6993,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
     # position it was resolved at.
     handle = gate_ids(gates)[index - 1] or f"gate {index}"
     print(f"{handle}: {kind}")
-    if not args.no_commit:
+    if not args.no_commit and (repo_root / ".git").exists():
         # A decision left written but uncommitted reads as resolved to a
         # re-run, which would never commit it (issue #309).
         return _commit_or_restore(repo_root, config, f"aide gate {args.action}",
@@ -8993,7 +8993,7 @@ def _queue_gate(args: argparse.Namespace) -> int:
         gid = next(i for g, i in zip(gates, ids) if gate_hash(g) == key(cell))
         state = "raised" if (cell, blocks) in new else "already raised"
         print(f"{gid}: {state} — {cell} (blocks {blocks})")
-    if new and not args.no_commit:
+    if new and not args.no_commit and (repo_root / ".git").exists():
         # A row left written and uncommitted reads as "already raised" to a
         # re-run, which would then never commit it.
         return _commit_or_restore(repo_root, config, tag, "the gate row",

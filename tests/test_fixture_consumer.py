@@ -961,6 +961,19 @@ def test_a_recording_verb_whose_commit_fails_exits_1_and_a_retry_commits(
                              consumer).stdout
 
 
+def test_a_gate_decision_outside_git_is_written_and_exits_0(
+        aide, consumer: Path):
+    """No `.git` is no commit to fail: the decision is written and kept, as
+    every sibling recording verb does — not put back on every run, which
+    would make a gate unresolvable in a consumer without git."""
+    _raise_a_gate(consumer)
+    (consumer / ".git").rename(consumer / "git-set-aside")
+    assert aide.main(["--repo", str(consumer), "gate", "approve", "1",
+                      "--evidence", "reviewed"]) == 0
+    assert "| Schema approved | 002 | ✅ Approved (" in (
+        consumer / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+
+
 def test_a_retraction_whose_commit_fails_puts_back_both_files(
         aide, consumer: Path):
     """`retract` writes two files — the unticked box and the `gap` entry it
