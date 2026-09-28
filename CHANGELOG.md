@@ -121,6 +121,40 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.17.0] — 2026-09-28
+
+### Added
+
+- **`aide status` reports the stack of unmerged queue branches, and keeps
+  *runnable* apart from *awaiting review* (issue #303, part of #258; feeds
+  #257).** With `[loop] max_open_queues` above 1 the loop builds while queue
+  PRs wait, so one "blocked" state no longer described a repo, and
+  `/aide-run-roadmap` asked the forge about each queue branch itself. Status
+  now prints, after the claims:
+  - `stack: N/CAP`, then one `stack N: <branch> base= pr= lower= orphaned=`
+    line per unmerged queue branch (the set `aide queue start` counts),
+    bottom first. `pr=` is `#N/open|merged|closed`, `none`, `unknown`
+    (`gh` could not be asked) or `-` (local mode, which asks no forge);
+    `lower=` is `moved` when the branch below has commits this one lacks
+    (restack is due), `current`, `landed`, `gone`, `unknown` or `-`;
+    `orphaned=` is `yes` when a PR below was closed without merging —
+    a lower git says landed never orphans — `no`, `unknown` or `-`.
+  - `runnable: yes|no — …`: no when a stack PR was closed or a branch is
+    orphaned; else yes when the live queue has a 📋 or 🚧 item (🔍 is not
+    work) or the stack is below the cap.
+  - `awaiting review: yes|no|unknown — …`: yes when a queue PR is open,
+    unknown when none was seen open but `gh` could not be asked.
+  - The open-PR list prints `open PRs: unknown — could not look (<reason>)`
+    where it used to go silent.
+  Each field is one whitespace-free token, so a program reads the lines as
+  they are; `status -h` states every value, pinned to tests that exercise
+  it. The engine's one forge call is `_gh`, resolved with `shutil.which`, and
+  it never raises: missing, unauthenticated, offline and timed out all come
+  back as the reason printed. §4 states the rule, and `/aide-run-roadmap`'s
+  state check and stop table now key on these fields instead of running
+  `gh pr view` per branch and defining "closed", "orphaned" and "cap
+  reached" in their own prose. `status` exits 0 as before.
+
 ## [2.16.0] — 2026-09-28
 
 ### Added

@@ -41,6 +41,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -13151,6 +13152,226 @@ def cmd_sync(args: argparse.Namespace) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------- #
+# status — the stack of unmerged queue branches, and what it means (issue #303)
+# --------------------------------------------------------------------------- #
+#: How long one forge call may take before `status` reports it could not look.
+_GH_TIMEOUT = 20
+#: `gh`'s pull-request states, as the stack lines spell them.
+_PR_STATES = {"OPEN": "open", "MERGED": "merged", "CLOSED": "closed"}
+
+
+def _gh(repo_root: Path, args: List[str]) -> Tuple[Optional[str], Optional[str]]:
+    """Run the forge's CLI: ``(stdout, None)``, or ``(None, why it could not)``.
+
+    The one place the engine asks `gh` anything, and only `status` does.
+    Never raises: missing, unauthenticated, offline and timed out all come
+    back as a reason, which is what lets `status` tell "no PR" from "could
+    not look" (issue #303). Resolved through `shutil.which`, so a `gh.exe` or
+    `gh.cmd` on Windows is found as a `gh` is on POSIX. Tests replace this
+    function; nothing else in the engine calls the forge.
+    """
+    exe = shutil.which("gh")
+    if exe is None:
+        return None, "gh is not on PATH"
+    try:
+        # §6: PR titles are arbitrary UTF-8 and are printed straight through.
+        res = subprocess.run([exe, *args], cwd=str(repo_root),
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             encoding="utf-8", errors="replace",
+                             timeout=_GH_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return None, f"gh did not answer within {_GH_TIMEOUT}s"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"gh could not start ({exc})"
+    if res.returncode != 0:
+        why = next((l.strip() for l in (res.stderr + res.stdout).splitlines()
+                    if l.strip()), "")
+        return None, f"gh exited {res.returncode}" + (f": {why}" if why else "")
+    return res.stdout, None
+
+
+def _branch_pr(repo_root: Path, branch: str) -> Tuple[Optional[str], Optional[str]]:
+    """*branch*'s pull request as ``#N/<state>``, or ``none``; or ``(None, why)``.
+
+    Every PR whose head is *branch*, in any state: an open one wins, else the
+    newest — a PR closed and followed by another is answered by the second.
+    """
+    out, why = _gh(repo_root, ["pr", "list", "--head", branch, "--state", "all",
+                               "--json", "number,state", "--limit", "20"])
+    if out is None:
+        return None, why
+    try:
+        found = [(int(p["number"]), _PR_STATES[str(p["state"]).upper()])
+                 for p in json.loads(out or "[]")]
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return None, "gh answered in a shape status cannot read"
+    if not found:
+        return "none", None
+    number, state = max([f for f in found if f[1] == "open"] or found)
+    return f"#{number}/{state}", None
+
+
+class StackBranch(NamedTuple):
+    """One unmerged queue branch as `status` reports it (issue #303).
+
+    Each field is one token of the ``stack N:`` line, spelled as printed:
+    ``base`` the recorded base or ``?``; ``pr`` ``#N/open|merged|closed``,
+    ``none``, ``unknown`` (could not look) or ``-`` (local mode); ``lower``
+    ``current``, ``moved``, ``landed``, ``gone``, ``unknown`` or ``-`` (based
+    on no queue branch); ``orphaned`` ``yes``, ``no``, ``unknown`` or ``-``.
+    """
+    name: str
+    base: str
+    pr: str
+    lower: str
+    orphaned: str
+
+
+class StackFacts(NamedTuple):
+    """The stack, bottom first, and the two facts `status` derives from it."""
+    branches: List[StackBranch]
+    cap: Optional[int]
+    cap_problem: Optional[str]
+    runnable: Tuple[str, str]           # (yes|no, why)
+    awaiting_review: Tuple[str, str]    # (yes|no|unknown, why)
+    could_not_look: Optional[str]       # gh's reason, where it could not answer
+
+
+def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
+                      live_work: List[int]) -> StackFacts:
+    """The stack of unmerged queue branches, and runnable / awaiting review.
+
+    The stack is `_unmerged_queue_branches` — the set `queue start` counts
+    against the cap — ordered bottom first by recorded base. The forge is
+    asked about each branch's pull request only off `local` mode, and about
+    a recorded lower that has left the stack without landing (``gone``), so a
+    lower closed and then deleted still orphans what sits on it. A lower that
+    git says landed is not orphaning, whatever its PR says: content is git's
+    to judge, as `restack` judges it. *live_work* is the live queue's items
+    still 📋 or 🚧 — the work a launch would start.
+    """
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    mode = str(config["git"].get("mode", "auto-merge"))
+    look = mode != "local"
+    unmerged = _unmerged_queue_branches(repo_root, config)
+    local = set(_local_branches(repo_root))
+    remote = (set(_remote_branches(repo_root))
+              if look and _has_origin(repo_root) else set())
+
+    def newest(b: str) -> str:
+        """Origin's tip where it is ahead of this checkout's, else the local one."""
+        there = f"origin/{b}" if b in remote else None
+        if b not in local:
+            return there or b
+        if there and _is_ancestor(repo_root, b, there):
+            return there
+        return b
+
+    bases: Dict[str, Optional[str]] = {
+        b: (_recorded_branch_base(repo_root, b) if b in local else None)
+        for b in unmerged}
+
+    def depth(b: str) -> int:
+        d, x, seen = 0, bases.get(b), {b}
+        while x in unmerged and x not in seen:
+            seen.add(x)
+            d += 1
+            x = bases.get(x)
+        return d
+
+    order = sorted(unmerged, key=lambda b: (depth(b), b))
+
+    def lower_state(b: str) -> str:
+        base = bases.get(b)
+        if base is None:
+            return "unknown"
+        if not _is_stack_branch(base, prefix):
+            return "-"
+        if base in unmerged:
+            return ("current" if _is_ancestor(repo_root, newest(base), newest(b))
+                    else "moved")
+        return "landed" if base in local or base in remote else "gone"
+
+    lowers = {b: lower_state(b) for b in order}
+    prs: Dict[str, str] = {}
+    why_not: Optional[str] = None
+    if look:
+        asked = order + sorted({str(bases[b]) for b in order
+                                if lowers[b] == "gone"})
+        for b in asked:
+            if why_not is not None:
+                prs[b] = "unknown"
+                continue
+            got, why_not = _branch_pr(repo_root, b)
+            prs[b] = got if got is not None else "unknown"
+
+    def orphaned(b: str) -> str:
+        if not look:
+            return "-"
+        unsure = False
+        x, seen = bases.get(b), {b}
+        if x is None:
+            return "unknown"
+        while x and _is_stack_branch(x, prefix) and x not in seen:
+            seen.add(x)
+            if x not in unmerged and (x in local or x in remote):
+                break                   # landed: git's verdict, not the PR's
+            state = prs.get(x, "unknown")
+            if state.endswith("/closed"):
+                return "yes"
+            if state == "unknown":
+                unsure = True
+            if x not in unmerged:
+                break                   # gone: nothing below it to read
+            if bases.get(x) is None:
+                unsure = True
+                break
+            x = bases.get(x)
+        return "unknown" if unsure else "no"
+
+    branches = [StackBranch(b, bases.get(b) or "?", prs.get(b, "-"),
+                            lowers[b], orphaned(b)) for b in order]
+    cap, cap_problem = max_open_queues(config)
+
+    closed = [s for s in branches if s.pr.endswith("/closed")]
+    stranded = [s.name for s in branches if s.orphaned == "yes"]
+    if closed or stranded:
+        what = "; ".join(f"{s.name}'s PR {s.pr.split('/')[0]} was closed "
+                         f"without merging" for s in closed)
+        if stranded:
+            what += ("; " if what else "") + (
+                f"{', '.join(stranded)} "
+                f"{'is' if len(stranded) == 1 else 'are'} orphaned")
+        runnable = ("no", what)
+    elif live_work:
+        runnable = ("yes", f"the live queue has "
+                    f"{_plural(len(live_work), 'item', 'items')} to build "
+                    f"({', '.join(f'{n:03d}' for n in live_work)})")
+    elif cap_problem:
+        runnable = ("no", cap_problem)
+    elif cap is not None and len(branches) < cap:
+        runnable = ("yes", f"the stack holds {len(branches)} of [loop] "
+                    f"max_open_queues {cap}, so another queue may start")
+    else:
+        runnable = ("no", f"the live queue has nothing to build and the stack "
+                    f"is at [loop] max_open_queues {cap}")
+
+    open_prs = [s for s in branches if s.pr.endswith("/open")]
+    if not look:
+        awaiting = ("no", "local mode opens no pull requests")
+    elif open_prs:
+        awaiting = ("yes", ", ".join(f"{s.pr.split('/')[0]} ({s.name})"
+                                     for s in open_prs))
+    elif any(s.pr == "unknown" for s in branches):
+        awaiting = ("unknown", f"could not look ({why_not})")
+    elif branches:
+        awaiting = ("no", "no queue branch's PR is open")
+    else:
+        awaiting = ("no", "no queue branch is unmerged")
+    return StackFacts(branches, cap, cap_problem, runnable, awaiting, why_not)
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     """One-call roadmap-state report: branch + divergence, derived queue
     states, claim branches, and (best effort) open PRs — replacing the several
@@ -13183,6 +13404,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     item_status = _progress_item_status(repo_root, config)
     qdir = docs_dir(repo_root, config) / "queue"
     live_seen = False
+    live_work: List[int] = []
     if iter_queue_paths(qdir):
         for path in iter_queue_paths(qdir):
             nums = queue_item_numbers(path.read_text(encoding=_ENCODING))
@@ -13191,6 +13413,11 @@ def cmd_status(args: argparse.Namespace) -> int:
                          in ("planned", "in-progress", "in-review")]
             if open_nums:
                 tag = " (live)" if not live_seen else ""
+                if not live_seen:
+                    # 🔍 is open but not work: it waits on a person.
+                    live_work = [n for n in open_nums
+                                 if item_status.get(n, "planned")
+                                 in ("planned", "in-progress")]
                 live_seen = True
                 listed = ", ".join(f"{n:03d}" for n in open_nums)
                 print(f"  {path.name}: open{tag} — {len(open_nums)}/{len(nums)} items open ({listed})")
@@ -13305,23 +13532,32 @@ def cmd_status(args: argparse.Namespace) -> int:
     for line in _landed_review_items(repo_root, config, prefix, args.base):
         print("  " + line.replace("aide sync: ", ""))
 
-    # Open PRs, best effort — informative only, silently skipped without `gh`.
-    try:
-        # §6: PR titles are arbitrary UTF-8 and are printed straight through.
-        res = subprocess.run(["gh", "pr", "list", "--state", "open"],
-                             cwd=str(repo_root), stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, encoding="utf-8",
-                             errors="replace", timeout=20)
-        if res.returncode == 0:
-            prs = res.stdout.strip()
-            if prs:
-                print("  open PRs:")
-                for l in prs.splitlines():
-                    print(f"    {l}")
-            else:
-                print("  open PRs: none")
-    except (OSError, subprocess.SubprocessError):
-        pass
+    # The stack and the two facts read from it (issue #303) — one token per
+    # field, so a program reads them and `/aide-run-roadmap` points at them.
+    facts = queue_stack_facts(repo_root, config, live_work)
+    print(f"  stack: {len(facts.branches)}/"
+          f"{facts.cap if facts.cap is not None else '?'}"
+          + (" — bottom first" if facts.branches else ""))
+    for n, sb in enumerate(facts.branches, start=1):
+        print(f"  stack {n}: {sb.name} base={sb.base} pr={sb.pr} "
+              f"lower={sb.lower} orphaned={sb.orphaned}")
+    print(f"  runnable: {facts.runnable[0]} — {facts.runnable[1]}")
+    print(f"  awaiting review: {facts.awaiting_review[0]} — "
+          f"{facts.awaiting_review[1]}")
+
+    # Every open PR, best effort — and "could not look" said, never silence.
+    if facts.could_not_look is not None:
+        out, why = None, facts.could_not_look
+    else:
+        out, why = _gh(repo_root, ["pr", "list", "--state", "open"])
+    if out is None:
+        print(f"  open PRs: unknown — could not look ({why})")
+    elif out.strip():
+        print("  open PRs:")
+        for l in out.strip().splitlines():
+            print(f"    {l}")
+    else:
+        print("  open PRs: none")
     return 0
 
 
@@ -14427,7 +14663,33 @@ def register_git_subcommands(sub) -> None:
             "expression only, never the gated tests), and reported satisfied "
             "or not; one that times out or cannot start is not satisfied — "
             "a satisfied profile under an unverified row is a row this "
-            "machine can verify now."))
+            "machine can verify now.\n\n"
+            "The stack of unmerged queue branches \u2014 the ones `aide queue "
+            "start` counts against [loop] max_open_queues \u2014 is printed "
+            "bottom first, after a `stack: N/CAP` line: one `stack N: <branch> "
+            "base= pr= lower= orphaned=` line each, a field one token a "
+            "program can read. base= is the branch's recorded base, ? where "
+            "none is recorded. pr= is its pull request as #N/open, #N/merged "
+            "or #N/closed (an open one first, else the newest), none where gh "
+            "found none, unknown where gh could not be asked, and - in local "
+            "mode, which asks no forge. lower= is moved when the queue branch "
+            "below has commits this one lacks, so `aide queue restack` is due, "
+            "and current when it has none; landed or gone when the recorded "
+            "lower is no longer unmerged and is still a branch, or is not; - on a base "
+            "that is no queue branch. orphaned= is yes when a PR below it in "
+            "the stack was closed without merging, and a lower git says "
+            "landed never orphans; unknown when one below it could not be "
+            "looked up or has no recorded base; - in local mode.\n\n"
+            "Two facts follow, each `yes`, `no` or (the second only) "
+            "`unknown` before an em dash, and a repo can be both. "
+            "runnable: is no when a queue PR in the stack was closed without "
+            "merging or a branch is orphaned; otherwise yes when the live "
+            "queue has a \U0001f4cb or \U0001f6a7 item or the stack is below "
+            "[loop] max_open_queues, and no when neither. awaiting review: "
+            "is yes when a queue branch's PR is open, unknown when none was "
+            "seen open but gh could not be asked, and no otherwise \u2014 in "
+            "local mode always. The open-PR list says it could not look, and "
+            "gh's reason, rather than going silent."))
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
     p_status.add_argument("--profiles", action="store_true",
                           help="evaluate the [validation] profile each "

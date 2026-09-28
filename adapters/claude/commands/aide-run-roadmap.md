@@ -85,22 +85,23 @@ series of improvised git/gh probes:
    touching anything.
 2. `python .aide/scripts/aide.py status` — branch + divergence, derived queue
    states, local branches (a queue branch is listed as one), human gates still
-   blocking, and open PRs **best effort** (only where `gh` is installed and
-   authenticated).
-3. For **every** `<prefix>queue-NNN` branch — listed by `status`, or the head
-   of an open PR — ask the forge what became of it:
-   `gh pr view <prefix>queue-NNN --json number,state,isDraft,baseRefName`. The
-   state is one of three: a queue branch whose PR is `MERGED` is done with;
-   one whose PR is `CLOSED` without merging was rejected, and is never built
-   on; one whose PR is `OPEN`, or that has no PR yet, is **open**. `aide`
-   reads git only, so this is the one question only `gh` answers; without it
-   say so and stop rather than guess.
-4. **Two or more open queue branches are a stack** (each recorded on the one
-   below it by `queue start`). Before building anything on one, run
-   `python .aide/scripts/aide.py queue restack`: it merges a lower branch a
-   reviewer edited into every branch above it, and hands the branch above a
-   landed one to `main`. Exit 0 → carry on; exit 1 → stop and report its
-   message (a conflict is a person's to resolve, never yours).
+   blocking, and **the stack**: one `stack N:` line per unmerged queue
+   branch, bottom first, with its `base=`, `pr=`, `lower=` and `orphaned=`
+   fields, then the `runnable:` and `awaiting review:` lines. What each
+   value means is `aide status -h`'s to say; the table below keys on the
+   values and restates none of it.
+3. Take every queue branch's PR state from its `pr=` field — never from a
+   `gh` probe of your own, so the command and the engine cannot disagree
+   about what is blocked. `pr=unknown` (or `awaiting review: unknown`) means
+   `status` could not ask the forge: say so, with the reason it printed, and
+   stop rather than guess.
+4. **Two or more stack lines are a stack.** Before building anything on one,
+   run `python .aide/scripts/aide.py queue restack` — required whenever a
+   line reads `lower=moved`, `lower=landed` or `lower=gone`, harmless
+   otherwise: it merges a lower branch a reviewer edited into every branch
+   above it, and hands the branch above a landed one to `main`. Exit 0 →
+   carry on; exit 1 → stop and report its message (a conflict is a person's
+   to resolve, never yours).
 5. **The branch to build is the lowest open queue branch with work left** —
    usually the top of the stack (§4: a stack is built bottom up). `git switch`
    to it and `git pull`, and run `status` **again there**: its queue file, its
@@ -114,15 +115,16 @@ parallel* below if you need isolation).
 
 | State | Action |
 |---|---|
-| **Roadmap exhausted** — no open queue branch, every stage ✅ / deferred / excluded | Report done. Stop. |
-| **A queue branch's PR has merged** | `git switch` to `main`, `git pull`, then `python .aide/scripts/aide.py queue restack` **before** any clean-up — it reads the landed branch's record to hand the branch above it to `main`. Then `python .aide/scripts/aide.py gc --merged` to preview and `--yes` to delete the landed branches (a squash-merged queue branch too: `--merged` compares content, not ancestry, where git is recent enough to measure it). If a queue PR was stacked on the merged one, check its base: `gh pr view <prefix>queue-M --json baseRefName`. GitHub retargets it to `main` only once the merged branch is deleted on origin; if it still names the merged branch, run `gh pr edit <prefix>queue-M --base main` — `ask`-gated, so an unattended run reports the command instead and carries on. Re-read the state. |
-| **A queue branch's PR was closed without merging** | **Stop.** Say the PR was closed unmerged and ask the human whether the queue is abandoned (delete the branch and re-plan, via `/aide-feedback-loop` if the roadmap needs it) or the PR should be reopened. Every queue branch stacked above it is **orphaned** — built on a batch that was rejected — so name each one; never restack, build on, approve for, or reopen any of them yourself. |
+| **Roadmap exhausted** — `stack: 0/…`, every stage ✅ / deferred / excluded | Report done. Stop. |
+| **A queue branch's PR has merged** — its line reads `pr=#N/merged` | `git switch` to `main`, `git pull`, then `python .aide/scripts/aide.py queue restack` **before** any clean-up — it reads the landed branch's record to hand the branch above it to `main`. Then `python .aide/scripts/aide.py gc --merged` to preview and `--yes` to delete the landed branches (a squash-merged queue branch too: `--merged` compares content, not ancestry, where git is recent enough to measure it). If a queue PR was stacked on the merged one, check its base: `gh pr view <prefix>queue-M --json baseRefName`. GitHub retargets it to `main` only once the merged branch is deleted on origin; if it still names the merged branch, run `gh pr edit <prefix>queue-M --base main` — `ask`-gated, so an unattended run reports the command instead and carries on. Re-read the state. |
+| **A queue branch's PR was closed without merging** — a line reads `pr=#N/closed` or `orphaned=yes` (`runnable: no` says so too) | **Stop.** Say the PR was closed unmerged and ask the human whether the queue is abandoned (delete the branch and re-plan, via `/aide-feedback-loop` if the roadmap needs it) or the PR should be reopened. Name every `orphaned=yes` branch — built on a batch that was rejected; never restack, build on, approve for, or reopen any of them yourself. |
 | **`queue restack` stopped** (exit 1) | **Stop.** Report its message: a conflict names both branches and leaves everything as it was, and a lower branch git cannot judge names both remedies. |
 | **A lower queue branch has 📋 items again** — a person added an item to its PR in review, and `restack` carried it up the stack | Build it **on that branch**, not the top: switch to it and go to **Run a queue**. Its PR stays ready. When it is exhausted, push, run `queue restack` to carry the result up, and re-read the state. |
 | **The open queue branch being built is built out** — its queue has no 📋/🚧 item left | Go to **Queue end**. |
 | **The open queue branch being built has 📋 items held by its plan gate**, still ⏳ Awaiting (or ❌ Declined) | **Stop.** Tell the human to review the draft PR, and to approve the gate on that branch (see **Generate the next queue**); a declined one is re-planned, not approved. If the branch has no PR yet, open it as that section says first. |
 | **The open queue branch being built has 📋 items and no gate holds them** — its plan gate approved, or none raised under `plan_review` | Run the queue on its branch → go to **Run a queue**. |
 | **A queue already on `main` still has 📋 items** — planned under the old flow, no queue branch | Run it from `main` as before → go to **Run a queue**, staying on `main`. |
+| **`runnable: no`, and no row above holds** — the stack is at the cap with nothing left to build | **Stop.** Report the batches in `awaiting review:`, bottom first; the next queue waits for a merge. |
 | **Nothing open, and the roadmap has more stages** — or no queue exists yet | Generate the next queue off `main` → go to **Generate the next queue**. |
 
 A queue branch that carries a maintenance queue and the stage queue after it is
@@ -297,8 +299,9 @@ in the next queue rather than rewriting history.
   orphaned.
 - **`aide queue restack` stopped** — a conflict or a lower branch it cannot
   judge; both are a person's call.
-- **The state cannot be read** — `gh` is missing or unauthenticated, so
-  whether a queue branch's PR is open, draft or merged is unknown.
+- **The state cannot be read** — `status` prints `pr=unknown` or
+  `awaiting review: unknown`: it could not ask the forge, so whether a queue
+  branch's PR is open, merged or closed is unknown.
 - A queue or item needs an edit to a **framework/process** file (`vision.md`,
   `roadmap.md`, `aide.toml`, `.aide/**`, `CLAUDE.md`, `.claude/**`) — reviewed
   PR, never auto-merge.
