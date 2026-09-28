@@ -254,13 +254,12 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      not give one, start the merge without the flag rather than guessing at a
      count.
 
-     **A non-zero exit means the item did not land.** That re-run,
+     **A non-zero exit means nothing was pushed.** That re-run,
      and the `aide check` beside it, is a gate: a failure or a document error
-     leaves the merge on the base locally, the item 🔍, and nothing pushed — it
-     says which. A tick it cannot commit is refused the same way; one it
-     committed but could not replay onto origin stays ✅ in this repository
-     only, still unpushed, and it says so. Never tick the item by hand to close
-     the gap. How the exit
+     leaves the merge on the base locally and the item 🔍 — it says which. A
+     tick it cannot commit is refused the same way; one it committed but could
+     not replay onto origin leaves the item ✅ in this repository only, and it
+     says so. Never tick the item by hand to close the gap. How the exit
      becomes your verdict:
      - **It names failures this item caused** (they do not fail at the base):
        **FAIL** — report those tests and their output for the builder. The
@@ -268,7 +267,8 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      - **It could not compare the failures with the base** (it says why — another
        runner, an order-dependent option, an incomplete run): **FAIL**, as a
        red suite always was where nothing can tell whose it is.
-     - **A document error**, or anything else it reports: fix it on the base and
+     - **A document error**, a tick it could not commit or replay, or anything
+       else it reports: fix it on the base and
        run the same command again (it is re-runnable by design; it skips the
        merge it already did), or hand back.
 

@@ -144,10 +144,10 @@ instead — that is the bump policy above, and it is enforced by
   the same way with nothing to push. Unchanged: `--no-commit`, a repository
   with no `.git`, a tick with nothing to commit, and a ledger row or inbox
   entry that cannot be *written* — still a sentence, never an exit code.
-  `merge -h` states the new exit, and the validator spec and
-  `/aide-run-item` no longer say every non-zero exit leaves the item 🔍: a
-  tick committed but not replayed onto origin stays ✅ locally, unpushed,
-  and the refusal says so. A commit that fails because a refused
+  `merge -h` states the new exit, and the validator spec, `/aide-run-item`
+  and `aide-execute-item` now read a non-zero exit as "nothing was pushed"
+  rather than "the item stays 🔍": a tick committed but not replayed onto
+  origin stays ✅ locally, and the refusal says so. A commit that fails because a refused
   `git add` never staged a new file now names the add's reason beside the
   commit's "pathspec … did not match", for every verb that records through
   the shared committer.

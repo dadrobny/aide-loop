@@ -273,11 +273,10 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
        `insights.md` is carried by that line and by no cell here. Substitute
        them with your counts — a command left with its placeholders in it is
        not a command. **A non-zero exit means
-       the item did not land** — under `auto-merge` it re-runs the full suite and
+       nothing was pushed** — under `auto-merge` it re-runs the full suite and
        `aide check`, and a red re-run, a document error or a tick it cannot
-       commit leaves the item 🔍 with nothing pushed (a tick committed but not
-       replayed onto origin stays ✅ here, unpushed, and it says so); report it
-       and stop
+       commit leaves the item 🔍 (a tick committed but not replayed onto
+       origin leaves it ✅ here only, and it says so); report it and stop
        rather than ticking anything by hand. A red re-run whose failures all
        predate the merge is admitted with exit 0 (§4); `merge` records those
        in `insights.md` itself, so report them and capture nothing more. Under `pr` it pushes and stops:
