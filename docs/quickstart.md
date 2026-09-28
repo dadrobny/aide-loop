@@ -100,7 +100,7 @@ stop and re-enter cleanly at any point.
 
 - **`auto-merge`** (default) — a green item merges straight to `main`.
 - **`pr`** — a green item pushes its branch and stops for you to open the PR.
-- **`local`** — no pushes at all (offline); merges locally.
+- **`local`** — no fetch, pull or push at all (offline); merges locally.
 
 Set it in `aide.toml` before a long run. Framework/process changes always want a
 reviewed PR regardless (see `.aide/README.md` → Merge policy; in this repo,

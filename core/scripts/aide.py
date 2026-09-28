@@ -6986,15 +6986,19 @@ def cmd_gate(args: argparse.Namespace) -> int:
     # manufacturing the exact hazard that constant exists to absorb. Every
     # other writer in this module already writes plain "utf-8"; this was the
     # one outlier. Read tolerantly, write clean.
+    before = _snapshot([ppath])
     ppath.write_text(updated, encoding="utf-8")
     # Named by its ID, which a reader of the log can still find after a merge
     # renumbers the rows; an empty Gate cell has none, so falls back to the
     # position it was resolved at.
     handle = gate_ids(gates)[index - 1] or f"gate {index}"
     print(f"{handle}: {kind}")
-    if not args.no_commit:
-        _commit_progress_file(repo_root, config,
-                              f"docs: human {handle} {kind}")
+    if not args.no_commit and (repo_root / ".git").exists():
+        # A decision left written but uncommitted reads as resolved to a
+        # re-run, which would never commit it (issue #309).
+        return _commit_or_restore(repo_root, config, f"aide gate {args.action}",
+                                  "the decision", f"docs: human {handle} {kind}",
+                                  [_progress_rel(config)], before)
     return 0
 
 
@@ -7112,14 +7116,25 @@ def cmd_progress(args: argparse.Namespace) -> int:
         return 1
     if healed_note:
         print(healed_note)
+    before: Optional[Dict[Path, Optional[bytes]]] = None
     if updated == original:
         print(f"item {args.number:03d}: no change (already >= {args.status})")
     else:
+        before = _snapshot([progress_path])
         progress_path.write_text(updated, encoding="utf-8")
         print(f"item {args.number:03d}: set to {args.status}")
         _report_bullet_splits(args.number, updated.splitlines(), splits)
     if not args.no_commit and (repo_root / ".git").exists():
-        _commit_progress(repo_root, config, args.number, args.status)
+        message = f"progress(aide): item {args.number:03d} -> {args.status}"
+        if before is None:
+            # Nothing written, so nothing of this run's to lose: the commit
+            # stays the best-effort sweep it always was, and a no-op exits 0.
+            _commit_docs_files(repo_root, config, message,
+                               [_progress_rel(config)])
+        else:
+            return _commit_or_restore(repo_root, config, "aide progress set",
+                                      "the status", message,
+                                      [_progress_rel(config)], before)
     return 0
 
 
@@ -7155,11 +7170,14 @@ def _cmd_progress_accept(args: argparse.Namespace) -> int:
         print(f"stage {args.number}: {msg}")
     if updated == text:
         return 0
+    before = _snapshot([progress_path])
     progress_path.write_text(updated, encoding="utf-8")
     if not args.no_commit and (repo_root / ".git").exists():
         what = "all criteria" if args.all_criteria else f"criterion {args.criterion}"
-        _commit_progress_file(
-            repo_root, config, f"progress(aide): stage {args.number} accept {what}")
+        return _commit_or_restore(
+            repo_root, config, "aide progress accept", "the acceptance",
+            f"progress(aide): stage {args.number} accept {what}",
+            [_progress_rel(config)], before)
     return 0
 
 
@@ -7293,6 +7311,7 @@ def _cmd_progress_retract(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    before = _snapshot([progress_path, insights_path(progress_path.parent)])
     progress_path.write_text(updated, encoding="utf-8")
     print(f"stage {args.number}: {message}")
     rel_insights, note = _route_retraction_to_insights(
@@ -7309,13 +7328,15 @@ def _cmd_progress_retract(args: argparse.Namespace) -> int:
           f"criterion {args.criterion}; do it in this change, not at the merge "
           f"gate")
     if not args.no_commit and (repo_root / ".git").exists():
-        rels = [str(config["project"].get("docs_dir", "docs/aide")) + "/progress.md"]
+        rels = [_progress_rel(config)]
         if rel_insights:
             rels.append(rel_insights)
-        _commit_docs_files(
-            repo_root, config,
+        else:
+            before = {progress_path: before[progress_path]}
+        return _commit_or_restore(
+            repo_root, config, "aide progress retract", "the retraction",
             f"progress(aide): stage {args.number} retract criterion {args.criterion}",
-            rels)
+            rels, before)
     return 0
 
 
@@ -7357,6 +7378,7 @@ def _cmd_progress_reopen(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"error: {exc}; progress.md NOT changed", file=sys.stderr)
         return 1
+    before = _snapshot([progress_path, insights_path(progress_path.parent)])
     progress_path.write_text(updated, encoding="utf-8")
     print(message)
     _report_bullet_splits(args.number, updated.splitlines(), splits)
@@ -7370,12 +7392,14 @@ def _cmd_progress_reopen(args: argparse.Namespace) -> int:
           f"the tolerated warning set needs widening for item "
           f"{args.number:03d}; do it in this change, not at the merge gate")
     if not args.no_commit and (repo_root / ".git").exists():
-        rels = [str(config["project"].get("docs_dir", "docs/aide")) + "/progress.md"]
+        rels = [_progress_rel(config)]
         if rel_insights:
             rels.append(rel_insights)
-        _commit_docs_files(
-            repo_root, config,
-            f"progress(aide): item {args.number:03d} reopen", rels)
+        else:
+            before = {progress_path: before[progress_path]}
+        return _commit_or_restore(
+            repo_root, config, "aide progress reopen", "the reopening",
+            f"progress(aide): item {args.number:03d} reopen", rels, before)
     return 0
 
 
@@ -7421,10 +7445,14 @@ def _cmd_progress_defer(args: argparse.Namespace) -> int:
     print(message)
     if updated == text:
         return 0
+    before = _snapshot([progress_path])
     progress_path.write_text(updated, encoding="utf-8")
     _report_bullet_splits(args.number, updated.splitlines(), splits)
     if not args.no_commit and (repo_root / ".git").exists():
-        _commit_progress(repo_root, config, args.number, "deferred")
+        return _commit_or_restore(
+            repo_root, config, "aide progress set", "the deferral",
+            f"progress(aide): item {args.number:03d} -> deferred",
+            [_progress_rel(config)], before)
     return 0
 
 
@@ -7476,8 +7504,10 @@ def _cmd_progress_reword(args: argparse.Namespace) -> int:
         if err:
             print(f"error: {err}", file=sys.stderr)
             return 1
+    before = _snapshot([progress_path] + ([roadmap_path] if road_updated is not None
+                                          else []))
     progress_path.write_text(updated, encoding="utf-8")
-    rels = [str(config["project"].get("docs_dir", "docs/aide")) + "/progress.md"]
+    rels = [_progress_rel(config)]
     print(f"stage {args.number}: criterion {args.criterion} reworded")
     print(f"  was: {old}")
     print(f"  now: {args.text.strip()}")
@@ -7488,10 +7518,10 @@ def _cmd_progress_reword(args: argparse.Namespace) -> int:
     else:
         print("  roadmap.md: no acceptance block for this stage — nothing to mirror")
     if not args.no_commit and (repo_root / ".git").exists():
-        _commit_docs_files(
-            repo_root, config,
+        return _commit_or_restore(
+            repo_root, config, "aide progress reword", "the rewording",
             f"progress(aide): stage {args.number} reword criterion {args.criterion}",
-            rels)
+            rels, before)
     return 0
 
 
@@ -7511,21 +7541,74 @@ def _apply_criterion_edit(args: argparse.Namespace, edit, message: str) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    before = _snapshot([progress_path])
     progress_path.write_text(updated, encoding="utf-8")
     print(f"stage {args.number}: {msg}")
     if not args.no_commit and (repo_root / ".git").exists():
-        _commit_progress_file(repo_root, config, f"progress(aide): {message}")
+        return _commit_or_restore(
+            repo_root, config, f"aide progress {args.action}", "the edit",
+            f"progress(aide): {message}", [_progress_rel(config)], before)
     return 0
 
 
-def _commit_progress(repo_root: Path, config, number: int, status: str) -> None:
-    _commit_progress_file(
-        repo_root, config, f"progress(aide): item {number:03d} -> {status}")
+def _progress_rel(config) -> str:
+    return str(config["project"].get("docs_dir", "docs/aide")) + "/progress.md"
 
 
-def _commit_progress_file(repo_root: Path, config, message: str) -> None:
-    rel = str(config["project"].get("docs_dir", "docs/aide")) + "/progress.md"
-    _commit_docs_files(repo_root, config, message, [rel])
+def _snapshot(paths: List[Path]) -> Dict[Path, Optional[bytes]]:
+    """Each path's bytes as they are now — ``None`` for one not yet written —
+    for `_commit_or_restore` to put back."""
+    return {p: (p.read_bytes() if p.is_file() else None) for p in paths}
+
+
+def _commit_or_restore(repo_root: Path, config, tag: str, what: str,
+                       message: str, rels: List[str],
+                       before: Dict[Path, Optional[bytes]],
+                       pull: bool = True) -> int:
+    """Commit the edit a verb has just written; 0, or 1 with the edit undone.
+
+    For a verb a person or an agent runs to record a decision (issue #309):
+    an edit left written but uncommitted reads as already made to a re-run,
+    which then finds nothing to do and never commits it, and the dirty file
+    stops the next `aide sync` with nothing naming the verb. So a commit that
+    did not happen — ``HEAD`` did not move — puts every file in *before* back
+    to its bytes (line endings and all; a file that did not exist is removed)
+    and exits 1, and the re-run once the cause is fixed makes the edit and
+    commits it. A commit that happened but whose replay onto origin stopped
+    keeps the edit, which is in that commit, and exits 1 on the reason
+    `_commit_docs_files` has already printed in full. "Nothing to commit" is
+    not a failure: the edit is already in ``HEAD``.
+
+    `ensure_insights_inbox` is the deliberate exception and does not come
+    here: the inbox is a file `check` creates on the caller's behalf, and its
+    commit failing is a notice on a check, never the check's exit.
+    """
+    try:
+        head: Optional[str] = _rev(repo_root, "HEAD")
+    except (OSError, subprocess.SubprocessError):
+        head = None
+    failure = _commit_docs_files(repo_root, config, message, rels, pull=pull)
+    if not failure or failure == "nothing to commit":
+        return 0
+    try:
+        # An unborn branch reads as "", so a HEAD afterwards is still a move.
+        moved = head is not None and _rev(repo_root, "HEAD") != head
+    except (OSError, subprocess.SubprocessError):
+        moved = False
+    if moved:
+        print(f"{tag}: {what} is committed, but {failure}", file=sys.stderr)
+        return 1
+    for path, data in before.items():
+        if data is not None:
+            path.write_bytes(data)
+        elif path.exists():
+            path.unlink()
+    names = [p.name for p in before]
+    state = (f"{names[0]} is as it was" if len(names) == 1
+             else f"{', '.join(names)} are as they were")
+    print(f"{tag}: {what} could not be committed — {failure}. {state}; "
+          f"re-run once that is fixed.", file=sys.stderr)
+    return 1
 
 
 def _commit_docs_files(repo_root: Path, config, message: str,
@@ -7545,6 +7628,17 @@ def _commit_docs_files(repo_root: Path, config, message: str,
     sitting in the index stays staged and out of the bookkeeping commit; a
     bare ``git commit`` would have swept it in, which is why ``git add <rel>``
     alone was never enough.
+
+    What a caller does with a reason is split by who ran it (issue #309).
+    A verb a person or an agent runs to record something — `gate`, the
+    `progress` sub-verbs, `insights tick`/`archive`, `ledger`, `queue gate` —
+    goes through `_commit_or_restore`, which turns a reason into exit 1 and,
+    when no commit was made, puts the edit back so a re-run makes it again.
+    ``ensure_insights_inbox`` keeps the reason a printed notice: the inbox is
+    a file ``check`` creates on its caller's behalf, and a check's exit is
+    the documents' verdict, not the commit's. The no-op sweep in `progress
+    set` and `merge`'s tick are best effort too — the first wrote nothing, and
+    the second follows a merge that has already landed.
 
     A commit that fails — no ``user.name`` on a fresh clone, a hook, a path
     ``.gitignore`` reaches — leaves *rels* unstaged again, so the tree degrades
@@ -7585,10 +7679,10 @@ def _commit_docs_files(repo_root: Path, config, message: str,
         what = _interrupted_op(repo_root)
         if what is not None:
             # Refused, and refused HERE rather than left to `git commit`: with
-            # the conflicts staged git accepts a commit mid-rebase, and the
-            # callers that reach this discard the reason, so a verb would
-            # print its success line over a tick sitting in the middle of an
-            # unfinished operation. Unconditional on `pull`: the one caller
+            # the conflicts staged git accepts a commit mid-rebase, and a
+            # caller that keeps the reason a notice would print its success
+            # line over a tick sitting in the middle of an unfinished
+            # operation. Unconditional on `pull`: the one caller
             # that passes False (`ensure_insights_inbox`) is creating a file,
             # and a new file committed mid-rebase is the same misplaced commit.
             reason = (f"the repository is stopped in an earlier operation "
@@ -7619,7 +7713,7 @@ def _commit_docs_files(repo_root: Path, config, message: str,
             # then committed the rest of the list: a commit happened, the file
             # is not in it, and "committed" would be a lie about the one path
             # that matters. Printed as well as returned, like every other
-            # arm: the callers discard the return, and `insights archive`
+            # arm: not every caller prints the return, and `insights archive`
             # reaches this with the archive file it just created.
             reason = f"{', '.join(missing)} is not in the commit (ignored by .gitignore?)"
             print(f"aide: {reason}", file=sys.stderr)
@@ -7631,17 +7725,17 @@ def _commit_docs_files(repo_root: Path, config, message: str,
             return None
         pulled = git(["pull", "--rebase"], repo_root, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
-        # Loud here, not only in the return: three callers (`progress set`,
-        # `tick`, `archive`) discard the reason, and a verb that prints its
-        # success line over an uncommitted edit is the failure this names.
+        # Loud here, not only in the return: the best-effort callers discard
+        # the reason, and a verb that prints its success line over an
+        # uncommitted edit is the failure this names.
         why = f"git could not be run ({exc.__class__.__name__}: {exc})"
         print(f"aide: could not commit {joined} — {why}", file=sys.stderr)
         return why
     stalled = _stalled_pull(repo_root, config, pulled)
     if stalled is not None:
         # The commit exists and is being replayed; the tree is now mid-rebase
-        # and the next verb will meet it. Said in full, because the callers
-        # discard the return and the one verb that ends the usual case
+        # and the next verb will meet it. Said in full, because
+        # `_commit_or_restore` quotes only the reason and the one verb that ends the usual case
         # (`insights resolve`) is named inside `stalled`.
         print(f"aide: {joined} is committed here, but replaying that commit "
               f"onto origin stopped: {stalled}", file=sys.stderr)
@@ -7942,11 +8036,14 @@ def _cmd_insights_tick(path: Path, text: str, ddir: Path, ddir_rel: str,
     live_ids = [i for (rel, _), i in zip(pool, insight_ids([e for _, e in pool]))
                 if rel == "insights.md"]
     handle = (live_ids[ordinal - 1] if ordinal <= len(live_ids) else None) or str(ordinal)
+    before = _snapshot([path])
     path.write_text(updated, encoding="utf-8")
     print(f"{message} (insight {handle})" if handle != str(ordinal) else message)
     if not args.no_commit and (repo_root / ".git").exists():
-        _commit_docs_files(repo_root, config, f"docs(aide): triage insight {handle}",
-                           [f"{ddir_rel}/insights.md"])
+        return _commit_or_restore(
+            repo_root, config, "aide insights tick", "the tick",
+            f"docs(aide): triage insight {handle}",
+            [f"{ddir_rel}/insights.md"], before)
     return 0
 
 
@@ -8040,6 +8137,8 @@ def _cmd_insights_archive(path: Path, text: str, ddir: Path, ddir_rel: str,
         return 0
 
     rels = [f"{ddir_rel}/insights.md"]
+    before = _snapshot([path] + [insight_archive_path(ddir, q) for q in sorted(moved)])
+    made_dir = not (ddir / "insights").is_dir()
     for quarter in sorted(moved):
         apath = insight_archive_path(ddir, quarter)
         apath.parent.mkdir(parents=True, exist_ok=True)
@@ -8055,9 +8154,19 @@ def _cmd_insights_archive(path: Path, text: str, ddir: Path, ddir_rel: str,
     print(f"aide insights archive: moved {total} entr{'y' if total == 1 else 'ies'}; "
           f"{len(parse_insights(remaining))} remain — their list numbers have shifted")
     if not args.no_commit and (repo_root / ".git").exists():
-        _commit_docs_files(repo_root, config,
-                           f"docs(aide): archive insights closed before {args.before}",
-                           rels)
+        code = _commit_or_restore(
+            repo_root, config, "aide insights archive", "the archive",
+            f"docs(aide): archive insights closed before {args.before}",
+            rels, before)
+        if code and made_dir:
+            # The first archive made `insights/` to hold it; a restore that
+            # removed the file takes the directory too, if nothing else is in
+            # it. A no-op when the archive was committed.
+            try:
+                (ddir / "insights").rmdir()
+            except OSError:
+                pass
+        return code
     return 0
 
 
@@ -8629,6 +8738,7 @@ def cmd_ledger(args: argparse.Namespace) -> int:
     cells = ledger_cells(repo_root, config, args.number, "abandoned",
                          rounds=args.rounds, findings=args.findings,
                          branch=branch, base=base, no_review=no_review)
+    before = _snapshot([path])
     rel = append_ledger_row(repo_root, config, cells, f"ledger {args.action}")
     if rel is None:
         return 1
@@ -8638,10 +8748,13 @@ def cmd_ledger(args: argparse.Namespace) -> int:
         # No pull: this is an append to a file the loop owns, on whatever
         # branch the cap was hit on, and a verb that only records must not
         # fetch on the caller's behalf (`ensure_insights_inbox` reasons the
-        # same way).
-        _commit_docs_files(repo_root, config,
-                           f"docs(aide): ledger row for item {args.number:03d} "
-                           f"(abandoned)", [rel], pull=False)
+        # same way). A row left uncommitted would read as recorded to a
+        # retry, which the duplicate guard above then refuses (issue #309).
+        if _commit_or_restore(repo_root, config, f"aide ledger {args.action}",
+                              "the row",
+                              f"docs(aide): ledger row for item {args.number:03d} "
+                              f"(abandoned)", [rel], before, pull=False):
+            return 1
     print(f"aide ledger {args.action}: progress.md is untouched — this verb "
           f"records what the run cost and decides nothing about the item's "
           f"status")
@@ -8870,8 +8983,7 @@ def _queue_gate(args: argparse.Namespace) -> int:
 
     present = {gate_hash(g) for g in human_gates(lines)}
     new = [r for r in rows if key(r[0]) not in present]
-    original = ppath.read_bytes()
-    head = _rev(repo_root, "HEAD")
+    before = _snapshot([ppath])
     if new:
         text = add_gate_rows(text, new)
         ppath.write_text(text, encoding="utf-8")
@@ -8881,28 +8993,12 @@ def _queue_gate(args: argparse.Namespace) -> int:
         gid = next(i for g, i in zip(gates, ids) if gate_hash(g) == key(cell))
         state = "raised" if (cell, blocks) in new else "already raised"
         print(f"{gid}: {state} — {cell} (blocks {blocks})")
-    if new and not args.no_commit:
-        rel = str(config["project"].get("docs_dir", "docs/aide")) + "/progress.md"
-        failure = _commit_docs_files(
-            repo_root, config, f"docs(aide): plan gate for {what}", [rel])
-        if failure and failure != "nothing to commit":
-            if _rev(repo_root, "HEAD") == head:
-                # No commit was made, so nothing is kept: a row left written
-                # and uncommitted reads as "already raised" to a re-run, which
-                # would then never commit it, and the dirty file stops
-                # `aide sync` with nothing naming this verb. The file's own
-                # bytes go back, line endings and all.
-                ppath.write_bytes(original)
-                print(f"{tag}: the gate row could not be committed — "
-                      f"{failure}. progress.md is as it was; re-run once "
-                      f"that is fixed.", file=sys.stderr)
-            else:
-                # The commit exists and replaying it onto origin stopped:
-                # the tree is mid-rebase, and the message above names how
-                # to finish it. The row is in that commit.
-                print(f"{tag}: the gate row is committed, but {failure}",
-                      file=sys.stderr)
-            return 1
+    if new and not args.no_commit and (repo_root / ".git").exists():
+        # A row left written and uncommitted reads as "already raised" to a
+        # re-run, which would then never commit it.
+        return _commit_or_restore(repo_root, config, tag, "the gate row",
+                                  f"docs(aide): plan gate for {what}",
+                                  [_progress_rel(config)], before)
     return 0
 
 

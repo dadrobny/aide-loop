@@ -121,6 +121,36 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.15.1] — 2026-09-28
+
+### Fixed
+
+- **A recording verb whose commit fails now exits 1 and puts its edit back
+  (issue #309).** `aide gate approve`/`decline` wrote `progress.md`, printed
+  the commit's failure as a notice and exited 0; a re-run found the gate
+  resolved and never committed it, and the dirty file stopped the next
+  `aide sync` with nothing naming the verb. The same shape held for every
+  verb that records something and commits it: `aide progress set` (including
+  `set NNN deferred`), `accept`, `amend`, `retract`, `reopen` and `reword`,
+  `aide insights tick` and `archive`, and `aide ledger abandon`. Each now
+  does what `aide queue gate` has done since 2.15.0: when no commit was made,
+  every file it wrote goes back to its bytes (`insights.md` too after
+  `retract`/`reopen`'s `gap` entry, `roadmap.md` after `reword`'s mirror),
+  a file it created — a first quarter archive, `ledger.md` — is removed, and
+  it exits 1, so the re-run once
+  the cause is fixed makes the edit and commits it. A commit that was made
+  but whose replay onto origin stopped keeps the edit and exits 1 as well.
+  Unchanged: `aide check`'s creation of a missing `insights.md` stays a
+  notice (the check's exit is the documents' verdict), a `progress set` that
+  changes nothing stays exit 0, and `aide merge`'s own tick commit is not
+  touched by this release.
+- **§4 said `git.mode` is enforced only inside `aide claim` / `aide merge`
+  (issue #307).** `local` also turns off the fetch, pull and push of `sync`,
+  `status`, `gc`, `queue start`, `queue restack` and the recording verbs'
+  commit. The opener now says both: `auto-merge` and `pr` differ only in how
+  an item lands, inside `claim`/`merge`; `local` also turns off every fetch,
+  pull and push any verb makes. Text only; no behaviour changed.
+
 ## [2.15.0] — 2026-09-28
 
 ### Added
