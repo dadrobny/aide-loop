@@ -72,7 +72,16 @@ entire loop, indefinitely.
   Depth is the spec author's decision, made where the deliverable and the
   posture (§1 → vision.md) are known; a test with no criterion and no named
   case behind it is a test nobody asked for — `aide scope` warns on one
-  (`aide scope -h` states the grammar).
+  (`aide scope -h` states the grammar). A parametrised test may carry the
+  label in a case id instead of its name.
+- **A test added to answer a review finding traces to that finding, recorded
+  in the spec's `## Review findings`.** The role that writes the test adds
+  one bullet there in the same commit — a label in the Testing Strategy's
+  shape, then the finding, its rank and the fix — and names the test with the
+  label. Traceability reads Acceptance Criteria, Testing Strategy and Review
+  findings alike; a spec with no finding has no such section. A finding is
+  recorded, never exempted: no test name is excused for looking like a
+  review's.
 - **An item's tests live in `test_NNN_<topic>.py` under `tests_dir`, NNN
   its item number, unless the project has a reason to diverge.** The file
   name is what says whose criteria a test covers once a later item edits the
@@ -199,6 +208,17 @@ silence as partial throughout — not only on the pin.
   on a test the branch added whose name carries neither, the counter-gate the
   loop lacked, reported as a warning first so a consumer lives with it
   before it gates anything.
+- **Why review findings get a section, not an exemption.** A review round
+  after an item's tests were written adds regression tests that answer a
+  finding, not a criterion or a named case, and the spec had no slot they
+  could trace to — so every one warned as a test nobody asked for (issue
+  #319). Exempting a `test_review_*` name was rejected: it silences the
+  warning without recording what the test is for, and any test could take
+  the prefix. A labelled bullet records the finding and its fix in the spec
+  that outlives the branch, and gives the test the same kind of trace a
+  planned case has. The full-stop label (`- **label.** …`, issue #315) and
+  parametrize ids (issue #314) were the same defect from the other side:
+  a test the spec did ask for, in a shape the check could not read.
 - **Why the test file names its item.** On engine 1.59.2 a consumer's item
   renamed a test in an earlier item's file, as its spec prescribed; `aide
   scope` read the renamed `ac20` against the reconciling item's spec, which

@@ -1133,9 +1133,30 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `traceability_warnings` over `added_test_functions` (issue #242).
         ("every test function the branch added under tests_dir must name an AC "
          "number the spec's ## Acceptance Criteria carries (ac3) or a case "
-         "label its ## Testing Strategy names",
+         "label its ## Testing Strategy or its optional ## Review findings "
+         "names",
          ("test_aide_traceability::test_scope_warns_on_a_test_naming_neither",
-          "test_aide_traceability::test_scope_is_silent_when_every_added_test_is_traced")),
+          "test_aide_traceability::test_scope_is_silent_when_every_added_test_is_traced",
+          "test_aide_traceability::"
+          "test_scope_traces_a_parametrised_test_and_a_review_finding",
+          "test_aide_traceability::"
+          "test_review_findings_labels_share_the_bullet_shape_and_are_optional")),
+        # `_CASE_LABEL_RE`: `:` or `.` followed by whitespace and text (#315).
+        ("the first word of a bullet, closed by a colon or by a full stop with "
+         "text after it",
+         ("test_aide_traceability::test_a_label_closed_by_a_full_stop_is_a_label_too",
+          "test_aide_traceability::"
+          "test_a_full_stop_with_nothing_after_it_or_inside_a_word_is_prose")),
+        # `_parametrize_ids` over the AST, `_traces_to`'s id branch (#314).
+        ("A parametrised test also traces through its literal "
+         "pytest.mark.parametrize ids — a string argvalue, the strings of a "
+         "tuple argvalue, a pytest.param id and each string in ids=[...], read "
+         "without running anything — where the label or acN stands as a whole "
+         "word of the id",
+         ("test_aide_traceability::test_parametrize_ids_are_read_statically",
+          "test_aide_traceability::"
+          "test_an_id_matches_a_label_or_an_ac_as_a_whole_word_only",
+          "test_aide_traceability::test_a_parametrised_test_traces_through_its_ids")),
         # Warns, never fails: exit 0 with warnings printed.
         ("Also warns, never fails, on traceability",
          "test_aide_traceability::test_the_warning_never_turns_a_pass_into_a_fail"),

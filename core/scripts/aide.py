@@ -12629,13 +12629,22 @@ def scope_findings(changed: List[str], authorised: AuthorisedPaths,
 _AC_TOKEN_RE = re.compile(r"(?<![a-z0-9])ac(\d+)(?![0-9])")
 _AC_HEADING_RE = re.compile(r"^##\s+Acceptance Criteria\b", re.MULTILINE | re.IGNORECASE)
 _TESTING_HEADING_RE = re.compile(r"^##\s+Testing Strategy\b", re.MULTILINE | re.IGNORECASE)
+#: `## Review findings` — the bullets a review round's regression tests trace
+#: to (issue #319). Optional: a spec without it names no labels there.
+_REVIEW_HEADING_RE = re.compile(r"^##\s+Review findings\b", re.MULTILINE | re.IGNORECASE)
 #: A case label: the first token of a Testing Strategy **bullet**, closed by a
-#: colon — `- empty-input: the walker yields nothing`, with or without
-#: backticks or bold around the token. One word, so "existing tests to
-#: reconcile:" and a `tests/test_x.py:` module name are prose, not labels;
-#: and a bullet, so a prose "Note: …" line in the section is not one either
-#: (a generic label would silence every test whose name contains it).
-_CASE_LABEL_RE = re.compile(r"^\s*[-*]\s+[`*_]*([A-Za-z][A-Za-z0-9_-]*)[`*_]*\s*:")
+#: colon — `- empty-input: the walker yields nothing` — or by a full stop with
+#: more text after it on the line — `- **empty-input.** the walker …`, the
+#: stop inside or outside the emphasis (issue #315). Backticks or bold around
+#: the token are decoration. One word, so "existing tests to reconcile:" and a
+#: `tests/test_x.py:` module name are prose, not labels; and a bullet, so a
+#: prose "Note: …" line in the section is not one either (a generic label
+#: would silence every test whose name contains it). The full stop must be
+#: followed by whitespace and text, so `test_x.py`, `e.g.` and a bare
+#: `- None.` stay prose.
+_CASE_LABEL_RE = re.compile(
+    r"^\s*[-*]\s+[`*_]*([A-Za-z][A-Za-z0-9_-]*)[`*_]*\s*"
+    r"(?::|\.[`*_]*\s+\S)")
 
 
 _FENCE_RE = re.compile(r"^[ \t]*(```|~~~).*?^[ \t]*\1[^\n]*$", re.MULTILINE | re.DOTALL)
@@ -12661,24 +12670,106 @@ def spec_acceptance_numbers(text: str) -> List[int]:
                                              _section_text(text, _AC_HEADING_RE))})
 
 
-def testing_strategy_labels(text: str) -> List[str]:
-    """The case labels a spec's ``## Testing Strategy`` names, in order."""
+def _section_labels(text: str, heading: "re.Pattern") -> List[str]:
     out: List[str] = []
-    for line in _section_text(text, _TESTING_HEADING_RE).splitlines():
+    for line in _section_text(text, heading).splitlines():
         m = _CASE_LABEL_RE.match(line)
         if m and m.group(1) not in out:
             out.append(m.group(1))
     return out
 
 
-def _test_function_names(source: str) -> List[str]:
+def testing_strategy_labels(text: str) -> List[str]:
+    """The case labels a spec's ``## Testing Strategy`` names, in order."""
+    return _section_labels(text, _TESTING_HEADING_RE)
+
+
+def review_finding_labels(text: str) -> List[str]:
+    """The labels a spec's optional ``## Review findings`` names, in order —
+    the same bullet shape as a Testing Strategy case (issue #319)."""
+    return _section_labels(text, _REVIEW_HEADING_RE)
+
+
+def spec_case_labels(text: str) -> List[str]:
+    """Every label a test the item adds may trace to: the Testing Strategy's
+    cases, then the Review findings' — what `aide scope` and the ledger's
+    reconciled split both read."""
+    out = testing_strategy_labels(text)
+    return out + [lbl for lbl in review_finding_labels(text) if lbl not in out]
+
+
+#: One test function the branch added: its file, its name, and the literal
+#: ids of its `pytest.mark.parametrize` cases (issue #314) — empty for an
+#: unparametrised test.
+AddedTest = Tuple[str, str, Tuple[str, ...]]
+
+
+def _str_constants(node: "ast.AST") -> List[str]:
+    """The string constants among *node*'s first-level elements (a list or
+    tuple), or *node* itself when it is one."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return [node.value]
+    if isinstance(node, (ast.List, ast.Tuple)):
+        return [e.value for e in node.elts
+                if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+    return []
+
+
+def _is_parametrize(func: "ast.AST") -> bool:
+    """`pytest.mark.parametrize` or `mark.parametrize`, however imported."""
+    if not (isinstance(func, ast.Attribute) and func.attr == "parametrize"):
+        return False
+    mark = func.value
+    return ((isinstance(mark, ast.Attribute) and mark.attr == "mark")
+            or (isinstance(mark, ast.Name) and mark.id == "mark"))
+
+
+def _parametrize_ids(fn: "ast.AST") -> Tuple[str, ...]:
+    """The literal case ids of every `parametrize` decorator on *fn*.
+
+    Static, never collected: a string argvalue, the first-level strings of a
+    tuple or list argvalue, a `pytest.param`'s string arguments and its
+    `id=`, and each string in an explicit `ids=[...]`. Anything computed —
+    a name, a call, a comprehension — is not read, and contributes nothing.
+    """
+    out: List[str] = []
+    for dec in getattr(fn, "decorator_list", []):
+        if not (isinstance(dec, ast.Call) and _is_parametrize(dec.func)):
+            continue
+        argvalues = dec.args[1] if len(dec.args) > 1 else None
+        for kw in dec.keywords:
+            if kw.arg == "argvalues":
+                argvalues = kw.value
+            elif kw.arg == "ids":
+                out.extend(_str_constants(kw.value)
+                           if isinstance(kw.value, (ast.List, ast.Tuple)) else [])
+        if isinstance(argvalues, (ast.List, ast.Tuple)):
+            for case in argvalues.elts:
+                if (isinstance(case, ast.Call) and isinstance(case.func, ast.Attribute)
+                        and case.func.attr == "param"):
+                    for arg in case.args:
+                        out.extend(_str_constants(arg))
+                    out.extend(kw.value.value for kw in case.keywords
+                               if kw.arg == "id" and isinstance(kw.value, ast.Constant)
+                               and isinstance(kw.value.value, str))
+                else:
+                    out.extend(_str_constants(case))
+    return tuple(dict.fromkeys(out))
+
+
+def _test_functions(source: str) -> List[Tuple[str, Tuple[str, ...]]]:
+    """``(name, parametrize ids)`` for every `test*` function in *source*."""
     try:
         tree = ast.parse(source.lstrip("\ufeff"))
     except SyntaxError:
         return []
-    return [n.name for n in ast.walk(tree)
+    return [(n.name, _parametrize_ids(n)) for n in ast.walk(tree)
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
             and n.name.startswith("test")]
+
+
+def _test_function_names(source: str) -> List[str]:
+    return [name for name, _ in _test_functions(source)]
 
 
 def _under_dir(rel: str, directory: str) -> bool:
@@ -12722,8 +12813,9 @@ def renamed_paths(repo_root: Path, merge_base: str) -> Dict[str, str]:
 def added_test_functions(repo_root: Path, config, changed: List[str],
                          merge_base: str,
                          renamed: Optional[Dict[str, str]] = None,
-                         ref: Optional[str] = None) -> List[Tuple[str, str]]:
-    """``(path, name)`` for every test function the branch added.
+                         ref: Optional[str] = None) -> List[AddedTest]:
+    """``(path, name, ids)`` for every test function the branch added, *ids*
+    being its literal `parametrize` case ids (`_parametrize_ids`).
 
     A test file among *changed* is read from the working tree and compared to
     its version at *merge_base* — under its old name where *renamed* says the
@@ -12740,7 +12832,7 @@ def added_test_functions(repo_root: Path, config, changed: List[str],
     """
     tests_dir = _tests_dir_rel(repo_root, config)
     renamed = renamed or {}
-    out: List[Tuple[str, str]] = []
+    out: List[AddedTest] = []
     if tests_dir is None:
         return out
     for rel in changed:
@@ -12751,33 +12843,63 @@ def added_test_functions(repo_root: Path, config, changed: List[str],
             if not path.is_file():
                 continue
             try:
-                new = _test_function_names(path.read_text(encoding=_ENCODING))
+                new = _test_functions(path.read_text(encoding=_ENCODING))
             except (OSError, UnicodeDecodeError):
                 continue
         else:
             at_ref = git(["show", f"{ref}:{rel}"], repo_root, check=False)
             if at_ref.returncode != 0:
                 continue
-            new = _test_function_names(at_ref.stdout)
+            new = _test_functions(at_ref.stdout)
         shown = git(["show", f"{merge_base}:{renamed.get(rel, rel)}"], repo_root, check=False)
+        # Keyed on the name alone: a function present at the base is an edit,
+        # whatever its parametrize ids became.
         old = set(_test_function_names(shown.stdout)) if shown.returncode == 0 else set()
-        out.extend((rel, name) for name in new if name not in old)
+        out.extend((rel, name, ids) for name, ids in new if name not in old)
     return out
 
 
-def _traces_to(name: str, ac_numbers: List[int], labels: List[str]) -> bool:
-    """*name* carries one of *ac_numbers* (`ac3`) or one of *labels*."""
+def _unpack_added(entry: Tuple) -> AddedTest:
+    """An added test as ``(path, name, ids)`` — a two-tuple has no ids."""
+    rel, name, *rest = entry
+    return rel, name, tuple(rest[0]) if rest else ()
+
+
+def _traces_to(name: str, ac_numbers: List[int], labels: List[str],
+               ids: Tuple[str, ...] = ()) -> bool:
+    """*name* carries one of *ac_numbers* (`ac3`) or one of *labels*, or one
+    of its parametrize *ids* does (issue #314).
+
+    The name matches a label anywhere in it, as it always has. An id is
+    compared normalised the same way (lower case, `-` read as `_`), and a
+    label or `acN` must stand in it as a whole token — bounded by anything
+    but a letter or digit — since an id is often a free-text value rather
+    than a name built from its case: label `call` matches id `bool-call`,
+    and does not match `recall`.
+    """
+    wanted = set(ac_numbers)
+    norm = [lbl.lower().replace("-", "_") for lbl in labels]
     low = name.lower()
-    if any(int(n) in set(ac_numbers) for n in _AC_TOKEN_RE.findall(low)):
+    if any(int(n) in wanted for n in _AC_TOKEN_RE.findall(low)):
         return True
-    return any(lbl.lower().replace("-", "_") in low for lbl in labels)
+    if any(lbl in low for lbl in norm):
+        return True
+    for raw in ids:
+        ident = raw.lower().replace("-", "_")
+        if any(int(n) in wanted for n in _AC_TOKEN_RE.findall(ident)):
+            return True
+        if any(re.search(rf"(?<![a-z0-9]){re.escape(lbl)}(?![a-z0-9])", ident)
+               for lbl in norm):
+            return True
+    return False
 
 
-def traceability_warnings(added: List[Tuple[str, str]], ac_numbers: List[int],
+def traceability_warnings(added: List[Tuple], ac_numbers: List[int],
                           labels: List[str], rel_spec: str,
                           owner: Optional[int] = None) -> List[str]:
-    """§6: a test the item adds names the criterion (`ac3`) or the Testing
-    Strategy case it covers; one that names neither is a test nobody asked
+    """§6: a test the item adds names the criterion (`ac3`), the Testing
+    Strategy case or the Review findings entry it covers — by its name or by
+    one of its parametrize ids; one that names none is a test nobody asked
     for. A warning, never a FAIL: the rule is new and a consumer lives with
     the report before it gates anything.
 
@@ -12787,10 +12909,15 @@ def traceability_warnings(added: List[Tuple[str, str]], ac_numbers: List[int],
     against is not the one being scoped."""
     where = (f" — in item {owner:03d}'s test file, which this branch changed"
              if owner is not None else "")
-    return [f"warning: {rel}::{name} names no AC number and no Testing "
-            f"Strategy case of {rel_spec}{where} — a test the spec did not ask "
-            f"for (conventions.md §6)"
-            for rel, name in added if not _traces_to(name, ac_numbers, labels)]
+    out: List[str] = []
+    for entry in added:
+        rel, name, ids = _unpack_added(entry)
+        if not _traces_to(name, ac_numbers, labels, ids):
+            out.append(f"warning: {rel}::{name} names no AC number and no "
+                       f"Testing Strategy or Review findings case of "
+                       f"{rel_spec}{where} — a test the spec did not ask for "
+                       f"(conventions.md §6)")
+    return out
 
 
 #: `test_007_walker.py` — a test file named for the item that owns it. The
@@ -12811,14 +12938,14 @@ def owning_item(rel: str) -> Optional[int]:
 
 class ReconciledTests(NamedTuple):
     """The added tests in one other item's test files, split against its spec."""
-    spec: str                          # that item's spec, repo-relative
-    reconciled: List[Tuple[str, str]]  # traced to its criteria or cases
-    untraced: List[Tuple[str, str]]    # traced to neither
+    spec: str                  # that item's spec, repo-relative
+    reconciled: List[AddedTest]  # traced to its criteria or cases
+    untraced: List[AddedTest]    # traced to neither
 
 
 def split_reconciled_tests(repo_root: Path, config,
-                           added: List[Tuple[str, str]], number: int,
-                           ) -> Tuple[List[Tuple[str, str]], Dict[int, ReconciledTests]]:
+                           added: List[Tuple], number: int,
+                           ) -> Tuple[List[AddedTest], Dict[int, ReconciledTests]]:
     """``(own, others)``: *added* split by the item whose test file each sits in.
 
     A test in ``test_NNN_…py`` for an item other than *number* was reconciled
@@ -12841,12 +12968,13 @@ def split_reconciled_tests(repo_root: Path, config,
     """
     idir = docs_dir(repo_root, config) / "items"
     specs: Dict[int, Optional[Tuple[str, List[int], List[str]]]] = {}
-    own: List[Tuple[str, str]] = []
+    own: List[AddedTest] = []
     others: Dict[int, ReconciledTests] = {}
-    for rel, name in added:
+    for entry in added:
+        rel, name, ids = test = _unpack_added(entry)
         owner = owning_item(rel)
         if owner is None or owner == number:
-            own.append((rel, name))
+            own.append(test)
             continue
         if owner not in specs:
             specs[owner] = None
@@ -12859,14 +12987,14 @@ def split_reconciled_tests(repo_root: Path, config,
                 if _AC_HEADING_RE.search(text):
                     specs[owner] = (found[0].relative_to(repo_root).as_posix(),
                                     spec_acceptance_numbers(text),
-                                    testing_strategy_labels(text))
+                                    spec_case_labels(text))
         if specs[owner] is None:
-            own.append((rel, name))
+            own.append(test)
             continue
         rel_spec, acs, labels = specs[owner]
         bucket = others.setdefault(owner, ReconciledTests(rel_spec, [], []))
-        traced = _traces_to(name, acs, labels)
-        (bucket.reconciled if traced else bucket.untraced).append((rel, name))
+        traced = _traces_to(name, acs, labels, ids)
+        (bucket.reconciled if traced else bucket.untraced).append(test)
     return own, others
 
 
@@ -12974,7 +13102,7 @@ def cmd_scope(args: argparse.Namespace) -> int:
     elif own:
         traced = traceability_warnings(
             own, spec_acceptance_numbers(spec_text),
-            testing_strategy_labels(spec_text), rel_spec)
+            spec_case_labels(spec_text), rel_spec)
     for owner, split in sorted(others.items()):
         if split.reconciled:
             print(f"notice: reconciled {len(split.reconciled)} test(s) in item "
@@ -14737,9 +14865,15 @@ def register_git_subcommands(sub) -> None:
             "Also warns, never fails, on traceability: every test function the "
             "branch added under tests_dir must name an AC number the spec's "
             "## Acceptance Criteria carries (ac3) or a case label its "
-            "## Testing Strategy names (the first word of a bullet, closed by a "
-            "colon: `empty-input: ...`); a test naming neither is reported as "
-            "one the spec did not ask for. A function present in the file at "
+            "## Testing Strategy or its optional ## Review findings names (the "
+            "first word of a bullet, closed by a colon or by a full stop with "
+            "text after it: `empty-input: ...`, `**empty-input.** ...`); a test "
+            "naming none is reported as one the spec did not ask for. A "
+            "parametrised test also traces through its literal "
+            "pytest.mark.parametrize ids — a string argvalue, the strings of a "
+            "tuple argvalue, a pytest.param id and each string in ids=[...], "
+            "read without running anything — where the label or acN stands as "
+            "a whole word of the id. A function present in the file at "
             "the base is an edit, not an addition, and is not checked, a "
             "renamed file being read under its old name; a spec with no "
             "## Acceptance Criteria heading is a notice and no warnings.\n"

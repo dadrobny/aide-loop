@@ -2138,6 +2138,40 @@ def test_scope_is_quiet_for_a_test_named_for_its_ac(aide, consumer: Path, capsys
     assert "warning" not in capsys.readouterr().out
 
 
+def test_scope_traces_parametrize_ids_full_stop_labels_and_review_findings(
+        aide, consumer: Path, capsys):
+    """Issues #314, #315 and #319 on the installed verb: a parametrised test
+    traced by its ids to `- **label.** …` cases, a review-round test traced
+    by the spec's ## Review findings, and one naming nothing still warns —
+    exit 0 throughout."""
+    spec = consumer / "docs" / "aide" / "items" / "001-the-greeter.md"
+    spec.write_text(SPEC_001 + (
+        "\n## Testing Strategy\n\n"
+        "- **blank-name.** An empty name is still greeted.\n"
+        "- **unicode-name.** A non-ASCII name round-trips.\n"
+        "\n## Review findings\n\n"
+        "- r1-strip: surrounding whitespace was kept — minor; fixed in abc123\n"),
+        encoding="utf-8")
+    _commit(consumer, "docs: cases and a finding")
+    assert _claim(aide, consumer) == 0
+    (consumer / "src" / "greeter.py").write_text(
+        'def greet(name):\n    return f"hello {name.strip()}"\n', encoding="utf-8")
+    (consumer / "tests" / "test_greeter.py").write_text(
+        "import pytest\n\n"
+        "@pytest.mark.parametrize('case,name', [('blank-name', ''),\n"
+        "                                       ('unicode-name', 'z\\u00fc')])\n"
+        "def test_edge_names(case, name):\n    assert True\n\n"
+        "def test_r1_strip():\n    assert True\n\n"
+        "def test_misc():\n    assert True\n", encoding="utf-8")
+    _commit(consumer, "feat: greeter")
+    assert aide.main(["--repo", str(consumer), "scope"]) == 0
+    out = capsys.readouterr().out
+    assert "test_edge_names" not in out, out
+    assert "test_r1_strip" not in out, out
+    assert "warning: tests/test_greeter.py::test_misc names no AC number" in out
+    assert out.count("warning:") == 1
+
+
 def test_scope_reports_a_test_reconciled_in_another_items_file(
         aide, consumer: Path, capsys):
     """Issue #262 on the installed verb: item 001 renames a test in item
