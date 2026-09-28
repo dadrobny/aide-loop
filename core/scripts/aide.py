@@ -11905,8 +11905,9 @@ def cmd_merge(args: argparse.Namespace) -> int:
                           f"aide merge: nothing was pushed — {branch} is "
                           f"merged into {main} in THIS "
                           f"repository only, and the claim branch is back "
-                          f"with its base. Settle {main} as the message above "
-                          f"says, then re-run "
+                          f"with its base. Fix what the message above names "
+                          f"— settle a stopped replay on {main}, or un-ignore "
+                          f"a path the commit left out — then re-run "
                           f"'merge {args.number:03d} --base {main}'.",
                           file=sys.stderr)
                 else:

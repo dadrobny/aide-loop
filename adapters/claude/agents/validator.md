@@ -254,10 +254,13 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      not give one, start the merge without the flag rather than guessing at a
      count.
 
-     **A non-zero exit means the item did not land as done.** That re-run,
+     **A non-zero exit means the item did not land.** That re-run,
      and the `aide check` beside it, is a gate: a failure or a document error
      leaves the merge on the base locally, the item 🔍, and nothing pushed — it
-     says which. Never tick the item by hand to close the gap. How the exit
+     says which. A tick it cannot commit is refused the same way; one it
+     committed but could not replay onto origin stays ✅ in this repository
+     only, still unpushed, and it says so. Never tick the item by hand to close
+     the gap. How the exit
      becomes your verdict:
      - **It names failures this item caused** (they do not fail at the base):
        **FAIL** — report those tests and their output for the builder. The
