@@ -1422,7 +1422,20 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_queue_stack::test_a_base_beside_the_stack_is_refused",
           "test_aide_queue_stack::test_a_base_that_would_fork_the_stack_is_refused")),
         ("--dry-run runs every check and changes nothing",
-         "test_aide_queue_stack::test_the_cap_is_checked_by_a_dry_run_too"),
+         ("test_aide_queue_stack::test_the_cap_is_checked_by_a_dry_run_too",
+          "test_aide_queue_stack::test_a_dry_run_refuses_a_bad_stack_shape_and_creates_nothing")),
+        # The cap refusal's remedies, each followed by a test until the
+        # refusal clears (PR #308 review: `restack` was printed as one, and
+        # has no stack to read when only main is behind).
+        ("A branch whose PR merged counts until this checkout's main_branch "
+         "holds its work, so updating main_branch from origin is what "
+         "clears it",
+         "test_aide_queue_stack::test_a_pr_merged_on_origin_clears_once_main_is_updated_from_origin"),
+        ("one git cannot judge is cleared by `aide gc --merged --yes` if it "
+         "landed, or by `aide queue restack NNN --base main_branch`, which "
+         "records its start, if it is open",
+         ("test_aide_queue_stack::test_a_landed_branch_git_cannot_judge_clears_once_gc_deletes_it",
+          "test_aide_queue_stack::test_an_open_branch_git_cannot_judge_is_read_once_its_start_is_recorded")),
         # `max_open_queues(config)` -> `return 1` before any branch exists.
         ("an invalid max_open_queues",
          "test_aide_queue_stack::test_an_unusable_cap_refuses_the_start_and_fails_the_check"),
@@ -1456,7 +1469,9 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "invalid plan_review, or a failed commit",
          ("test_aide_queue_stack::test_gate_refusals_and_usage",
           "test_aide_queue_stack::test_a_queue_listing_no_items_is_refused",
-          "test_aide_queue_stack::test_an_unusable_plan_review_refuses_and_fails_the_check")),
+          "test_aide_queue_stack::test_gate_without_a_progress_file_is_refused",
+          "test_aide_queue_stack::test_an_unusable_plan_review_refuses_and_fails_the_check",
+          "test_aide_queue_stack::test_gate_whose_commit_fails_exits_one_with_the_row_left_written")),
         # `_queue_restack` reads `_recorded_branch_base` for every
         # `_is_stack_branch`, which matches `queue-NNN` and not `specs-queue-`.
         ("The stack is read from the base each queue branch recorded at "

@@ -400,3 +400,105 @@ def test_item_ranges_read_back_as_the_numbers_written():
     for nums in ([5], [5, 6], [5, 7, 8, 9], list(range(1, 120)), [3, 1, 2, 2]):
         cell = aide.item_ranges(nums)
         assert sorted(aide._blocked_item_numbers(cell)) == sorted(set(nums)), cell
+
+
+# --------------------------------------------------------------------------- #
+# review round 1 (PR #308) — the printed remedies clear the refusal, and
+# every clause of the pinned exits has a guard
+# --------------------------------------------------------------------------- #
+def test_a_pr_merged_on_origin_clears_once_main_is_updated_from_origin(
+        tmp_path: Path, capsys):
+    """The refusal names the remedy that works: `restack` has no stack to read
+    here and leaves main where it is, so only updating main clears it."""
+    origin = tmp_path / "origin.git"
+    _git(["init", "--bare", "-b", "main", str(origin)], tmp_path)
+    repo = _init(tmp_path / "r", mode="pr")
+    _git(["remote", "add", "origin", str(origin)], repo)
+    _git(["push", "-u", "origin", "main"], repo)
+    assert _start(repo, 1) == 0
+    _work(repo, "q1.txt")
+    _git(["push"], repo)
+    human = tmp_path / "human"
+    _git(["clone", str(origin), str(human)], tmp_path)
+    _git(["config", "user.email", "h@example.com"], human)
+    _git(["config", "user.name", "Human"], human)
+    _git(["merge", "--squash", f"origin/{Q1}"], human)
+    _git(["commit", "-m", "squash queue 1"], human)
+    _git(["push", "origin", "main"], human)
+
+    assert _start(repo, 2, "--dry-run") == 3
+    err = capsys.readouterr().err
+    assert "git pull" in err and "aide queue restack')" not in err
+    _git(["switch", "main"], repo)
+    _git(["pull"], repo)
+    assert _start(repo, 2, "--dry-run") == 0
+
+
+def test_a_landed_branch_git_cannot_judge_clears_once_gc_deletes_it(
+        tmp_path: Path, capsys):
+    repo = _init(tmp_path / "r")
+    assert _start(repo, 1) == 0
+    _work(repo, "q1.txt")
+    _git(["config", "--unset", f"branch.{Q1}.aide-start"], repo)
+    _git(["switch", "main"], repo)
+    _git(["merge", "--ff-only", Q1], repo)
+    assert _start(repo, 2, "--dry-run") == 3
+    assert "aide gc --merged --yes" in capsys.readouterr().err
+    assert aide.main(["--repo", str(repo), "gc", "--merged", "--yes"]) == 0
+    assert Q1 not in _branches(repo)
+    assert _start(repo, 2) == 0
+
+
+def test_an_open_branch_git_cannot_judge_is_read_once_its_start_is_recorded(
+        tmp_path: Path):
+    repo = _init(tmp_path / "r")
+    assert _start(repo, 1) == 0
+    _git(["config", "--unset", f"branch.{Q1}.aide-start"], repo)
+    _git(["switch", "main"], repo)
+    config = aide.load_config(repo)
+    assert aide._unmerged_queue_branches(repo, config) == {Q1: None}
+    assert aide.main(["--repo", str(repo), "queue", "restack", "1",
+                      "--base", "main"]) == 0
+    assert aide._unmerged_queue_branches(repo, config) == {Q1: False}
+
+
+@pytest.mark.parametrize("shape", ["beside", "fork"])
+def test_a_dry_run_refuses_a_bad_stack_shape_and_creates_nothing(
+        tmp_path: Path, shape: str):
+    repo = _init(tmp_path / "r", loop="max_open_queues = 3")
+    assert _start(repo, 1) == 0
+    _work(repo, "q1.txt")
+    assert _start(repo, 2, "--base", Q1) == 0
+    _work(repo, "q2.txt")
+    before = _branches(repo)
+    extra = [] if shape == "beside" else ["--base", Q1]
+    if shape == "beside":
+        _git(["switch", "main"], repo)
+    assert _start(repo, 3, *extra, "--dry-run") == 1
+    assert _branches(repo) == before and Q3 not in before
+    assert _base(repo, Q3) == ""
+
+
+def test_gate_without_a_progress_file_is_refused(tmp_path: Path):
+    repo = _init(tmp_path / "r")
+    (repo / "docs" / "aide" / "progress.md").unlink()
+    head = _head(repo)
+    assert _gate(repo, 1) == 1
+    assert not (repo / "docs" / "aide" / "progress.md").exists()
+    assert _head(repo) == head
+
+
+def test_gate_whose_commit_fails_exits_one_with_the_row_left_written(
+        tmp_path: Path):
+    """A held index lock is a commit failure on every platform — no hook,
+    no executable bit, no shell."""
+    repo = _init(tmp_path / "r")
+    head = _head(repo)
+    lock = repo / ".git" / "index.lock"
+    lock.write_bytes(b"")
+    try:
+        assert _gate(repo, 1) == 1
+    finally:
+        lock.unlink()
+    assert _head(repo) == head
+    assert "Queue 001 plan reviewed before build" in _progress(repo)
