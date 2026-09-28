@@ -196,38 +196,36 @@ def aggregate(calls, allow_rules, ask_rules):
     ``Bash(sed -n:*)`` normalises to the same ``Bash(sed:*)`` as the ``sed -i``
     calls it leaves prompting, and grouping first would rank the allowed traffic
     and show it as the sample. An ``ask`` rule wins over ``allow``, as it does in
-    the runtime.
+    the runtime, and an ask-gated call is bucketed apart from the uncovered
+    calls sharing its rule too: ``git push --force`` under ``ask`` must not turn
+    every plain ``git push`` into an ``ask-gated`` row.
 
     status: ``new`` (a real bottleneck candidate for the allow-list),
     ``ask-gated`` (intentionally gated), or ``auto-allowed`` (the calls already
     covered — context only, never a bottleneck). One rule can carry an
-    ``auto-allowed`` row beside a ``new`` one; each row's count, grant/deny
-    split and sample come from its own calls only.
+    ``auto-allowed`` or ``ask-gated`` row beside a ``new`` one; each row's
+    count, grant/deny split and sample come from its own calls only.
     """
     groups = defaultdict(
         lambda: {"total": 0, "granted": 0, "denied": 0, "samples": Counter(),
-                 "ask_any": False, "tool": ""}
+                 "tool": ""}
     )
     for call in calls:
-        asked = is_covered(call["tool"], call["detail"], ask_rules)
-        allowed = not asked and is_covered(call["tool"], call["detail"], allow_rules)
+        if is_covered(call["tool"], call["detail"], ask_rules):
+            status = "ask-gated"
+        elif is_covered(call["tool"], call["detail"], allow_rules):
+            status = "auto-allowed"
+        else:
+            status = "new"
         rule = normalize_command(call["tool"], call["detail"])
-        g = groups[(rule, allowed)]
+        g = groups[(rule, status)]
         g["tool"] = call["tool"]
         g["total"] += 1
         g[call["outcome"]] += 1
         g["samples"][call["detail"]] += 1
-        if asked:
-            g["ask_any"] = True
 
     out = []
-    for (rule, allowed), g in groups.items():
-        if allowed:
-            status = "auto-allowed"
-        elif g["ask_any"]:
-            status = "ask-gated"
-        else:
-            status = "new"
+    for (rule, status), g in groups.items():
         out.append({
             "rule": rule,
             "tool": g["tool"],

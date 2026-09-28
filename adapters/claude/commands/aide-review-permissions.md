@@ -27,8 +27,9 @@ Target log: **$ARGUMENTS** (if empty, the default
    - `ask-gated` — intentionally under `ask` (PRs, force-push, framework edits) —
      usually leave it gated;
    - `auto-allowed` — already covered (shown for context only). Coverage is
-     decided per call, so one rule can show an `auto-allowed` row beside a `new`
-     one; the `new` row's count and example are the calls that still prompt.
+     decided per call, so one rule can show an `auto-allowed` or `ask-gated` row
+     beside a `new` one; the `new` row's count and example are the calls that
+     still prompt and no rule gates.
 
 2. **Recommend.** For each `new` row, judge it on the **actual command shown**, not
    just the suggested rule:

@@ -1,10 +1,12 @@
-"""The shipped allow-list carries the read-only inspection commands (issue #317).
+"""The shipped allow-list carries the inspection commands consumers promote (issue #317).
 
 Consumers promoted the same project-agnostic rules — print-only ``sed -n``,
 read-only git plumbing, file comparison and checksums, process probes and
 no-ops — review after review. Each is held here, and so is the line the
 issue drew: the ``-n`` prefix keeps ``sed -i`` prompting, and ``awk`` and
-``mkdir`` stay out.
+``mkdir`` stay out. The line is what a call visibly does, not a sandbox:
+GNU ``sed -n`` scripts can still ``w`` and ``e``, which adds nothing to the
+``Bash(python:*)`` already shipped.
 
 Coverage is read with the reviewer's own ``is_covered``, so the test asks the
 question a permission review asks. Stdlib + pytest only.
@@ -59,5 +61,5 @@ def test_read_only_inspection_commands_are_pre_approved(command):
     "awk '{print $1}' src/x.py",
     "mkdir build",
 ])
-def test_commands_that_can_write_still_prompt(command):
+def test_the_commands_the_issue_kept_out_still_prompt(command):
     assert not rp.is_covered("Bash", command, _PERMS["allow"])

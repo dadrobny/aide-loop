@@ -83,3 +83,19 @@ def test_an_uncovered_rule_with_no_ask_match_is_new():
     assert [(r["status"], r["rule"], r["total"]) for r in rows] == [
         ("new", "Bash(make:*)", 1)
     ]
+
+
+def test_an_ask_gated_call_does_not_absorb_the_uncovered_calls_beside_it():
+    # The shipped ask-list gates `git push --force`, and plain `git push`
+    # normalises to the same Bash(git push:*): the ten plain pushes are a
+    # bottleneck of their own, not part of the gated row.
+    calls = [_call("git push origin x")] * 10 + [_call("git push --force origin x")]
+
+    rows = rp.aggregate(calls, [], ["Bash(git push --force:*)"])
+
+    new = _rows(rows, "new")
+    assert [(r["rule"], r["total"], r["sample"]) for r in new] == [
+        ("Bash(git push:*)", 10, "git push origin x")
+    ]
+    gated = _rows(rows, "ask-gated")
+    assert [(r["total"], r["sample"]) for r in gated] == [(1, "git push --force origin x")]
