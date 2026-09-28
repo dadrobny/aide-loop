@@ -143,8 +143,9 @@ low near-term payoff, so it stays deferred until a real no-Python consumer appea
 
 `git.mode` in `aide.toml` selects how a green item lands — **`auto-merge`** (direct
 to `main`), **`pr`** (push + stop for a human PR), or **`local`** (offline, no
-pushes). It is enforced *only* inside `aide claim`/`aide merge`; agent instructions
-are identical across modes.
+pushes). How an item lands is decided *only* inside `aide claim`/`aide merge`;
+`local` also turns off every fetch, pull and push any other verb makes. Agent
+instructions are identical across modes.
 
 Orthogonal to that: **framework/process changes always want a reviewed PR**
 regardless of `git.mode`, because they cascade into every *future* queue. The rule of

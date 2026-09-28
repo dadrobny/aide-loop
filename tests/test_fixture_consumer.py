@@ -901,6 +901,111 @@ def test_a_gate_is_cited_and_resolved_by_its_id_across_a_renumbering(
     assert f"{gid} names no human gate" in capsys.readouterr().out
 
 
+# --------------------------------------------------------------------------- #
+# a recording verb whose commit fails (issue #309)
+# --------------------------------------------------------------------------- #
+def _clean(repo: Path) -> bool:
+    return _git(["status", "--porcelain"], repo).stdout.strip() == ""
+
+
+def _under_a_held_index_lock(aide, repo: Path, argv: list) -> int:
+    """Run one verb while `.git/index.lock` is held — a commit failure on
+    every platform, with no hook, executable bit or shell — then release it."""
+    lock = repo / ".git" / "index.lock"
+    lock.write_bytes(b"")
+    try:
+        return aide.main(["--repo", str(repo), *argv])
+    finally:
+        lock.unlink()
+
+
+def _raise_a_gate(repo: Path) -> None:
+    progress = repo / "docs" / "aide" / "progress.md"
+    progress.write_text(
+        progress.read_text(encoding="utf-8")
+        + "\n## Human gates\n\n"
+          "| Gate | Blocks | Status | Decision / evidence |\n"
+          "|------|--------|--------|---------------------|\n"
+          "| Schema approved | 002 | ⏳ Awaiting | — |\n", encoding="utf-8")
+    _commit(repo, "raise the schema gate")
+
+
+@pytest.mark.parametrize("argv, committed", [
+    (["gate", "approve", "1", "--evidence", "reviewed"],
+     "| Schema approved | 002 | ✅ Approved ("),
+    (["gate", "decline", "1", "--reason", "not yet"],
+     "| Schema approved | 002 | ❌ Declined ("),
+    (["progress", "set", "1", "in-progress"],
+     "- 🚧 The greeter. *(Item 001)*"),
+    (["progress", "accept", "1", "--criterion", "1", "--evidence", "both in"],
+     "- [x] Both items land."),
+])
+def test_a_recording_verb_whose_commit_fails_exits_1_and_a_retry_commits(
+        aide, consumer: Path, argv: list, committed: str):
+    """The verb used to exit 0 over a written, uncommitted edit, which a
+    re-run then read as already made and never committed, while the dirty
+    file stopped `aide sync`. Now: exit 1, progress.md back byte for byte,
+    a clean tree, and the re-run makes the edit and commits it."""
+    _raise_a_gate(consumer)
+    progress = consumer / "docs" / "aide" / "progress.md"
+    before, head = progress.read_bytes(), _sha(consumer, "HEAD")
+
+    assert _under_a_held_index_lock(aide, consumer, argv) == 1
+    assert progress.read_bytes() == before
+    assert _sha(consumer, "HEAD") == head
+    assert _clean(consumer)
+
+    assert aide.main(["--repo", str(consumer), *argv]) == 0
+    assert _sha(consumer, "HEAD") != head and _clean(consumer)
+    assert committed in _git(["show", "HEAD:docs/aide/progress.md"],
+                             consumer).stdout
+
+
+def test_a_retraction_whose_commit_fails_puts_back_both_files(
+        aide, consumer: Path):
+    """`retract` writes two files — the unticked box and the `gap` entry it
+    routes to the inbox — and a failed commit puts both back, so the re-run
+    does not append the entry a second time."""
+    assert aide.main(["--repo", str(consumer), "progress", "accept", "1",
+                      "--criterion", "1", "--evidence", "both in"]) == 0
+    ddir = consumer / "docs" / "aide"
+    files = [ddir / "progress.md", ddir / "insights.md"]
+    before, head = [f.read_bytes() for f in files], _sha(consumer, "HEAD")
+    argv = ["progress", "retract", "1", "--criterion", "1",
+            "--reason", "the farewell never landed"]
+
+    assert _under_a_held_index_lock(aide, consumer, argv) == 1
+    assert [f.read_bytes() for f in files] == before
+    assert _sha(consumer, "HEAD") == head and _clean(consumer)
+
+    assert aide.main(["--repo", str(consumer), *argv]) == 0
+    assert _clean(consumer)
+    shown = _git(["show", "--name-only", "--format=", "HEAD"], consumer).stdout
+    assert shown.split() == ["docs/aide/insights.md", "docs/aide/progress.md"]
+    inbox = (ddir / "insights.md").read_text(encoding="utf-8")
+    assert inbox.count("the farewell never landed") == 1
+
+
+def test_a_ledger_row_whose_commit_fails_leaves_no_ledger_behind(
+        aide, consumer: Path):
+    """The first row creates `ledger.md` from the template; a failed commit
+    removes the file it created rather than leaving it untracked, so the
+    retry is not refused as a duplicate of a row nobody committed."""
+    ledger = consumer / "docs" / "aide" / "ledger.md"
+    assert not ledger.exists()
+    head = _sha(consumer, "HEAD")
+    argv = ["ledger", "abandon", "2", "--rounds", "3"]
+
+    assert _under_a_held_index_lock(aide, consumer, argv) == 1
+    assert not ledger.exists()
+    assert _sha(consumer, "HEAD") == head and _clean(consumer)
+
+    assert aide.main(["--repo", str(consumer), *argv]) == 0
+    assert _sha(consumer, "HEAD") != head and _clean(consumer)
+    assert "| 002 |" in _git(["show", "HEAD:docs/aide/ledger.md"],
+                             consumer).stdout
+
+
 def test_check_warns_on_a_root_document_missing_its_mandatory_sections(
         aide, consumer: Path, capsys):
     """Issue #86: a vision written free-hand, missing every section its
@@ -2605,25 +2710,28 @@ def test_an_archive_the_gitignore_swallows_refuses_the_whole_commit_loudly(
     committer's "path not in the commit" arm could fail silently: an ignored
     archive path never reaches it. `git add` refuses the path, and `commit
     -- <paths>` then refuses the WHOLE commit — "pathspec did not match any
-    file(s) known to git" — so nothing lands, the inbox edit is unstaged
-    again, and the refusal is printed with both paths named. The arm itself
-    now prints as well, for the shape that does reach it."""
+    file(s) known to git" — so nothing lands and the refusal is printed
+    with both paths named. The arm itself now prints as well, for the shape
+    that does reach it. Since #309 the verb then exits 1 and puts both files
+    back — the inbox to its bytes, the archive it created removed with the
+    directory it made."""
     ignore = consumer / ".gitignore"
     ignore.write_text(ignore.read_text(encoding="utf-8") + "docs/aide/insights/\n",
                       encoding="utf-8")
     _commit(consumer, "chore: ignore the archive directory")
     capsys.readouterr()
 
+    inbox = (consumer / "docs" / "aide" / "insights.md").read_bytes()
     assert aide.main(["--repo", str(consumer), "insights", "archive",
-                      "--before", "2026-06-01", "--yes"]) == 0
+                      "--before", "2026-06-01", "--yes"]) == 1
     err = capsys.readouterr().err
     assert ("could not commit docs/aide/insights.md, "
             "docs/aide/insights/archive-2026-Q1.md") in err
     assert "did not match" in err
     assert _files_in_head(consumer) == [".gitignore"]           # nothing landed
-    status = _git(["status", "--porcelain"], consumer).stdout
-    assert " M docs/aide/insights.md" in status                  # unstaged again
-    assert (consumer / "docs" / "aide" / "insights" / "archive-2026-Q1.md").is_file()
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    assert (consumer / "docs" / "aide" / "insights.md").read_bytes() == inbox
+    assert not (consumer / "docs" / "aide" / "insights").exists()
 
 
 def test_check_stays_clean_after_an_archive(aide, consumer: Path):
@@ -3164,10 +3272,9 @@ def test_sync_says_a_claim_branch_was_not_refreshed_and_still_starts(
 
 def test_a_bookkeeping_commit_is_refused_over_an_unfinished_rebase(
         aide, consumer: Path, tmp_path: Path, capsys):
-    """The shared committer behind `progress set`, `insights tick` and
-    `insights archive` returns a reason rather than printing one, and all
-    three callers discard it — so the reason is printed here too, or a verb
-    announces a tick that is in no commit.
+    """The shared committer returns a reason and prints it too, since not
+    every caller does; `insights tick` then exits 1 with the inbox put back
+    (issue #309), so nothing of the verb's sits on top of the rebase.
 
     Since #180 the guard runs BEFORE the commit rather than as a side effect
     of a pull that could not start: with the conflicts staged git accepts a
@@ -3183,15 +3290,15 @@ def test_a_bookkeeping_commit_is_refused_over_an_unfinished_rebase(
     capsys.readouterr()
 
     assert aide.main(["--repo", str(consumer), "insights", "tick", "1",
-                      "--pointer", "item 002"]) == 0
+                      "--pointer", "item 002"]) == 1
     err = capsys.readouterr().err
     assert "could not commit" in err
     assert "stopped in an earlier operation" in err
     assert "a rebase is in progress" in err
     assert "git rebase --continue" in err
     assert "insights resolve" not in err        # the inbox is not the conflict
-    # written to the worktree, deliberately not committed on top of the rebase
-    assert "docs/aide/insights.md" in _git(
+    # not committed on top of the rebase, and not left in the worktree either
+    assert "docs/aide/insights.md" not in _git(
         ["status", "--porcelain"], consumer).stdout
     assert _git(["rev-parse", "HEAD"], consumer).stdout.strip() == head
     assert (consumer / ".git" / "rebase-merge").is_dir()   # still theirs to finish
@@ -3217,7 +3324,7 @@ def test_the_stall_names_the_operation_git_reports_not_a_rebase(
     capsys.readouterr()
 
     assert aide.main(["--repo", str(consumer), "insights", "tick", "1",
-                      "--pointer", "item 002"]) == 0
+                      "--pointer", "item 002"]) == 1
     err = capsys.readouterr().err
     assert "a cherry-pick is in progress" in err
     assert "git cherry-pick --abort" in err
@@ -3288,8 +3395,9 @@ def test_a_tick_that_collides_with_origin_stops_inside_a_real_rebase(
     _origin_moves_on(consumer, "docs/aide/insights.md", _THEIRS)
     capsys.readouterr()
 
-    assert _tick(aide, consumer, 3) == 0
+    assert _tick(aide, consumer, 3) == 1     # committed, but not converged
     err = capsys.readouterr().err
+    assert "the tick is committed, but" in err
     assert "docs/aide/insights.md is committed here" in err
     assert "git pull --rebase could not complete" in err
     assert "a rebase is in progress" in err

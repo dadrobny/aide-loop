@@ -5,7 +5,9 @@ and what kind of CI gate can see it. The human who sets it reads this; the
 validator's merge step is pointed here, and `aide claim` and `aide merge`
 carry it out.
 
-Enforced **only** inside `aide claim` / `aide merge`; agent instructions are
+`auto-merge` and `pr` differ **only** in how an item lands, inside
+`aide claim` / `aide merge`. `local` also turns off every fetch, pull and push
+any verb makes, not only those of `claim` and `merge`. Agent instructions are
 identical across modes.
 
 - **`auto-merge`** (default) — claim branch pushed; on validator PASS `aide merge`
@@ -16,8 +18,9 @@ identical across modes.
   reported and never blocks.
 - **`pr`** — claim identical; on PASS `aide merge` pushes the branch and **stops**
   ("open a PR"). The human opens the PR (`gh pr create` stays `ask`-gated).
-- **`local`** — no pushes at all (offline). Claim is a local branch only (no
-  multi-machine signal); merge is local into `main`, behind the same gate.
+- **`local`** — no fetch, pull or push at all (offline). Claim is a local
+  branch only (no multi-machine signal); merge is local into `main`, behind
+  the same gate.
 
 **A red test run is compared with the base before it refuses.** Where the
 test command's report names each failing test — pytest, run as a module —
@@ -148,6 +151,14 @@ restacked forward from there.
 
 ### Rationale
 
+- **Why `local` is stated apart from the landing modes.** The opener used to
+  say the mode was enforced only inside `aide claim` / `aide merge`, while
+  `local` had long been skipping the network in `sync`, `status`, `gc`,
+  `queue start`, `queue restack` and the commit behind `gate`, `progress` and
+  `insights` — a reader choosing a mode was told less than it changes (issue
+  #307). The rule names what `local` turns off, not a list of verbs: a list
+  goes stale the next time a verb learns to fetch, and "every fetch, pull and
+  push" stays true of it.
 - **Why the claim branch goes before the gate run.** So the run sees what a
   fresh clone sees.
 - **Why `aide check` is part of the gate.** Nothing else in the loop ran it

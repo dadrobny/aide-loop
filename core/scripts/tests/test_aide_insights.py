@@ -1034,9 +1034,9 @@ def test_a_docs_dir_with_a_space_is_recognised_in_its_own_commit(
 
 def test_the_shared_committer_is_loud_when_git_cannot_run(
         tmp_path: Path, monkeypatch, capsys):
-    """`progress set`, `tick` and `archive` discard the committer's return, so
-    the reason must reach stderr from the committer itself — or `tick` prints
-    its success line over an edit that was never committed."""
+    """A git that cannot be run is a reason, printed by the committer itself
+    and never a traceback; `tick` then exits 1 with the inbox as it was, so a
+    re-run makes the tick rather than reading it as made (issue #309)."""
     repo = _repo(tmp_path)
     empty = tmp_path / "empty-path"
     empty.mkdir()
@@ -1046,12 +1046,13 @@ def test_the_shared_committer_is_loud_when_git_cannot_run(
     assert why and "git could not be run" in why
     assert "could not commit docs/aide/insights.md" in capsys.readouterr().err
     assert aide.main(["--repo", str(repo), "insights", "tick", "2",
-                      "--pointer", "item 003"]) == 0
+                      "--pointer", "item 003"]) == 1
     err = capsys.readouterr().err
     assert "could not commit docs/aide/insights.md" in err and "Traceback" not in err
+    assert "the tick could not be committed" in err
     monkeypatch.undo()
-    assert "- [x] defect" in _inbox(repo)  # the edit landed ...
-    assert " M docs/aide/insights.md" in _status(repo)  # ... and is uncommitted
+    assert "- [x] defect" not in _inbox(repo)  # the edit was put back ...
+    assert "insights.md" not in _status(repo)  # ... byte for byte
     assert _staged(repo) == []
 
 
