@@ -17,7 +17,7 @@ written to hold.
 Two of the cells have a fixed vocabulary:
 
 - **Blocks** — item numbers (any §1 reference form, or bare: `106`,
-  `110, 111`, `106–108`), `stage N`, or `all`.
+  `110, 111`, `106–108`), `stage N`, `stage N+`, `stage N–M`, or `all`.
 - **Status** — table-local vocabulary, like Outcome targets': `⏳ Awaiting`,
   then `✅ Approved (date)` or `❌ Declined (date)`.
 
@@ -28,11 +28,26 @@ mean something:
 |---|---|---|
 | `106`, `110, 111`, `106–108` | exactly those items | the decision affects one thread; the queue keeps producing other work |
 | `stage N` | every item that stage's deliverables reference, resolved live | the decision could *invalidate* a stage's work, so racing ahead is waste to throw away |
+| `stage N+` | the same over stage N and every stage numbered after it, including a stage added later | the decision gates everything from a milestone on; `all` would also hold the stages before it |
+| `stage N–M` | the same over every stage numbered N to M | the decision affects a bounded run of stages |
 | `all` | every item, everywhere | a programme-level stop — sign-off, budget, legal |
 
-`stage N` resolves through `progress.md` each time it is read, so a gate's reach
-follows the roadmap as the stage's contents change rather than freezing a list
-written when the gate was raised. The person raising the gate chooses the reach.
+A stage reach resolves through `progress.md` each time it is read, so a gate's
+reach follows the roadmap as the stages' contents change rather than freezing a
+list written when the gate was raised. The person raising the gate chooses the
+reach.
+
+- **"After" is by stage number**, never by position in `progress.md`: the
+  number is a stage's identity, so a renumbered stage is a different stage.
+- **The range forms are written loosely.** `stage` or `stages`, any case, an
+  en dash or a hyphen, spaces around the dash or not: `stage 6+`,
+  `stages 6-8`, `stage 6 – 8`. `stage N–N` is `stage N`.
+- **A stage reach holding nothing is armed or a mistake, and `aide check`
+  says which.** Armed: a `stage N+` whose stages hold no item yet, or do not
+  exist yet — the form exists to cover stages not yet written — and a
+  `stage N–M` or `stage N` whose stages exist with nothing queued. A mistake,
+  holding nothing ever: a `stage N` or `stage N–M` naming no stage that exists,
+  and a range whose first stage is after its last (`stage 8–6`).
 
 **Where a gate is raised, and where it lives.** Same split as Outcome targets:
 raised wherever it is noticed, recorded in one place.
@@ -125,6 +140,15 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   work from one week to the next while the decision has not changed. And only
   the person who knows what the pending decision might change can judge which
   reach applies, which is why the table asks them.
+- **Why `stage N+` and `stage N–M`.** A milestone decision — hold everything
+  from stage 6 on — took one `stage N` row per stage, and a stage added to the
+  roadmap later was not covered, which defeats a reach that resolves live;
+  `all` over-reached into the stages before the milestone (#304). The closed
+  range ships beside it for a decision about a bounded run. "After" by stage
+  number, not document order, because the number is what every engine read
+  of a stage keys on; a stage moved in the file is the same stage. A reversed
+  range is reported rather than swapped: guessing which end the author meant
+  is a guess at what the gate holds, the one guess a gate must not make.
 - **Why raising is open and resolving is not.** Creating a blocker is safe —
   the worst case is work pausing for a human. Removing one is not: a gate
   exists precisely because the decision is not derivable from the work, so an

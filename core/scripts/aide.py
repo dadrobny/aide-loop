@@ -672,16 +672,50 @@ _GATE_BLOCKS_ALL = "all"
 #: (part of a stage, a stage, or several small ones), so "the live queue" names
 #: different work from one week to the next while the decision has not changed.
 #: A stage is the roadmap's own unit and means the same thing over time.
-_GATE_BLOCKS_STAGE_RE = re.compile(r"^stage\s+0*(\d+)$", re.IGNORECASE)
+#:
+#: Two wider forms reach several stages at once (#304): `stage N+` — stage N
+#: and every stage numbered after it — and the closed range `stage N–M` (en
+#: dash or hyphen). Without them, holding everything from a milestone on took
+#: one row per stage, and a stage added to the roadmap later was not covered —
+#: the one thing a reach that resolves live exists to avoid — while `all` also
+#: held the stages before the milestone. "After" is by stage NUMBER, never by
+#: position in the document: a stage heading is numeric only, and the number
+#: is the stage's identity everywhere the engine reads one. The whole cell must
+#: match, so `stage 6+` or `stage 6-8` can never fall through to the item
+#: reader and be read as items 6 or 6–8.
+_GATE_BLOCKS_STAGE_RE = re.compile(
+    r"^stages?\s+0*(?P<first>\d+)"
+    r"(?:\s*(?P<open>\+)|\s*[–-]\s*0*(?P<last>\d+))?$", re.IGNORECASE)
 
 
 class HumanGate(NamedTuple):
     lineno: int              # 1-based line number in progress.md
     text: str                # the Gate cell
     blocks: List[int]        # item numbers named directly (empty for stage/all)
-    stage: Optional[str]     # stage number when the cell reads "stage N"
+    stage: Optional[str]     # FIRST stage number of any stage reach, else None
     blocks_all: bool         # True when the cell reads "all"
     kind: Optional[str]      # "awaiting" | "approved" | "declined" | None
+    #: The last stage of a closed ``stage N–M`` range; None for ``stage N``
+    #: and ``stage N+``. Kept as written, so a reversed range stays visible to
+    #: the check rather than being silently swapped.
+    stage_last: Optional[int] = None
+    #: True for ``stage N+`` — stage N and every later-numbered stage.
+    stage_open: bool = False
+
+    @property
+    def stage_range(self) -> Optional[Tuple[int, Optional[int]]]:
+        """``(first, last)`` stage numbers this gate reaches, or None.
+
+        ``last`` is None for an open ``stage N+`` reach; ``stage N`` is the
+        one-stage range ``(N, N)``. A reversed range comes back reversed —
+        it reaches nothing, and ``gate_warnings`` says so.
+        """
+        if self.stage is None:
+            return None
+        first = int(self.stage)
+        if self.stage_open:
+            return first, None
+        return first, (first if self.stage_last is None else self.stage_last)
 
     @property
     def reach(self) -> str:
@@ -689,6 +723,10 @@ class HumanGate(NamedTuple):
         if self.blocks_all:
             return "all items"
         if self.stage is not None:
+            if self.stage_open:
+                return f"stage {self.stage}+"
+            if self.stage_last is not None:
+                return f"stage {self.stage}–{self.stage_last}"
             return f"stage {self.stage}"
         return ("items " + ", ".join(f"{i:03d}" for i in self.blocks)
                 if self.blocks else "nothing named")
@@ -722,6 +760,43 @@ def stage_item_numbers(lines: List[str], stage: str) -> List[int]:
         return []
     start, end, _ = section
     return sorted(_parse_item_status(lines[start:end])[2])
+
+
+def gate_stage_numbers(lines: List[str], g: "HumanGate") -> List[str]:
+    """The stage numbers in progress.md that *g*'s stage reach covers, in order.
+
+    Resolved on every read, like the stage's contents: a stage section added
+    after the gate was raised is covered the moment it is written, which is
+    what makes ``stage N+`` mean "from here on". Each number once, as
+    ``stage_section`` finds the first section of a number; empty for a gate
+    with no stage reach, for a reversed range, and for a reach that names no
+    stage the document has yet.
+    """
+    rng = g.stage_range
+    if rng is None:
+        return []
+    first, last = rng
+    out: List[str] = []
+    for _, _, num in stage_sections(lines):
+        n = int(num)
+        if n >= first and (last is None or n <= last) \
+                and not any(_same_stage(num, seen) for seen in out):
+            out.append(num)
+    return out
+
+
+def gate_stage_items(lines: List[str], g: "HumanGate") -> List[int]:
+    """Item numbers *g*'s stage reach holds: the union of ``stage_item_numbers``
+    over every stage it covers.
+
+    The single resolver every stage-reach caller goes through — the claim
+    filter, the claim stall report and the check's breadth — so ``stage N``,
+    ``stage N+`` and ``stage N–M`` cannot resolve differently in two places.
+    """
+    items: Set[int] = set()
+    for num in gate_stage_numbers(lines, g):
+        items.update(stage_item_numbers(lines, num))
+    return sorted(items)
 
 
 def _blocked_item_numbers(cell: str) -> List[int]:
@@ -968,7 +1043,8 @@ def human_gates(lines: List[str]) -> List[HumanGate]:
 
     ``Blocks`` accepts the item-reference forms of §1 (``106``, ``106, 107``,
     ``106–108``), ``stage N`` for every item that stage's deliverables
-    reference, or ``all`` for a programme-level stop.
+    reference, ``stage N+`` / ``stage N–M`` for the same over every stage
+    numbered from N on / from N to M, or ``all`` for a programme-level stop.
 
     A row of the wrong width is not a gate; ``unreadable_gate_rows`` reports
     it, and ``aide claim`` holds everything while it stands.
@@ -982,9 +1058,12 @@ def human_gates(lines: List[str]) -> List[HumanGate]:
         blocks_cell = cells[1].strip()
         blocks_all = blocks_cell.lower() == _GATE_BLOCKS_ALL
         sm = _GATE_BLOCKS_STAGE_RE.match(blocks_cell)
-        stage = sm.group(1) if sm else None
+        stage = sm.group("first") if sm else None
+        stage_last = int(sm.group("last")) if sm and sm.group("last") else None
+        stage_open = bool(sm and sm.group("open"))
         blocks = [] if (blocks_all or stage) else _blocked_item_numbers(blocks_cell)
-        out.append(HumanGate(i + 1, cells[0], blocks, stage, blocks_all, kind))
+        out.append(HumanGate(i + 1, cells[0], blocks, stage, blocks_all, kind,
+                             stage_last, stage_open))
     return out
 
 
@@ -1006,8 +1085,8 @@ def blocking_gates(lines: List[str]) -> List[HumanGate]:
 def gate_blocked_items(lines: List[str]) -> Tuple[set, List[HumanGate]]:
     """``(blocked item numbers, block-everything gates)`` from the blocking gates.
 
-    A ``stage N`` gate resolves through progress.md to the items that stage's
-    deliverables reference, so its reach follows the roadmap as the stage's
+    A stage gate resolves through progress.md to the items its stages'
+    deliverables reference, so its reach follows the roadmap as the stages'
     contents change — which is the whole reason reach is anchored to a stage
     rather than to whichever queue happens to be live.
     """
@@ -1016,7 +1095,7 @@ def gate_blocked_items(lines: List[str]) -> Tuple[set, List[HumanGate]]:
         if g.blocks_all:
             everything.append(g)
         elif g.stage is not None:
-            blocked.update(stage_item_numbers(lines, g.stage))
+            blocked.update(gate_stage_items(lines, g))
         else:
             blocked.update(g.blocks)
     return blocked, everything
@@ -3761,10 +3840,10 @@ def _reach_with_breadth(lines: List[str], g: HumanGate) -> str:
     never meant to hold — the observed case gated the very deliberation that
     was to produce the gate's evidence. ``aide claim`` already names what it
     holds, but that surfaces only when a runner stalls; the check computes the
-    same breadth (``stage_item_numbers``) and used to throw it away, so the
-    contradiction was invisible at authoring time. Only the stage form needs
-    resolving: an item-list reach already names its items, and ``all`` is its
-    own answer.
+    same breadth (``gate_stage_items``) and used to throw it away, so the
+    contradiction was invisible at authoring time. Only the stage forms need
+    resolving, a ``stage N+`` or ``stage N–M`` reach most of all: an
+    item-list reach already names its items, and ``all`` is its own answer.
 
     The count covers the items the gate still sits in front of: a ✅ item has
     merged and a ❌ one is out, so "holding" either would overstate the reach
@@ -3776,11 +3855,11 @@ def _reach_with_breadth(lines: List[str], g: HumanGate) -> str:
     if g.stage is None:
         return g.reach
     _, _, item_status = _parse_item_status(lines)
-    items = [i for i in stage_item_numbers(lines, g.stage)
+    items = [i for i in gate_stage_items(lines, g)
              if item_status.get(i, "planned") not in ("complete", "excluded")]
     if not items:
         return g.reach
-    return (f"stage {g.stage} — holding {len(items)} item(s): "
+    return (f"{g.reach} — holding {len(items)} item(s): "
             + ", ".join(f"{i:03d}" for i in items))
 
 
@@ -3805,13 +3884,43 @@ def gate_warnings(lines: List[str]) -> List[str]:
                 f"unrecognised status — use ⏳ Awaiting, ✅ Approved or ❌ Declined; "
                 f"until it reads one of those the gate counts as unresolved")
             continue
+        rng = g.stage_range
+        if rng is not None and rng[1] is not None and rng[1] < rng[0]:
+            # Malformed, not merely empty: every stage from N to a smaller M
+            # is none, so the gate holds nothing whatever it was decided —
+            # and "stage 8–6" reads like a guarded range to anyone skimming.
+            out.append(
+                f"progress.md:{g.lineno}: {name} reaches {g.reach} — a "
+                f"reversed range, whose first stage is after its last, so "
+                f"this gate holds NOTHING; write it as stage {rng[1]}–{rng[0]}")
+            continue
         if g.kind == "declined":
             out.append(
                 f"progress.md:{g.lineno}: {name} was DECLINED "
                 f"and still blocks {_reach_with_breadth(lines, g)} — a refusal does not release the "
                 f"work it guards; drop those items or change what the gate asks")
             continue
-        if g.stage is not None and not stage_item_numbers(lines, g.stage):
+        if g.stage is not None and (g.stage_open or g.stage_last is not None) \
+                and not gate_stage_items(lines, g):
+            # The multi-stage forms. For `stage N+` a missing stage is the
+            # expected state — the reach exists to cover stages not written
+            # yet — so it is armed whether or not any stage >= N exists. A
+            # closed range none of whose stages exists is the typo case.
+            first, last = rng
+            if g.stage_open:
+                reach = (f"{g.reach} — which has no items queued yet, so it "
+                         f"holds nothing today and will block the items of "
+                         f"stage {first} and every later stage as they are "
+                         f"created")
+            elif not gate_stage_numbers(lines, g):
+                reach = (f"{g.reach} — no stage numbered {first} to {last} "
+                         f"exists, so this gate holds NOTHING; check the "
+                         f"stage numbers")
+            else:
+                reach = (f"{g.reach} — which has no items queued yet, so it "
+                         f"holds nothing today and will block the items of "
+                         f"stages {first} to {last} as they are created")
+        elif g.stage is not None and not gate_stage_items(lines, g):
             # An empty reach has two causes and only one is a mistake.
             if stage_section(lines, g.stage) is None:
                 # No such section: a typo, invisible otherwise — the gate looks
@@ -3833,7 +3942,8 @@ def gate_warnings(lines: List[str]) -> List[str]:
             reach = _reach_with_breadth(lines, g)
         else:
             reach = ("nothing named — the Blocks cell names no item, no "
-                     "'stage N', and is not 'all', so this gate holds nothing")
+                     "'stage N' (or 'stage N+', 'stage N–M'), and is not "
+                     "'all', so this gate holds nothing")
         out.append(f"progress.md:{g.lineno}: {name} is "
                    f"awaiting a decision — blocks {reach}")
     return out
@@ -10042,7 +10152,7 @@ def _pick_item(repo_root: Path, config, queue_text: str,
 
     "Unblocked" covers three things: its `## Dependencies` are all under way,
     no claim branch exists for it, and **no unresolved human gate holds it**. A
-    gate naming items (directly, or via `stage N`) skips just those, so the
+    gate naming items (directly, or via a stage reach) skips just those, so the
     queue keeps producing other work; an `all` gate stops everything, which is
     the point of declaring one — a pending decision that could invalidate what
     comes next must not have the loop racing ahead of it. A gates row too
@@ -10176,7 +10286,7 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
         if g.blocks_all:
             return set(open_items)
         if g.stage is not None:
-            return set(stage_item_numbers(plines, g.stage)) & open_items
+            return set(gate_stage_items(plines, g)) & open_items
         return set(g.blocks) & open_items
 
     all_gates = human_gates(plines)

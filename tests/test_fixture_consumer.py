@@ -902,6 +902,103 @@ def test_a_gate_is_cited_and_resolved_by_its_id_across_a_renumbering(
 
 
 # --------------------------------------------------------------------------- #
+# a gate over a run of stages — `stage N+` and `stage N–M` (issue #304)
+# --------------------------------------------------------------------------- #
+def _stage_block(n: int, title: str, bullets: str) -> str:
+    return (f"\n## Stage {n} — {title} — 📋\n\n**Deliverables.**\n{bullets}"
+            f"\n**Acceptance.**\n- [ ] Stage {n} lands.\n")
+
+
+def _three_stages(repo: Path, blocks: str, *, stage_3: bool = True,
+                  done_001: bool = False) -> None:
+    """Item 001 on stage 1, 002 on stage 2, and (with *stage_3*) 003 on stage
+    3, all in queue 001, behind one ⏳ gate whose Blocks cell is *blocks*."""
+    ddir = repo / "docs" / "aide"
+    progress = ddir / "progress.md"
+    text = progress.read_text(encoding="utf-8").replace(
+        "- 📋 The farewell. *(Item 002)*\n", "")
+    if done_001:
+        text = text.replace("- 📋 The greeter.", "- ✅ The greeter.")
+    text += _stage_block(2, "Later", "- 📋 The farewell. *(Item 002)*\n")
+    if stage_3:
+        text += _stage_block(3, "Last", "- 📋 The wave. *(Item 003)*\n")
+    text += ("\n## Human gates\n\n"
+             "| Gate | Blocks | Status | Decision / evidence |\n"
+             "|------|--------|--------|---------------------|\n"
+             f"| Milestone approved | {blocks} | ⏳ Awaiting | — |\n")
+    progress.write_text(text, encoding="utf-8")
+    queue = ddir / "queue" / "queue-001.md"
+    queue.write_text(queue.read_text(encoding="utf-8")
+                     + "\n### Item 003: The wave\nA wave.\n", encoding="utf-8")
+    _commit(repo, f"docs: three stages behind `{blocks}`")
+
+
+def test_an_open_stage_gate_lets_an_earlier_stage_through(aide, consumer: Path):
+    _three_stages(consumer, "stage 2+")
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "aide/001-the-greeter"
+
+
+def test_an_open_stage_gate_holds_its_stage_and_every_later_one(
+        aide, consumer: Path):
+    _three_stages(consumer, "stage 2+", done_001=True)
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "main"          # 002 and 003 both held
+
+
+def test_an_open_stage_gate_holds_a_stage_written_after_it_was_raised(
+        aide, consumer: Path):
+    """The reach resolves live: stage 3 did not exist when the gate was
+    raised, and its item is held the moment the stage names it."""
+    _three_stages(consumer, "stages 02+", stage_3=False, done_001=True)
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "- 📋 The farewell. *(Item 002)*", "- ✅ The farewell. *(Item 002)*"),
+        encoding="utf-8")
+    _commit(consumer, "002 lands")
+    assert _claim(aide, consumer, "--dry-run") == 0
+    assert _branch(consumer) == "main"
+
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "\n## Human gates", _stage_block(3, "Last", "- 📋 The wave. *(Item 003)*\n")
+        + "\n## Human gates"), encoding="utf-8")
+    _commit(consumer, "the roadmap grows a stage 3")
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "main"          # 003 held by the old gate
+
+
+@pytest.mark.parametrize("blocks, claimed", [
+    ("stage 2–3", "main"),                      # 002 and 003 held
+    ("stage 2-2", "aide/003-the-wave"),         # only 002 held
+    ("Stages 1 - 2", "aide/003-the-wave"),      # 001 (✅) and 002 held
+])
+def test_a_closed_stage_range_holds_inside_and_releases_outside(
+        aide, consumer: Path, blocks: str, claimed: str):
+    _three_stages(consumer, blocks, done_001=True)
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == claimed
+
+
+def test_a_reversed_stage_range_holds_nothing_and_check_still_passes(
+        aide, consumer: Path):
+    """Malformed, not mis-read: `stage 3–2` is never parsed as items 3 and 2,
+    and the check warns rather than fails — like every other gate state."""
+    _three_stages(consumer, "stage 3–2", done_001=True)
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "aide/002-the-farewell"
+
+
+@pytest.mark.parametrize("verb", [["gate", "list"], ["status"]])
+def test_gate_list_and_status_print_a_stage_range_reach(
+        aide, consumer: Path, capsys, verb: list):
+    _three_stages(consumer, "stage 2+")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), *verb]) == 0
+    assert "blocks stage 2+" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
 # a recording verb whose commit fails (issue #309)
 # --------------------------------------------------------------------------- #
 def _clean(repo: Path) -> bool:
