@@ -41,7 +41,8 @@ the item did what it was specified to do.
 **Findings triage the way insights do (§1 → insights-triage.md), and scope is
 a question about the change, not about the path.** A finding about this item's
 diff is in scope whatever file it lands in, and an in-scope finding is a fix on
-the branch, dispatched back to the role that owns the file. A diff that touched
+the branch, dispatched back to the role that owns the file; a test that fix
+adds is traced to the finding the way §6 says. A diff that touched
 a path the spec's `## Authorised paths` never authorised is itself such a
 finding — in scope, *blocking*, and fixed by reverting that part of the branch.
 A finding about code this diff did not touch is out of scope: a single line in

@@ -121,6 +121,53 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.18.0] — 2026-09-28
+
+### Added
+
+- **A test added to answer a review finding traces to a `## Review findings`
+  bullet in the item spec (issue #319).** A review round's regression test
+  answers a finding, not a criterion or a Testing Strategy case, and the spec
+  had nowhere it could trace to, so `aide scope` reported every one as a test
+  the spec did not ask for. The item spec gains an optional `## Review
+  findings` section after the Testing Strategy, one bullet per finding in the
+  same label shape — `- r1-escaped-pipe: <finding> — <rank>; <fix commit>` —
+  and traceability reads its labels exactly like Testing Strategy's, in
+  `aide scope` and in the ledger's reconciled split. The finding and its fix
+  are recorded in the spec rather than a test name being excused: no
+  `test_review_*` exemption. §6 states the rule (the role writing the test
+  adds the bullet in the same commit), §9 points at it from the in-scope fix,
+  and the `test-writer` agent adds the bullet when dispatched with a finding.
+  The warning now reads "names no AC number and no Testing Strategy or Review
+  findings case of …". **item template 3** adds the optional section; a
+  consumer edits nothing — a spec without the section reads as before, and a
+  spec-author adds it only once a review round adds a test.
+- **A parametrised test traces through its literal `pytest.mark.parametrize`
+  ids (issue #314).** One test whose cases are the Testing Strategy's labels —
+  `("membership", …)`, `("chained", …)` — always warned, because only its
+  name was read. `aide scope` (and the ledger split) now also reads, from the
+  AST and without importing or collecting anything, each `parametrize` /
+  `mark.parametrize` decorator's string argvalues (a bare string, or the
+  first-level strings of a tuple or list), `pytest.param(…, id=…)`, and an
+  explicit `ids=[...]` of strings; computed values are ignored. The function
+  traces when its name matches as before or a label or `acN` stands as a whole
+  word of an id, normalised the same way (`bool-call` matches label
+  `bool-call` or `call`, not `recall`). A function present at the base is
+  still an edit whatever its ids became.
+
+### Fixed
+
+- **A Testing Strategy case label closed by a full stop is recognised (issue
+  #315).** `- **absent-condition-key.** A record …` named no label, since the
+  label had to be closed by a colon, so every test named for such a case
+  warned. A label is now the first word of a bullet closed by a colon, or by
+  a full stop when the word is wrapped in bold or backticks and text follows
+  on the line — `- **label.** …`, `- **label**. …`, `` - `label`. … `` and
+  `- label: …` all parse. An unwrapped `- Note. The walker …` stays prose,
+  since a full stop ends nearly every short sentence and a label `note`
+  would silence every test whose name contains it; so do `- None.` and a
+  wrapped word with nothing after it. `aide scope -h` states the grammar.
+
 ## [2.17.0] — 2026-09-28
 
 ### Added
