@@ -30,7 +30,8 @@ into a target repo:
                <target>/.aide-merge diff for a human to reconcile. Kept, save
                one targeted migration (`migrate_settings`): a hook command an
                earlier release wrote, matched exactly, becomes today's, and
-               the allow entries an unattended run needs are added if absent.
+               the allow entries, hook registrations and env keys a release
+               added are added if absent.
              * fresh install -> the effective base is written and an inert
                settings.overlay.json.example is scaffolded so the overlay
                mechanism is discoverable.
@@ -62,7 +63,8 @@ into a target repo:
   files the previous manifest lists that the adapter no longer ships, but NEVER
   touches <target>/aide.toml or <target>/docs/aide/ (owned by the project).
   settings.json stays non-clobbering on --update too, beyond the targeted
-  `migrate_settings` rewrite of strings a release itself wrote.
+  `migrate_settings` rewrite of strings a release itself wrote and the
+  entries a release added, where absent.
 
   No --adapter: the target's aide.toml records the adapter under [aide], and an
   update reads it back (`resolve_adapter`). Passing one that contradicts the
@@ -1456,6 +1458,22 @@ _MIGRATED_ALLOW = (
     "Bash(python3 .claude/scripts/await_run.py:*)",
 )
 
+# Hook registrations a release added that a non-overlay consumer would otherwise
+# never receive, as (event, script): the group is copied from the framework
+# base, matcher and wrapper as shipped. Added only when no hook of the file
+# runs that script yet, so a registration the project moved or edited stays
+# the project's; a project that dropped the event's list, or ``hooks`` itself,
+# gets none.
+_MIGRATED_HOOKS: Tuple[Tuple[str, str], ...] = (
+    ("PreToolUse", "spawn_model_guard.py"),  # 2.19.0, issue #311
+)
+
+# ``env`` keys a release added, with the framework base's value. Added only when
+# the key is absent: a value the project set, to anything, is the project's.
+_MIGRATED_ENV = (
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH",  # 2.19.0, issue #311
+)
+
 
 def _hook_entries(settings: dict) -> Iterable[dict]:
     """Every ``{"type": "command", …}`` hook in *settings*, whatever the event."""
@@ -1470,14 +1488,90 @@ def _hook_entries(settings: dict) -> Iterable[dict]:
                     yield hook
 
 
+def _group_script(group) -> Optional[str]:
+    """The hook script a hook group's first command runs, as its file name."""
+    inner = group.get("hooks") if isinstance(group, dict) else None
+    for hook in inner if isinstance(inner, list) else ():
+        if isinstance(hook, dict) and isinstance(hook.get("command"), str):
+            return hook["command"].rsplit("/", 1)[-1]
+    return None
+
+
+def _migrate_hooks(base: dict, settings: dict) -> List[str]:
+    """Add each ``_MIGRATED_HOOKS`` registration *settings* lacks.
+
+    The group goes where the base has it — after the group running the script
+    the base puts before it, when *settings* has that one — else at the end of
+    the event's list, so a file otherwise as a release wrote it comes out equal
+    to the base and no ``.aide-merge`` is emitted for it.
+    """
+    hooks = settings.get("hooks")
+    base_hooks = base.get("hooks")
+    if not isinstance(hooks, dict) or not isinstance(base_hooks, dict):
+        return []
+    edits: List[str] = []
+    for event, script in _MIGRATED_HOOKS:
+        if any(script in h["command"] for h in _hook_entries(settings)):
+            continue
+        base_groups = base_hooks.get(event)
+        if not isinstance(base_groups, list):
+            continue
+        at = next((i for i, g in enumerate(base_groups)
+                   if _group_script(g) == script), None)
+        if at is None:
+            continue
+        groups = hooks.setdefault(event, [])
+        if not isinstance(groups, list):
+            continue
+        before = _group_script(base_groups[at - 1]) if at else None
+        anchor = next((i + 1 for i, g in enumerate(groups)
+                       if before is not None and _group_script(g) == before),
+                      len(groups))
+        groups.insert(anchor, copy.deepcopy(base_groups[at]))
+        edits.append(f"hook for .claude/hooks/{script} registered on {event} "
+                     f"(issue #311)")
+    return edits
+
+
+def _migrate_env(base: dict, settings: dict) -> Tuple[dict, List[str]]:
+    """*settings* with each ``_MIGRATED_ENV`` key it lacks, valued as the base.
+
+    Returned rather than edited in place, because a missing ``env`` is created
+    where the base has it — straight after ``$schema`` — and a dict only takes a
+    key at the end.
+    """
+    base_env = base.get("env")
+    env = settings.get("env", {})
+    if not isinstance(base_env, dict) or not isinstance(env, dict):
+        return settings, []
+    added = {key: base_env[key] for key in _MIGRATED_ENV
+             if key in base_env and key not in env}
+    if not added:
+        return settings, []
+    edits = [f"env {key}={value} added (issue #311)"
+             for key, value in added.items()]
+    if "env" in settings:
+        settings["env"].update(added)
+        return settings, edits
+    rebuilt: dict = {}
+    if "$schema" in settings:
+        rebuilt["$schema"] = settings["$schema"]
+    rebuilt["env"] = added
+    rebuilt.update((k, v) for k, v in settings.items() if k != "$schema")
+    return rebuilt, edits
+
+
 def migrate_settings(base: dict, dst: Path, log: List[str]) -> List[str]:
     """Rewrite what an earlier release wrote into a kept ``settings.json``.
 
-    Two edits and nothing else: a hook ``command`` exactly equal to one in
+    Four edits and nothing else: a hook ``command`` exactly equal to one in
     ``_RETIRED_HOOK_COMMANDS`` becomes the framework *base*'s command for the
-    same script, and each ``_MIGRATED_ALLOW`` entry missing from
+    same script; each ``_MIGRATED_ALLOW`` entry missing from
     ``permissions.allow`` is added — after the engine's own entries where they
-    are there, else at the end. Returns one line per edit, also logged.
+    are there, else at the end; each ``_MIGRATED_HOOKS`` registration no hook
+    of the file runs yet is added as the base has it; and each
+    ``_MIGRATED_ENV`` key absent from ``env`` is added with the base's value.
+    Returns one line per edit, also logged.
 
     Idempotent: a rewritten file matches nothing on the next run. A file that
     does not parse is left alone — the ``.aide-merge`` beside it still says
@@ -1520,6 +1614,10 @@ def migrate_settings(base: dict, dst: Path, log: List[str]) -> List[str]:
                 allow.insert(anchor, entry)
                 anchor += 1
                 edits.append(f"allow entry {entry} added")
+
+    edits += _migrate_hooks(base, settings)
+    settings, env_edits = _migrate_env(base, settings)
+    edits += env_edits
 
     if not edits:
         return []

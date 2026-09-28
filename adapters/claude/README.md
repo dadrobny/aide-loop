@@ -180,10 +180,12 @@ allow-list" framing** are adapter-local and documented here.
   the `conventions.md` hygiene contract: a reshapeable command that would otherwise
   miss the allow-list and stall the run is bounced back to be re-issued in an
   allow-listed shape, rather than hanging on a prompt.
-- **`hooks/spawn_model_guard.py`** — a `PreToolUse` hook on `Agent` that refuses
+- **`hooks/spawn_model_guard.py`** — a `PreToolUse` hook on `Agent` (and `Task`,
+  its earlier name) that refuses
   a spawn made from inside a sub-agent when the call passes no `model` and the
-  target type pins none (the built-ins — `Explore`, `general-purpose`, `Plan` —
-  never do), so a role's helper runs on a model chosen at the spawn rather than
+  target type pins none — a project definition pins one when its `name:` is the
+  type and its `model:` is not `inherit`; the built-ins (`Explore`,
+  `general-purpose`, `Plan`) never do — so a role's helper runs on a model chosen at the spawn rather than
   on the role's own by inheritance; the refusal names the model to pass. The
   user's own session is never touched. With it, `disallowedTools: Agent` on the
   five roles that have nothing to delegate, and a spawn-depth cap of two in

@@ -138,8 +138,10 @@ instead — that is the bump policy above, and it is enforced by
   - **`hooks/spawn_model_guard.py`**, a `PreToolUse` hook on `Agent|Task`,
     denies a spawn made from inside a sub-agent (the payload carries
     `agent_id`) that passes no `model`, or `inherit`, to a type that pins
-    none. A type pins one when `.claude/agents/<type>.md` — matched by
-    filename — sets a `model:` other than `inherit`; the built-ins, user-level
+    none. A type pins one when the definition under `.claude/agents/` whose
+    `name:` is the type — the key the runtime dispatches on, which the file
+    name need not match; `<type>.md` only when no definition declares the
+    name — sets a `model:` other than `inherit`. The built-ins, user-level
     and plugin agents never resolve, and a missing `subagent_type` is
     `general-purpose`. The refusal tells the role to re-issue the call with
     `model: "haiku"` for a pure search or read sweep, `"sonnet"` otherwise, and
@@ -164,13 +166,18 @@ instead — that is the bump policy above, and it is enforced by
   agent, which would delegate to an exact model ID rather than an alias, and
   per-role spawn budgets.
 
-  **The hook and the cap do not activate on `--update` by themselves.**
-  `settings.json` is non-clobbering by design, so an existing consumer gets the
-  hook *file* and the agent specs, but not the registration or the `env`
-  block; the `.aide-merge` diff names what is missing. Adopt
-  `.claude/settings.overlay.json` (regenerated deterministically from
-  framework-base + overlay on every run) and both activate and stay
-  activated. The `disallowedTools` half arrives with the agent specs.
+  **`install.py --update` adds both to a kept `settings.json`.** A consumer
+  without an overlay keeps its file, so `migrate_settings` — which already
+  rewrote the hook wrappers a release wrote and added the `await_run.py`
+  allow entries (2.4.0) — gains two more targeted additions, each logged:
+  the spawn guard's `PreToolUse` registration, copied from the framework base
+  and placed where the base has it, when no hook of the file already runs
+  `spawn_model_guard.py`; and `env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`,
+  with `env` created if missing, only when the key is absent — a depth the
+  consumer set is left alone, as are its other `env` keys, a registration it
+  moved or edited, and a file with no `hooks` at all. Both are idempotent. A
+  consumer with `settings.overlay.json` gets them through the regenerated
+  file, and the `disallowedTools` half arrives with the agent specs.
 
 ## [2.18.1] — 2026-09-28
 

@@ -23,14 +23,15 @@ Contract:
     the runtime sets only inside one, so the user's own session and the
     orchestrator it runs are never touched;
   * ``tool_input.model`` is absent, empty or ``inherit``;
-  * the target type pins no model of its own. A type pins one when
-    ``<project>/.claude/agents/<type>.md`` exists — matched by **filename**,
-    which is how every framework role is laid out — and its frontmatter sets
-    ``model:`` to anything but ``inherit``. A missing ``subagent_type`` is
-    ``general-purpose``. The built-ins, a user-level or plugin agent, and any
-    name that is not a plain file stem resolve to nothing, so they need an
-    explicit model: a deny costs one re-issued call, an inherited model costs
-    the whole helper's run.
+  * the target type pins no model of its own. A type pins one when a
+    definition under ``<project>/.claude/agents/`` declares it as its
+    ``name:`` — the key the runtime dispatches on, which the file name need
+    not match — and sets ``model:`` to anything but ``inherit``. Only when no
+    definition declares the name is ``<type>.md`` read instead. A missing
+    ``subagent_type`` is ``general-purpose``. The built-ins, a user-level or
+    plugin agent, and any name that is not a plain file stem resolve to
+    nothing, so they need an explicit model: a deny costs one re-issued call,
+    an inherited model costs the whole helper's run.
 - Otherwise writes nothing and exits 0 (no opinion).
 
 Design rules:
@@ -76,8 +77,9 @@ def _project_dir(payload):
     return root if isinstance(root, str) and root else os.getcwd()
 
 
-def _frontmatter_model(path):
-    """The ``model:`` a definition's frontmatter sets, or ``None``."""
+def _frontmatter(path):
+    """The top-level scalar keys of a definition's frontmatter, quotes
+    stripped, or ``None`` when the file has no frontmatter block."""
     try:
         with open(path, encoding="utf-8-sig") as fh:
             lines = fh.read().splitlines()
@@ -85,27 +87,55 @@ def _frontmatter_model(path):
         return None
     if not lines or lines[0].strip() != "---":
         return None
+    keys = {}
     for line in lines[1:]:
         if line.strip() == "---":
-            return None
+            return keys
         if line[:1].isspace() or ":" not in line:
             continue
         key, _, value = line.partition(":")
-        if key.strip() == "model":
-            value = value.strip().strip("\"'").strip()
-            return value or None
+        keys.setdefault(key.strip(), value.strip().strip("\"'").strip())
     return None
 
 
+def _definitions(agent_type, project_dir):
+    """The frontmatter of every project definition *agent_type* dispatches to.
+
+    The runtime resolves a type by the definition's ``name:``, and the file
+    name need not agree, so every ``.claude/agents/*.md`` declaring that name
+    is one. Only when none does is ``<agent_type>.md`` read, for a definition
+    that leaves ``name:`` out.
+    """
+    agents_dir = os.path.join(project_dir, ".claude", "agents")
+    try:
+        entries = sorted(os.listdir(agents_dir))
+    except OSError:
+        return []
+    parsed = []
+    for entry in entries:
+        path = os.path.join(agents_dir, entry)
+        if entry.endswith(".md") and os.path.isfile(path):
+            keys = _frontmatter(path)
+            if keys is not None:
+                parsed.append((entry[:-3], keys))
+    named = [keys for _stem, keys in parsed if keys.get("name") == agent_type]
+    if named:
+        return named
+    return [keys for stem, keys in parsed if stem == agent_type]
+
+
 def pins_its_own_model(agent_type, project_dir):
-    """Whether *agent_type* is a project definition that pins a model."""
+    """Whether *agent_type* is a project definition that pins a model.
+
+    Two definitions declaring one name are ambiguous, so both must pin one: a
+    spawn that could land on either is safe only if neither inherits.
+    """
     if not _PLAIN_STEM.match(agent_type) or ".." in agent_type:
         return False
-    path = os.path.join(project_dir, ".claude", "agents", agent_type + ".md")
-    if not os.path.isfile(path):
-        return False
-    model = _frontmatter_model(path)
-    return model is not None and model.lower() != "inherit"
+    found = _definitions(agent_type, project_dir)
+    return bool(found) and all(
+        keys.get("model") and keys["model"].lower() != "inherit"
+        for keys in found)
 
 
 def _reason(agent_type):

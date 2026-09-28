@@ -40,8 +40,8 @@ def _project(tmp_path: Path, agents: dict = None) -> Path:
     return tmp_path
 
 
-def _definition(model_line: str = "") -> str:
-    return ("---\nname: sweeper\ndescription: >-\n  A test helper.\n"
+def _definition(model_line: str = "", name: str = "sweeper") -> str:
+    return ("---\nname: " + name + "\ndescription: >-\n  A test helper.\n"
             + model_line + "---\nBody.\n")
 
 
@@ -113,6 +113,48 @@ def test_a_project_agent_that_pins_a_model_is_allowed(tmp_path):
 def test_a_project_agent_without_a_pinned_model_is_refused(tmp_path, model_line):
     project = _project(tmp_path, {"sweeper": _definition(model_line)})
     assert guard.decide(_payload("sweeper"), str(project)) is not None
+
+
+def test_a_type_resolves_by_its_name_not_its_file_name(tmp_path):
+    """The runtime dispatches on `name:`, and the file name need not match."""
+    pinned = _project(tmp_path / "a", {"my-reviewer": _definition(
+        "model: claude-sonnet-5\n", name="code-reviewer")})
+    assert guard.decide(_payload("code-reviewer"), str(pinned)) is None
+    unpinned = _project(tmp_path / "b", {"my-reviewer": _definition(
+        "model: inherit\n", name="code-reviewer")})
+    assert guard.decide(_payload("code-reviewer"), str(unpinned)) is not None
+
+
+def test_a_declared_name_wins_over_a_file_named_like_the_type(tmp_path):
+    """Two files: `sweeper.md` declares another name, `a.md` declares
+    `sweeper` — the spawn lands on `a.md`, so its model is the one read."""
+    lands_pinned = _project(tmp_path / "a", {
+        "sweeper": _definition("", name="other"),
+        "a": _definition("model: claude-sonnet-5\n", name="sweeper")})
+    assert guard.decide(_payload("sweeper"), str(lands_pinned)) is None
+    lands_unpinned = _project(tmp_path / "b", {
+        "sweeper": _definition("model: claude-sonnet-5\n", name="other"),
+        "a": _definition("", name="sweeper")})
+    assert guard.decide(_payload("sweeper"), str(lands_unpinned)) is not None
+
+
+def test_a_file_that_declares_no_name_resolves_by_its_stem(tmp_path):
+    project = _project(tmp_path, {
+        "sweeper": "---\nmodel: claude-sonnet-5\n---\nBody.\n"})
+    assert guard.decide(_payload("sweeper"), str(project)) is None
+
+
+def test_two_definitions_of_one_name_must_both_pin(tmp_path):
+    project = _project(tmp_path, {
+        "a": _definition("model: claude-sonnet-5\n"),
+        "b": _definition("")})
+    assert guard.decide(_payload("sweeper"), str(project)) is not None
+
+
+def test_a_quoted_name_reads(tmp_path):
+    project = _project(tmp_path, {"x": "---\nname: \"sweeper\"\n"
+                                       "model: 'claude-sonnet-5'\n---\nB\n"})
+    assert guard.decide(_payload("sweeper"), str(project)) is None
 
 
 def test_a_model_key_below_the_frontmatter_does_not_count(tmp_path):
