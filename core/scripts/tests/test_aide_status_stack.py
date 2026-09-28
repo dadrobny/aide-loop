@@ -323,6 +323,17 @@ def test_a_draft_is_preferred_over_a_closed_pr_and_orphans_nothing(
     assert f["stack"][1]["orphaned"] == "no"
 
 
+def test_a_ready_pr_outranks_a_newer_draft_on_the_same_branch(
+        tmp_path: Path, monkeypatch, capsys):
+    repo = _init(tmp_path)
+    _stack(repo, depth=1)
+    _forge(monkeypatch, {Q1: [{"number": 3, "state": "OPEN", "isDraft": False},
+                              {"number": 6, "state": "OPEN", "isDraft": True}]})
+    f = _status(repo, capsys)
+    assert f["stack"][0]["pr"] == "#3/open"
+    assert f["awaiting"] == "yes"
+
+
 def test_the_forge_is_asked_whether_a_pr_is_a_draft(
         tmp_path: Path, monkeypatch, capsys):
     repo = _init(tmp_path)

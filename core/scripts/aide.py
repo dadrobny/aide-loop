@@ -13195,8 +13195,9 @@ def _gh(repo_root: Path, args: List[str]) -> Tuple[Optional[str], Optional[str]]
 def _branch_pr(repo_root: Path, branch: str) -> Tuple[Optional[str], Optional[str]]:
     """*branch*'s pull request as ``#N/<state>``, or ``none``; or ``(None, why)``.
 
-    Every PR whose head is *branch*, in any state: an open one wins, else the
-    newest — a PR closed and followed by another is answered by the second.
+    Every PR whose head is *branch*, in any state: an open one wins, then a
+    draft, else the newest — a PR closed and followed by another is answered
+    by the second.
     An open PR still in draft is ``draft``, never ``open``: GitHub reports a
     draft as OPEN, and the loop keeps its own queue PR in draft until the
     batch is built, so only a PR marked ready is one awaiting review.
@@ -13216,8 +13217,8 @@ def _branch_pr(repo_root: Path, branch: str) -> Tuple[Optional[str], Optional[st
         return None, "gh answered in a shape status cannot read"
     if not found:
         return "none", None
-    number, state = max([f for f in found if f[1] in ("open", "draft")]
-                        or found)
+    number, state = max([f for f in found if f[1] == "open"]
+                        or [f for f in found if f[1] == "draft"] or found)
     return f"#{number}/{state}", None
 
 
