@@ -168,7 +168,10 @@ from inside the framework is out of scope.
 **Not autonomous end to end.** The loop runs unattended *between* checkpoints, not
 instead of them. Human gates, the queue-boundary review, and `git.mode = "pr"`
 exist because some decisions are not the agent's to make. A proposal whose value
-depends on removing the last human from the loop is out of scope.
+depends on removing the last human from the loop is out of scope. Relaxing *when*
+a gate is reviewed — building the next queue while earlier ones await review — is
+in scope; removing the gate is not, and every batch is still reviewed before it
+reaches `main`.
 
 **Not a quality guarantee.** The role split, the fresh-agent-per-item rule and the
 independent validator raise the floor; they do not replace the project's own test

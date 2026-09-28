@@ -91,8 +91,10 @@ spawns a sub-agent per leaf task and gates approvals.
   the next, until the roadmap is exhausted. **Each queue lives on its own
   branch and lands as one human-reviewed PR** carrying its plan, specs and
   code — the batch checkpoint, one review per ~10 items. The plan is reviewed
-  first: a human gate over the queue's items (§1 → human gates) holds every
-  claim until a person approves it.
+  first where `[loop] plan_review` asks: a human gate `aide queue gate` raises
+  over the queue's items (§1 → human gates) holds every claim until a person
+  approves it. With `[loop] max_open_queues` above 1 the next queue is started
+  on top of an unmerged one and built while its PR awaits review (§4).
 
 If your runtime can't nest prompt-expansions the way Claude Code does, satisfy
 the contract with a manual runbook calling the same `aide.py` steps in the same
@@ -155,8 +157,9 @@ only *executes* the current item, merge it.
 
 ## Unattended long runs
 
-`/aide-run-roadmap` pauses twice per queue by design — for the plan's gate and
-for the queue PR's merge — and between those stops a run is one session. **The
+`/aide-run-roadmap` pauses twice per queue by default — for the plan's gate and
+for the queue PR's merge, as `[loop] plan_review` and `max_open_queues` set
+them — and between those stops a run is one session. **The
 engine relaunches nothing.** Keeping a repo working across usage windows is an
 external scheduler's job — any scheduler will do, and a shell loop around the
 launch command is the minimum — because a relaunch is cheap here: durable state

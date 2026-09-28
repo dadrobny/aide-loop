@@ -54,6 +54,9 @@ paths:
      - Resolving is a CLI operation, never a hand edit
      - Cite a gate by its ID, never by its position
      - The Gate cell is the gate's identity
+     - The plan gate is raised by `aide queue gate`
+     - no role types a plan gate by hand
+     - A gate the roadmap declares applies whatever the setting says
 -->
 
 # Human gates
@@ -100,6 +103,12 @@ on a cited ID that names no gate. **The Gate cell is the gate's identity**:
 the ID is a hash of it, so rewording it makes a different gate, and every
 citation of the old one must be re-pointed.
 
-Adding the row is a hand edit because it has no verb. Everything after it does:
+**The plan gate is raised by `aide queue gate`**, as often as `[loop]
+plan_review` says — over every queue, over a queue that opens a stage, or
+never — so no role types a plan gate by hand: the verb writes the row and
+prints its ID. A gate the roadmap declares applies whatever the setting says,
+and is still yours to add.
+
+Adding any other row is a hand edit because it has no verb. Everything after it does:
 **resolving is a CLI operation, never a hand edit** (`aide gate` only lists,
 approves and declines), and no agent runs it.

@@ -118,7 +118,8 @@ Follow the `aide-create-queue` skill in full. In brief:
 8. **Return** a tight summary: the queue number — or **both**, saying which is
    the maintenance queue and which the stage queue — the item-number range and
    one-line titles, and confirmation the previous queue was tidied and every
-   item wired into `progress.md`, and the plan gate's ID when you raised one.
+   item wired into `progress.md`, and the plan gate's IDs as `queue gate`
+   printed them — or that it raised none — when your brief asked for one.
    Name the inbox entries you queued (with the item numbers
    they became) **and the ones you passed over, with why** — a pass-over is
    stated where the queue is reviewed, not left for the next reader to
@@ -155,21 +156,22 @@ written only in the roadmap blocks nothing; the table is what `aide claim`
 reads. Reach is usually `stage N` for a roadmap-declared gate.
 
 **The plan-review gate.** When your brief asks for one — `/aide-run-roadmap`'s
-always does — add one more row before step 6's commit, so it lands in the same
-commit on the queue branch and travels in the queue's draft PR: a gate over
-every item you just queued, so none of them can be claimed until a person has
-reviewed the plan.
+always does — raise it with the verb, never by typing the row, once step 6's
+commit has landed and before step 7's ticks (the verb commits too, and pulls
+after its commit the way `tick` does):
 
 ```
-| Queue NNN plan reviewed before build | 231–240 | ⏳ Awaiting | — |
+python .aide/scripts/aide.py queue gate NNN
 ```
 
-The Gate cell names the queue number, which keeps it — and so its ID — apart
-from every earlier queue's. For a maintenance queue and a stage queue, raise
-one gate for the pair (`Queues NNN–<NNN+1> plan reviewed before build`) whose
-Blocks cell spans both queues' items. Blocks lists the items, never the queue
-(§1 → human gates, preloaded above). Name the gate's ID, as
-`python .aide/scripts/aide.py gate list` prints it, in step 8's summary.
+For a maintenance queue and the stage queue after it, one call over the pair:
+`queue gate NNN --through <NNN+1>`. The verb reads `[loop] plan_review` and
+decides which gate the plan gets — one over every item the queue lists, a
+`stage N` gate for each stage the queue opens, or none — commits the row on
+the current branch, and prints each gate's ID (§1 → human gates, preloaded
+above). Name those IDs in step 8's summary, or say that it raised none, in
+the verb's own words. A gate the roadmap stage declares is still yours to add
+by hand (above), whatever the setting.
 
 **Raise, never resolve.** Adding a gate is safe — the worst case is work pausing
 for a human. Never run `aide gate approve`/`decline`: the decision is not yours,
