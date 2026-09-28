@@ -576,7 +576,8 @@ def _gate(blocks: str):
     ("stage 2–4", (2, 4), "stage 2–4"),
     ("stage 2-4", (2, 4), "stage 2–4"),
     ("STAGES 002 - 04", (2, 4), "stage 2–4"),
-    ("stage 3–3", (3, 3), "stage 3–3"),
+    ("stage 3–3", (3, 3), "stage 3"),
+    ("stage 03-3", (3, 3), "stage 3"),
     ("stage 4–2", (4, 2), "stage 4–2"),
     ("stage 2", (2, 2), "stage 2"),
 ])

@@ -1060,6 +1060,10 @@ def human_gates(lines: List[str]) -> List[HumanGate]:
         sm = _GATE_BLOCKS_STAGE_RE.match(blocks_cell)
         stage = sm.group("first") if sm else None
         stage_last = int(sm.group("last")) if sm and sm.group("last") else None
+        if stage_last is not None and stage_last == int(stage):
+            # `stage N–N` IS `stage N` (§1): one representation, so it prints,
+            # resolves and is checked as the one-stage form everywhere.
+            stage_last = None
         stage_open = bool(sm and sm.group("open"))
         blocks = [] if (blocks_all or stage) else _blocked_item_numbers(blocks_cell)
         out.append(HumanGate(i + 1, cells[0], blocks, stage, blocks_all, kind,
