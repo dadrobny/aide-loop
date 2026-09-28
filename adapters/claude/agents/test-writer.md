@@ -3,7 +3,8 @@ name: test-writer
 description: >-
   Writes tests for a specific AIDE work item based on its specification and
   acceptance criteria. Covers every AC with a direct test, plus exactly the
-  adversarial cases the spec's Testing Strategy names — no others. Does NOT
+  adversarial cases the spec's Testing Strategy names — no others — and, when
+  dispatched with a review finding, the test that answers it. Does NOT
   implement production code and does NOT run tests.
   Commits the test file(s) on the item's branch and returns a coverage summary.
 model: claude-sonnet-5

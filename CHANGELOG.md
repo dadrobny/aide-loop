@@ -160,11 +160,13 @@ instead — that is the bump policy above, and it is enforced by
 - **A Testing Strategy case label closed by a full stop is recognised (issue
   #315).** `- **absent-condition-key.** A record …` named no label, since the
   label had to be closed by a colon, so every test named for such a case
-  warned. A label is now the first word of a bullet closed by a colon or by a
-  full stop with text after it on the line — `- **label.** …`, `- **label**.
-  …`, `` - `label`. … `` and `- label: …` all parse. The stop must be
-  followed by whitespace and text, so `test_x.py`, `e.g.` and a bare
-  `- None.` stay prose. `aide scope -h` states the grammar.
+  warned. A label is now the first word of a bullet closed by a colon, or by
+  a full stop when the word is wrapped in bold or backticks and text follows
+  on the line — `- **label.** …`, `- **label**. …`, `` - `label`. … `` and
+  `- label: …` all parse. An unwrapped `- Note. The walker …` stays prose,
+  since a full stop ends nearly every short sentence and a label `note`
+  would silence every test whose name contains it; so do `- None.` and a
+  wrapped word with nothing after it. `aide scope -h` states the grammar.
 
 ## [2.17.0] — 2026-09-28
 

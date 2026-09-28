@@ -1141,9 +1141,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_scope_traces_a_parametrised_test_and_a_review_finding",
           "test_aide_traceability::"
           "test_review_findings_labels_share_the_bullet_shape_and_are_optional")),
-        # `_CASE_LABEL_RE`: `:` or `.` followed by whitespace and text (#315).
-        ("the first word of a bullet, closed by a colon or by a full stop with "
-         "text after it",
+        # `_CASE_LABEL_RE` / `_STOP_LABEL_RE`: `:`, or `.` on a wrapped word
+        # followed by text (#315).
+        ("the first word of a bullet, closed by a colon, or by a full stop when "
+         "the word is in bold or backticks and text follows",
          ("test_aide_traceability::test_a_label_closed_by_a_full_stop_is_a_label_too",
           "test_aide_traceability::"
           "test_a_full_stop_with_nothing_after_it_or_inside_a_word_is_prose")),

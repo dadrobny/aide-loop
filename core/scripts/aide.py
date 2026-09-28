@@ -12633,18 +12633,30 @@ _TESTING_HEADING_RE = re.compile(r"^##\s+Testing Strategy\b", re.MULTILINE | re.
 #: to (issue #319). Optional: a spec without it names no labels there.
 _REVIEW_HEADING_RE = re.compile(r"^##\s+Review findings\b", re.MULTILINE | re.IGNORECASE)
 #: A case label: the first token of a Testing Strategy **bullet**, closed by a
-#: colon — `- empty-input: the walker yields nothing` — or by a full stop with
-#: more text after it on the line — `- **empty-input.** the walker …`, the
-#: stop inside or outside the emphasis (issue #315). Backticks or bold around
-#: the token are decoration. One word, so "existing tests to reconcile:" and a
-#: `tests/test_x.py:` module name are prose, not labels; and a bullet, so a
-#: prose "Note: …" line in the section is not one either (a generic label
-#: would silence every test whose name contains it). The full stop must be
-#: followed by whitespace and text, so `test_x.py`, `e.g.` and a bare
-#: `- None.` stay prose.
-_CASE_LABEL_RE = re.compile(
-    r"^\s*[-*]\s+[`*_]*([A-Za-z][A-Za-z0-9_-]*)[`*_]*\s*"
-    r"(?::|\.[`*_]*\s+\S)")
+#: colon — `- empty-input: the walker yields nothing` — with or without
+#: backticks or bold around the token. One word, so "existing tests to
+#: reconcile:" and a `tests/test_x.py:` module name are prose, not labels;
+#: and a bullet, so a prose "Note: …" line in the section is not one either
+#: (a generic label would silence every test whose name contains it).
+_CASE_LABEL_RE = re.compile(r"^\s*[-*]\s+[`*_]*([A-Za-z][A-Za-z0-9_-]*)[`*_]*\s*:")
+#: The same label closed by a full stop instead (issue #315), which needs the
+#: token wrapped in emphasis or backticks — `- **empty-input.** the walker …`,
+#: `- **empty-input**. …`, `` - `empty-input`. … `` — and text after it on the
+#: line. A full stop ends nearly every short prose bullet, so an unwrapped
+#: `- Note. The walker …` is prose: read as a label, `note` would silence
+#: every test whose name contains it. `- **done.**` alone is prose too.
+_STOP_LABEL_RE = re.compile(
+    r"^\s*[-*]\s+([`*_]+)([A-Za-z][A-Za-z0-9_-]*)(?:\.\1|\1\.)\s+\S")
+
+
+def _case_label(line: str) -> Optional[str]:
+    """The case label *line* opens with, or None (`_CASE_LABEL_RE`,
+    `_STOP_LABEL_RE`)."""
+    m = _CASE_LABEL_RE.match(line)
+    if m:
+        return m.group(1)
+    m = _STOP_LABEL_RE.match(line)
+    return m.group(2) if m else None
 
 
 _FENCE_RE = re.compile(r"^[ \t]*(```|~~~).*?^[ \t]*\1[^\n]*$", re.MULTILINE | re.DOTALL)
@@ -12673,9 +12685,9 @@ def spec_acceptance_numbers(text: str) -> List[int]:
 def _section_labels(text: str, heading: "re.Pattern") -> List[str]:
     out: List[str] = []
     for line in _section_text(text, heading).splitlines():
-        m = _CASE_LABEL_RE.match(line)
-        if m and m.group(1) not in out:
-            out.append(m.group(1))
+        label = _case_label(line)
+        if label and label not in out:
+            out.append(label)
     return out
 
 
@@ -14866,8 +14878,9 @@ def register_git_subcommands(sub) -> None:
             "branch added under tests_dir must name an AC number the spec's "
             "## Acceptance Criteria carries (ac3) or a case label its "
             "## Testing Strategy or its optional ## Review findings names (the "
-            "first word of a bullet, closed by a colon or by a full stop with "
-            "text after it: `empty-input: ...`, `**empty-input.** ...`); a test "
+            "first word of a bullet, closed by a colon, or by a full stop when "
+            "the word is in bold or backticks and text follows: `empty-input: "
+            "...`, `**empty-input.** ...`); a test "
             "naming none is reported as one the spec did not ask for. A "
             "parametrised test also traces through its literal "
             "pytest.mark.parametrize ids — a string argvalue, the strings of a "

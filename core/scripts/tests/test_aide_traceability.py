@@ -211,23 +211,28 @@ def test_a_bom_at_the_base_does_not_hide_the_existing_tests():
 def test_a_label_closed_by_a_full_stop_is_a_label_too():
     """Issue #315: `- **label.** …` is the shape a consumer's specs used, and
     every test named for such a case warned. The stop may sit inside or
-    outside the emphasis, or after backticks; the colon still works."""
+    outside the emphasis, or after backticks; the colon still works, with or
+    without emphasis."""
     text = ("## Testing Strategy\n\n"
             "- **absent-condition-key.** A record with no condition key is kept.\n"
             "- **conservation**. Nothing is lost.\n"
             "- `bool-call`. A bare call is one hit.\n"
             "- plain-colon: still a label\n"
-            "- chained. A chained comparison.\n")
+            "- _chained._ A chained comparison.\n")
     assert aide.testing_strategy_labels(text) == [
         "absent-condition-key", "conservation", "bool-call", "plain-colon", "chained"]
 
 
 def test_a_full_stop_with_nothing_after_it_or_inside_a_word_is_prose():
-    """`test_x.py` and `e.g.` carry a stop inside a token, and a bare
-    `- None.` names no failure mode: none is a label, so none silences a
-    `test_none_*` or `test_x_*`."""
+    """`test_x.py` and `e.g.` carry a stop inside a token, a bare `- None.`
+    names no failure mode, and an unwrapped `- Note. …` is a prose sentence
+    (PR #322 review): none is a label, so none silences a `test_none_*`,
+    `test_x_*` or `test_denote_*`. Mismatched wrapping is prose too."""
     text = ("## Testing Strategy\n\n- None.\n- test_x.py holds the module\n"
-            "- e.g. a trailing comma\n- **done.**\n")
+            "- e.g. a trailing comma\n- **done.**\n"
+            "- Note. The walker yields nothing for an absent key.\n"
+            "- chained. A chained comparison.\n"
+            "- **mixed.` wrapping that does not close\n")
     assert aide.testing_strategy_labels(text) == []
 
 
