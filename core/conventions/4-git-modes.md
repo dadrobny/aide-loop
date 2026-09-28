@@ -154,7 +154,8 @@ each unmerged queue branch bottom first — its base, its PR's state where the
 forge can be asked, whether the branch below has moved since the last
 restack, and whether a PR below it was closed without merging, which orphans
 it — then **runnable** (the loop has work it could start) and **awaiting
-review** (a queue PR is open) on lines of their own. A repo can be both. A
+review** (a queue PR is open and marked ready — a draft is the loop's own
+PR still being built) on lines of their own. A repo can be both. A
 caller deciding whether the loop is blocked reads those two lines rather than
 its own reading of the branches, and takes "could not look" as an answer of
 its own, never as "no PR". `aide status -h` states each field and value.

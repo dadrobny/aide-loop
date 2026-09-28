@@ -282,6 +282,57 @@ def test_a_reopened_pr_is_answered_by_its_open_one(tmp_path: Path, monkeypatch, 
     assert f["stack"][1]["orphaned"] == "no"
 
 
+def test_a_merged_pr_alone_reads_merged_and_orphans_nothing(
+        tmp_path: Path, monkeypatch, capsys):
+    """Merged on the forge, not yet pulled: git still counts the branch."""
+    repo = _init(tmp_path)
+    _stack(repo)
+    _forge(monkeypatch, {Q1: [{"number": 5, "state": "MERGED"}]})
+    f = _status(repo, capsys)
+    assert f["stack"][0]["pr"] == "#5/merged"
+    assert f["stack"][1]["orphaned"] == "no"
+    assert f["awaiting"] == "no"
+
+
+def test_a_draft_reads_draft_and_awaits_no_review_until_marked_ready(
+        tmp_path: Path, monkeypatch, capsys):
+    """GitHub reports a draft as OPEN; the loop keeps its queue PR in draft
+    while it builds, so only a ready one is a batch awaiting review."""
+    repo = _init(tmp_path, cap=2)
+    _stack(repo)
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "isDraft": True}],
+                         Q2: [{"number": 8, "state": "OPEN", "isDraft": True}]})
+    f = _status(repo, capsys)
+    assert [s["pr"] for s in f["stack"]] == ["#7/draft", "#8/draft"]
+    assert (f["runnable"], f["awaiting"]) == ("yes", "no")
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "isDraft": False}],
+                         Q2: [{"number": 8, "state": "OPEN", "isDraft": True}]})
+    f = _status(repo, capsys)
+    assert [s["pr"] for s in f["stack"]] == ["#7/open", "#8/draft"]
+    assert f["awaiting"] == "yes"
+
+
+def test_a_draft_is_preferred_over_a_closed_pr_and_orphans_nothing(
+        tmp_path: Path, monkeypatch, capsys):
+    repo = _init(tmp_path)
+    _stack(repo)
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "CLOSED"},
+                              {"number": 6, "state": "OPEN", "isDraft": True}]})
+    f = _status(repo, capsys)
+    assert f["stack"][0]["pr"] == "#6/draft"
+    assert f["stack"][1]["orphaned"] == "no"
+
+
+def test_the_forge_is_asked_whether_a_pr_is_a_draft(
+        tmp_path: Path, monkeypatch, capsys):
+    repo = _init(tmp_path)
+    _stack(repo, depth=1)
+    calls = _forge(monkeypatch, {})
+    _status(repo, capsys)
+    asked = next(c for c in calls if "--head" in c)
+    assert "isDraft" in asked[asked.index("--json") + 1].split(",")
+
+
 # --------------------------------------------------------------------------- #
 # runnable and awaiting review — two facts, and a repo can be both
 # --------------------------------------------------------------------------- #

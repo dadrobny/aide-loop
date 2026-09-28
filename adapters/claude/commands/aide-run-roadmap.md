@@ -124,7 +124,7 @@ parallel* below if you need isolation).
 | **The open queue branch being built has 📋 items held by its plan gate**, still ⏳ Awaiting (or ❌ Declined) | **Stop.** Tell the human to review the draft PR, and to approve the gate on that branch (see **Generate the next queue**); a declined one is re-planned, not approved. If the branch has no PR yet, open it as that section says first. |
 | **The open queue branch being built has 📋 items and no gate holds them** — its plan gate approved, or none raised under `plan_review` | Run the queue on its branch → go to **Run a queue**. |
 | **A queue already on `main` still has 📋 items** — planned under the old flow, no queue branch | Run it from `main` as before → go to **Run a queue**, staying on `main`. |
-| **`runnable: no`, and no row above holds** — the stack is at the cap with nothing left to build | **Stop.** Report the batches in `awaiting review:`, bottom first; the next queue waits for a merge. |
+| **`runnable: no`, and no row above holds** — the stack is at the cap with nothing left to build | **Stop.** Report the batches in `awaiting review:`, bottom first, and any stack line still reading `pr=#N/draft` — its PR was never marked ready, so report the `gh pr ready` it needs (**Queue end**); the next queue waits for a merge. |
 | **Nothing open, and the roadmap has more stages** — or no queue exists yet | Generate the next queue off `main` → go to **Generate the next queue**. |
 
 A queue branch that carries a maintenance queue and the stage queue after it is
@@ -301,7 +301,7 @@ in the next queue rather than rewriting history.
   judge; both are a person's call.
 - **The state cannot be read** — `status` prints `pr=unknown` or
   `awaiting review: unknown`: it could not ask the forge, so whether a queue
-  branch's PR is open, merged or closed is unknown.
+  branch's PR is open, draft, merged or closed is unknown.
 - A queue or item needs an edit to a **framework/process** file (`vision.md`,
   `roadmap.md`, `aide.toml`, `.aide/**`, `CLAUDE.md`, `.claude/**`) — reviewed
   PR, never auto-merge.

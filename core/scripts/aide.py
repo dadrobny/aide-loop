@@ -13167,9 +13167,10 @@ def _gh(repo_root: Path, args: List[str]) -> Tuple[Optional[str], Optional[str]]
     The one place the engine asks `gh` anything, and only `status` does.
     Never raises: missing, unauthenticated, offline and timed out all come
     back as a reason, which is what lets `status` tell "no PR" from "could
-    not look" (issue #303). Resolved through `shutil.which`, so a `gh.exe` or
-    `gh.cmd` on Windows is found as a `gh` is on POSIX. Tests replace this
-    function; nothing else in the engine calls the forge.
+    not look" (issue #303). Resolved through `shutil.which`, which applies
+    PATHEXT on Windows, so the `gh.exe` the GitHub CLI installs is found as
+    `gh` is on POSIX. Tests replace this function; nothing else in the engine
+    calls the forge.
     """
     exe = shutil.which("gh")
     if exe is None:
@@ -13196,19 +13197,27 @@ def _branch_pr(repo_root: Path, branch: str) -> Tuple[Optional[str], Optional[st
 
     Every PR whose head is *branch*, in any state: an open one wins, else the
     newest — a PR closed and followed by another is answered by the second.
+    An open PR still in draft is ``draft``, never ``open``: GitHub reports a
+    draft as OPEN, and the loop keeps its own queue PR in draft until the
+    batch is built, so only a PR marked ready is one awaiting review.
     """
     out, why = _gh(repo_root, ["pr", "list", "--head", branch, "--state", "all",
-                               "--json", "number,state", "--limit", "20"])
+                               "--json", "number,state,isDraft", "--limit", "20"])
     if out is None:
         return None, why
     try:
-        found = [(int(p["number"]), _PR_STATES[str(p["state"]).upper()])
-                 for p in json.loads(out or "[]")]
+        found = []
+        for p in json.loads(out or "[]"):
+            state = _PR_STATES[str(p["state"]).upper()]
+            if state == "open" and p.get("isDraft") is True:
+                state = "draft"
+            found.append((int(p["number"]), state))
     except (ValueError, KeyError, TypeError, AttributeError):
         return None, "gh answered in a shape status cannot read"
     if not found:
         return "none", None
-    number, state = max([f for f in found if f[1] == "open"] or found)
+    number, state = max([f for f in found if f[1] in ("open", "draft")]
+                        or found)
     return f"#{number}/{state}", None
 
 
@@ -13216,7 +13225,7 @@ class StackBranch(NamedTuple):
     """One unmerged queue branch as `status` reports it (issue #303).
 
     Each field is one token of the ``stack N:`` line, spelled as printed:
-    ``base`` the recorded base or ``?``; ``pr`` ``#N/open|merged|closed``,
+    ``base`` the recorded base or ``?``; ``pr`` ``#N/open|draft|merged|closed``,
     ``none``, ``unknown`` (could not look) or ``-`` (local mode); ``lower``
     ``current``, ``moved``, ``landed``, ``gone``, ``unknown`` or ``-`` (based
     on no queue branch); ``orphaned`` ``yes``, ``no``, ``unknown`` or ``-``.
@@ -13365,6 +13374,11 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
                                      for s in open_prs))
     elif any(s.pr == "unknown" for s in branches):
         awaiting = ("unknown", f"could not look ({why_not})")
+    elif any(s.pr.endswith("/draft") for s in branches):
+        awaiting = ("no", "no queue PR is ready for review; "
+                    + ", ".join(f"{s.pr.split('/')[0]} ({s.name})"
+                                for s in branches if s.pr.endswith("/draft"))
+                    + " still a draft")
     elif branches:
         awaiting = ("no", "no queue branch's PR is open")
     else:
@@ -14669,8 +14683,9 @@ def register_git_subcommands(sub) -> None:
             "bottom first, after a `stack: N/CAP` line: one `stack N: <branch> "
             "base= pr= lower= orphaned=` line each, a field one token a "
             "program can read. base= is the branch's recorded base, ? where "
-            "none is recorded. pr= is its pull request as #N/open, #N/merged "
-            "or #N/closed (an open one first, else the newest), none where gh "
+            "none is recorded. pr= is its pull request as #N/open, #N/draft (open "
+            "but not yet marked ready), #N/merged or #N/closed (an open or "
+            "draft one first, else the newest), none where gh "
             "found none, unknown where gh could not be asked, and - in local "
             "mode, which asks no forge. lower= is moved when the queue branch "
             "below has commits this one lacks, so `aide queue restack` is due, "
@@ -14686,8 +14701,10 @@ def register_git_subcommands(sub) -> None:
             "merging or a branch is orphaned; otherwise yes when the live "
             "queue has a \U0001f4cb or \U0001f6a7 item or the stack is below "
             "[loop] max_open_queues, and no when neither. awaiting review: "
-            "is yes when a queue branch's PR is open, unknown when none was "
-            "seen open but gh could not be asked, and no otherwise \u2014 in "
+            "is yes when a queue branch's PR is open and ready for review \u2014 a "
+            "draft is the loop's own PR still being built, and counts for "
+            "nothing \u2014 unknown when none was seen ready but gh could not "
+            "be asked, and no otherwise \u2014 in "
             "local mode always. The open-PR list says it could not look, and "
             "gh's reason, rather than going silent."))
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")

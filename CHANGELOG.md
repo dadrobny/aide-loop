@@ -133,7 +133,7 @@ instead — that is the bump policy above, and it is enforced by
   now prints, after the claims:
   - `stack: N/CAP`, then one `stack N: <branch> base= pr= lower= orphaned=`
     line per unmerged queue branch (the set `aide queue start` counts),
-    bottom first. `pr=` is `#N/open|merged|closed`, `none`, `unknown`
+    bottom first. `pr=` is `#N/open|draft|merged|closed`, `none`, `unknown`
     (`gh` could not be asked) or `-` (local mode, which asks no forge);
     `lower=` is `moved` when the branch below has commits this one lacks
     (restack is due), `current`, `landed`, `gone`, `unknown` or `-`;
@@ -142,8 +142,10 @@ instead — that is the bump policy above, and it is enforced by
   - `runnable: yes|no — …`: no when a stack PR was closed or a branch is
     orphaned; else yes when the live queue has a 📋 or 🚧 item (🔍 is not
     work) or the stack is below the cap.
-  - `awaiting review: yes|no|unknown — …`: yes when a queue PR is open,
-    unknown when none was seen open but `gh` could not be asked.
+  - `awaiting review: yes|no|unknown — …`: yes when a queue PR is open and
+    marked ready — a draft (`pr=#N/draft`; GitHub reports it as open) is the
+    loop's own queue PR still being built, and counts for nothing — and
+    unknown when none was seen ready but `gh` could not be asked.
   - The open-PR list prints `open PRs: unknown — could not look (<reason>)`
     where it used to go silent.
   Each field is one whitespace-free token, so a program reads the lines as

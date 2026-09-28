@@ -1026,13 +1026,20 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_status_stack::test_a_two_queue_stack_is_printed_bottom_first",
           "test_aide_status_stack::test_a_landed_lower_reads_landed_and_never_orphans")),
         ("base= is the branch's recorded base, ? where none is recorded",
-         "test_aide_status_stack::test_a_branch_with_no_recorded_base_reads_unknown"),
-        # `_branch_pr`: open wins, else `max(found)`; `prs[b] = "unknown"`
-        # once `_gh` fails; `look = mode != "local"`.
-        ("pr= is its pull request as #N/open, #N/merged or #N/closed (an open "
-         "one first, else the newest), none where gh found none, unknown "
+         ("test_aide_status_stack::test_a_two_queue_stack_is_printed_bottom_first",
+          "test_aide_status_stack::test_a_branch_with_no_recorded_base_reads_unknown")),
+        # `_branch_pr`: `isDraft` asked for, an OPEN draft is "draft"; open
+        # or draft wins, else `max(found)`; `prs[b] = "unknown"` once `_gh`
+        # fails; `look = mode != "local"`.
+        ("pr= is its pull request as #N/open, #N/draft (open but not yet "
+         "marked ready), #N/merged or #N/closed (an open or draft one first, "
+         "else the newest), none where gh found none, unknown "
          "where gh could not be asked, and - in local mode, which asks no forge",
          ("test_aide_status_stack::test_a_reopened_pr_is_answered_by_its_open_one",
+          "test_aide_status_stack::test_a_merged_pr_alone_reads_merged_and_orphans_nothing",
+          "test_aide_status_stack::test_a_draft_reads_draft_and_awaits_no_review_until_marked_ready",
+          "test_aide_status_stack::test_a_draft_is_preferred_over_a_closed_pr_and_orphans_nothing",
+          "test_aide_status_stack::test_the_forge_is_asked_whether_a_pr_is_a_draft",
           "test_aide_status_stack::test_a_two_queue_stack_is_printed_bottom_first",
           "test_aide_status_stack::test_could_not_look_is_unknown_and_never_none",
           "test_aide_status_stack::test_local_mode_asks_no_forge_about_the_stack")),
@@ -1067,11 +1074,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_status_stack::test_live_work_is_runnable_while_prs_await_review",
           "test_aide_status_stack::test_with_no_live_work_runnable_is_room_below_the_cap",
           "test_aide_status_stack::test_an_item_awaiting_review_is_not_live_work")),
-        # `awaiting` in `queue_stack_facts`.
-        ("awaiting review: is yes when a queue branch's PR is open, unknown "
-         "when none was seen open but gh could not be asked, and no "
-         "otherwise — in local mode always",
+        # `awaiting` in `queue_stack_facts`: `/open` only, never `/draft`.
+        ("awaiting review: is yes when a queue branch's PR is open and ready "
+         "for review — a draft is the loop's own PR still being built, and "
+         "counts for nothing — unknown when none was seen ready but gh could "
+         "not be asked, and no otherwise — in local mode always",
          ("test_aide_status_stack::test_live_work_is_runnable_while_prs_await_review",
+          "test_aide_status_stack::test_a_draft_reads_draft_and_awaits_no_review_until_marked_ready",
           "test_aide_status_stack::test_could_not_look_is_unknown_and_never_none",
           "test_aide_status_stack::test_an_empty_stack_awaits_no_review_without_asking",
           "test_aide_status_stack::test_local_mode_asks_no_forge_about_the_stack")),

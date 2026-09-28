@@ -1795,6 +1795,18 @@ def test_status_reads_a_one_queue_stack(
     assert (read["runnable"], read["awaiting"]) == ("yes", "yes")
 
 
+def test_status_reads_a_draft_queue_pr_as_no_review_awaited(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys):
+    """The loop's own queue PR is a draft until Queue end marks it ready."""
+    _to_pr_mode_with_origin(consumer, tmp_path)
+    assert _start(aide, consumer, 1) == 0
+    _forge(aide, monkeypatch, {Q1: [{"number": 3, "state": "OPEN",
+                                     "isDraft": True}]})
+    read = _stack_read(aide, consumer, capsys)
+    assert read["stack"][0][1]["pr"] == "#3/draft"
+    assert (read["runnable"], read["awaiting"]) == ("yes", "no")
+
+
 def test_status_reads_a_two_queue_stack_bottom_first(
         aide, consumer: Path, tmp_path: Path, monkeypatch, capsys):
     _to_pr_mode_with_origin(consumer, tmp_path)
