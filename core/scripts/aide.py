@@ -15,6 +15,7 @@ Subcommands::
     python .aide/scripts/aide.py gate list|approve|decline [N|ID]  # human gates in progress.md
     python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
+    python .aide/scripts/aide.py queue gate NNN        # raise a planned queue's plan-review gate
     python .aide/scripts/aide.py queue restack         # merge a stack of queue branches forward
     python .aide/scripts/aide.py insights list|tick|archive|resolve  # the insight inbox
     python .aide/scripts/aide.py ledger abandon NNN --rounds N  # the ledger row for an item that never merged
@@ -262,9 +263,15 @@ DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
     # the same way: the ceiling on build<->validate rounds per item. 5 leaves
     # room for quick fixes to different new failures; one that keeps coming
     # back is stopped by the orchestrator's escalation rule long before
-    # (issue #264).
+    # (issue #264). `max_open_queues` is engine-read: `aide queue start`
+    # refuses a queue branch that would take the number of unmerged ones past
+    # it, and 1 is the one-queue-at-a-time flow. `plan_review` is read by
+    # `aide queue gate`: which plan-review gate a newly planned queue gets —
+    # "queue" (one per queue), "stage" (one per stage a queue opens) or
+    # "none" (issue #302). Both are validated by `aide check`.
     "loop": {"queue_cap": 10, "validation_rounds": 5, "clarify": "assume",
-             "claim_scope": "live-queue", "review": "off"},
+             "claim_scope": "live-queue", "review": "off",
+             "max_open_queues": 1, "plan_review": "queue"},
     "framework": {"repo": ""},
     # [validation] — named environment profiles for stage-validation items:
     # <name> = <python expression>, true iff the environment provides the
@@ -446,6 +453,45 @@ def load_config(repo_root: Path) -> Dict[str, Dict[str, object]]:
             if isinstance(values, dict):
                 merged[section].update(values)
     return merged
+
+
+#: `[loop] plan_review`'s values, in the order `aide queue gate -h` names them.
+PLAN_REVIEW_VALUES = ("queue", "stage", "none")
+
+
+def max_open_queues(config: Dict[str, Dict[str, object]]
+                    ) -> Tuple[Optional[int], Optional[str]]:
+    """``(cap, None)``, or ``(None, why)`` when ``[loop] max_open_queues`` is unusable.
+
+    A positive integer and nothing else: a bool is an int to Python and a
+    float or a quoted "2" reads as a number to a person, and each would be a
+    cap nobody wrote. Refused rather than coerced, like every other value that
+    decides what the loop may do unattended.
+    """
+    value = config.get("loop", {}).get("max_open_queues", 1)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None, (f"aide.toml [loop] max_open_queues = {value!r} is not a "
+                      f"positive integer — it caps how many queue branches may "
+                      f"be unmerged at once (default 1)")
+    return value, None
+
+
+def plan_review(config: Dict[str, Dict[str, object]]
+                ) -> Tuple[Optional[str], Optional[str]]:
+    """``(value, None)``, or ``(None, why)`` when ``[loop] plan_review`` is unusable."""
+    value = config.get("loop", {}).get("plan_review", "queue")
+    if not isinstance(value, str) or value not in PLAN_REVIEW_VALUES:
+        return None, (f"aide.toml [loop] plan_review = {value!r} is not one of "
+                      f"{', '.join(repr(v) for v in PLAN_REVIEW_VALUES)} — it "
+                      f"decides which plan-review gate `aide queue gate` "
+                      f"raises (default 'queue')")
+    return value, None
+
+
+def loop_config_errors(config: Dict[str, Dict[str, object]]) -> List[str]:
+    """``aide check``'s errors for the ``[loop]`` keys the engine itself reads."""
+    return [why for _, why in (max_open_queues(config), plan_review(config))
+            if why is not None]
 
 
 def find_repo_root(start: Optional[Path] = None) -> Path:
@@ -6078,6 +6124,9 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     ddir = docs_dir(repo_root, config)
     progress_path = ddir / "progress.md"
 
+    # Config first, and before the early returns: a value the engine acts on
+    # is wrong whether or not this repo keeps a document set (issue #302).
+    errors.extend(loop_config_errors(config))
     errors.extend(template_residue_errors(ddir))
     errors.extend(conflict_marker_errors(ddir))
     warnings.extend(stray_icon_warnings(ddir))
@@ -6798,6 +6847,89 @@ def set_gate_status(text: str, index: int, kind: str,
         cells[3] = note
     lines[i] = "| " + " | ".join(cells) + " |"
     return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+
+#: The header a `## Human gates` table is written with when a verb has to
+#: create one — the template's, cell for cell (§1 → human gates).
+_GATES_TABLE_HEAD = ("| Gate | Blocks | Status | Decision / evidence |",
+                     "|------|--------|--------|---------------------|")
+
+
+def add_gate_rows(text: str, rows: List[Tuple[str, str]]) -> str:
+    """Append one ``⏳ Awaiting`` row per ``(Gate cell, Blocks cell)`` in *rows*.
+
+    Into the ``## Human gates`` table, after its last row; under the heading
+    when it has no table yet; and as a new section at the end of the file
+    when the project deleted the optional one. The four cells are the §1
+    shape, so the row is a gate the moment it is written.
+    """
+    lines = text.splitlines()
+    new = [f"| {gate} | {blocks} | ⏳ Awaiting | — |" for gate, blocks in rows]
+    head = next((i for i, line in enumerate(lines)
+                 if _GATES_HEADING_RE.match(line)), None)
+    if head is None:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        lines += ["", "## Human gates", "", *_GATES_TABLE_HEAD, *new]
+    else:
+        end = next((j for j in range(head + 1, len(lines))
+                    if _ANY_HEADER_RE.match(lines[j])), len(lines))
+        pipes = [j for j in range(head + 1, end)
+                 if lines[j].strip().startswith("|")]
+        if pipes:
+            at = pipes[-1] + 1
+            lines[at:at] = new
+        else:
+            at = end
+            while at > head + 1 and lines[at - 1].strip() in ("", "---"):
+                at -= 1
+            lines[at:at] = ["", *_GATES_TABLE_HEAD, *new]
+    return "\n".join(lines) + "\n"
+
+
+def item_ranges(numbers: List[int]) -> str:
+    """``231–240`` / ``005, 007–009`` — item numbers as a Blocks cell writes them.
+
+    Runs never span more than the reader expands (``_ITEM_RANGE_MAX_SPAN``),
+    so the cell always reads back as exactly *numbers*.
+    """
+    nums = sorted(set(numbers))
+    parts: List[str] = []
+    i = 0
+    while i < len(nums):
+        j = i
+        while (j + 1 < len(nums) and nums[j + 1] == nums[j] + 1
+               and nums[j + 1] - nums[i] <= _ITEM_RANGE_MAX_SPAN):
+            j += 1
+        parts.append(f"{nums[i]:03d}" if i == j else f"{nums[i]:03d}–{nums[j]:03d}")
+        i = j + 1
+    return ", ".join(parts)
+
+
+def queue_opened_stages(lines: List[str], qdir: Path, first: int,
+                        items: List[int]) -> List[str]:
+    """The stages the queues from *first* on, listing *items*, open.
+
+    A queue opens stage N when one of its items is referenced by a stage N
+    deliverable in progress.md and no item stage N's deliverables reference is
+    listed in a queue file numbered below *first*. Read from the documents
+    alone, so the same tree always gives the same answer.
+    """
+    earlier: Set[int] = set()
+    for path in iter_queue_paths(qdir):
+        n = queue_number(path)
+        if n is not None and n < first:
+            earlier.update(queue_item_numbers(path.read_text(encoding=_ENCODING)))
+    wanted = set(items)
+    out: List[str] = []
+    for _, _, num in stage_sections(lines):
+        stage = str(int(num))
+        if stage in out:
+            continue
+        in_stage = set(stage_item_numbers(lines, num))
+        if in_stage & wanted and not in_stage & earlier:
+            out.append(stage)
+    return out
 
 
 def cmd_gate(args: argparse.Namespace) -> int:
@@ -8525,8 +8657,10 @@ def cmd_queue(args: argparse.Namespace) -> int:
         return 2
     if args.action == "start":
         return _queue_start(args)
+    if args.action == "gate":
+        return _queue_gate(args)
     if args.action != "tidy":
-        print("usage: aide queue {start|tidy} NNN | aide queue restack "
+        print("usage: aide queue {start|tidy|gate} NNN | aide queue restack "
               "[NNN --base REF]", file=sys.stderr)
         return 2
     import datetime as _dt
@@ -8594,6 +8728,51 @@ def _queue_start(args: argparse.Namespace) -> int:
               f"recreating it", file=sys.stderr)
         return 1
 
+    # The cap and the stack shape (issue #302). A specs-queue branch is where
+    # a queue already on main_branch has its specs written; it is never a
+    # batch of its own, so it is neither counted nor stacked.
+    if not args.specs:
+        cap, problem = max_open_queues(config)
+        if problem:
+            print(f"aide queue start: {problem}. Nothing was started.",
+                  file=sys.stderr)
+            return 1
+        main = str(config["git"].get("main_branch", "main"))
+        unmerged = _unmerged_queue_branches(repo_root, config)
+        if len(unmerged) >= cap:
+            unsure = sorted(b for b, v in unmerged.items() if v is None)
+            # Where a queue lands decides the remedy: through a PR into
+            # origin's main_branch, which a pull brings here — or, in local
+            # mode or with no origin, by a person merging it into this
+            # checkout's main_branch, where there is nothing to pull.
+            if mode != "local" and _has_origin(repo_root):
+                remedy = (f"once a PR merges, update {main} from origin "
+                          f"('git switch {main}', then 'git pull')")
+            else:
+                remedy = (f"with no origin to pull from, a queue lands when "
+                          f"it is merged into {main} here ('git switch "
+                          f"{main}', then 'git merge <its branch>')")
+            print(f"aide queue start: "
+                  f"{_plural(len(unmerged), 'queue branch is', 'queue branches are')} "
+                  f"unmerged ({', '.join(sorted(unmerged))}) and [loop] "
+                  f"max_open_queues is {cap}, so {branch} would exceed it. A "
+                  f"queue branch counts until its work has landed in this "
+                  f"checkout's {main}: {remedy}, and start again. Nothing "
+                  f"was started."
+                  + (f" Git cannot tell whether {', '.join(unsure)} landed "
+                     f"(no start is recorded): if it did, delete it with "
+                     f"'aide gc --merged --yes'; if it is open, record its "
+                     f"start with 'aide queue restack <NNN> --base {main}'."
+                     if unsure else ""),
+                  file=sys.stderr)
+            return 3
+        if unmerged:
+            refusal = _stack_top_refusal(repo_root, prefix, main, base, unmerged)
+            if refusal:
+                print(f"aide queue start: {refusal}. Nothing was started.",
+                      file=sys.stderr)
+                return 1
+
     if args.dry_run:
         print(f"would start {branch}; base {base}")
         return 0
@@ -8622,6 +8801,108 @@ def _queue_start(args: argparse.Namespace) -> int:
             return 1
     note = "" if base == str(config["git"].get("main_branch", "main")) else f" (base {base})"
     print(f"started {branch}{note}")
+    return 0
+
+
+def _queue_gate(args: argparse.Namespace) -> int:
+    """Raise a newly planned queue's plan-review gate; see `aide queue -h`.
+
+    The row used to be typed by the planner from prose (issue #300), which
+    put the one decision `[loop] plan_review` makes — which gate, if any — in
+    an agent's reading of a paragraph. The verb makes it from the documents,
+    and writes the §1 shape, so the row is a gate the moment it lands
+    (issue #302).
+    """
+    tag = "aide queue gate"
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    first = args.number
+    last = args.through if args.through is not None else first
+    if last < first:
+        print(f"usage: aide queue gate NNN [--through MMM] — MMM ({last}) is "
+              f"below NNN ({first})", file=sys.stderr)
+        return 2
+    setting, problem = plan_review(config)
+    if problem:
+        print(f"{tag}: {problem}. Nothing was raised.", file=sys.stderr)
+        return 1
+    ddir = docs_dir(repo_root, config)
+    qdir = ddir / "queue"
+    items: List[int] = []
+    for n in range(first, last + 1):
+        path = queue_path(qdir, n)
+        if path is None:
+            print(f"{tag}: no {queue_name(n)} file under {qdir} — the gate is "
+                  f"raised over a queue that is already written",
+                  file=sys.stderr)
+            return 1
+        items.extend(queue_item_numbers(path.read_text(encoding=_ENCODING)))
+    what = (queue_name(first) if first == last
+            else f"{queue_name(first)}–{last:03d}")
+    if not items:
+        print(f"{tag}: {what} lists no items, so there is no plan to gate",
+              file=sys.stderr)
+        return 1
+    if setting == "none":
+        print(f"{tag}: [loop] plan_review is \"none\" — no plan gate raised "
+              f"for {what}; the plan is reviewed in its queue PR")
+        return 0
+    ppath = ddir / "progress.md"
+    if not ppath.is_file():
+        print(f"{tag}: missing {ppath}", file=sys.stderr)
+        return 1
+    text = ppath.read_text(encoding=_ENCODING)
+    lines = text.splitlines()
+    if setting == "queue":
+        cell = (f"Queue {first:03d} plan reviewed before build" if first == last
+                else f"Queues {first:03d}–{last:03d} plan reviewed before build")
+        rows = [(cell, item_ranges(items))]
+    else:
+        rows = [(f"Stage {s} plan reviewed before build", f"stage {s}")
+                for s in queue_opened_stages(lines, qdir, first, items)]
+        if not rows:
+            print(f"{tag}: [loop] plan_review is \"stage\" and {what} opens no "
+                  f"stage — no plan gate raised")
+            return 0
+
+    def key(cell: str) -> Optional[str]:
+        return gate_hash(HumanGate(0, cell, [], None, False, None))
+
+    present = {gate_hash(g) for g in human_gates(lines)}
+    new = [r for r in rows if key(r[0]) not in present]
+    original = ppath.read_bytes()
+    head = _rev(repo_root, "HEAD")
+    if new:
+        text = add_gate_rows(text, new)
+        ppath.write_text(text, encoding="utf-8")
+    gates = human_gates(text.splitlines())
+    ids = gate_ids(gates)
+    for cell, blocks in rows:
+        gid = next(i for g, i in zip(gates, ids) if gate_hash(g) == key(cell))
+        state = "raised" if (cell, blocks) in new else "already raised"
+        print(f"{gid}: {state} — {cell} (blocks {blocks})")
+    if new and not args.no_commit:
+        rel = str(config["project"].get("docs_dir", "docs/aide")) + "/progress.md"
+        failure = _commit_docs_files(
+            repo_root, config, f"docs(aide): plan gate for {what}", [rel])
+        if failure and failure != "nothing to commit":
+            if _rev(repo_root, "HEAD") == head:
+                # No commit was made, so nothing is kept: a row left written
+                # and uncommitted reads as "already raised" to a re-run, which
+                # would then never commit it, and the dirty file stops
+                # `aide sync` with nothing naming this verb. The file's own
+                # bytes go back, line endings and all.
+                ppath.write_bytes(original)
+                print(f"{tag}: the gate row could not be committed — "
+                      f"{failure}. progress.md is as it was; re-run once "
+                      f"that is fixed.", file=sys.stderr)
+            else:
+                # The commit exists and replaying it onto origin stopped:
+                # the tree is mid-rebase, and the message above names how
+                # to finish it. The row is in that commit.
+                print(f"{tag}: the gate row is committed, but {failure}",
+                      file=sys.stderr)
+            return 1
     return 0
 
 
@@ -8697,6 +8978,95 @@ def _stack_branch_landed(repo_root: Path, main: str, ref: str,
     if content is None:
         return _is_ancestor(repo_root, ref, main)
     return content
+
+
+def _stack_own_landing(repo_root: Path, main: str, ref: str,
+                       lower: Optional[str], start: Optional[str]) -> Optional[bool]:
+    """Has stack branch *ref* itself landed in *main*? The one judgement.
+
+    *lower* is the ref of the queue branch it is stacked on, or None when its
+    base is main_branch. Only a branch with commits beyond its lower can have
+    landed on its own, so one without reads False (open) here; above a lower,
+    the lower's tip stands in for an unrecorded *start*, so only a bottom can
+    answer None. `queue restack` plans from this verdict and `queue start`
+    counts unmerged branches by it — one reading of "landed", not two.
+    """
+    if lower is None:
+        return _stack_branch_landed(repo_root, main, ref, start)
+    if _is_ancestor(repo_root, ref, lower):
+        return False
+    return _stack_branch_landed(repo_root, main, ref,
+                                start or _rev(repo_root, lower))
+
+
+def _unmerged_queue_branches(repo_root: Path, config
+                             ) -> Dict[str, Optional[bool]]:
+    """Every ``<prefix>queue-NNN`` branch whose own work is not in main_branch.
+
+    Name -> False (open) or None (git cannot tell, so it is counted, never
+    guessed landed). The branches this checkout has and, off `local` mode,
+    origin's as last fetched; each judged by `_stack_own_landing` against
+    this checkout's main_branch, with the base and start `queue start`
+    recorded. A specs-queue branch is never one (`_is_stack_branch`).
+    """
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    mode = str(config["git"].get("mode", "auto-merge"))
+    main = str(config["git"].get("main_branch", "main"))
+    local = set(_local_branches(repo_root))
+    remote = (set(_remote_branches(repo_root))
+              if mode != "local" and _has_origin(repo_root) else set())
+    main_ref = main if main in local or main not in remote else f"origin/{main}"
+    out: Dict[str, Optional[bool]] = {}
+    for b in sorted(x for x in local | remote if _is_stack_branch(x, prefix)):
+        if b in local:
+            ref, base = b, _recorded_branch_base(repo_root, b)
+            start = _recorded_branch_start(repo_root, b)
+        else:
+            ref, base, start = f"origin/{b}", None, None
+        lower = (base if base and base != main and base in local
+                 and _is_stack_branch(base, prefix) else None)
+        verdict = _stack_own_landing(repo_root, main_ref, ref, lower, start)
+        if not verdict:
+            out[b] = verdict
+    return out
+
+
+def _stack_top_refusal(repo_root: Path, prefix: str, main: str, base: str,
+                       unmerged: Dict[str, Optional[bool]]) -> Optional[str]:
+    """Why a queue started on *base* would not sit on top of the one stack.
+
+    Walking recorded bases down from *base* must reach every unmerged queue
+    branch: then *base* is the top, and the new queue makes the stack one
+    taller. Anything else — a base beside the stack, a base another branch is
+    already stacked on, an unmerged branch no walk reaches — would make a
+    second stack, which stacking does not offer (conventions §4).
+    """
+    names = sorted(unmerged)
+    below = {b: _recorded_branch_base(repo_root, b) for b in names}
+    tops = [b for b in names if b not in below.values()]
+    top = tops[0] if len(tops) == 1 else None
+    hint = (f"--base {top}" if top else
+            f"--base the top one, once every unmerged queue branch records "
+            f"its base ('aide queue restack <NNN> --base <its base>')")
+    if base not in unmerged:
+        return (f"{', '.join(names)} "
+                f"{'is' if len(names) == 1 else 'are'} unmerged, so a new "
+                f"queue stacks on top of them ({hint}); starting from {base} "
+                f"would begin a second stack beside the first")
+    chain: List[str] = []
+    x: Optional[str] = base
+    while x in unmerged and x not in chain:
+        chain.append(x)
+        x = below.get(x)
+        if not x or x == main:
+            break
+    outside = [b for b in names if b not in chain]
+    if outside:
+        return (f"{base} is not the top of the stack of unmerged queue "
+                f"branches — {', '.join(outside)} "
+                f"{'is' if len(outside) == 1 else 'are'} not below it, so a "
+                f"queue on {base} would make a second stack ({hint})")
+    return None
 
 
 def _other_worktree_branches(repo_root: Path) -> Set[str]:
@@ -9044,15 +9414,9 @@ def _queue_restack(args: argparse.Namespace) -> int:
         # own; one without has landed exactly when its lower has. Above a
         # lower, the lower's tip is where the branch started, recorded or not
         # — so only a bottom can be undecidable.
-        if lower == main:
-            verdict = _stack_branch_landed(repo_root, eff(main), eff(b),
-                                           starts.get(b))
-        elif _is_ancestor(repo_root, eff(b), eff(lower)):
-            verdict = False
-        else:
-            verdict = _stack_branch_landed(
-                repo_root, eff(main), eff(b),
-                starts.get(b) or _rev(repo_root, eff(lower)))
+        verdict = _stack_own_landing(repo_root, eff(main), eff(b),
+                                     None if lower == main else eff(lower),
+                                     starts.get(b))
         if verdict:
             landed.add(b)
             if lower != main:
@@ -13239,10 +13603,65 @@ def build_parser() -> argparse.ArgumentParser:
     p_gate.set_defaults(func=cmd_gate)
 
     p_queue = sub.add_parser(
-        "queue", help="queue branch creation / maintenance, and keeping a "
-        "stack of queue branches merged forward (restack)",
+        "queue", help="queue branch creation / maintenance, a planned "
+        "queue's plan-review gate, and keeping a stack of queue branches "
+        "merged forward (restack)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
+            "start NNN creates <prefix>queue-NNN from --base (default "
+            "main_branch), records that base and the commit it started from, "
+            "and off local mode pushes it; --specs creates "
+            "<prefix>specs-queue-NNN instead, which is never counted or "
+            "stacked. A queue branch is unmerged until its own work has "
+            "landed in main_branch, judged exactly as restack judges it "
+            "(below), against this checkout's main_branch — and, off local "
+            "mode, over origin's queue branches as last fetched too; one git "
+            "cannot judge counts as unmerged. start refuses, exit 3, when "
+            "[loop] max_open_queues (default 1) queue branches are already "
+            "unmerged, naming them and the key. A branch whose PR merged "
+            "counts until this checkout's main_branch holds its work, so "
+            "updating main_branch is what clears it: a pull from origin "
+            "where there is one, and in local mode or with no origin, "
+            "merging the queue branch into main_branch; one git "
+            "cannot judge is cleared by `aide gc --merged --yes` if it "
+            "landed, or by `aide queue restack NNN --base main_branch`, which "
+            "records its start, if it is open. Below the cap, while any "
+            "queue branch is unmerged, the new queue stacks on the top of "
+            "the one stack they form: --base names an unmerged queue branch, "
+            "and walking recorded bases down from it reaches every unmerged "
+            "queue branch. A base beside the stack (main_branch included), a "
+            "base another unmerged branch is already stacked on, and an "
+            "unmerged branch outside that walk are refused, exit 1. --dry-run "
+            "runs every check and changes nothing. Exit 0: started (or would "
+            "be). 1: refused — also a base that is not a local branch, a "
+            "branch that exists here or on origin, an invalid "
+            "max_open_queues, or a failed push. 2: usage. 3: the cap.\n"
+            "\n"
+            "gate NNN [--through MMM] raises the plan-review gate for queue "
+            "NNN, or for queues NNN to MMM together (a maintenance queue and "
+            "the stage queue after it), as [loop] plan_review (default "
+            "\"queue\") says. \"queue\" writes one row, Gate cell `Queue NNN "
+            "plan reviewed before build` (`Queues NNN–MMM plan reviewed "
+            "before build` for a range), blocking every item those queue "
+            "files list. \"stage\" writes one row per stage the queues open, "
+            "Gate cell `Stage N plan reviewed before build`, blocking `stage "
+            "N`: the queues open stage N when one of their items is "
+            "referenced by a stage N deliverable in progress.md and no item "
+            "stage N's deliverables reference is listed in a queue file "
+            "numbered below NNN. \"none\" writes nothing and says so. A row "
+            "whose Gate cell the table already holds is not written again, "
+            "whatever its status, so a re-run raises nothing new. Each new "
+            "row is ⏳ Awaiting, appended to the ## Human gates table (made "
+            "at the end of progress.md when the section is absent) and "
+            "committed on the current branch like every document verb, "
+            "unless --no-commit; each gate is printed with its ID. Every "
+            "other row is left as it is. Exit 0: "
+            "raised, already raised, or nothing to raise. 1: a queue file "
+            "missing or listing no items, no progress.md, an invalid "
+            "plan_review, or a failed commit — where no commit was made, "
+            "progress.md is put back byte for byte, so a re-run raises and "
+            "commits the gate. 2: usage.\n"
+            "\n"
             "restack keeps a stack of queue branches consistent: main_branch "
             "<- <prefix>queue-N <- <prefix>queue-M <- ..., each started with "
             "`aide queue start M --base <prefix>queue-N`. The stack is read "
@@ -13315,10 +13734,15 @@ def build_parser() -> argparse.ArgumentParser:
             "or unreadable stack branch, a lower branch it cannot judge, a "
             "failed signature, or a failed fetch or push. 2: usage "
             "(NNN without --base, or --base without NNN)."))
-    p_queue.add_argument("action", choices=["start", "tidy", "restack"])
+    p_queue.add_argument("action", choices=["start", "tidy", "restack", "gate"])
     p_queue.add_argument("number", type=int, nargs="?", default=None,
-                         help="queue number (start, tidy; restack only "
+                         help="queue number (start, tidy, gate; restack only "
                               "with --base)")
+    p_queue.add_argument("--through", type=int, default=None, metavar="MMM",
+                         help="gate: one gate over queues NNN to MMM (a "
+                              "maintenance queue and its stage queue)")
+    p_queue.add_argument("--no-commit", action="store_true",
+                         help="gate: write the row, do not git commit")
     p_queue.add_argument("--specs", action="store_true",
                          help="start: create the specs-queue branch instead")
     p_queue.add_argument("--base", default=None,

@@ -291,6 +291,18 @@ clarify = "assume"
 # both. Off by default: a review round costs tokens on every item, and a
 # project with CI and hosted reviewers may reasonably decline it.
 review = "off"
+# How many queue branches may be unmerged at once. At 1 the roadmap loop stops
+# at every queue's PR until it merges; above it, the next queue is started on
+# top of the last one and its PR is opened against it, so several batches
+# await review while the loop builds one. `aide queue start` enforces the cap
+# (.aide/conventions.md §4).
+max_open_queues = 1
+# Which plan-review gate `aide queue gate` raises over a newly planned queue:
+# "queue" (every queue's plan is reviewed before it is built), "stage" (only
+# a queue that opens a roadmap stage) or "none" (the plan is reviewed in the
+# queue's PR with the code). Gates the roadmap declares apply whatever this
+# says (.aide/conventions.md §1 → human gates).
+plan_review = "queue"
 
 [framework]
 # Where the AIDE framework itself lives (owner/repo). The feedback loop's

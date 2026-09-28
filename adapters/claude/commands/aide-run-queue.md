@@ -126,7 +126,8 @@ the next move (do **not** generate the next queue yourself):
   PR — opened as a draft when the queue was planned — now carries the whole
   batch and is the thing to mark ready and merge: `gh pr ready
   <prefix>queue-NNN` (`ask`-gated; under `/aide-run-roadmap` that is its
-  **Queue end** step). The next queue is planned only after that PR merges.
+  **Queue end** step). The next queue is planned only after that PR merges,
+  unless `[loop] max_open_queues` lets it start on top of this branch.
 - **Driving the whole roadmap?** Run **`/aide-run-roadmap`** — it plans the
   next queue on its own branch behind a draft PR and a plan gate, and re-enters
   this command on that branch once the gate is approved.
@@ -146,9 +147,10 @@ reached the batch's sessions, and rotates that log.
   never run `aide gate approve` yourself. A gate exists because the decision is
   not derivable from the work; resolving it destroys the thing it protects. A
   gate naming items — directly or via `stage N` — skips only those, so the queue
-  may keep going; an `all` gate stops everything. A queue's own plan gate, raised when
-  `/aide-run-roadmap` planned it, names every item in the queue, so the whole
-  queue waits on it: the human reviews the queue's draft PR and approves it.
+  may keep going; an `all` gate stops everything. A queue's own plan gate, raised by
+  `aide queue gate` when `/aide-run-roadmap` planned it, holds every item in the
+  queue — or every item of the stage it opens — so the whole queue waits on it:
+  the human reviews the queue's draft PR and approves it.
 - `/aide-run-item` hands back needing a **PR**, **force-push**, or history rewrite.
 - An item needs a **major structural change** or an edit to a framework/process
   file (`CLAUDE.md`, `aide.toml`, `.aide/**`, `vision.md`, `roadmap.md`,

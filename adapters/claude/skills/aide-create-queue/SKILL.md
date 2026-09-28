@@ -202,10 +202,26 @@ PR anyway.
 
 - **Run standalone (manual)** — also `git pull --rebase` then `git push`.
 - **Invoked as the `queue-planner` subagent inside `/aide-run-roadmap`** — commit
-  only, with the plan-review gate the agent spec describes in the same commit;
-  the orchestrator pushes the `aide/queue-NNN` branch and opens its draft PR,
-  which the built items later join. Say in your summary that you wrote two queues, so it
-  knows there is a second batch behind the one it is about to open a PR for.
+  only; the orchestrator pushes the `aide/queue-NNN` branch and opens its draft
+  PR, which the built items later join. Say in your summary that you wrote two
+  queues, so it knows there is a second batch behind the one it is about to
+  open a PR for.
+
+### Raise the plan gate when asked to
+
+When the caller asks for the plan to be reviewed before it is built —
+`/aide-run-roadmap` always does — raise the gate with the verb once the queue
+commit above has landed, never by typing the row (§1 → human gates):
+
+```
+python .aide/scripts/aide.py queue gate NNN
+```
+
+Over a maintenance queue and its stage queue, one call:
+`queue gate NNN --through <NNN+1>`. It reads `[loop] plan_review`, writes and
+commits whichever gate that setting gives the plan — or none, and says so —
+and prints each gate's ID for your summary. Run standalone and not asked, skip
+it; a person can run it later, and a re-run never adds a second row.
 
 ### Tick every inbox entry you queued
 

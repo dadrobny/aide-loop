@@ -1385,9 +1385,101 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
     ],
 
     # ---------------------------------------------------------------- queue --
-    # The description block is `restack`'s (issue #301); `start` and `tidy`
-    # are stated in their option help, which this row does not cover.
+    # The description block states `start`'s cap and stack shape and `gate`
+    # (issue #302), then `restack` (issue #301); `tidy` is stated in its
+    # option help, which this row does not cover.
     "queue": [
+        # `_unmerged_queue_branches` -> `_stack_own_landing`, the verdict
+        # `_queue_restack`'s plan loop reads too.
+        ("A queue branch is unmerged until its own work has landed in "
+         "main_branch, judged exactly as restack judges it",
+         ("test_aide_queue_stack::test_a_queue_whose_work_landed_no_longer_counts",
+          "test_aide_queue_stack::test_below_the_cap_a_queue_stacks_on_the_top_and_records_it")),
+        # `remote` in `_unmerged_queue_branches`, judged as `origin/<b>`.
+        ("off local mode, over origin's queue branches as last fetched too",
+         "test_aide_queue_stack::test_a_queue_only_origin_has_counts_as_unmerged"),
+        # `_stack_own_landing` -> None is kept in the dict, and counted.
+        ("one git cannot judge counts as unmerged",
+         "test_aide_queue_stack::test_a_queue_git_cannot_judge_counts_as_unmerged"),
+        # `len(unmerged) >= cap` -> `return 3`, before `--dry-run` returns.
+        ("start refuses, exit 3, when [loop] max_open_queues (default 1) "
+         "queue branches are already unmerged, naming them and the key",
+         ("test_aide_queue_stack::test_the_default_cap_refuses_a_second_queue_while_the_first_is_unmerged",
+          "test_aide_queue_stack::test_below_the_cap_a_queue_stacks_on_the_top_and_records_it")),
+        # `if not args.specs:` around the whole block; `_is_stack_branch`
+        # never matches `specs-queue-`.
+        ("--specs creates <prefix>specs-queue-NNN instead, which is never "
+         "counted or stacked",
+         "test_aide_queue_stack::test_a_specs_queue_branch_is_neither_counted_nor_capped"),
+        # `_stack_top_refusal`: `base not in unmerged`, then the chain walk.
+        ("--base names an unmerged queue branch, and walking recorded bases "
+         "down from it reaches every unmerged queue branch",
+         ("test_aide_queue_stack::test_a_base_beside_the_stack_is_refused",
+          "test_aide_queue_stack::test_a_base_that_would_fork_the_stack_is_refused")),
+        ("A base beside the stack (main_branch included), a base another "
+         "unmerged branch is already stacked on, and an unmerged branch "
+         "outside that walk are refused, exit 1",
+         ("test_aide_queue_stack::test_a_base_beside_the_stack_is_refused",
+          "test_aide_queue_stack::test_a_base_that_would_fork_the_stack_is_refused")),
+        ("--dry-run runs every check and changes nothing",
+         ("test_aide_queue_stack::test_the_cap_is_checked_by_a_dry_run_too",
+          "test_aide_queue_stack::test_a_dry_run_refuses_a_bad_stack_shape_and_creates_nothing")),
+        # The cap refusal's remedies, each followed by a test until the
+        # refusal clears (PR #308 review: `restack` was printed as one, and
+        # has no stack to read when only main is behind).
+        # `remedy` branches on `mode != "local" and _has_origin`.
+        ("A branch whose PR merged counts until this checkout's main_branch "
+         "holds its work, so updating main_branch is what clears it: a pull "
+         "from origin where there is one",
+         "test_aide_queue_stack::test_a_pr_merged_on_origin_clears_once_main_is_updated_from_origin"),
+        ("and in local mode or with no origin, merging the queue branch into "
+         "main_branch",
+         "test_aide_queue_stack::test_the_cap_refusal_in_local_mode_names_a_local_merge_and_it_clears"),
+        ("one git cannot judge is cleared by `aide gc --merged --yes` if it "
+         "landed, or by `aide queue restack NNN --base main_branch`, which "
+         "records its start, if it is open",
+         ("test_aide_queue_stack::test_a_landed_branch_git_cannot_judge_clears_once_gc_deletes_it",
+          "test_aide_queue_stack::test_an_open_branch_git_cannot_judge_is_read_once_its_start_is_recorded")),
+        # `max_open_queues(config)` -> `return 1` before any branch exists.
+        ("an invalid max_open_queues",
+         "test_aide_queue_stack::test_an_unusable_cap_refuses_the_start_and_fails_the_check"),
+        # `_queue_gate`, setting "queue": one row, `item_ranges(items)`.
+        ("\"queue\" writes one row, Gate cell `Queue NNN plan reviewed before "
+         "build` (`Queues NNN–MMM plan reviewed before build` for a range), "
+         "blocking every item those queue files list",
+         ("test_aide_queue_stack::test_queue_raises_one_gate_over_the_queue_s_items_and_commits_it",
+          "test_aide_queue_stack::test_queue_through_raises_one_gate_over_both_queues")),
+        # `queue_opened_stages`.
+        ("the queues open stage N when one of their items is referenced by a "
+         "stage N deliverable in progress.md and no item stage N's "
+         "deliverables reference is listed in a queue file numbered below NNN",
+         "test_aide_queue_stack::test_stage_raises_a_stage_gate_only_for_a_queue_that_opens_one"),
+        ("\"none\" writes nothing and says so",
+         "test_aide_queue_stack::test_none_raises_nothing_and_exits_zero"),
+        # `present` holds every row's gate hash, whatever its Status.
+        ("A row whose Gate cell the table already holds is not written again, "
+         "whatever its status, so a re-run raises nothing new",
+         ("test_aide_queue_stack::test_a_second_run_raises_nothing_new",
+          "test_aide_queue_stack::test_an_approved_gate_is_not_raised_again")),
+        # `add_gate_rows`; `_commit_docs_files` unless `--no-commit`.
+        ("appended to the ## Human gates table (made at the end of "
+         "progress.md when the section is absent) and committed on the "
+         "current branch like every document verb, unless --no-commit",
+         ("test_aide_queue_stack::test_queue_raises_one_gate_over_the_queue_s_items_and_commits_it",
+          "test_aide_queue_stack::test_a_progress_file_with_no_gates_section_gets_one")),
+        ("Every other row is left as it is",
+         "test_aide_queue_stack::test_stage_raises_a_stage_gate_only_for_a_queue_that_opens_one"),
+        ("1: a queue file missing or listing no items, no progress.md, an "
+         "invalid plan_review, or a failed commit",
+         ("test_aide_queue_stack::test_gate_refusals_and_usage",
+          "test_aide_queue_stack::test_a_queue_listing_no_items_is_refused",
+          "test_aide_queue_stack::test_gate_without_a_progress_file_is_refused",
+          "test_aide_queue_stack::test_an_unusable_plan_review_refuses_and_fails_the_check",
+          "test_aide_queue_stack::test_gate_whose_commit_fails_changes_nothing_and_a_retry_commits")),
+        # `ppath.write_bytes(original)` when HEAD did not move.
+        ("where no commit was made, progress.md is put back byte for byte, "
+         "so a re-run raises and commits the gate",
+         "test_aide_queue_stack::test_gate_whose_commit_fails_changes_nothing_and_a_retry_commits"),
         # `_queue_restack` reads `_recorded_branch_base` for every
         # `_is_stack_branch`, which matches `queue-NNN` and not `specs-queue-`.
         ("The stack is read from the base each queue branch recorded at "

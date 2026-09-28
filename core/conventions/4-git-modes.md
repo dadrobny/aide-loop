@@ -107,6 +107,17 @@ branch's starting point and its recorded base are the same commit by
 construction, so an item can never merge back somewhere it did not come from. A
 tag, a raw commit or a remote-tracking ref (`origin/main`) is refused.
 
+**At most `[loop] max_open_queues` queue branches are unmerged at once, and
+they form one stack.** At the default of 1 a queue starts only once the one
+before it has landed. Above it, the next queue starts on the top of the
+stack — `aide queue start M --base <prefix>queue-N` — and its PR is opened
+against that branch, so each PR's diff is one batch. `aide queue start`
+enforces both: it counts a queue branch until the branch's own work has
+landed in `main_branch`, judged the way `aide queue restack` judges it, and
+refuses a start that would pass the cap or begin a second stack. A
+specs-queue branch is neither counted nor stacked. `aide queue -h` states the
+mechanism.
+
 **A stack of queue branches is kept consistent by merging forward, never by
 rebasing.** A queue started on the queue branch below it — `aide queue start M
 --base <prefix>queue-N` — makes a stack, `main` ← queue N ← queue M, each
@@ -126,6 +137,14 @@ landed is judged from git; the verb reads no pull request, so a PR closed
 without merging looks open to it and its caller checks for one first. A conflict stops the
 run with nothing resolved, for a person. `aide queue restack -h` states the
 mechanism.
+
+**A stack is built bottom up: the lowest queue branch with work left is the
+one built.** That is the top, except when a person adds an item to a lower
+queue's PR in review. `restack` then carries the item into every branch
+above, where the live queue — the lowest-numbered open one — is that lower
+queue again, so a claim on an upper branch would take the item and land it
+in the upper's PR. It is built on the lower queue's own branch instead, and
+restacked forward from there.
 
 ### Rationale
 
@@ -226,6 +245,19 @@ mechanism.
 - **Why a base must be a local branch.** `git switch` to a tag, a commit or a
   remote-tracking ref would detach HEAD, and a merge into a detached HEAD
   updates no branch while still reporting success.
+- **Why a cap, and why one stack.** Stacked queues de-serialise *review*:
+  the loop goes on building while earlier batches wait for a person. Parallel
+  stacks off `main_branch` would bring back every contention point of
+  parallel *execution* — item numbers, `progress.md` and `insights.md`
+  conflicts, `claim_scope` — while one stack keeps numbering and document
+  edits linear. The cap bounds what a rejected lower costs: at worst
+  `max_open_queues − 1` queues built on it (#258). It is enforced by the verb
+  that creates the branch, so an unattended run cannot pass it by misreading
+  prose (#302).
+- **Why "unmerged" is restack's judgement.** Two readings of "landed" would
+  let `start` count a branch `restack` has already handed on, or the
+  reverse. A branch git cannot judge is counted: guessing it landed would let
+  the stack grow past the cap.
 - **Why a stack merges and never rebases.** Rebasing an upper branch onto its
   moved lower rewrites commits its open PR already shows, and publishing that
   takes a force-push — a §3 stop in an unattended run. A merge only adds
@@ -271,3 +303,6 @@ mechanism.
 - **Why no record means no stack.** The records are local git config, and
   queue branches from before stacking sit beside a stack; chaining them by
   number would merge unrelated queues. `--base` records one, bottom up.
+- **Why a reopened lower queue is built on its own branch.** Built on the
+  upper one, the fix lands in the PR that did not ask for it, and the lower
+  queue's PR could be merged with the item still 📋 in it.

@@ -1153,8 +1153,18 @@ def _tick_bullet(repo: Path, bullet: str, icon: str, message: str) -> None:
     _commit(repo, message)
 
 
+def _set_loop(repo: Path, key: str, value: str) -> None:
+    """Set one `[loop]` key of the scaffolded aide.toml, and commit it."""
+    toml = repo / "aide.toml"
+    text = toml.read_text(encoding="utf-8")
+    line = next(l for l in text.splitlines() if l.startswith(f"{key} = "))
+    toml.write_text(text.replace(line, f"{key} = {value}"), encoding="utf-8")
+    _commit(repo, f"chore: {key}")
+
+
 def _queue_stack(aide, repo: Path) -> None:
     """main <- queue-001 (ticks the greeter) <- queue-002 (the farewell)."""
+    _set_loop(repo, "max_open_queues", "2")
     assert aide.main(["--repo", str(repo), "queue", "start", "1"]) == 0
     _tick_bullet(repo, "The greeter. *(Item 001)*", "✅", "queue 1 work")
     assert aide.main(["--repo", str(repo), "queue", "start", "2",
@@ -1277,6 +1287,7 @@ def test_restack_hands_main_to_the_top_when_the_middle_queue_landed(
     """Three queues, the bottom one never given a commit: main takes the
     middle one by fast-forward, and the top queue is still owed main."""
     q3 = "aide/queue-003"
+    _set_loop(consumer, "max_open_queues", "3")
     assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
     assert aide.main(["--repo", str(consumer), "queue", "start", "2",
                       "--base", Q1]) == 0
@@ -1332,6 +1343,120 @@ def test_restack_a_second_time_with_nothing_moved_changes_nothing(
 
     assert _restack(aide, consumer) == 0
     assert (_sha(consumer, Q1), _sha(consumer, Q2)) == tips
+
+
+# --------------------------------------------------------------------------- #
+# stacked continuation — [loop] max_open_queues and plan_review (issue #302)
+# --------------------------------------------------------------------------- #
+def _start(aide, repo: Path, number: int, *extra: str) -> int:
+    return aide.main(["--repo", str(repo), "queue", "start", str(number), *extra])
+
+
+def _queue_gate(aide, repo: Path, number: int, *extra: str) -> int:
+    return aide.main(["--repo", str(repo), "queue", "gate", str(number), *extra])
+
+
+def _gates(aide, repo: Path) -> list:
+    text = (repo / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    return aide.human_gates(text.splitlines())
+
+
+def _add_a_later_queue_in_stage_1(repo: Path) -> None:
+    """Item 003 on stage 1, queued as queue 002 — the rest of a stage queue
+    001 already opened."""
+    ddir = repo / "docs" / "aide"
+    progress = ddir / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "- 📋 The farewell. *(Item 002)*\n",
+        "- 📋 The farewell. *(Item 002)*\n- 📋 The wave. *(Item 003)*\n"),
+        encoding="utf-8")
+    (ddir / "queue" / "queue-002.md").write_text(
+        "# Fixture — Work Queue 002\n\n### Item 003: The wave\nA wave.\n",
+        encoding="utf-8")
+    _commit(repo, "docs: queue 002")
+
+
+def test_the_default_cap_refuses_a_second_queue_while_the_first_is_unmerged(
+        aide, consumer: Path):
+    assert _start(aide, consumer, 1) == 0
+    _tick_bullet(consumer, "The greeter. *(Item 001)*", "✅", "queue 1 work")
+    assert _start(aide, consumer, 2, "--base", Q1) == 3
+    assert Q2 not in _branches(consumer)
+    assert _branch(consumer) == Q1
+
+
+def test_a_raised_cap_allows_a_stacked_start_and_records_the_lower_as_base(
+        aide, consumer: Path):
+    _set_loop(consumer, "max_open_queues", "2")
+    assert _start(aide, consumer, 1) == 0
+    _tick_bullet(consumer, "The greeter. *(Item 001)*", "✅", "queue 1 work")
+    assert _start(aide, consumer, 2, "--base", Q1) == 0
+    assert _branch(consumer) == Q2
+    assert _recorded_base(aide, consumer, Q2) == Q1
+    assert _contains(consumer, Q1, Q2)
+
+
+def test_a_landed_first_queue_no_longer_counts(aide, consumer: Path):
+    assert _start(aide, consumer, 1) == 0
+    _tick_bullet(consumer, "The greeter. *(Item 001)*", "✅", "queue 1 work")
+    _land_by_squash(consumer, Q1)
+    assert _start(aide, consumer, 2) == 0
+    assert _recorded_base(aide, consumer, Q2) == "main"
+
+
+def test_plan_review_queue_raises_one_gate_over_the_queue_s_items(
+        aide, consumer: Path):
+    before = _sha(consumer, "HEAD")
+    assert _queue_gate(aide, consumer, 1) == 0
+    (gate,) = _gates(aide, consumer)
+    assert gate.text == "Queue 001 plan reviewed before build"
+    assert gate.blocks == [1, 2] and gate.kind == "awaiting"
+    assert _sha(consumer, "HEAD") != before
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    # The gate holds the plan: nothing in the queue is claimable.
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "main"
+
+
+def test_plan_review_stage_gates_only_the_queue_that_opens_the_stage(
+        aide, consumer: Path):
+    _set_loop(consumer, "plan_review", '"stage"')
+    _add_a_later_queue_in_stage_1(consumer)
+    assert _queue_gate(aide, consumer, 1) == 0
+    (gate,) = _gates(aide, consumer)
+    assert gate.text == "Stage 1 plan reviewed before build"
+    assert gate.stage == "1"
+    head = _sha(consumer, "HEAD")
+    assert _queue_gate(aide, consumer, 2) == 0
+    assert len(_gates(aide, consumer)) == 1
+    assert _sha(consumer, "HEAD") == head
+
+
+def test_plan_review_none_raises_no_gate(aide, consumer: Path):
+    _set_loop(consumer, "plan_review", '"none"')
+    head = _sha(consumer, "HEAD")
+    assert _queue_gate(aide, consumer, 1) == 0
+    assert _gates(aide, consumer) == []
+    assert _sha(consumer, "HEAD") == head
+
+
+def test_a_second_queue_gate_raises_nothing_new(aide, consumer: Path):
+    assert _queue_gate(aide, consumer, 1) == 0
+    progress = (consumer / "docs" / "aide" / "progress.md").read_bytes()
+    head = _sha(consumer, "HEAD")
+    assert _queue_gate(aide, consumer, 1) == 0
+    assert (consumer / "docs" / "aide" / "progress.md").read_bytes() == progress
+    assert _sha(consumer, "HEAD") == head
+
+
+@pytest.mark.parametrize("key,value", [
+    ("max_open_queues", "0"),
+    ("max_open_queues", '"2"'),
+    ("plan_review", '"sometimes"'),
+])
+def test_check_fails_on_an_unusable_loop_value(aide, consumer: Path, key, value):
+    _set_loop(consumer, key, value)
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
 
 
 # --------------------------------------------------------------------------- #

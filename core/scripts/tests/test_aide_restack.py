@@ -29,6 +29,11 @@ docs_dir = "docs/aide"
 mode = "{mode}"
 main_branch = "main"
 branch_prefix = "aide/"
+
+# A stack of three is what these tests build; the default cap of one would
+# refuse the second `queue start` (issue #302).
+[loop]
+max_open_queues = 3
 """
 
 #: Five lines a queue ticks one at a time — the shape `progress.md` has, and

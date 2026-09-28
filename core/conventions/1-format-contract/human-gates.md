@@ -50,6 +50,27 @@ raised wherever it is noticed, recorded in one place.
 that a decision is needed adds the row and says so. No agent may run `aide gate
 approve`/`decline`.
 
+**Three things stop the loop for a person, and only one is a row.**
+
+- **A gate row is serial by nature, over its reach.** What it blocks waits for
+  the decision; everything else keeps flowing.
+- **A framework or process edit is serial by nature, and is not a row.** It
+  cascades into every later queue, so it stops the run for a reviewed PR
+  (`README.md` → Merge policy).
+- **The queue-end merge is serial only up to the cap, and is never a gate
+  row.** Every queue's PR is reviewed before it reaches `main_branch`;
+  `[loop] max_open_queues` says how many may await that review while the loop
+  builds the next queue on top of them (§4).
+
+**The plan gate is raised by `aide queue gate`, as often as `[loop]
+plan_review` says.** It holds a newly planned queue's items until a person
+has reviewed the plan: `"queue"` (the default) raises one over every queue,
+`"stage"` one `stage N` gate when a queue opens stage N, and `"none"` none,
+leaving the plan to be reviewed in the queue's PR with the code. The verb
+writes the row and prints its ID; no role types a plan gate by hand. A gate
+the roadmap declares applies whatever the setting says. `aide queue -h`
+states which rows the verb writes.
+
 **A declined gate keeps blocking.** It is resolved — someone decided — but the
 decision was "no". The remedy is to re-plan: drop the blocked items, or change
 what the gate asks. Only `✅ Approved` opens a gate; an unrecognised status
@@ -114,6 +135,23 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   read holds everything, because the only unsafe guess at what it blocks is
   "nothing" — and until #202 that was the guess, with a warning that stopped
   nothing.
+- **Why the queue-end merge is never a gate row.** A row blocks items, and a
+  built-out queue has none left to block. What its review bounds is rework:
+  a queue built on one a person has not accepted is wasted if that one is
+  rejected, and `max_open_queues` caps the waste at `max_open_queues − 1`
+  queues. A row would instead block the next queue's items, which is the
+  one thing the cap exists to allow (#258). Relaxing *when* a batch is
+  reviewed is in scope; no batch reaches `main_branch` unreviewed.
+- **Why the plan gate has a verb.** From #300 the planner typed the row
+  from a paragraph, which left the choice `plan_review` now makes — which
+  gate, if any — to an agent's reading of prose, and a row typed by hand is
+  one a mis-shape turns into a hold on every item. The verb makes the choice
+  from the documents and writes the shape (#302).
+- **Why an approved plan gate stays in the table.** The row is the record
+  that the plan was reviewed, and when; nothing folds it away after its
+  queue merges. At `"queue"` that is a row per queue — about one per ten
+  items — which `aide check` does not warn on; `"stage"` and `"none"`
+  raise fewer, and are the setting for a project that finds the table long.
 - **Why the shape is stated here and not left to the template.** A gate row is
   the one `progress.md` row a role adds by hand to a file another role wrote,
   often in a project whose optional section was deleted, so the author has no

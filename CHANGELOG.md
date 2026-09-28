@@ -121,6 +121,86 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.15.0] — 2026-09-28
+
+### Added
+
+- **Stacked continuation: the roadmap loop builds the next queue while
+  earlier ones await review, up to `[loop] max_open_queues` (issue #302, part
+  of #258).** Every queue ended in a stop until its PR merged, so a roadmap
+  moved as fast as a person looked. The queue-end merge is now serial only up
+  to a cap, and never a gate row:
+  - **`[loop] max_open_queues`**, default `1` — exactly the flow before this
+    release. **`aide queue start` enforces it**: it counts every
+    `<prefix>queue-NNN` branch (this checkout's, and origin's as last
+    fetched) whose own work has not landed in `main_branch`, judged by the
+    same verdict `aide queue restack` plans from (one git cannot judge is
+    counted), and refuses a start past the cap with **exit 3**, naming the
+    branches and the key. Below it, while any queue branch is unmerged, the
+    new queue must stack on the top of the one stack they form (`--base
+    <prefix>queue-N`); a base beside the stack, a fork, or an unmerged branch
+    outside the walk down from the base is refused, exit 1. A specs-queue
+    branch is neither counted nor stacked. `--dry-run` runs every check.
+  - **`[loop] plan_review = "queue" | "stage" | "none"`**, default `"queue"`
+    — #300's behaviour. How often a newly planned queue's plan is reviewed
+    before it is built: a gate over every queue, a `stage N` gate only for a
+    queue that opens a stage (one of its items is on stage N and no stage N
+    item is in an earlier queue file), or none, leaving the plan to the
+    queue's PR. Gates the roadmap declares apply whatever it says.
+  - **`aide queue gate NNN [--through MMM]`** raises that gate. The planner
+    typed the row from prose before; the verb reads the setting and the
+    documents, writes the §1 shape (`Queue NNN plan reviewed before build`,
+    the Gate text #300 used, so IDs already raised stay stable; `Queues
+    NNN–MMM …` for a maintenance and stage queue pair; `Stage N plan
+    reviewed before build` under `"stage"`), appends it to `## Human gates`
+    (creating the section when a project deleted it), commits it like every
+    document verb, and prints each ID. A Gate cell already in the table is
+    never written twice. Exit 0 raised / already raised / nothing to raise;
+    1 refused; 2 usage.
+  - **`aide check` errors** on either key holding anything else — a value
+    the engine acts on unattended.
+  - **`/aide-run-roadmap`**: at queue end it marks the PR ready, then asks
+    `queue start <next> --base <prefix>queue-N --dry-run`; exit 3 stops as
+    before, exit 0 triages the inbox, starts the next queue on the stack,
+    runs the planner (which raises the gate with the verb), pushes, and opens
+    the draft PR **against the queue below** (`gh pr create --draft --base
+    …`, still `ask`-gated). A raised gate stops for the pre-build review; none
+    goes straight on to build. Before building, every stack branch's PR is
+    read with `gh` (a closed one stops the run and names the orphaned stack)
+    and `aide queue restack` runs (a conflict stops). After a lower PR
+    merges, restack runs before `gc --merged`, and an upper PR still based on
+    the merged branch is retargeted with `gh pr edit --base main` — `ask`-
+    gated, reported rather than stalled on. A corrective 📋 item a person
+    adds to a lower queue's PR is built **on that lower branch**, which is
+    then restacked up: on the upper branch the live queue would be the
+    reopened lower one, and the fix would land in the wrong PR.
+  - **Contract text:** §1 → human gates gains the taxonomy (a gate row and a
+    framework edit are serial by nature; the queue-end merge is serial only
+    up to the cap and never a row) and the plan gate's verb and frequency,
+    with a Rationale bullet that approved plan-gate rows stay in the table
+    as the record — `"stage"` and `"none"` raise fewer. §1 → `queue-NNN.md`
+    keeps "one queue is live at a time": an unmerged queue below the live one
+    is a batch awaiting review, not a second live queue. §4 states the cap,
+    the one-stack shape and bottom-up building. `queue-planner`,
+    `aide-create-queue`, `aide-human-gates` and `aide-queue-and-inbox` call
+    or describe the verb, with their pins moved in both directions.
+  - `docs/vision.md`'s *Not autonomous end to end* says relaxing *when* a
+    gate is reviewed is in scope and removing it is not.
+
+  `aide queue -h` states the mechanism, pinned in `test_aide_help_pins.py`.
+  **`AGENT-CONTEXT.md`'s verb list names `queue gate`**, so the always-on
+  floor moves from 9,136 to 9,141 content bytes. **What a consumer edits:**
+  nothing — both keys default to today's behaviour and `--update` never
+  touches `aide.toml`. To opt in, add `max_open_queues = 2` (or more) and,
+  if wanted, `plan_review = "stage"` or `"none"` under `[loop]`; a new
+  install's scaffold carries both keys with a comment. One thing is newly
+  refused at the default: a checkout still holding a queue branch whose PR
+  merged but whose `main` has not been pulled (or, on git older than 2.38,
+  whose PR was squash-merged, or one started before 2.14.0 that `main` took
+  by fast-forward) counts that branch as unmerged, so `queue start`
+  exits 3 until `main` is updated or the branch is collected
+  (`aide gc --merged --yes`).
+
 ## [2.14.0] — 2026-09-27
 
 ### Added

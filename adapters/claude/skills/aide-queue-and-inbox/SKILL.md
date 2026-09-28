@@ -54,6 +54,8 @@ paths:
      - Item numbers are **globally sequential across all queues** — never
        restart
      - One queue is live at a time, deliberately
+     - The loop builds one queue at a time
+     - is a batch awaiting review, not a second live queue
      - Concurrent live queues — not offered
      - Write it as independence, not as "run alongside"
 -->
@@ -105,7 +107,10 @@ derived state. Never type the stamp by hand; run the verb.
 **Work items as `### Item NNN: Short Title` + a description paragraph.** Item
 numbers are **globally sequential across all queues** — never restart.
 
-**One queue is live at a time, deliberately.** Item independence *within* a
+**One queue is live at a time, deliberately.** The loop builds one queue at
+a time; an unmerged queue below the live one — built out, its PR awaiting
+review, the live queue stacked on its branch (§4) — is a batch awaiting
+review, not a second live queue. Item independence *within* a
 queue is real — `aide claim` offers any unblocked item, so say it freely — and
 so is stage independence, a scheduling fact that tells a planner two stages may
 be queued in either order. Write it as independence, not as "run alongside":
