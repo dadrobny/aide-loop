@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 _MODULE_PATH = Path(__file__).resolve().parents[1] / "aide.py"
 _spec = importlib.util.spec_from_file_location("aide_cli_gates", _MODULE_PATH)
 aide = importlib.util.module_from_spec(_spec)
@@ -548,6 +550,127 @@ def test_stage_section_separates_absent_from_empty():
     assert aide.stage_item_numbers(lines, "99") == []
     assert aide.stage_section(lines, "2") is not None
     assert aide.stage_section(lines, "99") is None
+
+
+# --------------------------------------------------------------------------- #
+# `stage N+` and `stage N–M` — a reach over a run of stages (issue #304)
+# --------------------------------------------------------------------------- #
+def _lines_with_stages(rows: str, *extra: str):
+    """Stage 1 (items 027, 028) plus one extra stage section per *extra*,
+    each ``"<number>:<bullet>"``."""
+    text = _progress(rows)
+    for spec in extra:
+        num, bullet = spec.split(":", 1)
+        text += (f"\n## Stage {num} — S{num} — 📋\n\n**Deliverables.**\n"
+                 f"- 📋 {bullet}\n\n**Acceptance.**\n- [ ] S{num} works.\n")
+    return text.splitlines()
+
+
+def _gate(blocks: str):
+    return aide.human_gates(_lines(f"| G | {blocks} | ⏳ Awaiting | — |"))[0]
+
+
+@pytest.mark.parametrize("cell, rng, reach", [
+    ("stage 2+", (2, None), "stage 2+"),
+    ("Stages 02 +", (2, None), "stage 2+"),
+    ("stage 2–4", (2, 4), "stage 2–4"),
+    ("stage 2-4", (2, 4), "stage 2–4"),
+    ("STAGES 002 - 04", (2, 4), "stage 2–4"),
+    ("stage 3–3", (3, 3), "stage 3"),
+    ("stage 03-3", (3, 3), "stage 3"),
+    ("stage 4–2", (4, 2), "stage 4–2"),
+    ("stage 2", (2, 2), "stage 2"),
+])
+def test_stage_range_forms_parse_and_print_normalised(cell, rng, reach):
+    g = _gate(cell)
+    assert g.stage_range == rng and g.reach == reach
+    assert g.blocks == [] and g.blocks_all is False
+
+
+@pytest.mark.parametrize("cell", ["stage 6+", "stage 6-8", "stage 8-6", "stages 6–8"])
+def test_a_stage_range_is_never_read_as_item_numbers(cell):
+    """`stage 6-8` must not fall through to the item reader and become items
+    6–8, nor a reversed range become items 8 and 6."""
+    assert _gate(cell).blocks == []
+
+
+def test_an_open_stage_reach_holds_its_stage_and_every_later_one():
+    rows = "| G | stage 2+ | ⏳ Awaiting | — |"
+    lines = _lines_with_stages(rows, "2:B. *(Item 040)*", "5:C. *(Item 050)*")
+    blocked, everything = aide.gate_blocked_items(lines)
+    assert blocked == {40, 50} and everything == []
+
+
+def test_after_is_by_stage_number_not_document_order():
+    """Stage 5 written above stage 2 is still after it; stage 1 written last
+    is still before it."""
+    text = _progress("| G | stage 2+ | ⏳ Awaiting | — |")
+    head, stage1 = text.split("## Stage 1 — Rules", 1)
+    lines = (head + "## Stage 5 — S5 — 📋\n\n**Deliverables.**\n- 📋 C. *(Item 050)*\n\n"
+             + "## Stage 2 — S2 — 📋\n\n**Deliverables.**\n- 📋 B. *(Item 040)*\n\n"
+             + "## Stage 1 — Rules" + stage1).splitlines()
+    assert aide.gate_blocked_items(lines)[0] == {40, 50}
+
+
+def test_a_closed_stage_range_holds_inside_and_releases_outside():
+    rows = "| G | stage 1–2 | ⏳ Awaiting | — |"
+    lines = _lines_with_stages(rows, "2:B. *(Item 040)*", "3:C. *(Item 050)*")
+    assert aide.gate_blocked_items(lines)[0] == {27, 28, 40}
+
+
+def test_a_reversed_stage_range_holds_nothing():
+    lines = _lines_with_stages("| G | stage 2–1 | ⏳ Awaiting | — |", "2:B. *(Item 040)*")
+    assert aide.gate_blocked_items(lines)[0] == set()
+
+
+def test_check_names_a_reversed_range_and_how_to_write_it():
+    lines = _lines_with_stages("| G | stage 2–1 | ⏳ Awaiting | — |", "2:B. *(Item 040)*")
+    (w,) = aide.gate_warnings(lines)
+    assert "reversed range" in w and "holds NOTHING" in w and "stage 1–2" in w
+
+
+def test_check_names_a_reversed_range_on_a_declined_gate_too():
+    (w,) = aide.gate_warnings(_lines("| G | stage 2–1 | ❌ Declined (2026-09-28) | no |"))
+    assert "reversed range" in w
+
+
+def test_an_open_reach_with_no_stage_yet_is_armed_not_a_typo():
+    """`stage 9+` before stage 9 is written is the form's purpose."""
+    (w,) = aide.gate_warnings(_lines("| G | stage 9+ | ⏳ Awaiting | — |"))
+    assert "holds NOTHING" not in w and "check the stage" not in w
+    assert "will block" in w and "stage 9+" in w
+
+
+def test_an_open_reach_over_unqueued_stages_is_armed():
+    lines = _lines_with_stages("| G | stage 2+ | ⏳ Awaiting | — |",
+                               "2:B. Nothing queued yet.")
+    (w,) = aide.gate_warnings(lines)
+    assert "no items queued yet" in w and "holds NOTHING" not in w
+
+
+def test_a_closed_range_naming_no_stage_is_the_typo_warning():
+    (w,) = aide.gate_warnings(_lines("| G | stage 7–9 | ⏳ Awaiting | — |"))
+    assert "holds NOTHING" in w and "check the stage numbers" in w
+
+
+def test_a_closed_range_over_real_unqueued_stages_is_armed():
+    lines = _lines_with_stages("| G | stage 2–4 | ⏳ Awaiting | — |",
+                               "3:B. Nothing queued yet.")
+    (w,) = aide.gate_warnings(lines)
+    assert "no items queued yet" in w and "holds NOTHING" not in w
+
+
+def test_check_counts_what_a_stage_range_holds():
+    lines = _lines_with_stages("| G | stage 1+ | ⏳ Awaiting | — |", "4:B. *(Item 040)*")
+    (w,) = aide.gate_warnings(lines)
+    assert "stage 1+ — holding 3 item(s): 027, 028, 040" in w
+
+
+def test_the_claim_stall_names_a_stage_range_reach(tmp_path: Path, capsys):
+    repo = _repo(tmp_path, "| Milestone | stage 1+ | ⏳ Awaiting | — |")
+    assert aide.main(["--repo", str(repo), "claim", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "blocks stage 1+ — holding 027, 028" in out
 
 
 def test_a_malformed_row_with_an_empty_first_cell_is_still_reported():

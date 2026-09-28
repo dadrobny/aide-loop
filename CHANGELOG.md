@@ -121,6 +121,29 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.16.0] — 2026-09-28
+
+### Added
+
+- **A human gate can reach a stage and everything after it, or a run of
+  stages: `stage N+` and `stage N–M` in the `Blocks` cell (issue #304).**
+  `stage N` reached one stage, so holding every stage from a milestone on took
+  a row per stage, and a stage added to the roadmap later was not covered;
+  `all` also held the stages before the milestone. `stage N+` reaches stage N
+  and every stage numbered after it, resolved through `progress.md` on every
+  read like `stage N`, so a stage written after the gate was raised is held
+  the moment it names an item. `stage N–M` reaches stages N to M. Both accept
+  `stage` or `stages`, any case, an en dash or a hyphen with or without spaces,
+  and zero-padding. "After" is by stage number, not by the stage's position in
+  `progress.md`. `aide claim` refuses the reached items and names the gate;
+  `aide gate list`, `aide status`, the claim stall report and `aide check`
+  print the reach as `stage 6+` / `stage 6–8`. `aide check` warns on a
+  `stage N+` that holds nothing yet as armed rather than a typo, on a
+  `stage N–M` none of whose stages exists as a typo (`check the stage
+  numbers`), and on a reversed range (`stage 8–6`) as holding nothing. §1 →
+  human gates, the `aide-human-gates` skill and the `progress.md` template's
+  guidance line list the new forms; no document needs editing to update.
+
 ## [2.15.2] — 2026-09-28
 
 ### Fixed

@@ -40,7 +40,8 @@ paths:
      - A row of any other width is not read as a gate at all
      - until it is fixed `aide claim` holds **every** item
      - **Blocks** — item numbers (any §1 reference form, or bare: `106`,
-       `110, 111`, `106–108`), `stage N`, or `all`
+       `110, 111`, `106–108`), `stage N`, `stage N+`, `stage N–M`, or `all`
+     - "After" is by stage number, never by position in `progress.md`
      - `⏳ Awaiting`, then `✅ Approved (date)` or `❌ Declined (date)`
      - Reach is per gate, and never a queue
      - The person raising the gate chooses the reach
@@ -82,12 +83,16 @@ since what the row blocks is unknown):
 ```
 
 **Blocks** — item numbers (any §1 reference form, or bare: `106`, `110, 111`,
-`106–108`), `stage N`, or `all`. **Status** — `⏳ Awaiting`, then
-`✅ Approved (date)` or `❌ Declined (date)`. **Reach is per gate, and never a
-queue**: exactly those items when the decision affects one thread and the
-queue keeps producing other work; `stage N` when the decision could
-*invalidate* a stage's work (resolved live through `progress.md`); `all` for a
-programme-level stop. The person raising the gate chooses the reach.
+`106–108`), `stage N`, `stage N+`, `stage N–M`, or `all`. **Status** —
+`⏳ Awaiting`, then `✅ Approved (date)` or `❌ Declined (date)`. **Reach is per
+gate, and never a queue**: exactly those items when the decision affects one
+thread and the queue keeps producing other work; `stage N` when the decision
+could *invalidate* a stage's work; `stage N+` for that stage and every one
+numbered after it, a stage added later included — everything from a milestone
+on, where `all` would also hold the stages before it; `stage N–M` for a bounded
+run of stages; `all` for a programme-level stop. Every stage reach resolves
+live through `progress.md`, and "after" is by stage number, never by position
+in `progress.md`. The person raising the gate chooses the reach.
 
 A gate known at planning time is stated in the `roadmap.md` stage and implies
 `Blocks: stage N`; one discovered while specifying an item is noted in its
