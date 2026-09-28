@@ -1522,6 +1522,15 @@ def test_a_landed_first_queue_no_longer_counts(aide, consumer: Path):
     assert _recorded_base(aide, consumer, Q2) == "main"
 
 
+def test_a_plan_gate_outside_git_is_written_and_exits_0(
+        aide, consumer: Path):
+    """No `.git` is no commit to fail: the row is kept, not put back."""
+    (consumer / ".git").rename(consumer / "git-set-aside")
+    assert _queue_gate(aide, consumer, 1) == 0
+    (gate,) = _gates(aide, consumer)
+    assert gate.text == "Queue 001 plan reviewed before build"
+
+
 def test_plan_review_queue_raises_one_gate_over_the_queue_s_items(
         aide, consumer: Path):
     before = _sha(consumer, "HEAD")
