@@ -488,17 +488,45 @@ def test_gate_without_a_progress_file_is_refused(tmp_path: Path):
     assert _head(repo) == head
 
 
-def test_gate_whose_commit_fails_exits_one_with_the_row_left_written(
+def test_gate_whose_commit_fails_changes_nothing_and_a_retry_commits(
         tmp_path: Path):
     """A held index lock is a commit failure on every platform — no hook,
-    no executable bit, no shell."""
+    no executable bit, no shell. The failed run leaves progress.md exactly
+    as it was (bytes, so CRLF would show), and the re-run after the lock is
+    released raises and commits the gate rather than calling it raised."""
     repo = _init(tmp_path / "r")
-    head = _head(repo)
+    path = repo / "docs" / "aide" / "progress.md"
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    # Repo-local, so a runner's global autocrlf cannot rewrite either side.
+    _git(["config", "core.autocrlf", "false"], repo)
+    _git(["commit", "-am", "crlf"], repo)
+    before, head = path.read_bytes(), _head(repo)
     lock = repo / ".git" / "index.lock"
     lock.write_bytes(b"")
     try:
         assert _gate(repo, 1) == 1
+        assert path.read_bytes() == before
+        assert _head(repo) == head
     finally:
         lock.unlink()
-    assert _head(repo) == head
-    assert "Queue 001 plan reviewed before build" in _progress(repo)
+    assert _clean(repo)
+
+    assert _gate(repo, 1) == 0
+    assert _head(repo) != head and _clean(repo)
+    committed = _git(["show", "HEAD:docs/aide/progress.md"], repo).stdout
+    assert "Queue 001 plan reviewed before build" in committed
+
+
+def test_the_cap_refusal_in_local_mode_names_a_local_merge_and_it_clears(
+        tmp_path: Path, capsys):
+    """No origin, no PR: a queue lands when a person merges it into
+    main_branch here, and `git pull` would fail for want of an upstream."""
+    repo = _init(tmp_path / "r")          # mode = "local", no remote
+    assert _start(repo, 1) == 0
+    _work(repo, "q1.txt")
+    assert _start(repo, 2, "--dry-run") == 3
+    err = capsys.readouterr().err
+    assert "git merge" in err and "git pull" not in err
+    _git(["switch", "main"], repo)
+    _git(["merge", "--no-ff", "--no-edit", Q1], repo)
+    assert _start(repo, 2, "--dry-run") == 0

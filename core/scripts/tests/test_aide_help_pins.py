@@ -1427,10 +1427,14 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # The cap refusal's remedies, each followed by a test until the
         # refusal clears (PR #308 review: `restack` was printed as one, and
         # has no stack to read when only main is behind).
+        # `remedy` branches on `mode != "local" and _has_origin`.
         ("A branch whose PR merged counts until this checkout's main_branch "
-         "holds its work, so updating main_branch from origin is what "
-         "clears it",
+         "holds its work, so updating main_branch is what clears it: a pull "
+         "from origin where there is one",
          "test_aide_queue_stack::test_a_pr_merged_on_origin_clears_once_main_is_updated_from_origin"),
+        ("and in local mode or with no origin, merging the queue branch into "
+         "main_branch",
+         "test_aide_queue_stack::test_the_cap_refusal_in_local_mode_names_a_local_merge_and_it_clears"),
         ("one git cannot judge is cleared by `aide gc --merged --yes` if it "
          "landed, or by `aide queue restack NNN --base main_branch`, which "
          "records its start, if it is open",
@@ -1471,7 +1475,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_queue_stack::test_a_queue_listing_no_items_is_refused",
           "test_aide_queue_stack::test_gate_without_a_progress_file_is_refused",
           "test_aide_queue_stack::test_an_unusable_plan_review_refuses_and_fails_the_check",
-          "test_aide_queue_stack::test_gate_whose_commit_fails_exits_one_with_the_row_left_written")),
+          "test_aide_queue_stack::test_gate_whose_commit_fails_changes_nothing_and_a_retry_commits")),
+        # `ppath.write_bytes(original)` when HEAD did not move.
+        ("where no commit was made, progress.md is put back byte for byte, "
+         "so a re-run raises and commits the gate",
+         "test_aide_queue_stack::test_gate_whose_commit_fails_changes_nothing_and_a_retry_commits"),
         # `_queue_restack` reads `_recorded_branch_base` for every
         # `_is_stack_branch`, which matches `queue-NNN` and not `specs-queue-`.
         ("The stack is read from the base each queue branch recorded at "

@@ -8741,14 +8741,24 @@ def _queue_start(args: argparse.Namespace) -> int:
         unmerged = _unmerged_queue_branches(repo_root, config)
         if len(unmerged) >= cap:
             unsure = sorted(b for b, v in unmerged.items() if v is None)
+            # Where a queue lands decides the remedy: through a PR into
+            # origin's main_branch, which a pull brings here — or, in local
+            # mode or with no origin, by a person merging it into this
+            # checkout's main_branch, where there is nothing to pull.
+            if mode != "local" and _has_origin(repo_root):
+                remedy = (f"once a PR merges, update {main} from origin "
+                          f"('git switch {main}', then 'git pull')")
+            else:
+                remedy = (f"with no origin to pull from, a queue lands when "
+                          f"it is merged into {main} here ('git switch "
+                          f"{main}', then 'git merge <its branch>')")
             print(f"aide queue start: "
                   f"{_plural(len(unmerged), 'queue branch is', 'queue branches are')} "
                   f"unmerged ({', '.join(sorted(unmerged))}) and [loop] "
                   f"max_open_queues is {cap}, so {branch} would exceed it. A "
                   f"queue branch counts until its work has landed in this "
-                  f"checkout's {main}: once a PR merges, update {main} from "
-                  f"origin ('git switch {main}', then 'git pull') and start "
-                  f"again. Nothing was started."
+                  f"checkout's {main}: {remedy}, and start again. Nothing "
+                  f"was started."
                   + (f" Git cannot tell whether {', '.join(unsure)} landed "
                      f"(no start is recorded): if it did, delete it with "
                      f"'aide gc --merged --yes'; if it is open, record its "
@@ -8860,6 +8870,8 @@ def _queue_gate(args: argparse.Namespace) -> int:
 
     present = {gate_hash(g) for g in human_gates(lines)}
     new = [r for r in rows if key(r[0]) not in present]
+    original = ppath.read_bytes()
+    head = _rev(repo_root, "HEAD")
     if new:
         text = add_gate_rows(text, new)
         ppath.write_text(text, encoding="utf-8")
@@ -8874,8 +8886,22 @@ def _queue_gate(args: argparse.Namespace) -> int:
         failure = _commit_docs_files(
             repo_root, config, f"docs(aide): plan gate for {what}", [rel])
         if failure and failure != "nothing to commit":
-            print(f"{tag}: the gate row is written to progress.md but not "
-                  f"committed — {failure}", file=sys.stderr)
+            if _rev(repo_root, "HEAD") == head:
+                # No commit was made, so nothing is kept: a row left written
+                # and uncommitted reads as "already raised" to a re-run, which
+                # would then never commit it, and the dirty file stops
+                # `aide sync` with nothing naming this verb. The file's own
+                # bytes go back, line endings and all.
+                ppath.write_bytes(original)
+                print(f"{tag}: the gate row could not be committed — "
+                      f"{failure}. progress.md is as it was; re-run once "
+                      f"that is fixed.", file=sys.stderr)
+            else:
+                # The commit exists and replaying it onto origin stopped:
+                # the tree is mid-rebase, and the message above names how
+                # to finish it. The row is in that commit.
+                print(f"{tag}: the gate row is committed, but {failure}",
+                      file=sys.stderr)
             return 1
     return 0
 
@@ -13594,7 +13620,9 @@ def build_parser() -> argparse.ArgumentParser:
             "[loop] max_open_queues (default 1) queue branches are already "
             "unmerged, naming them and the key. A branch whose PR merged "
             "counts until this checkout's main_branch holds its work, so "
-            "updating main_branch from origin is what clears it; one git "
+            "updating main_branch is what clears it: a pull from origin "
+            "where there is one, and in local mode or with no origin, "
+            "merging the queue branch into main_branch; one git "
             "cannot judge is cleared by `aide gc --merged --yes` if it "
             "landed, or by `aide queue restack NNN --base main_branch`, which "
             "records its start, if it is open. Below the cap, while any "
@@ -13630,7 +13658,9 @@ def build_parser() -> argparse.ArgumentParser:
             "other row is left as it is. Exit 0: "
             "raised, already raised, or nothing to raise. 1: a queue file "
             "missing or listing no items, no progress.md, an invalid "
-            "plan_review, or a failed commit. 2: usage.\n"
+            "plan_review, or a failed commit — where no commit was made, "
+            "progress.md is put back byte for byte, so a re-run raises and "
+            "commits the gate. 2: usage.\n"
             "\n"
             "restack keeps a stack of queue branches consistent: main_branch "
             "<- <prefix>queue-N <- <prefix>queue-M <- ..., each started with "
