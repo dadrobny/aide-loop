@@ -121,7 +121,9 @@ python .aide/scripts/aide.py {check, scope, progress, gate, queue, insights, led
 - **sync** — session preflight: fetch, clean-tree check, land on the right branch.
 - **gc** — delete claim branches whose work has landed (dry-run by default).
 - **status** — one-call roadmap-state report: branch + divergence, derived queue
-  states, claim branches, open PRs (best effort).
+  states, claim branches, the stack of unmerged queue branches with their PR
+  states, whether the loop is *runnable* and whether PRs *await review* — two
+  facts, not one — and open PRs (best effort, saying so when it could not look).
 
 This invocation is identical across providers and implementation-agnostic — a future
 compiled `aide` binary exposing the same subcommands is a drop-in substitution with

@@ -149,6 +149,17 @@ queue again, so a claim on an upper branch would take the item and land it
 in the upper's PR. It is built on the lower queue's own branch instead, and
 restacked forward from there.
 
+**`aide status` reports the stack, and keeps two facts apart.** It prints
+each unmerged queue branch bottom first — its base, its PR's state where the
+forge can be asked, whether the branch below has moved since the last
+restack, and whether a PR below it was closed without merging, which orphans
+it — then **runnable** (the loop has work it could start) and **awaiting
+review** (a queue PR is open and marked ready — a draft is the loop's own
+PR still being built) on lines of their own. A repo can be both. A
+caller deciding whether the loop is blocked reads those two lines rather than
+its own reading of the branches, and takes "could not look" as an answer of
+its own, never as "no PR". `aide status -h` states each field and value.
+
 ### Rationale
 
 - **Why `local` is stated apart from the landing modes.** The opener used to
@@ -279,6 +290,19 @@ restacked forward from there.
   already trusts before a force-delete. That a PR was closed unmerged is not:
   the branch simply stays, so the caller that can read PRs checks, and the
   verb does not guess.
+- **Why runnable and awaiting review are two facts.** At a cap of 1 an open
+  queue PR meant the loop was blocked; above it the loop builds while PRs
+  wait, so one "blocked" state misreports both halves (#258). The roadmap
+  command's stop table and a scheduler polling for readiness (#257) would
+  each define "blocked" in their own prose and drift, so the engine derives
+  it once and both read it (#303). "Could not look" stays apart from "no PR"
+  because a caller that reads a missing `gh` as an empty review queue
+  relaunches into a blocked repo.
+- **Why orphaning is reported by `status`, not `restack`.** `restack` reads
+  git only, and a PR closed without merging leaves nothing git can see. The
+  forge is asked in the one place that reads it best effort already, and a
+  lower git says landed is never called orphaned, whatever its PR says —
+  content stays git's to judge.
 - **Why these merge styles may land a branch.** Measured in the fixture:
   after a squash merge `main_branch` holds the bottom's changes as one commit
   while the branch above holds the originals, so git's own merge base is the

@@ -1754,6 +1754,94 @@ def test_check_fails_on_an_unusable_loop_value(aide, consumer: Path, key, value)
 
 
 # --------------------------------------------------------------------------- #
+# status — the stack, runnable and awaiting review (issue #303)
+# --------------------------------------------------------------------------- #
+def _forge(aide, monkeypatch, prs: dict) -> None:
+    """The installed engine asks `gh` through `_gh` alone; stand in for it,
+    so no test reaches a network and every platform answers alike."""
+    def fake(repo_root, args):
+        if "--head" in args:
+            return json.dumps(prs.get(args[args.index("--head") + 1], [])), None
+        return "", None
+    monkeypatch.setattr(aide, "_gh", fake)
+
+
+def _stack_read(aide, repo: Path, capsys) -> dict:
+    """`status`'s stack lines and two facts, read by their field grammar."""
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "status", "--no-fetch"]) == 0
+    read: dict = {"stack": []}
+    for line in capsys.readouterr().out.splitlines():
+        line = line.strip()
+        if line.startswith("stack ") and ": " in line:
+            name, *fields = line.partition(": ")[2].split()
+            read["stack"].append((name, dict(f.split("=", 1) for f in fields)))
+        elif line.startswith("runnable: "):
+            read["runnable"] = line.split()[1]
+        elif line.startswith("awaiting review: "):
+            read["awaiting"] = line.split()[2]
+    return read
+
+
+def test_status_reads_a_one_queue_stack(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys):
+    _to_pr_mode_with_origin(consumer, tmp_path)
+    assert _start(aide, consumer, 1) == 0
+    _forge(aide, monkeypatch, {Q1: [{"number": 3, "state": "OPEN"}]})
+    read = _stack_read(aide, consumer, capsys)
+    assert read["stack"] == [(Q1, {"base": "main", "pr": "#3/open",
+                                   "lower": "-", "orphaned": "no"})]
+    # Item 001 is 📋 on the live queue: work to do and a PR in review at once.
+    assert (read["runnable"], read["awaiting"]) == ("yes", "yes")
+
+
+def test_status_reads_a_draft_queue_pr_as_no_review_awaited(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys):
+    """The loop's own queue PR is a draft until Queue end marks it ready."""
+    _to_pr_mode_with_origin(consumer, tmp_path)
+    assert _start(aide, consumer, 1) == 0
+    _forge(aide, monkeypatch, {Q1: [{"number": 3, "state": "OPEN",
+                                     "isDraft": True}]})
+    read = _stack_read(aide, consumer, capsys)
+    assert read["stack"][0][1]["pr"] == "#3/draft"
+    assert (read["runnable"], read["awaiting"]) == ("yes", "no")
+
+
+def test_status_reads_a_two_queue_stack_bottom_first(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys):
+    _to_pr_mode_with_origin(consumer, tmp_path)
+    _queue_stack(aide, consumer)
+    _forge(aide, monkeypatch, {Q1: [{"number": 3, "state": "OPEN"}]})
+    read = _stack_read(aide, consumer, capsys)
+    assert [(n, f["base"], f["pr"], f["lower"]) for n, f in read["stack"]] == [
+        (Q1, "main", "#3/open", "-"), (Q2, Q1, "none", "current")]
+
+
+def test_status_reads_a_moved_lower_branch(aide, consumer: Path, capsys):
+    _queue_stack(aide, consumer)
+    _git(["switch", Q1], consumer)
+    (consumer / "src" / "review.txt").write_text("edit\n", encoding="utf-8")
+    _commit(consumer, "review edit")
+    read = _stack_read(aide, consumer, capsys)
+    assert dict(read["stack"])[Q2]["lower"] == "moved"
+    assert _restack(aide, consumer) == 0
+    assert dict(_stack_read(aide, consumer, capsys)["stack"])[Q2]["lower"] == "current"
+
+
+def test_status_reads_an_orphaned_branch_and_the_loop_is_not_runnable(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys):
+    _to_pr_mode_with_origin(consumer, tmp_path)
+    _queue_stack(aide, consumer)
+    _forge(aide, monkeypatch, {Q1: [{"number": 3, "state": "CLOSED"}],
+                               Q2: [{"number": 4, "state": "OPEN"}]})
+    read = _stack_read(aide, consumer, capsys)
+    stack = dict(read["stack"])
+    assert stack[Q1]["pr"] == "#3/closed" and stack[Q1]["orphaned"] == "no"
+    assert stack[Q2]["orphaned"] == "yes"
+    assert (read["runnable"], read["awaiting"]) == ("no", "yes")
+
+
+# --------------------------------------------------------------------------- #
 # claim — creates the branch and records its base
 # --------------------------------------------------------------------------- #
 def test_claim_creates_switches_to_and_records_the_branch(aide, consumer: Path):

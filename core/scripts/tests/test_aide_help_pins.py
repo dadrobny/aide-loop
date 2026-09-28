@@ -1018,6 +1018,78 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_a_profile_that_outlives_its_timeout_is_not_satisfied",
           "test_aide_capabilities::"
           "test_a_profile_whose_interpreter_cannot_start_is_not_satisfied")),
+        # `queue_stack_facts` (issue #303): `_unmerged_queue_branches`,
+        # ordered by `depth` along recorded bases.
+        ("The stack of unmerged queue branches — the ones `aide queue "
+         "start` counts against [loop] max_open_queues — is printed "
+         "bottom first",
+         ("test_aide_status_stack::test_a_two_queue_stack_is_printed_bottom_first",
+          "test_aide_status_stack::test_a_landed_lower_reads_landed_and_never_orphans")),
+        ("base= is the branch's recorded base, ? where none is recorded",
+         ("test_aide_status_stack::test_a_two_queue_stack_is_printed_bottom_first",
+          "test_aide_status_stack::test_a_branch_with_no_recorded_base_reads_unknown")),
+        # `_branch_pr`: `isDraft` asked for, an OPEN draft is "draft"; open
+        # or draft wins, else `max(found)`; `prs[b] = "unknown"` once `_gh`
+        # fails; `look = mode != "local"`.
+        ("pr= is its pull request as #N/open, #N/draft (open but not yet "
+         "marked ready), #N/merged or #N/closed (an open or draft one first, "
+         "else the newest), none where gh found none, unknown "
+         "where gh could not be asked, and - in local mode, which asks no forge",
+         ("test_aide_status_stack::test_a_reopened_pr_is_answered_by_its_open_one",
+          "test_aide_status_stack::test_a_merged_pr_alone_reads_merged_and_orphans_nothing",
+          "test_aide_status_stack::test_a_draft_reads_draft_and_awaits_no_review_until_marked_ready",
+          "test_aide_status_stack::test_a_draft_is_preferred_over_a_closed_pr_and_orphans_nothing",
+          "test_aide_status_stack::test_the_forge_is_asked_whether_a_pr_is_a_draft",
+          "test_aide_status_stack::test_a_two_queue_stack_is_printed_bottom_first",
+          "test_aide_status_stack::test_could_not_look_is_unknown_and_never_none",
+          "test_aide_status_stack::test_local_mode_asks_no_forge_about_the_stack")),
+        # `lower_state`: `_is_ancestor(newest(base), newest(b))`, origin's
+        # tip where it is ahead.
+        ("lower= is moved when the queue branch below has commits this one "
+         "lacks, so `aide queue restack` is due, and current when it has none",
+         ("test_aide_status_stack::test_a_lower_with_commits_the_upper_lacks_reads_moved_until_restacked",
+          "test_aide_status_stack::test_a_lower_moved_on_origin_reads_moved")),
+        ("landed or gone when the recorded lower is no longer unmerged and is "
+         "still a branch, or is not",
+         ("test_aide_status_stack::test_a_landed_lower_reads_landed_and_never_orphans",
+          "test_aide_status_stack::test_a_closed_and_deleted_lower_still_orphans_the_branch_above")),
+        # `orphaned`: the walk down recorded bases, `break` on a landed lower.
+        ("orphaned= is yes when a PR below it in the stack was closed without "
+         "merging, and a lower git says landed never orphans",
+         ("test_aide_status_stack::test_a_closed_lower_orphans_every_branch_above_and_stops_the_loop",
+          "test_aide_status_stack::test_a_closed_and_deleted_lower_still_orphans_the_branch_above",
+          "test_aide_status_stack::test_a_landed_lower_reads_landed_and_never_orphans")),
+        ("unknown when one below it could not be looked up or has no "
+         "recorded base; - in local mode",
+         ("test_aide_status_stack::test_could_not_look_is_unknown_and_never_none",
+          "test_aide_status_stack::test_a_branch_with_no_recorded_base_reads_unknown",
+          "test_aide_status_stack::test_local_mode_asks_no_forge_about_the_stack")),
+        # `runnable` in `queue_stack_facts`: closed/orphaned first, then
+        # `live_work` (📋/🚧 only), then `len(branches) < cap`.
+        ("runnable: is no when a queue PR in the stack was closed without "
+         "merging or a branch is orphaned; otherwise yes when the live queue "
+         "has a \U0001f4cb or \U0001f6a7 item or the stack is below [loop] "
+         "max_open_queues, and no when neither",
+         ("test_aide_status_stack::test_a_closed_lower_orphans_every_branch_above_and_stops_the_loop",
+          "test_aide_status_stack::test_live_work_is_runnable_while_prs_await_review",
+          "test_aide_status_stack::test_with_no_live_work_runnable_is_room_below_the_cap",
+          "test_aide_status_stack::test_an_item_awaiting_review_is_not_live_work")),
+        # `awaiting` in `queue_stack_facts`: `/open` only, never `/draft`.
+        ("awaiting review: is yes when a queue branch's PR is open and ready "
+         "for review — a draft is the loop's own PR still being built, and "
+         "counts for nothing — unknown when none was seen ready but gh could "
+         "not be asked, and no otherwise — in local mode always",
+         ("test_aide_status_stack::test_live_work_is_runnable_while_prs_await_review",
+          "test_aide_status_stack::test_a_draft_reads_draft_and_awaits_no_review_until_marked_ready",
+          "test_aide_status_stack::test_could_not_look_is_unknown_and_never_none",
+          "test_aide_status_stack::test_an_empty_stack_awaits_no_review_without_asking",
+          "test_aide_status_stack::test_local_mode_asks_no_forge_about_the_stack")),
+        # `_gh` returns a reason on every failure; the open-PR block prints it.
+        ("The open-PR list says it could not look, and gh's reason, rather "
+         "than going silent",
+         ("test_aide_status_stack::test_could_not_look_is_unknown_and_never_none",
+          "test_aide_status_stack::test_gh_missing_from_path_is_a_reason",
+          "test_aide_status_stack::test_gh_exiting_non_zero_is_a_reason_naming_the_exit")),
     ],
 
     # ---------------------------------------------------------------- scope --
