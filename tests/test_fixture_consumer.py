@@ -1019,6 +1019,76 @@ def test_a_ledger_row_whose_commit_fails_leaves_no_ledger_behind(
                              consumer).stdout
 
 
+# --------------------------------------------------------------------------- #
+# merge's tick whose commit fails (issue #312)
+# --------------------------------------------------------------------------- #
+def _hold_the_index_during_the_tick(aide, monkeypatch, repo: Path) -> None:
+    """Take `.git/index.lock` around the one commit `merge` makes of its own
+    — the tick's, after the merge itself — so git refuses exactly that one.
+    The installed engine runs in this process, so the committer it calls is
+    wrapped where it lives, and git does the refusing."""
+    real = aide._commit_docs_files
+
+    def held(*args, **kwargs):
+        lock = repo / ".git" / "index.lock"
+        lock.write_bytes(b"")
+        try:
+            return real(*args, **kwargs)
+        finally:
+            lock.unlink()
+
+    monkeypatch.setattr(aide, "_commit_docs_files", held)
+
+
+def _remote_has(repo: Path, ref: str) -> bool:
+    return bool(_git(["ls-remote", "origin", ref], repo).stdout.strip())
+
+
+@pytest.mark.parametrize("mode", ["auto-merge", "local"])
+def test_a_merge_whose_tick_cannot_be_committed_refuses_and_the_re_run_lands(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, mode: str):
+    """The tick used to be best effort: the verb exited 0, pushed the merge to
+    origin without the ✅, the row or the entry, deleted the claim branch a
+    re-run needed, and left the tree dirty for `aide sync`. Now: exit 1,
+    nothing pushed, the claim branch back, the tree clean — and the re-run the
+    message invites lands the item with its row written once."""
+    if mode == "auto-merge":
+        _with_origin(consumer, tmp_path)
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    branch = "aide/001-the-greeter"
+    origin_main = _sha(consumer, "origin/main") if mode != "local" else ""
+    ledger = consumer / "docs" / "aide" / "ledger.md"
+
+    with monkeypatch.context() as patch:
+        _hold_the_index_during_the_tick(aide, patch, consumer)
+        assert aide.main(["--repo", str(consumer), "merge", "1",
+                          "--no-test"]) == 1
+
+    assert _contains(consumer, branch, "main")      # merged, here only
+    assert branch in _branches(consumer)
+    assert _recorded_base(aide, consumer, branch) == "main"
+    assert _item_status(aide, consumer, 1) != "complete"
+    assert not ledger.exists()
+    assert _clean(consumer)
+    if mode != "local":
+        assert _git(["ls-remote", "origin", "main"],
+                    consumer).stdout.split()[0] == origin_main
+        assert _remote_has(consumer, branch)
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--base", "main",
+                      "--no-test"]) == 0
+
+    assert _item_status(aide, consumer, 1) == "complete"
+    assert branch not in _branches(consumer)
+    assert _clean(consumer)
+    assert len(_ledger_rows(aide, consumer)) == 1
+    if mode != "local":
+        assert _git(["ls-remote", "origin", "main"],
+                    consumer).stdout.split()[0] == _sha(consumer, "main")
+        assert not _remote_has(consumer, branch)
+
+
 def test_check_warns_on_a_root_document_missing_its_mandatory_sections(
         aide, consumer: Path, capsys):
     """Issue #86: a vision written free-hand, missing every section its
