@@ -139,7 +139,7 @@ runtime-general and live in `core/conventions.md` §3 — stated there, not
 summarised here; only the **enforcement mechanism** and the **"permission
 allow-list" framing** are adapter-local and documented here.
 
-- **`settings.json`** — the allow/ask policy: a pre-approved **allow-list** (~60
+- **`settings.json`** — the allow/ask policy: a pre-approved **allow-list** (~90
   entries: reads, greps, the safe git verbs, `python .aide/scripts/aide.py …`, scoped
   `Edit`/`Write` under `docs/aide/`, `src/`, `tests/`) and an **ask-list** (~30
   entries gating the irreversible/outward-facing: `git push --force`, `gh pr
