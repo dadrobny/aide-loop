@@ -101,6 +101,21 @@ user's own session on whatever model that session holds. The builder's
 aliases only expresses it as a definition of its own, pinned like every other
 row (the Claude reference's `builder-escalation`).
 
+**A helper a role spawns is outside the pin too** (issue #311). Where a spawned
+agent that declares no model of its own inherits its caller's, a T3 role that
+delegates a search runs the search on T3, and no row of the table says so. An
+adapter therefore makes a helper's model a **deliberate choice at the spawn,
+never an inheritance**, and a role with no work to delegate cannot spawn at
+all. The Claude reference expresses it three ways: `hooks/spawn_model_guard.py`,
+a `PreToolUse` hook on the spawning tool, refuses a spawn made from inside a
+sub-agent that passes no model to a type that pins none — the built-in types
+never do — and its refusal names the model to pass instead; `disallowedTools:
+Agent` removes the spawning tool from `builder`, `builder-escalation`,
+`test-writer`, `validator` and `reviewer`, leaving it to `spec-author`,
+`spec-reviewer` and `queue-planner`; and `settings.json` caps spawn depth at
+two (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), so a helper cannot spawn one of
+its own. The user's own session is untouched by all three.
+
 **Optional definition — the item reviewer.** An adapter **may** express a
 **reviewer** at **T2**, dispatched over one item's diff concurrently with the
 `validator` and gated by a `loop.review` key in `aide.toml` (`"off"` by
@@ -707,6 +722,9 @@ moment at which the ladder above is a question rather than an excavation.
 - [ ] Seven workflow entry-points, each honouring the `conventions.md` document shapes.
 - [ ] Five roles bound to T3/T2 tiers (recon/claim left to `aide claim`).
 - [ ] Three orchestrators (or a manual runbook calling the same `aide.py` steps in order).
+- [ ] *(if a role can spawn a helper)* the helper's model chosen at the spawn,
+      never inherited from the role, and the spawning tool withheld from roles
+      with no work to delegate.
 - [ ] Every mechanical action routed through `python .aide/scripts/aide.py …`.
 - [ ] *(if the runtime has one)* a permission policy enforcing `conventions.md` §3.
 - [ ] *(if the runtime loads an instruction file by default)* a `default-context.json`

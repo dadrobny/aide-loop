@@ -44,11 +44,14 @@ def _current(script: str) -> str:
 
 
 def _as_2_3_0(settings: dict) -> dict:
-    """*settings* with every framework hook as 2.3.0 wrote it, and without the
-    allow entries 2.4.0 added."""
+    """*settings* with every hook 2.3.0 shipped as 2.3.0 wrote it, and without
+    the allow entries 2.4.0 added. A hook a later release registered (2.19.0's
+    spawn guard) is left as the base has it: no release wrote it in an older
+    wrapper, so there is nothing of it to migrate."""
     for hook in install._hook_entries(settings):
         script = hook["command"].rsplit("/", 1)[-1]
-        hook["command"] = _WRAPPER_2_3_0 + f".claude/hooks/{script}"
+        if script in _SCRIPTS:
+            hook["command"] = _WRAPPER_2_3_0 + f".claude/hooks/{script}"
     allow = settings["permissions"]["allow"]
     settings["permissions"]["allow"] = [e for e in allow
                                         if e not in install._MIGRATED_ALLOW]

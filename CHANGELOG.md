@@ -121,6 +121,57 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.19.0] — 2026-09-28
+
+### Added
+
+- **A helper a role spawns runs on a model chosen at the spawn, never on the
+  role's own by inheritance (issue #311).** Every role pins an exact model, but
+  nothing said a role may spawn, which model its helper gets, or how deep
+  spawning goes — and a built-in agent type (`Explore`, `general-purpose`,
+  `Plan`) declares no model and inherits its caller's. One consumer's
+  `spec-author` ran its stale-test sweep through 23 `Explore` helpers, none
+  given a model, so all ran on `claude-opus-5-5`: about 990M cumulative context
+  tokens, the largest single consumer in the session. ADAPTER-SPEC §2 now names
+  a spawned helper beside the orchestrator as outside the role pin, and the
+  Claude adapter closes it three ways:
+  - **`hooks/spawn_model_guard.py`**, a `PreToolUse` hook on `Agent|Task`,
+    denies a spawn made from inside a sub-agent (the payload carries
+    `agent_id`) that passes no `model`, or `inherit`, to a type that pins
+    none. A type pins one when `.claude/agents/<type>.md` — matched by
+    filename — sets a `model:` other than `inherit`; the built-ins, user-level
+    and plugin agents never resolve, and a missing `subagent_type` is
+    `general-purpose`. The refusal tells the role to re-issue the call with
+    `model: "haiku"` for a pure search or read sweep, `"sonnet"` otherwise, and
+    `"opus"` only deliberately. The user's own session carries no `agent_id`
+    and is never touched. Fail-open, like the other guards.
+  - **`disallowedTools: Agent`** on `builder`, `builder-escalation`,
+    `test-writer`, `validator` and `reviewer`, which have nothing to delegate.
+    `spec-author`, `spec-reviewer` and `queue-planner` keep the tool;
+    `test_agent_definitions.py` holds the split in both directions.
+  - **`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=2`** in `settings.json`'s new
+    `env`: main session, role, helper — and a helper cannot spawn. The same
+    file governs the consumer's interactive sessions, so the cap applies
+    there too: a user's own session still spawns, and what it spawns may
+    spawn once more, but no deeper.
+
+  `spec-author`'s step 7 now greps `tests_dir` itself, and names `haiku` for
+  a sweep it does delegate. Probed on Claude Code 2.1.282:
+  `disallowedTools: Agent` removes the tool from the role; the hook input
+  carries `agent_id` only inside a sub-agent; a role refused by the hook
+  re-issued its call with `model: haiku`; and at depth cap 2 the layer-2
+  helper has no `Agent` tool. Deliberately left out: a pinned read-only sweep
+  agent, which would delegate to an exact model ID rather than an alias, and
+  per-role spawn budgets.
+
+  **The hook and the cap do not activate on `--update` by themselves.**
+  `settings.json` is non-clobbering by design, so an existing consumer gets the
+  hook *file* and the agent specs, but not the registration or the `env`
+  block; the `.aide-merge` diff names what is missing. Adopt
+  `.claude/settings.overlay.json` (regenerated deterministically from
+  framework-base + overlay on every run) and both activate and stay
+  activated. The `disallowedTools` half arrives with the agent specs.
+
 ## [2.18.1] — 2026-09-28
 
 ### Fixed

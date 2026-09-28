@@ -180,6 +180,14 @@ allow-list" framing** are adapter-local and documented here.
   the `conventions.md` hygiene contract: a reshapeable command that would otherwise
   miss the allow-list and stall the run is bounced back to be re-issued in an
   allow-listed shape, rather than hanging on a prompt.
+- **`hooks/spawn_model_guard.py`** — a `PreToolUse` hook on `Agent` that refuses
+  a spawn made from inside a sub-agent when the call passes no `model` and the
+  target type pins none (the built-ins — `Explore`, `general-purpose`, `Plan` —
+  never do), so a role's helper runs on a model chosen at the spawn rather than
+  on the role's own by inheritance; the refusal names the model to pass. The
+  user's own session is never touched. With it, `disallowedTools: Agent` on the
+  five roles that have nothing to delegate, and a spawn-depth cap of two in
+  `settings.json`'s `env` (issue #311, ADAPTER-SPEC §2).
 - **`hooks/log_permission_event.py`** — `PreToolUse` + `PostToolUse` logging of
   prompt-eligible calls (`Bash`/`Edit`/`Write`/`Web…`) to
   `docs/aide/permissions/log.jsonl`; the request/completion pair lets a reviewer infer
@@ -519,9 +527,10 @@ adapters/claude/
 │                  aide-review-instructions
 ├── rules/         aide-command-hygiene.md — the one unscoped rule (§3), every context
 ├── hooks/         command_hygiene_guard.py · log_permission_event.py ·
-│                  log_instructions_loaded.py · sibling_instructions.py
+│                  log_instructions_loaded.py · sibling_instructions.py ·
+│                  spawn_model_guard.py
 ├── scripts/       review_permissions.py · review_instructions.py · await_run.py
-├── settings.json  permission allow/ask-list + hook registration
+├── settings.json  permission allow/ask-list + hook registration + spawn-depth env
 ├── default-context.json   CLAUDE.md + @path — how .aide/AGENT-CONTEXT.md gets linked
 └── tests/         adapter/installer conformance — rules, pins, generation, agents, hooks
 ```

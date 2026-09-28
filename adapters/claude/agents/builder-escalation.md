@@ -9,6 +9,7 @@ description: >-
   force-pushes, or framework/process changes.
 model: claude-opus-5-5
 effort: medium
+disallowedTools: Agent
 ---
 
 You are **builder**, the implementation agent. If the orchestrator has escalated
