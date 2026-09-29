@@ -205,13 +205,16 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # findings and written into the same `--report` (issue #333).
         ("--queue NNN also warns on whether the queue needs a queue-end item",
          "test_aide_queue_specs::test_the_need_reaches_check_as_a_warning_and_the_report"),
-        # `queue_closed_stages`: `touches`, and `closes` over the 📋/🚧/🔍
-        # bullets — no reference, or an item on a later queue or none.
+        # `queue_closed_stages`: `touches` over the bullets not ⏸️, and
+        # `closes` over the 📋/🚧/🔍 bullets — no reference, or an item on a
+        # later queue or none.
         ("The queue closes stage N when an item it lists is referenced by a "
-         "stage N deliverable and every stage N deliverable that is 📋, 🚧 or "
-         "🔍 names only items listed on this queue or an earlier one",
-         "test_aide_queue_specs::"
-         "test_a_queue_that_leaves_stage_work_to_a_later_queue_closes_nothing"),
+         "stage N deliverable not ⏸️ and every stage N deliverable that is "
+         "📋, 🚧 or 🔍 names only items listed on this queue or an earlier one",
+         ("test_aide_queue_specs::"
+          "test_a_queue_that_leaves_stage_work_to_a_later_queue_closes_nothing",
+          "test_aide_queue_specs::"
+          "test_a_queue_whose_only_open_work_in_the_stage_is_deferred_closes_nothing")),
         # `closes = closes and bool(refs)`; the `continue` over ✅ ❌ ⏸️.
         ("Such a bullet with no item reference keeps the stage open; ✅, ❌ "
          "and ⏸️ bullets never do",
@@ -226,7 +229,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "no item spec's Acceptance Criteria annotate as `closes Stage N "
          "criterion M`, a ❓ Unverified capability row whose Introduced by "
          "cell names it, or an item the stage's own deliverables reference, "
-         "whatever its status but ❌, whose spec has an Environment / "
+         "whatever its status but ❌ or ⏸️, whose spec has an Environment / "
          "Hardware Dependencies section and which no capability row covers",
          ("test_aide_queue_specs::"
           "test_a_stage_closing_queue_with_an_unannotated_criterion_needs_a_queue_end_item",
@@ -236,12 +239,19 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_queue_specs::"
           "test_an_item_declaring_an_environment_gated_capability_is_a_need",
           "test_aide_queue_specs::test_a_merged_env_item_with_no_row_is_still_a_need",
-          "test_aide_queue_specs::test_an_env_item_outside_the_stage_is_not_its_need")),
-        # `any(n in c.items or not c.items for c in stage_rows)`.
-        ("a row covering it when its Introduced by cell references the item, "
-         "or names the stage and no item",
+          "test_aide_queue_specs::test_an_env_item_outside_the_stage_is_not_its_need",
+          "test_aide_queue_specs::test_an_excluded_env_item_is_no_need",
+          "test_aide_queue_specs::test_a_deferred_env_item_is_no_need")),
+        # `referenced` is every row's `items`, whatever its stages; the
+        # `stage_only` count slices that many off the uncovered, sorted list.
+        ("a row whose Introduced by cell references the item covers it, "
+         "whatever stage the cell names, and each row naming the stage and no "
+         "item covers one more, lowest item number first",
          ("test_aide_queue_specs::test_a_merged_env_item_with_a_verified_row_is_no_need",
-          "test_aide_queue_specs::test_a_stage_only_row_covers_the_stages_env_items")),
+          "test_aide_queue_specs::test_an_item_only_row_covers_its_item",
+          "test_aide_queue_specs::test_a_row_naming_another_item_does_not_cover_it",
+          "test_aide_queue_specs::test_a_stage_only_row_covers_the_stages_env_items",
+          "test_aide_queue_specs::test_one_stage_only_row_covers_one_env_item")),
         # `queue_end_stages` on the title; the spec loop skips excluded items
         # and queue-end items before reading an annotation.
         ("A queue-end item is one titled `Validate stage N`, and neither its "
@@ -256,16 +266,19 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_queue_specs::"
           "test_a_queue_end_item_that_is_not_final_does_not_meet_the_need")),
         # The `queue-end-idle` loop: no stage, not closed, empty reasons.
-        ("and when a queue-end item not ✅ or ❌ names no stage, a stage the "
-         "queue does not close, or one with no need",
+        ("and when a queue-end item not ✅, ❌ or ⏸️ names no stage, a stage "
+         "the queue does not close, or one with no need",
          ("test_aide_queue_specs::test_a_queue_end_title_naming_no_stage_is_reported",
           "test_aide_queue_specs::"
           "test_a_queue_end_item_for_a_stage_the_queue_does_not_close_is_reported",
           "test_aide_queue_specs::test_a_queue_end_item_with_nothing_to_do_is_reported",
-          "test_aide_queue_specs::test_a_spent_queue_end_item_is_never_reported_idle")),
+          "test_aide_queue_specs::test_a_spent_queue_end_item_is_never_reported_idle",
+          "test_aide_queue_specs::test_a_deferred_queue_end_item_is_never_reported_idle")),
         # The early `return []` when every listed item is spent.
-        ("A queue whose items are all ✅ or ❌ gets neither warning",
-         "test_aide_queue_specs::test_a_spent_queue_is_reported_neither_way"),
+        ("A queue whose items are all ✅, ❌ or ⏸️ gets neither warning",
+         ("test_aide_queue_specs::test_a_spent_queue_is_reported_neither_way",
+          "test_aide_queue_specs::"
+          "test_a_queue_whose_only_open_work_in_the_stage_is_deferred_closes_nothing")),
 
         # `run_checks`: `has_stage_table` / `has_obj_table` / `sections`, each
         # appending to `errors`.

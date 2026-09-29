@@ -6989,7 +6989,9 @@ def queue_closed_stages(lines: List[str], qdir: Path, number: int) -> List[str]:
     closure, on any queue and with or without a reference: deferred work is by
     definition not what the stage's closing queue builds, and a bullet that
     held closure would hold it until someone resumed it — for ever, if nobody
-    does. Read from the documents alone.
+    does. For the same reason a ⏸️ bullet is not what makes the queue touch
+    the stage: a queue whose only work in it is deferred closes nothing.
+    Read from the documents alone.
     """
     listed: Dict[int, int] = {}
     for path in iter_queue_paths(qdir):
@@ -7008,7 +7010,7 @@ def queue_closed_stages(lines: List[str], qdir: Path, number: int) -> List[str]:
         for first, last in _deliverable_bullet_spans(section):
             status = ICON_TO_STATUS[_BULLET_RE.match(section[first]).group("icon")]
             refs = _bullet_marker_item_numbers(section[last])
-            if any(listed.get(r) == number for r in refs):
+            if status != "deferred" and any(listed.get(r) == number for r in refs):
                 touches = True
             if status in ("complete", "excluded", "deferred"):
                 continue
@@ -7043,7 +7045,9 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     order = queue_item_numbers(qtext)
     lines = ppath.read_text(encoding=_ENCODING).splitlines()
     item_status = _parse_item_status(lines)[2]
-    spent = ("complete", "excluded")
+    # ⏸️ is settled here as ✅ and ❌ are: `queue_is_open` does not count a
+    # deferred item as open, and nobody plans or drops one until it resumes.
+    spent = ("complete", "excluded", "deferred")
     if all(item_status.get(n, "planned") in spent for n in order):
         return []
 
@@ -7071,7 +7075,8 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
             continue
         text = path.read_text(encoding=_ENCODING)
         annotated |= spec_closed_criteria(text)
-        if _ENV_DEPS_HEADING_RE.search(text):
+        # ⏸️ skipped like ❌: a deferred capability is not built by this stage.
+        if item_status.get(n) != "deferred" and _ENV_DEPS_HEADING_RE.search(text):
             env_items.add(n)
     capabilities = gated_capabilities(lines)
 
@@ -7101,15 +7106,19 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
             reasons.append("❓ Unverified capability row(s) stage "
                            f"{s} introduced: " + ", ".join(f"'{r}'" for r in rows))
         # An item declaring a gated capability is a need until the table has
-        # a row for it, whatever the item's status: a merged item whose row
-        # was never written is exactly the gap the queue-end item closes. A
-        # row is "for it" when its Introduced by cell references the item, or
-        # names this stage and no item at all — the one row a reader cannot
-        # tie to a narrower owner. Its status is (b)'s business, not this.
-        stage_rows = [c for c in capabilities if s in c.stages]
+        # a row for it, whatever the item's status but ❌ or ⏸️: a merged item
+        # whose row was never written is exactly the gap the queue-end item
+        # closes. A row whose Introduced by cell references the item covers
+        # it, whatever stage the cell names. A row naming this stage and no
+        # item covers one item and no more — one row is one capability — so
+        # such rows are counted off against the items no referencing row
+        # covers, lowest number first, and the rest are reported. Its status
+        # is (b)'s business, not this.
+        referenced = {n for c in capabilities for n in c.items}
+        stage_only = sum(1 for c in capabilities if s in c.stages and not c.items)
         stage_items = set(stage_item_numbers(lines, stage))
         envs = sorted(n for n in env_items & stage_items
-                      if not any(n in c.items or not c.items for c in stage_rows))
+                      if n not in referenced)[stage_only:]
         if envs:
             reasons.append("item(s) " + ", ".join(f"{n:03d}" for n in envs)
                            + " declaring an environment-gated capability "
@@ -14858,7 +14867,7 @@ def build_parser() -> argparse.ArgumentParser:
             "\n"
             "--queue NNN also warns on whether the queue needs a queue-end "
             "item. The queue closes stage N when an item it lists is "
-            "referenced by a stage N deliverable and every stage N "
+            "referenced by a stage N deliverable not \u23f8\ufe0f and every stage N "
             "deliverable that is \U0001f4cb, \U0001f6a7 or \U0001f50d "
             "names only items listed on this queue or an earlier one. Such a "
             "bullet with no item reference keeps the stage open; \u2705, "
@@ -14868,17 +14877,19 @@ def build_parser() -> argparse.ArgumentParser:
             "annotate as `closes Stage N criterion M`, a \u2753 Unverified "
             "capability row whose Introduced by cell names it, or an item "
             "the stage's own deliverables reference, whatever its status "
-            "but \u274c, whose spec has an Environment / Hardware "
+            "but \u274c or \u23f8\ufe0f, whose spec has an Environment / Hardware "
             "Dependencies section and which no capability row covers \u2014 "
-            "a row covering it when its Introduced by cell references the "
-            "item, or names the stage and no item. A queue-end item is one titled "
+            "a row whose Introduced by cell references the item covers it, "
+            "whatever stage the cell names, and each row naming the stage and "
+            "no item covers one more, lowest item number first. A queue-end "
+            "item is one titled "
             "`Validate stage N`, and neither its own spec nor an excluded "
             "item's annotates anything here. The check warns when a stage "
             "with a need has no queue-end item for it among the queue's "
             "final items, naming each reason, and when a queue-end item not "
-            "\u2705 or \u274c names no stage, a stage the queue does not "
-            "close, or one with no need. A queue whose items are all "
-            "\u2705 or \u274c gets neither warning.\n"
+            "\u2705, \u274c or \u23f8\ufe0f names no stage, a stage the "
+            "queue does not close, or one with no need. A queue whose items "
+            "are all \u2705, \u274c or \u23f8\ufe0f gets neither warning.\n"
             "\n"
             "Over progress.md's tables, ERRORS: a missing stage summary "
             "table, objective coverage table or stage section; a stage "

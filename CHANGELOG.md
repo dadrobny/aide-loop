@@ -149,24 +149,27 @@ instead — that is the bump policy above, and it is enforced by
 
 - **`aide check --queue NNN` reports whether the queue needs a queue-end item,
   both ways, as warnings.** The queue closes stage N when an item it lists is
-  referenced by a stage N deliverable and every stage N deliverable that is
-  📋, 🚧 or 🔍 names only items on this queue or an earlier one. Such a bullet
-  with no item reference keeps the stage open; ✅, ❌ and ⏸️ bullets never do,
-  so deferred work never holds closure. A stage it closes needs the item when
+  referenced by a stage N deliverable that is not ⏸️, and every stage N
+  deliverable that is 📋, 🚧 or 🔍 names only items on this queue or an
+  earlier one. Such a bullet with no item reference keeps the stage open; ✅,
+  ❌ and ⏸️ bullets never do, so deferred work neither holds closure nor, on
+  its own, makes a queue close a stage. A stage it closes needs the item when
   it has an unticked acceptance box no item spec annotates
   `closes Stage N criterion M`, a ❓ Unverified capability row it introduced,
-  or an item its own deliverables reference — merged or not, excluded aside —
+  or an item its own deliverables reference — merged or not, ❌ and ⏸️ aside —
   whose spec has an Environment / Hardware Dependencies section and which no
-  capability row covers: a row whose Introduced by cell references the item,
-  or names the stage and no item. The warning `queue NNN closes stage N and
+  capability row covers. A row whose Introduced by cell references the item
+  covers it, whatever stage the cell names; a row naming the stage and no item
+  covers one item, lowest number first, since one row is one capability. The warning `queue NNN closes stage N and
   needs a queue-end item: …` names each reason, and is met by a
   `Validate stage N` item among the queue's final items. The mirror warning,
   `item NNN is a queue-end item for stage N, but …`, names a planned one with
   nothing to do, one for a stage the queue does not close, and one whose
-  title names no stage; a merged queue-end item is never reported. Both reach
+  title names no stage; a ✅, ❌ or ⏸️ queue-end item is never reported. Both reach
   the `--report` JSON, as kinds `queue-end-needed` and `queue-end-idle`, and
   `/aide-spec-queue` and `spec-reviewer` relay them to the human for the plan
-  gate. A queue whose items are all ✅ or ❌ gets neither. `aide check -h`
+  gate. A queue whose items are all ✅, ❌ or ⏸️ gets neither, as
+  the derived queue state already calls it done. `aide check -h`
   states it, pinned to the tests that exercise it. The roadmap declares no
   per-stage use cases, so the third trigger the issue named is not read; the
   Rationale says so.

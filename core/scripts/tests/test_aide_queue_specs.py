@@ -943,6 +943,31 @@ def test_an_excluded_env_item_is_no_need(tmp_path: Path):
     assert _qe(repo, "queue-end-needed") == []
 
 
+def test_a_deferred_env_item_is_no_need(tmp_path: Path):
+    """⏸️ is skipped like ❌: a deferred capability is not this stage's to verify."""
+    progress = _PROGRESS_TICKED.replace("- ✅ A. *(Item 026)*", "- ⏸️ A. *(Item 026)*")
+    repo = _qe_repo(tmp_path, progress=progress, specs={26: _ENV_SPEC})
+    assert _qe(repo, "queue-end-needed") == []
+
+
+def test_an_item_only_row_covers_its_item(tmp_path: Path):
+    """The item reference is matched on its own: a cell naming only the item
+    covers it, with no `Stage N` beside it."""
+    progress = _with_row(_PROGRESS_TICKED, "*(Item 026)*", "✅ Verified (2026-09-01, CI)")
+    repo = _qe_repo(tmp_path, progress=progress, specs={26: _ENV_SPEC})
+    assert _qe(repo, "queue-end-needed") == []
+
+
+def test_one_stage_only_row_covers_one_env_item(tmp_path: Path):
+    """One row is one capability: two env items and one stage-only row leave
+    the higher-numbered item uncovered."""
+    progress = _with_row(_PROGRESS_TICKED, "Stage 1", "✅ Verified (2026-09-01, CI)")
+    repo = _qe_repo(tmp_path, progress=progress, specs={
+        26: _ENV_SPEC, 27: _ENV_SPEC.replace("026", "027")})
+    msg = _qe(repo, "queue-end-needed")[0].message
+    assert "item(s) 027 declaring" in msg and "026" not in msg
+
+
 def test_an_env_item_outside_the_stage_is_not_its_need(tmp_path: Path):
     """Item 040 is stage 2's; its spec says nothing about stage 1."""
     repo = _qe_repo(tmp_path, progress=_PROGRESS_TICKED, specs={
@@ -985,6 +1010,35 @@ def test_a_spent_queue_end_item_is_never_reported_idle(tmp_path: Path):
     assert len(_qe(_qe_repo(tmp_path / "live", queue_items=(27, 28, 29), progress=live,
                             titles={29: "Validate stage 1: Rules"}),
                    "queue-end-idle")) == 1
+
+
+def test_a_deferred_queue_end_item_is_never_reported_idle(tmp_path: Path):
+    progress = _PROGRESS_TICKED.replace(
+        "- 📋 C. *(Item 028)*", "- 📋 C. *(Item 028)*\n- ⏸️ Stage validation. *(Item 029)*")
+    repo = _qe_repo(tmp_path, queue_items=(27, 28, 29), progress=progress,
+                    titles={29: "Validate stage 1: Rules"})
+    assert _qe(repo, "queue-end-idle") == []
+
+
+def test_a_queue_whose_only_open_work_in_the_stage_is_deferred_closes_nothing(
+        tmp_path: Path):
+    """Agrees with `queue_is_open`: 027 merged, 028 deferred, so the queue is
+    not open and the stage's remaining work is deferred — no need, no idle,
+    and a ⏸️ bullet alone does not make the queue close the stage."""
+    progress = PROGRESS_QE.replace("- 📋 B. *(Item 027)*", "- ✅ B. *(Item 027)*")
+    progress = progress.replace("- 📋 C. *(Item 028)*", "- ⏸️ C. *(Item 028)*")
+    repo = _qe_repo(tmp_path, progress=progress)
+    assert _qe(repo, "queue-end-needed") == [] and _qe(repo, "queue-end-idle") == []
+    cfg = aide.load_config(repo)
+    qtext = (repo / "docs/aide/queue/queue-003.md").read_text(encoding="utf-8")
+    assert not aide.queue_is_open(qtext, aide._progress_item_status(repo, cfg))
+    # The `touches` half on its own: queue 003 is still open through stage
+    # 2's item, and its only stage 1 reference is the deferred bullet.
+    alone = _qe_repo(tmp_path / "alone", progress=progress, queue_items=(28, 40),
+                     earlier=(26, 27))
+    needs = [f.message for f in _qe(alone, "queue-end-needed")]
+    assert any("closes stage 2" in m for m in needs)
+    assert not any("closes stage 1" in m for m in needs)
 
 
 def test_a_queue_end_item_for_a_stage_the_queue_does_not_close_is_reported(
