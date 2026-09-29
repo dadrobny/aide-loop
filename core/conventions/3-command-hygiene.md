@@ -17,7 +17,7 @@ The rules:
   `aide merge`; branch clean-up is `aide gc`; checking a branch's changed
   files against its item's authorised paths is `aide scope`. Do not
   improvise the equivalent `git fetch`/`git status`/`git switch -c`/`git diff
-  --name-only`/`gh pr` sequences.
+  --name-only`/`gh pr create`/`gh pr ready` sequences.
 - **One command per call.** Never chain with `&&`, `||` or `;`. A single `|`
   pipe (`git branch -r | grep aide/`) is fine.
 - **No `cd` prefix and no directory-changing wrapper** — `git -C "<path>"`,

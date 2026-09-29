@@ -1056,7 +1056,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("base= is the branch's recorded base, ? where none is recorded",
          ("test_aide_status_stack::test_a_two_queue_stack_is_printed_bottom_first",
           "test_aide_status_stack::test_a_branch_with_no_recorded_base_reads_unknown")),
-        # `_branch_pr`: `isDraft` asked for, an OPEN draft is "draft"; open
+        # `_branch_pr_facts`: `isDraft` asked for, an OPEN draft is "draft"; open
         # or draft wins, else `max(found)`; `prs[b] = "unknown"` once `_gh`
         # fails; `look = mode != "local"`.
         ("pr= is its pull request as #N/open, #N/draft (open but not yet "
@@ -1098,9 +1098,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_aide_queue_pr::test_the_rollup_reads_as_one_ci_state"),
         # `checks()` in `queue_stack_facts`: `why_not` where the forge
         # failed, `checks_why` where the rollup did not read; `-` otherwise.
-        ("checks= is unknown where gh could not be asked or answered a state "
-         "status cannot read, the reason on a `checks unknown:` line below "
-         "it, and - where there is no PR and in local mode",
+        # `_branch_pr_facts`: `rollup_why`, then `ask` without the rollup.
+        ("could be asked only without checks (pr= is then read without them)",
+         "test_aide_queue_pr::test_a_forge_that_will_not_report_checks_still_answers_pr"),
+        # `checks_state([])` is "none": nothing tells not-yet from never.
+        ("Just after a push or `aide queue ready`, none can also mean CI has "
+         "not registered a run yet",
+         "test_aide_queue_pr::test_checks_read_none_right_after_ready_before_ci_registers"),
+        ("the reason on a `checks unknown:` line below it, and - where there "
+         "is no PR and in local mode",
          ("test_aide_queue_pr::test_checks_are_unknown_with_the_reason_where_the_forge_cannot_be_asked",
           "test_aide_queue_pr::test_checks_are_unknown_where_the_rollup_cannot_be_read",
           "test_aide_queue_pr::test_a_rollup_status_cannot_read_is_unknown_with_a_reason",
@@ -1701,6 +1707,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "nothing; one already a draft is left alone, exit 0",
          ("test_aide_queue_pr::test_undo_turns_a_ready_pr_back_to_draft_and_pushes_nothing",
           "test_aide_queue_pr::test_undo_leaves_a_draft_alone_and_exits_0")),
+        # `_queue_stray_options`, first thing in `cmd_queue`.
+        ("An option the action does not read is refused, exit 2, before "
+         "anything is done",
+         ("test_aide_queue_pr::test_an_option_the_action_does_not_read_is_refused",
+          "test_aide_queue_pr::test_the_older_actions_refuse_the_pr_options")),
         ("Both refuse, exit 1: a branch that is not a queue branch, local mode "
          "or no origin, a branch with no PR (`queue pr` opens it), a PR closed "
          "or merged, a forge that could not be asked, and a failed push or "

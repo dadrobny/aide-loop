@@ -9086,7 +9086,37 @@ def cmd_ledger(args: argparse.Namespace) -> int:
     return 0
 
 
+#: Which of `queue`'s shared options each action reads; any other one given
+#: is a usage error, never silently ignored — `ready --dry-run` must not push
+#: and flip (issue #330). The older actions are checked only against the
+#: options `pr` and `ready` brought, which they never read.
+_QUEUE_OPTIONS = {
+    "pr": {"body", "body_file"},
+    "ready": {"undo"},
+}
+_QUEUE_OPTION_DEFAULTS = {"through": None, "no_commit": False, "specs": False,
+                          "base": None, "dry_run": False, "date": None,
+                          "body": None, "body_file": None, "undo": False}
+_QUEUE_PR_OPTIONS = {"body", "body_file", "undo"}
+
+
+def _queue_stray_options(args: argparse.Namespace) -> List[str]:
+    """The options given to *args.action* that it does not read."""
+    reads = _QUEUE_OPTIONS.get(args.action)
+    checked = (set(_QUEUE_OPTION_DEFAULTS) if reads is not None
+               else _QUEUE_PR_OPTIONS)
+    reads = reads or set()
+    return ["--" + k.replace("_", "-") for k in sorted(checked - reads)
+            if getattr(args, k, _QUEUE_OPTION_DEFAULTS[k])
+            != _QUEUE_OPTION_DEFAULTS[k]]
+
+
 def cmd_queue(args: argparse.Namespace) -> int:
+    stray = _queue_stray_options(args)
+    if stray:
+        print(f"usage: aide queue {args.action} does not take "
+              f"{', '.join(stray)} — nothing was done", file=sys.stderr)
+        return 2
     if args.action == "restack":
         return _queue_restack(args)
     if args.action == "pr":
@@ -9381,9 +9411,15 @@ def _push_if_ahead(repo_root: Path, tag: str, branch: str) -> bool:
     """
     there = f"origin/{branch}"
     if _ref_exists(repo_root, there):
-        ahead = git(["rev-list", "--count", f"{there}..{branch}"],
-                    repo_root, check=False).stdout.strip()
-        if ahead in ("", "0"):
+        res = git(["rev-list", "--count", f"{there}..{branch}"],
+                  repo_root, check=False)
+        ahead = res.stdout.strip()
+        if res.returncode != 0 or not ahead.isdigit():
+            print(f"{tag}: git could not count {branch}'s commits ahead of "
+                  f"{there} ({res.stderr.strip() or 'no answer'}); nothing "
+                  f"was pushed or changed on the forge", file=sys.stderr)
+            return False
+        if ahead == "0":
             return True
     failure = _push_new_branch(repo_root, branch)
     if failure is not None:
@@ -9430,9 +9466,15 @@ def _queue_pr(args: argparse.Namespace) -> int:
               f"open its PR against — 'aide queue restack {number:03d} --base "
               f"<base>' records one", file=sys.stderr)
         return 1
-    ahead = git(["rev-list", "--count", f"{base}..{branch}"],
-                repo_root, check=False).stdout.strip()
-    if ahead in ("", "0"):
+    counted = git(["rev-list", "--count", f"{base}..{branch}"],
+                  repo_root, check=False)
+    ahead = counted.stdout.strip()
+    if counted.returncode != 0 or not ahead.isdigit():
+        print(f"{tag}: git could not count {branch}'s commits ahead of its "
+              f"base {base} ({counted.stderr.strip() or 'no answer'})",
+              file=sys.stderr)
+        return 1
+    if ahead == "0":
         print(f"{tag}: {branch} has no commits ahead of its base {base}, and "
               f"the forge opens no PR without one — commit the plan first",
               file=sys.stderr)
@@ -13681,17 +13723,6 @@ def _gh(repo_root: Path, args: List[str]) -> Tuple[Optional[str], Optional[str]]
     return res.stdout, None
 
 
-def _branch_pr(repo_root: Path, branch: str) -> Tuple[Optional[str], Optional[str]]:
-    """*branch*'s pull request as ``#N/<state>``, or ``none``; or ``(None, why)``.
-
-    `_branch_pr_facts`, spelled as the ``pr=`` token.
-    """
-    pr, why = _branch_pr_facts(repo_root, branch)
-    if why is not None:
-        return None, why
-    return ("none" if pr is None else pr.label), None
-
-
 class BranchPr(NamedTuple):
     """The one pull request `status` and `queue pr` / `queue ready` answer by.
 
@@ -13722,11 +13753,22 @@ def _branch_pr_facts(repo_root: Path, branch: str
     draft as OPEN, and the loop keeps its own queue PR in draft until the
     batch is built, so only a PR marked ready is one awaiting review. The
     head commit's check rollup comes in the same call, so CI state costs no
-    second spawn (issue #330).
+    second spawn (issue #330). Where that call fails — a token that may not
+    read checks, or a rollup slow enough to time out — it is asked once more
+    without the rollup, so ``pr=`` reads as it did before checks were asked
+    for, and ``checks`` is ``unknown`` with the first call's reason. A `gh`
+    that is missing or cannot start is not asked twice.
     """
-    out, why = _gh(repo_root, ["pr", "list", "--head", branch, "--state", "all",
-                               "--json", "number,state,isDraft,statusCheckRollup",
-                               "--limit", "20"])
+    def ask(fields: str) -> Tuple[Optional[str], Optional[str]]:
+        return _gh(repo_root, ["pr", "list", "--head", branch, "--state", "all",
+                               "--json", fields, "--limit", "20"])
+
+    out, why = ask("number,state,isDraft,statusCheckRollup")
+    rollup_why: Optional[str] = None
+    if (out is None and why is not None
+            and not why.startswith(("gh is not on PATH", "gh could not start"))):
+        rollup_why = why
+        out, why = ask("number,state,isDraft")
     if out is None:
         return None, why
     try:
@@ -13742,6 +13784,9 @@ def _branch_pr_facts(repo_root: Path, branch: str
         return None, None
     rank = {"open": 2, "draft": 1}
     number, state, rollup = max(found, key=lambda f: (rank.get(f[1], 0), f[0]))
+    if rollup_why is not None:
+        return BranchPr(number, state, "unknown", [],
+                        f"the forge answered without checks ({rollup_why})"), None
     checks, failing, checks_why = checks_state(rollup)
     return BranchPr(number, state, checks, failing, checks_why), None
 
@@ -13785,7 +13830,8 @@ def checks_state(rollup: object) -> Tuple[str, List[str], Optional[str]]:
             value = (str(c.get("conclusion") or "").upper()
                      if status == "COMPLETED" else status)
         if value in _CHECK_FAILED:
-            failing.append(name)
+            if name not in failing:     # a matrix repeats a job's name
+                failing.append(name)
         elif value in _CHECK_PENDING:
             pending = True
         elif value == "SUCCESS":
@@ -15024,7 +15070,13 @@ def build_parser() -> argparse.ArgumentParser:
             "refuse, exit 1: a branch that is not a queue branch, local mode "
             "or no origin, a branch with no PR (`queue pr` opens it), a PR "
             "closed or merged, a forge that could not be asked, and a failed "
-            "push or change."))
+            "push or change.\n"
+            "\n"
+            "An option the action does not read is refused, exit 2, before "
+            "anything is done: pr and ready take no --dry-run, --base, "
+            "--through, --date, --specs or --no-commit, pr no --undo and ready "
+            "no --body or --body-file; and start, tidy, gate and restack take "
+            "no --body, --body-file or --undo."))
     p_queue.add_argument("action", choices=["start", "tidy", "restack", "gate",
                                             "pr", "ready"])
     p_queue.add_argument("number", type=int, nargs="?", default=None,
@@ -15422,9 +15474,13 @@ def register_git_subcommands(sub) -> None:
             "named on a `failing check:` line below it; else pending while "
             "any has not finished; else success when any passed; else none "
             "\u2014 no check at all, or only skipped and neutral ones, which "
-            "is what a CI that skips drafts reports. A cancelled, timed-out "
+            "is what a CI that skips drafts reports. Just after a push or "
+            "`aide queue ready`, none can also mean CI has not registered a "
+            "run yet, so a caller waiting on CI does not take its first none "
+            "as the answer. A cancelled, timed-out "
             "or stale check is a failed one. checks= is unknown where gh "
-            "could not be asked or answered a state status cannot read, the "
+            "could not be asked, could be asked only without checks (pr= is "
+            "then read without them) or answered a state status cannot read, the "
             "reason on a `checks unknown:` line below it, and - where there "
             "is no PR and in local mode. lower= is moved when the queue branch "
             "below has commits this one lacks, so `aide queue restack` is due, "

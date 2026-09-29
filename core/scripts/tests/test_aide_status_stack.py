@@ -1,5 +1,5 @@
 """Tests for `aide status`'s stack report and its two facts (issue #303) —
-see aide.py `queue_stack_facts`, `_branch_pr` and `_gh`.
+see aide.py `queue_stack_facts`, `_branch_pr_facts` and `_gh`.
 
 Throwaway repositories under ``tmp_path``, stacks built with `aide queue
 start` so every base and start record is one a real run leaves. The forge is
@@ -426,5 +426,5 @@ def test_gh_exiting_non_zero_is_a_reason_naming_the_exit(tmp_path: Path, monkeyp
 
 def test_a_forge_answer_status_cannot_read_is_could_not_look(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(aide, "_gh", lambda repo_root, args: ("not json", None))
-    got, why = aide._branch_pr(tmp_path, Q1)
+    got, why = aide._branch_pr_facts(tmp_path, Q1)
     assert got is None and why

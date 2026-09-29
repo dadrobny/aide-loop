@@ -134,17 +134,21 @@ def _head(repo: Path, ref: str = "HEAD") -> str:
 
 
 def _forge(monkeypatch, prs: Optional[Dict[str, List[dict]]] = None,
-           why: Optional[str] = None, fail: Optional[str] = None
-           ) -> List[List[str]]:
+           why: Optional[str] = None, fail: Optional[str] = None,
+           no_checks: Optional[str] = None) -> List[List[str]]:
     """Stand in for `gh`. *prs* answers `pr list --head`; *why* fails every
     call; *fail* fails only the call whose second word it names (`create`,
-    `ready`). Returns every call made."""
+    `ready`); *no_checks* fails only a list that asks for the check rollup.
+    Returns every call made."""
     calls: List[List[str]] = []
 
     def fake(repo_root, args):
         calls.append(list(args))
         if why is not None:
             return None, why
+        if (no_checks is not None and "--json" in args
+                and "statusCheckRollup" in args[args.index("--json") + 1]):
+            return None, no_checks
         if fail is not None and len(args) > 1 and args[1] == fail:
             return None, f"gh exited 1: {fail} refused"
         if args[:2] == ["pr", "list"] and "--head" in args:
@@ -217,9 +221,13 @@ def _context(name: str, state: str) -> dict:
       _run_check("docs", "COMPLETED", "SUCCESS")],
      ("failure", ["build", "ci/legacy", "e2e"], None)),
     ([_run_check("slow", "COMPLETED", "TIMED_OUT")], ("failure", ["slow"], None)),
+    ([_run_check("old", "COMPLETED", "STALE")], ("failure", ["old"], None)),
+    ([_run_check("test", "COMPLETED", "FAILURE"), _run_check("lint", "COMPLETED", "FAILURE"),
+      _run_check("test", "COMPLETED", "FAILURE")], ("failure", ["test", "lint"], None)),
 ], ids=["no-rollup", "empty", "only-skipped-and-neutral", "check-run-running",
         "one-running-one-passed", "status-context-pending", "all-passed",
-        "a-failure-wins-and-names-each", "timed-out-fails"])
+        "a-failure-wins-and-names-each", "timed-out-fails", "stale-fails",
+        "a-matrix-name-is-named-once"])
 def test_the_rollup_reads_as_one_ci_state(rollup, expected):
     assert aide.checks_state(rollup) == expected
 
@@ -615,3 +623,135 @@ def test_local_mode_and_no_origin_both_refuse_and_ask_nothing(
     assert _run(local, *argv) == 1
     assert _run(no_origin, *argv) == 1
     assert calls == []
+
+
+# --------------------------------------------------------------------------- #
+# review round 1 (PR #337)
+# --------------------------------------------------------------------------- #
+def test_a_forge_that_will_not_report_checks_still_answers_pr(
+        tmp_path: Path, monkeypatch, capsys):
+    """A token that may not read checks fails the rich query: `pr=` is read
+    without the rollup, as before #330, and only `checks=` is unknown."""
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1)
+    calls = _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN"}]},
+                   no_checks="gh exited 1: Resource not accessible by integration")
+    (q1,) = _status_stack(repo, capsys)
+    assert (q1["pr"], q1["checks"]) == ("#7/open", "unknown")
+    assert "Resource not accessible" in q1["why"]
+    assert q1["awaiting"] == "yes"
+    listed = [c for c in calls if "--head" in c]
+    assert [("statusCheckRollup" in c[c.index("--json") + 1]) for c in listed] \
+        == [True, False]
+
+
+def test_checks_read_none_right_after_ready_before_ci_registers(
+        tmp_path: Path, monkeypatch, capsys):
+    """Nothing tells "not started yet" from "no CI": the forge reports an
+    empty rollup for both, so the first read after `ready` is none."""
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1)
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "isDraft": True,
+                               "statusCheckRollup": []}]})
+    assert _run(repo, "ready") == 0
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "isDraft": False,
+                               "statusCheckRollup": []}]})
+    (q1,) = _status_stack(repo, capsys)
+    assert (q1["pr"], q1["checks"]) == ("#7/open", "none")
+
+
+@pytest.mark.parametrize("argv,flag", [
+    (["pr", "--body", "x", "--dry-run"], "--dry-run"),
+    (["pr", "--body", "x", "--base", "main"], "--base"),
+    (["pr", "--body", "x", "--undo"], "--undo"),
+    (["pr", "--body", "x", "--through", "2"], "--through"),
+    (["ready", "--dry-run"], "--dry-run"),
+    (["ready", "--date", "2026-09-29"], "--date"),
+    (["ready", "--body", "x"], "--body"),
+    (["ready", "--body-file", "body.md"], "--body-file"),
+    (["ready", "--undo", "--specs"], "--specs"),
+    (["ready", "--no-commit"], "--no-commit"),
+], ids=["pr-dry-run", "pr-base", "pr-undo", "pr-through", "ready-dry-run",
+        "ready-date", "ready-body", "ready-body-file", "undo-specs",
+        "ready-no-commit"])
+def test_an_option_the_action_does_not_read_is_refused(
+        tmp_path: Path, monkeypatch, capsys, argv, flag):
+    """`ready --dry-run` must not push and flip: refused before anything."""
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1)
+    before = _on_origin(repo, Q1)
+    calls = _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN",
+                                       "isDraft": True}]})
+    capsys.readouterr()
+    assert _run(repo, *argv) == 2
+    assert calls == [] and _on_origin(repo, Q1) == before
+    assert flag in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("argv", [
+    ["start", "2", "--undo"],
+    ["start", "2", "--body", "x"],
+    ["tidy", "1", "--body-file", "body.md"],
+    ["gate", "1", "--undo"],
+    ["restack", "--body", "x"],
+], ids=["start-undo", "start-body", "tidy-body-file", "gate-undo", "restack-body"])
+def test_the_older_actions_refuse_the_pr_options(tmp_path: Path, monkeypatch, argv):
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1)
+    head = _head(repo)
+    assert _run(repo, *argv) == 2
+    assert _head(repo) == head
+    assert _git(["branch", "--list", Q2], repo).stdout.strip() == ""
+
+
+def test_pr_refuses_a_branch_with_no_recorded_base_and_says_so(
+        tmp_path: Path, monkeypatch, capsys):
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1)
+    _git(["config", "--unset", f"branch.{Q1}.aide-base"], repo)
+    calls = _forge(monkeypatch, {})
+    capsys.readouterr()
+    assert _run(repo, "pr", "--body", "x") == 1
+    assert "no recorded base" in capsys.readouterr().err
+    assert calls == []
+
+
+@pytest.mark.parametrize("argv,prs", [
+    (["pr", "--body", "x"], []),
+    (["ready"], [{"number": 7, "state": "OPEN", "isDraft": True}]),
+], ids=["pr", "ready"])
+def test_a_failed_push_refuses_and_changes_nothing_on_the_forge(
+        tmp_path: Path, monkeypatch, capsys, argv, prs):
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1)
+    _git(["remote", "set-url", "origin", str(tmp_path / "gone.git")], repo)
+    calls = _forge(monkeypatch, {Q1: prs})
+    capsys.readouterr()
+    assert _run(repo, *argv) == 1
+    assert "FAILED" in capsys.readouterr().err
+    assert _writes(calls) == []
+
+
+@pytest.mark.parametrize("argv,draft,said", [
+    (["pr", "--body", "x"], True, "already has PR #7/draft"),
+    (["ready"], False, "PR #7"),
+    (["ready", "--undo"], True, "PR #7"),
+], ids=["pr-names-it", "already-ready", "already-a-draft"])
+def test_the_idempotent_outcomes_name_the_pr(
+        tmp_path: Path, monkeypatch, capsys, argv, draft, said):
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1)
+    calls = _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN",
+                                       "isDraft": draft}]})
+    capsys.readouterr()
+    assert _run(repo, *argv) == 0
+    out = capsys.readouterr().out
+    assert said in out and "already" in out
+    assert _writes(calls) == []

@@ -129,13 +129,19 @@ instead — that is the bump policy above, and it is enforced by
   `stack N:` line (issue #330).** It reads the head commit's check rollup
   from the same `gh pr list` call that finds the PR, so it costs no second
   spawn. The value is `failure` when any check failed, with each failing
-  check named on a `failing check:` line below. Otherwise it is `pending`
+  check named once on a `failing check:` line below (a matrix's repeated
+  job name included). Otherwise it is `pending`
   while any check is running, `success` when any passed, and `none` when
   there is no check or only skipped and neutral ones, which is what a CI
-  that skips drafts reports. Cancelled, timed-out and stale checks count as
-  failed. Check runs and commit statuses are both read. The value is
+  that skips drafts reports. Just after a push or `queue ready`, `none` can
+  also mean CI has not registered a run yet, so a waiter does not take its
+  first `none` as the answer; `status -h` and §4 say so. Cancelled,
+  timed-out and stale checks count as failed. Check runs and commit statuses are both read. The value is
   `unknown`, with the reason on a `checks unknown:` line, where the forge
-  could not be asked or answered a state the engine cannot read. It is `-`
+  could not be asked or answered a state the engine cannot read. Where only
+  the rollup fails (a token without checks read access, or a timeout), the
+  call is made once more without it, so `pr=` reads exactly as before and
+  only `checks=` is `unknown`. It is `-`
   with no PR and in `local` mode. A draft with an item of the branch's own
   queues reopened by `aide progress reopen` and still open reads
   `pr=#N/draft(fixing)`, read from that branch's own `progress.md`. That
@@ -156,14 +162,23 @@ instead — that is the bump policy above, and it is enforced by
   the tree the queue built. `--undo` turns it back into a draft for a fix
   round and pushes nothing. Both are idempotent. Both refuse off a queue
   branch, in `local` mode or with no origin, with no PR (naming `queue pr`),
-  and on a closed or merged PR.
+  and on a closed or merged PR. A push that fails, or a commit count git
+  cannot read, refuses before the forge is asked to change anything.
+- **An option a `queue` action does not read is refused, exit 2, before
+  anything is done.** `queue ready --dry-run` would otherwise have pushed
+  and flipped the PR. `pr` and `ready` refuse `--dry-run`, `--base`,
+  `--through`, `--date`, `--specs` and `--no-commit`, `pr` refuses `--undo`
+  and `ready` refuses `--body` / `--body-file`. `start`, `tidy`, `gate` and
+  `restack` refuse the three new options.
 - **Both verbs run unattended.** `Bash(python .aide/scripts/aide.py:*)`
   already allows every subcommand and no ask rule matches them, so
   `settings.json` and the hygiene hook need no change.
   `adapters/claude/tests/test_queue_pr_automation.py` now holds that both
   verbs are allowed and asked by nothing, that the hook passes them, and that
-  `gh pr create` / `gh pr ready` stay `ask`-gated. §3 names the two verbs
-  beside the other raw forms they replace. §4 states that the engine opens
+  `gh pr create` / `gh pr ready` stay `ask`-gated. §3 names the two verbs,
+  and `gh pr create` / `gh pr ready` beside the other raw forms they replace;
+  read-only `gh pr view` / `list` / `checks` are not covered by a verb and
+  stay allowed. §4 states that the engine opens
   and marks ready the queue's own PR, and that a caller waiting on CI reads
   `status` rather than the forge. The runners do not call them yet; that is
   #331.
@@ -171,7 +186,7 @@ instead — that is the bump policy above, and it is enforced by
 `aide queue -h` and `aide status -h` state the mechanism, pinned in
 `test_aide_help_pins.py`. **`AGENT-CONTEXT.md`'s verb list names `queue pr`
 and `queue ready`, and §3's verb bullet names them too**, so the always-on
-floor moves from 9,141 to 9,252 content bytes. **What a consumer edits:**
+floor moves from 9,141 to 9,273 content bytes. **What a consumer edits:**
 nothing.
 ## [2.20.2] — 2026-09-29
 
