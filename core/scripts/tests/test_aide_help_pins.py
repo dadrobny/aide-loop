@@ -1558,6 +1558,18 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("so the re-run writes the row once",
          "test_aide_ledger::"
          "test_the_re_run_after_a_failed_tick_lands_the_item_with_one_row"),
+        # `_merged_row_already_recorded`, read before the tick: the item ✅
+        # and a `merged` row for it on its queue (#346). A reopened item is 📋
+        # when it merges again, so its second row is appended.
+        ("A push that fails after the tick's commit is made keeps that "
+         "commit, and the re-run finds the item ✅ with its merged row and "
+         "appends no second one",
+         "test_aide_ledger::"
+         "test_the_re_run_after_a_failed_push_appends_no_second_row"),
+        ("the second row of an item is written only by a merge of it after "
+         "`aide progress reopen` sent it back",
+         "test_aide_ledger::"
+         "test_a_reopened_item_merged_again_takes_a_second_row"),
         # `tick_ci_reopening_gap`, its rel added to the tick's `extra_rels`
         # under the snapshot `cmd_merge` took before any write (#332).
         ("Where the item's latest reopening is a CI one (a reason `aide "

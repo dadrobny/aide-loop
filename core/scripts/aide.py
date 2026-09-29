@@ -9590,6 +9590,41 @@ def append_ledger_row(repo_root: Path, config, cells: List[str],
     return rel
 
 
+def _merged_row_already_recorded(repo_root: Path, config, number: int,
+                                 cells: List[str]) -> Optional[str]:
+    """``ledger.md:<line>`` of the row an earlier merge of this item wrote, or None.
+
+    Only where the item is **already ✅** before this run ticks it (issue
+    #346): a merge whose tick commit landed and whose push failed is re-run
+    with the ✅ and the row both in place, and a second row would be a second
+    record of one merge. A reopened item is never ✅ when it merges again —
+    `progress reopen` sends every bullet back to 📋 — so the second row §1 →
+    `ledger.md` expects for it is appended as before; so is the first row of
+    an item ticked by hand ahead of its merge, since there is no `merged` row
+    for it to find. Matched on the item and its queue, as the row records
+    them.
+    """
+    ddir = docs_dir(repo_root, config)
+    progress, path = ddir / "progress.md", ledger_path(ddir)
+    if not (progress.is_file() and path.is_file()):
+        return None
+    try:
+        status = _parse_item_status(
+            progress.read_text(encoding=_ENCODING).splitlines())[2].get(number)
+        rows = ledger_rows(path.read_text(encoding=_ENCODING))
+    except (OSError, UnicodeDecodeError):
+        return None
+    if status != "complete":
+        return None
+    want = dict(zip(LEDGER_COLUMNS, cells))
+    for lineno, row_cells in rows:
+        row = dict(zip(LEDGER_COLUMNS, row_cells))
+        if (row.get("Item") == want["Item"] and row.get("Outcome") == "merged"
+                and row.get("Queue", "") == want["Queue"]):
+            return f"{path.name}:{lineno}"
+    return None
+
+
 def ledger_rows(text: str) -> List[Tuple[int, List[str]]]:
     """``(lineno, cells)`` for every data row of a ledger — the one reader.
 
@@ -12029,9 +12064,11 @@ def _promote_item_to_complete(repo_root: Path, config, number: int,
     has just appended (§1 → `ledger.md`). One commit, because the row and the
     ✅ are one fact about one item: two would let a run land the tick and lose
     the row, leaving a ledger a reader has to reconcile against progress.md.
-    They are committed even where the tick itself is a no-op (a re-run over an
-    item already ✅), since the row is new either way. With no path to commit
-    — a no-op tick and no row — nothing is committed and nothing is owed.
+    They are committed even where the tick itself is a no-op (an item ticked
+    by hand ahead of its merge), since the row is new then. A re-run over an
+    item the earlier run already ticked and recorded brings no row (issue
+    #346): with no path to commit — a no-op tick and no row — nothing is
+    committed and nothing is owed, and the push that failed is all it retries.
     """
     progress_path = docs_dir(repo_root, config) / "progress.md"
     rels = list(extra_rels)
@@ -13143,7 +13180,18 @@ def cmd_merge(args: argparse.Namespace) -> int:
             before = _snapshot([ddir / "progress.md", ledger_path(ddir),
                                 insights_path(ddir)])
             ledger_rel = None
-            if pending_row is not None:
+            recorded = (None if pending_row is None else
+                        _merged_row_already_recorded(repo_root, config,
+                                                     args.number, pending_row))
+            if recorded is not None:
+                # A re-run after a push that failed (issue #346): the earlier
+                # run's tick commit landed here, row and all, and only the
+                # push did not. That row is the one measured while the claim
+                # branch still had its diff and the run was validation's; this
+                # run's would read 0 tests, 0 files and a fresh suite time.
+                print(f"aide merge: ledger row for item {args.number:03d} "
+                      f"already recorded ({recorded}) — not appended")
+            elif pending_row is not None:
                 pending_row[LEDGER_COLUMNS.index("Suite s")] = suite_cell
                 pending_row[LEDGER_COLUMNS.index("Inherited")] = (
                     "" if inherited is None else str(len(inherited)))
@@ -16235,7 +16283,11 @@ def register_git_subcommands(sub) -> None:
             "progress.md, the ledger and insights.md as they were before the "
             "tick, and exits 1, so the re-run writes the row once. A commit "
             "that is made but whose replay onto origin stops is kept, and "
-            "refuses the push the same way. An item "
+            "refuses the push the same way. A push that fails after the "
+            "tick's commit is made keeps that commit, and the re-run finds "
+            "the item \u2705 with its merged row and appends no second one; "
+            "the second row of an item is written only by a merge of it "
+            "after `aide progress reopen` sent it back. An item "
             "stopped at the "
             "validation-round cap never reaches this verb, and "
             "`aide ledger abandon` writes its row instead.\n"
