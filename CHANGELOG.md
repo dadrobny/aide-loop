@@ -149,6 +149,9 @@ instead — that is the bump policy above, and it is enforced by
   041/042` warned twice about citing a human gate by position. A position is
   never padded and `037` is the item-number shape, so both position readers
   now require the number to start with 1–9; `human gate 2` still warns.
+  A hand-typed padded position (`insight 07`, `gate 05`) is no longer
+  warned about either — the price of reading `037` as the item number it
+  is, since `aide insights list` and `aide gate list` never pad one.
 
 ## [2.24.0] — 2026-09-29
 

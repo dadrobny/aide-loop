@@ -1367,7 +1367,12 @@ def test_check_leaves_records_out_of_the_position_and_engine_marker_sweeps(
     spec.write_text(spec.read_text(encoding="utf-8")
                     + "Chartered by insight 2026-01-09-ffff.\n", encoding="utf-8")
     _commit(consumer, "a dangling ID in the record")
+    capsys.readouterr()
     assert aide.main(["--repo", str(consumer), "check"]) == 1
+    captured = capsys.readouterr()
+    assert ("001-the-greeter.md:" in (captured.out + captured.err)
+            and "insight 2026-01-09-ffff resolves to no entry"
+            in (captured.out + captured.err))
 
 
 def test_a_created_inbox_carries_its_template_line(aide, consumer: Path):

@@ -1687,6 +1687,27 @@ def test_a_record_spec_and_a_done_queue_are_not_warned_about_positions(
     assert _findings(repo) == ([], [])
 
 
+def test_a_queue_with_one_open_item_or_none_named_is_not_a_record(tmp_path: Path):
+    """A queue is a record only once every item it names is settled: one 📋
+    item beside a ✅ one keeps it live, and so does naming none yet."""
+    ddir = tmp_path / "docs" / "aide"
+    (ddir / "queue").mkdir(parents=True)
+    (ddir / "items").mkdir()
+    mixed = ddir / "queue" / "queue-001.md"
+    mixed.write_text("# Queue 001\n\n### Item 007: A\n\n### Item 008: B\n",
+                     encoding="utf-8")
+    empty = ddir / "queue" / "queue-002.md"
+    empty.write_text("# Queue 002\n\nBeing wired.\n", encoding="utf-8")
+    done = ddir / "queue" / "queue-003.md"
+    done.write_text("# Queue 003\n\n### Item 007: A\n", encoding="utf-8")
+    spec = ddir / "items" / "007-a.md"
+    spec.write_text("# Item 007 — A\n", encoding="utf-8")
+    live = ddir / "items" / "008-b.md"
+    live.write_text("# Item 008 — B\n", encoding="utf-8")
+    records = aide.record_documents(ddir, {7: "complete", 8: "planned"})
+    assert records == {done, spec}
+
+
 @pytest.mark.parametrize("icon", ["📋", "🚧", "🔍"])
 def test_a_live_spec_and_an_open_queue_still_warn_about_positions(
         tmp_path: Path, icon: str):
