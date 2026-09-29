@@ -2296,6 +2296,100 @@ def defer_item(text: str, num: int, reason: str, date: str,
             f"item {num:03d}: deferred — {reason}")
 
 
+def reword_deliverable(text: str, num: int, new_text: str
+                       ) -> Tuple[str, str, int]:
+    """Rewrite the prose of item *num*'s deliverable bullet; ``(text, old, line)``.
+
+    The repair the split's copies are owed (issue #320). ``_split_multi_item_bullets``
+    writes a shared bullet's sentence under every item it named, `aide check`
+    reports the copies as identical until each says what its own item delivers
+    (#169) — and until this verb no verb could change a bullet's words, so the
+    only fix was the hand edit every role is steered away from.
+
+    Allowed whatever the bullet's icon, ✅ included, which is where the criterion
+    form's refusal does not carry over: a box's wording is what an attestation
+    was made against, while a bullet's icon is the item's status and says
+    nothing about the sentence beside it. The ✅ copy is the one whose words
+    describe a sibling's open work as done, so it is the one most owed a fix.
+
+    The bullet is found the one way every progress verb finds it — its
+    trailing marker, over ``_deliverable_bullet_spans`` — and exactly one must
+    name *num*, naming no other item: a shared ``*(Items …)*`` bullet's prose
+    is one sentence for all its items. The new prose goes on the bullet's first
+    line between the icon and the marker, the wrapped lines it replaces are
+    dropped, and whatever hangs below the bullet (sub-lines, a trail) is not
+    part of its span and is left alone. ``line`` is the bullet's 1-based line;
+    a rewording to the prose it already has returns *text* unchanged.
+    """
+    prose = new_text.strip()
+    if not prose:
+        raise ValueError(
+            "the new text is empty — a deliverable bullet says what its item "
+            "delivers")
+    if "\n" in prose or "\r" in prose:
+        raise ValueError(
+            "the new text may not contain a line break — it is written onto "
+            "the bullet's one line, and a break would end the bullet before "
+            "its marker")
+    icon = _ICON_RE.match(prose)
+    if icon:
+        raise ValueError(
+            f"the new text starts with a status icon ({icon.group(0)}), which "
+            f"would put a second status on the bullet — pass the prose alone; "
+            f"the bullet keeps its own icon")
+    ref = _BULLET_MARKER_RE.search(prose)
+    if ref:
+        raise ValueError(
+            f"the new text ends with an item reference "
+            f"({ref.group(0).strip()}), which would join the bullet's trailing "
+            f"marker and attribute its items to the bullet — pass the prose "
+            f"alone; the bullet keeps its own *(Item {num:03d})* marker")
+    lines = text.splitlines()
+    owned = [(s, l) for s, l in _deliverable_bullet_spans(lines)
+             if num in _bullet_marker_item_numbers(lines[l])]
+    if not owned:
+        raise ValueError(
+            f"no deliverable bullet's trailing *(Item {num:03d})* marker names "
+            f"item {num:03d}, so there is nothing to reword")
+    if len(owned) > 1:
+        where = ", ".join(f"progress.md:{s + 1}" for s, _ in owned)
+        raise ValueError(
+            f"{len(owned)} deliverable bullets' trailing markers name item "
+            f"{num:03d} ({where}), and the verb rewords one bullet — which is "
+            f"meant is not the engine's to guess")
+    start, last = owned[0]
+    marker = _BULLET_MARKER_RE.search(lines[last])
+    items = list(dict.fromkeys(_referenced_item_numbers(marker.group(0))))
+    if len(items) > 1:
+        listed = ", ".join(f"{n:03d}" for n in items)
+        raise ValueError(
+            f"item {num:03d}'s bullet (progress.md:{start + 1}) carries the "
+            f"shared marker {marker.group(0).strip()}: its prose is one "
+            f"sentence for items {listed}, so rewording it for one would "
+            f"reword it for all. `aide progress set` splits it into one bullet "
+            f"per item the first time one of them moves; reword item "
+            f"{num:03d}'s copy after that")
+    old = _bullet_prose(lines, start, last)
+    if prose == old:
+        return text, old, start + 1
+    head = lines[start][:_BULLET_RE.match(lines[start]).end()]
+    rewritten = f"{head} {prose} {marker.group(0).strip()}"
+    candidate = lines[:start] + [rewritten] + lines[last + 1:]
+    # The guard behind the four refusals above: the rewritten bullet must read
+    # back as the same one bullet, naming only this item, carrying this prose.
+    # A shape the checks did not foresee is refused here rather than written.
+    spans = [(s, l) for s, l in _deliverable_bullet_spans(candidate)
+             if num in _bullet_marker_item_numbers(candidate[l])]
+    if (spans != [(start, start)]
+            or _bullet_marker_item_numbers(candidate[start]) != [num]
+            or _bullet_prose(candidate, start, start) != prose):
+        raise ValueError(
+            f"the new text would change what item {num:03d}'s bullet "
+            f"attributes or where it ends — pass the prose alone")
+    return ("\n".join(candidate) + ("\n" if text.endswith("\n") else ""),
+            old, start + 1)
+
+
 class Reopening(NamedTuple):
     """One reopened item, as `check` and `status` report it.
 
@@ -5087,7 +5181,9 @@ def identical_deliverable_warnings(lines: List[str]) -> List[str]:
     per stage and per prose, naming the items, until each copy says what its
     own item delivers. A consumer that genuinely ships two identical
     deliverables in one stage sees the same warning; the remedy is the same
-    sentence either way.
+    sentence either way. The warning names `aide progress reword --item`,
+    the verb that makes it (issue #320) — before it, the remedy it asked for
+    was a hand edit.
     """
     out: List[str] = []
     for start, end, num in stage_sections(lines):
@@ -5109,8 +5205,8 @@ def identical_deliverable_warnings(lines: List[str]) -> List[str]:
                 f"deliverable bullets with identical prose, attributed to "
                 f"items {listed} — the shape a split of a shared *(Items …)* "
                 f"marker leaves behind, so a ✅ on one describes the others' "
-                f"work too. Reword each copy to say what its own item "
-                f"delivers.")
+                f"work too. Reword each copy with `aide progress reword --item "
+                f"NNN --text …` to say what its own item delivers.")
     return out
 
 
@@ -7138,8 +7234,9 @@ def _report_bullet_splits(number: int, lines: List[str],
     for split in sorted(splits, key=lambda s: s.copies[0][1]):
         print(f"item {number:03d}: split the shared bullet {split.marker} into "
               f"one bullet per item. Every copy still carries the SHARED "
-              f"prose — reword each to describe its own item's work, or "
-              f"`aide check` keeps reporting them as identical:")
+              f"prose — reword each with `aide progress reword --item NNN "
+              f"--text …` to describe its own item's work, or `aide check` "
+              f"keeps reporting them as identical:")
         for _, lineno in split.copies:
             print(f"  progress.md:{lineno}: {lines[lineno - 1].strip()}")
 
@@ -7149,6 +7246,17 @@ def cmd_progress(args: argparse.Namespace) -> int:
     #: attestation, correct its evidence, withdraw it, or reword a criterion
     #: nobody has attested yet. `reopen` is `retract` one level up — an item,
     #: not a box (issue #271).
+    #:
+    #: NUMBER is optional to argparse only because `reword --item` takes none
+    #: (issue #320); every other action still requires it, and says so here.
+    if args.item is not None and args.action != "reword":
+        print(f"aide progress {args.action}: --item belongs to `reword` alone "
+              f"(reword --item NNN --text TEXT)", file=sys.stderr)
+        return 2
+    if args.number is None and args.action != "reword":
+        print(f"usage: aide progress {args.action} NUMBER … "
+              f"(see aide progress -h)", file=sys.stderr)
+        return 2
     if args.action == "accept":
         return _cmd_progress_accept(args)
     if args.action == "amend":
@@ -7585,9 +7693,11 @@ def _cmd_progress_reword(args: argparse.Namespace) -> int:
         print("aide progress reword: --all is not offered — criteria are "
               "reworded one at a time", file=sys.stderr)
         return 2
-    if args.criterion is None:
-        print("usage: aide progress reword STAGE --criterion N --text TEXT",
-              file=sys.stderr)
+    if args.item is not None:
+        return _cmd_progress_reword_deliverable(args)
+    if args.criterion is None or args.number is None:
+        print("usage: aide progress reword STAGE --criterion N --text TEXT | "
+              "reword --item NNN --text TEXT", file=sys.stderr)
         return 2
     if not (args.text or "").strip():
         print("aide progress reword: --text is required", file=sys.stderr)
@@ -7637,6 +7747,56 @@ def _cmd_progress_reword(args: argparse.Namespace) -> int:
             repo_root, config, "aide progress reword", "the rewording",
             f"progress(aide): stage {args.number} reword criterion {args.criterion}",
             rels, before)
+    return 0
+
+
+def _cmd_progress_reword_deliverable(args: argparse.Namespace) -> int:
+    """``aide progress reword --item NNN --text TEXT`` — a bullet's prose.
+
+    The bullet form of `reword` (issue #320): the repair `aide check`'s
+    identical-prose warning and the split report ask for. progress.md alone is
+    written. roadmap.md mirrors a stage's acceptance criteria, which is why the
+    criterion form writes both; its Deliverables bullets carry no item marker —
+    items are born after the roadmap, in the queue — so there is no bullet of
+    item NNN there to keep in step, and nothing to refuse over.
+    """
+    usage = "usage: aide progress reword --item NNN --text TEXT"
+    if args.number is not None or args.status is not None:
+        print(f"{usage}\naide progress reword --item: takes no STAGE — the "
+              f"bullet is found by its item's marker, wherever it sits",
+              file=sys.stderr)
+        return 2
+    if not (args.text or "").strip():
+        print(f"{usage}\naide progress reword: --text is required",
+              file=sys.stderr)
+        return 2
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    progress_path = docs_dir(repo_root, config) / "progress.md"
+    if not progress_path.is_file():
+        print(f"error: {progress_path} not found", file=sys.stderr)
+        return 1
+    text = progress_path.read_text(encoding=_ENCODING)
+    try:
+        updated, old, lineno = reword_deliverable(text, args.item, args.text)
+    except ValueError as exc:
+        print(f"error: {exc}; progress.md NOT changed", file=sys.stderr)
+        return 1
+    if updated == text:
+        print(f"item {args.item:03d}: no change (progress.md:{lineno} already "
+              f"reads so)")
+        return 0
+    before = _snapshot([progress_path])
+    progress_path.write_text(updated, encoding="utf-8")
+    print(f"item {args.item:03d}: deliverable bullet reworded "
+          f"(progress.md:{lineno})")
+    print(f"  was: {old}")
+    print(f"  now: {args.text.strip()}")
+    if not args.no_commit and (repo_root / ".git").exists():
+        return _commit_or_restore(
+            repo_root, config, "aide progress reword", "the rewording",
+            f"progress(aide): item {args.item:03d} reword deliverable",
+            [_progress_rel(config)], before)
     return 0
 
 
@@ -14214,7 +14374,10 @@ def build_parser() -> argparse.ArgumentParser:
             "reword:  change a criterion's text in progress.md and roadmap.md, "
             "or in neither; where roadmap.md has no acceptance block for the "
             "stage, in progress.md alone; refuses over a ticked, annotated or "
-            "corrected box\n"
+            "corrected box. `reword --item NNN --text TEXT` takes no stage and "
+            "instead rewrites the prose of the one deliverable bullet whose "
+            "trailing marker names the item, whatever its status, keeping its "
+            "icon and marker\n"
             "reopen:  send a \u2705 item back to \U0001f4cb \u2014 its "
             "deliverable bullet flips, a dated `reopened: <reason>` line goes "
             "under it, its stage rolls back down, and a `gap` insight is "
@@ -14250,6 +14413,15 @@ def build_parser() -> argparse.ArgumentParser:
             "be lined up, nothing is written and the message says which counts "
             "disagreed.\n"
             "\n"
+            "reword --item writes the new prose on the bullet's first line, in "
+            "place of all of its wrapped lines, and leaves every line under the "
+            "bullet as it was. It writes progress.md alone: roadmap.md's "
+            "deliverables carry no item marker, so there is no bullet of the "
+            "item to mirror. It refuses, writing nothing, when no bullet or "
+            "more than one names the item, when the bullet's marker names "
+            "several items, or when the text is empty, starts with a status "
+            "icon or ends with an item reference.\n"
+            "\n"
             "Neither amend nor retract takes --all: each attestation was made "
             "separately and is corrected or withdrawn separately. Both refuse "
             "without a stated reason. `aide check` warns on every retracted "
@@ -14277,15 +14449,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_prog.add_argument("action",
                         choices=["set", "accept", "amend", "retract", "reword",
                                  "reopen"])
-    p_prog.add_argument("number", type=int,
+    p_prog.add_argument("number", type=int, nargs="?", default=None,
                         help="item number (set, reopen) | stage number "
-                             "(every other action)")
+                             "(every other action; none for reword --item)")
     p_prog.add_argument("status", nargs="?", default=None,
                         help="set: in-progress | in-review | done | deferred "
                              "(in-review = pushed, awaiting a human's merge; "
                              "deferred needs --reason)")
-    p_prog.add_argument("--criterion", type=int, default=None,
-                        help="1-based acceptance-criterion index within the stage")
+    #: A criterion or a deliverable bullet, never both in one call: the two
+    #: `reword` forms address different lines by different keys (issue #320).
+    p_target = p_prog.add_mutually_exclusive_group()
+    p_target.add_argument("--criterion", type=int, default=None,
+                          help="1-based acceptance-criterion index within the stage")
+    p_target.add_argument("--item", type=int, default=None, metavar="NNN",
+                          help="reword: the item whose deliverable bullet's "
+                               "prose --text replaces, in place of STAGE and "
+                               "--criterion")
     p_prog.add_argument("--all", action="store_true", dest="all_criteria",
                         help="accept: every acceptance criterion in the stage "
                              "(amend/retract/reword act on one criterion only)")
@@ -14298,7 +14477,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "set deferred: why the item waits "
                              "(required for all three)")
     p_prog.add_argument("--text", default=None,
-                        help="reword: the criterion's new wording (required)")
+                        help="reword: the criterion's new wording, or with "
+                             "--item the bullet's new prose (required)")
     p_prog.add_argument("--date", default=None,
                         help="amend/retract/reopen/set deferred: ISO date "
                              "for the trail "

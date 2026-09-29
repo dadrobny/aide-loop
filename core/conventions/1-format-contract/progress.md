@@ -69,6 +69,14 @@ bullet per item with the same text and one `*(Item NNN)*` each, and move only
 the item named. Nothing is asked of the author — write the shared marker
 freely; the file simply grows a row the first time its items diverge.
 
+**A split copy's prose is reworded with its verb, whatever its icon.** Each
+copy the desugar writes carries the sentence the shared bullet had, and `aide
+check` warns while two single-item bullets of one stage read the same. Say what
+each item delivers with `aide progress reword --item NNN`, never by hand: it
+rewrites that one bullet's prose and keeps its icon and marker, over a ✅ bullet
+as readily as a 📋 one. A deliverable bullet carries no attestation, so the
+immutability rule below binds an acceptance box, never a bullet's sentence.
+
 **Stage status is rolled up from the bullets, never hand-written.** A stage's
 icon, its summary-table row, its section header and the Objective rows it
 delivers are all derived from the Deliverables bullets under it, by one
@@ -210,6 +218,18 @@ Semantics
 - **Why a shared marker is desugared.** One bullet carries one icon, so while
   items share a marker they share a status — and the first flip would
   otherwise carry the siblings with it.
+- **Why a split copy has a verb, and why it rewords a ✅.** Issue #320: since
+  #169 `aide check` reported the copies a split leaves and asked for each to be
+  reworded, but no verb changed a bullet's words — `reword` took a criterion
+  only — so the one repair was a hand edit of `progress.md`, the edit every
+  role is steered away from. The criterion form refuses over a ticked box
+  because its wording is what an attestation was made against. A bullet's icon
+  is the item's status, written by `set` and `merge` from the item's state and
+  not from the sentence beside it, so rewording the prose re-points nothing —
+  and the ✅ copy is the one whose words describe a sibling's open work as
+  done, so a verb that refused it would leave standing the one line that lies.
+  `roadmap.md` is not mirrored: its deliverables carry no item marker, since
+  items are born after it, in the queue.
 - **Why no rollup ticks a box.** A derived tick is not an attestation. While
   `progress set` auto-ticked, a box deliberately left `[ ]` in a ✅ stage — the
   honest record of a criterion that shipped unmet — was silently flipped back

@@ -47,7 +47,9 @@ that moved everything.
   *"each attestation was made separately and is corrected or withdrawn
   separately"* and *"a deferral is a decision about order, not a finding"*
   (`progress`), *"the stage is dropped, so its bullets no longer speak for
-  it"* (`check`) — rationale for a rule pinned beside them, not a second rule.
+  it"* (`check`), *"roadmap.md's deliverables carry no item marker, so there
+  is no bullet of the item to mirror"* (`progress`) — rationale for a rule
+  pinned beside them, not a second rule.
 * *"reopen a ✅ item first"* (`progress`) — a pointer at another action, the
   refusal it follows being pinned.
 * *"since the row is dropped from every check it would have fed"*, *"the
@@ -612,6 +614,32 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_acceptance_amend::test_reword_refuses_a_ticked_criterion",
           "test_aide_acceptance_amend::test_reword_refuses_an_annotated_criterion_even_once_unticked",
           "test_aide_acceptance_amend::test_reword_refuses_a_criterion_carrying_a_correction_trail")),
+        # The bullet form (issue #320): `reword_deliverable` finds the bullet
+        # by `_bullet_marker_item_numbers`, and has no status check at all.
+        ("rewrites the prose of the one deliverable bullet whose trailing "
+         "marker names the item, whatever its status, keeping its icon and "
+         "marker",
+         ("test_aide_reword_deliverable::test_a_done_bullet_is_reworded_and_keeps_its_icon_and_marker",
+          "test_aide_reword_deliverable::test_a_planned_bullet_is_reworded_and_its_twin_left_alone")),
+        # `candidate = lines[:start] + [rewritten] + lines[last + 1:]`: the
+        # span is the bullet alone, so what hangs under it is outside the cut.
+        ("writes the new prose on the bullet's first line, in place of all of "
+         "its wrapped lines, and leaves every line under the bullet as it was",
+         ("test_aide_reword_deliverable::test_a_wrapped_bullet_is_written_back_on_one_line",
+          "test_aide_reword_deliverable::test_lines_under_the_bullet_are_left_as_they_were")),
+        # `_cmd_progress_reword_deliverable` opens progress.md only.
+        ("It writes progress.md alone",
+         "test_aide_reword_deliverable::test_the_cli_writes_progress_alone_and_leaves_roadmap_alone"),
+        # One `raise ValueError` per clause, each before anything is written.
+        ("It refuses, writing nothing, when no bullet or more than one names "
+         "the item, when the bullet's marker names several items, or when the "
+         "text is empty, starts with a status icon or ends with an item "
+         "reference",
+         ("test_aide_reword_deliverable::test_an_item_no_bullet_names_is_refused",
+          "test_aide_reword_deliverable::test_an_item_two_bullets_name_is_refused",
+          "test_aide_reword_deliverable::test_a_shared_marker_is_refused_and_says_what_to_do",
+          "test_aide_reword_deliverable::test_text_that_would_change_the_bullet_is_refused",
+          "test_aide_reword_deliverable::test_a_refusal_through_the_cli_writes_nothing")),
 
         # The model (issue #192), and the reason this module exists: the
         # sentence is transcribed as a predicate and compared with

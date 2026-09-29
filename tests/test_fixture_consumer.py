@@ -849,6 +849,38 @@ def test_a_file_the_progress_verbs_wrote_passes_every_derived_cell(
     assert "| G1 Foundations | Stage 1 | ✅ |" in text
 
 
+def test_a_split_copy_is_reworded_by_its_verb_and_the_warning_clears(
+        aide, consumer: Path, capsys):
+    """Issue #320: `check` reports two bullets a split left with one sentence
+    between them, and until 2.20.0 no verb could change a bullet's words.
+    `reword --item` rewrites one copy — the ✅ one included — and commits;
+    a shared marker is refused with progress.md untouched."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    _mis_shape(consumer, "- 📋 The greeter. *(Item 001)*\n- 📋 The farewell. *(Item 002)*",
+               "- ✅ Both functions. *(Item 001)*\n- 📋 Both functions. *(Item 002)*")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "identical prose" in capsys.readouterr().out
+
+    head = _sha(consumer, "HEAD")
+    assert aide.main(["--repo", str(consumer), "progress", "reword",
+                      "--item", "002", "--text", "The farewell."]) == 0
+    assert _sha(consumer, "HEAD") != head and _clean(consumer)
+    text = progress.read_text(encoding="utf-8")
+    assert "- ✅ Both functions. *(Item 001)*" in text
+    assert "- 📋 The farewell. *(Item 002)*" in text
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "identical prose" not in capsys.readouterr().out
+
+    _mis_shape(consumer, "- 📋 The farewell. *(Item 002)*",
+               "- 📋 The farewell. *(Items 002, 003)*")
+    before, head = progress.read_bytes(), _sha(consumer, "HEAD")
+    assert aide.main(["--repo", str(consumer), "progress", "reword",
+                      "--item", "002", "--text", "Just the farewell."]) == 1
+    assert progress.read_bytes() == before
+    assert _sha(consumer, "HEAD") == head
+
+
 def test_claim_holds_every_item_behind_an_unreadable_gate_row(
         aide, consumer: Path, capsys):
     """What an unreadable gate row blocks is unknown, so nothing is released
@@ -1045,6 +1077,8 @@ def _raise_a_gate(repo: Path) -> None:
      "- 🚧 The greeter. *(Item 001)*"),
     (["progress", "accept", "1", "--criterion", "1", "--evidence", "both in"],
      "- [x] Both items land."),
+    (["progress", "reword", "--item", "001", "--text", "The greeting."],
+     "- 📋 The greeting. *(Item 001)*"),
 ])
 def test_a_recording_verb_whose_commit_fails_exits_1_and_a_retry_commits(
         aide, consumer: Path, argv: list, committed: str):

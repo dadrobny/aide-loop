@@ -121,6 +121,34 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.20.0] — 2026-09-29
+
+### Added
+
+- **`aide progress reword --item NNN --text TEXT` rewrites a deliverable
+  bullet's prose (issue #320).** `aide check` reports the copies a split of a
+  shared `*(Items …)*` marker leaves — two single-item bullets in one stage
+  with the same sentence — and asked for each to be reworded, but no verb
+  changed a bullet's words: `reword` took an acceptance criterion only, and
+  refuses over a ticked box. The one repair was a hand edit of `progress.md`,
+  which `AGENT-CONTEXT.md` steers every role away from. The bullet form finds
+  the one bullet whose trailing marker names the item, by the same readers
+  every progress verb uses, and replaces the prose between its icon and its
+  marker — on the bullet's first line, in place of its wrapped lines, with
+  every line under it left alone. It is allowed whatever the bullet's status,
+  ✅ included: a deliverable bullet carries no attestation, and the ✅ copy is
+  the one whose words describe a sibling's open work as done. It refuses,
+  writing nothing, when no bullet or more than one names the item, when the
+  bullet's marker still names several items (its prose is one sentence for
+  all of them), or when the text is empty, starts with a status icon or ends
+  with an item reference. `roadmap.md` is not mirrored: its deliverables carry
+  no item marker. It commits like `reword` and restores the file on a failed
+  commit. The identical-prose warning and the split report `progress set` /
+  `merge` print now name the verb. §1 → `progress.md` states the rule, and the
+  `aide-progress-file` skill delivers it; `--item` and `--criterion` are
+  mutually exclusive, and STAGE is now optional to argparse for `reword
+  --item` alone — every other action still requires its number.
+
 ## [2.19.0] — 2026-09-28
 
 ### Added
