@@ -48,7 +48,8 @@ redefine them.
 ## 2. Five role definitions, bound to capability *tiers*
 
 The work is split across five fresh, role-scoped sub-agents (plus the two
-optional definitions below). The contract names **capability tiers**, not
+optional definitions below); `builder-escalation` is the builder on T3, not a
+sixth role. The contract names **capability tiers**, not
 models — each adapter binds a tier to one of its own runtime's models (as high
 as necessary, as low as adequate). No role signs off its
 own work; a fresh instance per item.
@@ -72,7 +73,6 @@ entirely — a runtime that does not express one simply has no cell here:
 
 Recon/claim is **not a role** — it is deterministic (`aide claim`), so no agent and
 no tier. The **Claude** column is the reference binding — **T3→Opus, T2→Sonnet**
-(builder→Opus once escalated), with `max` reserved for intractable one-offs
 — and each cell folds that runtime's own frontmatter keys into one token, which
 for Claude Code is `model:` + `effort:` on the matching `agents/*.md`. A second
 adapter adds **one further column** beside it the day it ships agents, filled only
@@ -92,9 +92,8 @@ ID and never an alias the runtime is free to re-point: a model move is a release
 with a changelog entry naming the role and both IDs, and a project reading its
 run ledger against the `Engine` cell is reading one set of role models per value.
 The reasoning parameter is a literal already, so it is fixed by the same cell.
-The trade is deliberate — every model generation costs a release and a
-consumer's update, and an ID the provider has retired stops the spawn where an
-alias would have carried on, on a different model, silently. One thing stays
+Every model generation therefore costs a release, and an ID the provider has
+retired stops the spawn rather than running on another model. One thing stays
 outside it and is named rather than implied: the **orchestrator** runs in the
 user's own session on whatever model that session holds. The builder's
 **escalation** does not: a runtime whose per-dispatch model override takes
@@ -126,10 +125,9 @@ reviewer is adversarial and produces findings. Where an adapter expresses it,
 **the merge must wait for both** — findings collected after the item lands gate
 nothing — and the role writes no code, modifies no tests, does not merge and
 does not touch `progress.md`; its findings triage in scope (a fix dispatched
-back) or out of scope (one `insights.md` line). It is optional because a review
-round costs tokens on every item and a project with CI and hosted reviewers may
-decline it; the engine's default is off, so an adapter that omits the role is
-conformant and its consumers are unaffected.
+back) or out of scope (one `insights.md` line). The engine's default is
+off, so an adapter that omits the role is conformant and its consumers are
+unaffected.
 
 **Optional definition — the queue-boundary reviewer.** Where an adapter
 supports batch spec-authoring (spec §1's spec-queue entry-point), it should also

@@ -109,10 +109,10 @@ tier to its own runtime's models (as high as necessary, as low as adequate). Det
 
 | Role | Tier | Does |
 |---|---|---|
-| `queue-planner` | **T3** (strongest) | authors one queue batch (cascades into ~10 items) |
+| `queue-planner` | **T3** | authors one queue batch (cascades into ~10 items) |
 | `spec-author` | **T3** | authors one item spec (cascades into 3 downstream agents) |
-| `test-writer` | **T2** (mid) | writes one test per acceptance criterion, plus the cases the spec names |
-| `builder` | **T2** (→T3 when a failure survives a round or is serious) | implements the source dir to satisfy every AC |
+| `test-writer` | **T2** | writes one test per acceptance criterion, plus the cases the spec names |
+| `builder` | **T2** | implements the source dir to satisfy every AC; re-dispatched on T3 when a failure survives a round or is serious |
 | `validator` | **T2** | quality gate: tests, AC coverage, scope, vision fit; reconciles + merges |
 | `reviewer` | **T2** | *optional, `loop.review`* — adversarial read of the item's diff, concurrent with the validator; produces findings, merges nothing |
 

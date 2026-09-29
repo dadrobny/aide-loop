@@ -150,7 +150,15 @@ Two binding changes, a model move for T2 and an effort move for
   which the numbering already says. The one rule the `builder-escalation` row
   carried — a runtime whose per-dispatch override takes an exact ID may
   express the escalation that way instead of as a second definition — moves
-  into the §2 paragraph on fixed model versions. No binding changes.
+  into the §2 paragraph on fixed model versions. The rest of §2 is trimmed
+  the same way: the opening names `builder-escalation` as the builder on T3
+  rather than a sixth role, the unused "`max` reserved for intractable
+  one-offs" and the redundant "(builder→Opus once escalated)" are gone, and
+  the case for exact IDs and for the reviewer being off by default is one
+  statement each. `core/README.md`'s and `docs/concepts.md`'s role tables
+  follow: no tier glosses, the builder's step-up to T3 stated in its **Does**
+  cell, and `docs/concepts.md`'s "Why the tier" column becomes **Does**. No
+  binding changes.
 
 ## [2.20.0] — 2026-09-29
 
