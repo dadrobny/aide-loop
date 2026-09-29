@@ -12,6 +12,7 @@ Subcommands::
     python .aide/scripts/aide.py scope [NNN]           # branch diff vs the item's authorised paths
     python .aide/scripts/aide.py progress set NNN <in-progress|in-review|done>
     python .aide/scripts/aide.py progress set NNN deferred --reason TEXT  # ⏸️, with its why
+    python .aide/scripts/aide.py progress set --stage N --deliverable K deferred --reason TEXT  # ⏸️ on a bullet with no item marker
     python .aide/scripts/aide.py gate list|approve|decline [N|ID]  # human gates in progress.md
     python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
@@ -49,7 +50,7 @@ import tempfile
 import time
 import unicodedata
 from pathlib import Path, PurePosixPath, PurePath
-from typing import Callable, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
+from typing import Callable, Dict, Iterator, List, NamedTuple, Optional, Sequence, Set, Tuple
 
 # --------------------------------------------------------------------------- #
 # Status icons (the format contract — see .aide/conventions.md)
@@ -1534,20 +1535,24 @@ def _append_trail(lines: List[str], box: int, end: int, date: str, note: str) ->
     Indentation follows an existing trail line when there is one, so a file
     that indents by four spaces keeps doing so.
     """
-    return _insert_trail_line(lines, acceptance_box_last(lines, box, end),
+    return _insert_trail_line(lines, box, acceptance_box_last(lines, box, end),
                               acceptance_box_trail(lines, box, end), date, note)
 
 
-def _insert_trail_line(lines: List[str], last: int, trail: List[int],
-                       date: str, note: str) -> str:
+def _insert_trail_line(lines: List[str], first: int, last: int,
+                       trail: List[int], date: str, note: str) -> str:
     """Write one dated trail line below whatever owns *trail*; return it.
 
-    *last* is the owner's last physical line and *trail* its existing trail
-    lines, file order. The one writer of the trail grammar
-    (`_ACCEPT_TRAIL_RE`), shared by an acceptance box and a deliverable bullet
-    alike, so the two cannot drift into two shapes.
+    *first* and *last* are the owner's first and last physical lines and
+    *trail* its existing trail lines, file order. The one writer of the trail
+    grammar (`_ACCEPT_TRAIL_RE`), shared by an acceptance box and a
+    deliverable bullet alike, so the two cannot drift into two shapes. A first
+    trail line sits two spaces in from its owner's own marker, so one under a
+    nested bullet is nested under it rather than level with it; a later one
+    follows the trail line before it.
     """
-    indent = "  "
+    owner = lines[first]
+    indent = owner[: len(owner) - len(owner.lstrip())] + "  "
     if trail:
         prev = lines[trail[-1]]
         indent = prev[: len(prev) - len(prev.lstrip())]
@@ -2229,7 +2234,8 @@ def reopen_item(text: str, num: int, reason: str, date: str,
         if num not in _bullet_marker_item_numbers(lines[last]):
             continue
         lines[start] = _replace_first_icon(lines[start], "planned")
-        _insert_trail_line(lines, last, deliverable_bullet_trail(lines, last),
+        _insert_trail_line(lines, start, last,
+                           deliverable_bullet_trail(lines, last),
                            date, _REOPENED_PREFIX + reason)
         stage = _stage_of_line(lines, start)
         if stage is not None:
@@ -2291,7 +2297,8 @@ def defer_item(text: str, num: int, reason: str, date: str,
         if current == "deferred":
             continue
         lines[start] = _replace_first_icon(lines[start], "deferred")
-        _insert_trail_line(lines, last, deliverable_bullet_trail(lines, last),
+        _insert_trail_line(lines, start, last,
+                           deliverable_bullet_trail(lines, last),
                            date, _DEFERRED_PREFIX + reason)
         stage = _stage_of_line(lines, start)
         if stage is not None:
@@ -2299,6 +2306,87 @@ def defer_item(text: str, num: int, reason: str, date: str,
     _recompute_rollups(lines, stages)
     return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""),
             f"item {num:03d}: deferred — {reason}")
+
+
+def stage_deliverable_spans(lines: List[str], stage: str
+                            ) -> Optional[List[Tuple[int, int]]]:
+    """``(first, last)`` of each deliverable bullet in stage *stage*, in file
+    order — ``None`` when no ``## Stage N`` section has that number.
+
+    The bullets `stage_deliverable_statuses` rolls up, each with its wrapped
+    continuation lines (`_deliverable_bullet_spans`), so position K here is
+    the Kth status the rollup reads. The first section of the number wins, as
+    the rollup's header write does.
+    """
+    for start, end, num in stage_sections(lines):
+        if int(num) == int(stage):
+            return [(s, l) for s, l in _deliverable_bullet_spans(lines)
+                    if start <= s < end and not _CHECKBOX_RE.match(lines[s])]
+    return None
+
+
+def _unmarked_open_positions(lines: List[str], stage: str) -> List[int]:
+    """1-based positions of stage *stage*'s 📋, 🚧 and 🔍 deliverable bullets
+    that carry no item marker — the ones only `defer_deliverable` can defer."""
+    spans = stage_deliverable_spans(lines, stage) or []
+    out: List[int] = []
+    for k, (start, last) in enumerate(spans, start=1):
+        status = ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
+        if status in _DEFERRABLE and not _bullet_marker_item_numbers(lines[last]):
+            out.append(k)
+    return out
+
+
+def defer_deliverable(text: str, stage: int, position: int, reason: str,
+                      date: str) -> Tuple[str, str]:
+    """Defer stage *stage*'s *position*-th deliverable bullet, one with no item
+    marker; ``(updated text, message)`` (issue #336).
+
+    `defer_item` addresses a bullet by its trailing ``*(Item NNN)*`` marker, so
+    a bullet never itemised — a roadmap deliverable no queue has planned yet —
+    had no route to ⏸️ but a hand edit, and a stage deferred by hand over such
+    bullets warned for good. This is the same write addressed by position: the
+    bullet flips to ⏸️, gains the dated ``deferred: <reason>`` trail line, and
+    its stage rolls up with a downgrade allowed.
+
+    Refuses an unknown stage, a position outside the stage's bullets (naming
+    how many it has), a bullet that carries a marker (naming the ``set NNN
+    deferred`` form that addresses it), and a ✅ or ❌ bullet. A bullet already
+    ⏸️ is no change, as a repeated ``set NNN deferred`` is.
+    """
+    lines = text.splitlines()
+    spans = stage_deliverable_spans(lines, str(stage))
+    if spans is None:
+        raise ValueError(f"no '## Stage {stage}' section in progress.md")
+    where = f"stage {stage} deliverable {position}"
+    if not 1 <= position <= len(spans):
+        count = (f"has {len(spans)} deliverable bullet"
+                 f"{'' if len(spans) == 1 else 's'}, numbered from 1"
+                 if spans else "has no deliverable bullet")
+        raise ValueError(f"{where}: stage {stage} {count}")
+    start, last = spans[position - 1]
+    marked = _bullet_marker_item_numbers(lines[last])
+    if marked:
+        forms = " / ".join(f"`aide progress set {n:03d} deferred --reason …`"
+                           for n in marked)
+        raise ValueError(
+            f"{where} is itemised — its trailing marker names "
+            f"{', '.join(f'item {n:03d}' for n in marked)}, so defer it by item "
+            f"with {forms}")
+    current = ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
+    if current == "deferred":
+        return text, f"{where}: no change (already deferred)"
+    if current not in _DEFERRABLE:
+        raise ValueError(
+            f"{where} is {STATUS_TO_ICON[current]} {current}; only a 📋, 🚧 or "
+            f"🔍 deliverable can be deferred")
+    lines[start] = _replace_first_icon(lines[start], "deferred")
+    _insert_trail_line(lines, start, last, deliverable_bullet_trail(lines, last),
+                       date, _DEFERRED_PREFIX + reason)
+    stage_num = _stage_of_line(lines, start)
+    _recompute_rollups(lines, {stage_num} if stage_num is not None else set())
+    return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""),
+            f"{where}: deferred — {reason}")
 
 
 def reword_deliverable(text: str, num: int, new_text: str
@@ -6307,17 +6395,57 @@ def _cells_shown(cells: List[Tuple[str, str]]) -> str:
     return " and ".join(f"{where} {STATUS_TO_ICON[st]} {st}" for where, st in cells)
 
 
-def _stage_drift_fix(off: List[Tuple[str, str]], derived: str) -> str:
+def _deferral_fix(whose: str, unmarked: List[Tuple[str, List[int]]],
+                  marked_open: bool, derived: str) -> str:
+    """The remedy for a ⏸️ cell over open work: defer that work, each bullet
+    by the form that addresses it, or restore what the rollup computes.
+
+    *unmarked* pairs each stage with the 1-based positions of its open bullets
+    that carry no item marker (issue #336), which only the positional form
+    reaches; *marked_open* says an itemised bullet is open too, so the item
+    form is named beside it.
+    """
+    restore = f"or restore {STATUS_TO_ICON[derived]}"
+    item_form = "'aide progress set NNN deferred --reason …'"
+    if not unmarked:
+        return f"defer {whose} open items with {item_form}, {restore}"
+    if len(unmarked) == 1:
+        stage, ks = unmarked[0]
+        by_position = (f"'aide progress set --stage {stage} --deliverable K "
+                       f"deferred --reason …' (K = {', '.join(map(str, ks))})")
+    else:
+        where = "; ".join(f"stage {n}: K = {', '.join(map(str, ks))}"
+                          for n, ks in unmarked)
+        by_position = (f"'aide progress set --stage N --deliverable K "
+                       f"deferred --reason …' ({where})")
+    if marked_open:
+        return (f"defer {whose} open items with {item_form} and the "
+                f"deliverables with no item marker with {by_position}, "
+                f"{restore}")
+    return (f"{whose} open deliverables carry no item marker, so defer them "
+            f"with {by_position}, {restore}")
+
+
+def _stage_drift_fix(off: List[Tuple[str, str]], derived: str,
+                     stage: str = "N", unmarked: Sequence[int] = (),
+                     marked_open: bool = True) -> str:
     """The remedy a stage's drift warning names, by what the cells and the
-    bullets disagree about."""
+    bullets disagree about.
+
+    *unmarked* are the 1-based positions of the stage's open bullets that
+    carry no item marker, which `set NNN deferred` cannot address (issue
+    #336): the remedy names the positional form for them, beside the item
+    form while *marked_open* says an itemised bullet is open too.
+    """
     target = "cells" if len(off) > 1 else off[0][0]
     if derived == "deferred":
         return f"every open deliverable is ⏸️, so set the {target} to ⏸️"
     if any(st == "deferred" for _, st in off):
         if derived == "complete":
             return "nothing is left open to defer, so restore ✅"
-        return (f"defer the stage's open items with 'aide progress set NNN "
-                f"deferred --reason …', or restore {STATUS_TO_ICON[derived]}")
+        return _deferral_fix("the stage's" if marked_open or not unmarked
+                             else "its", [(stage, list(unmarked))]
+                             if unmarked else [], marked_open, derived)
     return (f"a stage's cells follow its bullets, so set the {target} to "
             f"{STATUS_TO_ICON[derived]}, or move the bullets with "
             f"'aide progress set'")
@@ -6373,6 +6501,9 @@ def derived_cell_findings(lines: List[str]
                 f"deliverables — they roll up to {STATUS_TO_ICON[derived]} "
                 f"{derived}")
         if rest:
+            unmarked = _unmarked_open_positions(lines, num)
+            marked_open = len(unmarked) < sum(
+                st in _DEFERRABLE for st in stage_deliverable_statuses(lines, start, end))
             if derived == "complete" and not any(st == "deferred" for _, st in rest):
                 shown = " and ".join(f"{w} shows {st}" for w, st in rest)
                 warnings.append(
@@ -6385,7 +6516,7 @@ def derived_cell_findings(lines: List[str]
                 warnings.append(
                     f"stage {num}: {_cells_shown(rest)} but its deliverables "
                     f"roll up to {STATUS_TO_ICON[derived]} {derived} — "
-                    f"{_stage_drift_fix(rest, derived)}")
+                    f"{_stage_drift_fix(rest, derived, num, unmarked, marked_open)}")
         if not off and header_status and summ and header_status != summ:
             warnings.append(
                 f"stage {num}: header {header_status} disagrees with summary {summ}")
@@ -6433,8 +6564,17 @@ def derived_cell_findings(lines: List[str]
         if derived == "deferred":
             fix = "every stage it names is ✅ or ⏸️, so set it to ⏸️"
         elif current == "deferred":
-            fix = (f"defer the open items with 'aide progress set NNN "
-                   f"deferred --reason …', or restore {STATUS_TO_ICON[derived]}")
+            named_sections = [(start, end, n) for start, end, n in
+                              stage_sections(lines) if n in nums]
+            unmarked = [(n, _unmarked_open_positions(lines, n))
+                        for _, _, n in named_sections]
+            unmarked = [(n, ks) for n, ks in unmarked if ks]
+            open_total = sum(st in _DEFERRABLE
+                             for start, end, _ in named_sections
+                             for st in stage_deliverable_statuses(lines, start, end))
+            marked_open = open_total > sum(len(ks) for _, ks in unmarked)
+            fix = _deferral_fix("the" if marked_open or not unmarked else "its",
+                                unmarked, marked_open, derived)
         else:
             fix = (f"an Objective row follows its stages, so set it to "
                    f"{STATUS_TO_ICON[derived]}")
@@ -7617,10 +7757,20 @@ def cmd_progress(args: argparse.Namespace) -> int:
     #:
     #: NUMBER is optional to argparse only because `reword --item` takes none
     #: (issue #320); every other action still requires it, and says so here.
+    if (isinstance(args.number, str) and args.stage is None
+            and args.deliverable is None):
+        # `_progress_number` passes a non-number through only so the
+        # positional-free `set --stage N --deliverable K deferred` can take
+        # its status there; anywhere else it is refused by the subparser's
+        # own error — usage, `error:` and exit 2 — as `type=int` refused it.
+        args.progress_parser.error(
+            f"argument number: invalid int value: '{args.number}'")
     if args.item is not None and args.action != "reword":
         print(f"aide progress {args.action}: --item belongs to `reword` alone "
               f"(reword --item NNN --text TEXT)", file=sys.stderr)
         return 2
+    if args.stage is not None or args.deliverable is not None:
+        return _cmd_progress_defer_deliverable(args)
     if args.number is None and args.action != "reword":
         print(f"usage: aide progress {args.action} NUMBER … "
               f"(see aide progress -h)", file=sys.stderr)
@@ -8084,6 +8234,95 @@ def _cmd_progress_defer(args: argparse.Namespace) -> int:
             f"progress(aide): item {args.number:03d} -> deferred",
             [_progress_rel(config)], before)
     return 0
+
+
+def _cmd_progress_defer_deliverable(args: argparse.Namespace) -> int:
+    """``aide progress set --stage N --deliverable K deferred --reason TEXT``.
+
+    The deferral of a deliverable bullet no item marker names (issue #336),
+    addressed by its position in the stage. Otherwise `_cmd_progress_defer`
+    exactly: the reason is required and on one line, and the edit is
+    committed or put back.
+    """
+    usage = ("usage: aide progress set --stage N --deliverable K deferred "
+             "--reason TEXT [--date YYYY-MM-DD]")
+    tag = "aide progress set --stage/--deliverable"
+    if args.action != "set":
+        print(f"{usage}\naide progress {args.action}: --stage and "
+              f"--deliverable belong to `set … deferred` alone",
+              file=sys.stderr)
+        return 2
+    if args.stage is None or args.deliverable is None:
+        print(f"{usage}\n{tag}: --stage and --deliverable go together — the "
+              f"stage names the section, the deliverable its Kth bullet",
+              file=sys.stderr)
+        return 2
+    status = args.status
+    if isinstance(args.number, str) and status is None:
+        status = args.number
+    elif args.number is not None:
+        print(f"{usage}\n{tag}: takes no item number — an itemised bullet is "
+              f"deferred with `aide progress set NNN deferred --reason …`",
+              file=sys.stderr)
+        return 2
+    if status != "deferred":
+        shown = f"'{status}'" if status else "no status"
+        print(f"{usage}\n{tag}: only `deferred` is set by position, not "
+              f"{shown} — a deliverable with no item marker resumes by being "
+              f"itemised, after which `aide progress set NNN <status>` moves "
+              f"it", file=sys.stderr)
+        return 2
+    if args.criterion is not None or args.all_criteria:
+        print(f"{usage}\n{tag}: a deliverable is deferred whole — it takes no "
+              f"--criterion or --all", file=sys.stderr)
+        return 2
+    if not (args.reason or "").strip():
+        print(f"{tag} deferred: --reason is required — the reason is what the "
+              f"record keeps", file=sys.stderr)
+        return 2
+    reason = args.reason.strip()
+    if "\n" in reason or "\r" in reason:
+        print(f"{tag} deferred: the reason may not contain a line break — it "
+              f"is written into one trail line", file=sys.stderr)
+        return 2
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    progress_path = docs_dir(repo_root, config) / "progress.md"
+    if not progress_path.is_file():
+        print(f"error: {progress_path} not found", file=sys.stderr)
+        return 1
+    import datetime as _dt
+    date = args.date or _dt.date.today().isoformat()
+    text = progress_path.read_text(encoding=_ENCODING)
+    try:
+        updated, message = defer_deliverable(text, args.stage, args.deliverable,
+                                             reason, date)
+    except ValueError as exc:
+        print(f"error: {exc}; progress.md NOT changed", file=sys.stderr)
+        return 1
+    print(message)
+    if updated == text:
+        return 0
+    before = _snapshot([progress_path])
+    progress_path.write_text(updated, encoding="utf-8")
+    if not args.no_commit and (repo_root / ".git").exists():
+        return _commit_or_restore(
+            repo_root, config, "aide progress set", "the deferral",
+            f"progress(aide): stage {args.stage} deliverable "
+            f"{args.deliverable} -> deferred",
+            [_progress_rel(config)], before)
+    return 0
+
+
+def _progress_number(value: str):
+    """`aide progress`'s NUMBER: an int, or the word as typed when it is not
+    one — so `set --stage N --deliverable K deferred` can carry its status in
+    that first positional. `cmd_progress` refuses a word anywhere else with
+    the message argparse's `type=int` would have printed."""
+    try:
+        return int(value)
+    except ValueError:
+        return value
 
 
 def _cmd_progress_reword(args: argparse.Namespace) -> int:
@@ -15442,7 +15681,10 @@ def build_parser() -> argparse.ArgumentParser:
             "per item first, and only the named item moves \u2014 the others "
             "keep the status they had. `set NNN deferred --reason TEXT` "
             "flips it to \u23f8\ufe0f and writes a dated "
-            "`deferred: <reason>` line under it\n"
+            "`deferred: <reason>` line under it; `set --stage N "
+            "--deliverable K deferred --reason TEXT` does the same to the "
+            "Kth deliverable bullet of stage N, for a bullet no item marker "
+            "names\n"
             "accept:  tick one acceptance criterion (--criterion N) or every "
             "one in the stage (--all), with --evidence\n"
             "amend:   append a dated correction under a ticked box; the tick "
@@ -15536,11 +15778,21 @@ def build_parser() -> argparse.ArgumentParser:
             "up again, moving down where its bullets now say less; an item "
             "already "
             "\u23f8\ufe0f throughout is no change. No insight is "
-            "captured: a deferral is a decision about order, not a finding."))
+            "captured: a deferral is a decision about order, not a finding.\n"
+            "\n"
+            "set --stage N --deliverable K counts the stage's deliverable "
+            "bullets from 1 in file order, a wrapped line belonging to its "
+            "bullet, and takes no NNN and no status but deferred. It refuses, "
+            "writing nothing, without a stated reason, when stage N has no "
+            "Kth bullet, when that bullet is \u2705 or \u274c, or when it "
+            "carries an item marker \u2014 defer that one by its item. "
+            "Otherwise it writes what set NNN deferred writes, and a bullet "
+            "already \u23f8\ufe0f is no change. Such a bullet resumes once "
+            "it is itemised, under set NNN."))
     p_prog.add_argument("action",
                         choices=["set", "accept", "amend", "retract", "reword",
                                  "reopen"])
-    p_prog.add_argument("number", type=int, nargs="?", default=None,
+    p_prog.add_argument("number", type=_progress_number, nargs="?", default=None,
                         help="item number (set, reopen) | stage number "
                              "(every other action; none for reword --item)")
     p_prog.add_argument("status", nargs="?", default=None,
@@ -15556,6 +15808,13 @@ def build_parser() -> argparse.ArgumentParser:
                           help="reword: the item whose deliverable bullet's "
                                "prose --text replaces, in place of STAGE and "
                                "--criterion")
+    p_prog.add_argument("--stage", type=int, default=None, metavar="N",
+                        help="set deferred: the stage whose deliverable "
+                             "bullet --deliverable names, in place of NNN")
+    p_prog.add_argument("--deliverable", type=int, default=None, metavar="K",
+                        help="set deferred: the 1-based position of a "
+                             "deliverable bullet with no item marker among "
+                             "the stage's deliverable bullets")
     p_prog.add_argument("--all", action="store_true", dest="all_criteria",
                         help="accept: every acceptance criterion in the stage "
                              "(amend/retract/reword act on one criterion only)")
@@ -15575,7 +15834,7 @@ def build_parser() -> argparse.ArgumentParser:
                              "for the trail "
                              "line (default: today)")
     p_prog.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
-    p_prog.set_defaults(func=cmd_progress)
+    p_prog.set_defaults(func=cmd_progress, progress_parser=p_prog)
 
     p_gate = sub.add_parser("gate", help="list / resolve human gates in progress.md")
     p_gate.add_argument("action", choices=["list", "approve", "decline"])
@@ -16284,7 +16543,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         except (AttributeError, ValueError, OSError):
             pass
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args, extra = parser.parse_known_args(argv)
+    if extra:
+        # argparse fills optional positionals at the first positional it
+        # meets, so in `progress set --stage N --deliverable K deferred` the
+        # status arrives after NUMBER and STATUS were already matched empty.
+        # That one word, on that one form, is taken as the NUMBER slot, where
+        # `cmd_progress` reads it; anything else is the error parse_args gives.
+        if (getattr(args, "func", None) is cmd_progress and len(extra) == 1
+                and not extra[0].startswith("-") and args.number is None
+                and args.status is None
+                and (args.stage is not None or args.deliverable is not None)):
+            args.number = _progress_number(extra[0])
+        else:
+            parser.error(f"unrecognized arguments: {' '.join(extra)}")
     try:
         return args.func(args)
     except ConfigError as exc:

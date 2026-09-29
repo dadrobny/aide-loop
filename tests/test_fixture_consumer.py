@@ -2154,6 +2154,65 @@ def test_deferring_every_item_defers_the_stage_and_resuming_reopens_it(
     assert ppath.read_bytes() == before
 
 
+def test_a_stage_deferred_by_hand_over_unmarked_bullets_is_deferred_by_position(
+        aide, consumer: Path, capsys):
+    """Issue #336 through the installed engine: a stage deferred by hand
+    before 2.5.0 — ⏸️ header and summary over two 📋 bullets never itemised —
+    warned forever, since `set NNN deferred` addresses a bullet by its marker.
+    `progress set --stage N --deliverable K deferred` defers each bullet by
+    its place, with the dated trail line, and `check` falls silent about the
+    stage. A failed commit puts the edit back, as every recording verb does."""
+    ppath = consumer / "docs" / "aide" / "progress.md"
+    ppath.write_text(ppath.read_text(encoding="utf-8").replace(
+        "| 1 | Foundations | G1 | 📋 |\n",
+        "| 1 | Foundations | G1 | 📋 |\n| 2 | Extensions | G2 | ⏸️ |\n").replace(
+        "| G1 Foundations | Stage 1 | 📋 |\n",
+        "| G1 Foundations | Stage 1 | 📋 |\n| G2 Extensions | Stage 2 | ⏸️ |\n")
+        + "\n## Stage 2 — Extensions — Deferred — ⏸️\n\n"
+          "**Deliverables.**\n"
+          "- 📋 Plugin/registration API for new heuristics.\n"
+          "- 📋 Ingestion of human abnormality labels; a classification arm\n"
+          "  that informs the heuristics.\n", encoding="utf-8")
+    _commit(consumer, "docs: stage 2 deferred by hand")
+
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    warned = [l for l in capsys.readouterr().out.splitlines() if "stage 2:" in l]
+    assert len(warned) == 1 and "--stage 2 --deliverable K deferred" in warned[0]
+
+    prog = ["--repo", str(consumer), "progress", "set", "--stage", "2"]
+    before, head = ppath.read_bytes(), _sha(consumer, "HEAD")
+    argv = ["progress", "set", "--stage", "2", "--deliverable", "1",
+            "deferred", "--reason", "owner postponed", "--date", "2026-09-29"]
+    assert _under_a_held_index_lock(aide, consumer, argv) == 1
+    assert ppath.read_bytes() == before and _sha(consumer, "HEAD") == head
+    assert _clean(consumer)
+
+    for k in ("1", "2"):
+        assert aide.main([*prog, "--deliverable", k, "deferred", "--reason",
+                          "owner postponed", "--date", "2026-09-29"]) == 0
+    assert _clean(consumer) and _sha(consumer, "HEAD~2") == head
+    text = ppath.read_text(encoding="utf-8")
+    assert "- ⏸️ Plugin/registration API for new heuristics." in text
+    assert "- ⏸️ Ingestion of human abnormality labels; a classification arm" in text
+    assert text.count("  - **2026-09-29** → deferred: owner postponed") == 2
+    assert "## Stage 2 — Extensions — Deferred — ⏸️" in text
+    assert "| 2 | Extensions | G2 | ⏸️ |" in text
+    assert "| G2 Extensions | Stage 2 | ⏸️ |" in text
+
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "stage 2:" not in out and "objective G2" not in out
+
+    # An itemised bullet is refused by position and named by its item.
+    before = ppath.read_bytes()
+    assert aide.main(["--repo", str(consumer), "progress", "set", "--stage", "1",
+                      "--deliverable", "1", "deferred", "--reason", "x"]) == 1
+    assert "`aide progress set 001 deferred" in capsys.readouterr().err
+    assert ppath.read_bytes() == before
+
+
 def test_an_exhausted_queue_is_no_longer_open_to_claim_from(aide, consumer: Path, capsys):
     """Every item ✅ makes the queue closed, not empty — so `claim` exits 1 and
     says there is no open queue. That non-zero exit is what stops

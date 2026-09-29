@@ -121,6 +121,45 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.25.0] — 2026-09-29
+
+### Added
+
+- **`aide progress set --stage N --deliverable K deferred --reason TEXT`
+  defers a deliverable bullet no item marker names (issue #336).** A stage
+  deferred by hand before 2.5.0 — ⏸️ on its header and summary row, a dated
+  deferral note, its bullets never itemised — warned on every `aide check`
+  with remedies none of which applied: `set NNN deferred` addresses a bullet
+  by its `*(Item NNN)*` marker and these had none, §1 forbids typing ⏸️ over
+  a bullet, and restoring 📋 would have undone a real deferral. The new form
+  addresses the Kth deliverable bullet of stage N (counted from 1 in file
+  order, a wrapped line belonging to its bullet) and writes what `set NNN
+  deferred` writes: ⏸️ on the bullet, the dated `deferred: <reason>` trail
+  line, the stage header, summary row and Objective rows rolled up again, and
+  a commit that is put back when it fails. It takes only `deferred`; it
+  refuses, exit 1 and nothing written, an unknown stage, a K outside the
+  stage's bullets (naming how many it has), a ✅ or ❌ bullet, and a bullet
+  that carries a marker (naming the `set NNN deferred` to use), and a bullet
+  already ⏸️ is no change. An unmarked ⏸️ bullet resumes once it is
+  itemised, under `set NNN` as before. The drift warning over such a stage
+  now names the positional form, with the K of each unmarked open bullet,
+  beside the item form where itemised bullets are open too. §1 →
+  `progress.md`, the `aide-progress-file` skill and `aide progress -h` say
+  so, and the Objective-row warning over such a stage names the positional
+  form the same way. A partly deferred stage reads what its other bullets
+  say — 🚧 while a sibling is ✅, 🚧 or 🔍, else 📋 — until its last open
+  bullet is deferred as well, as after a `set NNN deferred` of one item.
+
+### Fixed
+
+- **A first trail line under a nested bullet or box is indented under it,
+  not level with it.** `set NNN deferred`, `reopen`, the positional deferral
+  and the acceptance-box corrections wrote the first `- **DATE** → …` line at
+  two spaces whatever the owner's own indent, so under a bullet indented two
+  spaces it read as a sibling. It now sits two spaces in from its owner's
+  marker, which is what a top-level bullet or box already got; a later trail
+  line still follows the one before it.
+
 ## [2.24.1] — 2026-09-29
 
 ### Fixed

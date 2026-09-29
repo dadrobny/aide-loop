@@ -50,8 +50,9 @@ that moved everything.
   it"* (`check`), *"roadmap.md's deliverables carry no item marker, so there
   is no bullet of the item to mirror"* (`progress`) — rationale for a rule
   pinned beside them, not a second rule.
-* *"reopen a ✅ item first"* (`progress`) — a pointer at another action, the
-  refusal it follows being pinned.
+* *"reopen a ✅ item first"*, *"defer that one by its item"* and *"Otherwise
+  it writes what set NNN deferred writes"* (`progress`) — pointers at another
+  form, the refusal or the write they point at being pinned.
 * *"since the row is dropped from every check it would have fed"*, *"the
   goal-level mirror of that over-claim"*, *"a normal state rather than a
   defect"* (twice), *"a satisfied profile under an unverified row is a row
@@ -931,6 +932,31 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("No insight is captured",
          ("test_aide_defer::test_set_deferred_writes_no_insight",
           "test_aide_defer::test_set_deferred_on_a_done_item_exits_one_and_writes_nothing")),
+
+        # `_cmd_progress_defer_deliverable` / `defer_deliverable` (issue #336).
+        ("`set --stage N --deliverable K deferred --reason TEXT` does the same "
+         "to the Kth deliverable bullet of stage N, for a bullet no item "
+         "marker names",
+         ("test_aide_defer::test_defer_deliverable_flips_the_bullet_and_writes_the_trail_under_its_last_line",
+          "test_aide_defer::test_set_by_position_writes_through_the_cli_and_no_insight")),
+        # `stage_deliverable_spans` over `_deliverable_bullet_spans`; the
+        # usage refusals in `_cmd_progress_defer_deliverable`.
+        ("set --stage N --deliverable K counts the stage's deliverable bullets "
+         "from 1 in file order, a wrapped line belonging to its bullet, and "
+         "takes no NNN and no status but deferred",
+         ("test_aide_defer::test_defer_deliverable_flips_the_bullet_and_writes_the_trail_under_its_last_line",
+          "test_aide_defer::test_set_by_position_refuses_its_usage_errors_with_exit_2")),
+        ("It refuses, writing nothing, without a stated reason, when stage N "
+         "has no Kth bullet, when that bullet is \u2705 or \u274c, or when it "
+         "carries an item marker",
+         ("test_aide_defer::test_set_by_position_refuses_its_usage_errors_with_exit_2",
+          "test_aide_defer::test_set_by_position_refuses_what_it_cannot_defer_with_exit_1",
+          "test_aide_defer::test_defer_deliverable_refuses",
+          "test_aide_defer::test_defer_deliverable_refuses_a_finished_bullet")),
+        ("a bullet already \u23f8\ufe0f is no change",
+         "test_aide_defer::test_defer_deliverable_again_is_no_change"),
+        ("Such a bullet resumes once it is itemised, under set NNN",
+         "test_aide_defer::test_an_unmarked_deferred_bullet_resumes_once_itemised"),
     ],
 
     # ------------------------------------------------------------- insights --
