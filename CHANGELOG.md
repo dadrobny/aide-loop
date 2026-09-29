@@ -121,6 +121,72 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.21.0] — 2026-09-29
+
+### Added
+
+- **`aide status` reports the queue PR's CI state as `checks=` on each `stack
+  N:` line (issue #330).** It reads the head commit's check rollup from the
+  same `gh pr list` call that finds the PR, so it costs no second spawn. The
+  value is `failure` when any check failed, with each failing check named once
+  on a `failing check:` line below (a matrix's repeated job name included).
+  Otherwise it is `pending` while any check is running, `success` when any
+  passed, and `none` when there is no check or only skipped and neutral ones,
+  which is what a CI that skips drafts reports. Just after a push or `queue
+  ready`, `none` can also mean CI has not registered a run yet, so a waiter
+  does not take its first `none` as the answer; `status -h` and §4 say so.
+  Cancelled, timed-out and stale checks count as failed. Check runs and commit
+  statuses are both read. The value is `unknown`, with the reason on a `checks
+  unknown:` line, where the forge could not be asked or answered a state the
+  engine cannot read. Where only the rollup fails (a token without checks read
+  access, or a timeout), the call is made once more without it, so `pr=` reads
+  exactly as before and only `checks=` is `unknown`. It is `-` with no PR and
+  in `local` mode. A draft with an item of the branch's own queues reopened by
+  `aide progress reopen` and still open reads `pr=#N/draft(fixing)`, read from
+  that branch's own `progress.md`. That tells a PR turned back for a fix round
+  from one never marked ready, and keeps the field one token.
+- **`aide queue pr [NNN]` opens the queue branch's draft PR, and does nothing
+  else.** It opens against the base `queue start` recorded, never a typed
+  one. The title is `aide: work queue NNN`, or `aide: work queues NNN-MMM`
+  when the branch also adds queue file MMM (a maintenance queue and the stage
+  queue after it). The body is exactly one of `--body` or `--body-file`. It
+  pushes the branch first where origin lacks its commits, since `gh pr
+  create` otherwise prompts for where to push. It exits 0 and names an open
+  or draft PR that already exists. It refuses off a queue branch, in `local`
+  mode or with no origin, with no recorded base, with no commits ahead of the
+  base, and over a PR that was closed or merged.
+- **`aide queue ready [NNN]` marks that PR ready for review, and does nothing
+  else.** It pushes first where origin lacks the branch's commits, so CI sees
+  the tree the queue built. `--undo` turns it back into a draft for a fix
+  round and pushes nothing. Both are idempotent. Both refuse off a queue
+  branch, in `local` mode or with no origin, with no PR (naming `queue pr`),
+  and on a closed or merged PR. A push that fails, or a commit count git
+  cannot read, refuses before the forge is asked to change anything.
+- **An option a `queue` action does not read is refused, exit 2, before
+  anything is done.** `queue ready --dry-run` would otherwise have pushed
+  and flipped the PR. `pr` and `ready` refuse `--dry-run`, `--base`,
+  `--through`, `--date`, `--specs` and `--no-commit`, `pr` refuses `--undo`
+  and `ready` refuses `--body` / `--body-file`. `start`, `tidy`, `gate` and
+  `restack` refuse the three new options.
+- **Both verbs run unattended.** `Bash(python .aide/scripts/aide.py:*)`
+  already allows every subcommand and no ask rule matches them, so
+  `settings.json` and the hygiene hook need no change.
+  `adapters/claude/tests/test_queue_pr_automation.py` now holds that both
+  verbs are allowed and asked by nothing, that the hook passes them, and that
+  `gh pr create` / `gh pr ready` stay `ask`-gated. §3's verb bullet names
+  the two verbs; forbidding the raw `gh pr create` / `gh pr ready` forms
+  waits for #331, since the runners still instruct them until it rewires
+  them. §4 states that the engine opens
+  and marks ready the queue's own PR, and that a caller waiting on CI reads
+  `status` rather than the forge. The runners do not call them yet; that is
+  #331.
+
+`aide queue -h` and `aide status -h` state the mechanism, pinned in
+`test_aide_help_pins.py`. **`AGENT-CONTEXT.md`'s verb list names `queue pr`
+and `queue ready`, and §3's verb bullet names them too**, so the always-on
+floor moves from 9,141 to 9,244 content bytes. **What a consumer edits:**
+nothing.
+
 ## [2.20.2] — 2026-09-29
 
 ### Removed

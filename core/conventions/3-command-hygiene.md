@@ -12,10 +12,12 @@ The rules:
   (fetch, clean-tree check, landing on the right branch) is `aide sync
   [--item NNN]`; claiming is `aide claim`; starting a queue or specs-queue
   branch is `aide queue start NNN [--specs]`; merging a stack of queue
-  branches forward is `aide queue restack`; landing is `aide merge`; branch
-  clean-up is `aide gc`; checking a branch's changed files against its item's
-  authorised paths is `aide scope`. Do not improvise the equivalent `git
-  fetch`/`git status`/`git switch -c`/`git diff --name-only` sequences.
+  branches forward is `aide queue restack`; opening a queue's own PR and
+  marking it ready are `aide queue pr` and `aide queue ready`; landing is
+  `aide merge`; branch clean-up is `aide gc`; checking a branch's changed
+  files against its item's authorised paths is `aide scope`. Do not
+  improvise the equivalent `git fetch`/`git status`/`git switch -c`/`git diff
+  --name-only` sequences.
 - **One command per call.** Never chain with `&&`, `||` or `;`. A single `|`
   pipe (`git branch -r | grep aide/`) is fine.
 - **No `cd` prefix and no directory-changing wrapper** — `git -C "<path>"`,

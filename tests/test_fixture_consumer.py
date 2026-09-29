@@ -1833,7 +1833,8 @@ def test_status_reads_a_one_queue_stack(
     _forge(aide, monkeypatch, {Q1: [{"number": 3, "state": "OPEN"}]})
     read = _stack_read(aide, consumer, capsys)
     assert read["stack"] == [(Q1, {"base": "main", "pr": "#3/open",
-                                   "lower": "-", "orphaned": "no"})]
+                                   "checks": "none", "lower": "-",
+                                   "orphaned": "no"})]
     # Item 001 is 📋 on the live queue: work to do and a PR in review at once.
     assert (read["runnable"], read["awaiting"]) == ("yes", "yes")
 
@@ -1882,6 +1883,49 @@ def test_status_reads_an_orphaned_branch_and_the_loop_is_not_runnable(
     assert stack[Q1]["pr"] == "#3/closed" and stack[Q1]["orphaned"] == "no"
     assert stack[Q2]["orphaned"] == "yes"
     assert (read["runnable"], read["awaiting"]) == ("no", "yes")
+
+
+def test_status_reads_a_failing_check_on_the_queue_pr(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys):
+    _to_pr_mode_with_origin(consumer, tmp_path)
+    assert _start(aide, consumer, 1) == 0
+    _forge(aide, monkeypatch, {Q1: [{"number": 3, "state": "OPEN",
+                                     "statusCheckRollup": [
+                                         {"name": "build", "status": "COMPLETED",
+                                          "conclusion": "FAILURE"}]}]})
+    read = _stack_read(aide, consumer, capsys)
+    assert read["stack"][0][1]["checks"] == "failure"
+
+
+# --------------------------------------------------------------------------- #
+# queue pr / queue ready — the refusals a checkout with no forge meets (#330)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("argv", [["pr", "--body", "Plan."], ["ready"],
+                                  ["ready", "--undo"]],
+                         ids=["pr", "ready", "undo"])
+def test_queue_pr_and_ready_refuse_without_a_forge_and_change_nothing(
+        aide, consumer: Path, monkeypatch, argv):
+    """The fixture is `local` mode with no origin: both verbs refuse, exit 1,
+    on a queue branch and off one, and neither asks the forge anything."""
+    asked: list = []
+    monkeypatch.setattr(aide, "_gh", lambda repo_root, args: (
+        asked.append(args), (None, "must not be asked"))[1])
+
+    def run(*extra: str) -> int:
+        return aide.main(["--repo", str(consumer), "queue", *argv, *extra])
+
+    assert run() == 1                           # main is not a queue branch
+    assert _start(aide, consumer, 1) == 0
+    (consumer / "docs" / "aide" / "plan.md").write_text("plan\n", encoding="utf-8")
+    _commit(consumer, "docs: the plan")
+    head = _sha(consumer, "HEAD")
+    assert run() == 1                           # local mode
+    toml = consumer / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        'mode = "local"', 'mode = "pr"'), encoding="utf-8")
+    assert run() == 1                           # no origin
+    assert asked == []
+    assert _sha(consumer, "HEAD") == head and _branch(consumer) == Q1
 
 
 # --------------------------------------------------------------------------- #

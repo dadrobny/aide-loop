@@ -251,7 +251,10 @@ not restated per agent:
   the relative prefix is allow-listed.
 - **The `aide` CLI** as `python .aide/scripts/aide.py <cmd>` — one allow rule covers
   every subcommand (the engine already mandates this invocation, for a different
-  reason: it is venv-independent).
+  reason: it is venv-independent). That includes `queue pr` and `queue ready`,
+  which open and mark ready the queue's own PR unattended, while `gh pr create`
+  and `gh pr ready` stay on the ask-list (issue #330;
+  `tests/test_queue_pr_automation.py` holds both halves).
 - **Command substitution in commits** (`$(…)`/backticks) is **never** auto-approved —
   use `-m`/`-F` per `conventions.md` §3.
 
