@@ -1325,6 +1325,51 @@ def test_check_warns_on_a_document_behind_its_installed_template(
     assert "aide check: OK (1 warning(s))" in out
 
 
+def test_check_leaves_records_out_of_the_position_and_engine_marker_sweeps(
+        aide, consumer: Path, capsys):
+    """Issue #338: a merged spec and a finished queue are records §1 never
+    rewrites, so a positional citation or a stale engine marker in one is
+    not warned about — while the same text in a live spec and an open queue
+    still is. An ID naming nothing stays an error either way."""
+    ddir = consumer / "docs" / "aide"
+    spec = ddir / "items" / "001-the-greeter.md"
+    spec.write_text(spec.read_text(encoding="utf-8").replace(
+        "- The project has a `src/` package.",
+        "- **A1 (engine 2.1.0):** `aide check` accepts the greeter as is.")
+        + "\nFollows insights.md entry 4.\n", encoding="utf-8")
+    queue = ddir / "queue" / "queue-001.md"
+    queue.write_text(queue.read_text(encoding="utf-8")
+                     + "\nSee insights.md entry 4.\n", encoding="utf-8")
+    progress = ddir / "progress.md"
+    progress.write_text(PROGRESS.replace("📋", "✅").replace("- [ ]", "- [x]"),
+                        encoding="utf-8")
+    _commit(consumer, "the queue has merged")
+
+    def _check() -> tuple:
+        capsys.readouterr()
+        code = aide.main(["--repo", str(consumer), "check"])
+        out = capsys.readouterr().out
+        return (code, [ln for ln in out.splitlines() if "by position" in ln],
+                [ln for ln in out.splitlines() if "pin an engine older" in ln])
+
+    code, positions, markers = _check()
+    assert (code, positions, markers) == (0, [], [])
+
+    progress.write_text(PROGRESS, encoding="utf-8")
+    _commit(consumer, "the queue is live again")
+    code, positions, markers = _check()
+    assert code == 0 and len(markers) == 1 and "001 A1 (engine 2.1.0)" in markers[0]
+    assert sorted(ln.split(":")[1].strip() for ln in positions) == [
+        "docs/aide/items/001-the-greeter.md", "docs/aide/queue/queue-001.md"]
+
+    progress.write_text(PROGRESS.replace("📋", "✅").replace("- [ ]", "- [x]"),
+                        encoding="utf-8")
+    spec.write_text(spec.read_text(encoding="utf-8")
+                    + "Chartered by insight 2026-01-09-ffff.\n", encoding="utf-8")
+    _commit(consumer, "a dangling ID in the record")
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
+
+
 def test_a_created_inbox_carries_its_template_line(aide, consumer: Path):
     """The inbox is the one document the engine writes from a template, so the
     line arrives with it and a later template change can be reported."""

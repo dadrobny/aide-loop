@@ -121,6 +121,35 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.24.1] — 2026-09-29
+
+### Fixed
+
+- **`aide check` no longer sweeps records for positional citations or stale
+  engine markers (issue #338).** Both sweeps read documents §1 keeps as
+  records: the stale-engine-marker warning read the Assumptions block of every
+  item spec, merged ones included, though §1 → items.md says a merged spec is
+  never rewritten and the appended `re-checked X.Y.Z` that clears it goes
+  stale again at the next release; and the insight and human-gate
+  citation-by-position warnings swept all of `docs/aide/**`, so one consumer
+  carried 394 warnings, about 330 of them on records, each offering a "today"
+  ID that on a record written before an archive is a wrong answer. A record
+  is now the spec of an item `progress.md` shows ✅, ❌ or ⏸️, or a queue
+  naming items none of which is still open (`record_documents`); neither
+  sweep reads one. ⏸️ is in the set, unlike the template-version check's:
+  a deferred item is neither built nor edited while it waits, and the
+  warnings return the moment it is 📋 again. Only those warnings are scoped —
+  an insight or gate ID naming nothing is still an error in a record, and
+  `progress.md`, `roadmap.md`, open queues, live specs and `tests_dir` are
+  swept as before. `aide insights archive` still lists a record's positional
+  citations, since that run is the one that knows what the number meant.
+  §1 → items.md, insights.md and human gates, and `aide check -h`, say so.
+- **A zero-padded number is no longer read as a gate or insight position
+  (issue #335).** Dependency prose such as `depends on 037–039, gates
+  041/042` warned twice about citing a human gate by position. A position is
+  never padded and `037` is the item-number shape, so both position readers
+  now require the number to start with 1–9; `human gate 2` still warns.
+
 ## [2.24.0] — 2026-09-29
 
 ### Added
