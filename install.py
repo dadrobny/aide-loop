@@ -319,8 +319,9 @@ repo = ""
 # committed file.
 
 # [validation]
-# Named environment profiles for stage-validation items — each value is a
-# Python expression, true iff this machine provides the capability. Checked
+# Named environment profiles for queue-end items and item Validation
+# sections — each value is a Python expression, true iff this machine
+# provides the capability. Checked
 # deterministically via `python .aide/scripts/aide.py env --profile <name>`.
 # gpu = "__import__('torch').cuda.is_available()"
 # dataset = "__import__('pathlib').Path('data/reference').is_dir()"

@@ -640,7 +640,7 @@ def test_pinning_a_bookkeeping_file_is_still_reported(tmp_path: Path):
 
 
 def test_a_spec_that_only_pins_is_still_compared(tmp_path: Path):
-    """An empty May change is not 'nothing declared'. A stage-validation item
+    """An empty May change is not 'nothing declared'. A queue-end item
     changes only the bookkeeping every item may write, while pinning the tree
     it validates — treating that as undeclared would drop exactly the specs
     whose whole purpose is to assert, and miss siblings breaking their pins."""
@@ -715,3 +715,222 @@ def test_report_writes_the_json_seam(tmp_path: Path):
     kinds = [f["kind"] for f in payload["findings"]]
     assert "changes-pinned-state" in kinds
     assert payload["findings"][0]["items"] == [27, 28]
+
+
+# --------------------------------------------------------------------------- #
+# the queue-end item — whether the queue needs one, reported both ways (#333)
+# --------------------------------------------------------------------------- #
+#: Stage 1 has two acceptance boxes, the first ticked; items 027 and 028 are
+#: its deliverables, and a later stage 2 is untouched by queue 003.
+PROGRESS_QE = """\
+# Demo — Progress
+
+## Stage summary
+
+| Stage | Title | Objectives | Status |
+|-------|-------|-----------|--------|
+| 1 | Rules | G1 | 🚧 |
+| 2 | Later | G1 | 📋 |
+
+## Objective coverage
+
+| Objective | Delivered by | Status |
+|-----------|--------------|--------|
+| G1 Rules | Stage 1, 2 | 🚧 |
+
+## Stage 1 — Rules — 🚧
+
+**Deliverables.**
+- ✅ A. *(Item 026)*
+- 📋 B. *(Item 027)*
+- 📋 C. *(Item 028)*
+
+**Acceptance.**
+- [x] Rules load. *(accepted 2026-09-01 — test_026)*
+- [ ] Rules fire.
+
+## Stage 2 — Later — 📋
+
+**Deliverables.**
+- 📋 D. *(Item 040)*
+
+**Acceptance.**
+- [ ] Later works.
+"""
+
+_ANNOTATED_AC = ("## Acceptance Criteria\n\n"
+                 "- [ ] **AC1: fires.** It fires. *(closes Stage 1 criterion 2)*\n\n")
+
+
+def _qe_repo(tmp_path: Path, specs=None, queue_items=(27, 28), titles=None,
+             progress: str = PROGRESS_QE, earlier=(26,)) -> Path:
+    repo = _make_repo(tmp_path, specs or {}, queue_items=queue_items,
+                      progress=progress)
+    titles = titles or {}
+    body = "\n\n".join(f"### Item {n:03d}: {titles.get(n, f'Thing {n}')}\n"
+                       f"Does a thing." for n in queue_items)
+    q = repo / "docs" / "aide" / "queue"
+    (q / "queue-003.md").write_text(f"# Demo — Work Queue 003\n\n{body}\n",
+                                    encoding="utf-8")
+    early = "\n\n".join(f"### Item {n:03d}: Thing {n}\nDone." for n in earlier)
+    (q / "queue-002.md").write_text(f"# Demo — Work Queue 002\n\n{early}\n",
+                                    encoding="utf-8")
+    return repo
+
+
+def _qe(repo: Path, kind: str):
+    cfg = aide.load_config(repo)
+    return [f for f in aide.queue_end_findings(repo, cfg, 3) if f.kind == kind]
+
+
+def test_a_stage_closing_queue_with_an_unannotated_criterion_needs_a_queue_end_item(
+        tmp_path: Path):
+    """No spec yet — the plan-time state — so the unticked criterion is
+    annotated by nothing, and the queue's last item is a deliverable. The
+    ticked criterion is not a reason: it is attested already."""
+    repo = _qe_repo(tmp_path)
+    hits = _qe(repo, "queue-end-needed")
+    assert len(hits) == 1 and hits[0].severity == "warning"
+    msg = hits[0].message
+    assert "closes stage 1" in msg and "criterion 2 of stage 1" in msg
+    assert "2 item(s) on the queue not yet specced" in msg
+    assert "Validate stage 1" in msg
+    assert "stage 2" not in msg
+
+
+def test_a_queue_end_item_among_the_final_items_meets_the_need(tmp_path: Path):
+    repo = _qe_repo(tmp_path, queue_items=(27, 28, 29),
+                    titles={29: "Validate stage 1: Rules"},
+                    progress=PROGRESS_QE.replace(
+                        "- 📋 C. *(Item 028)*",
+                        "- 📋 C. *(Item 028)*\n- 📋 Stage validation. *(Item 029)*"))
+    assert _qe(repo, "queue-end-needed") == []
+    assert _qe(repo, "queue-end-idle") == []
+
+
+def test_a_queue_end_item_that_is_not_final_does_not_meet_the_need(tmp_path: Path):
+    repo = _qe_repo(tmp_path, queue_items=(27, 29, 28),
+                    titles={29: "Validate stage 1: Rules"},
+                    progress=PROGRESS_QE.replace(
+                        "- 📋 C. *(Item 028)*",
+                        "- 📋 C. *(Item 028)*\n- 📋 Stage validation. *(Item 029)*"))
+    assert len(_qe(repo, "queue-end-needed")) == 1
+
+
+def test_every_criterion_annotated_or_ticked_is_no_need(tmp_path: Path):
+    repo = _qe_repo(tmp_path, specs={
+        27: "# Item 027 — B\n\n" + _ANNOTATED_AC,
+        28: "# Item 028 — C\n\n## Acceptance Criteria\n\n- [ ] **AC1: c.** C.\n",
+    })
+    assert _qe(repo, "queue-end-needed") == []
+
+
+def test_an_annotation_outside_acceptance_criteria_closes_nothing(tmp_path: Path):
+    repo = _qe_repo(tmp_path, specs={
+        27: "# Item 027 — B\n\n## Description\n\n(closes Stage 1 criterion 2)\n",
+    })
+    assert len(_qe(repo, "queue-end-needed")) == 1
+
+
+def test_a_queue_end_items_own_annotation_does_not_retire_its_need(tmp_path: Path):
+    """Otherwise the item's spec would be the reason the item is not needed."""
+    repo = _qe_repo(tmp_path, queue_items=(27, 28, 29),
+                    titles={29: "Validate stage 1: Rules"},
+                    progress=PROGRESS_QE.replace(
+                        "- 📋 C. *(Item 028)*",
+                        "- 📋 C. *(Item 028)*\n- 📋 Stage validation. *(Item 029)*"),
+                    specs={29: "# Item 029 — Validate stage 1: Rules\n\n" + _ANNOTATED_AC})
+    assert _qe(repo, "queue-end-idle") == []
+
+
+def test_a_queue_that_leaves_stage_work_to_a_later_queue_closes_nothing(
+        tmp_path: Path):
+    """Item 028 is listed on no queue yet, so queue 003 does not close stage 1."""
+    repo = _qe_repo(tmp_path, queue_items=(27,))
+    assert _qe(repo, "queue-end-needed") == []
+
+
+def test_an_unreferenced_or_deferred_bullet_keeps_the_stage_open(tmp_path: Path):
+    unref = PROGRESS_QE.replace("- 📋 C. *(Item 028)*",
+                                "- 📋 C. *(Item 028)*\n- 📋 Unqueued work.")
+    assert _qe(_qe_repo(tmp_path / "a", progress=unref), "queue-end-needed") == []
+    deferred = PROGRESS_QE.replace("- ✅ A. *(Item 026)*", "- ⏸️ A. *(Item 026)*")
+    assert _qe(_qe_repo(tmp_path / "b", progress=deferred), "queue-end-needed") == []
+
+
+def test_an_unverified_capability_row_is_a_need(tmp_path: Path):
+    table = ("## Environment-Gated Capability Verification\n\n"
+             "| Capability | Package / Tool | Introduced by | Status | Notes |\n"
+             "|---|---|---|---|---|\n"
+             "| GPU path | torch | Stage 1 *(Item 027)* | ❓ Unverified | — |\n\n")
+    progress = PROGRESS_QE.replace("## Stage 1 — Rules", table + "## Stage 1 — Rules")
+    progress = progress.replace("- [ ] Rules fire.", "- [x] Rules fire. *(accepted)*")
+    msg = _qe(_qe_repo(tmp_path, progress=progress), "queue-end-needed")[0].message
+    assert "'GPU path'" in msg and "criterion" not in msg
+
+
+def test_an_item_declaring_an_environment_gated_capability_is_a_need(tmp_path: Path):
+    progress = PROGRESS_QE.replace("- [ ] Rules fire.", "- [x] Rules fire. *(accepted)*")
+    repo = _qe_repo(tmp_path, progress=progress, specs={
+        27: "# Item 027 — B\n\n## Environment / Hardware Dependencies\n\n- torch\n"})
+    msg = _qe(repo, "queue-end-needed")[0].message
+    assert "item(s) 027 declaring an environment-gated capability" in msg
+
+
+def test_a_queue_end_item_with_nothing_to_do_is_reported(tmp_path: Path):
+    progress = PROGRESS_QE.replace("- [ ] Rules fire.", "- [x] Rules fire. *(accepted)*")
+    progress = progress.replace(
+        "- 📋 C. *(Item 028)*", "- 📋 C. *(Item 028)*\n- 📋 Stage validation. *(Item 029)*")
+    repo = _qe_repo(tmp_path, queue_items=(27, 28, 29), progress=progress,
+                    titles={29: "Validate stage 1: Rules"})
+    hits = _qe(repo, "queue-end-idle")
+    assert len(hits) == 1 and hits[0].items == (29,) and hits[0].severity == "warning"
+    assert "stage 1 has nothing left for it" in hits[0].message
+
+
+def test_a_queue_end_item_for_a_stage_the_queue_does_not_close_is_reported(
+        tmp_path: Path):
+    repo = _qe_repo(tmp_path, queue_items=(27, 28, 29),
+                    titles={29: "Validate stage 2: Later"})
+    hits = _qe(repo, "queue-end-idle")
+    assert any("does not close stage 2" in f.message for f in hits)
+    assert len(_qe(repo, "queue-end-needed")) == 1
+
+
+def test_a_queue_end_title_naming_no_stage_is_reported(tmp_path: Path):
+    repo = _qe_repo(tmp_path, queue_items=(27, 28, 29),
+                    titles={29: "Validate stage: all of it"})
+    assert any("names no stage" in f.message for f in _qe(repo, "queue-end-idle"))
+
+
+def test_a_spent_queue_is_reported_neither_way(tmp_path: Path):
+    progress = PROGRESS_QE.replace("- 📋 B. *(Item 027)*", "- ✅ B. *(Item 027)*")
+    progress = progress.replace("- 📋 C. *(Item 028)*", "- ✅ C. *(Item 028)*")
+    repo = _qe_repo(tmp_path, progress=progress)
+    assert _qe(repo, "queue-end-needed") == [] and _qe(repo, "queue-end-idle") == []
+
+
+def test_the_need_reaches_check_as_a_warning_and_the_report(tmp_path: Path, capsys):
+    """What the planner runs: `check --queue NNN`, before any spec exists —
+    and the `--report` worklist the spec-reviewer reads once they do."""
+    repo = _qe_repo(tmp_path)
+    report = tmp_path / "report.json"
+    aide.main(["--repo", str(repo), "check", "--queue", "3", "--report", str(report)])
+    out = capsys.readouterr().out
+    assert "warning: queue 003 closes stage 1 and needs a queue-end item" in out
+    kinds = [f["kind"] for f in json.loads(report.read_text(encoding="utf-8"))["findings"]]
+    assert kinds == ["queue-end-needed"]
+
+
+def test_spec_closed_criteria_reads_the_annotation_and_a_list():
+    text = ("## Acceptance Criteria\n\n- AC1 *(closes Stage 20 criterion 3)*\n"
+            "- AC2 *(closes Stage 20 criteria 4, 5)*\n\n## Testing Strategy\n\n"
+            "- x: *(closes Stage 20 criterion 9)*\n")
+    assert aide.spec_closed_criteria(text) == {(20, 3), (20, 4), (20, 5)}
+
+
+def test_queue_end_stages_reads_the_title():
+    assert aide.queue_end_stages("Validate stage 32: Things") == [32]
+    assert aide.queue_end_stages("Validate stage 31 and 32: Things") == [31, 32]
+    assert aide.queue_end_stages("Validate stage: things") == []
+    assert aide.queue_end_stages("Add a stage validator") is None

@@ -201,6 +201,57 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # ⏸️ is absent from `spent`, so a deferred item is still in `ordered`.
         ("deferred items stay in the path comparisons",
          "test_aide_queue_specs::test_a_deferred_item_stays_in_the_path_comparison"),
+        # `queue_end_findings`, called by `cmd_check` beside the cross-spec
+        # findings and written into the same `--report` (issue #333).
+        ("--queue NNN also warns on whether the queue needs a queue-end item",
+         "test_aide_queue_specs::test_the_need_reaches_check_as_a_warning_and_the_report"),
+        # `queue_closed_stages`: `touches`, and `closes` over the open bullets
+        # — no reference, a later queue, or a ⏸️ bullet off this queue.
+        ("The queue closes stage N when an item it lists is referenced by a "
+         "stage N deliverable and every stage N deliverable not ✅ or ❌ names "
+         "only items listed on this queue or an earlier one — a ⏸️ one only "
+         "items on this queue",
+         ("test_aide_queue_specs::"
+          "test_a_queue_that_leaves_stage_work_to_a_later_queue_closes_nothing",
+          "test_aide_queue_specs::"
+          "test_an_unreferenced_or_deferred_bullet_keeps_the_stage_open")),
+        # The three reasons: `unannotated` over the `[ ]` boxes and
+        # `spec_closed_criteria`; `rows`; `env_items` from non-spent specs.
+        ("A stage it closes needs one when it has an unticked acceptance box "
+         "no item spec's Acceptance Criteria annotate as `closes Stage N "
+         "criterion M`, a ❓ Unverified capability row whose Introduced by "
+         "cell names it, or an item not ✅ or ❌ whose spec has an Environment "
+         "/ Hardware Dependencies section",
+         ("test_aide_queue_specs::"
+          "test_a_stage_closing_queue_with_an_unannotated_criterion_needs_a_queue_end_item",
+          "test_aide_queue_specs::test_every_criterion_annotated_or_ticked_is_no_need",
+          "test_aide_queue_specs::test_an_annotation_outside_acceptance_criteria_closes_nothing",
+          "test_aide_queue_specs::test_an_unverified_capability_row_is_a_need",
+          "test_aide_queue_specs::"
+          "test_an_item_declaring_an_environment_gated_capability_is_a_need")),
+        # `queue_end_stages` on the title; the spec loop skips excluded items
+        # and queue-end items before reading an annotation.
+        ("A queue-end item is one titled `Validate stage N`, and neither its "
+         "own spec nor an excluded item's annotates anything here",
+         ("test_aide_queue_specs::test_queue_end_stages_reads_the_title",
+          "test_aide_queue_specs::"
+          "test_a_queue_end_items_own_annotation_does_not_retire_its_need")),
+        # `trailing` — the suffix of the queue's items that are queue-end items.
+        ("The check warns when a stage with a need has no queue-end item for "
+         "it among the queue's final items, naming each reason",
+         ("test_aide_queue_specs::test_a_queue_end_item_among_the_final_items_meets_the_need",
+          "test_aide_queue_specs::"
+          "test_a_queue_end_item_that_is_not_final_does_not_meet_the_need")),
+        # The `queue-end-idle` loop: no stage, not closed, empty reasons.
+        ("and when a queue-end item not ✅ or ❌ names no stage, a stage the "
+         "queue does not close, or one with no need",
+         ("test_aide_queue_specs::test_a_queue_end_title_naming_no_stage_is_reported",
+          "test_aide_queue_specs::"
+          "test_a_queue_end_item_for_a_stage_the_queue_does_not_close_is_reported",
+          "test_aide_queue_specs::test_a_queue_end_item_with_nothing_to_do_is_reported")),
+        # The early `return []` when every listed item is spent.
+        ("A queue whose items are all ✅ or ❌ gets neither warning",
+         "test_aide_queue_specs::test_a_spent_queue_is_reported_neither_way"),
 
         # `run_checks`: `has_stage_table` / `has_obj_table` / `sections`, each
         # appending to `errors`.

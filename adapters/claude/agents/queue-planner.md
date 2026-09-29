@@ -90,6 +90,19 @@ Follow the `aide-create-queue` skill in full. In brief:
    must be recorded here: `aide progress set NNN` locates the bullet to flip by its
    reference and now **hard-errors** on an unreferenced item (engine ≥ 1.0.1)
    instead of silently no-op'ing.
+
+   Then ask the engine whether the queue needs a queue-end item —
+   `aide-create-queue` requirement 5, and §1 → `queue-NNN.md`, preloaded
+   above:
+   ```
+   python .aide/scripts/aide.py check --queue NNN
+   ```
+   On a `queue NNN closes stage N and needs a queue-end item: …` warning,
+   append `Validate stage N: <stage title>` as the queue's final item, built
+   from the reasons it names, and wire it in like the others. **The planner
+   reads that warning and never works the need out itself**: without one, the
+   queue ends with its last deliverable. Name every such warning, and any
+   queue-end item reported idle, in step 8's summary.
 6. **Commit** the new queue, the `progress.md` back-fill, **and** the tidy-up on
    the **current branch** (each a separate Bash call). Do **not** push and do
    **not** open a PR:
@@ -229,4 +242,11 @@ only writes allowed outside your edit scope.
        success criterion, a deliverable, or a justified sibling in the same
        queue needs it
      - foundations a later stage will use may be queued
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/queue-NNN.md
+     Step 5 quotes the queue-end item's division of labour from the section
+     that owns it (issue #333), preloaded through `aide-queue-and-inbox`.
+     - The planner reads that warning and never works the need out itself
+     - the queue ends with its last deliverable
 -->
