@@ -656,6 +656,9 @@ class GatedCapability(NamedTuple):
     stages: List[int]        # the stage(s) the Introduced by cell names first
     kind: Optional[str]      # "verified" | "unverified" | None (unrecognised)
     noted: bool              # the Notes cell records something
+    #: Items the Introduced by cell references (`*(Item NNN)*`, the
+    #: template's form) — how a spec declaring the capability finds its row.
+    items: Tuple[int, ...] = ()
 
 
 #: The optional `## Human gates` table — a decision only a person can make,
@@ -1268,7 +1271,8 @@ def gated_capabilities(lines: List[str]) -> List[GatedCapability]:
         out.append(GatedCapability(
             i + 1, cells[0], list(dict.fromkeys(profiles)),
             _introducing_stages(cells[2]), kind,
-            cells[4].strip() not in _EMPTY_CELL))
+            cells[4].strip() not in _EMPTY_CELL,
+            tuple(_referenced_item_numbers(cells[2]))))
     return out
 
 
@@ -6978,11 +6982,14 @@ def queue_closed_stages(lines: List[str], qdir: Path, number: int) -> List[str]:
     """The stages queue *number* closes, in progress.md order.
 
     Stage N is closed by the queue when an item the queue lists is referenced
-    by a stage N deliverable, and every stage N deliverable that is not ✅ or
-    ❌ names only items listed on this queue or an earlier one — a ⏸️ one only
-    items on this queue, since a deferred item left on an earlier queue is not
-    going to be built there. A bullet with no item reference is unqueued work,
-    so its stage is not closed. Read from the documents alone.
+    by a stage N deliverable, and every stage N deliverable that is 📋, 🚧 or
+    🔍 names only items listed on this queue or an earlier one. A bullet in
+    one of those states with no item reference is unqueued work, so its stage
+    is not closed. ✅ and ❌ bullets are done with, and a ⏸️ bullet never holds
+    closure, on any queue and with or without a reference: deferred work is by
+    definition not what the stage's closing queue builds, and a bullet that
+    held closure would hold it until someone resumed it — for ever, if nobody
+    does. Read from the documents alone.
     """
     listed: Dict[int, int] = {}
     for path in iter_queue_paths(qdir):
@@ -7003,15 +7010,10 @@ def queue_closed_stages(lines: List[str], qdir: Path, number: int) -> List[str]:
             refs = _bullet_marker_item_numbers(section[last])
             if any(listed.get(r) == number for r in refs):
                 touches = True
-            if status in ("complete", "excluded"):
+            if status in ("complete", "excluded", "deferred"):
                 continue
-            if not refs:
-                closes = False
-            elif status == "deferred":
-                closes = closes and all(listed.get(r) == number for r in refs)
-            else:
-                closes = closes and all(listed.get(r) is not None
-                                        and listed[r] <= number for r in refs)
+            closes = closes and bool(refs) and all(
+                listed.get(r) is not None and listed[r] <= number for r in refs)
         if touches and closes:
             out.append(stage)
     return out
@@ -7022,8 +7024,9 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     """Whether queue *number* needs a queue-end item, reported both ways.
 
     A stage the queue closes needs one when it has an unticked acceptance box
-    no item spec annotates, a ❓ Unverified capability row it introduced, or a
-    📋/🚧/🔍/⏸️ item whose spec declares an environment-gated capability. A
+    no item spec annotates, a ❓ Unverified capability row it introduced, or an
+    item its bullets reference, not ❌, whose spec declares an
+    environment-gated capability the table has no row for. A
     queue-end item's own spec, and an excluded item's, annotate nothing here —
     the first would count the item as the reason it is not needed. The need is
     met by a queue-end item naming the stage in the queue's trailing run of
@@ -7068,7 +7071,7 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
             continue
         text = path.read_text(encoding=_ENCODING)
         annotated |= spec_closed_criteria(text)
-        if item_status.get(n, "planned") not in spent and _ENV_DEPS_HEADING_RE.search(text):
+        if _ENV_DEPS_HEADING_RE.search(text):
             env_items.add(n)
     capabilities = gated_capabilities(lines)
 
@@ -7097,12 +7100,21 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
         if rows:
             reasons.append("❓ Unverified capability row(s) stage "
                            f"{s} introduced: " + ", ".join(f"'{r}'" for r in rows))
+        # An item declaring a gated capability is a need until the table has
+        # a row for it, whatever the item's status: a merged item whose row
+        # was never written is exactly the gap the queue-end item closes. A
+        # row is "for it" when its Introduced by cell references the item, or
+        # names this stage and no item at all — the one row a reader cannot
+        # tie to a narrower owner. Its status is (b)'s business, not this.
+        stage_rows = [c for c in capabilities if s in c.stages]
         stage_items = set(stage_item_numbers(lines, stage))
-        envs = sorted(env_items & stage_items)
+        envs = sorted(n for n in env_items & stage_items
+                      if not any(n in c.items or not c.items for c in stage_rows))
         if envs:
             reasons.append("item(s) " + ", ".join(f"{n:03d}" for n in envs)
                            + " declaring an environment-gated capability "
-                             "(## Environment / Hardware Dependencies)")
+                             "(## Environment / Hardware Dependencies) with no "
+                             "capability row")
         reasons_by_stage[s] = reasons
         if reasons and s not in trailing:
             findings.append(SpecFinding(
@@ -7126,8 +7138,9 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
             elif not reasons_by_stage[s]:
                 why = (f"stage {s} has nothing left for it: every unticked "
                        f"acceptance criterion is annotated by an item's AC, no "
-                       f"capability row it introduced is ❓ Unverified, and no "
-                       f"open item declares an environment-gated capability")
+                       f"capability row it introduced is ❓ Unverified, and "
+                       f"every item declaring an environment-gated capability "
+                       f"has a row")
             else:
                 continue
             findings.append(SpecFinding(
@@ -14846,14 +14859,19 @@ def build_parser() -> argparse.ArgumentParser:
             "--queue NNN also warns on whether the queue needs a queue-end "
             "item. The queue closes stage N when an item it lists is "
             "referenced by a stage N deliverable and every stage N "
-            "deliverable not \u2705 or \u274c names only items listed on "
-            "this queue or an earlier one \u2014 a \u23f8\ufe0f one only "
-            "items on this queue. A stage it closes needs one when it has an "
+            "deliverable that is \U0001f4cb, \U0001f6a7 or \U0001f50d "
+            "names only items listed on this queue or an earlier one. Such a "
+            "bullet with no item reference keeps the stage open; \u2705, "
+            "\u274c and \u23f8\ufe0f bullets never do. A stage it closes "
+            "needs one when it has an "
             "unticked acceptance box no item spec's Acceptance Criteria "
             "annotate as `closes Stage N criterion M`, a \u2753 Unverified "
             "capability row whose Introduced by cell names it, or an item "
-            "not \u2705 or \u274c whose spec has an Environment / Hardware "
-            "Dependencies section. A queue-end item is one titled "
+            "the stage's own deliverables reference, whatever its status "
+            "but \u274c, whose spec has an Environment / Hardware "
+            "Dependencies section and which no capability row covers \u2014 "
+            "a row covering it when its Introduced by cell references the "
+            "item, or names the stage and no item. A queue-end item is one titled "
             "`Validate stage N`, and neither its own spec nor an excluded "
             "item's annotates anything here. The check warns when a stage "
             "with a need has no queue-end item for it among the queue's "

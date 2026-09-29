@@ -46,13 +46,14 @@ Two additions make the verification *planned* rather than hoped-for:
   for every `❓ Unverified` row at once by `aide status --profiles`. Either
   evaluates the expression only, never the gated path.
 - **Queue-end items** — a stage with a `❓ Unverified` row, or with an item
-  declaring an environment-gated capability, is one `aide check --queue`
-  reports as needing a queue-end item (§1 → `queue-NNN.md`), so the queue
-  that closes it ends with a `Validate stage N` item that replays the stage's
-  use cases end-to-end and updates the capability table (✅ Verified where the
-  profile is satisfied, else an explicit ❓ Unverified with the reason). Item
-  specs may also carry an optional **Validation** section (see the item
-  template) that the validator must execute.
+  declaring an environment-gated capability that has no row, is one
+  `aide check --queue` reports as needing a queue-end item (§1 →
+  `queue-NNN.md`), so the queue that closes it ends with a `Validate stage N`
+  item that replays the stage's use cases end-to-end and updates the
+  capability table (✅ Verified where the profile is satisfied, else an
+  explicit ❓ Unverified with the reason). Item specs may also carry an
+  optional **Validation** section (see the item template) that the validator
+  must execute.
 
 #### Rationale
 
@@ -77,8 +78,10 @@ Two additions make the verification *planned* rather than hoped-for:
 - **Why a gated capability makes a queue-end item needed.** Since 2.22.0 the
   item is planned only where the engine reports work for it (#333). A row to
   flip, or a Notes reason to record, is work no per-item check does, so an
-  open row — or an item about to introduce one, whose row may not be written
-  yet — is one of the reasons the check reads.
+  open row is one of the reasons the check reads — and so is an item that
+  declared a capability and has no row, whether it is still to be built or
+  merged without writing one, since the missing row is the queue-end item's
+  to write.
 - **Why a queue-end item replays use cases.** Tests prove the code
   runs; validation observes that it does something meaningful — so it replays
   the stage's use cases rather than re-running the suite.

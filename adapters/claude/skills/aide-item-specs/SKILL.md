@@ -327,10 +327,10 @@ introduced.** Both mechanisms are opt-in. A named `[validation]` profile in
 **item specs may also carry an optional Validation section (see the item
 template) that the validator must execute**. The stage's own replay is an item
 like any other: a stage with an open row, or with an item declaring a gated
-capability — yours included — is one `aide check --queue` reports as needing
-a queue-end item, so **the queue that closes it ends with a `Validate stage N`
-item that replays the stage's use cases end-to-end and updates the capability
-table** — ✅ Verified where the profile is satisfied, else an
+capability that has no row — yours included — is one `aide check --queue`
+reports as needing a queue-end item, so **the queue that closes it ends with
+a `Validate stage N` item that replays the stage's use cases end-to-end and
+updates the capability table** — ✅ Verified where the profile is satisfied, else an
 explicit ❓ Unverified with the reason: **a row still `❓ Unverified` once its
 stage is ✅ records why in its Notes cell**, and **a row names the
 `[validation]` profile that would verify it in its Package / Tool cell, as

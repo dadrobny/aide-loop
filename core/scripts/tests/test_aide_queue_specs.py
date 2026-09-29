@@ -850,12 +850,31 @@ def test_a_queue_that_leaves_stage_work_to_a_later_queue_closes_nothing(
     assert _qe(repo, "queue-end-needed") == []
 
 
-def test_an_unreferenced_or_deferred_bullet_keeps_the_stage_open(tmp_path: Path):
+def test_an_unreferenced_open_bullet_keeps_the_stage_open(tmp_path: Path):
+    """A 📋 bullet with no item reference is work no queue has taken on."""
     unref = PROGRESS_QE.replace("- 📋 C. *(Item 028)*",
                                 "- 📋 C. *(Item 028)*\n- 📋 Unqueued work.")
-    assert _qe(_qe_repo(tmp_path / "a", progress=unref), "queue-end-needed") == []
-    deferred = PROGRESS_QE.replace("- ✅ A. *(Item 026)*", "- ⏸️ A. *(Item 026)*")
-    assert _qe(_qe_repo(tmp_path / "b", progress=deferred), "queue-end-needed") == []
+    assert _qe(_qe_repo(tmp_path, progress=unref), "queue-end-needed") == []
+
+
+def test_a_deferred_bullet_never_holds_closure(tmp_path: Path):
+    """⏸️ on an earlier queue, ⏸️ with no reference, and ⏸️ on this queue:
+    none holds the stage open — deferred work is not what closes it, and a
+    bullet that held closure would hold it for as long as nobody resumes it."""
+    earlier = PROGRESS_QE.replace("- ✅ A. *(Item 026)*", "- ⏸️ A. *(Item 026)*")
+    assert len(_qe(_qe_repo(tmp_path / "a", progress=earlier), "queue-end-needed")) == 1
+    unref = PROGRESS_QE.replace("- 📋 C. *(Item 028)*",
+                                "- 📋 C. *(Item 028)*\n- ⏸️ Later, maybe.")
+    assert len(_qe(_qe_repo(tmp_path / "b", progress=unref), "queue-end-needed")) == 1
+    here = PROGRESS_QE.replace("- 📋 C. *(Item 028)*", "- ⏸️ C. *(Item 028)*")
+    assert len(_qe(_qe_repo(tmp_path / "c", progress=here), "queue-end-needed")) == 1
+
+
+def test_an_excluded_bullet_is_skipped(tmp_path: Path):
+    """An ❌ bullet whose item is on no queue at all does not hold closure."""
+    dropped = PROGRESS_QE.replace("- 📋 C. *(Item 028)*",
+                                  "- 📋 C. *(Item 028)*\n- ❌ Dropped. *(Item 099)*")
+    assert len(_qe(_qe_repo(tmp_path, progress=dropped), "queue-end-needed")) == 1
 
 
 def test_an_unverified_capability_row_is_a_need(tmp_path: Path):
@@ -877,6 +896,71 @@ def test_an_item_declaring_an_environment_gated_capability_is_a_need(tmp_path: P
     assert "item(s) 027 declaring an environment-gated capability" in msg
 
 
+_ENV_SPEC = "# Item 026 — A\n\n## Environment / Hardware Dependencies\n\n- torch\n"
+#: Every criterion ticked, so only the capability reasons can speak.
+_PROGRESS_TICKED = PROGRESS_QE.replace("- [ ] Rules fire.", "- [x] Rules fire. *(accepted)*")
+
+
+def _with_row(progress: str, introduced: str, status: str) -> str:
+    table = ("## Environment-Gated Capability Verification\n\n"
+             "| Capability | Package / Tool | Introduced by | Status | Notes |\n"
+             "|---|---|---|---|---|\n"
+             f"| GPU path | torch | {introduced} | {status} | — |\n\n")
+    return progress.replace("## Stage 1 — Rules", table + "## Stage 1 — Rules")
+
+
+def test_a_merged_env_item_with_no_row_is_still_a_need(tmp_path: Path):
+    """Item 026 merged on an earlier queue and never wrote its row: that gap
+    is exactly the queue-end item's work, so ✅ does not retire the need."""
+    repo = _qe_repo(tmp_path, progress=_PROGRESS_TICKED, specs={26: _ENV_SPEC})
+    msg = _qe(repo, "queue-end-needed")[0].message
+    assert "item(s) 026 declaring an environment-gated capability" in msg
+
+
+def test_a_merged_env_item_with_a_verified_row_is_no_need(tmp_path: Path):
+    progress = _with_row(_PROGRESS_TICKED, "Stage 1 *(Item 026)*",
+                         "✅ Verified (2026-09-01, CI)")
+    repo = _qe_repo(tmp_path, progress=progress, specs={26: _ENV_SPEC})
+    assert _qe(repo, "queue-end-needed") == []
+
+
+def test_a_row_naming_another_item_does_not_cover_it(tmp_path: Path):
+    progress = _with_row(_PROGRESS_TICKED, "Stage 1 *(Item 027)*",
+                         "✅ Verified (2026-09-01, CI)")
+    repo = _qe_repo(tmp_path, progress=progress, specs={26: _ENV_SPEC})
+    assert len(_qe(repo, "queue-end-needed")) == 1
+
+
+def test_a_stage_only_row_covers_the_stages_env_items(tmp_path: Path):
+    progress = _with_row(_PROGRESS_TICKED, "Stage 1", "✅ Verified (2026-09-01, CI)")
+    repo = _qe_repo(tmp_path, progress=progress, specs={26: _ENV_SPEC})
+    assert _qe(repo, "queue-end-needed") == []
+
+
+def test_an_excluded_env_item_is_no_need(tmp_path: Path):
+    progress = _PROGRESS_TICKED.replace("- ✅ A. *(Item 026)*", "- ❌ A. *(Item 026)*")
+    repo = _qe_repo(tmp_path, progress=progress, specs={26: _ENV_SPEC})
+    assert _qe(repo, "queue-end-needed") == []
+
+
+def test_an_env_item_outside_the_stage_is_not_its_need(tmp_path: Path):
+    """Item 040 is stage 2's; its spec says nothing about stage 1."""
+    repo = _qe_repo(tmp_path, progress=_PROGRESS_TICKED, specs={
+        40: _ENV_SPEC.replace("026", "040")})
+    assert _qe(repo, "queue-end-needed") == []
+
+
+def test_a_planned_queue_end_item_stays_needed_once_the_env_item_merges(
+        tmp_path: Path):
+    """The mirror symptom: the env item ✅ with no row must not make the
+    planned `Validate stage 1` read as idle."""
+    progress = _PROGRESS_TICKED.replace(
+        "- 📋 C. *(Item 028)*", "- 📋 C. *(Item 028)*\n- 📋 Stage validation. *(Item 029)*")
+    repo = _qe_repo(tmp_path, queue_items=(27, 28, 29), progress=progress,
+                    titles={29: "Validate stage 1: Rules"}, specs={26: _ENV_SPEC})
+    assert _qe(repo, "queue-end-idle") == [] and _qe(repo, "queue-end-needed") == []
+
+
 def test_a_queue_end_item_with_nothing_to_do_is_reported(tmp_path: Path):
     progress = PROGRESS_QE.replace("- [ ] Rules fire.", "- [x] Rules fire. *(accepted)*")
     progress = progress.replace(
@@ -886,6 +970,21 @@ def test_a_queue_end_item_with_nothing_to_do_is_reported(tmp_path: Path):
     hits = _qe(repo, "queue-end-idle")
     assert len(hits) == 1 and hits[0].items == (29,) and hits[0].severity == "warning"
     assert "stage 1 has nothing left for it" in hits[0].message
+
+
+def test_a_spent_queue_end_item_is_never_reported_idle(tmp_path: Path):
+    """Item 029 merged; 027 is still open so the queue is not spent. With
+    every criterion ticked the stage has no need, and the merged item is a
+    record, not a plan anyone can drop."""
+    progress = _PROGRESS_TICKED.replace(
+        "- 📋 C. *(Item 028)*", "- 📋 C. *(Item 028)*\n- ✅ Stage validation. *(Item 029)*")
+    repo = _qe_repo(tmp_path, queue_items=(27, 28, 29), progress=progress,
+                    titles={29: "Validate stage 1: Rules"})
+    assert _qe(repo, "queue-end-idle") == []
+    live = progress.replace("- ✅ Stage validation.", "- 📋 Stage validation.")
+    assert len(_qe(_qe_repo(tmp_path / "live", queue_items=(27, 28, 29), progress=live,
+                            titles={29: "Validate stage 1: Rules"}),
+                   "queue-end-idle")) == 1
 
 
 def test_a_queue_end_item_for_a_stage_the_queue_does_not_close_is_reported(
