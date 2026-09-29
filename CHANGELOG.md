@@ -188,6 +188,7 @@ instead — that is the bump policy above, and it is enforced by
 and `queue ready`, and §3's verb bullet names them too**, so the always-on
 floor moves from 9,141 to 9,273 content bytes. **What a consumer edits:**
 nothing.
+
 ## [2.20.2] — 2026-09-29
 
 ### Removed
