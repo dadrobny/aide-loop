@@ -53,6 +53,30 @@ allow-list-friendly shape delivered by `.claude/rules/aide-command-hygiene.md`
 and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
 (`.claude/hooks/command_hygiene_guard.py`) enforces the mechanical ones.
 
+## An item a CI fix round reopened
+
+`/aide-run-queue` → *CI fix round* reopens an item whose change broke the
+queue PR's CI, and claims it like any other. You can tell one: `aide status`
+prints `reopened: item NNN (…) — CI …` for it, not completed again. Its spec
+and tests are already merged, so the steps run with three differences:
+
+- **Step 1** returns the existing spec, as for any item whose spec exists.
+- **Step 2 is skipped** unless a finding is in a test. Then brief a fresh
+  `test-writer` with that finding in place of step 2's brief — fix the
+  named test, add none — and the builder still follows for any finding in
+  production code.
+- **Step 3's brief carries the findings**, as a blocking review finding is
+  carried in step 6. Add to it:
+  > CI findings from the queue's PR, traced to this item: <each: the check,
+  > the failing test or step, the log lines that show it>. Fix them within
+  > the spec's authorised paths.
+
+  They come from the orchestrator's triage, or, in a fresh session, from the
+  item's `reopened:` reason.
+
+Steps 4–6 run as for any item, and their rounds count against this item's
+own `loop.validation_rounds`, apart from the CI round the queue counts.
+
 ## Steps
 
 1. **Spec → spawn `spec-author`.** Brief:

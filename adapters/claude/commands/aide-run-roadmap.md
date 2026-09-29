@@ -124,7 +124,7 @@ parallel* below if you need isolation).
 | **The open queue branch being built has 📋 items held by its plan gate**, still ⏳ Awaiting (or ❌ Declined) | **Stop.** Tell the human to review the draft PR, and to approve the gate on that branch (see **Generate the next queue**); a declined one is re-planned, not approved. If the branch has no PR yet, open it as that section says first. |
 | **The open queue branch being built has 📋 items and no gate holds them** — its plan gate approved, or none raised under `plan_review` | Run the queue on its branch → go to **Run a queue**. |
 | **A queue already on `main` still has 📋 items** — planned under the old flow, no queue branch | Run it from `main` as before → go to **Run a queue**, staying on `main`. |
-| **`runnable: no`, and no row above holds** — the stack is at the cap with nothing left to build | For each stack line whose `pr=` reads `#N/draft`, its PR was never marked ready: switch to that branch and run **Queue end** on it — unless it reads `#N/draft(fixing)` (match `/draft` as a prefix, then look for `(fixing)`): that PR was turned back for a CI fix round, which is issue #332's, so report it and leave it. Then **stop**: report the batches in `awaiting review:`, bottom first; the next queue waits for a merge. |
+| **`runnable: no`, and no row above holds** — the stack is at the cap with nothing left to build | For each stack line whose `pr=` reads `#N/draft`, its PR was never marked ready: switch to that branch and run **Queue end** on it — unless it reads `#N/draft(fixing)` (match `/draft` as a prefix, then look for `(fixing)`): that PR was turned back for a CI fix round whose reopened items are still open, so switch to that branch and resume the round with **Run a queue**, which claims them and runs its Queue end again. With every such line handled, **stop**: report the batches in `awaiting review:`, bottom first; the next queue waits for a merge. |
 | **Nothing open, and the roadmap has more stages** — or no queue exists yet | Generate the next queue off `main` → go to **Generate the next queue**. |
 
 A queue branch that carries a maintenance queue and the stage queue after it is
@@ -227,9 +227,11 @@ answer rather than running it twice; when you arrived here from the state
 table, run it now. A lower queue re-opened in review (the state table) was
 already ready: push, restack, and re-read the state instead of going on below.
 
-Go on below only on CI `success`. Anything else, and an early ready above
-all (a gate still holds items of this queue), is a **stop**: report the
-answer and the batches awaiting review.
+A red answer is not a stop by itself: `/aide-run-queue` → **Queue end**
+runs the CI fix round, goes back to its loop, and ends on the round's own
+answer — take that one. Go on below only on CI `success`. Anything else,
+and an early ready above all (a gate still holds items of this queue), is a
+**stop**: report the answer and the batches awaiting review.
 
 Then ask the engine whether another queue may start on top of this one:
 `python .aide/scripts/aide.py queue start <NNN+1> --base <prefix>queue-NNN
@@ -300,8 +302,10 @@ in the next queue rather than rewriting history.
 - **After opening a queue's draft PR, when `queue gate` raised a gate** — it
   holds the build until a person approves it, and that pause is the whole
   point.
-- **At queue end, when CI did not answer `success`** — a failure, no CI, an
-  answer the forge could not give, or a PR `aide queue ready` refused to mark.
+- **At queue end, when CI did not answer `success`** and no fix round
+  follows — a fix round at its cap or with a finding no item owns, no CI,
+  an answer the forge could not give, or a PR `aide queue ready` refused to
+  mark.
 - **At queue end, when the cap is reached** — `queue start --dry-run` exits 3;
   the batches carry their PRs, and the next queue waits for a merge.
 - **A queue branch's PR was closed without merging** — the stack above it is

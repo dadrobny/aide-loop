@@ -15,6 +15,11 @@ so the honest response is to look at the one gate that does:
   for a platform the loop cannot reach.
 - When CI is red on a leg that passed locally, treat it as a **portability
   finding first** (§6), not a flake, until the log says otherwise.
+- A red check on the queue's PR is fixed through **the item whose change it
+  traces to**: that item is reopened, rebuilt within its own spec and
+  authorised paths, validated and merged back, and CI runs again once the
+  queue is exhausted. The round, its cap and what traces to no item are the
+  queue-end step's (`.aide/README.md`).
 
 ### Rationale
 
@@ -28,3 +33,26 @@ so the honest response is to look at the one gate that does:
   follows validation, under `pr` the claim branch is pushed only after a
   PASS, and under `local` nothing is pushed at all. The check reported
   nothing or a stale run, at the cost of a step on every item (issue #329).
+- **Why the item that introduced it.** A fix is judged against the spec of
+  the item whose change broke CI, and reopening keeps that bound while
+  reusing claim, the item runner, the validator, the merge gate and the
+  ledger's second row unchanged. A new verb adding a fix item to the queue
+  was rejected: it needs a spec, authorised paths and a number of its own,
+  and loses the one bound that matters (issue #332).
+- **Why the PR goes back to draft.** Each CI run costs minutes, and a ready
+  PR re-runs on every push, so a round fixes all of its findings before the
+  push that re-runs CI. Holding `aide merge`'s push while a reopened item is
+  open was rejected: it works whatever the CI trigger, but changes `aide
+  merge` and leaves merged, unpushed work in one checkout for the length of
+  the round.
+- **Why the round is stamped, not derived.** A merge flips an icon and
+  writes no trail line, so whether one item merged back before another was
+  reopened — what separates two rounds from one — is not on record
+  afterwards; the engine writes the round when it writes the reopening, and
+  a runner never counts it across sessions.
+- **Why the gap closes at the merge back, not on green.** Only CI knows the
+  check is green again, but a tick made after reading it is a commit of its
+  own, and pushing it to the ready PR costs one more CI run over a tree
+  changed in `insights.md` alone. `aide merge` ticks the reopening's gap in
+  the commit it already makes; a check still red reopens the item again,
+  and that reopening captures a gap of its own.

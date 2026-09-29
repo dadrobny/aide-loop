@@ -50,12 +50,15 @@ and ``merge`` is ``.aide/scripts/aide.py merge``, both under this interpreter.
 ``ci`` is this script's own ``poll-ci`` over the branch checked out when it
 started: it runs ``.aide/scripts/aide.py status --no-fetch`` every
 {interval} s, reads that branch's ``stack N:`` line, and ends on the first
-answer (issue #331, the queue-end step). ``checks=pending`` is no answer, and
+answer (issue #331, the queue-end step). ``checks=pending`` is no answer,
+nor is ``checks=failure`` while a ``pending check:`` line says a leg is still
+running (issue #332), and
 neither is ``checks=none`` until it has held for {grace} s, since just after a
 push or ``aide queue ready`` CI may not have registered a run; ``unknown`` is
 the answer once {unknown} readings in a row say it, since one failed ``gh``
 call is not. It gives up after {ceiling} s. Its log is the stack line and the
-``failing check:`` / ``checks unknown:`` lines under it, each time they
+``failing check:`` / ``pending check:`` / ``checks unknown:`` / ``ci fix
+rounds:`` lines under it, each time they
 change, then its verdict. ``poll-ci`` blocks until then, so it is only ever
 run this way; a crash of the poll itself exits 1, with its traceback in the
 log.
@@ -78,13 +81,15 @@ Exit codes:
 ``ci``'s own codes, which ``wait`` returns as the command's:
 
     0                   checks=success
-    {failure}                  checks=failure — the failing checks are named
+    {failure}                  checks=failure — the failing checks are named,
+                        and the CI fix rounds begun where any has
     {none}                  checks=none held for the grace — no CI ran
     {unknown_code}                  checks=unknown — the reason is named
     {no_pr}                  no PR (checks=-, local mode included), a closed or
                         merged one, or the branch has no stack line: not an
                         unmerged queue branch
-    {pending}                  still pending at the ceiling
+    {pending}                  still pending at the ceiling — a red answer
+                        with a leg still running included
     {draft}                  the PR is a draft (pr=#N/draft…, (fixing) included),
                         so CI that skips drafts has nothing to run
 
@@ -153,7 +158,8 @@ CI_DRAFT = 15
 #: One `aide status` stack line; `status -h` states every field.
 _STACK_LINE_RE = re.compile(
     r"^\s*stack \d+: (?P<branch>\S+) .*?\bpr=(?P<pr>\S+) checks=(?P<checks>\S+)")
-_CI_DETAIL = ("failing check:", "checks unknown:")
+_CI_DETAIL = ("failing check:", "pending check:", "checks unknown:",
+              "ci fix rounds:")
 _LABEL_RE = re.compile(r"^[a-z]+(?:-\d+)?-\d{8}-\d{6}(?:-\d+)?$")
 # The shape `aide merge --findings` takes; anything else never reaches it.
 _FINDINGS_RE = re.compile(r"^(?:blocking|minor|nit)=\d+(?:,(?:blocking|minor|nit)=\d+)*$")
@@ -393,7 +399,11 @@ def poll_ci(branch: str, read_status, *, interval: float = CI_INTERVAL,
         if checks == "success":
             print("ci: success", flush=True)
             return CI_SUCCESS
-        if checks == "failure":
+        # A red answer is final only once every leg has finished (#332):
+        # a leg still running may fail too, and its log is not readable yet,
+        # so triaging now could cost a second fix round.
+        settled = not any(line.startswith("pending check:") for line in detail)
+        if checks == "failure" and settled:
             print("ci: failure", flush=True)
             return CI_FAILURE
         if checks == "-":
@@ -406,7 +416,7 @@ def poll_ci(branch: str, read_status, *, interval: float = CI_INTERVAL,
         if checks == "none" and elapsed >= grace:
             print(f"ci: none — no check registered in {int(elapsed)}s", flush=True)
             return CI_NONE
-        if checks not in ("pending", "none", "unknown"):
+        if checks not in ("pending", "none", "unknown", "failure"):
             print(f"ci: unknown — checks={checks} is not a value this script "
                   f"reads", flush=True)
             return CI_UNKNOWN

@@ -1,6 +1,6 @@
 """Tests for the queue PR's CI state in `aide status` and for `aide queue pr`
 and `aide queue ready` (issue #330) — see aide.py `checks_state`,
-`_branch_pr_facts`, `_queue_branch_fixing`, `_queue_pr` and `_queue_ready`.
+`_branch_pr_facts`, `_queue_branch_ci`, `_queue_pr` and `_queue_ready`.
 
 Throwaway repositories under ``tmp_path``, each queue branch started with
 `aide queue start` so its recorded base is the one a real run leaves, and a
@@ -188,6 +188,10 @@ def _status_stack(repo: Path, capsys) -> List[dict]:
             stack[-1]["failing"].append(line.partition(": ")[2])
         elif line.startswith("checks unknown: "):
             stack[-1]["why"] = line.partition(": ")[2]
+        elif line.startswith("pending check: "):
+            stack[-1].setdefault("running", []).append(line.partition(": ")[2])
+        elif line.startswith("ci fix rounds: "):
+            stack[-1]["rounds"] = int(line.partition(": ")[2])
         elif line.startswith("awaiting review: "):
             stack and stack[-1].setdefault("awaiting", line.split()[2])
     return stack
@@ -370,6 +374,89 @@ def test_an_open_pr_with_a_reopened_item_is_not_marked_fixing(
     _progress(repo, "📋", REOPENED)
     _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "isDraft": False}]})
     assert _status_stack(repo, capsys)[0]["pr"] == "#7/open"
+
+
+# --------------------------------------------------------------------------- #
+# issue #332 — the CI fix round's count
+# --------------------------------------------------------------------------- #
+ROUND_2 = ("  - **2026-09-20** → reopened: CI build: test_001 [CI round 1]\n"
+           "  - **2026-09-29** → reopened: CI build: test_001 [CI round 2]\n")
+
+
+def test_a_failure_with_legs_still_running_names_each_as_pending(
+        tmp_path: Path, monkeypatch, capsys):
+    """Failure still wins (#330), but a red answer with a leg still running
+    is not settled (#332): each running check is named below the failing."""
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1)
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup": [
+        _run_check("build (ubuntu)", "COMPLETED", "FAILURE"),
+        _run_check("build (windows)", "IN_PROGRESS"),
+        _context("ci/legacy", "PENDING"),
+        _run_check("lint", "COMPLETED", "SUCCESS")]}]})
+    (q1,) = _status_stack(repo, capsys)
+    assert (q1["checks"], q1["failing"], q1["running"]) == (
+        "failure", ["build (ubuntu)"], ["build (windows)", "ci/legacy"])
+    # Settled: no pending line at all.
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup": [
+        _run_check("build (ubuntu)", "COMPLETED", "FAILURE"),
+        _run_check("build (windows)", "COMPLETED", "SUCCESS")]}]})
+    assert "running" not in _status_stack(repo, capsys)[0]
+    # Plain pending names nothing: only a red answer needs settling.
+    assert aide.running_checks([_run_check("x", "QUEUED"),
+                                _run_check("x", "IN_PROGRESS")]) == ["x"]
+
+
+def test_a_draft_or_failing_pr_names_the_ci_fix_rounds_begun(
+        tmp_path: Path, monkeypatch, capsys):
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1)
+    _progress(repo, "✅", ROUND_2)
+    red = [_run_check("build", "COMPLETED", "FAILURE")]
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN",
+                               "statusCheckRollup": red}]})
+    (q1,) = _status_stack(repo, capsys)
+    assert (q1["checks"], q1["failing"], q1["rounds"]) == ("failure", ["build"], 2)
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "isDraft": True}]})
+    (q1,) = _status_stack(repo, capsys)
+    assert (q1["pr"], q1["rounds"]) == ("#7/draft", 2)
+    # Green: nothing for a runner to count, and no git spawn to pay for it.
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup":
+                               [_run_check("build", "COMPLETED", "SUCCESS")]}]})
+    assert "rounds" not in _status_stack(repo, capsys)[0]
+    # No CI reopening at all: a red PR prints no count line.
+    _progress(repo, "✅", REOPENED)
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN",
+                               "statusCheckRollup": red}]})
+    assert "rounds" not in _status_stack(repo, capsys)[0]
+
+
+def _two_queue_branch(repo: Path) -> None:
+    """Queue 001's branch also carries queue 002 (a maintenance queue and the
+    stage queue after it): items 001 and 002, both merged."""
+    _start(repo, 1)
+    _plan(repo, 1)
+    _plan(repo, 2, "### Item 002: Beta\n")
+    (repo / "docs" / "aide" / "progress.md").write_text(
+        PROGRESS.format(icon="✅", trail=ROUND_2).replace(
+            "- 📋 Beta. *(Item 002)*", "- ✅ Beta. *(Item 002)*"),
+        encoding="utf-8")
+    _commit(repo, "both merged, item 001 after two CI rounds")
+
+
+def test_a_ci_reopening_on_a_queue_branch_counts_every_queue_it_carries(
+        tmp_path: Path):
+    """Item 002 is queue 002's, and queue 001's item carries round 2: one PR,
+    one CI, one count — so 002's reopening begins round 3."""
+    repo = _init(tmp_path)
+    _two_queue_branch(repo)
+    assert aide.main(["--repo", str(repo), "progress", "reopen", "2",
+                      "--reason", "CI lint: step ruff", "--date", "2026-09-30",
+                      "--no-commit"]) == 0
+    text = (repo / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    assert "  - **2026-09-30** → reopened: CI lint: step ruff [CI round 3]" in text
 
 
 # --------------------------------------------------------------------------- #
