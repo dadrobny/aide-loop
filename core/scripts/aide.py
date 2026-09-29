@@ -9595,9 +9595,9 @@ def _merged_row_already_recorded(repo_root: Path, config, number: int,
     """``ledger.md:<line>`` of the row an earlier merge of this item wrote, or None.
 
     Only where the item is **already ✅** on every bullet before this run
-    ticks it (issue #346): a merge whose tick commit landed and whose push failed is re-run
-    with the ✅ and the row both in place, and a second row would be a second
-    record of one merge. A reopened item is never ✅ when it merges again —
+    ticks it (issue #346): a merge whose tick commit landed and whose push
+    failed is re-run with the ✅ and the row both in place, and a second row
+    would be a second record of one merge. A reopened item is never ✅ when it merges again —
     `progress reopen` sends every bullet back to 📋 — so the second row §1 →
     `ledger.md` expects for it is appended as before; so is the first row of
     an item ticked by hand ahead of its merge, since there is no `merged` row
