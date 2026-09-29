@@ -925,6 +925,35 @@ def test_claim_holds_every_item_behind_an_unreadable_gate_row(
     assert aide.main(["--repo", str(consumer), "check"]) == 1
 
 
+def test_claim_says_early_ready_only_once_built_work_waits_on_a_gate_alone(
+        aide, consumer: Path, capsys):
+    """Issue #331: the queue-end step marks the queue's PR ready early when
+    every open item is held by a human gate, and reads that from claim's
+    `early ready:` line, never from the reason prose. A queue held whole
+    with nothing built is not ready; once an item has landed and the gate
+    holds the rest, it is."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8") + (
+        "\n## Human gates\n\n"
+        "| Gate | Blocks | Status | Decision / evidence |\n"
+        "|------|--------|--------|---------------------|\n"
+        "| Queue 001 plan reviewed before build | 001, 002 | ⏳ Awaiting | — |\n"),
+        encoding="utf-8")
+    _commit(consumer, "the plan gate")
+    capsys.readouterr()
+
+    assert _claim(aide, consumer) == 0
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1].startswith("early ready: no — ")
+    assert _branch(consumer) == "main"
+
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1", "done"]) == 0
+    capsys.readouterr()
+    assert _claim(aide, consumer) == 0
+    assert capsys.readouterr().out.splitlines()[-1].startswith("early ready: yes — ")
+    assert _branch(consumer) == "main"          # still nothing claimed
+
+
 def test_a_gate_is_cited_and_resolved_by_its_id_across_a_renumbering(
         aide, consumer: Path, capsys):
     """Issue #293: a merge put a gate above the one an item cited, and the
@@ -2173,6 +2202,7 @@ def test_a_failed_claim_push_is_a_sentence_and_never_none_left(
     out = capsys.readouterr().out
     assert rc == 1                              # was 0, "none left"
     assert "2 item(s) still open" in out
+    assert "early ready:" not in out            # a broken state, no fact
     assert out.count("ORIGIN HAS NEVER SEEN") == 2
 
 

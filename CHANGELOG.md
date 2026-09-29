@@ -121,6 +121,98 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.23.0] — 2026-09-29
+
+### Added
+
+- **The queue-end step: both runners mark the queue PR ready, wait for CI
+  and read it, including early while a human gate holds the last items
+  (issue #331).** The step is defined once, runtime-general, in
+  `.aide/README.md` → *The queue-end step*. `/aide-run-queue` → **Queue end**
+  (renamed from *On queue exhaustion*) is the adapter's expression of it, and
+  `/aide-run-roadmap` → **Queue end** runs it, then keeps its own stack
+  decision. The step runs `aide gc`, then `aide queue ready`, then waits on
+  `aide status`'s `checks=` and reads the answer. On `success` it stops for
+  the merge. On `failure` it reports each failing check and stops; the fix
+  round is #332's, and the runner marks where it goes. On `none` it reports
+  that no CI ran and the likely cause. On `unknown` it reports the reason. In
+  `local` mode, with no remote, or on a queue run from `main`, it reports
+  that no forge exists and ends.
+- **`aide claim` ends every `none left — …` report that exits 0 with an
+  `early ready: yes|no — <reason>` line.** It reads `yes` when every gate
+  holding the queue is still ⏳ awaiting its decision, every open item waits
+  on one, no open item is claimed, and at least one item of the queues
+  checked is ✅. An item counts as waiting on a gate when a gate reaches it,
+  or when it waits only on items a gate holds, followed to a fixed point
+  whatever order the queue lists them in. That is the step's early trigger:
+  CI runs while a person decides the gate, the first result is
+  informational, and the step runs again at true exhaustion. The fact is the
+  engine's, so the runner never parses the reason prose. The ✅ clause keeps
+  a queue held whole by its own plan gate, with nothing built, from reading
+  as ready. A ❌ declined gate reads `no` (the plan is re-planned, not
+  shipped). An `all` gate over a queue with nothing left open reads `yes` in
+  words of its own, since the batch is as built as it will be. A bare `none
+  left` carries no such line, and neither does a report that exits 1.
+  `aide claim -h` states it, pinned in `test_aide_help_pins.py`.
+- **`await_run.py start ci` is the bounded wait on CI.** It polls `aide
+  status --no-fetch` every 30 s for the checked-out queue branch's `checks=`
+  and ends on the first answer. The exit codes are `success` 0, `failure` 10,
+  `none` 11, `unknown` 12, no PR or no stack line 13, and still pending after
+  an hour 14, and a draft PR 15 (`#N/draft(fixing)` included). A closed or
+  merged PR is 13 whatever its checks say, and a draft is answered at once
+  rather than waited out as a lasting `none`. A `none` counts only once it
+  has held for 5 minutes, since just
+  after `queue ready` CI may not have registered a run. An `unknown` counts
+  only when three readings in a row say it, since one failed `gh` call is
+  not an answer. The orchestrator waits on it itself, with `wait <label>
+  --for 540` calls, each a Bash call given `timeout: 600000`.
+- **A queue branch with no PR gets its draft before the first claim.**
+  `/aide-run-queue` reads the branch's `pr=` and, on `pr=none`, runs `aide
+  queue pr --body …`. `/aide-run-roadmap` → *Generate the next queue* opens
+  the draft with `aide queue pr --body-file
+  docs/aide/status/queue-NNN-pr.md`, a gitignored path, in place of `git
+  push` + `gh pr create --draft`. A refusal over a closed or merged PR is
+  reported and stops the run. A `pr=#N/draft` match is a prefix match, so
+  `#N/draft(fixing)` reads as a draft too.
+- **The recommended consumer CI trigger** is in `.aide/README.md` and
+  `docs/quickstart.md`: `pull_request: types: [opened, reopened,
+  synchronize, ready_for_review]`, a job-level `if:
+  github.event.pull_request.draft == false`, and no `push` trigger on the
+  queue branches. A `push: branches: [main]` trigger may stay, for CI on
+  `main` after each merge.
+- **`.aide/README.md` says what a bare `none left` leaves behind**: no 📋
+  item is left, but a 🚧 or 🔍 item nothing waits on can remain, and the
+  queue PR is marked ready without it.
+
+### Changed
+
+- **An unpublished claim exits 1 even while a gate holds the rest of the
+  queue.** The gate report used to return first, exit 0, so the broken state
+  read as a normal hold. It now names the claim and the publish-or-release
+  instruction after the gates, as the per-item report always has.
+- **Every `await_run.py wait` is a Bash call given `timeout: 600000`.** The
+  tool's default of 120000 ms ended the validator's 240 s waits, and the
+  held merge's in `/aide-run-item`, as timeouts. The validator, that
+  command, the script's docstring and the adapter README now say so.
+- **`/aide-run-roadmap` leaves a `#N/draft(fixing)` PR alone** in its
+  `runnable: no` row, since a fix round is #332's; a plain `#N/draft` runs
+  **Queue end**.
+- **§3 forbids `gh pr create` and `gh pr ready`.** The raw forms can touch
+  any pull request, so a queue's own PR is the `aide queue` verbs' job and
+  any other PR is a person's to open. This was held back from #330 until the
+  runners stopped instructing the raw forms. No agent, command, skill or rule
+  names them now: `aide-run-roadmap` (including its state-table rows),
+  `aide-run-queue`, `aide-spec-queue` (a specs-queue PR is the user's) and
+  `aide-review-permissions` (the settings PR is the user's).
+  `test_queue_pr_automation.py` holds all three facts: §3 names both forms,
+  `settings.json` still ask-gates them (the enforcement, with no hook
+  change), and no control file names them. **The always-on floor moves from
+  9,244 to 9,352 content bytes.**
+
+**What a consumer edits:** nothing. A consumer whose CI runs on drafts, or
+on `push` only, may adopt the recommended trigger. Until it does, the step
+reads the last run it can see, or reports that no CI ran.
+
 ## [2.22.0] — 2026-09-29
 
 ### Changed

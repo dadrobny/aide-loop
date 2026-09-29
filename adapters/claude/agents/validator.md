@@ -57,8 +57,9 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
    diagnosing is run directly; it is not the suite.
    `wait` returns the moment the suite exits, with its exit code, the elapsed
    time and the log's last lines; after 240 s it returns exit **75** instead,
-   "still running" — call `wait` again. **A red suite is judged by
-   `git.mode` (§9, preloaded above).** Under `pr` it is an automatic FAIL.
+   "still running" — call `wait` again. Give every `wait` Bash call
+   `timeout: 600000`; the tool's 120000 ms default cuts a 240 s wait short.
+   **A red suite is judged by `git.mode` (§9, preloaded above).** Under `pr` it is an automatic FAIL.
    Under `auto-merge` or `local` it is not a FAIL by itself: write down every
    failing test, carry on through checks 2–6, and if they all hold, take the
    PASS path to the merge (step 3 there). The merge's gate compares the
@@ -71,9 +72,9 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
 
    **Every long-running command here goes the same way** (§9, preloaded
    above), most consequentially `aide merge` below, which under `auto-merge`
-   re-runs the whole suite. The numbers are this runtime's: a Bash call is cut
-   at 10 minutes and moved to the background, and your prompt cache lives 5
-   minutes by default, so each `wait` stays at its default and never takes
+   re-runs the whole suite. The numbers are this runtime's: a Bash call given
+   `timeout: 600000` is cut at 10 minutes and moved to the background, and
+   your prompt cache lives 5 minutes by default, so each `wait` stays at its default and never takes
    `--for` above 240. Do not start a long command with the Bash tool's
    background option, Monitor, `sleep`, or a `ps` loop. **Never end your turn
    while a run is going**: ending it with a placeholder ("I'll wait for the

@@ -1002,6 +1002,43 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # The "none left" report is built from the gates that actually apply.
         ("It will not offer a blocked item",
          "test_aide_gates::test_none_left_names_only_the_gates_that_apply"),
+        # `_early_ready`, printed last on both exit-0 paths of
+        # `_report_nothing_claimable` — the queue-end step's early trigger,
+        # decided here so the runner never reads it from reason prose (#331).
+        ("Every \"none left \u2014 \u2026\" report that exits 0 ends with an "
+         "`early ready:` line, yes or no before an em dash",
+         ("test_aide_gates::test_early_ready_is_yes_when_every_open_item_waits_on_a_gate",
+          "test_aide_gates::test_early_ready_is_no_when_no_gate_explains_the_hold")),
+        # The clauses of the `yes`, each broken by one test: the fixed point
+        # over dependencies (in any listing order), the claimed item, the ✅
+        # clause.
+        ("yes when every gate holding the queue is still \u23f3 awaiting its "
+         "decision, every open item waits on one \u2014 one reaches it, or it "
+         "waits only on items that do \u2014 no open item is claimed, and at "
+         "least one item of the queues checked is \u2705",
+         ("test_aide_gates::test_early_ready_is_yes_when_every_open_item_waits_on_a_gate",
+          "test_aide_gates::test_an_item_waiting_only_on_a_gated_item_is_held_by_the_gate",
+          "test_aide_gates::test_a_chain_listed_before_the_gated_item_it_hangs_off_is_held",
+          "test_aide_gates::test_a_landed_dependency_does_not_loosen_a_held_item",
+          "test_aide_gates::test_early_ready_is_no_while_an_open_item_is_claimed",
+          "test_aide_gates::test_a_claimed_gated_item_is_work_in_flight",
+          "test_aide_gates::test_early_ready_is_no_before_any_item_has_landed")),
+        # `settled` in `_early_ready`: any relevant gate not "awaiting".
+        ("A \u274c declined gate makes it no",
+         "test_aide_gates::test_a_declined_gate_is_no_early_ready"),
+        # `elif not open_ordered:` — its own wording.
+        ("An `all` gate over a queue with nothing left open is read the same "
+         "way, a yes in words of its own",
+         "test_aide_gates::test_an_all_gate_over_a_queue_with_nothing_open_says_so"),
+        # `if stranded:` inside `if relevant:` returns 1 before `early`.
+        ("An unpublished claim \u2014 a claim branch origin has never seen "
+         "\u2014 exits 1 with how to publish or release it, whether or not a "
+         "gate holds the rest",
+         "test_aide_gates::test_an_unpublished_claim_behind_a_gate_exits_1_with_no_early_line"),
+        # `if not relevant and not open_items: print("none left")` returns
+        # before `_early_ready` is printed.
+        ("A bare \"none left\" (nothing open, no gate) carries no such line",
+         "test_aide_git::test_an_empty_queue_still_says_only_none_left"),
         # `if block_everything or unreadable_gate_rows(plines): return None`,
         # and `cmd_claim` exits 1 naming the row.
         ("A human-gates row it cannot read holds every item",

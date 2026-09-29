@@ -228,8 +228,16 @@ allow-list" framing** are adapter-local and documented here.
   as 93. The validator gives its whole dispatch a 50-minute budget, below the
   orchestrator's 1-hour cache. It treats the merge's re-run as hung past 3×
   its own suite run, or 10 minutes, and stops the run at either limit. The
-  script keeps no timing history, only each run's own state. It runs those
-  two commands only, and `stop` acts only on a pid from a valid label's
+  script keeps no timing history, only each run's own state. `start ci` is
+  the queue-end step's wait on the queue PR's CI (issue #331): a poll of `aide
+  status` for the checked-out queue branch's `checks=`, every 30 s, that ends
+  on `success` (0), `failure` (10), a `none` held for 5 minutes (11), an
+  `unknown` read three times running (12), no PR, a closed or merged one, or
+  no stack line (13), an hour still pending (14), or a draft PR (15). The
+  orchestrator waits on it itself with `wait <label> --for 540`, each a Bash
+  call given `timeout: 600000` (the 120000 ms default cuts it short), on the
+  main session's hour-long cache. It runs those
+  three commands only, and `stop` acts only on a pid from a valid label's
   record, so its allow entry admits nothing else.
 - **Every hook command resolves its script from `$CLAUDE_PROJECT_DIR`**, not
   the hook process's cwd (issue #272): a worktree-isolated sub-agent's hooks
@@ -254,7 +262,9 @@ not restated per agent:
   reason: it is venv-independent). That includes `queue pr` and `queue ready`,
   which open and mark ready the queue's own PR unattended, while `gh pr create`
   and `gh pr ready` stay on the ask-list (issue #330;
-  `tests/test_queue_pr_automation.py` holds both halves).
+  `tests/test_queue_pr_automation.py` holds both halves). Since issue #331 §3
+  forbids the raw forms outright and the runners type only the verbs, so the
+  ask entry is what enforces it: a person approves every other PR.
 - **Command substitution in commits** (`$(…)`/backticks) is **never** auto-approved —
   use `-m`/`-F` per `conventions.md` §3.
 
