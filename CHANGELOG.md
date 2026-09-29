@@ -141,13 +141,27 @@ instead — that is the bump policy above, and it is enforced by
   in several items' changes reopens each; one only their combination
   produces goes to the later-merged item, its reason naming the other; one
   that traces to no item goes to the queue's `Validate stage N` item, or,
-  with none, to the user. `/aide-run-roadmap` resumes a `#N/draft(fixing)`
+  with none, to the user. A check whose failing step is plainly
+  infrastructure (runner image, network, a cancelled run) is not a finding
+  and goes to the user to re-run; with no in-scope finding left the round
+  stops before the undo, the PR still ready and no round counted. A run
+  that dies between the undo and the first reopening leaves a plain draft
+  that a resume re-readies without counting a round, which is accepted: it
+  costs CI minutes only. `/aide-run-roadmap` resumes a `#N/draft(fixing)`
   PR instead of leaving it.
+- **A red answer is final only once every leg has finished.** `aide status`
+  keeps `checks=failure` the moment one check fails (#330), and now names
+  each check still running beside it on a `pending check:` line; the CI poll
+  in `await_run.py` returns `failure` only once no such line is left,
+  polling on within the same ceiling. Triage therefore reads every leg's
+  log, and a leg failing late no longer costs a second round.
 - **`aide progress reopen` stamps a CI reopening with its round.** A reason
   starting `CI ` gets `[CI round N]` appended, counted over the items of
   every queue the checked-out queue branch carries: the round under way
   while one of their CI-reopened items is still open, the next one when
-  none is. A reason that already ends in a stamp is refused, exit 2. The
+  none is. A reason that already ends in a stamp is refused, exit 2, and so
+  is one starting `CI` with anything but a space after it (`CI:`, `CI-`),
+  which would silently not be a CI reopening. The
   count has to be written with the reopening: a merge writes no trail line,
   so which of two reopenings came after a merge back is not on record later.
 - **`aide status` prints `ci fix rounds: N`** under a draft or failing
@@ -159,7 +173,10 @@ instead — that is the bump policy above, and it is enforced by
   Where the item's latest reopening carries a `[CI round N]` stamp, the open
   gap that reopening captured is ticked with `re-merged into <base> in CI
   round N`, in the tick's own commit, and a commit that fails puts it back
-  with the rest (#309/#312). Nothing else is ticked: an earlier round's gap
+  with the rest (#309/#312). Not in `pr` mode, where the merge is a
+  person's: `aide merge` writes no tick there, so the gap stays open as the
+  ledger row stays unwritten, and `aide progress set NNN done` ticks neither;
+  triage closes it. Nothing else is ticked: an earlier round's gap
   was its own merge's, and a non-CI reopening is not CI's to close. A check
   still red after the round reopens the item again, and that reopening
   captures a gap of its own. Ticking after reading `checks=success` was

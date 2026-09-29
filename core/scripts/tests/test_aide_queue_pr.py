@@ -188,6 +188,8 @@ def _status_stack(repo: Path, capsys) -> List[dict]:
             stack[-1]["failing"].append(line.partition(": ")[2])
         elif line.startswith("checks unknown: "):
             stack[-1]["why"] = line.partition(": ")[2]
+        elif line.startswith("pending check: "):
+            stack[-1].setdefault("running", []).append(line.partition(": ")[2])
         elif line.startswith("ci fix rounds: "):
             stack[-1]["rounds"] = int(line.partition(": ")[2])
         elif line.startswith("awaiting review: "):
@@ -379,6 +381,31 @@ def test_an_open_pr_with_a_reopened_item_is_not_marked_fixing(
 # --------------------------------------------------------------------------- #
 ROUND_2 = ("  - **2026-09-20** → reopened: CI build: test_001 [CI round 1]\n"
            "  - **2026-09-29** → reopened: CI build: test_001 [CI round 2]\n")
+
+
+def test_a_failure_with_legs_still_running_names_each_as_pending(
+        tmp_path: Path, monkeypatch, capsys):
+    """Failure still wins (#330), but a red answer with a leg still running
+    is not settled (#332): each running check is named below the failing."""
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1)
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup": [
+        _run_check("build (ubuntu)", "COMPLETED", "FAILURE"),
+        _run_check("build (windows)", "IN_PROGRESS"),
+        _context("ci/legacy", "PENDING"),
+        _run_check("lint", "COMPLETED", "SUCCESS")]}]})
+    (q1,) = _status_stack(repo, capsys)
+    assert (q1["checks"], q1["failing"], q1["running"]) == (
+        "failure", ["build (ubuntu)"], ["build (windows)", "ci/legacy"])
+    # Settled: no pending line at all.
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup": [
+        _run_check("build (ubuntu)", "COMPLETED", "FAILURE"),
+        _run_check("build (windows)", "COMPLETED", "SUCCESS")]}]})
+    assert "running" not in _status_stack(repo, capsys)[0]
+    # Plain pending names nothing: only a red answer needs settling.
+    assert aide.running_checks([_run_check("x", "QUEUED"),
+                                _run_check("x", "IN_PROGRESS")]) == ["x"]
 
 
 def test_a_draft_or_failing_pr_names_the_ci_fix_rounds_begun(

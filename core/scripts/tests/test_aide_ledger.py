@@ -977,3 +977,22 @@ def test_a_failed_tick_commit_leaves_the_ci_gap_open_and_the_re_run_ticks_it_onc
     text = inbox.read_text(encoding="utf-8")
     assert text.count("→ re-merged into main in CI round 2") == 1
     assert _status(repo) == ""
+
+
+def test_pr_mode_leaves_a_ci_reopenings_gap_open(tmp_path: Path):
+    """Under `pr` the merge is the human's: no tick, no row, and the gap of
+    the reopening stays open with them."""
+    remote = _mkbare(tmp_path / "remote.git")
+    repo = _ci_reopened(_init_repo(tmp_path / "repo", mode="pr",
+                                   insights=CI_INSIGHTS))
+    _run(["git", "remote", "add", "origin", str(remote)], repo)
+    _run(["git", "push", "-u", "origin", "main"], repo)
+    inbox = repo / "docs" / "aide" / "insights.md"
+    before = inbox.read_bytes()
+    assert aide.main(["--repo", str(repo), "claim"]) == 0
+    _do_the_work(repo)
+    assert aide.main(["--repo", str(repo), "merge", "27", "--no-test"]) == 0
+    _run(["git", "switch", "main"], repo)
+    assert inbox.read_bytes() == before
+    assert aide.main(["--repo", str(repo), "progress", "set", "27", "done"]) == 0
+    assert inbox.read_bytes() == before

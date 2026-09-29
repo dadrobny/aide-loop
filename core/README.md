@@ -130,7 +130,10 @@ locally.
    bounded waits that each fit inside one tool call of the runtime; the
    orchestrator waits in its own session rather than handing the wait to a
    sub-agent. `pending` is not an answer, and neither is a first `none` just
-   after the ready: CI may not have registered a run yet.
+   after the ready: CI may not have registered a run yet. Nor is `failure`
+   while a `pending check:` line remains under it: a red answer is final
+   only once every leg has finished, since a leg still running may fail too
+   and its log cannot be read yet.
 5. **Read the answer.**
    - `success`: stop for the merge. Under `/aide-run-roadmap`, go on to its
      stack decision.
@@ -167,7 +170,10 @@ round runs from a red answer to the next answer.
 2. **Triage** every failing check before anything is reopened: read its log
    into findings, one per failing test or step, each ranked and scoped as
    §9 ranks a review finding. A red leg that passed locally is a
-   portability finding first (§7).
+   portability finding first (§7). A check whose failing step is plainly
+   infrastructure — the runner image, the network, a cancelled run — is not
+   a finding: a person re-runs it. With no in-scope finding left, the round
+   stops here and reports, the PR still ready and nothing counted.
 3. **Trace** each in-scope finding to an item:
    - a failing test in a `test_NNN_*` file belongs to item NNN (§6);
    - otherwise the queue branch's history names it: each item lands as its
@@ -180,7 +186,10 @@ round runs from a red answer to the next answer.
      goes to the queue's queue-end item where it has one, and otherwise
      stops the round with nothing reopened: a person takes it.
 4. **Back to draft.** `aide queue ready --undo`, before the first reopening,
-   so the fix merges push without starting CI.
+   so the fix merges push without starting CI. A run that dies between this
+   and the first reopening leaves a plain draft with nothing open, which a
+   resume marks ready again without counting a round; that is accepted, as
+   it costs CI minutes only.
 5. **Reopen** each traced item with `aide progress reopen NNN --reason "CI
    <check>: <failing test or step>"`, every one before the first claim. The
    `CI ` prefix is what makes it a CI reopening: `aide progress -h` says how
@@ -189,9 +198,11 @@ round runs from a red answer to the next answer.
    reopened item and runs it like any other; the builder's brief carries
    the item's findings, which `aide status` prints as its `reopened:`
    reason when the session that triaged them is gone. `aide merge` ticks
-   the reopening's `gap` as the item lands (`aide merge -h`).
-7. When the queue is exhausted again the step runs again, and its `aide
-   queue ready` starts the round's CI run.
+   the reopening's `gap` as the item lands (not in `pr` mode, where the
+   merge is a person's and the gap stays open until triage ticks it; `aide
+   merge -h`).
+7. When the queue is exhausted again the queue-end step runs again from its
+   trigger, and its `aide queue ready` starts the round's CI run.
 
 A `(fixing)` draft in `aide status` is a round under way: its reopened items
 are open, and a runner resumes by claiming them.

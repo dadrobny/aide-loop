@@ -847,6 +847,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_reopen::"
           "test_a_ci_reopening_begins_a_round_the_next_one_joins_and_a_later_one_begins_another",
           "test_aide_reopen::test_a_reopening_that_is_not_ci_is_neither_stamped_nor_counted")),
+        # `re.match(r"CI\b(?! )", reason)` -> 2, before anything is read.
+        ("and so is one starting `CI` followed by anything but a space "
+         "(`CI:`, `CI-`), which would silently not be a CI reopening",
+         "test_aide_reopen::test_a_reason_naming_ci_without_the_space_is_refused"),
         # `_CI_ROUND_RE.search(reason)` -> 2, before anything is read.
         ("A reason that already ends in such a stamp is refused, exit 2",
          "test_aide_reopen::test_a_reason_carrying_its_own_round_stamp_is_refused"),
@@ -1234,6 +1238,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "reopen` stamped on a CI reopening of one of their items, read from "
          "the branch's own progress.md; no line where none has begun",
          "test_aide_queue_pr::test_a_draft_or_failing_pr_names_the_ci_fix_rounds_begun"),
+        # `running_checks`, asked only under failure; one `pending check:`
+        # line each in `cmd_status` (#332).
+        ("Under failure, each check still running is named on a `pending "
+         "check:` line below the failing ones",
+         "test_aide_queue_pr::test_a_failure_with_legs_still_running_names_each_as_pending"),
         # `checks_state`: failing first, then pending, then any SUCCESS;
         # `_CHECK_IGNORED` neither; the `failing check:` lines in cmd_status.
         ("checks= is the CI state of that PR's head commit: failure when any "
@@ -1499,6 +1508,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "in CI round N` and committed with the tick",
          "test_aide_ledger::"
          "test_a_merge_back_ticks_only_its_ci_reopenings_gap_in_the_ticks_commit"),
+        # `cmd_merge` returns in pr mode before the tick; `set done` never
+        # calls `tick_ci_reopening_gap`.
+        ("not in pr mode, where this verb writes no tick: the gap stays open, "
+         "as the row stays unwritten, and `aide progress set NNN done` ticks "
+         "neither",
+         "test_aide_ledger::test_pr_mode_leaves_a_ci_reopenings_gap_open"),
         ("no other entry is touched, an earlier round's included",
          ("test_aide_ledger::"
           "test_a_merge_back_ticks_only_its_ci_reopenings_gap_in_the_ticks_commit",

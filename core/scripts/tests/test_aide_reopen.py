@@ -527,6 +527,19 @@ def test_a_reason_carrying_its_own_round_stamp_is_refused(tmp_path: Path, capsys
     assert (repo / "docs" / "aide" / "progress.md").read_bytes() == before
 
 
+@pytest.mark.parametrize("reason", ["CI: build failed", "CI-build: t", "CI"])
+def test_a_reason_naming_ci_without_the_space_is_refused(tmp_path: Path, capsys,
+                                                         reason: str):
+    """`CI:` would silently not be a CI reopening: no stamp, no count."""
+    repo = _queued(tmp_path)
+    before = (repo / "docs" / "aide" / "progress.md").read_bytes()
+    assert _reopen_cli(repo, 27, reason) == 2
+    assert "`CI <check>: <failing test or step>`" in capsys.readouterr().err
+    assert (repo / "docs" / "aide" / "progress.md").read_bytes() == before
+    # A word that only begins with the letters is not CI at all.
+    assert _reopen_cli(repo, 27, "CIRCUIT breaker never exercised") == 0
+
+
 ATTESTED = PROGRESS.replace(
     "- ✅ Coverage. *(Item 028)*",
     "- ✅ Coverage. *(Item 028)*\n- ✅ Validate stage 1. *(Item 029)*")

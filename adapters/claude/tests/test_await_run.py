@@ -318,6 +318,25 @@ def test_ci_failure_carries_the_fix_rounds_begun_into_the_tail(capsys):
     assert "failing check: build" in out and "ci fix rounds: 2" in out
 
 
+def test_a_red_answer_waits_until_no_leg_is_still_running(capsys):
+    """#332: a failure beside a running leg is not the answer — the leg may
+    fail too, and its log cannot be read yet."""
+    code, reads = _poll([_stack("failure", "#7/open", "failing check: build",
+                                "pending check: test (windows)"),
+                         _stack("failure", "#7/open", "failing check: build",
+                                "pending check: test (windows)"),
+                         _stack("failure", "#7/open", "failing check: build",
+                                "failing check: test (windows)")])
+    assert code == ar.CI_FAILURE and reads == 3
+    assert capsys.readouterr().out.strip().splitlines()[-1] == "ci: failure"
+
+
+def test_a_red_answer_never_settling_gives_up_at_the_ceiling():
+    code, _ = _poll([_stack("failure", "#7/open", "failing check: build",
+                            "pending check: slow")], step=60.0, ceiling=300)
+    assert code == ar.CI_PENDING
+
+
 def test_a_first_none_is_not_the_answer_but_a_lasting_one_is():
     """Just after `queue ready` CI may not have registered a run yet."""
     code, reads = _poll([_stack("none")], step=30.0, grace=300)

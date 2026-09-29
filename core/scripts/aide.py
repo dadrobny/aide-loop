@@ -7878,6 +7878,12 @@ def _cmd_progress_reopen(args: argparse.Namespace) -> int:
         print("aide progress reopen: the reason may not contain a line break "
               "— it is written into one trail line", file=sys.stderr)
         return 2
+    if re.match(r"CI\b(?! )", reason):
+        print(f"aide progress reopen: a reason naming CI is a CI reopening "
+              f"only in the form `{_CI_REASON_PREFIX}<check>: <failing test or "
+              f"step>` — `CI` then a space — so {reason[:12]!r}… would not be "
+              f"counted as one; write it in that form", file=sys.stderr)
+        return 2
     if _CI_ROUND_RE.search(reason):
         print("aide progress reopen: the reason may not end in a `[CI round "
               "N]` stamp — the engine writes the round on a reason starting "
@@ -14223,6 +14229,7 @@ class BranchPr(NamedTuple):
     checks: str
     failing: List[str]
     checks_why: Optional[str]
+    running: Tuple[str, ...] = ()
 
     @property
     def label(self) -> str:
@@ -14275,7 +14282,8 @@ def _branch_pr_facts(repo_root: Path, branch: str
         return BranchPr(number, state, "unknown", [],
                         f"the forge answered without checks ({rollup_why})"), None
     checks, failing, checks_why = checks_state(rollup)
-    return BranchPr(number, state, checks, failing, checks_why), None
+    running = tuple(running_checks(rollup)) if checks == "failure" else ()
+    return BranchPr(number, state, checks, failing, checks_why, running), None
 
 
 #: A check run's ``status`` before it completes, and a commit status's
@@ -14331,6 +14339,30 @@ def checks_state(rollup: object) -> Tuple[str, List[str], Optional[str]]:
     if pending:
         return "pending", [], None
     return ("success" if passed else "none"), [], None
+
+
+def running_checks(rollup: object) -> List[str]:
+    """The checks of *rollup* still running, each named once (issue #332).
+
+    `checks_state` answers ``failure`` the moment one check fails, whatever
+    is still running; this is what tells a caller that red is not settled
+    yet — a leg still running may fail too, and its log cannot be read. A
+    rollup `checks_state` cannot read has none.
+    """
+    out: List[str] = []
+    for c in rollup if isinstance(rollup, list) else []:
+        if not isinstance(c, dict):
+            return []
+        name = str(c.get("name") or c.get("context") or "?")
+        if "state" in c and "status" not in c:
+            value = str(c.get("state") or "").upper()
+        else:
+            status = str(c.get("status") or "").upper()
+            value = (str(c.get("conclusion") or "").upper()
+                     if status == "COMPLETED" else status)
+        if value in _CHECK_PENDING and name not in out:
+            out.append(name)
+    return out
 
 
 def _docs_rel(config: Dict[str, Dict[str, object]]) -> str:
@@ -14418,7 +14450,8 @@ class StackBranch(NamedTuple):
     ``landed``, ``gone``, ``unknown`` or ``-`` (based on no queue branch);
     ``orphaned`` ``yes``, ``no``, ``unknown`` or ``-``. ``failing`` names
     each failed check and ``checks_why`` why checks are unknown; each is
-    printed on a line of its own below the stack line. ``ci_rounds`` is the
+    printed on a line of its own below the stack line, as is each of
+    ``running``, a check still running beside a failed one. ``ci_rounds`` is the
     CI fix rounds its queues have begun, read for a draft or a failing PR
     only, and printed below them when above 0 (issue #332).
     """
@@ -14431,6 +14464,7 @@ class StackBranch(NamedTuple):
     failing: Tuple[str, ...] = ()
     checks_why: Optional[str] = None
     ci_rounds: int = 0
+    running: Tuple[str, ...] = ()
 
 
 class StackFacts(NamedTuple):
@@ -14564,7 +14598,9 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
 
     branches = [StackBranch(b, bases.get(b) or "?", prs.get(b, "-"),
                             lowers[b], orphaned(b), *checks(b),
-                            rounds.get(b, 0)) for b in order]
+                            rounds.get(b, 0),
+                            tuple(facts[b].running) if b in facts else ())
+                for b in order]
     cap, cap_problem = max_open_queues(config)
 
     closed = [s for s in branches if s.pr.endswith("/closed")]
@@ -14781,6 +14817,8 @@ def cmd_status(args: argparse.Namespace) -> int:
               f"checks={sb.checks} lower={sb.lower} orphaned={sb.orphaned}")
         for name in sb.failing:
             print(f"    failing check: {name}")
+        for name in sb.running:
+            print(f"    pending check: {name}")
         if sb.checks == "unknown" and sb.checks_why:
             print(f"    checks unknown: {sb.checks_why}")
         if sb.ci_rounds:
@@ -15403,7 +15441,9 @@ def build_parser() -> argparse.ArgumentParser:
             "an item of them whose latest reopening is a CI one is still "
             "\U0001f4cb, \U0001f6a7 or \U0001f50d, and one more than that "
             "when none is. A reason that already ends in such a stamp is "
-            "refused, exit 2.\n"
+            "refused, exit 2, and so is one starting `CI` followed by "
+            "anything but a space (`CI:`, `CI-`), which would silently not "
+            "be a CI reopening.\n"
             "\n"
             "set NNN deferred refuses, writing nothing, without a stated "
             "reason, or when a deliverable bullet whose trailing marker names "
@@ -15897,9 +15937,12 @@ def register_git_subcommands(sub) -> None:
             "Where the item's latest reopening is a CI one (a reason `aide "
             "progress reopen` stamped `[CI round N]`), the open `gap` entry "
             "that reopening captured is ticked with the pointer `re-merged "
-            "into <base> in CI round N` and committed with the tick; no other "
-            "entry is touched, an earlier round's included. A commit that is "
-            "not made puts insights.md back with the rest."))
+            "into <base> in CI round N` and committed with the tick (not in "
+            "pr mode, where this verb writes no tick: the gap stays open, as "
+            "the row stays unwritten, and `aide progress set NNN done` ticks "
+            "neither); no other entry is touched, an earlier round's "
+            "included. A commit that is not made puts insights.md back with "
+            "the rest."))
     p_merge.add_argument("number", type=int)
     p_merge.add_argument("branch", nargs="?", default=None, help="claim branch (default: found from number)")
     p_merge.add_argument("--base", default=None,
@@ -16051,7 +16094,10 @@ def register_git_subcommands(sub) -> None:
             "`aide queue ready`, none can also mean CI has not registered a "
             "run yet, so a caller waiting on CI does not take its first none "
             "as the answer. A cancelled, timed-out "
-            "or stale check is a failed one. checks= is unknown where gh "
+            "or stale check is a failed one. Under failure, each check still "
+            "running is named on a `pending check:` line below the failing "
+            "ones: the red is not settled until none is left, since a leg "
+            "still running may fail too. checks= is unknown where gh "
             "could not be asked, could be asked only without checks (pr= is "
             "then read without them) or answered a state status cannot read, the "
             "reason on a `checks unknown:` line below it, and - where there "
