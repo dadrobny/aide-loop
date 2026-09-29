@@ -1535,20 +1535,24 @@ def _append_trail(lines: List[str], box: int, end: int, date: str, note: str) ->
     Indentation follows an existing trail line when there is one, so a file
     that indents by four spaces keeps doing so.
     """
-    return _insert_trail_line(lines, acceptance_box_last(lines, box, end),
+    return _insert_trail_line(lines, box, acceptance_box_last(lines, box, end),
                               acceptance_box_trail(lines, box, end), date, note)
 
 
-def _insert_trail_line(lines: List[str], last: int, trail: List[int],
-                       date: str, note: str) -> str:
+def _insert_trail_line(lines: List[str], first: int, last: int,
+                       trail: List[int], date: str, note: str) -> str:
     """Write one dated trail line below whatever owns *trail*; return it.
 
-    *last* is the owner's last physical line and *trail* its existing trail
-    lines, file order. The one writer of the trail grammar
-    (`_ACCEPT_TRAIL_RE`), shared by an acceptance box and a deliverable bullet
-    alike, so the two cannot drift into two shapes.
+    *first* and *last* are the owner's first and last physical lines and
+    *trail* its existing trail lines, file order. The one writer of the trail
+    grammar (`_ACCEPT_TRAIL_RE`), shared by an acceptance box and a
+    deliverable bullet alike, so the two cannot drift into two shapes. A first
+    trail line sits two spaces in from its owner's own marker, so one under a
+    nested bullet is nested under it rather than level with it; a later one
+    follows the trail line before it.
     """
-    indent = "  "
+    owner = lines[first]
+    indent = owner[: len(owner) - len(owner.lstrip())] + "  "
     if trail:
         prev = lines[trail[-1]]
         indent = prev[: len(prev) - len(prev.lstrip())]
@@ -2230,7 +2234,8 @@ def reopen_item(text: str, num: int, reason: str, date: str,
         if num not in _bullet_marker_item_numbers(lines[last]):
             continue
         lines[start] = _replace_first_icon(lines[start], "planned")
-        _insert_trail_line(lines, last, deliverable_bullet_trail(lines, last),
+        _insert_trail_line(lines, start, last,
+                           deliverable_bullet_trail(lines, last),
                            date, _REOPENED_PREFIX + reason)
         stage = _stage_of_line(lines, start)
         if stage is not None:
@@ -2292,7 +2297,8 @@ def defer_item(text: str, num: int, reason: str, date: str,
         if current == "deferred":
             continue
         lines[start] = _replace_first_icon(lines[start], "deferred")
-        _insert_trail_line(lines, last, deliverable_bullet_trail(lines, last),
+        _insert_trail_line(lines, start, last,
+                           deliverable_bullet_trail(lines, last),
                            date, _DEFERRED_PREFIX + reason)
         stage = _stage_of_line(lines, start)
         if stage is not None:
@@ -2375,7 +2381,7 @@ def defer_deliverable(text: str, stage: int, position: int, reason: str,
             f"{where} is {STATUS_TO_ICON[current]} {current}; only a 📋, 🚧 or "
             f"🔍 deliverable can be deferred")
     lines[start] = _replace_first_icon(lines[start], "deferred")
-    _insert_trail_line(lines, last, deliverable_bullet_trail(lines, last),
+    _insert_trail_line(lines, start, last, deliverable_bullet_trail(lines, last),
                        date, _DEFERRED_PREFIX + reason)
     stage_num = _stage_of_line(lines, start)
     _recompute_rollups(lines, {stage_num} if stage_num is not None else set())
@@ -6389,6 +6395,37 @@ def _cells_shown(cells: List[Tuple[str, str]]) -> str:
     return " and ".join(f"{where} {STATUS_TO_ICON[st]} {st}" for where, st in cells)
 
 
+def _deferral_fix(whose: str, unmarked: List[Tuple[str, List[int]]],
+                  marked_open: bool, derived: str) -> str:
+    """The remedy for a ⏸️ cell over open work: defer that work, each bullet
+    by the form that addresses it, or restore what the rollup computes.
+
+    *unmarked* pairs each stage with the 1-based positions of its open bullets
+    that carry no item marker (issue #336), which only the positional form
+    reaches; *marked_open* says an itemised bullet is open too, so the item
+    form is named beside it.
+    """
+    restore = f"or restore {STATUS_TO_ICON[derived]}"
+    item_form = "'aide progress set NNN deferred --reason …'"
+    if not unmarked:
+        return f"defer {whose} open items with {item_form}, {restore}"
+    if len(unmarked) == 1:
+        stage, ks = unmarked[0]
+        by_position = (f"'aide progress set --stage {stage} --deliverable K "
+                       f"deferred --reason …' (K = {', '.join(map(str, ks))})")
+    else:
+        where = "; ".join(f"stage {n}: K = {', '.join(map(str, ks))}"
+                          for n, ks in unmarked)
+        by_position = (f"'aide progress set --stage N --deliverable K "
+                       f"deferred --reason …' ({where})")
+    if marked_open:
+        return (f"defer {whose} open items with {item_form} and the "
+                f"deliverables with no item marker with {by_position}, "
+                f"{restore}")
+    return (f"{whose} open deliverables carry no item marker, so defer them "
+            f"with {by_position}, {restore}")
+
+
 def _stage_drift_fix(off: List[Tuple[str, str]], derived: str,
                      stage: str = "N", unmarked: Sequence[int] = (),
                      marked_open: bool = True) -> str:
@@ -6406,19 +6443,9 @@ def _stage_drift_fix(off: List[Tuple[str, str]], derived: str,
     if any(st == "deferred" for _, st in off):
         if derived == "complete":
             return "nothing is left open to defer, so restore ✅"
-        restore = f"or restore {STATUS_TO_ICON[derived]}"
-        if unmarked:
-            ks = ", ".join(str(k) for k in unmarked)
-            by_position = (f"'aide progress set --stage {stage} --deliverable "
-                           f"K deferred --reason …' (K = {ks})")
-            if marked_open:
-                return (f"defer the stage's open items with 'aide progress set "
-                        f"NNN deferred --reason …' and its deliverables with no "
-                        f"item marker with {by_position}, {restore}")
-            return (f"its open deliverables carry no item marker, so defer "
-                    f"them with {by_position}, {restore}")
-        return (f"defer the stage's open items with 'aide progress set NNN "
-                f"deferred --reason …', {restore}")
+        return _deferral_fix("the stage's" if marked_open or not unmarked
+                             else "its", [(stage, list(unmarked))]
+                             if unmarked else [], marked_open, derived)
     return (f"a stage's cells follow its bullets, so set the {target} to "
             f"{STATUS_TO_ICON[derived]}, or move the bullets with "
             f"'aide progress set'")
@@ -6537,8 +6564,17 @@ def derived_cell_findings(lines: List[str]
         if derived == "deferred":
             fix = "every stage it names is ✅ or ⏸️, so set it to ⏸️"
         elif current == "deferred":
-            fix = (f"defer the open items with 'aide progress set NNN "
-                   f"deferred --reason …', or restore {STATUS_TO_ICON[derived]}")
+            named_sections = [(start, end, n) for start, end, n in
+                              stage_sections(lines) if n in nums]
+            unmarked = [(n, _unmarked_open_positions(lines, n))
+                        for _, _, n in named_sections]
+            unmarked = [(n, ks) for n, ks in unmarked if ks]
+            open_total = sum(st in _DEFERRABLE
+                             for start, end, _ in named_sections
+                             for st in stage_deliverable_statuses(lines, start, end))
+            marked_open = open_total > sum(len(ks) for _, ks in unmarked)
+            fix = _deferral_fix("the" if marked_open or not unmarked else "its",
+                                unmarked, marked_open, derived)
         else:
             fix = (f"an Objective row follows its stages, so set it to "
                    f"{STATUS_TO_ICON[derived]}")
@@ -7721,19 +7757,20 @@ def cmd_progress(args: argparse.Namespace) -> int:
     #:
     #: NUMBER is optional to argparse only because `reword --item` takes none
     #: (issue #320); every other action still requires it, and says so here.
+    if (isinstance(args.number, str) and args.stage is None
+            and args.deliverable is None):
+        # `_progress_number` passes a non-number through only so the
+        # positional-free `set --stage N --deliverable K deferred` can take
+        # its status there; anywhere else it is refused by the subparser's
+        # own error — usage, `error:` and exit 2 — as `type=int` refused it.
+        args.progress_parser.error(
+            f"argument number: invalid int value: '{args.number}'")
     if args.item is not None and args.action != "reword":
         print(f"aide progress {args.action}: --item belongs to `reword` alone "
               f"(reword --item NNN --text TEXT)", file=sys.stderr)
         return 2
     if args.stage is not None or args.deliverable is not None:
         return _cmd_progress_defer_deliverable(args)
-    if isinstance(args.number, str):
-        # `_progress_number` passes a non-number through only so the
-        # positional-free `set --stage N --deliverable K deferred` can take
-        # its status there; anywhere else it is the int argparse would want.
-        print(f"aide progress: argument number: invalid int value: "
-              f"'{args.number}'", file=sys.stderr)
-        return 2
     if args.number is None and args.action != "reword":
         print(f"usage: aide progress {args.action} NUMBER … "
               f"(see aide progress -h)", file=sys.stderr)
@@ -15797,7 +15834,7 @@ def build_parser() -> argparse.ArgumentParser:
                              "for the trail "
                              "line (default: today)")
     p_prog.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
-    p_prog.set_defaults(func=cmd_progress)
+    p_prog.set_defaults(func=cmd_progress, progress_parser=p_prog)
 
     p_gate = sub.add_parser("gate", help="list / resolve human gates in progress.md")
     p_gate.add_argument("action", choices=["list", "approve", "decline"])

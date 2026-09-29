@@ -144,9 +144,21 @@ instead — that is the bump policy above, and it is enforced by
   itemised, under `set NNN` as before. The drift warning over such a stage
   now names the positional form, with the K of each unmarked open bullet,
   beside the item form where itemised bullets are open too. §1 →
-  `progress.md` and `aide progress -h` say so. Deferring one of two open
-  bullets rolls the stage to 📋 until the other is deferred as well, as a
-  `set NNN deferred` of one item does.
+  `progress.md`, the `aide-progress-file` skill and `aide progress -h` say
+  so, and the Objective-row warning over such a stage names the positional
+  form the same way. A partly deferred stage reads what its other bullets
+  say — 🚧 while a sibling is ✅, 🚧 or 🔍, else 📋 — until its last open
+  bullet is deferred as well, as after a `set NNN deferred` of one item.
+
+### Fixed
+
+- **A first trail line under a nested bullet or box is indented under it,
+  not level with it.** `set NNN deferred`, `reopen`, the positional deferral
+  and the acceptance-box corrections wrote the first `- **DATE** → …` line at
+  two spaces whatever the owner's own indent, so under a bullet indented two
+  spaces it read as a sibling. It now sits two spaces in from its owner's
+  marker, which is what a top-level bullet or box already got; a later trail
+  line still follows the one before it.
 
 ## [2.24.1] — 2026-09-29
 

@@ -813,14 +813,94 @@ def test_stage_and_deliverable_belong_to_set_alone(tmp_path: Path, capsys):
     assert "belong to `set … deferred` alone" in capsys.readouterr().err
 
 
+def _progress_parser():
+    """The `aide progress` subparser, as `build_parser` hands it to the verb."""
+    return aide.build_parser().parse_args(["progress", "set", "1"]).progress_parser
+
+
 def test_a_word_for_the_number_is_still_refused_without_the_positional_form(
         tmp_path: Path, capsys):
+    """Byte for byte what `type=int` printed: the subparser's usage, then
+    `aide progress: error: …`, exit 2."""
     repo = _repo(tmp_path, UNMARKED)
-    assert aide.main(["--repo", str(repo), "progress", "set", "paused",
-                      "--no-commit"]) == 2
-    assert "invalid int value: 'paused'" in capsys.readouterr().err
+    with pytest.raises(SystemExit) as exc:
+        aide.main(["--repo", str(repo), "progress", "set", "paused",
+                   "--no-commit"])
+    assert exc.value.code == 2
+    assert capsys.readouterr().err == (
+        _progress_parser().format_usage()
+        + "aide progress: error: argument number: invalid int value: 'paused'\n")
     with pytest.raises(SystemExit) as exc:
         aide.main(["--repo", str(repo), "progress", "set", "31", "done",
                    "extra", "--no-commit"])
     assert exc.value.code == 2
     assert "unrecognized arguments: extra" in capsys.readouterr().err
+
+
+def test_the_objective_warning_over_unmarked_bullets_names_the_positional_form(
+        tmp_path: Path):
+    _, warnings = _checks(_repo(tmp_path, UNMARKED))
+    hits = _about(warnings, "objective G3")
+    assert len(hits) == 1, warnings
+    assert hits[0].endswith(
+        "its open deliverables carry no item marker, so defer them with "
+        "'aide progress set --stage 3 --deliverable K deferred --reason …' "
+        "(K = 1, 2), or restore 📋"), hits[0]
+    mixed = UNMARKED.replace("- 📋 Plugin/registration API for new heuristics.",
+                             "- 📋 Plugin/registration API for new heuristics. "
+                             "*(Item 040)*")
+    _, warnings = _checks(_repo(tmp_path, mixed, name="mixed"))
+    hits = _about(warnings, "objective G3")
+    assert len(hits) == 1, warnings
+    assert hits[0].endswith(
+        "defer the open items with 'aide progress set NNN deferred --reason …' "
+        "and the deliverables with no item marker with 'aide progress set "
+        "--stage 3 --deliverable K deferred --reason …' (K = 2), or restore 📋")
+
+
+def test_the_objective_warning_over_two_stages_names_each_stages_positions():
+    two = UNMARKED.replace("| G3 Plugins | Stage 3 | ⏸️ |",
+                           "| G3 Plugins | Stages 3, 4 | ⏸️ |") + """
+## Stage 4 — Loaders — 📋
+
+**Deliverables.**
+- ✅ Loader. *(Item 050)*
+- 📋 Loader cache.
+"""
+    two = two.replace("| 3 | Plugins | G3 | ⏸️ |",
+                      "| 3 | Plugins | G3 | ⏸️ |\n| 4 | Loaders | G3 | 🚧 |"
+                      ).replace("## Stage 4 — Loaders — 📋", "## Stage 4 — Loaders — 🚧")
+    _, warnings, _ = aide.derived_cell_findings(two.splitlines())
+    hits = _about(warnings, "objective G3")
+    assert len(hits) == 1, warnings
+    assert ("'aide progress set --stage N --deliverable K deferred --reason …' "
+            "(stage 3: K = 1, 2; stage 4: K = 2)") in hits[0], hits[0]
+
+
+NESTED = PROGRESS.replace(
+    "- 📋 Charts. *(Item 032)*",
+    "- 📋 Charts. *(Item 032)*\n  - 📋 Axis labels, a nested deliverable.\n"
+    "  - 📋 Legends. *(Item 033)*")
+
+
+@pytest.mark.parametrize("defer", [
+    lambda t: aide.defer_deliverable(t, 2, 4, "later", "2026-09-29")[0],
+    lambda t: aide.defer_item(t, 33, "later", "2026-09-29")[0],
+], ids=["by-position", "by-item"])
+def test_a_trail_under_a_nested_bullet_is_indented_under_it(defer):
+    out = defer(NESTED).splitlines()
+    i = next(n for n, l in enumerate(out) if l.startswith("  - ⏸️ "))
+    assert out[i + 1] == "    - **2026-09-29** → deferred: later"
+    # A top-level bullet's trail is where it always was.
+    top = aide.defer_item(NESTED, 32, "later", "2026-09-29")[0].splitlines()
+    j = top.index("- ⏸️ Charts. *(Item 032)*")
+    assert top[j + 1] == "  - **2026-09-29** → deferred: later"
+
+
+def test_a_second_trail_line_follows_the_first_under_a_nested_bullet():
+    once = aide.defer_item(NESTED, 33, "later", "2026-09-29")[0]
+    back = aide.set_item_status(once, 33, "complete")
+    again = aide.reopen_item(back, 33, "regressed", "2026-09-30")[0].splitlines()
+    i = again.index("  - 📋 Legends. *(Item 033)*")
+    assert again[i + 1:i + 3] == ["    - **2026-09-29** → deferred: later",
+                                  "    - **2026-09-30** → reopened: regressed"]
