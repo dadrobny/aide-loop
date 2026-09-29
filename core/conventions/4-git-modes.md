@@ -168,8 +168,8 @@ nothing else, and refuses in `local` mode or with no remote. `aide status`
 reports that PR's CI state on its stack line, and tells a draft sent back for
 a fix round from one never marked ready. A caller waiting on CI reads it
 there, never by asking the forge itself, and does not take a first "no
-checks" just after a push as the answer: CI may not have started yet. `aide queue -h` and `aide status -h`
-state the mechanism.
+checks" just after a push as the answer: CI may not have started yet.
+`aide queue -h` and `aide status -h` state the mechanism.
 
 ### Rationale
 

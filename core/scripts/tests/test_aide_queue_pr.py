@@ -755,3 +755,43 @@ def test_the_idempotent_outcomes_name_the_pr(
     out = capsys.readouterr().out
     assert said in out and "already" in out
     assert _writes(calls) == []
+
+
+# --------------------------------------------------------------------------- #
+# review round 2 (PR #337)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("argv,prs", [
+    (["pr", "--body", "x"], []),
+    (["ready"], [{"number": 7, "state": "OPEN", "isDraft": True}]),
+], ids=["pr", "ready"])
+def test_a_commit_count_git_cannot_read_refuses_and_changes_nothing(
+        tmp_path: Path, monkeypatch, capsys, argv, prs):
+    """Every `rev-list --count` fails: `queue pr`'s count ahead of its base
+    and the push-first count both refuse rather than read "not ahead"."""
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1)
+    before = _on_origin(repo, Q1)
+    real = aide.git
+
+    def failing(args, repo_root, check=True):
+        if args[:2] == ["rev-list", "--count"]:
+            return subprocess.CompletedProcess(["git", *args], 128, "",
+                                               "fatal: bad revision")
+        return real(args, repo_root, check=check)
+
+    monkeypatch.setattr(aide, "git", failing)
+    calls = _forge(monkeypatch, {Q1: prs})
+    capsys.readouterr()
+    assert _run(repo, *argv) == 1
+    assert "could not count" in capsys.readouterr().err
+    assert _writes(calls) == []
+    assert _on_origin(repo, Q1) == before
+
+
+def test_a_gh_missing_from_path_is_asked_once_not_retried(
+        tmp_path: Path, monkeypatch):
+    calls = _forge(monkeypatch, why="gh is not on PATH")
+    got, why = aide._branch_pr_facts(tmp_path, Q1)
+    assert (got, why) == (None, "gh is not on PATH")
+    assert len(calls) == 1
