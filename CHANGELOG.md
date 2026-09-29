@@ -125,8 +125,8 @@ instead — that is the bump policy above, and it is enforced by
 
 ### Changed
 
-Two binding changes: a model move for T2 and an effort move for
-`queue-planner`.
+Two binding changes, a model move for T2 and an effort move for
+`queue-planner`, and a reshaped §2 table.
 
 - **The four T2 roles move from `claude-sonnet-5` to `claude-sonnet-5-5`
   (issue #325).** `test-writer`, `builder`, `validator` and the optional
@@ -134,10 +134,9 @@ Two binding changes: a model move for T2 and an effort move for
   matching Claude cells read `claude-sonnet-5-5, medium` /
   `claude-sonnet-5-5, high`. Their effort values are unchanged.
 - **`queue-planner` drops from `xhigh` to `high` effort** on
-  `claude-opus-5-5`, the same as `spec-author`: the §2 rationale now puts the
-  planner's leverage on the tier. This is a maintainer judgement beyond #325's
-  scope, that the current T3 model no longer needs the extra notch; it is not
-  a measurement. The rest of the table was re-checked and is
+  `claude-opus-5-5`, the same as `spec-author`. This is a maintainer
+  judgement beyond #325's scope, that the current T3 model no longer needs
+  the extra notch; it is not a measurement. The rest of the table was re-checked and is
   unchanged: `spec-author`, `spec-reviewer` and `builder-escalation` stay on
   `claude-opus-5-5` (`high`, `high`, `medium`), and `reviewer` keeps `high`.
   Still unpinned, per §2: the orchestrator's session model and the
@@ -145,6 +144,13 @@ Two binding changes: a model move for T2 and an effort move for
   nothing** — but a pinned ID its runtime does not serve fails the spawn, so a
   consumer running on Amazon Bedrock or Google Vertex AI should hold
   `install.py --update` until that catalogue serves `claude-sonnet-5-5`.
+- **`ADAPTER-SPEC.md` §2's role tables state what each role does rather than
+  argue for its tier and effort.** The last column is now **Does**, one
+  statement per role, and the tier cells drop "(strongest)" and "(mid)",
+  which the numbering already says. The one rule the `builder-escalation` row
+  carried — a runtime whose per-dispatch override takes an exact ID may
+  express the escalation that way instead of as a second definition — moves
+  into the §2 paragraph on fixed model versions. No binding changes.
 
 ## [2.20.0] — 2026-09-29
 

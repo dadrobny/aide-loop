@@ -244,7 +244,7 @@ def test_the_cell_parser_rejects_a_cell_that_is_not_a_binding():
     the comparisons above would fail for the wrong reason — or, worse, pass."""
     assert _CLAUDE_CELL.match("`claude-opus-5-5, xhigh`")
     assert _CLAUDE_CELL.match("`claude-haiku-4-5-20251001, low`")
-    for not_a_binding in ("**T3 (strongest)**", "one plan cascades into ~10 items",
+    for not_a_binding in ("**T3**", "authors one queue batch",
                           "`claude-opus-5-5`", "claude-opus-5-5, xhigh",
                           "`claude-opus-5-5, xhigh` (late retry)"):
         assert not _CLAUDE_CELL.match(not_a_binding), not_a_binding

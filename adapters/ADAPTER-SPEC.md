@@ -53,22 +53,22 @@ models — each adapter binds a tier to one of its own runtime's models (as high
 as necessary, as low as adequate). No role signs off its
 own work; a fresh instance per item.
 
-| Role | Tier | Claude | Why the tier and the effort |
+| Role | Tier | Claude | Does |
 |---|---|---|---|
-| queue-planner | **T3 (strongest)** | `claude-opus-5-5, high` | one plan cascades into ~10 items: sequencing, dependency ordering and scoping several items against vision/roadmap/progress *at once* is the single highest-leverage decision in the workflow — one bad call propagates through the whole batch. That leverage is carried by the tier; `high`, the same as `spec-author`, is a judgement (#325) that the current T3 model no longer needs the extra notch, not a measurement |
-| spec-author | **T3** | `claude-opus-5-5, high` | the item spec is its single source of truth, cascading into 3 downstream roles |
-| test-writer | **T2 (mid)** | `claude-sonnet-5-5, medium` | well-scoped against a fixed spec |
-| builder | **T2** (escalates to **T3** as `builder-escalation`) | `claude-sonnet-5-5, medium` | implements `source_dir` against a fixed spec + tests: the "what" is fixed by committed AC and committed tests, so `medium` covers translating it into code that matches the surrounding modules. The escalation is the deliberate step-up once a failure has survived a fix aimed at it, or the first FAIL shows a serious defect |
-| builder-escalation | **T3** | `claude-opus-5-5, medium` | the builder role on T3, not a sixth role: the same definition, dispatched in its place once an item's build fixes escalate. The model is the step-up; `medium` stays because the "what" is still fixed by committed AC and tests, and re-tuning effort needs its own evidence. A runtime that can pin a model per dispatch may express it as an override instead of a second definition |
-| validator | **T2** | `claude-sonnet-5-5, medium` | quality gate against fixed AC; reconciles + merges |
+| queue-planner | **T3** | `claude-opus-5-5, high` | authors one queue batch, sequenced and scoped against vision, roadmap and progress |
+| spec-author | **T3** | `claude-opus-5-5, high` | authors one item spec, the source of truth for the three roles downstream |
+| test-writer | **T2** | `claude-sonnet-5-5, medium` | writes one test per acceptance criterion, plus the cases the spec names |
+| builder | **T2** | `claude-sonnet-5-5, medium` | implements `source_dir` against the committed spec and tests |
+| builder-escalation | **T3** | `claude-opus-5-5, medium` | the builder's definition on T3, dispatched in its place once a failure survives a fix aimed at it or the first FAIL shows a serious defect |
+| validator | **T2** | `claude-sonnet-5-5, medium` | gates the merge against the acceptance criteria; reconciles and merges |
 
 And the two optional definitions described below, which an adapter may omit
 entirely — a runtime that does not express one simply has no cell here:
 
-| Optional definition | Tier | Claude | Why the tier and the effort |
+| Optional definition | Tier | Claude | Does |
 |---|---|---|---|
-| reviewer | **T2** | `claude-sonnet-5-5, high` | an adversarial read of one diff turns on meaning — whether an enumeration covers its inputs, whether a guard can pass while the thing it checks is absent — and none of it is a string match, which is where `high` stops a review re-reading the spec back to itself |
-| spec-reviewer | **T3** | `claude-opus-5-5, high` | every cross-item conflict it misses becomes a red test or a hand-back several items later, and the judgements are about what a criterion requires and where a symbol lives — exactly what the deterministic `aide check --queue` ahead of it cannot decide |
+| reviewer | **T2** | `claude-sonnet-5-5, high` | reads one item's diff adversarially, concurrent with the validator; produces findings, merges nothing |
+| spec-reviewer | **T3** | `claude-opus-5-5, high` | reads all of a queue's specs for the cross-item conflicts `aide check --queue` cannot decide |
 
 Recon/claim is **not a role** — it is deterministic (`aide claim`), so no agent and
 no tier. The **Claude** column is the reference binding — **T3→Opus, T2→Sonnet**
@@ -78,8 +78,8 @@ for Claude Code is `model:` + `effort:` on the matching `agents/*.md`. A second
 adapter adds **one further column** beside it the day it ships agents, filled only
 for the roles it actually ships and held to its own definitions by a test in its
 own `tests/` directory; a column of empty cells for a runtime that has no agents
-yet would encode this one example as the contract. The tiers and the reasons in
-the last column are the cross-adapter part and are not a copy of anything, so
+yet would encode this one example as the contract. The tiers and the **Does**
+column are the cross-adapter part and are not a copy of anything, so
 only the Claude column is pinned
 (`adapters/claude/tests/test_agent_definitions.py`, both directions: a spec with
 no row, a row with no spec and a disagreeing cell all fail). A runtime without
@@ -99,7 +99,8 @@ outside it and is named rather than implied: the **orchestrator** runs in the
 user's own session on whatever model that session holds. The builder's
 **escalation** does not: a runtime whose per-dispatch model override takes
 aliases only expresses it as a definition of its own, pinned like every other
-row (the Claude reference's `builder-escalation`).
+row (the Claude reference's `builder-escalation`); one whose override takes an
+exact ID may express it as that override instead.
 
 **A helper a role spawns is outside the pin too** (issue #311). Where a spawned
 agent that declares no model of its own inherits its caller's, a T3 role that
