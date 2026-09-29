@@ -59,13 +59,13 @@ role signs off its own work, and each item gets a fresh instance (no context ble
 The contract names **capability tiers**, not model names, so each adapter binds a
 tier to its own models:
 
-| Role | Tier | Why the tier |
+| Role | Tier | Does |
 |---|---|---|
-| queue-planner | **T3** (strongest) | one plan cascades into ~10 items |
-| spec-author | **T3** | the item spec is its single source of truth, feeding 3 downstream roles |
-| test-writer | **T2** (mid) | well-scoped against a fixed spec |
-| builder | **T2** (escalates to T3 when a failure survives a round or is serious) | implements against a fixed spec + tests |
-| validator | **T2** | quality gate against fixed acceptance criteria; reconciles + merges |
+| queue-planner | **T3** | authors one queue batch |
+| spec-author | **T3** | authors one item spec, the source of truth for the three roles downstream |
+| test-writer | **T2** | writes one test per acceptance criterion |
+| builder | **T2** | implements against the committed spec and tests; re-dispatched on T3 when a failure survives a round or is serious |
+| validator | **T2** | gates the merge against the acceptance criteria; reconciles and merges |
 
 Recon/claim is **not** a role — it is deterministic (`aide claim`), so no agent and
 no tier. The Claude adapter binds **T3→Opus, T2→Sonnet**. A runtime without

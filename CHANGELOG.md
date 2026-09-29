@@ -121,6 +121,48 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.20.1] — 2026-09-29
+
+### Changed
+
+Two binding changes, a model move for T2 and an effort move for
+`queue-planner`, and a reshaped §2 table.
+
+- **The four T2 roles move from `claude-sonnet-5` to `claude-sonnet-5-5`
+  (issue #325).** `test-writer`, `builder`, `validator` and the optional
+  `reviewer` now read `model: claude-sonnet-5-5`, and `ADAPTER-SPEC.md` §2's
+  matching Claude cells read `claude-sonnet-5-5, medium` /
+  `claude-sonnet-5-5, high`. Their effort values are unchanged. The ID was
+  probed as served before this landed: a sub-agent pinned to it in
+  frontmatter spawned on `claude-sonnet-5-5` under Claude Code 2.1.284 on the
+  first-party API, with no unrecognized-model warning.
+- **`queue-planner` drops from `xhigh` to `high` effort** on
+  `claude-opus-5-5`, the same as `spec-author`. This is a maintainer
+  judgement beyond #325's scope, that the current T3 model no longer needs
+  the extra notch; it is not a measurement. The rest of the table was re-checked and is
+  unchanged: `spec-author`, `spec-reviewer` and `builder-escalation` stay on
+  `claude-opus-5-5` (`high`, `high`, `medium`), and `reviewer` keeps `high`.
+  Still unpinned, per §2: the orchestrator's session model and the
+  `"sonnet"` alias in the spawn guard's deny reason. **A consumer edits
+  nothing** — but a pinned ID its runtime does not serve fails the spawn, so a
+  consumer running on Amazon Bedrock or Google Vertex AI should hold
+  `install.py --update` until that catalogue serves `claude-sonnet-5-5`.
+- **`ADAPTER-SPEC.md` §2's role tables state what each role does rather than
+  argue for its tier and effort.** The last column is now **Does**, one
+  statement per role, and the tier cells drop "(strongest)" and "(mid)",
+  which the numbering already says. The one rule the `builder-escalation` row
+  carried — a runtime whose per-dispatch override takes an exact ID may
+  express the escalation that way instead of as a second definition — moves
+  into the §2 paragraph on fixed model versions. The rest of §2 is trimmed
+  the same way: the opening names `builder-escalation` as the builder on T3
+  rather than a sixth role, the unused "`max` reserved for intractable
+  one-offs" and the redundant "(builder→Opus once escalated)" are gone, and
+  the case for exact IDs and for the reviewer being off by default is one
+  statement each. `core/README.md`'s and `docs/concepts.md`'s role tables
+  follow: no tier glosses, the builder's step-up to T3 stated in its **Does**
+  cell, and `docs/concepts.md`'s "Why the tier" column becomes **Does**. No
+  binding changes.
+
 ## [2.20.0] — 2026-09-29
 
 ### Added

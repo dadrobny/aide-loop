@@ -8,7 +8,7 @@ description: >-
   superseded previous queue and commits both on the current branch. Does NOT push,
   open PRs, write item specs, code, or tests.
 model: claude-opus-5-5
-effort: xhigh
+effort: high
 skills:
   - aide-document-format
   - aide-human-gates
