@@ -301,6 +301,60 @@ def test_overlay_and_scope_compose(tmp_path):
     assert "Bash(cargo test:*)" in allow      # overlay applied on top
 
 
+def test_scope_rewrites_names_only_the_rules_that_move():
+    assert install._scope_rewrites("src", "tests") == {}
+    assert install._scope_rewrites("src/pkg", "tests") == {
+        "Edit(src/**)": "Edit(src/pkg/**)",
+        "Write(src/**)": "Write(src/pkg/**)",
+    }
+
+
+def test_remove_of_a_templated_rule_names_the_rewrite_not_a_stale_default():
+    # issue #339: the base still ships Write(src/**); the installer templated it,
+    # so the remove misses for that reason and the warning must say so.
+    base = {"permissions": {"allow": ["Read", "Write(src/pkg/**)"]}}
+    overlay = {"permissions": {"allow": {"remove": ["Write(src/**)"],
+                                         "add": ["Write(src/pkg/**)"]}}}
+    merged, warnings = install.merge_overlay(
+        base, overlay, install._scope_rewrites("src/pkg", "tests"))
+    assert merged["permissions"]["allow"] == ["Read", "Write(src/pkg/**)"]
+    assert len(warnings) == 1
+    assert "no longer contains" not in warnings[0]
+    assert "rewrote to 'Write(src/pkg/**)'" in warnings[0]
+    assert "source_dir" in warnings[0]
+    assert "add of 'Write(src/pkg/**)'" in warnings[0]
+
+
+def test_remove_of_a_templated_rule_without_the_add_names_no_add():
+    base = {"permissions": {"allow": ["Edit(lib/**)"]}}
+    overlay = {"permissions": {"allow": {"remove": ["Edit(src/**)"]}}}
+    _, warnings = install.merge_overlay(
+        base, overlay, install._scope_rewrites("lib", "tests"))
+    assert len(warnings) == 1
+    assert "rewrote to 'Edit(lib/**)'" in warnings[0]
+    assert "add of" not in warnings[0]
+
+
+def test_overlay_remove_of_shipped_scope_rule_warns_with_the_rewrite(tmp_path):
+    # the issue's fixture reproduction, through install_settings
+    claude, target = _dirs(tmp_path)
+    (claude / install.SETTINGS_OVERLAY).write_text(
+        json.dumps({"permissions": {"allow": {"remove": ["Write(src/**)"],
+                                              "add": ["Write(src/pkg/**)"]}}}),
+        encoding="utf-8",
+    )
+    log: list = []
+    install.install_settings(ADAPTER_DIR, claude, target, log,
+                             source_dir="src/pkg", tests_dir="tests")
+    allow = json.loads((claude / install.ADAPTER_SETTINGS).read_text("utf-8"))[
+        "permissions"]["allow"]
+    assert allow.count("Write(src/pkg/**)") == 1
+    overlay_lines = [line for line in log if "! overlay:" in line]
+    assert len(overlay_lines) == 1
+    assert "Write(src/**)" in overlay_lines[0]
+    assert "rewrote to 'Write(src/pkg/**)'" in overlay_lines[0]
+    assert "no longer contains" not in overlay_lines[0]
+
 def test_project_scope_reads_aide_toml(tmp_path):
     (tmp_path / "aide.toml").write_text(
         '[project]\nsource_dir = "lib"\ntests_dir = "spec"\n', encoding="utf-8"
