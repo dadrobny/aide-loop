@@ -1,5 +1,5 @@
 ---
-description: Iterate one AIDE queue to completion — `aide claim` claims each item, then /aide-run-item drives it (spec → tests → build → validate → merge) — looping until that queue is empty, then runs the queue-end step (mark the queue PR ready, wait for CI, read it) and stops. Does NOT create the next queue. Pauses only for PRs and major structural changes.
+description: Iterate one AIDE queue to completion — `aide claim` claims each item, then /aide-run-item drives it (spec → tests → build → validate → merge) — looping until that queue is empty, then runs the queue-end step (mark the queue PR ready, wait for CI, read it; on red, a CI fix round through the items that caused it) and stops. Does NOT create the next queue. Pauses only for PRs and major structural changes.
 argument-hint: "[queue number, e.g. 001 — optional; defaults to the lowest-numbered queue with open items]"
 ---
 
@@ -168,20 +168,70 @@ This is the queue-end step `.aide/README.md` → *The queue-end step* defines
    | Code | `checks=` | Do |
    |---|---|---|
    | 0 | `success` | Report CI green, and stop for the merge — under `/aide-run-roadmap`, go back to its **Queue end** for the stack decision. |
-   | 10 | `failure` | Report each `failing check:` line from the tail, and **stop**. |
+   | 10 | `failure` | Report each `failing check:` line from the tail, then run the **CI fix round** below — unless this was an early ready (step 6). |
    | 11 | `none` | Report that no CI ran on the PR: no workflow, or a trigger that ignores it (`.aide/README.md` names the trigger to use). |
    | 12 | `unknown` | Report the `checks unknown:` reason and stop. |
    | 13 | — | No PR, a closed or merged one, or the branch is no longer an unmerged queue branch: report it. |
-   | 15 | — | The PR is a draft. Plain `#N/draft`: `queue ready` did not take — run step 3 again, then restart the wait once; a second 15 is a stop. `#N/draft(fixing)`: a CI fix round is under way (issue #332) — stop and report it. |
+   | 15 | — | The PR is a draft. Plain `#N/draft`: `queue ready` did not take — run step 3 again, then restart the wait once; a second 15 is a stop. `#N/draft(fixing)`: a CI fix round is under way and its reopened items are still open — go back to **Loop** and claim them; a claim that offers none is reported, and the run stops. |
    | 14 | `pending` | CI was still running after an hour: report it; a re-run of this section waits again. |
    | other | — | The poll itself broke (90 died, 91 stopped, 1 a crash): report the tail and stop. |
 
-   **Hook for the CI fix round (issue #332).** On 10, the failing checks are
-   the builder's to fix (§7). Until #332 wires that dispatch in here, stop
-   and report; do not start a fix yourself.
-6. **After an early ready**, stop whatever the answer: the gated items land
-   later, each merge pushes, and this section runs again when `aide claim`
-   next prints a bare `none left`. That run's answer is the one that counts.
+6. **After an early ready**, stop whatever the answer — a red one runs no
+   fix round: the gated items land later, each merge pushes, and this
+   section runs again when `aide claim` next prints a bare `none left`.
+   That run's answer is the one that counts.
+
+### CI fix round
+
+`.aide/README.md` → *The CI fix round* defines it; this is how this runtime
+runs it. You triage and dispatch; the fixing is `/aide-run-item`'s, through
+the item's own spec.
+
+1. **Count.** Read the `ci fix rounds: N` line from the wait's tail (none
+   there: 0). Read `loop.validation_rounds` from `aide.toml` (5 when
+   unset). At or past it, **stop**: report the failing checks and the
+   last round's reopen reasons, and hand the findings to the user.
+2. **Triage** every failing check before reopening anything. List them with
+   `gh pr checks <prefix>queue-NNN`, whose links carry each run's ID, and
+   read each failed log with `gh run view <run-id> --log-failed`. Split a
+   check into findings, one per failing test or step; rank each on the §9
+   scale and triage it in scope (the queue's change caused it) or out of
+   scope (one `insights.md` line, opening with its rank word, and nothing
+   dispatched). A leg that failed here and passed locally is a portability
+   finding first (§7).
+3. **Trace** each in-scope finding to an item:
+   - a failing test in `test_NNN_*` → item NNN;
+   - otherwise the branch's history, `<base>` being the stack line's
+     `base=`: the first command lists what landed, each item's work closed
+     by its `progress(aide): item NNN -> done` commit, and the second the
+     commits that touched a failing path;
+     ```
+     git log --first-parent --format="%h %s" <base>..HEAD
+     git log --format="%h %s" <base>..HEAD -- <path>
+     ```
+   - several items' changes in one finding → each of them; a failure only
+     their combination produces → the later-merged of the two, its reason
+     naming the other item;
+   - no item at all (CI configuration, a runner image) → the queue's
+     `Validate stage N` item if the queue file lists one; if not, **stop**
+     with the findings, nothing reopened and the PR left ready.
+4. **Back to draft**, before the first reopening:
+   `python .aide/scripts/aide.py queue ready --undo`. On exit 1 relay its
+   sentence and stop.
+5. **Reopen** every traced item, one call each, all before the first claim:
+   ```
+   python .aide/scripts/aide.py progress reopen K --reason "CI <check>: <failing test or step>"
+   ```
+   Keep the `CI ` prefix: the engine stamps the round from it. Several
+   findings on one item go in one reason, separated by `; `.
+6. **Fix.** Go back to **Loop**. `aide claim --queue NNN` offers each
+   reopened item as it offers any 📋 one, and `/aide-run-item K` runs it
+   with the findings in its builder's brief (that command, *An item a CI fix
+   round reopened*). Pass them on from your triage; in a fresh session they
+   are the item's `reopened:` reason in `aide status`. Its merge ticks the
+   `gap` the reopening captured; nothing is left to close on green.
+7. When `aide claim` prints a bare `none left` again, this section runs
+   again from step 1, and its `aide queue ready` starts the round's CI run.
 
 Then **report**: items completed, items awaiting review, branches
 merged/cleaned, the CI answer, and final test status. Point the user at the
@@ -215,8 +265,10 @@ reached the batch's sessions, and rotates that log.
   queue — or every item of the stage it opens — so the whole queue waits on it:
   the human reviews the queue's draft PR and approves it. When the report's
   last line is `early ready: yes`, run **Queue end** before stopping.
-- **Queue end** answers anything but CI `success` (the table in its step 5),
-  or `aide queue pr` / `aide queue ready` refuses.
+- **Queue end** answers anything but CI `success` or `failure` (the table in
+  its step 5), or `aide queue pr` / `aide queue ready` refuses.
+- A **CI fix round** reaches `loop.validation_rounds`, or traces a finding
+  to no item on a queue with no `Validate stage N` item.
 - `/aide-run-item` hands back needing a **PR**, **force-push**, or history rewrite.
 - An item needs a **major structural change** or an edit to a framework/process
   file (`CLAUDE.md`, `aide.toml`, `.aide/**`, `vision.md`, `roadmap.md`,

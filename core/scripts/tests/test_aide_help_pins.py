@@ -274,6 +274,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_queue_specs::test_a_queue_end_item_with_nothing_to_do_is_reported",
           "test_aide_queue_specs::test_a_spent_queue_end_item_is_never_reported_idle",
           "test_aide_queue_specs::test_a_deferred_queue_end_item_is_never_reported_idle")),
+        # `back`: reopened items still open, skipped by the idle loop (#332).
+        ("unless `aide progress reopen` sent it back and it is still open",
+         "test_aide_queue_specs::"
+         "test_a_queue_end_item_a_fix_round_reopened_is_never_reported_idle"),
         # The early `return []` when every listed item is spent.
         ("A queue whose items are all ✅, ❌ or ⏸️ gets neither warning",
          ("test_aide_queue_specs::test_a_spent_queue_is_reported_neither_way",
@@ -819,6 +823,33 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_reopen::test_reopen_routes_its_finding_into_the_inbox")),
         # The all-✅ precondition over every owned bullet, raised before any
         # write, and `cmd` printing "NOT changed" with the file untouched.
+        # `_cmd_progress_reopen`: `reason.startswith(_CI_REASON_PREFIX)` then
+        # `next_ci_round` over `_ci_round_scope` (issue #332).
+        ("A reason starting `CI ` is a CI reopening, the queue-end step's fix "
+         "round, and reopen appends its round to it as `[CI round N]`",
+         ("test_aide_reopen::"
+          "test_a_ci_reopening_begins_a_round_the_next_one_joins_and_a_later_one_begins_another",
+          "test_aide_reopen::test_a_reopening_that_is_not_ci_is_neither_stamped_nor_counted")),
+        # `_ci_round_scope`: `_branch_queue_items` at HEAD with a recorded base,
+        # else the queue files listing the item.
+        ("The count is kept over one set of items: those of every queue the "
+         "checked-out queue branch carries, where it has a recorded base, and "
+         "else those of the queue file listing the item",
+         ("test_aide_queue_pr::"
+          "test_a_ci_reopening_on_a_queue_branch_counts_every_queue_it_carries",
+          "test_aide_reopen::test_the_round_is_counted_over_the_queue_listing_the_item_only")),
+        # `next_ci_round`: `top if (live and top) else top + 1`, `live` read
+        # from each item's latest reopening and its status today.
+        ("N is the highest round stamped on a CI reopening of one of them "
+         "while an item of them whose latest reopening is a CI one is still "
+         "\U0001f4cb, \U0001f6a7 or \U0001f50d, and one more than that when "
+         "none is",
+         ("test_aide_reopen::"
+          "test_a_ci_reopening_begins_a_round_the_next_one_joins_and_a_later_one_begins_another",
+          "test_aide_reopen::test_a_reopening_that_is_not_ci_is_neither_stamped_nor_counted")),
+        # `_CI_ROUND_RE.search(reason)` -> 2, before anything is read.
+        ("A reason that already ends in such a stamp is refused, exit 2",
+         "test_aide_reopen::test_a_reason_carrying_its_own_round_stamp_is_refused"),
         ("reopen refuses, writing nothing, unless every deliverable bullet "
          "whose trailing marker names the item is \u2705",
          ("test_aide_reopen::test_reopen_refuses_when_one_of_the_items_bullets_is_not_done",
@@ -1186,7 +1217,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_status_stack::test_a_two_queue_stack_is_printed_bottom_first",
           "test_aide_status_stack::test_could_not_look_is_unknown_and_never_none",
           "test_aide_status_stack::test_local_mode_asks_no_forge_about_the_stack")),
-        # `_queue_branch_fixing` over `_branch_queue_files` and the branch's
+        # `_queue_branch_ci` over `_branch_queue_items` and the branch's
         # own progress.md, asked only for a PR that reads `draft` (#330).
         ("A draft reads #N/draft(fixing) when an item of the queues the "
          "branch carries (its own queue file and every queue file it adds "
@@ -1195,6 +1226,14 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_queue_pr::test_a_draft_with_a_reopened_item_still_open_reads_fixing",
           "test_aide_queue_pr::test_fixing_is_read_from_each_branch_and_only_for_its_own_queues",
           "test_aide_queue_pr::test_an_open_pr_with_a_reopened_item_is_not_marked_fixing")),
+        # `queue_stack_facts` asks `_queue_branch_ci` for a draft or a failing
+        # PR only; `cmd_status` prints the count when above 0 (issue #332).
+        ("For a draft or a PR whose checks= is failure, a `ci fix rounds: N` "
+         "line below those counts the CI fix rounds the queues the branch "
+         "carries have begun: the highest `[CI round N]` `aide progress "
+         "reopen` stamped on a CI reopening of one of their items, read from "
+         "the branch's own progress.md; no line where none has begun",
+         "test_aide_queue_pr::test_a_draft_or_failing_pr_names_the_ci_fix_rounds_begun"),
         # `checks_state`: failing first, then pending, then any SUCCESS;
         # `_CHECK_IGNORED` neither; the `failing check:` lines in cmd_status.
         ("checks= is the CI state of that PR's head commit: failure when any "
@@ -1452,6 +1491,22 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("so the re-run writes the row once",
          "test_aide_ledger::"
          "test_the_re_run_after_a_failed_tick_lands_the_item_with_one_row"),
+        # `tick_ci_reopening_gap`, its rel added to the tick's `extra_rels`
+        # under the snapshot `cmd_merge` took before any write (#332).
+        ("Where the item's latest reopening is a CI one (a reason `aide "
+         "progress reopen` stamped `[CI round N]`), the open `gap` entry that "
+         "reopening captured is ticked with the pointer `re-merged into <base> "
+         "in CI round N` and committed with the tick",
+         "test_aide_ledger::"
+         "test_a_merge_back_ticks_only_its_ci_reopenings_gap_in_the_ticks_commit"),
+        ("no other entry is touched, an earlier round's included",
+         ("test_aide_ledger::"
+          "test_a_merge_back_ticks_only_its_ci_reopenings_gap_in_the_ticks_commit",
+          "test_aide_ledger::"
+          "test_a_merge_back_of_an_item_whose_latest_reopening_is_not_ci_ticks_nothing")),
+        ("A commit that is not made puts insights.md back with the rest",
+         "test_aide_ledger::"
+         "test_a_failed_tick_commit_leaves_the_ci_gap_open_and_the_re_run_ticks_it_once"),
         # `committed` (HEAD moved) keeps the commit, same refusal.
         ("A commit that is made but whose replay onto origin stops is kept, "
          "and refuses the push the same way",

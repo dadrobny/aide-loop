@@ -4189,6 +4189,40 @@ def test_a_reopened_item_is_claimed_and_merged_again(aide, consumer: Path, capsy
     assert "reopened: item 001 (2026-09-24)" in capsys.readouterr().out
 
 
+def test_a_ci_fix_round_is_counted_and_its_gap_closed_by_the_merge_back(
+        aide, consumer: Path):
+    """Issue #332 through the installed engine, on a queue branch: item 001
+    lands, a red check reopens it as CI round 1, the loop claims it and merges
+    it back — which ticks the round's gap in the same commit — and the next
+    red check's reopening begins round 2. Every count is the engine's."""
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 0
+    assert aide.main(["--repo", str(consumer), "progress", "reopen", "1",
+                      "--date", "2026-09-29",
+                      "--reason", "CI build (windows): test_greet"]) == 0
+    assert ("  - **2026-09-29** → reopened: CI build (windows): test_greet "
+            "[CI round 1]") in _progress_text(consumer)
+
+    assert _claim(aide, consumer) == 0
+    (consumer / "src" / "greeter.py").write_text(
+        'import os\n\ndef greet(name):\n    return f"hello {name}"\n',
+        encoding="utf-8")
+    _commit(consumer, "fix: greeter, portable")
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 0
+    inbox = (consumer / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert ("- [x] gap — item reopened: CI build (windows): test_greet "
+            "[CI round 1] *(item 001, 2026-09-29") in inbox
+    assert "→ re-merged into aide/queue-001 in CI round 1" in inbox
+    assert "docs/aide/insights.md" in _files_in_head(consumer)
+
+    assert aide.main(["--repo", str(consumer), "progress", "reopen", "1",
+                      "--date", "2026-09-30", "--reason", "CI lint: step ruff"]) == 0
+    assert ("  - **2026-09-30** → reopened: CI lint: step ruff [CI round 2]"
+            in _progress_text(consumer))
+
+
 def test_reword_rewrites_an_untouched_criterion_and_mirrors_the_roadmap(
         aide, consumer: Path):
     (consumer / "docs" / "aide" / "roadmap.md").write_text(_ROADMAP, encoding="utf-8")

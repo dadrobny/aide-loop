@@ -1012,6 +1012,19 @@ def test_a_spent_queue_end_item_is_never_reported_idle(tmp_path: Path):
                    "queue-end-idle")) == 1
 
 
+def test_a_queue_end_item_a_fix_round_reopened_is_never_reported_idle(tmp_path: Path):
+    """Issue #332: a CI finding that traces to no item goes to the queue-end
+    item, reopened. Its first run ticked the stage's boxes, so it has no need
+    left — and it is back for a fix, not a plan to drop before it is claimed."""
+    progress = _PROGRESS_TICKED.replace(
+        "- 📋 C. *(Item 028)*",
+        "- 📋 C. *(Item 028)*\n- 📋 Stage validation. *(Item 029)*\n"
+        "  - **2026-09-29** → reopened: CI build: the runner image [CI round 1]")
+    repo = _qe_repo(tmp_path, queue_items=(27, 28, 29), progress=progress,
+                    titles={29: "Validate stage 1: Rules"})
+    assert _qe(repo, "queue-end-idle") == []
+
+
 def test_a_deferred_queue_end_item_is_never_reported_idle(tmp_path: Path):
     progress = _PROGRESS_TICKED.replace(
         "- 📋 C. *(Item 028)*", "- 📋 C. *(Item 028)*\n- ⏸️ Stage validation. *(Item 029)*")

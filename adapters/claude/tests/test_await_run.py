@@ -308,6 +308,16 @@ def test_ci_failure_names_the_failing_checks(capsys):
     assert "failing check: test (windows)" in capsys.readouterr().out
 
 
+def test_ci_failure_carries_the_fix_rounds_begun_into_the_tail(capsys):
+    """The runner reads the count against `validation_rounds` from the tail
+    `wait` shows, so the line under the stack line must reach it (#332)."""
+    code, _ = _poll([_stack("failure", "#7/open", "failing check: build",
+                            "ci fix rounds: 2")])
+    assert code == ar.CI_FAILURE
+    out = capsys.readouterr().out
+    assert "failing check: build" in out and "ci fix rounds: 2" in out
+
+
 def test_a_first_none_is_not_the_answer_but_a_lasting_one_is():
     """Just after `queue ready` CI may not have registered a run yet."""
     code, reads = _poll([_stack("none")], step=30.0, grace=300)

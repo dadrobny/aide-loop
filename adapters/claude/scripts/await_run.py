@@ -55,7 +55,8 @@ neither is ``checks=none`` until it has held for {grace} s, since just after a
 push or ``aide queue ready`` CI may not have registered a run; ``unknown`` is
 the answer once {unknown} readings in a row say it, since one failed ``gh``
 call is not. It gives up after {ceiling} s. Its log is the stack line and the
-``failing check:`` / ``checks unknown:`` lines under it, each time they
+``failing check:`` / ``checks unknown:`` / ``ci fix rounds:`` lines under
+it, each time they
 change, then its verdict. ``poll-ci`` blocks until then, so it is only ever
 run this way; a crash of the poll itself exits 1, with its traceback in the
 log.
@@ -78,7 +79,8 @@ Exit codes:
 ``ci``'s own codes, which ``wait`` returns as the command's:
 
     0                   checks=success
-    {failure}                  checks=failure — the failing checks are named
+    {failure}                  checks=failure — the failing checks are named,
+                        and the CI fix rounds begun where any has
     {none}                  checks=none held for the grace — no CI ran
     {unknown_code}                  checks=unknown — the reason is named
     {no_pr}                  no PR (checks=-, local mode included), a closed or
@@ -153,7 +155,7 @@ CI_DRAFT = 15
 #: One `aide status` stack line; `status -h` states every field.
 _STACK_LINE_RE = re.compile(
     r"^\s*stack \d+: (?P<branch>\S+) .*?\bpr=(?P<pr>\S+) checks=(?P<checks>\S+)")
-_CI_DETAIL = ("failing check:", "checks unknown:")
+_CI_DETAIL = ("failing check:", "checks unknown:", "ci fix rounds:")
 _LABEL_RE = re.compile(r"^[a-z]+(?:-\d+)?-\d{8}-\d{6}(?:-\d+)?$")
 # The shape `aide merge --findings` takes; anything else never reaches it.
 _FINDINGS_RE = re.compile(r"^(?:blocking|minor|nit)=\d+(?:,(?:blocking|minor|nit)=\d+)*$")

@@ -83,7 +83,9 @@ one, `aide check` and `aide queue tidy` keep its declared status honest, and
 - **Why no queue-end item on a queue that closes no stage.** A maintenance
   queue, or a queue carrying part of a stage, has no trigger today, and a rule
   implying a general item nobody plans would be one nobody follows. CI
-  findings that trace to no item (#332) are the candidate second trigger.
+  findings that trace to no item go to a queue-end item where the queue has
+  one and to a person where it has none (#332); they remain the candidate
+  second trigger.
 - **Why the title stays `Validate stage N`.** It is the one place the engine
   learns what an item is: the ledger's `validate-stage` kind and this check
   both read it, and consumers' existing specs and ledger rows keep parsing.
