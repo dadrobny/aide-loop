@@ -333,6 +333,7 @@ def test_remove_of_a_templated_rule_without_the_add_names_no_add():
     assert len(warnings) == 1
     assert "rewrote to 'Edit(lib/**)'" in warnings[0]
     assert "add of" not in warnings[0]
+    assert "remove 'Edit(lib/**)' instead" in warnings[0]
 
 
 def test_overlay_remove_of_shipped_scope_rule_warns_with_the_rewrite(tmp_path):
@@ -354,6 +355,7 @@ def test_overlay_remove_of_shipped_scope_rule_warns_with_the_rewrite(tmp_path):
     assert "Write(src/**)" in overlay_lines[0]
     assert "rewrote to 'Write(src/pkg/**)'" in overlay_lines[0]
     assert "no longer contains" not in overlay_lines[0]
+
 
 def test_project_scope_reads_aide_toml(tmp_path):
     (tmp_path / "aide.toml").write_text(

@@ -115,7 +115,8 @@ instead — that is the bump policy above, and it is enforced by
   it" — while `adapters/claude/settings.json` plainly still shipped it. The
   warning now names the rewritten rule and the `aide.toml` key it came from,
   says the remove has nothing to act on, and, when the overlay also adds the
-  rewritten rule, that the add is redundant too. What a `remove` matches is
+  rewritten rule, that the add is redundant too — or, when it does not, that
+  removing the rewritten rule is what drops the scope. What a `remove` matches is
   unchanged: it still acts on the templated base, so a `remove` of the
   templated form still narrows the scope. Installer-only: nothing a
   consumer's `--update` copies changed, so `core/VERSION` is unmoved.

@@ -599,9 +599,10 @@ def _apply_list_operator(base_value, op: dict, path: str, warnings: List[str],
             continue
         target = rewritten.get(item) if isinstance(item, str) else None
         if target is not None and target in base_list:
-            key = _SCOPE_TEMPLATED.get(item, ("its scope",))[0]
+            key = _SCOPE_TEMPLATED[item][0]
             also = (f" (and the add of {target!r}, which the base now carries)"
-                    if target in add else "")
+                    if target in add else
+                    f" (to drop that scope, remove {target!r} instead)")
             warnings.append(
                 f"{path}: remove pins {item!r}, which the installer already "
                 f"rewrote to {target!r} from aide.toml {key} - the remove has "
