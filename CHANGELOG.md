@@ -125,6 +125,9 @@ instead — that is the bump policy above, and it is enforced by
 
 ### Changed
 
+Two binding changes: a model move for T2 and an effort move for
+`queue-planner`.
+
 - **The four T2 roles move from `claude-sonnet-5` to `claude-sonnet-5-5`
   (issue #325).** `test-writer`, `builder`, `validator` and the optional
   `reviewer` now read `model: claude-sonnet-5-5`, and `ADAPTER-SPEC.md` §2's
@@ -132,8 +135,9 @@ instead — that is the bump policy above, and it is enforced by
   `claude-sonnet-5-5, high`. Their effort values are unchanged.
 - **`queue-planner` drops from `xhigh` to `high` effort** on
   `claude-opus-5-5`, the same as `spec-author`: the §2 rationale now puts the
-  planner's leverage on the tier, and the current T3 model's capacity is what
-  the extra notch used to buy. The rest of the table was re-checked and is
+  planner's leverage on the tier. This is a maintainer judgement beyond #325's
+  scope, that the current T3 model no longer needs the extra notch; it is not
+  a measurement. The rest of the table was re-checked and is
   unchanged: `spec-author`, `spec-reviewer` and `builder-escalation` stay on
   `claude-opus-5-5` (`high`, `high`, `medium`), and `reviewer` keeps `high`.
   Still unpinned, per §2: the orchestrator's session model and the

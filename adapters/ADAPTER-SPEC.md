@@ -55,7 +55,7 @@ own work; a fresh instance per item.
 
 | Role | Tier | Claude | Why the tier and the effort |
 |---|---|---|---|
-| queue-planner | **T3 (strongest)** | `claude-opus-5-5, high` | one plan cascades into ~10 items: sequencing, dependency ordering and scoping several items against vision/roadmap/progress *at once* is the single highest-leverage decision in the workflow — one bad call propagates through the whole batch. That leverage is carried by the tier; `high`, the same as `spec-author`, because the step up to the current T3 model supplies the capacity an extra effort notch once bought |
+| queue-planner | **T3 (strongest)** | `claude-opus-5-5, high` | one plan cascades into ~10 items: sequencing, dependency ordering and scoping several items against vision/roadmap/progress *at once* is the single highest-leverage decision in the workflow — one bad call propagates through the whole batch. That leverage is carried by the tier; `high`, the same as `spec-author`, is a judgement (#325) that the current T3 model no longer needs the extra notch, not a measurement |
 | spec-author | **T3** | `claude-opus-5-5, high` | the item spec is its single source of truth, cascading into 3 downstream roles |
 | test-writer | **T2 (mid)** | `claude-sonnet-5-5, medium` | well-scoped against a fixed spec |
 | builder | **T2** (escalates to **T3** as `builder-escalation`) | `claude-sonnet-5-5, medium` | implements `source_dir` against a fixed spec + tests: the "what" is fixed by committed AC and committed tests, so `medium` covers translating it into code that matches the surrounding modules. The escalation is the deliberate step-up once a failure has survived a fix aimed at it, or the first FAIL shows a serious defect |
