@@ -600,9 +600,12 @@ def _apply_list_operator(base_value, op: dict, path: str, warnings: List[str],
         target = rewritten.get(item) if isinstance(item, str) else None
         if target is not None and target in base_list:
             key = _SCOPE_TEMPLATED[item][0]
-            also = (f" (and the add of {target!r}, which the base now carries)"
-                    if target in add else
-                    f" (to drop that scope, remove {target!r} instead)")
+            if target in add:
+                also = f" (and the add of {target!r}, which the base now carries)"
+            elif target in remove:
+                also = ""  # the templated rule is already being removed
+            else:
+                also = f" (to lose that write scope, remove {target!r} instead)"
             warnings.append(
                 f"{path}: remove pins {item!r}, which the installer already "
                 f"rewrote to {target!r} from aide.toml {key} - the remove has "
@@ -664,8 +667,9 @@ def merge_overlay(base: dict, overlay: dict,
     Pure: neither argument is mutated. Returns ``(merged, warnings)``; warnings are
     advisory (e.g. a stale ``remove`` pin) and never block. Raises ``OverlayError``
     on an irreconcilable conflict or malformed operator. ``rewritten`` is
-    ``_scope_rewrites`` for the base's templating, so a warning about a missed
-    ``remove`` can name the cause.
+    ``_scope_rewrites`` for the base's templating (its keys must be
+    ``_SCOPE_TEMPLATED`` keys), so a warning about a missed ``remove`` can
+    name the cause.
     """
     warnings: List[str] = []
     merged = _merge(base, overlay, "", warnings, rewritten)

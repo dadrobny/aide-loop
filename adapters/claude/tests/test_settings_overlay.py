@@ -336,6 +336,17 @@ def test_remove_of_a_templated_rule_without_the_add_names_no_add():
     assert "remove 'Edit(lib/**)' instead" in warnings[0]
 
 
+def test_remove_of_both_forms_gives_no_remove_instead_hint():
+    base = {"permissions": {"allow": ["Edit(lib/**)"]}}
+    overlay = {"permissions": {"allow": {"remove": ["Edit(src/**)",
+                                                    "Edit(lib/**)"]}}}
+    merged, warnings = install.merge_overlay(
+        base, overlay, install._scope_rewrites("lib", "tests"))
+    assert merged["permissions"]["allow"] == []
+    assert len(warnings) == 1
+    assert "rewrote to 'Edit(lib/**)'" in warnings[0]
+    assert "instead" not in warnings[0]
+
 def test_overlay_remove_of_shipped_scope_rule_warns_with_the_rewrite(tmp_path):
     # the issue's fixture reproduction, through install_settings
     claude, target = _dirs(tmp_path)
