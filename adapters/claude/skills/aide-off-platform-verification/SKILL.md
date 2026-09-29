@@ -1,21 +1,23 @@
 ---
 name: aide-off-platform-verification
-description: Load before reading a pushed branch's CI result — no role in this loop sees a non-Linux checkout or real CI status, so look at the gate that does, and read a red leg as portability (conventions §7).
+description: Load before reading or acting on a pushed branch's CI result — no role in this loop sees a non-Linux checkout or real CI status, so look at the gate that does, and read a red leg as portability (conventions §7).
 user-invocable: false
 paths:
   - "**/.github/workflows/*.yml"
 ---
 
-<!-- reach: validator
+<!-- reach: builder, builder-escalation
      Literal, not measured: this body is preloaded into exactly the agent
      specs whose `skills:` frontmatter names `aide-off-platform-verification`
-     — the one role that acts on a CI result, once its push exists. Before
-     this the section was reached by an **unpinned inline restatement** in
+     — the role dispatched with the CI findings the queue-end step reads once
+     the queue's PR is marked ready, on both of its tiers. Until 2.20.2 the
+     `validator` preloaded it, for a per-item CI check that ran before any
+     push of the item's work could exist (issue #329). Before 1.46.0 the
+     section was reached by an **unpinned inline restatement** in
      `validator.md` and by two `aide.py` docstrings; nothing pointed at it
      (issue #186's reach column, the #81 shape on the undelivered side). The
-     `reviewer` is deliberately not listed: it reads a diff, not a run, and
-     the section it does share with the validator is §9. The `paths:` above
-     inject nothing on a read (issue #85, measured): the description sits in
+     `reviewer` is deliberately not listed: it reads a diff, not a run. The
+     `paths:` above inject nothing on a read (issue #85, measured): the description sits in
      every interactive session's skill listing regardless, and the globs only
      narrow when the runtime auto-invokes the skill on its own.
      `tests/test_structural_budget.py` compares this line to the `skills:`

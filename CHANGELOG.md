@@ -121,6 +121,37 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.20.2] — 2026-09-29
+
+### Removed
+
+- **The validator no longer reads CI (issue #329, part of #328).** Its check 6,
+  "Real CI, once a push exists", ran `gh run list` on every item at a moment
+  when no CI run of that item's work could exist: under `auto-merge` nothing
+  pushes the item's commits before the merge that follows validation, under
+  `pr` the claim branch is pushed only after a PASS, and under `local` nothing
+  is pushed. It reported nothing or a stale run. The check is gone, the old
+  check 7 (the spec's `## Validation` section) is now check 6, and the
+  validator's brief no longer names `gh run list`, `gh run view` or
+  `gh pr checks`. Those three stay pre-approved in `settings.json`, for the
+  queue-end step that will read CI.
+
+### Changed
+
+- **§7 names its readers as the queue-end step and the builder.** Its opener
+  said the validator acts on a pushed branch's CI result; it now says the
+  queue-end step reads CI once the queue's PR is marked ready, and the builder
+  dispatched with the CI findings it reports acts on them. The two rules —
+  check the real result, and read a red leg that passed locally as a
+  portability finding first — are unchanged, and the Rationale records why the
+  per-item read was dropped.
+- **The §7 preload moves from `validator` to `builder` and
+  `builder-escalation`** — a reach change a consumer sees. The section skill
+  `aide-off-platform-verification` is now in those two specs' `skills:`
+  frontmatter and no longer in the validator's, and the builder's step 1 says
+  that CI findings in its brief are read per §7. **A consumer edits nothing**;
+  `install.py --update` carries the specs and the re-rendered skill.
+
 ## [2.20.1] — 2026-09-29
 
 ### Changed
