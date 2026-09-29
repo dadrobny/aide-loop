@@ -149,8 +149,9 @@ instead — that is the bump policy above, and it is enforced by
   Files read 0, the claim branch's diff against its base being empty once
   merged, and `Suite s` was the re-run's own suite time rather than the
   validated run. §1 → `ledger.md` says one row per merge. Before appending,
-  the merge now reads whether the item is already ✅ and the ledger already
-  holds a `merged` row for it on its queue; if both, it appends nothing and
+  the merge now reads whether the item is already ✅ on every bullet and the
+  ledger already holds a `merged` row for it on its queue; if both, it
+  appends nothing and
   says `ledger row for item NNN already recorded (ledger.md:N) — not
   appended`, so the re-run makes no commit and retries only the push. A
   reopened item still takes its second row: `aide progress reopen` sends it

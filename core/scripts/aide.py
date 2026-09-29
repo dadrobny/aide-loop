@@ -9594,8 +9594,8 @@ def _merged_row_already_recorded(repo_root: Path, config, number: int,
                                  cells: List[str]) -> Optional[str]:
     """``ledger.md:<line>`` of the row an earlier merge of this item wrote, or None.
 
-    Only where the item is **already ✅** before this run ticks it (issue
-    #346): a merge whose tick commit landed and whose push failed is re-run
+    Only where the item is **already ✅** on every bullet before this run
+    ticks it (issue #346): a merge whose tick commit landed and whose push failed is re-run
     with the ✅ and the row both in place, and a second row would be a second
     record of one merge. A reopened item is never ✅ when it merges again —
     `progress reopen` sends every bullet back to 📋 — so the second row §1 →
@@ -9609,12 +9609,16 @@ def _merged_row_already_recorded(repo_root: Path, config, number: int,
     if not (progress.is_file() and path.is_file()):
         return None
     try:
-        status = _parse_item_status(
-            progress.read_text(encoding=_ENCODING).splitlines())[2].get(number)
+        lines = progress.read_text(encoding=_ENCODING).splitlines()
         rows = ledger_rows(path.read_text(encoding=_ENCODING))
     except (OSError, UnicodeDecodeError):
         return None
-    if status != "complete":
+    # Every bullet ✅, not the most advanced one `_parse_item_status` reports:
+    # a reopened item with one bullet ticked by hand is still owed its row.
+    statuses = [ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
+                for start, last in _deliverable_bullet_spans(lines)
+                if number in _bullet_marker_item_numbers(lines[last])]
+    if not statuses or any(st != "complete" for st in statuses):
         return None
     want = dict(zip(LEDGER_COLUMNS, cells))
     for lineno, row_cells in rows:

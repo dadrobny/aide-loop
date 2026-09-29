@@ -705,6 +705,26 @@ def test_a_reopened_item_merged_again_takes_a_second_row(tmp_path: Path):
         ("027", "merged"), ("027", "merged")]
 
 
+def test_a_part_ticked_item_is_still_owed_its_row(tmp_path: Path):
+    """#346's ✅ reading is every bullet, not the most advanced one: a
+    reopened item with one of its bullets ticked by hand has not been merged
+    again, so its earlier `merged` row does not stand in for the next."""
+    repo = _init_repo(tmp_path / "repo")
+    assert aide.main(["--repo", str(repo), "claim"]) == 0
+    _do_the_work(repo)
+    assert aide.main(["--repo", str(repo), "merge", "27", "--no-test"]) == 0
+    config = aide.load_config(repo)
+    cells = [_rows(repo)[0][c] for c in aide.LEDGER_COLUMNS]
+    progress = repo / "docs" / "aide" / "progress.md"
+    text = progress.read_text(encoding="utf-8")
+    bullet = next(ln for ln in text.splitlines() if "*(Item 027)*" in ln)
+    assert aide._merged_row_already_recorded(repo, config, 27, cells)
+    progress.write_text(text.replace(
+        bullet, bullet + "\n- 📋 Bounds, second half. *(Item 027)*"),
+        encoding="utf-8")
+    assert aide._merged_row_already_recorded(repo, config, 27, cells) is None
+
+
 def test_a_tick_with_nothing_to_commit_is_not_a_failure(
         tmp_path: Path, monkeypatch):
     """An item already ✅ and no row to write (the template is gone) leaves
