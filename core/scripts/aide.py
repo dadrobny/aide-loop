@@ -2682,6 +2682,53 @@ def _progress_item_status(repo_root: Path, config) -> Dict[int, str]:
     return item_status
 
 
+#: The item statuses whose spec §1 keeps as a **record** for the sweeps that
+#: ask an author to edit a document (issue #338). ⏸️ is here although
+#: `template_drift_warnings` keeps a deferred spec in its own scope: a
+#: deferred item is neither built from nor edited while it waits — the
+#: settled set `queue_is_open` and `check --queue` already use — and the
+#: exemption is read from progress.md on every run, so the warnings return
+#: the moment the item is 📋 again, which is when its author acts on them.
+_RECORD_ITEM_STATUSES = ("complete", "excluded", "deferred")
+
+
+def record_documents(ddir: Path, item_status: Dict[int, str]) -> Set[Path]:
+    """The documents under *ddir* that are records, not live (issue #338).
+
+    An item spec whose item is ✅, ❌ or ⏸️ in progress.md, and a queue file
+    naming at least one item and none still open (``queue_is_open``). §1
+    says a merged spec is never rewritten, so a warning on one that asks for
+    an edit can never be cleared and returns on every run. A queue naming no
+    item yet is live: it is being wired. An item progress.md does not know
+    counts as planned, so with no progress.md nothing is a record.
+    """
+    out: Set[Path] = set()
+    idir = ddir / "items"
+    if idir.is_dir():
+        for ipath in idir.glob("*.md"):
+            n = item_spec_number(ipath)
+            if n is not None and item_status.get(n, "planned") in _RECORD_ITEM_STATUSES:
+                out.add(ipath)
+    for qpath in iter_queue_paths(ddir / "queue"):
+        try:
+            qtext = qpath.read_text(encoding=_ENCODING)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if queue_item_numbers(qtext) and not queue_is_open(qtext, item_status):
+            out.add(qpath)
+    return out
+
+
+def _docs_item_status(ddir: Path) -> Dict[int, str]:
+    """Item statuses from ``ddir/progress.md``, or ``{}`` when it is unreadable."""
+    path = ddir / "progress.md"
+    try:
+        lines = path.read_text(encoding=_ENCODING).splitlines()
+    except (OSError, UnicodeDecodeError):
+        return {}
+    return _parse_item_status(lines)[2]
+
+
 def tidy_queue_text(text: str, superseded_by: int, date: str) -> str:
     """Rewrite a queue's Status line to 'Completed — superseded by queue-NNN'."""
     new_status = (f"> **Status:** ✅ Completed — superseded by "
@@ -3180,14 +3227,16 @@ _ENTRY_ID_CITATION_RE = re.compile(
 #: A citation of an insight by position: ``insight 28``, ``insights.md entry
 #: 28``, ``inbox entry #28``. The number may not run on into a date, a version
 #: or a word (``insight 2026-…`` is the ID form, ``entry 1.2`` is not a
-#: position).
+#: position), and may not start with a zero: ``list`` never pads a position,
+#: and ``037`` is the item-number shape (issue #335).
 _INSIGHT_POSITION_RE = re.compile(
     r"(?i:\b(?:insights?(?:\.md)?|inbox)(?:\s+(?:entry|entries))?)\s+#?"
-    r"(?P<n>\d{1,4})(?![\w-]|\.\d)")
+    r"(?P<n>[1-9]\d{0,3})(?![\w-]|\.\d)")
 #: The bare ``entry 28`` form — read as an insight citation only on a line that
 #: says *insight* or *inbox* somewhere, since a ledger row or a table entry is
 #: an "entry" too.
-_ENTRY_POSITION_RE = re.compile(r"(?i:\b(?:entry|entries))\s+#?(?P<n>\d{1,4})(?![\w-]|\.\d)")
+_ENTRY_POSITION_RE = re.compile(
+    r"(?i:\b(?:entry|entries))\s+#?(?P<n>[1-9]\d{0,3})(?![\w-]|\.\d)")
 _INSIGHT_CONTEXT_RE = re.compile(r"(?i)\b(?:insights?|inbox)")
 
 
@@ -3250,6 +3299,13 @@ def insight_position_citations(repo_root: Path,
     inbox and its archives excepted). What `insights archive` lists before it
     renumbers the inbox (issue #295): the run is the last point at which a
     position still means what its author wrote.
+
+    Records are listed too, unlike `aide check`'s positional warning (issue
+    #338): the listing is printed once, by the run that moves the entries,
+    and its ID is the one the position held before this move — the mapping
+    that preserves what a record's citation meant, which nothing can
+    reconstruct afterwards. The check's warning names the entry there
+    *today*, which on a record is a guess; this one is not.
     """
     out: List[Tuple[str, int, str, int]] = []
     docs, tests = _citation_files(repo_root, config, ddir)
@@ -3283,6 +3339,13 @@ def insight_reference_findings(repo_root: Path,
       naming the ID the position holds today, since an archive or a merge
       renumbers it. Tests are read too (issue #295): a comment or an assertion
       message naming "insight 28" goes stale on the same archive a spec does.
+      A record (``record_documents`` — a ✅, ❌ or ⏸️ item's spec, a queue
+      with no open item) is not warned about (issue #338): §1 never rewrites
+      one, so the warning could not be cleared, and its "today" hint names
+      whatever an archive since moved to that number.
+
+    The first finding holds in a record too: an ID naming nothing is a
+    citation no reader can follow, whoever wrote it.
 
     Only the cited form is read (``_INSIGHT_ID_CITATION_RE``): the word
     *insight* before the ID, or *entry* on a line that also says *insight* or
@@ -3294,6 +3357,7 @@ def insight_reference_findings(repo_root: Path,
     docs, tests = _citation_files(repo_root, config, ddir)
     if not docs and not tests:
         return errors, warnings
+    records = record_documents(ddir, _docs_item_status(ddir))
     # Read lazily and once: most files cite nothing, and a repo whose tests
     # cite no insight never opens the inbox or an archive for this check.
     cache: Dict[str, object] = {}
@@ -3337,6 +3401,8 @@ def insight_reference_findings(repo_root: Path,
                         f"{where}:{lineno}: insight {ref} matches more than one "
                         f"claim captured that day — cite the longer ID of the "
                         f"one meant: {names}")
+            if path in records:
+                continue
             for m in _positional_citations(line, lambda: len(_entries())):
                 n = int(m.group("n"))
                 _entries()
@@ -3363,9 +3429,11 @@ _GATE_ID_CITATION_RE = re.compile(
     r"(?<![\w\-#/.=?&])(?P<id>" + _GATE_ID_SHAPE + r")(?![\w\-/]|\.\w)")
 #: A citation of a human gate by position: ``gate 3``, ``human gate #3``,
 #: ``gates 2`` — the word, then the number. The number may not run on into a
-#: word, a hyphen or a version (``gate 1.2`` is not a position).
+#: word, a hyphen or a version (``gate 1.2`` is not a position), and may not
+#: start with a zero: a position is never padded, while ``gates 041/042`` in
+#: dependency prose is two item numbers (issue #335).
 _GATE_POSITION_RE = re.compile(
-    r"(?i:\b(?:human\s+)?gates?)\s+#?(?P<n>\d{1,3})(?![\w-]|\.\d)")
+    r"(?i:\b(?:human\s+)?gates?)\s+#?(?P<n>[1-9]\d{0,2})(?![\w-]|\.\d)")
 
 
 def gate_reference_findings(repo_root: Path,
@@ -3386,7 +3454,9 @@ def gate_reference_findings(repo_root: Path,
       the longer IDs that tell them apart;
     * a **citation by position** — a warning naming the ID that row holds
       today, and only while progress.md's ``## Human gates`` table has a
-      row: with none, "gate 3" is some other gate.
+      row: with none, "gate 3" is some other gate. Never in a record
+      (``record_documents``, issue #338), which §1 does not rewrite; a
+      dangling ID there is still an error.
 
     tests_dir is not read: a gate is cited by the documents that plan work,
     and "gate-" followed by hex is ordinary vocabulary in a test suite.
@@ -3400,6 +3470,7 @@ def gate_reference_findings(repo_root: Path,
     # and in a table with no row "gate 2" names nothing it could mean.
     has_rows = bool(gates) or unreadable
     ids = gate_ids(gates)
+    records = record_documents(ddir, _parse_item_status(lines)[2])
     for path in docs:
         try:
             text = path.read_text(encoding=_ENCODING)
@@ -3427,7 +3498,7 @@ def gate_reference_findings(repo_root: Path,
                     warnings.append(
                         f"{where}:{lineno}: {ref} matches more than one human "
                         f"gate — cite the longer ID of the one meant: {names}")
-            if not has_rows:
+            if not has_rows or path in records:
                 continue
             for m in _GATE_POSITION_RE.finditer(line):
                 n = int(m.group("n"))
@@ -6045,7 +6116,11 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide",
 
     A fifth is advisory rather than structural: an assumption marked with the
     engine it was true for — `- **A8 (engine 1.28.1):** …` — whose engine
-    predates the installed one. See `_stale_assumption_pins`.
+    predates the installed one. See `_stale_assumption_pins`. It is read on
+    live specs only — not one whose item progress.md shows ✅, ❌ or ⏸️
+    (``record_documents``, issue #338): §1 never rewrites a merged spec, and
+    the appended re-check that clears the warning goes stale at the next
+    release, so on a record it would return forever.
 
     None of them reads a file that no lookup finds: one whose name
     `item_spec_number` rejects gets a single warning naming the rename instead
@@ -6070,6 +6145,7 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide",
     out: List[str] = []
     missing_assumptions: List[str] = []
     stale_pins: List[str] = []
+    records = record_documents(ddir, _docs_item_status(ddir)) if engine else set()
     for path in sorted(idir.glob("*.md")):
         num = item_spec_number(path)
         if num is None:
@@ -6093,7 +6169,7 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide",
                        f"and only drifts")
         if not re.search(r"^##\s+Assumptions", text, re.MULTILINE):
             missing_assumptions.append(f"{num:03d}")
-        elif engine:
+        elif engine and path not in records:
             stale_pins.extend(f"{num:03d} {label} (engine {version})"
                               for label, version in _stale_assumption_pins(text, engine))
         parsed = parse_authorised_paths(text)
@@ -15284,7 +15360,8 @@ def build_parser() -> argparse.ArgumentParser:
             "a May-change glob is the legitimate carve-out, left for "
             "`aide scope` to judge); an always-authorised path pinned "
             "under Asserts against; a marked assumption pinning an engine "
-            "whose feature line predates the installed one; a roadmap.md "
+            "whose feature line predates the installed one, in a spec that "
+            "is not a record; a roadmap.md "
             "stage whose Dependencies name a later-numbered stage in the "
             "blocking slot \u2014 the text up to its first semicolon, "
             "spaced dash, sentence end, 'independent of' or 'queue "
@@ -15332,7 +15409,7 @@ def build_parser() -> argparse.ArgumentParser:
             "citation by position \u2014 insight 28, insights.md entry 28, "
             "or entry 28 on a line that says insight or inbox \u2014 is a "
             "warning naming the ID that position holds today, in a test as "
-            "in a document.\n"
+            "in a document other than a record.\n"
             "\n"
             "Over human-gate citations in docs/aide, the inbox and its "
             "archives excepted: a gate-<hex> token that names no row of "
@@ -15340,9 +15417,15 @@ def build_parser() -> argparse.ArgumentParser:
             "two different Gate cells is a warning naming their longer IDs; "
             "and a citation by position \u2014 gate 3, human gate #3 \u2014 "
             "is a warning naming the ID that row holds today, read only "
-            "while progress.md's Human gates table has a row. A token inside a "
+            "while progress.md's Human gates table has a row and never in a "
+            "record. A token inside a "
             "path, a file name, a URL or a heading anchor is not a citation, "
-            "and tests_dir is not read."))
+            "and tests_dir is not read. A position, insight or gate, is never "
+            "zero-padded: 037 is an item number.\n"
+            "\n"
+            "A record is the spec of an item progress.md shows \u2705, "
+            "\u274c or \u23f8\ufe0f, or a queue naming items none of which "
+            "is still open; an ID naming nothing is an ERROR there too."))
     p_check.add_argument("--queue", type=int, default=None,
                          help="also check this queue's specs against each other "
                               "(scope overlaps, pinned state, dependency graph)")
