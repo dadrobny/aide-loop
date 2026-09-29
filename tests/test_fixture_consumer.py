@@ -740,6 +740,30 @@ def test_check_passes_clean_on_the_scaffold(aide, consumer: Path, capsys):
     assert "OK (0 warning(s))" in capsys.readouterr().out
 
 
+def test_check_queue_reports_the_queue_end_item_the_planner_must_add(
+        aide, consumer: Path, capsys):
+    """Queue 001 closes stage 1, whose one criterion no spec annotates: the
+    planner's `check --queue` names the need, and the queue-end item it then
+    appends — wired in like any other — retires it (issue #333)."""
+    need = "closes stage 1 and needs a queue-end item"
+    assert aide.main(["--repo", str(consumer), "check", "--queue", "1"]) == 0
+    assert need in capsys.readouterr().out
+
+    ddir = consumer / "docs" / "aide"
+    queue = ddir / "queue" / "queue-001.md"
+    queue.write_text(queue.read_text(encoding="utf-8")
+                     + "\n### Item 003: Validate stage 1: Foundations\n"
+                       "Attest criterion 1.\n", encoding="utf-8")
+    progress = ddir / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "- 📋 The farewell. *(Item 002)*",
+        "- 📋 The farewell. *(Item 002)*\n- 📋 Stage validation. *(Item 003)*"),
+        encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check", "--queue", "1"]) == 0
+    out = capsys.readouterr().out
+    assert need not in out and "queue-end item for stage" not in out
+
+
 def _installed_template(consumer: Path) -> bytes:
     template = (consumer / ".aide" / "templates" / "insights.md").read_bytes()
     assert b"insight" in template.lower()  # recognisable before it is compared

@@ -58,6 +58,13 @@ paths:
      - is a batch awaiting review, not a second live queue
      - Concurrent live queues — not offered
      - Write it as independence, not as "run alongside"
+     - A queue-end item is planned only when the engine reports a need for
+       one
+     - Stage validation is its only trigger today
+     - The planner reads that warning and never works the need out itself
+     - with no such warning, the queue ends with its last deliverable
+     - The same check warns on a planned queue-end item with nothing to do
+     - The stage variant is titled `Validate stage N: <stage title>`
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/insights.md
@@ -117,6 +124,17 @@ be queued in either order. Write it as independence, not as "run alongside":
 the planner queues sequentially either way. Concurrent live queues — not
 offered; `loop.claim_scope = "all-open"` widens *claiming* across every open
 queue, but nothing creates a second live queue.
+
+**A queue-end item is planned only when the engine reports a need for one**
+(§1 → `queue-NNN.md`) — queue-level judgement that produces committed
+artefacts, as the queue's final item. **Stage validation is its only trigger
+today**: on a queue that closes a roadmap stage, `aide check --queue NNN`
+warns when the stage still has work for one, and names why. **The planner
+reads that warning and never works the need out itself** — with no such
+warning, the queue ends with its last deliverable. **The same check warns on
+a planned queue-end item with nothing to do.** **The stage variant is titled
+`Validate stage N: <stage title>`**; `/aide-create-queue` says when to run the
+check and what to write.
 
 **The file exists before a role needs it — the engine puts it there** (§1 →
 `insights.md`): `aide check`, `aide claim`, `aide queue start` and

@@ -74,6 +74,13 @@ lowest-numbered one with open items).
    what the loop asked), and dependency cycles or dependencies on items that
    exist nowhere. Fix each by amending a spec, naming which side changed.
 
+   It also reports `queue-end-needed` and `queue-end-idle` warnings, which no
+   spec amendment of yours settles: relay them to the user for the plan gate —
+   a stage whose need no planned queue-end item meets, or a planned one with
+   nothing left to do, which is theirs to drop. What each means is
+   `aide check -h`, and the rule behind them is `/aide-create-queue`
+   requirement 5.
+
    Then spawn the **`spec-reviewer`** agent once, for what the check cannot
    decide, because it turns on what a criterion *means* rather than what a spec
    declares — an AC that cannot be satisfied without touching a path its own

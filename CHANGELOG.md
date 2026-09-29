@@ -121,6 +121,59 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.22.0] — 2026-09-29
+
+### Changed
+
+- **A queue-end item is planned only when the engine reports a need for it
+  (issue #333, part of #328).** `aide-create-queue` requirement 5 made every
+  stage-closing queue end with `Validate stage N: <stage title>`, a full item
+  pipeline whether or not the stage had anything left for it. §1 →
+  `queue-NNN.md` now states the queue-end item — queue-level judgement that
+  produces committed artefacts, planned as the queue's final item — whose one
+  trigger today is stage validation, and requirement 5 plans it only where
+  `aide check --queue NNN` warns that a queue closing a stage needs one. With
+  no such warning the queue ends with its last deliverable, and a queue that
+  closes no stage never gets one. `queue-planner` runs the check after the
+  `progress.md` back-fill and names each warning in its summary.
+  §1 → environment-gated capabilities, §1 → `ledger.md`, §1 →
+  `authorised-paths-proof.md`'s discount rationale, the `aide-item-specs`
+  and `aide-queue-and-inbox` skills and the item template's `**Downstream**`
+  example follow the new name; the item template's version is unmoved, since
+  only an example's wording changed. **A consumer edits nothing**: the stage
+  variant keeps the title `Validate stage N`, so existing items still parse,
+  still count as the ledger's `validate-stage` kind, and still earn the
+  `check --queue` dependency discount.
+
+### Added
+
+- **`aide check --queue NNN` reports whether the queue needs a queue-end item,
+  both ways, as warnings.** The queue closes stage N when an item it lists is
+  referenced by a stage N deliverable that is not ⏸️, and every stage N
+  deliverable that is 📋, 🚧 or 🔍 names only items on this queue or an
+  earlier one. Such a bullet with no item reference keeps the stage open; ✅,
+  ❌ and ⏸️ bullets never do, so deferred work neither holds closure nor, on
+  its own, makes a queue close a stage. A stage it closes needs the item when
+  it has an unticked acceptance box no item spec annotates
+  `closes Stage N criterion M`, a ❓ Unverified capability row it introduced,
+  or an item its own deliverables reference — merged or not, ❌ and ⏸️ aside —
+  whose spec has an Environment / Hardware Dependencies section and which no
+  capability row covers. A row whose Introduced by cell references the item
+  covers it, whatever stage the cell names; a row naming the stage and no item
+  covers one item, lowest number first, since one row is one capability. The warning `queue NNN closes stage N and
+  needs a queue-end item: …` names each reason, and is met by a
+  `Validate stage N` item among the queue's final items. The mirror warning,
+  `item NNN is a queue-end item for stage N, but …`, names a planned one with
+  nothing to do, one for a stage the queue does not close, and one whose
+  title names no stage; a ✅, ❌ or ⏸️ queue-end item is never reported. Both reach
+  the `--report` JSON, as kinds `queue-end-needed` and `queue-end-idle`, and
+  `/aide-spec-queue` and `spec-reviewer` relay them to the human for the plan
+  gate. A queue whose items are all ✅, ❌ or ⏸️ gets neither, as
+  the derived queue state already calls it done. `aide check -h`
+  states it, pinned to the tests that exercise it. The roadmap declares no
+  per-stage use cases, so the third trigger the issue named is not read; the
+  Rationale says so.
+
 ## [2.21.0] — 2026-09-29
 
 ### Added

@@ -120,14 +120,28 @@ as the reason.
    A candidate the row does
    not admit is not queued, and the pass-over is named in the summary
    (below), like an inbox entry passed over.
-5. **A stage-closing queue ends with a stage-validation item** — when this
-   queue completes a roadmap stage, its final item must be
-   `Validate stage N: <stage title>`: replay the stage's use cases end-to-end
-   (not just the unit suite), and flip any Environment-Gated Capability
+5. **A queue-end item is planned only when the engine reports a need for
+   one** (§1 → `queue-NNN.md`). Stage validation is its only trigger today,
+   so a queue that closes no roadmap stage never gets one. Once the queue is
+   written and wired into `progress.md` (requirement 8), run:
+   ```
+   python .aide/scripts/aide.py check --queue NNN
+   ```
+   A `queue NNN closes stage N and needs a queue-end item: …` warning is the
+   need, with its reasons. Act on it: append one final item,
+   `Validate stage N: <stage title>`, wire it into that stage like any other,
+   and describe it by the reasons the warning names — attest the stage
+   criteria no item's AC annotates, replay the stage's use cases end-to-end
+   (not just the unit suite), and flip the Environment-Gated Capability
    Verification rows the stage introduced to `✅ Verified` where the
    environment allows (`aide env --profile <name>`), else record in the row's
-   Notes cell why it stays `❓ Unverified`. Validation is planned, numbered work — never an implicit
-   hope.
+   Notes cell why it stays `❓ Unverified`. With no such warning, the queue
+   ends with its last deliverable. **The planner reads that warning and never
+   works the need out itself.** A warning that a queue-end item has nothing
+   to do means it should not be in the plan. With no spec written yet, every
+   unticked criterion counts as unannotated, so the item a closing queue is
+   told it needs may later be reported idle once the specs exist; that is the
+   check working, and dropping it then is the human's call at the plan gate.
 6. **Consistent format** (parsed by `aide claim` / `aide check`):
    ```
    ### Item NNN: Short Title
@@ -305,5 +319,12 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
      and queue state is what §1 → `queue-NNN.md` fixes, so that is where it
      is stated and the other two point at it. This skill still says it,
      because the maintenance-queue ordering is unreadable without it.
+     Requirement 5 quotes the queue-end item's rule from the same section
+     (issue #333), since the step it describes is this skill's to run.
      - the live queue is the lowest-numbered open one
+     - A queue-end item is planned only when the engine reports a need for
+       one
+     - Stage validation is its only trigger today
+     - with no such warning, the queue ends with its last deliverable
+     - The planner reads that warning and never works the need out itself
 -->
