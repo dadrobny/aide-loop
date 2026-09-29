@@ -160,8 +160,8 @@ instead — that is the bump policy above, and it is enforced by
   every queue the checked-out queue branch carries: the round under way
   while one of their CI-reopened items is still open, the next one when
   none is. A reason that already ends in a stamp is refused, exit 2, and so
-  is one starting `CI` with anything but a space after it (`CI:`, `CI-`),
-  which would silently not be a CI reopening. The
+  is one starting `CI:` or `CI-`, which would silently not be a CI
+  reopening; `CI/CD …`, `CI's …` or a bare `CI` stay ordinary reasons. The
   count has to be written with the reopening: a merge writes no trail line,
   so which of two reopenings came after a merge back is not on record later.
 - **`aide status` prints `ci fix rounds: N`** under a draft or failing

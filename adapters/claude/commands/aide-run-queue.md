@@ -173,7 +173,7 @@ This is the queue-end step `.aide/README.md` → *The queue-end step* defines
    | 12 | `unknown` | Report the `checks unknown:` reason and stop. |
    | 13 | — | No PR, a closed or merged one, or the branch is no longer an unmerged queue branch: report it. |
    | 15 | — | The PR is a draft. Plain `#N/draft`: `queue ready` did not take — run step 3 again, then restart the wait once; a second 15 is a stop. `#N/draft(fixing)`: a CI fix round is under way and its reopened items are still open — go back to **Loop** and claim them; a claim that offers none is reported, and the run stops. |
-   | 14 | `pending` | CI was still running after an hour — a red answer with a `pending check:` leg included: report it; a re-run of this section waits again. |
+   | 14 | `pending` | CI was still running after an hour: report it; a re-run of this section waits again. When the tail already names a `failing check:` beside the `pending check:` legs, report those failing lines too: they are known, so the user can start the **CI fix round** on them now or re-run the wait for the rest. |
    | other | — | The poll itself broke (90 died, 91 stopped, 1 a crash): report the tail and stop. |
 
 6. **After an early ready**, stop whatever the answer — a red one runs no
@@ -227,8 +227,8 @@ the item's own spec.
    `python .aide/scripts/aide.py queue ready --undo`. On exit 1 relay its
    sentence and stop. A session that dies after this and before the first
    reopening leaves a plain draft; a resume finds the queue exhausted and
-   marks it ready again at **Queue end** step 3, without counting a round — accepted, since it costs CI minutes
-   only.
+   marks it ready again at **Queue end** step 3, without counting a round
+   — accepted, since it costs CI minutes only.
 5. **Reopen** every traced item, one call each, all before the first claim:
    ```
    python .aide/scripts/aide.py progress reopen K --reason "CI <check>: <failing test or step>"

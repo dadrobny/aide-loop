@@ -527,7 +527,7 @@ def test_a_reason_carrying_its_own_round_stamp_is_refused(tmp_path: Path, capsys
     assert (repo / "docs" / "aide" / "progress.md").read_bytes() == before
 
 
-@pytest.mark.parametrize("reason", ["CI: build failed", "CI-build: t", "CI"])
+@pytest.mark.parametrize("reason", ["CI: build failed", "CI-build: t"])
 def test_a_reason_naming_ci_without_the_space_is_refused(tmp_path: Path, capsys,
                                                          reason: str):
     """`CI:` would silently not be a CI reopening: no stamp, no count."""
@@ -536,8 +536,16 @@ def test_a_reason_naming_ci_without_the_space_is_refused(tmp_path: Path, capsys,
     assert _reopen_cli(repo, 27, reason) == 2
     assert "`CI <check>: <failing test or step>`" in capsys.readouterr().err
     assert (repo / "docs" / "aide" / "progress.md").read_bytes() == before
-    # A word that only begins with the letters is not CI at all.
-    assert _reopen_cli(repo, 27, "CIRCUIT breaker never exercised") == 0
+
+
+def test_a_reason_merely_mentioning_ci_is_an_ordinary_reopening(tmp_path: Path):
+    """Only `CI:` / `CI-` is refused: these are reasons about CI, not CI
+    reopenings, and are neither refused nor stamped."""
+    repo = _queued(tmp_path)
+    for num, reason in ((27, "CI/CD workflow never ran"),
+                        (28, "CI's config was never reviewed"), (30, "CI")):
+        assert _reopen_cli(repo, num, reason) == 0, reason
+        assert _trail(repo, num)[-1] == f"- **2026-09-29** → reopened: {reason}"
 
 
 ATTESTED = PROGRESS.replace(

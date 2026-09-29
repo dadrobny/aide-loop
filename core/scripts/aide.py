@@ -7878,7 +7878,7 @@ def _cmd_progress_reopen(args: argparse.Namespace) -> int:
         print("aide progress reopen: the reason may not contain a line break "
               "— it is written into one trail line", file=sys.stderr)
         return 2
-    if re.match(r"CI\b(?! )", reason):
+    if re.match(r"CI[:\-]", reason):
         print(f"aide progress reopen: a reason naming CI is a CI reopening "
               f"only in the form `{_CI_REASON_PREFIX}<check>: <failing test or "
               f"step>` — `CI` then a space — so {reason[:12]!r}… would not be "
@@ -15441,9 +15441,9 @@ def build_parser() -> argparse.ArgumentParser:
             "an item of them whose latest reopening is a CI one is still "
             "\U0001f4cb, \U0001f6a7 or \U0001f50d, and one more than that "
             "when none is. A reason that already ends in such a stamp is "
-            "refused, exit 2, and so is one starting `CI` followed by "
-            "anything but a space (`CI:`, `CI-`), which would silently not "
-            "be a CI reopening.\n"
+            "refused, exit 2, and so is one starting `CI:` or `CI-`, which "
+            "would silently not be a CI reopening; any other reason, `CI/CD "
+            "\u2026` or a bare `CI` included, is an ordinary one.\n"
             "\n"
             "set NNN deferred refuses, writing nothing, without a stated "
             "reason, or when a deliverable bullet whose trailing marker names "

@@ -847,10 +847,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_reopen::"
           "test_a_ci_reopening_begins_a_round_the_next_one_joins_and_a_later_one_begins_another",
           "test_aide_reopen::test_a_reopening_that_is_not_ci_is_neither_stamped_nor_counted")),
-        # `re.match(r"CI\b(?! )", reason)` -> 2, before anything is read.
-        ("and so is one starting `CI` followed by anything but a space "
-         "(`CI:`, `CI-`), which would silently not be a CI reopening",
-         "test_aide_reopen::test_a_reason_naming_ci_without_the_space_is_refused"),
+        # `re.match(r"CI[:\-]", reason)` -> 2, before anything is read.
+        ("and so is one starting `CI:` or `CI-`, which would silently not be "
+         "a CI reopening; any other reason, `CI/CD \u2026` or a bare `CI` "
+         "included, is an ordinary one",
+         ("test_aide_reopen::test_a_reason_naming_ci_without_the_space_is_refused",
+          "test_aide_reopen::test_a_reason_merely_mentioning_ci_is_an_ordinary_reopening")),
         # `_CI_ROUND_RE.search(reason)` -> 2, before anything is read.
         ("A reason that already ends in such a stamp is refused, exit 2",
          "test_aide_reopen::test_a_reason_carrying_its_own_round_stamp_is_refused"),
