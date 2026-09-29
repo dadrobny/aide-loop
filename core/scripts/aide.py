@@ -7690,8 +7690,11 @@ def _cmd_progress_reword(args: argparse.Namespace) -> int:
     is written and the message says that too (issue #216).
     """
     if args.all_criteria:
-        print("aide progress reword: --all is not offered — criteria are "
-              "reworded one at a time", file=sys.stderr)
+        what = ("bullets are reworded one item at a time"
+                if args.item is not None
+                else "criteria are reworded one at a time")
+        print(f"aide progress reword: --all is not offered — {what}",
+              file=sys.stderr)
         return 2
     if args.item is not None:
         return _cmd_progress_reword_deliverable(args)

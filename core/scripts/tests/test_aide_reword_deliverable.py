@@ -246,6 +246,14 @@ def test_the_bullet_form_refuses_a_malformed_call_with_usage(tmp_path: Path, arg
     assert progress.read_bytes() == before
 
 
+def test_all_on_the_bullet_form_is_refused_in_its_own_words(tmp_path: Path, capsys):
+    """`--all` beside `--item` names bullets, not criteria — the call named none."""
+    repo = _repo(tmp_path)
+    assert _reword(repo, "--item", "042", "--all", "--text", "x") == 2
+    err = capsys.readouterr().err
+    assert "one item at a time" in err and "criteria" not in err
+
+
 def test_the_two_forms_are_mutually_exclusive(tmp_path: Path, capsys):
     repo = _repo(tmp_path)
     with pytest.raises(SystemExit) as exc:
