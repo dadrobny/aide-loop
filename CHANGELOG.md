@@ -121,6 +121,27 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.20.1] — 2026-09-29
+
+### Changed
+
+- **The four T2 roles move from `claude-sonnet-5` to `claude-sonnet-5-5`
+  (issue #325).** `test-writer`, `builder`, `validator` and the optional
+  `reviewer` now read `model: claude-sonnet-5-5`, and `ADAPTER-SPEC.md` §2's
+  matching Claude cells read `claude-sonnet-5-5, medium` /
+  `claude-sonnet-5-5, high`. Their effort values are unchanged.
+- **`queue-planner` drops from `xhigh` to `high` effort** on
+  `claude-opus-5-5`, the same as `spec-author`: the §2 rationale now puts the
+  planner's leverage on the tier, and the current T3 model's capacity is what
+  the extra notch used to buy. The rest of the table was re-checked and is
+  unchanged: `spec-author`, `spec-reviewer` and `builder-escalation` stay on
+  `claude-opus-5-5` (`high`, `high`, `medium`), and `reviewer` keeps `high`.
+  Still unpinned, per §2: the orchestrator's session model and the
+  `"sonnet"` alias in the spawn guard's deny reason. **A consumer edits
+  nothing** — but a pinned ID its runtime does not serve fails the spawn, so a
+  consumer running on Amazon Bedrock or Google Vertex AI should hold
+  `install.py --update` until that catalogue serves `claude-sonnet-5-5`.
+
 ## [2.20.0] — 2026-09-29
 
 ### Added

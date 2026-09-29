@@ -7,7 +7,7 @@ description: >-
   dispatched with a review finding, the test that answers it. Does NOT
   implement production code and does NOT run tests.
   Commits the test file(s) on the item's branch and returns a coverage summary.
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 effort: medium
 disallowedTools: Agent
 skills:

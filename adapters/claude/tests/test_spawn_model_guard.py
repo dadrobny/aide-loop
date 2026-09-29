@@ -118,7 +118,7 @@ def test_a_project_agent_without_a_pinned_model_is_refused(tmp_path, model_line)
 def test_a_type_resolves_by_its_name_not_its_file_name(tmp_path):
     """The runtime dispatches on `name:`, and the file name need not match."""
     pinned = _project(tmp_path / "a", {"my-reviewer": _definition(
-        "model: claude-sonnet-5\n", name="code-reviewer")})
+        "model: claude-sonnet-5-5\n", name="code-reviewer")})
     assert guard.decide(_payload("code-reviewer"), str(pinned)) is None
     unpinned = _project(tmp_path / "b", {"my-reviewer": _definition(
         "model: inherit\n", name="code-reviewer")})
@@ -130,30 +130,30 @@ def test_a_declared_name_wins_over_a_file_named_like_the_type(tmp_path):
     `sweeper` — the spawn lands on `a.md`, so its model is the one read."""
     lands_pinned = _project(tmp_path / "a", {
         "sweeper": _definition("", name="other"),
-        "a": _definition("model: claude-sonnet-5\n", name="sweeper")})
+        "a": _definition("model: claude-sonnet-5-5\n", name="sweeper")})
     assert guard.decide(_payload("sweeper"), str(lands_pinned)) is None
     lands_unpinned = _project(tmp_path / "b", {
-        "sweeper": _definition("model: claude-sonnet-5\n", name="other"),
+        "sweeper": _definition("model: claude-sonnet-5-5\n", name="other"),
         "a": _definition("", name="sweeper")})
     assert guard.decide(_payload("sweeper"), str(lands_unpinned)) is not None
 
 
 def test_a_file_that_declares_no_name_resolves_by_its_stem(tmp_path):
     project = _project(tmp_path, {
-        "sweeper": "---\nmodel: claude-sonnet-5\n---\nBody.\n"})
+        "sweeper": "---\nmodel: claude-sonnet-5-5\n---\nBody.\n"})
     assert guard.decide(_payload("sweeper"), str(project)) is None
 
 
 def test_two_definitions_of_one_name_must_both_pin(tmp_path):
     project = _project(tmp_path, {
-        "a": _definition("model: claude-sonnet-5\n"),
+        "a": _definition("model: claude-sonnet-5-5\n"),
         "b": _definition("")})
     assert guard.decide(_payload("sweeper"), str(project)) is not None
 
 
 def test_a_quoted_name_reads(tmp_path):
     project = _project(tmp_path, {"x": "---\nname: \"sweeper\"\n"
-                                       "model: 'claude-sonnet-5'\n---\nB\n"})
+                                       "model: 'claude-sonnet-5-5'\n---\nB\n"})
     assert guard.decide(_payload("sweeper"), str(project)) is None
 
 
@@ -166,7 +166,7 @@ def test_a_model_key_below_the_frontmatter_does_not_count(tmp_path):
 def test_a_bom_and_crlf_definition_still_reads(tmp_path):
     project = _project(tmp_path)
     (project / ".claude" / "agents" / "sweeper.md").write_bytes(
-        b"\xef\xbb\xbf---\r\nname: sweeper\r\nmodel: claude-sonnet-5\r\n"
+        b"\xef\xbb\xbf---\r\nname: sweeper\r\nmodel: claude-sonnet-5-5\r\n"
         b"---\r\nBody.\r\n")
     assert guard.decide(_payload("sweeper"), str(project)) is None
 
@@ -177,7 +177,7 @@ def test_a_type_that_is_not_a_plain_stem_resolves_to_nothing(tmp_path, agent_typ
     """Nothing outside `.claude/agents/` is ever read on a type's say-so."""
     project = _project(tmp_path / "project", {})
     (tmp_path / "project" / ".claude" / "sweeper.md").write_text(
-        _definition("model: claude-sonnet-5\n"), encoding="utf-8")
+        _definition("model: claude-sonnet-5-5\n"), encoding="utf-8")
     assert guard.decide(_payload(agent_type), str(project)) is not None
 
 
@@ -212,7 +212,7 @@ def test_an_allow_is_silence(tmp_path):
 
 def test_the_project_dir_comes_from_the_runtime_variable(tmp_path):
     project = _project(tmp_path, {
-        "sweeper": _definition("model: claude-sonnet-5\n")})
+        "sweeper": _definition("model: claude-sonnet-5-5\n")})
     result = _run(json.dumps(_payload("sweeper")), project)
     assert (result.returncode, result.stdout) == (0, "")
 

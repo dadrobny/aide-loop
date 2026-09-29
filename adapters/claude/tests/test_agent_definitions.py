@@ -259,13 +259,13 @@ def test_an_alias_is_not_a_model_id():
     (`claude-opus-5-5`, issue #261), not its generation prefix: a shorter
     `claude-opus-5` may be underspecified and resolve dynamically on the
     provider's side, and a more specific ID can behave differently from it,
-    so the fixtures show the shape a move should land on. `claude-sonnet-5`
-    stays accepted because a shipped spec still names it."""
+    so the fixtures show the shape a move should land on, for each family
+    a spec ships (`claude-sonnet-5-5`, issue #325)."""
     for alias in sorted(_ALIASES) + ["claude-opus", "opus-5", "claude-opus-latest",
-                                     "claude-opus-5-latest", "claude-sonnet-5[1m]",
+                                     "claude-opus-5-latest", "claude-sonnet-5-5[1m]",
                                      "Claude-Opus-5"]:
         assert not _MODEL_ID.match(alias), alias
-    for exact in ("claude-opus-5-5", "claude-sonnet-5", "claude-opus-4-8",
+    for exact in ("claude-opus-5-5", "claude-sonnet-5-5", "claude-opus-4-8",
                   "claude-haiku-4-5-20251001"):
         assert _MODEL_ID.match(exact), exact
 

@@ -55,19 +55,19 @@ own work; a fresh instance per item.
 
 | Role | Tier | Claude | Why the tier and the effort |
 |---|---|---|---|
-| queue-planner | **T3 (strongest)** | `claude-opus-5-5, xhigh` | one plan cascades into ~10 items, and `xhigh` sits one notch above `spec-author` because sequencing, dependency ordering and scoping several items against vision/roadmap/progress *at once* is the single highest-leverage decision in the workflow — one bad call propagates through the whole batch |
+| queue-planner | **T3 (strongest)** | `claude-opus-5-5, high` | one plan cascades into ~10 items: sequencing, dependency ordering and scoping several items against vision/roadmap/progress *at once* is the single highest-leverage decision in the workflow — one bad call propagates through the whole batch. That leverage is carried by the tier; `high`, the same as `spec-author`, because the step up to the current T3 model supplies the capacity an extra effort notch once bought |
 | spec-author | **T3** | `claude-opus-5-5, high` | the item spec is its single source of truth, cascading into 3 downstream roles |
-| test-writer | **T2 (mid)** | `claude-sonnet-5, medium` | well-scoped against a fixed spec |
-| builder | **T2** (escalates to **T3** as `builder-escalation`) | `claude-sonnet-5, medium` | implements `source_dir` against a fixed spec + tests: the "what" is fixed by committed AC and committed tests, so `medium` covers translating it into code that matches the surrounding modules. The escalation is the deliberate step-up once a failure has survived a fix aimed at it, or the first FAIL shows a serious defect |
+| test-writer | **T2 (mid)** | `claude-sonnet-5-5, medium` | well-scoped against a fixed spec |
+| builder | **T2** (escalates to **T3** as `builder-escalation`) | `claude-sonnet-5-5, medium` | implements `source_dir` against a fixed spec + tests: the "what" is fixed by committed AC and committed tests, so `medium` covers translating it into code that matches the surrounding modules. The escalation is the deliberate step-up once a failure has survived a fix aimed at it, or the first FAIL shows a serious defect |
 | builder-escalation | **T3** | `claude-opus-5-5, medium` | the builder role on T3, not a sixth role: the same definition, dispatched in its place once an item's build fixes escalate. The model is the step-up; `medium` stays because the "what" is still fixed by committed AC and tests, and re-tuning effort needs its own evidence. A runtime that can pin a model per dispatch may express it as an override instead of a second definition |
-| validator | **T2** | `claude-sonnet-5, medium` | quality gate against fixed AC; reconciles + merges |
+| validator | **T2** | `claude-sonnet-5-5, medium` | quality gate against fixed AC; reconciles + merges |
 
 And the two optional definitions described below, which an adapter may omit
 entirely — a runtime that does not express one simply has no cell here:
 
 | Optional definition | Tier | Claude | Why the tier and the effort |
 |---|---|---|---|
-| reviewer | **T2** | `claude-sonnet-5, high` | an adversarial read of one diff turns on meaning — whether an enumeration covers its inputs, whether a guard can pass while the thing it checks is absent — and none of it is a string match, which is where `high` stops a review re-reading the spec back to itself |
+| reviewer | **T2** | `claude-sonnet-5-5, high` | an adversarial read of one diff turns on meaning — whether an enumeration covers its inputs, whether a guard can pass while the thing it checks is absent — and none of it is a string match, which is where `high` stops a review re-reading the spec back to itself |
 | spec-reviewer | **T3** | `claude-opus-5-5, high` | every cross-item conflict it misses becomes a red test or a hand-back several items later, and the judgements are about what a criterion requires and where a symbol lives — exactly what the deterministic `aide check --queue` ahead of it cannot decide |
 
 Recon/claim is **not a role** — it is deterministic (`aide claim`), so no agent and
