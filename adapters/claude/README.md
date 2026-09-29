@@ -287,7 +287,7 @@ one section to defer to.
 | `aide-progress-file` | §1 → `progress.md` | `queue-planner`, `validator` |
 | `aide-queue-and-inbox` | §1 → `queue-NNN.md`, §1 → `insights.md`, §1 → the maintenance queue | `queue-planner` |
 | `aide-item-specs` | §1 → items, authorised paths, environment-gated capabilities; §5 | `spec-author` |
-| `aide-off-platform-verification` | §7 | `validator` |
+| `aide-off-platform-verification` | §7 | `builder`, `builder-escalation` |
 | `aide-test-hygiene` | §6 | `test-writer` |
 | `aide-review-and-validation` | §9 | `reviewer`, `validator` |
 
@@ -311,7 +311,9 @@ three. The split is what makes the reach honest, and it is also what let three
 sections be delivered for the first time — authorised paths and
 environment-gated capabilities to `spec-author`, §7 to `validator`, each of
 which had been reaching its role through an unpinned restatement in the spec
-or a pointer in a template.
+or a pointer in a template. (§7 moved to `builder` and `builder-escalation` in
+2.20.2, issue #329: the validator's per-item CI check ran before any push of
+the item's work existed, and CI is now read at the queue end.)
 
 **Why skills and not `paths:` rules — measured, issue #85.** A `paths:` *rule*
 injects its body on a matching read, and does so inside sub-agent contexts too:
