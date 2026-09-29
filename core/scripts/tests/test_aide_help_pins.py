@@ -1071,6 +1071,40 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_status_stack::test_a_two_queue_stack_is_printed_bottom_first",
           "test_aide_status_stack::test_could_not_look_is_unknown_and_never_none",
           "test_aide_status_stack::test_local_mode_asks_no_forge_about_the_stack")),
+        # `_queue_branch_fixing` over `_branch_queue_files` and the branch's
+        # own progress.md, asked only for a PR that reads `draft` (#330).
+        ("A draft reads #N/draft(fixing) when an item of the queues the "
+         "branch carries (its own queue file and every queue file it adds "
+         "over its base) was sent back by `aide progress reopen` and is still "
+         "open, read from the branch's own progress.md",
+         ("test_aide_queue_pr::test_a_draft_with_a_reopened_item_still_open_reads_fixing",
+          "test_aide_queue_pr::test_fixing_is_read_from_each_branch_and_only_for_its_own_queues",
+          "test_aide_queue_pr::test_an_open_pr_with_a_reopened_item_is_not_marked_fixing")),
+        # `checks_state`: failing first, then pending, then any SUCCESS;
+        # `_CHECK_IGNORED` neither; the `failing check:` lines in cmd_status.
+        ("checks= is the CI state of that PR's head commit: failure when any "
+         "check failed, each failing check then named on a `failing check:` "
+         "line below it; else pending while any has not finished; else "
+         "success when any passed; else none",
+         ("test_aide_queue_pr::test_the_rollup_reads_as_one_ci_state",
+          "test_aide_queue_pr::test_status_reports_each_prs_checks_and_names_the_failing_ones",
+          "test_aide_queue_pr::test_status_reads_pending_and_success")),
+        ("no check at all, or only skipped and neutral ones, which is what a "
+         "CI that skips drafts reports",
+         ("test_aide_queue_pr::test_the_rollup_reads_as_one_ci_state",
+          "test_aide_queue_pr::test_status_reports_each_prs_checks_and_names_the_failing_ones")),
+        # `_CHECK_FAILED`.
+        ("A cancelled, timed-out or stale check is a failed one",
+         "test_aide_queue_pr::test_the_rollup_reads_as_one_ci_state"),
+        # `checks()` in `queue_stack_facts`: `why_not` where the forge
+        # failed, `checks_why` where the rollup did not read; `-` otherwise.
+        ("checks= is unknown where gh could not be asked or answered a state "
+         "status cannot read, the reason on a `checks unknown:` line below "
+         "it, and - where there is no PR and in local mode",
+         ("test_aide_queue_pr::test_checks_are_unknown_with_the_reason_where_the_forge_cannot_be_asked",
+          "test_aide_queue_pr::test_checks_are_unknown_where_the_rollup_cannot_be_read",
+          "test_aide_queue_pr::test_a_rollup_status_cannot_read_is_unknown_with_a_reason",
+          "test_aide_queue_pr::test_checks_are_a_dash_with_no_pr_and_in_local_mode")),
         # `lower_state`: `_is_ancestor(newest(base), newest(b))`, origin's
         # tip where it is ahead.
         ("lower= is moved when the queue branch below has commits this one "
@@ -1621,6 +1655,61 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("where no commit was made, progress.md is put back byte for byte, "
          "so a re-run raises and commits the gate",
          "test_aide_queue_stack::test_gate_whose_commit_fails_changes_nothing_and_a_retry_commits"),
+        # `_queue_pr` (issue #330): `_recorded_branch_base`, `gh pr create
+        # --draft --base <base> --head <branch>`, nothing else asked to change.
+        ("pr [NNN] opens the draft pull request of queue branch "
+         "<prefix>queue-NNN (default: the current branch, which must be one) "
+         "against the base `queue start` recorded, and does nothing else",
+         ("test_aide_queue_pr::test_pr_pushes_first_and_opens_a_draft_against_the_recorded_base",
+          "test_aide_queue_pr::test_pr_on_a_stacked_queue_targets_the_queue_below")),
+        # `_queue_pr_title` over `_branch_queue_files`.
+        ("Its title is `aide: work queue NNN`, or `aide: work queues NNN-MMM` "
+         "when the branch also adds queue file MMM",
+         ("test_aide_queue_pr::test_pr_pushes_first_and_opens_a_draft_against_the_recorded_base",
+          "test_aide_queue_pr::test_pr_titles_a_maintenance_and_stage_pair_by_both_numbers")),
+        # `(args.body is None) == (args.body_file is None)` -> 2.
+        ("its body is exactly one of --body or --body-file",
+         ("test_aide_queue_pr::test_pr_takes_exactly_one_body",
+          "test_aide_queue_pr::test_pr_on_a_stacked_queue_targets_the_queue_below")),
+        # `_push_if_ahead` before `pr create` and before `pr ready`.
+        ("It pushes the branch first where origin lacks commits the branch has",
+         ("test_aide_queue_pr::test_pr_pushes_first_and_opens_a_draft_against_the_recorded_base",
+          "test_aide_queue_pr::test_ready_pushes_first_then_marks_the_draft_ready")),
+        ("A branch that already has an open or draft PR is left alone, exit 0",
+         "test_aide_queue_pr::test_pr_names_the_open_pr_and_opens_nothing"),
+        # `_queue_pr_branch`, then the base, ahead and PR-state refusals.
+        ("It refuses, exit 1: a branch that is not a queue branch, local mode "
+         "or no origin, no recorded base, no commits ahead of that base, a PR "
+         "on the branch that was closed or merged (no second one is opened "
+         "over it), a forge that could not be asked, and a failed push or "
+         "create",
+         ("test_aide_queue_pr::test_off_a_queue_branch_both_refuse_and_ask_nothing",
+          "test_aide_queue_pr::test_local_mode_and_no_origin_both_refuse_and_ask_nothing",
+          "test_aide_queue_pr::test_pr_refuses_a_branch_with_nothing_ahead_of_its_base",
+          "test_aide_queue_pr::test_pr_opens_no_second_pr_over_a_closed_or_merged_one",
+          "test_aide_queue_pr::test_pr_refuses_where_the_forge_cannot_be_asked",
+          "test_aide_queue_pr::test_pr_that_the_forge_refuses_exits_1")),
+        # `_queue_ready`: `gh pr ready N` on a draft, nothing on an open PR.
+        ("ready [NNN] marks that branch's pull request ready for review, and "
+         "does nothing else",
+         ("test_aide_queue_pr::test_ready_pushes_first_then_marks_the_draft_ready",
+          "test_aide_queue_pr::test_ready_names_its_queue_from_another_branch")),
+        ("A PR already ready is left alone, exit 0, and says so",
+         "test_aide_queue_pr::test_ready_leaves_a_ready_pr_alone_and_exits_0"),
+        # `args.undo`: `gh pr ready N --undo`, returned before `_push_if_ahead`.
+        ("--undo turns the PR back into a draft for a fix round, and pushes "
+         "nothing; one already a draft is left alone, exit 0",
+         ("test_aide_queue_pr::test_undo_turns_a_ready_pr_back_to_draft_and_pushes_nothing",
+          "test_aide_queue_pr::test_undo_leaves_a_draft_alone_and_exits_0")),
+        ("Both refuse, exit 1: a branch that is not a queue branch, local mode "
+         "or no origin, a branch with no PR (`queue pr` opens it), a PR closed "
+         "or merged, a forge that could not be asked, and a failed push or "
+         "change",
+         ("test_aide_queue_pr::test_off_a_queue_branch_both_refuse_and_ask_nothing",
+          "test_aide_queue_pr::test_local_mode_and_no_origin_both_refuse_and_ask_nothing",
+          "test_aide_queue_pr::test_ready_refuses_a_branch_with_no_pr_to_mark",
+          "test_aide_queue_pr::test_ready_refuses_where_the_forge_cannot_be_asked",
+          "test_aide_queue_pr::test_ready_that_the_forge_refuses_exits_1")),
         # `_queue_restack` reads `_recorded_branch_base` for every
         # `_is_stack_branch`, which matches `queue-NNN` and not `specs-queue-`.
         ("The stack is read from the base each queue branch recorded at "

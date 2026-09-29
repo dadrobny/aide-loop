@@ -9089,6 +9089,10 @@ def cmd_ledger(args: argparse.Namespace) -> int:
 def cmd_queue(args: argparse.Namespace) -> int:
     if args.action == "restack":
         return _queue_restack(args)
+    if args.action == "pr":
+        return _queue_pr(args)
+    if args.action == "ready":
+        return _queue_ready(args)
     if args.number is None:
         print(f"usage: aide queue {args.action} NNN — {args.action} takes a "
               f"queue number", file=sys.stderr)
@@ -9099,7 +9103,7 @@ def cmd_queue(args: argparse.Namespace) -> int:
         return _queue_gate(args)
     if args.action != "tidy":
         print("usage: aide queue {start|tidy|gate} NNN | aide queue restack "
-              "[NNN --base REF]", file=sys.stderr)
+              "[NNN --base REF] | aide queue {pr|ready} [NNN]", file=sys.stderr)
         return 2
     import datetime as _dt
     repo_root = find_repo_root(args.repo)
@@ -9324,6 +9328,187 @@ def _queue_gate(args: argparse.Namespace) -> int:
         return _commit_or_restore(repo_root, config, tag, "the gate row",
                                   f"docs(aide): plan gate for {what}",
                                   [_progress_rel(config)], before)
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# queue pr / queue ready — the queue's own pull request (issue #330)
+# --------------------------------------------------------------------------- #
+def _queue_pr_branch(repo_root: Path, config: Dict[str, Dict[str, object]],
+                     tag: str, number: Optional[int]
+                     ) -> Tuple[Optional[str], Optional[int]]:
+    """The queue branch `queue pr` / `queue ready` act on, or a refusal.
+
+    ``(branch, number)``, or ``(None, None)`` after printing why: *number*'s
+    ``<prefix>queue-NNN``, which must be a local branch, else the current
+    branch, which must be one. A specs-queue branch is not: its work lands on
+    its queue branch, which carries the PR. Then the forge must be reachable
+    at all — `local` mode and a checkout with no origin open no PR.
+    """
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    mode = str(config["git"].get("mode", "auto-merge"))
+    if number is not None:
+        branch = queue_branch_name(prefix, number)
+        if not _local_branch_exists(repo_root, branch):
+            print(f"{tag}: {branch} is not a branch in this checkout — "
+                  f"'aide queue start {number:03d}' creates it", file=sys.stderr)
+            return None, None
+    else:
+        branch = _current_branch(repo_root)
+        if not _is_stack_branch(branch, prefix):
+            print(f"{tag}: '{branch}' is not a queue branch "
+                  f"({prefix}{_QUEUE_TOKEN}NNN) — switch to one, or name its "
+                  f"queue number", file=sys.stderr)
+            return None, None
+        number = int(branch[len(prefix) + len(_QUEUE_TOKEN):])
+    if mode == "local":
+        print(f"{tag}: git.mode is \"local\", which pushes nothing and opens "
+              f"no pull request", file=sys.stderr)
+        return None, None
+    if not _has_origin(repo_root):
+        print(f"{tag}: this checkout has no remote named origin, so there is "
+              f"no forge to ask", file=sys.stderr)
+        return None, None
+    return branch, number
+
+
+def _push_if_ahead(repo_root: Path, tag: str, branch: str) -> bool:
+    """Push *branch* where origin lacks commits it has; False on a failed push.
+
+    With no ``origin/<branch>`` at all it is published with ``-u``. A branch
+    that has diverged from origin is pushed without force, so the push fails
+    and says so rather than overwriting what someone else pushed.
+    """
+    there = f"origin/{branch}"
+    if _ref_exists(repo_root, there):
+        ahead = git(["rev-list", "--count", f"{there}..{branch}"],
+                    repo_root, check=False).stdout.strip()
+        if ahead in ("", "0"):
+            return True
+    failure = _push_new_branch(repo_root, branch)
+    if failure is not None:
+        print(f"{tag}: {failure}\nNothing was changed on the forge.",
+              file=sys.stderr)
+        return False
+    print(f"{tag}: pushed {branch}")
+    return True
+
+
+def _queue_pr_title(repo_root: Path, config: Dict[str, Dict[str, object]],
+                    branch: str, base: str, number: int) -> str:
+    """``aide: work queue NNN``, or ``aide: work queues NNN-MMM`` for a pair."""
+    nums = sorted(n for n in _branch_queue_files(repo_root, config, branch,
+                                                 base, number) if n >= number)
+    last = nums[-1] if nums else number
+    if last == number:
+        return f"aide: work queue {number:03d}"
+    return f"aide: work queues {number:03d}-{last:03d}"
+
+
+def _queue_pr(args: argparse.Namespace) -> int:
+    """Open the queue branch's draft PR against its recorded base; see -h."""
+    tag = "aide queue pr"
+    if (args.body is None) == (args.body_file is None):
+        print("usage: aide queue pr [NNN] (--body TEXT | --body-file PATH) — "
+              "exactly one body", file=sys.stderr)
+        return 2
+    body_file: Optional[Path] = None
+    if args.body_file is not None:
+        body_file = Path(args.body_file).resolve()
+        if not body_file.is_file():
+            print(f"usage: aide queue pr — --body-file {args.body_file} is "
+                  f"not a file", file=sys.stderr)
+            return 2
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    branch, number = _queue_pr_branch(repo_root, config, tag, args.number)
+    if branch is None or number is None:
+        return 1
+    base = _recorded_branch_base(repo_root, branch)
+    if base is None:
+        print(f"{tag}: {branch} has no recorded base, so there is nothing to "
+              f"open its PR against — 'aide queue restack {number:03d} --base "
+              f"<base>' records one", file=sys.stderr)
+        return 1
+    ahead = git(["rev-list", "--count", f"{base}..{branch}"],
+                repo_root, check=False).stdout.strip()
+    if ahead in ("", "0"):
+        print(f"{tag}: {branch} has no commits ahead of its base {base}, and "
+              f"the forge opens no PR without one — commit the plan first",
+              file=sys.stderr)
+        return 1
+    pr, why = _branch_pr_facts(repo_root, branch)
+    if why is not None:
+        print(f"{tag}: could not ask the forge about {branch} ({why}); "
+              f"nothing was opened", file=sys.stderr)
+        return 1
+    if pr is not None and pr.state in ("open", "draft"):
+        print(f"{tag}: {branch} already has PR {pr.label} — nothing opened")
+        return 0
+    if pr is not None:
+        print(f"{tag}: {branch}'s PR {pr.label} was {pr.state} — a person "
+              f"decided that, so no second PR is opened over it",
+              file=sys.stderr)
+        return 1
+    if not _push_if_ahead(repo_root, tag, branch):
+        return 1
+    title = _queue_pr_title(repo_root, config, branch, base, number)
+    body = (["--body-file", str(body_file)] if body_file is not None
+            else ["--body", str(args.body)])
+    out, why = _gh(repo_root, ["pr", "create", "--draft", "--base", base,
+                               "--head", branch, "--title", title, *body])
+    if out is None:
+        print(f"{tag}: the forge did not open the PR ({why})", file=sys.stderr)
+        return 1
+    url = next((l.strip() for l in out.splitlines() if l.strip()), "")
+    print(f"{tag}: opened draft PR '{title}' for {branch} against {base}"
+          + (f" — {url}" if url else ""))
+    return 0
+
+
+def _queue_ready(args: argparse.Namespace) -> int:
+    """Mark the queue branch's PR ready, or back to draft; see -h."""
+    tag = "aide queue ready" + (" --undo" if args.undo else "")
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    branch, number = _queue_pr_branch(repo_root, config, tag, args.number)
+    if branch is None or number is None:
+        return 1
+    pr, why = _branch_pr_facts(repo_root, branch)
+    if why is not None:
+        print(f"{tag}: could not ask the forge about {branch} ({why}); "
+              f"nothing was changed", file=sys.stderr)
+        return 1
+    if pr is None:
+        print(f"{tag}: {branch} has no pull request — 'aide queue pr "
+              f"{number:03d}' opens its draft", file=sys.stderr)
+        return 1
+    if pr.state not in ("open", "draft"):
+        print(f"{tag}: {branch}'s PR {pr.label} is {pr.state} — there is "
+              f"nothing to mark", file=sys.stderr)
+        return 1
+    if args.undo:
+        if pr.state == "draft":
+            print(f"{tag}: PR #{pr.number} ({branch}) is already a draft")
+            return 0
+        out, why = _gh(repo_root, ["pr", "ready", str(pr.number), "--undo"])
+        if out is None:
+            print(f"{tag}: the forge did not turn PR #{pr.number} back to "
+                  f"draft ({why})", file=sys.stderr)
+            return 1
+        print(f"{tag}: PR #{pr.number} ({branch}) is a draft again")
+        return 0
+    if not _push_if_ahead(repo_root, tag, branch):
+        return 1
+    if pr.state == "open":
+        print(f"{tag}: PR #{pr.number} ({branch}) is already ready for review")
+        return 0
+    out, why = _gh(repo_root, ["pr", "ready", str(pr.number)])
+    if out is None:
+        print(f"{tag}: the forge did not mark PR #{pr.number} ready ({why})",
+              file=sys.stderr)
+        return 1
+    print(f"{tag}: PR #{pr.number} ({branch}) is marked ready for review")
     return 0
 
 
@@ -13467,8 +13652,9 @@ _PR_STATES = {"OPEN": "open", "MERGED": "merged", "CLOSED": "closed"}
 def _gh(repo_root: Path, args: List[str]) -> Tuple[Optional[str], Optional[str]]:
     """Run the forge's CLI: ``(stdout, None)``, or ``(None, why it could not)``.
 
-    The one place the engine asks `gh` anything, and only `status` does.
-    Never raises: missing, unauthenticated, offline and timed out all come
+    The one place the engine asks `gh` anything: `status` reads through it,
+    and `queue pr` / `queue ready` open and flip the queue's own PR through
+    it (issue #330). Never raises: missing, unauthenticated, offline and timed out all come
     back as a reason, which is what lets `status` tell "no PR" from "could
     not look" (issue #303). Resolved through `shutil.which`, which applies
     PATHEXT on Windows, so the `gh.exe` the GitHub CLI installs is found as
@@ -13498,15 +13684,49 @@ def _gh(repo_root: Path, args: List[str]) -> Tuple[Optional[str], Optional[str]]
 def _branch_pr(repo_root: Path, branch: str) -> Tuple[Optional[str], Optional[str]]:
     """*branch*'s pull request as ``#N/<state>``, or ``none``; or ``(None, why)``.
 
+    `_branch_pr_facts`, spelled as the ``pr=`` token.
+    """
+    pr, why = _branch_pr_facts(repo_root, branch)
+    if why is not None:
+        return None, why
+    return ("none" if pr is None else pr.label), None
+
+
+class BranchPr(NamedTuple):
+    """The one pull request `status` and `queue pr` / `queue ready` answer by.
+
+    ``state`` is ``open``, ``draft``, ``merged`` or ``closed``; ``checks``
+    the head commit's CI state as `checks_state` reads it, with ``failing``
+    the names of the checks that failed and ``checks_why`` why it is
+    ``unknown``.
+    """
+    number: int
+    state: str
+    checks: str
+    failing: List[str]
+    checks_why: Optional[str]
+
+    @property
+    def label(self) -> str:
+        return f"#{self.number}/{self.state}"
+
+
+def _branch_pr_facts(repo_root: Path, branch: str
+                     ) -> Tuple[Optional[BranchPr], Optional[str]]:
+    """*branch*'s pull request, ``(None, None)`` for none, ``(None, why)``.
+
     Every PR whose head is *branch*, in any state: an open one wins, then a
     draft, else the newest — a PR closed and followed by another is answered
     by the second.
     An open PR still in draft is ``draft``, never ``open``: GitHub reports a
     draft as OPEN, and the loop keeps its own queue PR in draft until the
-    batch is built, so only a PR marked ready is one awaiting review.
+    batch is built, so only a PR marked ready is one awaiting review. The
+    head commit's check rollup comes in the same call, so CI state costs no
+    second spawn (issue #330).
     """
     out, why = _gh(repo_root, ["pr", "list", "--head", branch, "--state", "all",
-                               "--json", "number,state,isDraft", "--limit", "20"])
+                               "--json", "number,state,isDraft,statusCheckRollup",
+                               "--limit", "20"])
     if out is None:
         return None, why
     try:
@@ -13515,14 +13735,129 @@ def _branch_pr(repo_root: Path, branch: str) -> Tuple[Optional[str], Optional[st
             state = _PR_STATES[str(p["state"]).upper()]
             if state == "open" and p.get("isDraft") is True:
                 state = "draft"
-            found.append((int(p["number"]), state))
+            found.append((int(p["number"]), state, p.get("statusCheckRollup")))
     except (ValueError, KeyError, TypeError, AttributeError):
         return None, "gh answered in a shape status cannot read"
     if not found:
-        return "none", None
-    number, state = max([f for f in found if f[1] == "open"]
-                        or [f for f in found if f[1] == "draft"] or found)
-    return f"#{number}/{state}", None
+        return None, None
+    rank = {"open": 2, "draft": 1}
+    number, state, rollup = max(found, key=lambda f: (rank.get(f[1], 0), f[0]))
+    checks, failing, checks_why = checks_state(rollup)
+    return BranchPr(number, state, checks, failing, checks_why), None
+
+
+#: A check run's ``status`` before it completes, and a commit status's
+#: ``state`` while it waits: the check has not answered yet.
+_CHECK_PENDING = frozenset({"QUEUED", "IN_PROGRESS", "WAITING", "PENDING",
+                            "REQUESTED", "EXPECTED"})
+#: A completed check run's ``conclusion``, or a commit status's ``state``,
+#: that fails the commit. Cancelled, timed out and stale are not green.
+_CHECK_FAILED = frozenset({"FAILURE", "ERROR", "TIMED_OUT", "CANCELLED",
+                           "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE"})
+#: Neither passes nor fails the commit: a check that did not run.
+_CHECK_IGNORED = frozenset({"NEUTRAL", "SKIPPED"})
+
+
+def checks_state(rollup: object) -> Tuple[str, List[str], Optional[str]]:
+    """A head commit's check rollup as ``(checks, failing, why)``.
+
+    *rollup* is `gh`'s ``statusCheckRollup``: check runs (``status``, and
+    ``conclusion`` once ``COMPLETED``) and commit statuses (``state``) mixed.
+    Any failed check is ``failure``, naming each; else any still running is
+    ``pending``; else any passed is ``success``; else ``none`` — no check
+    at all, or only skipped and neutral ones. A value it cannot read is
+    ``unknown``, with the reason, never a guess.
+    """
+    if rollup is None:
+        return "none", [], None
+    if not isinstance(rollup, list):
+        return "unknown", [], "gh answered checks in a shape status cannot read"
+    failing: List[str] = []
+    pending = passed = False
+    for c in rollup:
+        if not isinstance(c, dict):
+            return "unknown", [], "gh answered checks in a shape status cannot read"
+        name = str(c.get("name") or c.get("context") or "?")
+        if "state" in c and "status" not in c:
+            value = str(c.get("state") or "").upper()
+        else:
+            status = str(c.get("status") or "").upper()
+            value = (str(c.get("conclusion") or "").upper()
+                     if status == "COMPLETED" else status)
+        if value in _CHECK_FAILED:
+            failing.append(name)
+        elif value in _CHECK_PENDING:
+            pending = True
+        elif value == "SUCCESS":
+            passed = True
+        elif value not in _CHECK_IGNORED:
+            return "unknown", [], (f"check {name} reads {value or 'nothing'}, "
+                                   f"which status cannot read")
+    if failing:
+        return "failure", failing, None
+    if pending:
+        return "pending", [], None
+    return ("success" if passed else "none"), [], None
+
+
+def _docs_rel(config: Dict[str, Dict[str, object]]) -> str:
+    """docs_dir as a git pathspec — forward slashes on every platform."""
+    return str(config["project"].get("docs_dir", "docs/aide")
+               ).replace("\\", "/").strip("/")
+
+
+def _branch_queue_files(repo_root: Path, config: Dict[str, Dict[str, object]],
+                        ref: str, base: str, own: int) -> Dict[int, str]:
+    """The queue files *ref* carries as its own: number -> path at *ref*.
+
+    Its own number's file, and every queue file *ref* added over its merge
+    base with *base* — a maintenance queue and the stage queue after it ride
+    one branch, named by the lower (`/aide-run-roadmap`). A file tidied
+    (modified) on the branch is the previous queue's, and is not one.
+    """
+    qrel = f"{_docs_rel(config)}/queue"
+    added = git(["diff", "--name-only", "--diff-filter=A", f"{base}...{ref}",
+                 "--", qrel], repo_root, check=False).stdout.split("\n")
+    listed = git(["ls-tree", "--name-only", ref, f"{qrel}/"],
+                 repo_root, check=False).stdout.split("\n")
+    added_nums = {queue_number(Path(p.strip())) for p in added if p.strip()}
+    out: Dict[int, str] = {}
+    for p in (l.strip() for l in listed):
+        n = queue_number(Path(p)) if p.endswith(".md") else None
+        if n is not None and (n == own or n in added_nums) and n not in out:
+            out[n] = p
+    return out
+
+
+def _queue_branch_fixing(repo_root: Path, config: Dict[str, Dict[str, object]],
+                         ref: str, base: str, branch: str) -> bool:
+    """Is an item of *branch*'s own queues reopened and still open at *ref*?
+
+    That is a queue PR turned back to draft for a fix round (`aide progress
+    reopen`), as opposed to one never marked ready (issue #330). Read from
+    the branch's own progress.md and queue files, so it answers for every
+    branch of the stack, not only the one checked out. Anything unreadable
+    answers no: the plain ``draft`` it leaves is the older reading.
+    """
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    try:
+        own = int(branch[len(prefix) + len(_QUEUE_TOKEN):])
+    except ValueError:
+        return False
+    items: set = set()
+    for path in _branch_queue_files(repo_root, config, ref, base, own).values():
+        shown = git(["show", f"{ref}:{path}"], repo_root, check=False)
+        if shown.returncode == 0:
+            items.update(queue_item_numbers(shown.stdout))
+    if not items:
+        return False
+    shown = git(["show", f"{ref}:{_docs_rel(config)}/progress.md"],
+                repo_root, check=False)
+    if shown.returncode != 0:
+        return False
+    return any(r.item in items and r.status in ("planned", "in-progress",
+                                                  "in-review")
+               for r in reopened_items(shown.stdout.splitlines()))
 
 
 class StackBranch(NamedTuple):
@@ -13530,15 +13865,22 @@ class StackBranch(NamedTuple):
 
     Each field is one token of the ``stack N:`` line, spelled as printed:
     ``base`` the recorded base or ``?``; ``pr`` ``#N/open|draft|merged|closed``,
-    ``none``, ``unknown`` (could not look) or ``-`` (local mode); ``lower``
-    ``current``, ``moved``, ``landed``, ``gone``, ``unknown`` or ``-`` (based
-    on no queue branch); ``orphaned`` ``yes``, ``no``, ``unknown`` or ``-``.
+    ``#N/draft(fixing)``, ``none``, ``unknown`` (could not look) or ``-``
+    (local mode); ``checks`` ``none|pending|success|failure|unknown``, or
+    ``-`` with no PR to ask about; ``lower`` ``current``, ``moved``,
+    ``landed``, ``gone``, ``unknown`` or ``-`` (based on no queue branch);
+    ``orphaned`` ``yes``, ``no``, ``unknown`` or ``-``. ``failing`` names
+    each failed check and ``checks_why`` why checks are unknown; each is
+    printed on a line of its own below the stack line.
     """
     name: str
     base: str
     pr: str
     lower: str
     orphaned: str
+    checks: str = "-"
+    failing: Tuple[str, ...] = ()
+    checks_why: Optional[str] = None
 
 
 class StackFacts(NamedTuple):
@@ -13608,6 +13950,7 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
 
     lowers = {b: lower_state(b) for b in order}
     prs: Dict[str, str] = {}
+    facts: Dict[str, BranchPr] = {}
     why_not: Optional[str] = None
     if look:
         asked = order + sorted({str(bases[b]) for b in order
@@ -13616,8 +13959,20 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
             if why_not is not None:
                 prs[b] = "unknown"
                 continue
-            got, why_not = _branch_pr(repo_root, b)
-            prs[b] = got if got is not None else "unknown"
+            got, why_not = _branch_pr_facts(repo_root, b)
+            if why_not is not None:
+                prs[b] = "unknown"
+            elif got is None:
+                prs[b] = "none"
+            else:
+                facts[b] = got
+                prs[b] = got.label
+                # A draft with reopened items still open is one a CI fix
+                # round turned back, not one never marked ready (issue #330).
+                if (got.state == "draft" and bases.get(b)
+                        and _queue_branch_fixing(repo_root, config, newest(b),
+                                                 str(bases[b]), b)):
+                    prs[b] = f"{got.label}(fixing)"
 
     def orphaned(b: str) -> str:
         if not look:
@@ -13643,8 +13998,16 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
             x = bases.get(x)
         return "unknown" if unsure else "no"
 
+    def checks(b: str) -> Tuple[str, Tuple[str, ...], Optional[str]]:
+        if not look:
+            return "-", (), None
+        if b in facts:
+            f = facts[b]
+            return f.checks, tuple(f.failing), f.checks_why
+        return ("unknown", (), why_not) if prs.get(b) == "unknown" else ("-", (), None)
+
     branches = [StackBranch(b, bases.get(b) or "?", prs.get(b, "-"),
-                            lowers[b], orphaned(b)) for b in order]
+                            lowers[b], orphaned(b), *checks(b)) for b in order]
     cap, cap_problem = max_open_queues(config)
 
     closed = [s for s in branches if s.pr.endswith("/closed")]
@@ -13678,10 +14041,10 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
                                      for s in open_prs))
     elif any(s.pr == "unknown" for s in branches):
         awaiting = ("unknown", f"could not look ({why_not})")
-    elif any(s.pr.endswith("/draft") for s in branches):
+    elif any("/draft" in s.pr for s in branches):
         awaiting = ("no", "no queue PR is ready for review; "
                     + ", ".join(f"{s.pr.split('/')[0]} ({s.name})"
-                                for s in branches if s.pr.endswith("/draft"))
+                                for s in branches if "/draft" in s.pr)
                     + " still a draft")
     elif branches:
         awaiting = ("no", "no queue branch's PR is open")
@@ -13858,7 +14221,11 @@ def cmd_status(args: argparse.Namespace) -> int:
           + (" — bottom first" if facts.branches else ""))
     for n, sb in enumerate(facts.branches, start=1):
         print(f"  stack {n}: {sb.name} base={sb.base} pr={sb.pr} "
-              f"lower={sb.lower} orphaned={sb.orphaned}")
+              f"checks={sb.checks} lower={sb.lower} orphaned={sb.orphaned}")
+        for name in sb.failing:
+            print(f"    failing check: {name}")
+        if sb.checks == "unknown" and sb.checks_why:
+            print(f"    checks unknown: {sb.checks_why}")
     print(f"  runnable: {facts.runnable[0]} — {facts.runnable[1]}")
     print(f"  awaiting review: {facts.awaiting_review[0]} — "
           f"{facts.awaiting_review[1]}")
@@ -14502,8 +14869,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_queue = sub.add_parser(
         "queue", help="queue branch creation / maintenance, a planned "
-        "queue's plan-review gate, and keeping a stack of queue branches "
-        "merged forward (restack)",
+        "queue's plan-review gate, keeping a stack of queue branches "
+        "merged forward (restack), and the queue's own PR (pr, ready)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "start NNN creates <prefix>queue-NNN from --base (default "
@@ -14631,11 +14998,39 @@ def build_parser() -> argparse.ArgumentParser:
             "so. 1: stopped — a conflict, an unclean tree, a diverged "
             "or unreadable stack branch, a lower branch it cannot judge, a "
             "failed signature, or a failed fetch or push. 2: usage "
-            "(NNN without --base, or --base without NNN)."))
-    p_queue.add_argument("action", choices=["start", "tidy", "restack", "gate"])
+            "(NNN without --base, or --base without NNN).\n"
+            "\n"
+            "pr [NNN] opens the draft pull request of queue branch "
+            "<prefix>queue-NNN (default: the current branch, which must be "
+            "one) against the base `queue start` recorded, and does nothing "
+            "else. Its title is `aide: work queue NNN`, or `aide: work queues "
+            "NNN-MMM` when the branch also adds queue file MMM (a maintenance "
+            "queue and the stage queue after it); its body is exactly one of "
+            "--body or --body-file, which the caller writes. It pushes the "
+            "branch first where origin lacks commits the branch has. A branch "
+            "that already has an open or draft PR is left alone, exit 0, and "
+            "the PR named. It refuses, exit 1: a branch that is not a queue "
+            "branch, local mode or no origin, no recorded base, no commits "
+            "ahead of that base, a PR on the branch that was closed or merged "
+            "(no second one is opened over it), a forge that could not be "
+            "asked, and a failed push or create. 2: usage.\n"
+            "\n"
+            "ready [NNN] marks that branch's pull request ready for review, "
+            "and does nothing else. It pushes the branch first where origin "
+            "lacks commits the branch has, so CI sees the tree the queue "
+            "built. A PR already ready is left alone, exit 0, and says so. "
+            "--undo turns the PR back into a draft for a fix round, and "
+            "pushes nothing; one already a draft is left alone, exit 0. Both "
+            "refuse, exit 1: a branch that is not a queue branch, local mode "
+            "or no origin, a branch with no PR (`queue pr` opens it), a PR "
+            "closed or merged, a forge that could not be asked, and a failed "
+            "push or change."))
+    p_queue.add_argument("action", choices=["start", "tidy", "restack", "gate",
+                                            "pr", "ready"])
     p_queue.add_argument("number", type=int, nargs="?", default=None,
                          help="queue number (start, tidy, gate; restack only "
-                              "with --base)")
+                              "with --base; pr, ready: default the current "
+                              "queue branch)")
     p_queue.add_argument("--through", type=int, default=None, metavar="MMM",
                          help="gate: one gate over queues NNN to MMM (a "
                               "maintenance queue and its stage queue)")
@@ -14651,6 +15046,12 @@ def build_parser() -> argparse.ArgumentParser:
                          help="start, restack: print what would be done, "
                               "change nothing")
     p_queue.add_argument("--date", default=None, help="tidy: override the supersede date (YYYY-MM-DD)")
+    p_queue.add_argument("--body", default=None,
+                         help="pr: the PR body, as text")
+    p_queue.add_argument("--body-file", default=None, metavar="PATH",
+                         help="pr: the PR body, read from this file")
+    p_queue.add_argument("--undo", action="store_true",
+                         help="ready: turn the PR back into a draft")
     p_queue.set_defaults(func=cmd_queue)
 
     p_ins = sub.add_parser(
@@ -15005,13 +15406,27 @@ def register_git_subcommands(sub) -> None:
             "The stack of unmerged queue branches \u2014 the ones `aide queue "
             "start` counts against [loop] max_open_queues \u2014 is printed "
             "bottom first, after a `stack: N/CAP` line: one `stack N: <branch> "
-            "base= pr= lower= orphaned=` line each, a field one token a "
+            "base= pr= checks= lower= orphaned=` line each, a field one token a "
             "program can read. base= is the branch's recorded base, ? where "
             "none is recorded. pr= is its pull request as #N/open, #N/draft (open "
             "but not yet marked ready), #N/merged or #N/closed (an open or "
             "draft one first, else the newest), none where gh "
             "found none, unknown where gh could not be asked, and - in local "
-            "mode, which asks no forge. lower= is moved when the queue branch "
+            "mode, which asks no forge. A draft reads #N/draft(fixing) when an "
+            "item of the queues the branch carries (its own queue file and "
+            "every queue file it adds over its base) was sent back by `aide "
+            "progress reopen` and is still open, read from the branch's own "
+            "progress.md: a PR turned back to draft for a fix round, not one "
+            "never marked ready. checks= is the CI state of that PR's head "
+            "commit: failure when any check failed, each failing check then "
+            "named on a `failing check:` line below it; else pending while "
+            "any has not finished; else success when any passed; else none "
+            "\u2014 no check at all, or only skipped and neutral ones, which "
+            "is what a CI that skips drafts reports. A cancelled, timed-out "
+            "or stale check is a failed one. checks= is unknown where gh "
+            "could not be asked or answered a state status cannot read, the "
+            "reason on a `checks unknown:` line below it, and - where there "
+            "is no PR and in local mode. lower= is moved when the queue branch "
             "below has commits this one lacks, so `aide queue restack` is due, "
             "and current when it has none; landed or gone when the recorded "
             "lower is no longer unmerged and is still a branch, or is not; - on a base "

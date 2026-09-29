@@ -169,7 +169,7 @@ def test_a_one_queue_stack_reports_its_base_and_pr(tmp_path: Path, monkeypatch, 
     f = _status(repo, capsys)
     assert f["size"] == "1/3"
     assert f["stack"] == [{"name": Q1, "base": "main", "pr": "#7/open",
-                           "lower": "-", "orphaned": "no"}]
+                           "checks": "none", "lower": "-", "orphaned": "no"}]
     assert f["awaiting"] == "yes"
 
 
@@ -266,7 +266,7 @@ def test_a_closed_and_deleted_lower_still_orphans_the_branch_above(
     calls = _forge(monkeypatch, {Q1: [{"number": 7, "state": "CLOSED"}]})
     f = _status(repo, capsys)
     assert f["stack"] == [{"name": Q2, "base": Q1, "pr": "none",
-                           "lower": "gone", "orphaned": "yes"}]
+                           "checks": "-", "lower": "gone", "orphaned": "yes"}]
     assert any(Q1 in c for c in calls)
     assert f["runnable"] == "no"
 
