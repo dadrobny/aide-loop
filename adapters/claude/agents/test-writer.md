@@ -9,6 +9,7 @@ description: >-
   Commits the test file(s) on the item's branch and returns a coverage summary.
 model: claude-sonnet-5
 effort: medium
+disallowedTools: Agent
 skills:
   - aide-test-hygiene
 ---

@@ -360,6 +360,12 @@ def test_update_rewrites_the_hook_wrappers_a_kept_settings_file_holds(consumer: 
             for hook in group["hooks"]:
                 hook["command"] = (_HOOK_WRAPPER_2_3_0
                                    + hook["command"].rsplit(" ", 1)[-1])
+    # A file that old predates 2.19.0's spawn guard and depth cap (issue #311),
+    # which the update adds.
+    settings["hooks"]["PreToolUse"] = [
+        g for g in settings["hooks"]["PreToolUse"]
+        if not g["hooks"][0]["command"].endswith("/spawn_model_guard.py")]
+    del settings["env"]
     own = "python tools/project_hook.py"
     settings["hooks"]["PreToolUse"].append(
         {"matcher": "Bash", "hooks": [{"type": "command", "command": own}]})
@@ -372,7 +378,10 @@ def test_update_rewrites_the_hook_wrappers_a_kept_settings_file_holds(consumer: 
                 for group in groups for hook in group["hooks"]]
     assert own in commands
     framework = [c for c in commands if c != own]
-    assert len(framework) == 5
+    assert len(framework) == 6
+    assert any(c.endswith(" _ .claude/hooks/spawn_model_guard.py")
+               for c in framework), framework
+    assert after["env"]["CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH"] == "2"
     assert all(c.startswith("sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"")
                for c in framework), framework
     assert "Bash(python .claude/scripts/await_run.py:*)" in after["permissions"]["allow"]

@@ -9,6 +9,7 @@ description: >-
   on FAIL hands back with specifics.
 model: claude-sonnet-5
 effort: medium
+disallowedTools: Agent
 skills:
   - aide-review-and-validation
   - aide-document-format

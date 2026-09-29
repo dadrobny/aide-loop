@@ -43,9 +43,26 @@ def _current(script: str) -> str:
                 if h["command"].endswith(f"/{script}"))
 
 
+def _without_2_19_0(settings: dict) -> dict:
+    """*settings* without what 2.19.0 added (issue #311): the spawn guard's
+    registration and the spawn-depth `env` key — the shape of every settings
+    file a release wrote before it."""
+    for event, script in install._MIGRATED_HOOKS:
+        settings["hooks"][event] = [
+            g for g in settings["hooks"][event]
+            if install._group_script(g) != script]
+    env = settings.get("env", {})
+    for key in install._MIGRATED_ENV:
+        env.pop(key, None)
+    if not env:
+        settings.pop("env", None)
+    return settings
+
+
 def _as_2_3_0(settings: dict) -> dict:
-    """*settings* with every framework hook as 2.3.0 wrote it, and without the
-    allow entries 2.4.0 added."""
+    """*settings* with every hook 2.3.0 shipped as 2.3.0 wrote it, without the
+    allow entries 2.4.0 added, and without what 2.19.0 added."""
+    settings = _without_2_19_0(settings)
     for hook in install._hook_entries(settings):
         script = hook["command"].rsplit("/", 1)[-1]
         hook["command"] = _WRAPPER_2_3_0 + f".claude/hooks/{script}"
@@ -68,7 +85,9 @@ def test_a_2_3_0_settings_file_becomes_the_framework_base(tmp_path: Path):
     dst = tmp_path / "settings.json"
     _write(dst, _as_2_3_0(_base()))
     edits = install.migrate_settings(_base(), dst, [])
-    assert len(edits) == 5 + len(install._MIGRATED_ALLOW)
+    assert len(edits) == (5 + len(install._MIGRATED_ALLOW)
+                          + len(install._MIGRATED_HOOKS)
+                          + len(install._MIGRATED_ENV))
     assert _read(dst) == _base()
     # Byte for byte, too, so the comparison that follows reports it unchanged
     # rather than writing a .aide-merge over a file that now matches.
@@ -128,7 +147,7 @@ def test_a_projects_own_hooks_and_edited_framework_hooks_are_untouched(tmp_path:
     commands = [h["command"] for h in install._hook_entries(after)]
     assert "python scripts/my_hook.py" in commands
     assert edited in commands
-    assert after["env"] == {"PROJECT": "1"}
+    assert after["env"]["PROJECT"] == "1"
     assert after["permissions"]["deny"] == ["Bash(rm -rf:*)"]
     # The untouched-by-the-project framework hooks were still rewritten.
     assert _current("log_permission_event.py") in commands
@@ -165,7 +184,8 @@ def test_it_is_idempotent(tmp_path: Path):
 def test_a_file_needing_nothing_is_not_rewritten(tmp_path: Path):
     """Not even re-serialised: a consumer's formatting is theirs."""
     dst = tmp_path / "settings.json"
-    text = '{"permissions": {"allow": ["Bash(python .claude/scripts/await_run.py:*)",' \
+    text = '{"env": {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "2"}, ' \
+           '"permissions": {"allow": ["Bash(python .claude/scripts/await_run.py:*)",' \
            ' "Bash(python3 .claude/scripts/await_run.py:*)"]}}'
     dst.write_text(text, encoding="utf-8")
     assert install.migrate_settings(_base(), dst, []) == []
@@ -226,3 +246,107 @@ def test_an_overlay_consumer_gets_the_anchored_wrapper_by_regeneration(tmp_path:
         h["command"] for h in install._hook_entries(_base())]
     for entry in install._MIGRATED_ALLOW:
         assert entry in after["permissions"]["allow"]
+
+
+# --------------------------------------------------------------------------- #
+# 2.19.0 (issue #311): a registration and an env key, added where absent
+# --------------------------------------------------------------------------- #
+def _spawn_guard_groups(settings: dict) -> list:
+    return [g for g in settings["hooks"]["PreToolUse"]
+            if install._group_script(g) == "spawn_model_guard.py"]
+
+
+def test_the_migrated_hooks_and_env_are_the_bases():
+    base = _base()
+    for event, script in install._MIGRATED_HOOKS:
+        assert any(install._group_script(g) == script
+                   for g in base["hooks"][event])
+    for key in install._MIGRATED_ENV:
+        assert key in base["env"]
+
+
+def test_a_2_18_settings_file_gets_the_spawn_guard_and_the_depth_cap(tmp_path: Path):
+    dst = tmp_path / "settings.json"
+    _write(dst, _without_2_19_0(_base()))
+    log: list = []
+    edits = install.migrate_settings(_base(), dst, log)
+    assert edits == [
+        "hook for .claude/hooks/spawn_model_guard.py registered on PreToolUse "
+        "(issue #311)",
+        "env CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=2 added (issue #311)"]
+    assert len(log) == 2
+    # Where the base has them, so the file is the base again, byte for byte.
+    assert dst.read_text(encoding="utf-8") == (
+        ADAPTER_DIR / "settings.json").read_text(encoding="utf-8")
+
+
+def test_the_spawn_guard_is_not_added_twice(tmp_path: Path):
+    dst = tmp_path / "settings.json"
+    _write(dst, _without_2_19_0(_base()))
+    install.migrate_settings(_base(), dst, [])
+    once = dst.read_bytes()
+    assert install.migrate_settings(_base(), dst, []) == []
+    assert dst.read_bytes() == once
+    assert len(_spawn_guard_groups(_read(dst))) == 1
+
+
+def test_a_registration_the_project_moved_or_edited_is_left_alone(tmp_path: Path):
+    settings = _without_2_19_0(_base())
+    own = ("python .claude/hooks/spawn_model_guard.py --strict")
+    settings["hooks"].setdefault("PostToolUse", []).append(
+        {"matcher": "Agent", "hooks": [{"type": "command", "command": own}]})
+    dst = tmp_path / "settings.json"
+    _write(dst, settings)
+    install.migrate_settings(_base(), dst, [])
+    after = _read(dst)
+    assert _spawn_guard_groups(after) == []
+    assert own in [h["command"] for h in install._hook_entries(after)]
+
+
+def test_a_project_without_hooks_gets_no_registration(tmp_path: Path):
+    settings = _without_2_19_0(_base())
+    del settings["hooks"]
+    dst = tmp_path / "settings.json"
+    _write(dst, settings)
+    install.migrate_settings(_base(), dst, [])
+    assert "hooks" not in _read(dst)
+
+
+def test_a_project_without_the_events_list_gets_no_registration(
+        tmp_path: Path):
+    settings = _without_2_19_0(_base())
+    del settings["hooks"]["PreToolUse"]
+    dst = tmp_path / "settings.json"
+    _write(dst, settings)
+    edits = install.migrate_settings(_base(), dst, [])
+    assert "PreToolUse" not in _read(dst)["hooks"]
+    assert not any("spawn_model_guard" in e for e in edits)
+
+
+def test_a_depth_the_project_set_is_kept(tmp_path: Path):
+    settings = _without_2_19_0(_base())
+    settings["env"] = {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "3"}
+    dst = tmp_path / "settings.json"
+    _write(dst, settings)
+    edits = install.migrate_settings(_base(), dst, [])
+    assert not any("env" in e for e in edits)
+    assert _read(dst)["env"] == {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "3"}
+
+
+def test_the_projects_own_env_keys_are_kept(tmp_path: Path):
+    settings = _without_2_19_0(_base())
+    settings["env"] = {"PROJECT": "1", "OTHER": "x"}
+    dst = tmp_path / "settings.json"
+    _write(dst, settings)
+    install.migrate_settings(_base(), dst, [])
+    assert _read(dst)["env"] == {"PROJECT": "1", "OTHER": "x",
+                                 "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "2"}
+
+
+def test_an_env_that_is_not_an_object_is_left_alone(tmp_path: Path):
+    settings = _without_2_19_0(_base())
+    settings["env"] = "oops"
+    dst = tmp_path / "settings.json"
+    _write(dst, settings)
+    install.migrate_settings(_base(), dst, [])
+    assert _read(dst)["env"] == "oops"

@@ -9,6 +9,7 @@ description: >-
   progress.md.
 model: claude-sonnet-5
 effort: high
+disallowedTools: Agent
 skills:
   - aide-review-and-validation
 ---

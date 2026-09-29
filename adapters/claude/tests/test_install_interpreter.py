@@ -174,11 +174,11 @@ def _all_hook_commands(parsed: dict) -> list:
 
 
 def test_every_registered_hook_uses_the_anchored_wrapper():
-    """All five registrations, InstructionsLoaded included — `_hook_commands`
+    """All six registrations, InstructionsLoaded included — `_hook_commands`
     above reads the two tool events only."""
     parsed = json.loads(ADAPTER_SETTINGS.read_text(encoding="utf-8"))
     cmds = _all_hook_commands(parsed)
-    assert len(cmds) == 5, cmds
+    assert len(cmds) == 6, cmds
     prefixes = {c.rsplit(" _ ", 1)[0] for c in cmds}
     assert len(prefixes) == 1, "the hooks no longer share one wrapper"
     assert all(c.rsplit(" _ ", 1)[1].startswith(".claude/hooks/") for c in cmds)

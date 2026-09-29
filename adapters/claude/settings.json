@@ -1,5 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "env": {
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "2"
+  },
   "permissions": {
     "defaultMode": "default",
     "allow": [
@@ -136,6 +139,15 @@
           {
             "type": "command",
             "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/command_hygiene_guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/spawn_model_guard.py"
           }
         ]
       },

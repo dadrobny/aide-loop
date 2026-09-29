@@ -359,3 +359,44 @@ def test_no_agent_spec_argues_for_its_own_model(path: Path):
         f"{path.name}: opens a `Model & effort` block. The tier, the model, "
         f"the effort and the reason for each live in ADAPTER-SPEC.md §2's "
         f"table; a role cannot act on them.")
+
+
+# --------------------------------------------------------------------------- #
+# Which roles may spawn a helper (issue #311)
+# --------------------------------------------------------------------------- #
+#: The roles whose work can call for a helper — a sweep across tests, specs or
+#: a queue — and so keep the spawning tool. Every other role is refused it by
+#: `disallowedTools: Agent`: a helper outside the role's model pin is a cost
+#: with no work behind it there. The hook `hooks/spawn_model_guard.py` governs
+#: the model of whatever the roles below do spawn.
+_MAY_SPAWN = {"spec-author", "spec-reviewer", "queue-planner"}
+_MAY_NOT_SPAWN = {"builder", "builder-escalation", "test-writer", "validator",
+                  "reviewer"}
+
+
+def _disallowed_tools(path: Path) -> set:
+    value = _frontmatter(path).get("disallowedTools", "")
+    return {tool.strip() for tool in value.split(",") if tool.strip()}
+
+
+def test_the_spawn_split_covers_every_agent_spec():
+    """A new role must be placed on one side deliberately — and a split that
+    names a role nobody ships is a decision about nothing."""
+    assert _MAY_SPAWN.isdisjoint(_MAY_NOT_SPAWN)
+    assert {p.stem for p in _AGENT_FILES} == _MAY_SPAWN | _MAY_NOT_SPAWN
+
+
+@pytest.mark.parametrize("path", _AGENT_FILES, ids=lambda p: p.stem)
+def test_only_the_roles_that_may_spawn_keep_the_agent_tool(path: Path):
+    """Both directions: a role on the refused side without the key spawns
+    helpers on its own model, and one on the permitted side with it cannot run
+    the sweep its instructions describe."""
+    disallowed = _disallowed_tools(path)
+    if path.stem in _MAY_NOT_SPAWN:
+        assert "Agent" in disallowed, (
+            f"{path.name}: add `disallowedTools: Agent` to the frontmatter — "
+            f"this role has no work to delegate (issue #311)")
+    else:
+        assert "Agent" not in disallowed, (
+            f"{path.name}: this role may spawn a helper; drop `Agent` from "
+            f"`disallowedTools`, or move it across the split deliberately")
