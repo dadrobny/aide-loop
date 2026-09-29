@@ -140,6 +140,9 @@ locally.
    - `none`: report that no CI ran on the PR, naming the likely cause: no
      workflow, or a trigger that ignores this PR (below).
    - `unknown`: report the `checks unknown:` reason and stop.
+   - A PR closed or merged during the wait, or one still a draft after
+     `aide queue ready` has been run once more, is reported, and the step
+     stops.
 6. **After an early ready**, the gated items still land later, and each
    merge pushes the branch. The CI that counts is the run on the **last**
    push, so the step runs again when `claim` next prints a bare `none left`,
