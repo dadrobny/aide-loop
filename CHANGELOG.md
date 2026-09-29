@@ -132,7 +132,10 @@ Two binding changes, a model move for T2 and an effort move for
   (issue #325).** `test-writer`, `builder`, `validator` and the optional
   `reviewer` now read `model: claude-sonnet-5-5`, and `ADAPTER-SPEC.md` §2's
   matching Claude cells read `claude-sonnet-5-5, medium` /
-  `claude-sonnet-5-5, high`. Their effort values are unchanged.
+  `claude-sonnet-5-5, high`. Their effort values are unchanged. The ID was
+  probed as served before this landed: a sub-agent pinned to it in
+  frontmatter spawned on `claude-sonnet-5-5` under Claude Code 2.1.284 on the
+  first-party API, with no unrecognized-model warning.
 - **`queue-planner` drops from `xhigh` to `high` effort** on
   `claude-opus-5-5`, the same as `spec-author`. This is a maintainer
   judgement beyond #325's scope, that the current T3 model no longer needs
