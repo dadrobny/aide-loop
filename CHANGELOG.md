@@ -106,6 +106,21 @@ instead — that is the bump policy above, and it is enforced by
 
 ### Fixed
 
+- **An overlay `remove` of a write-scope rule the installer templated from
+  `aide.toml` is reported as that, not as a rule the framework dropped (issue
+  #339).** With `source_dir` (or `tests_dir`) off its default, the installer
+  rewrites the shipped `Write(src/**)` / `Edit(src/**)` to the project's dir
+  before the overlay merges, so an overlay's `remove` of the shipped form
+  missed the base and warned that "the framework default no longer contains
+  it" — while `adapters/claude/settings.json` plainly still shipped it. The
+  warning now names the rewritten rule and the `aide.toml` key it came from,
+  says the remove has nothing to act on, and, when the overlay also adds the
+  rewritten rule, that the add is redundant too — or, when it does not, that
+  removing the rewritten rule is what drops the scope. What a `remove` matches is
+  unchanged: it still acts on the templated base, so a `remove` of the
+  templated form still narrows the scope. Installer-only: nothing a
+  consumer's `--update` copies changed, so `core/VERSION` is unmoved.
+
 - **`install.py` now writes `.aide/VERSION` last, not first (issue #80).** It
   used to land in step 1 as part of the engine copy, so every later step — the
   adapter control files, `settings.json`, the usage probe, the context import,

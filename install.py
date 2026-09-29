@@ -565,12 +565,18 @@ def _is_operator(value: object) -> bool:
     )
 
 
-def _apply_list_operator(base_value, op: dict, path: str, warnings: List[str]) -> list:
+def _apply_list_operator(base_value, op: dict, path: str, warnings: List[str],
+                         rewritten: Optional[Dict[str, str]] = None) -> list:
     """Apply an {add, remove} operator to a base list, order-stable and deduped.
 
     ``base_value`` absent (None) starts from an empty list (so an operator can
     introduce a list the framework does not ship, e.g. ``deny``). A base value
     that exists but is not a list is an irreconcilable conflict.
+
+    ``rewritten`` maps a rule as the framework ships it to the rule the
+    installer templated it into from aide.toml (issue #339). A ``remove`` of
+    the shipped form then misses the templated base for that reason, not
+    because the framework dropped the rule, and the warning says which.
     """
     if base_value is None:
         base_list: list = []
@@ -587,11 +593,28 @@ def _apply_list_operator(base_value, op: dict, path: str, warnings: List[str]) -
         raise OverlayError(f"{path}: 'add'/'remove' must each be a list")
 
     result = [item for item in base_list if item not in remove]
+    rewritten = rewritten or {}
     for item in remove:
-        if item not in base_list:
+        if item in base_list:
+            continue
+        target = rewritten.get(item) if isinstance(item, str) else None
+        if target is not None and target in base_list:
+            key = _SCOPE_TEMPLATED[item][0]
+            if target in add:
+                also = f" (and the add of {target!r}, which the base now carries)"
+            elif target in remove:
+                also = ""  # the templated rule is already being removed
+            else:
+                also = f" (to lose that write scope, remove {target!r} instead)"
             warnings.append(
-                f"{path}: remove pins {item!r} but the framework default no longer "
-                f"contains it - drop this stale entry"
+                f"{path}: remove pins {item!r}, which the installer already "
+                f"rewrote to {target!r} from aide.toml {key} - the remove has "
+                f"nothing to act on; drop it{also}"
+            )
+        else:
+            warnings.append(
+                f"{path}: remove pins {item!r} but the framework default no "
+                f"longer contains it - drop this stale entry"
             )
     for item in add:
         if item not in result:  # deep equality (== on JSON values); dedupe
@@ -599,7 +622,8 @@ def _apply_list_operator(base_value, op: dict, path: str, warnings: List[str]) -
     return result
 
 
-def _merge(base, overlay, path: str, warnings: List[str]) -> dict:
+def _merge(base, overlay, path: str, warnings: List[str],
+           rewritten: Optional[Dict[str, str]] = None) -> dict:
     """Deep-merge ``overlay`` (a JSON object) onto ``base``, returning a new dict."""
     if not isinstance(overlay, dict):
         raise OverlayError(f"{path or '<root>'}: overlay must be a JSON object")
@@ -615,10 +639,10 @@ def _merge(base, overlay, path: str, warnings: List[str]) -> dict:
         here = f"{path}.{key}" if path else key
         bv = result.get(key)  # None if absent
         if _is_operator(ov):
-            result[key] = _apply_list_operator(bv, ov, here, warnings)
+            result[key] = _apply_list_operator(bv, ov, here, warnings, rewritten)
         elif isinstance(ov, dict):
             if bv is None or isinstance(bv, dict):
-                result[key] = _merge(bv or {}, ov, here, warnings)
+                result[key] = _merge(bv or {}, ov, here, warnings, rewritten)
             else:
                 raise OverlayError(
                     f"{here}: cannot merge an object over the framework's "
@@ -635,15 +659,20 @@ def _merge(base, overlay, path: str, warnings: List[str]) -> dict:
     return result
 
 
-def merge_overlay(base: dict, overlay: dict) -> Tuple[dict, List[str]]:
+def merge_overlay(base: dict, overlay: dict,
+                  rewritten: Optional[Dict[str, str]] = None
+                  ) -> Tuple[dict, List[str]]:
     """Deterministically merge a project overlay onto the framework settings base.
 
     Pure: neither argument is mutated. Returns ``(merged, warnings)``; warnings are
     advisory (e.g. a stale ``remove`` pin) and never block. Raises ``OverlayError``
-    on an irreconcilable conflict or malformed operator.
+    on an irreconcilable conflict or malformed operator. ``rewritten`` is
+    ``_scope_rewrites`` for the base's templating (its keys must be
+    ``_SCOPE_TEMPLATED`` keys), so a warning about a missed ``remove`` can
+    name the cause.
     """
     warnings: List[str] = []
-    merged = _merge(base, overlay, "", warnings)
+    merged = _merge(base, overlay, "", warnings, rewritten)
     return merged, warnings
 
 
@@ -1398,7 +1427,8 @@ def install_settings(adapter_dir: Path, claude_dir: Path, target: Path, log: Lis
     base, base_text = _effective_base(src, source_dir, tests_dir)
 
     if overlay_path.is_file():
-        _generate_settings_from_overlay(base, overlay_path, dst, log)
+        _generate_settings_from_overlay(base, overlay_path, dst, log,
+                                        _scope_rewrites(source_dir, tests_dir))
         return
 
     if not dst.exists():
@@ -1664,6 +1694,19 @@ def _apply_scope_template(base: dict, source_dir: str, tests_dir: str) -> dict:
     return result
 
 
+def _scope_rewrites(source_dir: str, tests_dir: str) -> Dict[str, str]:
+    """Each shipped write-scope rule ``_apply_scope_template`` rewrites, mapped
+    to what it becomes; empty for the default dirs, and a rule left unchanged
+    (its dir is the default) is not a rewrite."""
+    dirs = {"source_dir": source_dir, "tests_dir": tests_dir}
+    out: Dict[str, str] = {}
+    for shipped, (key, fmt) in _SCOPE_TEMPLATED.items():
+        target = fmt.format(dirs[key])
+        if target != shipped:
+            out[shipped] = target
+    return out
+
+
 _ENGINE_LOAD_CONFIG = None
 
 
@@ -1826,7 +1869,9 @@ def _effective_base(src: Path, source_dir: str, tests_dir: str) -> Tuple[dict, s
 
 
 def _generate_settings_from_overlay(base: dict, overlay_path: Path, dst: Path,
-                                    log: List[str]) -> None:
+                                    log: List[str],
+                                    rewritten: Optional[Dict[str, str]] = None
+                                    ) -> None:
     """Write dst = deterministic merge of the (effective) framework base and the
     project overlay. Raises OverlayError (before any write) on a malformed input."""
     try:
@@ -1834,7 +1879,7 @@ def _generate_settings_from_overlay(base: dict, overlay_path: Path, dst: Path,
     except json.JSONDecodeError as exc:
         raise OverlayError(f"{overlay_path} is not valid JSON: {exc}") from exc
 
-    merged, warnings = merge_overlay(base, overlay)
+    merged, warnings = merge_overlay(base, overlay, rewritten)
     text = json.dumps(merged, indent=2, ensure_ascii=False) + "\n"
     json.loads(text)  # never emit a settings.json that will not parse
 
