@@ -1002,6 +1002,26 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # The "none left" report is built from the gates that actually apply.
         ("It will not offer a blocked item",
          "test_aide_gates::test_none_left_names_only_the_gates_that_apply"),
+        # `_early_ready`, printed last on both exit-0 paths of
+        # `_report_nothing_claimable` — the queue-end step's early trigger,
+        # decided here so the runner never reads it from reason prose (#331).
+        ("Every \"none left \u2014 \u2026\" report that exits 0 ends with an "
+         "`early ready:` line, yes or no before an em dash",
+         ("test_aide_gates::test_early_ready_is_yes_when_every_open_item_waits_on_a_gate",
+          "test_aide_gates::test_early_ready_is_no_when_no_gate_explains_the_hold")),
+        # The three clauses of the `yes`, each broken by one test: the
+        # fixed point over dependencies, the claimed item, the ✅ clause.
+        ("yes when every open item waits on an unresolved human gate \u2014 "
+         "one reaches it, or it waits only on items that do \u2014 no open "
+         "item is claimed, and at least one item of the queues checked is \u2705",
+         ("test_aide_gates::test_early_ready_is_yes_when_every_open_item_waits_on_a_gate",
+          "test_aide_gates::test_an_item_waiting_only_on_a_gated_item_is_held_by_the_gate",
+          "test_aide_gates::test_early_ready_is_no_while_an_open_item_is_claimed",
+          "test_aide_gates::test_early_ready_is_no_before_any_item_has_landed")),
+        # `if not relevant and not open_items: print("none left")` returns
+        # before `_early_ready` is printed.
+        ("A bare \"none left\" (nothing open) carries no such line",
+         "test_aide_git::test_an_empty_queue_still_says_only_none_left"),
         # `if block_everything or unreadable_gate_rows(plines): return None`,
         # and `cmd_claim` exits 1 naming the row.
         ("A human-gates row it cannot read holds every item",

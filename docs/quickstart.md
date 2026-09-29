@@ -106,6 +106,32 @@ Set it in `aide.toml` before a long run. Framework/process changes always want a
 reviewed PR regardless (see `.aide/README.md` → Merge policy; in this repo,
 [`../core/README.md`](../core/README.md)).
 
+### CI on the queue PR
+
+When a queue is built out, the runner marks the queue's PR ready, waits for
+CI and reads the result (the queue-end step in `.aide/README.md`; in this
+repo, [`../core/README.md`](../core/README.md)). It does the same earlier when
+only a human gate still holds the queue's last items, so CI runs while you
+decide. For that to work, your CI should run on pull requests that are ready
+for review and skip drafts. It needs no `push` trigger, because
+`synchronize` already covers every push to the PR's branch:
+
+```yaml
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+jobs:
+  test:
+    if: github.event.pull_request.draft == false
+    # ...
+```
+
+Put the `if:` on every job. If CI also runs on drafts, it still works, but you
+pay for a run on every push while the queue is being built, and the runner
+reads only the last one. If no workflow runs on the PR at all, the runner
+reports that no CI ran.
+
 ## 5. Unattended overnight runs (optional)
 
 The framework relaunches nothing; use any scheduler you like, and a shell loop is

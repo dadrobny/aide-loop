@@ -8,7 +8,9 @@ every subcommand, so the decision is held here rather than by a new rule:
 both verbs in the shapes a runner types are pre-approved and asked by
 nothing, the raw `gh` forms still ask, and the hygiene hook passes the verbs
 through. Coverage is read with the reviewer's own ``is_covered``, so the test
-asks the question a permission review asks. Stdlib + pytest only.
+asks the question a permission review asks. Since issue #331 §3 forbids the
+raw forms, and no agent, command, skill or rule names one. Stdlib + pytest
+only.
 """
 from __future__ import annotations
 
@@ -61,3 +63,32 @@ def test_the_hygiene_hook_lets_the_queue_pr_verbs_through(command):
 ])
 def test_the_raw_forge_forms_stay_ask_gated(command):
     assert rp.is_covered("Bash", command, _PERMS["ask"])
+
+
+# --------------------------------------------------------------------------- #
+# §3 forbids the raw forms, and no control file instructs them (issue #331)
+# --------------------------------------------------------------------------- #
+_RAW = ("gh pr create", "gh pr ready")
+
+
+def test_section_3_forbids_what_settings_ask_gates():
+    """The rule and its enforcement move together: §3 names both raw forms,
+    and the ask entry is what stops one typed anyway."""
+    section = (FRAMEWORK_ROOT / "core" / "conventions" / "3-command-hygiene.md"
+               ).read_text(encoding="utf-8")
+    core = section.split("### Rationale")[0]
+    for raw in _RAW:
+        assert f"`{raw}`" in core, raw
+        assert rp.is_covered("Bash", f"{raw} 12", _PERMS["ask"]), raw
+
+
+@pytest.mark.parametrize("path", sorted(
+    p for kind in ("agents", "commands", "skills", "rules")
+    for p in (ADAPTER / kind).rglob("*.md")), ids=lambda p: p.name
+    if p.name != "SKILL.md" else p.parent.name)
+def test_no_control_file_instructs_a_raw_pr_command(path: Path):
+    text = path.read_text(encoding="utf-8")
+    assert not [raw for raw in _RAW if raw in text], (
+        f"{path.relative_to(ADAPTER)} names a raw PR command §3 forbids — "
+        f"`aide queue pr` / `aide queue ready` for a queue's own PR, and any "
+        f"other PR is the user's to open")

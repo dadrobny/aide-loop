@@ -100,6 +100,70 @@ If your runtime can't nest prompt-expansions the way Claude Code does, satisfy
 the contract with a manual runbook calling the same `aide.py` steps in the same
 order.
 
+### The queue-end step
+
+Both queue runners end a queue branch the same way: `/aide-run-queue` runs
+this step on its way out, and `/aide-run-roadmap` runs it and then makes its
+own decision about the stack. A queue run from `main` has no queue PR, and
+nor does `local` mode or a checkout with no remote; there the step reports
+that no forge exists and ends, since the merge gate has already run the suite
+locally.
+
+1. **Trigger.** `aide claim` prints a bare `none left`, so the queue is
+   exhausted; or it prints a `none left — …` report ending `early ready:
+   yes`, so every open item waits on a human gate and some of the queue has
+   landed. That second case is an **early ready**: CI runs while a person
+   decides. Any other report stops the run as before, and a non-zero exit (an
+   unpublished claim, a gate row `aide` cannot read) is a broken state that
+   stops it too. `aide claim -h` states when the fact reads `yes`.
+2. **Clean up.** `aide gc` previews the claim branches it would delete;
+   `aide gc --yes` deletes them once the list is right.
+3. **Mark the PR ready.** `aide queue ready` pushes the branch where origin
+   lacks its commits and marks the queue's PR ready for review. A refusal
+   ends the step with its sentence reported: no PR (`aide queue pr` opens
+   the draft), a closed or merged one, `local` mode, or no remote.
+4. **Wait for CI.** Read the branch's `checks=` from `aide status`, in
+   bounded waits that each fit inside one tool call of the runtime; the
+   orchestrator waits in its own session rather than handing the wait to a
+   sub-agent. `pending` is not an answer, and neither is a first `none` just
+   after the ready: CI may not have registered a run yet.
+5. **Read the answer.**
+   - `success`: stop for the merge. Under `/aide-run-roadmap`, go on to its
+     stack decision.
+   - `failure`: report each `failing check:` line and stop. The findings
+     are the builder's to fix (§7); sending them back as a fix round is
+     issue #332's, so until then a person dispatches it.
+   - `none`: report that no CI ran on the PR, naming the likely cause: no
+     workflow, or a trigger that ignores this PR (below).
+   - `unknown`: report the `checks unknown:` reason and stop.
+6. **After an early ready**, the gated items still land later, and each
+   merge pushes the branch. The CI that counts is the run on the **last**
+   push, so the step runs again when `claim` next prints a bare `none left`,
+   and the first run's result is informational.
+
+A queue-end item, where a queue has one, is an ordinary item: it is built
+before the step's trigger, and a gate holding it makes an early ready like
+any other gate.
+
+**The CI trigger to give the queue PR.** Run CI on a pull request once it
+is marked ready, skip drafts, and leave out a `push` trigger: `synchronize`
+already runs on every push to the PR's branch, which `aide queue ready` and
+every later merge make. In GitHub Actions:
+
+```yaml
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+jobs:
+  test:
+    if: github.event.pull_request.draft == false
+```
+
+Put the `if:` on every job. A CI that also runs on drafts still works, but it
+pays for a run on every push while the queue is built, and the step reads
+only the last one.
+
 ## Model routing by role (capability tiers)
 
 Five sub-agents split work by role, plus one optional sixth. The engine's

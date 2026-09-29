@@ -6,7 +6,9 @@ suite and the merge through this script and waits inside its turn. What is
 held here: the run outlives the process that started it, its exit code comes
 back through ``wait``, a run still going answers with its own code, state
 lives under the git directory, and the command line reaches no command but
-the two fixed ones — the property that lets it be allow-listed.
+the three fixed ones — the property that lets it be allow-listed. The third,
+``ci``, polls ``aide status`` for the queue PR's CI (issue #331); its reading
+is driven in-process with a scripted status and a fake clock.
 
 The tests drive ``start_run`` with a command of their own. That seam takes an
 argv; the CLI never passes one through.
@@ -207,6 +209,8 @@ def test_the_wait_is_capped_under_the_tool_ceiling(repo: Path, monkeypatch):
     ["start", "merge", "014", "--findings", "x"],
     ["start", "merge", "014", "--findings", "nit=1;rm"],
     ["start", "merge", "014", "extra"],
+    ["start", "ci", "--", "rm"],
+    ["start", "ci", "aide/queue-004"],
     ["wait", "../../etc/passwd"],
 ])
 def test_no_command_line_reaches_an_arbitrary_command(repo: Path, argv, monkeypatch):
@@ -253,6 +257,114 @@ def test_a_missing_engine_is_a_usage_error(repo: Path, capsys):
     assert ar.main(["start", "suite"], root=repo,
                    engine=repo / ".aide" / "scripts" / "aide.py") == ar.EXIT_USAGE
     assert "engine" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# ci — the queue-end step's wait on the queue PR's CI (issue #331)
+# --------------------------------------------------------------------------- #
+def _stack(checks: str, pr: str = "#7/open", *below: str,
+           branch: str = "aide/queue-004") -> str:
+    lines = ["  stack: 1/1 — bottom first",
+             f"  stack 1: {branch} base=main pr={pr} checks={checks} "
+             f"lower=- orphaned=no",
+             *(f"    {line}" for line in below),
+             "  runnable: no — the stack is at the cap"]
+    return "\n".join(lines) + "\n"
+
+
+def _poll(readings, *, step: float = 30.0, **bounds):
+    """Run `poll_ci` over scripted `aide status` readings on a fake clock
+    that advances *step* seconds per sleep; the code and the readings used."""
+    now = [0.0]
+    queue = list(readings)
+    used = []
+
+    def read():
+        used.append(1)
+        item = queue.pop(0) if len(queue) > 1 else queue[0]
+        return item if isinstance(item, tuple) else (0, item)
+
+    def sleep(seconds):
+        now[0] += step
+
+    code = ar.poll_ci("aide/queue-004", read, clock=lambda: now[0],
+                      sleep=sleep, **bounds)
+    return code, len(used)
+
+
+def test_ci_waits_through_pending_and_answers_success(capsys):
+    code, reads = _poll([_stack("none"), _stack("pending"), _stack("pending"),
+                         _stack("success")])
+    assert code == ar.CI_SUCCESS == 0 and reads == 4
+    out = capsys.readouterr().out
+    # Each change is logged once, and the verdict is the last line.
+    assert out.count("checks=pending") == 1
+    assert out.strip().splitlines()[-1] == "ci: success"
+
+
+def test_ci_failure_names_the_failing_checks(capsys):
+    code, _ = _poll([_stack("failure", "#7/open", "failing check: test (windows)")])
+    assert code == ar.CI_FAILURE
+    assert "failing check: test (windows)" in capsys.readouterr().out
+
+
+def test_a_first_none_is_not_the_answer_but_a_lasting_one_is():
+    """Just after `queue ready` CI may not have registered a run yet."""
+    code, reads = _poll([_stack("none")], step=30.0, grace=300)
+    assert code == ar.CI_NONE
+    assert reads == 11                  # 0 s, 30 s, … 300 s
+    code, reads = _poll([_stack("none"), _stack("success")], grace=300)
+    assert (code, reads) == (ar.CI_SUCCESS, 2)
+
+
+def test_unknown_is_the_answer_only_when_it_repeats():
+    code, reads = _poll([_stack("unknown"), _stack("unknown"), _stack("success")])
+    assert (code, reads) == (ar.CI_SUCCESS, 3)
+    code, reads = _poll([_stack("unknown", "#7/open", "checks unknown: timeout")])
+    assert (code, reads) == (ar.CI_UNKNOWN, ar.CI_UNKNOWN_READS)
+
+
+def test_a_failed_status_run_reads_as_unknown_not_as_no_pr():
+    code, reads = _poll([(1, ""), _stack("success")])
+    assert (code, reads) == (ar.CI_SUCCESS, 2)
+
+
+@pytest.mark.parametrize("reading", [
+    _stack("-", "none"),                                # no PR, or local mode
+    _stack("success", branch="aide/queue-003"),         # not this branch
+    "  stack: 0/1\n",                                   # merged, or never one
+])
+def test_no_pr_or_no_stack_line_ends_at_once(reading):
+    assert _poll([reading]) == (ar.CI_NO_PR, 1)
+
+
+def test_ci_gives_up_pending_at_the_ceiling():
+    code, reads = _poll([_stack("pending")], ceiling=90)
+    assert (code, reads) == (ar.CI_PENDING, 4)
+
+
+def test_start_ci_polls_the_branch_checked_out(repo: Path):
+    _git(["-c", "user.email=t@e", "-c", "user.name=T", "commit", "-q",
+          "--allow-empty", "-m", "init"], repo)
+    _git(["switch", "-q", "-c", "aide/queue-004"], repo)
+    cmd = ar.ci_command(repo, ENGINE)
+    assert cmd[:2] == [sys.executable, str(SCRIPTS_DIR / "await_run.py")]
+    assert cmd[2:] == ["poll-ci", "--branch=aide/queue-004"]
+    _git(["switch", "-q", "--detach"], repo)
+    with pytest.raises(ar.UsageError, match="detached"):
+        ar.ci_command(repo, ENGINE)
+
+
+def test_the_ci_codes_collide_with_none_of_the_wrappers_own():
+    ci = [getattr(ar, n) for n in ("CI_SUCCESS", "CI_FAILURE", "CI_NONE",
+                                   "CI_UNKNOWN", "CI_NO_PR", "CI_PENDING")]
+    assert len(set(ci)) == len(ci)
+    assert not set(ci) & {getattr(ar, n) for n in _OWN_CODES}
+    assert 1 not in ci                  # a crash of the poll itself
+    text = ar.build_parser().format_help()
+    for code in ci[1:]:
+        assert f"\n    {code} " in text, code
+    assert f"{ar.CI_NONE_GRACE} s" in text and f"{ar.CI_CEILING} s" in text
 
 
 # --------------------------------------------------------------------------- #

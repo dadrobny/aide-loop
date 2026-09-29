@@ -117,10 +117,11 @@ lowest-numbered one with open items).
      never approve it yourself. Execution then runs on the queue branch
      (`/aide-run-roadmap`, or `/aide-run-queue NNN` with the branch checked
      out), claiming per-item branches as usual.
-   - **On a specs-queue branch**, open a PR for human review of the whole spec
-     set (`gh pr create` is ask-gated — that pause is intended). After it
-     merges, run `/aide-run-queue NNN` from `main` — execution proceeds
-     unattended, claiming per-item branches as usual.
+   - **On a specs-queue branch**, stop and tell the user to open a PR for
+     human review of the whole spec set. `aide queue pr` opens only a queue
+     branch's PR, so this one is theirs to open (§3). After it merges, run
+     `/aide-run-queue NNN` from `main` — execution proceeds unattended,
+     claiming per-item branches as usual.
 
 ## Hard limits
 

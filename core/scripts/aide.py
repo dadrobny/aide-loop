@@ -10870,6 +10870,12 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     so it exits 1 and says how to finish or release it. Nor is an
     **unreadable gate row**, which holds every item on a gate nobody can read:
     exit 1, naming the row.
+
+    Every report that exits 0 with items still open ends on an ``early
+    ready:`` fact (issue #331), which is what the queue-end step keys on to
+    mark the queue's PR ready while a person decides a gate: see
+    `_early_ready`. A bare ``none left`` carries none — that is exhaustion,
+    the step's own trigger.
     """
     ppath = docs_dir(repo_root, config) / "progress.md"
     plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
@@ -10918,6 +10924,24 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     relevant = [(n, g, gid) for n, (g, gid)
                 in enumerate(zip(all_gates, gate_ids(all_gates)), start=1)
                 if g.kind != "approved" and (g.blocks_all or _reached(g))]
+    if not relevant and not open_items:
+        print("none left")
+        return 0
+
+    claimed: Dict[int, str] = {}
+    for br in claim_branches:
+        num = _branch_item_number(br, prefix)
+        if num is not None:
+            claimed.setdefault(num, br)
+    stranded = {n: br for n, br
+                in _unpublished_claim_branches(repo_root, config, prefix).items()
+                if n in open_items}
+    gated: set = set()
+    for _, g, _ in relevant:
+        gated |= _reached(g)
+    early = _early_ready(repo_root, config, open_ordered, bool(relevant), gated,
+                         claimed, item_status, scan_order)
+
     if relevant:
         print("none left — held by an unresolved human gate:")
         for n, g, gid in relevant:
@@ -10927,23 +10951,12 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
             print(f"  gate {n}: {g.text}{f' ({gid})' if gid else ''} — blocks {where}")
         print("  A person decides these, never an agent. Once decided: "
               "aide gate approve <n|ID> --evidence \"…\" (or gate decline <n|ID>).")
-        return 0
-
-    if not open_items:
-        print("none left")
+        print(early)
         return 0
 
     # Open items, none offered. Give the reason per item, in the order
     # `_pick_item` rejects them, so the two cannot drift into disagreeing
     # about why an item was skipped.
-    claimed: Dict[int, str] = {}
-    for br in claim_branches:
-        num = _branch_item_number(br, prefix)
-        if num is not None:
-            claimed.setdefault(num, br)
-    stranded = {n: br for n, br
-                in _unpublished_claim_branches(repo_root, config, prefix).items()
-                if n in open_items}
 
     print(f"none left — {len(open_ordered)} item(s) still open, none claimable:")
     for num in open_ordered:
@@ -10971,7 +10984,60 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
               "in flight. Publish it ('git push -u origin <branch>') or "
               "release the item ('git branch -D <branch>'), then claim again.")
         return 1
+    print(early)
     return 0
+
+
+def _early_ready(repo_root: Path, config, open_ordered: List[int],
+                 any_gate: bool, gated: set, claimed: Dict[int, str],
+                 item_status: Dict[int, str], scan_order: List[int]) -> str:
+    """The ``early ready:`` line ending a ``none left — …`` report that exits 0.
+
+    ``yes`` when every open item waits on an unresolved human gate — one
+    reaches it, or it waits only on items that do — no open item is claimed,
+    and at least one item of the queues checked is ✅. Then nothing but a
+    person's decision stands between the queue and its end, and the queue's
+    PR already carries built work for CI to check while they decide: the
+    queue-end step's early trigger (issue #331). The ✅ clause is what keeps a
+    queue held whole by its own plan gate, nothing built, from reading as
+    ready. ``no`` otherwise, with the first reason found, in the order the
+    clauses are listed.
+
+    The fact is the engine's so the runner never reads it out of the reason
+    prose, which is worded for a person and has changed before.
+    """
+    held = {n for n in gated if n not in claimed}
+    # An item waiting only on held items is held too: to a fixed point, since
+    # a chain of dependencies can hang off one gated item.
+    deps = {n: [d for d in _item_dependencies(repo_root, config, n)
+                if item_status.get(d, "planned") in BLOCKING_STATUSES]
+            for n in open_ordered}
+    grew = True
+    while grew:
+        grew = False
+        for n in open_ordered:
+            if n in held or n in claimed or not deps[n]:
+                continue
+            if all(d in held for d in deps[n]):
+                held.add(n)
+                grew = True
+    landed = [n for n in scan_order if item_status.get(n) == "complete"]
+    if not any_gate:
+        why = "no gate holds an open item"
+    else:
+        loose = [n for n in open_ordered if n not in held]
+        busy = [n for n in loose if n in claimed]
+        if busy:
+            why = f"{busy[0]:03d} is claimed, so work is still in flight"
+        elif loose:
+            why = (f"{loose[0]:03d} waits on something no human gate holds")
+        elif not landed:
+            why = ("no item of the queue is ✅ yet, so there is no built "
+                   "work for CI to check")
+        else:
+            return (f"early ready: yes — every open item waits on a human "
+                    f"gate, and {len(landed)} item(s) are ✅")
+    return f"early ready: no — {why}"
 
 
 def cmd_claim(args: argparse.Namespace) -> int:
@@ -15485,7 +15551,14 @@ def register_git_subcommands(sub) -> None:
             "\u23f8\ufe0f) and that no unresolved human gate reaches. It "
             "will not offer a blocked item: where a gate holds the pick, the "
             "report names that gate, what it blocks and who may resolve it, "
-            "rather than an unexplained \"none left\". A human-gates row it "
+            "rather than an unexplained \"none left\". Every \"none left "
+            "\u2014 \u2026\" report that exits 0 ends with an `early ready:` "
+            "line, yes or no before an em dash: yes when every open item waits "
+            "on an unresolved human gate \u2014 one reaches it, or it waits "
+            "only on items that do \u2014 no open item is claimed, and at least "
+            "one item of the queues checked is \u2705; no otherwise, with the "
+            "reason. A bare \"none left\" (nothing open) carries no such line. "
+            "A human-gates row it "
             "cannot read holds every item, since what it blocks is unknown: "
             "the report names the row and exits 1. A missing insights.md "
             "is created from the template on the way through. When the "
