@@ -49,6 +49,10 @@ paths:
      - A marker naming several items is shorthand, never a shared status cell
      - write the shared marker freely; the file simply grows a row the first
        time its items diverge
+     - A split copy's prose is reworded with its verb, whatever its icon
+     - what each item delivers with `aide progress reword --item NNN`, never
+       by hand
+     - A deliverable bullet carries no attestation
      - enter through the queue, never by retro-editing a closed stage's
        deliverable list
      - ticked only by `aide progress accept` — never derived
@@ -110,8 +114,12 @@ same way by every command:
 Prefer the explicit list when the items are not contiguous; a range is only
 shorthand for one. **A marker naming several items is shorthand, never a shared
 status cell** — write the shared marker freely; the file simply grows a row the
-first time its items diverge. Follow-on deliverables enter through the queue,
-never by retro-editing a closed stage's deliverable list.
+first time its items diverge. **A split copy's prose is reworded with its
+verb, whatever its icon**: each copy carries the shared sentence until someone
+says what each item delivers with `aide progress reword --item NNN`, never by
+hand — over a ✅ bullet as readily as a 📋 one, since a deliverable bullet
+carries no attestation. Follow-on deliverables enter through the queue, never
+by retro-editing a closed stage's deliverable list.
 
 **Prefer the verb to a hand edit**: `aide progress set`, `aide progress
 accept`, `aide queue tidy`. Acceptance boxes are **ticked only by
