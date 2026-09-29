@@ -115,7 +115,11 @@ locally.
    landed. That second case is an **early ready**: CI runs while a person
    decides. Any other report stops the run as before, and a non-zero exit (an
    unpublished claim, a gate row `aide` cannot read) is a broken state that
-   stops it too. `aide claim -h` states when the fact reads `yes`.
+   stops it too. `aide claim -h` states when the fact reads `yes`. A bare
+   `none left` means no 📋 item is left, not that every item is ✅: an item
+   still 🚧 or 🔍 that no planned item waits on can remain, and the PR is
+   marked ready without it. The runner resumes a 🚧 claim before claiming,
+   and a 🔍 item under `pr` mode lands when its own PR merges.
 2. **Clean up.** `aide gc` previews the claim branches it would delete;
    `aide gc --yes` deletes them once the list is right.
 3. **Mark the PR ready.** `aide queue ready` pushes the branch where origin
@@ -162,7 +166,9 @@ jobs:
 
 Put the `if:` on every job. A CI that also runs on drafts still works, but it
 pays for a run on every push while the queue is built, and the step reads
-only the last one.
+only the last one. The advice is only to skip push-triggered runs on queue
+branches: a `push: branches: [main]` trigger may stay, for CI on `main`
+after each merge.
 
 ## Model routing by role (capability tiers)
 

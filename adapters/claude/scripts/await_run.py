@@ -21,7 +21,9 @@ and prints a label once the run is under way. It refuses while another run in
 this worktree is still live, naming it: wait on that label instead. ``wait``
 blocks for at most ``--for`` seconds (default 240, under a 5-minute cache;
 capped at 540, under the Bash tool's 600000 ms ceiling) and returns the moment
-the command exits, or the moment its supervisor is found dead. ``stop`` ends
+the command exits, or the moment its supervisor is found dead. Either bound
+fits only a Bash call given ``timeout: 600000``: the tool's default is 120000
+ms, which ends a longer wait as a timeout. ``stop`` ends
 the run and records it as stopped; a run that already ended is reported, not
 an error. A suite run's whole process tree is killed: SIGTERM, then SIGKILL
 after a short grace on POSIX, ``taskkill /T /F`` on Windows. A merge run is
@@ -79,9 +81,12 @@ Exit codes:
     {failure}                  checks=failure — the failing checks are named
     {none}                  checks=none held for the grace — no CI ran
     {unknown_code}                  checks=unknown — the reason is named
-    {no_pr}                  no PR (checks=-, local mode included), or the
-                        branch has no stack line: not an unmerged queue branch
+    {no_pr}                  no PR (checks=-, local mode included), a closed or
+                        merged one, or the branch has no stack line: not an
+                        unmerged queue branch
     {pending}                  still pending at the ceiling
+    {draft}                  the PR is a draft (pr=#N/draft…, (fixing) included),
+                        so CI that skips drafts has nothing to run
 
 None of 64, 75 or 90–93 is a code pytest (0–5), ``aide merge`` or ``ci``
 returns, and none is 128+N, a signal death. State lives under the git directory
@@ -144,6 +149,7 @@ CI_NONE = 11
 CI_UNKNOWN = 12
 CI_NO_PR = 13
 CI_PENDING = 14
+CI_DRAFT = 15
 #: One `aide status` stack line; `status -h` states every field.
 _STACK_LINE_RE = re.compile(
     r"^\s*stack \d+: (?P<branch>\S+) .*?\bpr=(?P<pr>\S+) checks=(?P<checks>\S+)")
@@ -371,6 +377,19 @@ def poll_ci(branch: str, read_status, *, interval: float = CI_INTERVAL,
                 print(f"  {line}", flush=True)
             shown = now
         unknown_run = unknown_run + 1 if checks == "unknown" else 0
+        # The PR's own state first: CI on a closed or merged PR answers
+        # nothing the step asks, and a CI that skips drafts reports `none` on
+        # a draft for ever — waiting out the grace would misreport it as
+        # "no CI ran". `draft(fixing)` is a draft too, so a prefix match.
+        state = pr.split("/", 1)[1] if pr.startswith("#") and "/" in pr else ""
+        if state in ("closed", "merged"):
+            print(f"ci: PR {pr} is {state}, so there is no CI to wait on",
+                  flush=True)
+            return CI_NO_PR
+        if state.startswith("draft"):
+            print(f"ci: PR {pr} is a draft, not marked ready, so CI that skips "
+                  f"drafts will not run on it", flush=True)
+            return CI_DRAFT
         if checks == "success":
             print("ci: success", flush=True)
             return CI_SUCCESS
@@ -771,7 +790,7 @@ def _doc() -> str:
                         ("unknown", CI_UNKNOWN_READS), ("ceiling", CI_CEILING),
                         ("failure", CI_FAILURE), ("none", CI_NONE),
                         ("unknown_code", CI_UNKNOWN), ("no_pr", CI_NO_PR),
-                        ("pending", CI_PENDING)):
+                        ("pending", CI_PENDING), ("draft", CI_DRAFT)):
         text = text.replace("{" + name + "}", str(value))
     return text
 

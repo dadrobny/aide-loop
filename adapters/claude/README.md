@@ -232,9 +232,11 @@ allow-list" framing** are adapter-local and documented here.
   the queue-end step's wait on the queue PR's CI (issue #331): a poll of `aide
   status` for the checked-out queue branch's `checks=`, every 30 s, that ends
   on `success` (0), `failure` (10), a `none` held for 5 minutes (11), an
-  `unknown` read three times running (12), no PR or no stack line (13), or an
-  hour still pending (14). The orchestrator waits on it itself with `wait
-  <label> --for 540`, on the main session's hour-long cache. It runs those
+  `unknown` read three times running (12), no PR, a closed or merged one, or
+  no stack line (13), an hour still pending (14), or a draft PR (15). The
+  orchestrator waits on it itself with `wait <label> --for 540`, each a Bash
+  call given `timeout: 600000` (the 120000 ms default cuts it short), on the
+  main session's hour-long cache. It runs those
   three commands only, and `stop` acts only on a pid from a valid label's
   record, so its allow entry admits nothing else.
 - **Every hook command resolves its script from `$CLAUDE_PROJECT_DIR`**, not

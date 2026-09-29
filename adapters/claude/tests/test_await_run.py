@@ -338,6 +338,20 @@ def test_no_pr_or_no_stack_line_ends_at_once(reading):
     assert _poll([reading]) == (ar.CI_NO_PR, 1)
 
 
+@pytest.mark.parametrize("pr", ["#7/closed", "#7/merged"])
+def test_a_closed_or_merged_pr_is_no_pr_whatever_its_checks(pr):
+    """A green rollup on a PR nobody will merge is not the step's success."""
+    assert _poll([_stack("success", pr)]) == (ar.CI_NO_PR, 1)
+
+
+@pytest.mark.parametrize("pr", ["#7/draft", "#7/draft(fixing)"])
+def test_a_draft_is_its_own_answer_not_a_lasting_none(pr, capsys):
+    """CI that skips drafts reports `none` on one for ever: waiting out the
+    grace would report "no CI ran" about a PR that was never marked ready."""
+    assert _poll([_stack("none", pr)], grace=300) == (ar.CI_DRAFT, 1)
+    assert "is a draft" in capsys.readouterr().out
+
+
 def test_ci_gives_up_pending_at_the_ceiling():
     code, reads = _poll([_stack("pending")], ceiling=90)
     assert (code, reads) == (ar.CI_PENDING, 4)
@@ -357,7 +371,8 @@ def test_start_ci_polls_the_branch_checked_out(repo: Path):
 
 def test_the_ci_codes_collide_with_none_of_the_wrappers_own():
     ci = [getattr(ar, n) for n in ("CI_SUCCESS", "CI_FAILURE", "CI_NONE",
-                                   "CI_UNKNOWN", "CI_NO_PR", "CI_PENDING")]
+                                   "CI_UNKNOWN", "CI_NO_PR", "CI_PENDING",
+                                   "CI_DRAFT")]
     assert len(set(ci)) == len(ci)
     assert not set(ci) & {getattr(ar, n) for n in _OWN_CODES}
     assert 1 not in ci                  # a crash of the poll itself

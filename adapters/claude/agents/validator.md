@@ -57,7 +57,8 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
    diagnosing is run directly; it is not the suite.
    `wait` returns the moment the suite exits, with its exit code, the elapsed
    time and the log's last lines; after 240 s it returns exit **75** instead,
-   "still running" — call `wait` again. **A red suite is judged by
+   "still running" — call `wait` again. Give every `wait` Bash call
+   `timeout: 600000`; the tool's 120000 ms default cuts a 240 s wait short. **A red suite is judged by
    `git.mode` (§9, preloaded above).** Under `pr` it is an automatic FAIL.
    Under `auto-merge` or `local` it is not a FAIL by itself: write down every
    failing test, carry on through checks 2–6, and if they all hold, take the

@@ -2202,6 +2202,7 @@ def test_a_failed_claim_push_is_a_sentence_and_never_none_left(
     out = capsys.readouterr().out
     assert rc == 1                              # was 0, "none left"
     assert "2 item(s) still open" in out
+    assert "early ready:" not in out            # a broken state, no fact
     assert out.count("ORIGIN HAS NEVER SEEN") == 2
 
 

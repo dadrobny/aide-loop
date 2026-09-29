@@ -130,7 +130,9 @@ jobs:
 Put the `if:` on every job. If CI also runs on drafts, it still works, but you
 pay for a run on every push while the queue is being built, and the runner
 reads only the last one. If no workflow runs on the PR at all, the runner
-reports that no CI ran.
+reports that no CI ran. You can keep a `push: branches: [main]` trigger for CI
+on `main` after each merge; the advice is only to skip push-triggered runs on
+the queue branches.
 
 ## 5. Unattended overnight runs (optional)
 

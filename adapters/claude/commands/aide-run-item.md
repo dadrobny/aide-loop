@@ -260,7 +260,8 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
        ```
        That is `python .aide/scripts/aide.py merge NNN` with those flags, run
        detached the way the validator runs it (§9): `wait` in its default
-       240 s calls, never a turn ended to await it, and at 50 minutes
+       240 s calls, each a Bash call with `timeout: 600000` (the 120000 ms
+       default cuts it short), never a turn ended to await it, and at 50 minutes
        `python .claude/scripts/await_run.py stop <label>` and report the
        command, elapsed time and log tail to the user instead of sitting on
        the run — the tail normally carries the merge's own restore message (with none,

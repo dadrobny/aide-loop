@@ -155,8 +155,10 @@ This is the queue-end step `.aide/README.md` → *The queue-end step* defines
    python .claude/scripts/await_run.py start ci
    python .claude/scripts/await_run.py wait <label> --for 540
    ```
-   Exit 75 is "still waiting": call `wait` again with the same label. Each
-   call stays under the Bash tool's ceiling, and the wait belongs to this
+   Give each `wait` Bash call `timeout: 600000`: the tool's default of
+   120000 ms ends a 540-second wait as a timeout. Exit 75 is "still waiting":
+   call `wait` again with the same label. Each call then stays under the Bash
+   tool's ceiling, and the wait belongs to this
    orchestrator, never to a sub-agent or a backgrounded command: its cache
    outlives a 540-second wait, and a sub-agent that ends its turn to wait is
    never woken. The poll reads `aide status`, so it never asks the forge
@@ -169,7 +171,8 @@ This is the queue-end step `.aide/README.md` → *The queue-end step* defines
    | 10 | `failure` | Report each `failing check:` line from the tail, and **stop**. |
    | 11 | `none` | Report that no CI ran on the PR: no workflow, or a trigger that ignores it (`.aide/README.md` names the trigger to use). |
    | 12 | `unknown` | Report the `checks unknown:` reason and stop. |
-   | 13 | — | No PR, or the branch is no longer an unmerged queue branch: report it. |
+   | 13 | — | No PR, a closed or merged one, or the branch is no longer an unmerged queue branch: report it. |
+   | 15 | — | The PR is a draft. Plain `#N/draft`: `queue ready` did not take — run step 3 again, then restart the wait once; a second 15 is a stop. `#N/draft(fixing)`: a CI fix round is under way (issue #332) — stop and report it. |
    | 14 | `pending` | CI was still running after an hour: report it; a re-run of this section waits again. |
    | other | — | The poll itself broke (90 died, 91 stopped, 1 a crash): report the tail and stop. |
 
