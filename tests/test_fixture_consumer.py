@@ -764,6 +764,46 @@ def test_check_queue_reports_the_queue_end_item_the_planner_must_add(
     assert need not in out and "queue-end item for stage" not in out
 
 
+def test_claim_runs_the_queue_end_item_after_an_item_listed_behind_it(
+        aide, consumer: Path, tmp_path: Path):
+    """Issue #347's fixture: `Validate stage 1` planned last, then item 003
+    added after planning and listed after it; 001 ✅, 002 and 003 📋, and no
+    spec for either. `claim` takes 003 — the queue-end item has no spec to
+    name a dependency, and is held by its queue-mate all the same — and
+    `check --queue` reports the queue-end item out of place, not missing.
+    Once 003 has landed, the next claim takes 002."""
+    ddir = consumer / "docs" / "aide"
+    queue = ddir / "queue" / "queue-001.md"
+    queue.write_text(queue.read_text(encoding="utf-8").replace(
+        "### Item 002: The farewell\nA farewell function.\n",
+        "### Item 002: Validate stage 1: Foundations\nAttest criterion 1.\n\n"
+        "### Item 003: The farewell\nA farewell function.\n"), encoding="utf-8")
+    progress = ddir / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "- 📋 The greeter. *(Item 001)*", "- ✅ The greeter. *(Item 001)*").replace(
+        "- 📋 The farewell. *(Item 002)*",
+        "- 📋 Stage validation. *(Item 002)*\n- 📋 The farewell. *(Item 003)*"),
+        encoding="utf-8")
+    _commit(consumer, "an item added after the queue-end item")
+
+    report = tmp_path / "report.json"
+    assert aide.main(["--repo", str(consumer), "check", "--queue", "1",
+                      "--report", str(report)]) == 0
+    findings = json.loads(report.read_text(encoding="utf-8"))["findings"]
+    kinds = [f["kind"] for f in findings]
+    assert "queue-end-not-last" in kinds and "queue-end-needed" not in kinds
+    assert next(f for f in findings
+                if f["kind"] == "queue-end-not-last")["items"] == [2, 3]
+
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer).startswith("aide/003-")
+
+    _git(["switch", "main"], consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "3", "done"]) == 0
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer).startswith("aide/002-")
+
+
 def _installed_template(consumer: Path) -> bytes:
     template = (consumer / ".aide" / "templates" / "insights.md").read_bytes()
     assert b"insight" in template.lower()  # recognisable before it is compared

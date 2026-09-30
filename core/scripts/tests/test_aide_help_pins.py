@@ -260,12 +260,24 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_queue_specs::test_queue_end_stages_reads_the_title",
           "test_aide_queue_specs::"
           "test_a_queue_end_items_own_annotation_does_not_retire_its_need")),
-        # `trailing` — the suffix of the queue's items that are queue-end items.
+        # `met` — the suffix of the queue's items that are queue-end items,
+        # plus any queue-end item not ✅, ❌ or ⏸️ (issue #347).
         ("The check warns when a stage with a need has no queue-end item for "
-         "it among the queue's final items, naming each reason",
+         "it among the queue's final items or still open anywhere on it, "
+         "naming each reason",
          ("test_aide_queue_specs::test_a_queue_end_item_among_the_final_items_meets_the_need",
           "test_aide_queue_specs::"
-          "test_a_queue_end_item_that_is_not_final_does_not_meet_the_need")),
+          "test_an_open_queue_end_item_that_is_not_final_meets_the_need",
+          "test_aide_queue_specs::"
+          "test_a_spent_queue_end_item_that_is_not_final_does_not_meet_the_need")),
+        # The `queue-end-not-last` loop: open queue-end item, open non-queue-end
+        # item after it; settled records either side exempt (issue #347).
+        ("when an open queue-end item is listed ahead of an open item that is "
+         "not one, which `aide claim` holds it behind",
+         ("test_aide_queue_specs::"
+          "test_an_open_queue_end_item_that_is_not_final_meets_the_need",
+          "test_aide_queue_specs::test_a_settled_record_never_puts_a_queue_end_item_out_of_place",
+          "test_aide_queue_specs::test_two_trailing_queue_end_items_are_in_place")),
         # The `queue-end-idle` loop: no stage, not closed, empty reasons.
         ("and when a queue-end item not ✅, ❌ or ⏸️ names no stage, a stage "
          "the queue does not close, or one with no need",
@@ -280,7 +292,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_aide_queue_specs::"
          "test_a_queue_end_item_a_fix_round_reopened_is_never_reported_idle"),
         # The early `return []` when every listed item is spent.
-        ("A queue whose items are all ✅, ❌ or ⏸️ gets neither warning",
+        ("A queue whose items are all ✅, ❌ or ⏸️ gets none of them",
          ("test_aide_queue_specs::test_a_spent_queue_is_reported_neither_way",
           "test_aide_queue_specs::"
           "test_a_queue_whose_only_open_work_in_the_stage_is_deferred_closes_nothing")),
@@ -1092,6 +1104,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `gate_blocked_items` -> `if num in gate_blocked: continue`.
         ("that no unresolved human gate reaches",
          "test_aide_gates::test_claim_skips_a_gated_item_and_offers_the_next"),
+        # `queue_end_holds` -> `if holds.get(num): continue` (issue #347):
+        # other queue-end items and ✅/❌/⏸️ mates never hold.
+        ("A queue-end item, one titled `Validate stage N`, waits besides on "
+         "every other item its queue lists that is not one, as on a "
+         "dependency, with or without a spec and wherever the queue lists it",
+         ("test_aide_git::test_claim_holds_a_queue_end_item_behind_a_later_listed_item",
+          "test_aide_git::test_claim_offers_the_queue_end_item_once_the_rest_has_left_the_way",
+          "test_aide_git::test_queue_end_items_never_hold_each_other",
+          "test_aide_git::test_a_queue_end_item_titled_only_in_its_spec_is_held")),
         # The "none left" report is built from the gates that actually apply.
         ("It will not offer a blocked item",
          "test_aide_gates::test_none_left_names_only_the_gates_that_apply"),
@@ -1111,6 +1132,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "least one item of the queues checked is \u2705",
          ("test_aide_gates::test_early_ready_is_yes_when_every_open_item_waits_on_a_gate",
           "test_aide_gates::test_an_item_waiting_only_on_a_gated_item_is_held_by_the_gate",
+          "test_aide_gates::test_a_queue_end_item_behind_a_gated_item_is_held_by_the_gate",
           "test_aide_gates::test_a_chain_listed_before_the_gated_item_it_hangs_off_is_held",
           "test_aide_gates::test_a_landed_dependency_does_not_loosen_a_held_item",
           "test_aide_gates::test_early_ready_is_no_while_an_open_item_is_claimed",

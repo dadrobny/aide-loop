@@ -64,6 +64,8 @@ paths:
      - The planner reads that warning and never works the need out itself
      - with no such warning, the queue ends with its last deliverable
      - The same check warns on a planned queue-end item with nothing to do
+     - Wherever the file lists it, it runs last
+     - so an item added after planning goes above it
      - The stage variant is titled `Validate stage N: <stage title>`
 -->
 
@@ -132,8 +134,11 @@ today**: on a queue that closes a roadmap stage, `aide check --queue NNN`
 warns when the stage still has work for one, and names why. **The planner
 reads that warning and never works the need out itself** — with no such
 warning, the queue ends with its last deliverable. **The same check warns on
-a planned queue-end item with nothing to do.** **The stage variant is titled
-`Validate stage N: <stage title>`**; `/aide-create-queue` says when to run the
+a planned queue-end item with nothing to do.** **Wherever the file lists it,
+it runs last**: `aide claim` holds it until the rest of its queue has left
+the way, and `aide check --queue NNN` warns when open work is listed after
+it, so an item added after planning goes above it. **The stage variant is
+titled `Validate stage N: <stage title>`**; `/aide-create-queue` says when to run the
 check and what to write.
 
 **The file exists before a role needs it — the engine puts it there** (§1 →
