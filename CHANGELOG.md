@@ -136,6 +136,60 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.28.0] — 2026-09-30
+
+### Added
+
+- **`aide insights add` captures an inbox entry (issue #363).** Capture was
+  the one mechanical action with no verb: every role appended to
+  `docs/aide/insights.md` by hand, the shipped allow-list does not
+  pre-approve an edit of that file, and so every capture in an unattended
+  `/aide-run-queue` stopped on a permission prompt — eleven in one consumer
+  queue. `insights add <type> '<one line>' [--provenance TEXT]` appends §1's
+  line at the end of the inbox with today's date and `engine X.Y.Z` from
+  `.aide/VERSION` filled in, prints the entry's ID (the one `list` prints,
+  lengthened where a same-day claim shares its four hex digits), and commits
+  it the way `tick` does: by default, not under `--no-commit`, and on a
+  commit git refuses the file is put back and the verb exits 1. It creates a
+  missing inbox from the template first, as `list` does; appends after the
+  last byte, keeping a BOM and CRLF endings and never gluing onto a last line
+  with no newline; and refuses with exit 2, writing nothing, an unknown type,
+  an empty claim, a line break in the claim or provenance, a `)` in the
+  provenance, a conflicted inbox, and any input whose line would read back
+  through the parser as a different entry — an `*(…, date)*` aside in the
+  claim followed by `→`, say. Pre-approving edits of the file was rejected:
+  it would wave through hand edits of a file whose claims are immutable.
+  A line of the same shape appended by hand is still an entry. `aide
+  insights -h` states the verb; §1 → `insights.md`, `core/AGENT-CONTEXT.md`
+  and every agent spec's out-of-scope section now say to capture with it,
+  and §1 → `progress.md` routes a `❌ Not met` target through it. The
+  always-on page's capture block now shows the verb, and its verb list reads
+  `insights add/list/tick/archive/resolve`, so **the always-on floor moves
+  from 9,359 to 9,508 content bytes**.
+- **`insights template 2`.** The inbox header comment says a role captures
+  with `aide insights add` rather than appending by hand, and names `add`
+  among the verbs that create a missing inbox. **What a consumer edits:**
+  `aide check` warns that `docs/aide/insights.md` was created from template
+  1; replace the header comment above `# Insight Inbox` with the one in
+  `.aide/templates/insights.md` and set its `aide-template` line to
+  `insights 2`. No entry changes.
+
+### Fixed
+
+- **`aide check`'s positional-citation hint names the entry the citation
+  meant, not today's holder of the number (issue #361).** The warning named
+  the ID that position holds in today's inbox; for a citation written before
+  an `aide insights archive` that is a different claim, and following the
+  hint rewrote the citation to something its author never meant. The check
+  now reads the commit that last wrote the citing line (`git blame`, once per
+  file) and the inbox as it stood in that commit (`git show`, once per
+  commit), and names the ID that entry has today — resolvable in the archives
+  too — or says the position named no entry then. A line not yet committed,
+  or a file git does not track, was written against today's inbox and is
+  told so; with no history to read, today's holder is still offered,
+  labelled "today's holder; history unavailable". `aide check -h` and §1 →
+  `insights.md` say so.
+
 ## [2.27.0] — 2026-09-30
 
 ### Added

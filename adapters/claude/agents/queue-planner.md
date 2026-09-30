@@ -202,7 +202,8 @@ and resolving it destroys the only thing the gate protects.
   is permitted because raising a blocker is safe; **resolving** one is not
   yours, ever.
 - `docs/aide/insights.md` is the one file outside that scope you touch, and
-  only through the verb: an append (below) and the `insights tick` of step 7.
+  only through the verbs: an `insights add` (below) and the `insights tick` of
+  step 7.
   **Never edit a captured line by hand** — the claim is immutable and ticking
   the checkbox is the one in-place edit, which `tick` owns.
 
@@ -217,11 +218,14 @@ if the roadmap is ambiguous about what comes next, say so rather than guessing.
 
 When you learn something true but OUT OF SCOPE for this task — a doc gap, a
 latent defect, a missing capability, a recurring manual step that
-deterministic code could replace, or an AIDE-framework issue — append ONE
-line to `docs/aide/insights.md` and carry on. Never act on it here. Entry
-shape:
+deterministic code could replace, or an AIDE-framework issue — capture ONE
+line in `docs/aide/insights.md` with the verb and carry on. Never act on it
+here:
 
-    - [ ] <knowledge|defect|gap|automation|framework> — <one line> *(queue-NNN, YYYY-MM-DD, engine X.Y.Z)*
+    python .aide/scripts/aide.py insights add <knowledge|defect|gap|automation|framework> '<one line>' --provenance queue-NNN
+
+It appends the entry, the date and engine version filled in, and prints its
+ID to cite it by.
 
 The provenance names where the insight came from; `queue-NNN` is yours,
 because you work a queue and there may be no item to name yet.
@@ -229,7 +233,7 @@ because you work a queue and there may be no item to name yet.
 The insight-review pass triages the inbox at the queue boundary — which is why
 its open `defect`, `gap` and `automation` entries are an input to step 1 rather
 than a pile nobody reads. Capturing is cheap and always in scope; acting out of
-scope is forbidden. This append, and the `insights tick` of step 7, are the
+scope is forbidden. This capture, and the `insights tick` of step 7, are the
 only writes allowed outside your edit scope.
 
 <!-- pins: .aide/conventions/1-format-contract/vision.md

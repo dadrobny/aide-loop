@@ -310,7 +310,7 @@ one section to defer to.
 
 **Two §1 sections are split by reader, and no skill delivers either half's
 other reader** (1.48.0, issue #191). `insights.md` is capture — the shape every
-role appends, on the floor and in `aide-queue-and-inbox` — while
+role captures, on the floor and in `aide-queue-and-inbox` — while
 `insights-triage.md` (routing, judging, the `framework` hand-over) is the
 workflow skill `/aide-review-insights`'s and `insights-maintenance-queue.md`
 (the fixes queued ahead of the stage queue) is the queue author's, delivered by

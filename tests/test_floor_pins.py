@@ -116,7 +116,8 @@ FLOOR_PINS = {
     # Out-of-scope learning is captured, never acted on
     "conventions/1-format-contract/insights.md": [
         "never lost *and* never acted on out of scope",
-        "Any role, at any time, appends **one line** and returns to its task",
+        "Any role, at any time, captures **one line** with `aide insights "
+        "add` and returns to its task",
         "the ISO date is the only part that is load-bearing",
         "`item NNN` from inside an item",
         "`engine X.Y.Z`, one read of `.aide/VERSION`",

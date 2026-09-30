@@ -3384,6 +3384,47 @@ def test_insights_tick_edits_and_commits_in_the_consumer(aide, consumer: Path):
     assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
 
 
+def test_insights_add_appends_commits_and_list_shows_its_id(aide, consumer: Path,
+                                                            capsys):
+    """Capture through the installed engine (issue #363): the §1 line, the
+    date and `.aide/VERSION` filled in, one commit, and the printed ID is the
+    one `list` prints."""
+    import datetime
+    import re
+    inbox = consumer / "docs" / "aide" / "insights.md"
+    head = _git(["rev-parse", "HEAD"], consumer).stdout.strip()
+    assert aide.main(["--repo", str(consumer), "insights", "add", "defect",
+                      "`aide scope` misses renamed files",
+                      "--provenance", "item 042"]) == 0
+    printed = re.search(r"captured insight (\S+)", capsys.readouterr().out)
+    assert printed
+    version = (consumer / ".aide" / "VERSION").read_text(encoding="utf-8-sig").strip()
+    today = datetime.date.today().isoformat()
+    assert inbox.read_text(encoding="utf-8") == INSIGHTS + (
+        f"- [ ] defect — `aide scope` misses renamed files "
+        f"*(item 042, {today}, engine {version})*\n")
+    assert _git(["rev-parse", "HEAD~1"], consumer).stdout.strip() == head
+    assert _git(["show", "--name-only", "--format=", "HEAD"],
+                consumer).stdout.split() == ["docs/aide/insights.md"]
+    assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+    assert aide.main(["--repo", str(consumer), "insights", "list", "--open"]) == 0
+    listed = [l for l in capsys.readouterr().out.splitlines()
+              if "misses renamed files" in l]
+    assert len(listed) == 1 and printed.group(1) in listed[0]
+
+
+def test_insights_add_refused_exits_2_and_writes_nothing(aide, consumer: Path):
+    inbox = consumer / "docs" / "aide" / "insights.md"
+    before = inbox.read_bytes()
+    head = _git(["rev-parse", "HEAD"], consumer).stdout.strip()
+    assert aide.main(["--repo", str(consumer), "insights", "add", "idea",
+                      "not a type §1 names"]) == 2
+    assert aide.main(["--repo", str(consumer), "insights", "add", "gap",
+                      "two\nlines"]) == 2
+    assert inbox.read_bytes() == before
+    assert _git(["rev-parse", "HEAD"], consumer).stdout.strip() == head
+
+
 def test_insights_tick_on_a_closed_entry_appends_to_its_trail(aide, consumer: Path):
     assert aide.main(["--repo", str(consumer), "insights", "tick", "1",
                       "--pointer", "shipped in 1.17.0", "--date", "2026-08-24",
