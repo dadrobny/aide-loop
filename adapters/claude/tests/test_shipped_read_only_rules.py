@@ -49,6 +49,10 @@ _PERMS = json.loads(ADAPTER_SETTINGS.read_text(encoding="utf-8"))["permissions"]
     "sleep 5",
     "true",
     "printf '%s\\n' x",
+    # Read-only release notes, which `/aide-review-ledger` reads per cohort
+    # boundary (issue #251).
+    "gh release list --repo owner/repo --limit 200",
+    "gh release view v2.26.0 --repo owner/repo",
 ])
 def test_read_only_inspection_commands_are_pre_approved(command):
     assert rp.is_covered("Bash", command, _PERMS["allow"])
@@ -60,6 +64,8 @@ def test_read_only_inspection_commands_are_pre_approved(command):
     "sed 's/a/b/' src/x.py",
     "awk '{print $1}' src/x.py",
     "mkdir build",
+    "gh release create v1.0.0",
+    "gh release delete v1.0.0",
 ])
 def test_the_commands_the_issue_kept_out_still_prompt(command):
     assert not rp.is_covered("Bash", command, _PERMS["allow"])

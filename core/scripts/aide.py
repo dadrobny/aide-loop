@@ -9790,10 +9790,37 @@ def ledger_warnings(ddir: Path) -> List[str]:
     return out
 
 
+#: Which of `ledger`'s options each action reads; one given to the other action
+#: is a usage error, never silently ignored — `report --rounds 3` must not read
+#: as though it recorded something (the `_QUEUE_OPTIONS` reasoning).
+_LEDGER_OPTIONS = {
+    "abandon": {"number", "rounds", "findings", "no_commit"},
+    "report": {"queue", "as_json"},
+}
+
+
 def cmd_ledger(args: argparse.Namespace) -> int:
-    """Write a ledger row for an item no merge will ever write one for."""
+    """Write a ledger row for an item no merge will ever write one for, or
+    report on the rows already written."""
+    stray = sorted(opt for action, opts in _LEDGER_OPTIONS.items()
+                   if action != args.action for opt in opts
+                   if getattr(args, opt, None) is not None
+                   and getattr(args, opt, None) is not False)
+    if stray:
+        names = ", ".join("<number>" if o == "number" else
+                          "--json" if o == "as_json" else
+                          "--" + o.replace("_", "-") for o in stray)
+        print(f"aide ledger {args.action}: {names} belong(s) to the other "
+              f"action and {args.action} does not read it", file=sys.stderr)
+        return 2
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
+    if args.action == "report":
+        return _ledger_report_command(repo_root, config, args)
+    if args.number is None:
+        print(f"aide ledger {args.action}: the item number is required",
+              file=sys.stderr)
+        return 2
     if args.rounds is None:
         print(f"aide ledger {args.action}: --rounds is required — the round "
               f"count is why this row exists, and an abandoned item with no "
@@ -9847,6 +9874,241 @@ def cmd_ledger(args: argparse.Namespace) -> int:
     print(f"aide ledger {args.action}: progress.md is untouched — this verb "
           f"records what the run cost and decides nothing about the item's "
           f"status")
+    return 0
+
+
+# ledger report — the rows read back, per engine cohort and kind (issue #251)
+# --------------------------------------------------------------------------- #
+#: The first engine whose finding cells mean what §1 → `ledger.md` says: from
+#: 1.59.0 a no-review run writes `-`, so a blank is a count not passed. Before
+#: it a blank finding cell could also be a project with no reviewer at all,
+#: and a ratio over such rows is not the reading a later cohort's is.
+LEDGER_FINDINGS_SINCE = (1, 59, 0)
+#: Where each kind sits in a report; a kind outside the vocabulary follows,
+#: as written.
+_LEDGER_KIND_ORDER = ("normal", "maintenance", "validate-stage")
+
+
+def _ledger_engine_key(cell: str) -> Optional[Tuple[int, int, int]]:
+    """``"2.25.0"`` -> ``(2, 25, 0)``; anything else -> ``None``."""
+    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", cell.strip())
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+
+
+def _ledger_count(cell: str) -> Optional[int]:
+    """A cell's integer, or ``None`` for a blank or anything that is not one."""
+    return int(cell) if re.fullmatch(r"[0-9]+", cell.strip()) else None
+
+
+def _ratio(numerator: float, denominator: float) -> Optional[float]:
+    return round(numerator / denominator, 2) if denominator else None
+
+
+def ledger_report(text: str, queue: Optional[int] = None) -> Dict[str, object]:
+    """The readings `aide ledger report` prints, over a ledger's text.
+
+    Pure: a function of the rows alone, so the verb's `-h` is a statement
+    about this and nothing else. Every ratio is returned with its `n`, the
+    rows it was drawn from, and never averaged across two kinds (§1 →
+    `ledger.md`). What it reads the cells as, each exactly as the section
+    defines them: a blank is unrecorded and joins no ratio; `-` says no review
+    ran and joins no finding ratio; a merged row whose Tests and Files are
+    both `0` lost its diff rather than measured an empty one.
+    """
+    skipped: List[int] = []
+    rows: List[Tuple[int, Dict[str, str]]] = []
+    for lineno, cells in ledger_rows(text):
+        if len(cells) not in (len(LEDGER_COLUMNS), LEDGER_TEMPLATE_2_WIDTH):
+            skipped.append(lineno)
+            continue
+        cells = cells + [""] * (len(LEDGER_COLUMNS) - len(cells))
+        row = dict(zip(LEDGER_COLUMNS, cells))
+        if queue is not None and _ledger_count(row["Queue"]) != queue:
+            continue
+        rows.append((lineno, row))
+
+    # A merge re-run after a failed push, before 2.25.1 (issue #346),
+    # appended a second `merged` row for the item with its diff read after
+    # the branch had landed: Tests and Files both 0. That row is the
+    # duplicate and the earlier one is the record; any other repeat is a
+    # reopened item merged again, and both rows count.
+    def number(cell: str) -> str:
+        value = _ledger_count(cell)
+        return cell if value is None else str(value)
+
+    merged_before: Set[Tuple[str, str]] = set()
+    dropped: List[int] = []
+    kept: List[Tuple[int, Dict[str, str]]] = []
+    for lineno, row in rows:
+        key = (number(row["Item"]), number(row["Queue"]))
+        if row["Outcome"] == "merged":
+            if (key in merged_before and _ledger_count(row["Tests"]) == 0
+                    and _ledger_count(row["Files"]) == 0):
+                dropped.append(lineno)
+                continue
+            merged_before.add(key)
+        kept.append((lineno, row))
+
+    groups: Dict[Tuple[str, str], List[Dict[str, str]]] = {}
+    for _, row in kept:
+        groups.setdefault((row["Engine"], row["Kind"]), []).append(row)
+
+    def order(key: Tuple[str, str]):
+        engine, kind = key
+        version = _ledger_engine_key(engine)
+        rank = (_LEDGER_KIND_ORDER.index(kind) if kind in _LEDGER_KIND_ORDER
+                else len(_LEDGER_KIND_ORDER))
+        return (version is None, version or (0, 0, 0), engine, rank, kind)
+
+    cohorts: List[Dict[str, object]] = []
+    for key in sorted(groups, key=order):
+        cohorts.append(_ledger_group(key[0], key[1], groups[key]))
+    return {"rows": len(kept), "skipped": skipped, "counted_once": dropped,
+            "cohorts": cohorts}
+
+
+def _ledger_group(engine: str, kind: str,
+                  rows: List[Dict[str, str]]) -> Dict[str, object]:
+    """One cohort-and-kind's readings — see ``ledger_report``."""
+    version = _ledger_engine_key(engine)
+    withheld = version is None or version < LEDGER_FINDINGS_SINCE
+    unrecorded = {c: 0 for c in ("ACs", "Tests", "Files") + LEDGER_COUNT_COLUMNS}
+    rounds: List[int] = []
+    tests = criteria = tests_n = 0
+    found = {c: [] for c in LEDGER_FINDING_COLUMNS}
+    no_review = blank = cells = unknown_diff = 0
+    for row in rows:
+        ac, test, files = (_ledger_count(row[c]) for c in ("ACs", "Tests", "Files"))
+        if row["Outcome"] == "merged" and test == 0 and files == 0:
+            test = files = None
+            unknown_diff += 1
+        for column, value in (("ACs", ac), ("Tests", test), ("Files", files)):
+            unrecorded[column] += value is None
+        if ac is not None and test is not None:
+            tests, criteria, tests_n = tests + test, criteria + ac, tests_n + 1
+        r = _ledger_count(row["Rounds"])
+        cells += 1
+        if r is None:
+            unrecorded["Rounds"] += 1
+            blank += 1
+        else:
+            rounds.append(r)
+        if withheld:
+            continue
+        if any(row[c] == LEDGER_NO_REVIEW_CELL for c in LEDGER_FINDING_COLUMNS):
+            no_review += 1
+        for column in LEDGER_FINDING_COLUMNS:
+            if row[column] == LEDGER_NO_REVIEW_CELL:
+                continue
+            cells += 1
+            value = _ledger_count(row[column])
+            if value is None:
+                unrecorded[column] += 1
+                blank += 1
+            else:
+                found[column].append(value)
+    histogram: Dict[str, int] = {}
+    for r in sorted(rounds):
+        histogram[str(r)] = histogram.get(str(r), 0) + 1
+
+    def dated(column: str) -> List[str]:
+        return sorted({row[column] for row in rows if row[column]},
+                      key=lambda v: (_ledger_count(v) is None,
+                                     _ledger_count(v) or 0, v))
+
+    dates = sorted(row["Date"] for row in rows if row["Date"])
+    return {
+        "engine": engine, "kind": kind, "rows": len(rows),
+        "merged": sum(row["Outcome"] == "merged" for row in rows),
+        "abandoned": sum(row["Outcome"] == "abandoned" for row in rows),
+        "queues": dated("Queue"), "stages": dated("Stage"),
+        "first_date": dates[0] if dates else None,
+        "last_date": dates[-1] if dates else None,
+        "rounds": {"per_item": _ratio(sum(rounds), len(rounds)),
+                   "n": len(rounds), "max": max(rounds) if rounds else None,
+                   "histogram": histogram},
+        "tests_per_ac": {"value": _ratio(tests, criteria), "n": tests_n},
+        "findings": None if withheld else {
+            column.lower(): {"per_item": _ratio(sum(values), len(values)),
+                             "n": len(values)}
+            for column, values in found.items()},
+        "no_review": None if withheld else no_review,
+        "caller_blank": {"blank": blank, "cells": cells},
+        "unrecorded": {c: (None if withheld and c in LEDGER_FINDING_COLUMNS
+                           else n) for c, n in unrecorded.items()},
+        "unknown_diff": unknown_diff,
+    }
+
+
+def _ledger_reading(value: Optional[float], n: int) -> str:
+    return "—" if value is None else f"{value:g} (n={n})"
+
+
+def _ledger_report_table(report: Dict[str, object]) -> List[str]:
+    """The report as a markdown table, one line per cohort and kind."""
+    head = ["Engine", "Kind", "Stages", "Rows", "Merged", "Abandoned",
+            "Rounds/item", "Rounds", "Tests/AC", "Blocking/item",
+            "Minor/item", "Nit/item", "Blank"]
+    body = []
+    for c in report["cohorts"]:
+        findings = c["findings"]
+        ranks = (["withheld"] * 3 if findings is None else
+                 [_ledger_reading(findings[r]["per_item"], findings[r]["n"])
+                  for r in LEDGER_FINDING_RANKS])
+        body.append([
+            c["engine"] or "(blank)", c["kind"] or "(blank)",
+            ",".join(c["stages"]) or "—", str(c["rows"]), str(c["merged"]),
+            str(c["abandoned"]),
+            _ledger_reading(c["rounds"]["per_item"], c["rounds"]["n"]),
+            " ".join(f"{k}:{v}" for k, v in c["rounds"]["histogram"].items())
+            or "—",
+            _ledger_reading(c["tests_per_ac"]["value"], c["tests_per_ac"]["n"]),
+            *ranks,
+            f"{c['caller_blank']['blank']}/{c['caller_blank']['cells']}"])
+    widths = [max(len(r[i]) for r in [head] + body) for i in range(len(head))]
+
+    def line(cells: List[str]) -> str:
+        return "| " + " | ".join(v.ljust(w) for v, w in zip(cells, widths)) + " |"
+    return ([line(head), "|" + "|".join("-" * (w + 2) for w in widths) + "|"]
+            + [line(r) for r in body])
+
+
+def _ledger_report_command(repo_root: Path, config,
+                           args: argparse.Namespace) -> int:
+    """`aide ledger report` — read-only, so a missing file is a report too."""
+    path = ledger_path(docs_dir(repo_root, config))
+    rel = _rel_display(path, repo_root)
+    queue = args.queue
+    if not path.is_file():
+        if args.as_json:
+            print(json.dumps({"ledger": rel, "exists": False,
+                              "queue": queue, "rows": 0, "skipped": [],
+                              "counted_once": [], "cohorts": []}, indent=2))
+        else:
+            print(f"aide ledger report: no {rel} — no item has been merged or "
+                  f"abandoned through the engine yet; nothing to report")
+        return 0
+    report = ledger_report(path.read_text(encoding=_ENCODING), queue)
+    if args.as_json:
+        print(json.dumps({"ledger": rel, "exists": True, "queue": queue,
+                          **report}, indent=2, ensure_ascii=False))
+        return 0
+    scope = f" on queue {queue:03d}" if queue is not None else ""
+    if not report["cohorts"]:
+        print(f"aide ledger report: {rel} holds no row{scope}")
+    else:
+        print(f"aide ledger report: {report['rows']} row(s){scope} in {rel}, "
+              f"by Engine cell and Kind (n = the rows a ratio is drawn from)")
+        print()
+        for text in _ledger_report_table(report):
+            print(text)
+    if report["counted_once"]:
+        print(f"counted once: {', '.join(f'{path.name}:{n}' for n in report['counted_once'])} "
+              f"— a repeat merged row with Tests and Files both 0, a merge "
+              f"re-run's duplicate; the earlier row is read")
+    if report["skipped"]:
+        print(f"skipped: {', '.join(f'{path.name}:{n}' for n in report['skipped'])} "
+              f"— a cell count no ledger template draws (`aide check` names it)")
     return 0
 
 
@@ -16258,8 +16520,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_ins.set_defaults(func=cmd_insights)
 
     p_ledger = sub.add_parser(
-        "ledger", help="record what an item cost where no merge will "
-        "(one row per item, docs/aide/ledger.md)",
+        "ledger", help="record what an item cost where no merge will, and "
+        "read the rows back (one row per item, docs/aide/ledger.md)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "abandon: the row for an item that never merged \u2014 one "
@@ -16286,17 +16548,53 @@ def build_parser() -> argparse.ArgumentParser:
             "whatever status the run left it, since what becomes of an "
             "abandoned item is a decision, not a record. The file is created "
             "from .aide/templates/ledger.md when this is the first row, and "
-            "committed on the branch the run is standing on, with no pull."))
-    p_ledger.add_argument("action", choices=["abandon"])
-    p_ledger.add_argument("number", type=int)
+            "committed on the branch the run is standing on, with no pull.\n"
+            "\n"
+            "report: reads the ledger and writes nothing \u2014 a table, or "
+            "with --json the same numbers for a reader to annotate; --queue "
+            "NNN keeps that queue's rows. Rows are grouped by their Engine "
+            "cell as written, and within it by Kind, never pooled across "
+            "kinds. Each group shows its Stage cells, merged and abandoned "
+            "counts, rounds per item and how many rows took each round "
+            "count, tests per acceptance criterion, findings per item by "
+            "rank, and how many of its caller-supplied cells (Rounds and "
+            "the three finding cells) are blank. Every ratio carries its n, "
+            "the rows it is drawn from. A blank cell joins no ratio and is "
+            "counted as unrecorded; a `-` finding cell joins no finding "
+            "ratio; a merged row whose Tests and Files are both 0 is read "
+            "as unrecorded in those two cells, never as zero \u2014 except "
+            "where the item already has an earlier merged row on the same "
+            "queue: that repeat is a merge re-run's duplicate and is left "
+            "out, and the earlier row counts. Any other repeat merged row is "
+            "a reopened item merged again, and both count. Finding ratios "
+            "are withheld "
+            "from a group whose Engine cell is not 1.59.0 or later, where a "
+            "blank finding cell may also mean no review ran. Rounds are a "
+            "distribution, not a share at the round cap: the cap is a "
+            "setting, and it may have moved under the rows. A row with a "
+            "cell count no ledger template draws is skipped and named. A "
+            "missing ledger is reported and exits 0; report never creates "
+            "one.\n"
+            "\n"
+            "The groups are descriptive and not comparable: another engine, "
+            "another setting or another batch of work sits behind each, and "
+            "a small one is an anecdote."))
+    p_ledger.add_argument("action", choices=["abandon", "report"])
+    p_ledger.add_argument("number", type=int, nargs="?", default=None,
+                          help="abandon: the item (required)")
     p_ledger.add_argument("--rounds", type=_non_negative_argument, default=None,
-                          help="build\u2194validate rounds the item took "
+                          help="abandon: build\u2194validate rounds the item took "
                                "before it was abandoned (required)")
     p_ledger.add_argument("--findings", type=_findings_argument, default=None,
-                          help="findings by rank: blocking=A,minor=B,nit=C "
+                          help="abandon: findings by rank: blocking=A,minor=B,nit=C "
                                "\u2014 any subset, any order")
     p_ledger.add_argument("--no-commit", action="store_true",
-                          help="write the row, do not git commit")
+                          help="abandon: write the row, do not git commit")
+    p_ledger.add_argument("--queue", type=_non_negative_argument, default=None,
+                          metavar="NNN",
+                          help="report: only the rows whose Queue cell is NNN")
+    p_ledger.add_argument("--json", action="store_true", dest="as_json",
+                          help="report: print the readings as JSON")
     p_ledger.set_defaults(func=cmd_ledger)
 
     register_git_subcommands(sub)  # claim / merge / env (git layer)

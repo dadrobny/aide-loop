@@ -136,6 +136,59 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.27.0] — 2026-09-30
+
+### Added
+
+- **`aide ledger report` reads the run ledger back (issue #251).** §1 →
+  `ledger.md` named two readers of `docs/aide/ledger.md`, and one of them —
+  the feedback-loop pass over a finished queue — did not exist: nothing read
+  the rows, and a ratio re-derived by hand from the file is where a blank
+  becomes a zero. The new action is read-only and provider-agnostic: a table,
+  or `--json`, with `--queue NNN` to keep one queue. Rows are grouped by their
+  `Engine` cell as written and within it by `Kind`, never pooled across
+  kinds; each group shows its stages, merged and abandoned counts, rounds per
+  item with the distribution of round counts, tests per acceptance
+  criterion, findings per item by rank, and how many caller-supplied cells
+  are blank, every ratio with its `n`. It reads the cells as §1 defines them
+  — a blank joins no ratio and counts as unrecorded, `-` joins no finding
+  ratio — and absorbs two data defects of older ledgers: a merged row with
+  Tests and Files both `0` is read as unrecorded in those cells, and where
+  the item already has an earlier `merged` row on the same queue that 0/0
+  repeat is the duplicate #346's re-run after a failed push appended before
+  2.25.1: it is left out and the earlier row, whose diff cells are intact,
+  counts. Any other repeat `merged` row is a reopened item merged again, and
+  both count. Finding ratios are
+  withheld from a group whose engine is before 1.59.0, where a blank finding
+  cell could also mean no review ran. Rounds are shown as a distribution
+  rather than a share at the round cap, since the cap is a setting that may
+  have moved under the rows; the verb reads no `aide.toml` key for it. A
+  missing ledger is reported and exits 0, and the verb never creates one. A
+  14-cell row and a 16-cell row read alike; a row of any other width is
+  skipped and named. `aide ledger -h` states it, and §1 → `ledger.md` says
+  the rows are read back through the verb. `core/AGENT-CONTEXT.md`'s verb
+  list now reads `ledger abandon/report`, so **the always-on floor moves from
+  9,352 to 9,359 content bytes**.
+- **`/aide-review-ledger`, a workflow skill over that report.** It runs
+  `ledger report --json`, says plainly when a group is too small for a
+  per-version comparison to be more than an anecdote, and annotates each
+  boundary between engine cohorts from two sources pulled on demand: the
+  framework's GitHub Release notes for the versions in between (`gh release
+  list` / `gh release view` against `[framework] repo`), and `git log -p --
+  aide.toml` dated against the rows. It proposes and edits nothing: an
+  `aide.toml` change is a suggestion to the person, a framework-shaped
+  reading is one `framework` line in the insight inbox, a project one an
+  inbox line of the type that fits, and anything for the next queue a note
+  in its report. `/aide-feedback-loop` lists it as a fifth pass, run when a
+  queue has just closed and a ledger exists; `/aide-run-queue` never calls
+  it.
+- **`gh release list` and `gh release view` are pre-approved** in the
+  shipped `.claude/settings.json` allow-list, beside the other read-only
+  `gh` queries, so the skill's reads prompt nobody. A consumer that keeps its
+  own `settings.json` finds them in the `.aide-merge` beside it, like any new
+  allow entry; they are not migrated in, since the pass is interactive and a
+  prompt there is answered rather than stalled on.
+
 ## [2.26.0] — 2026-09-30
 
 ### Changed

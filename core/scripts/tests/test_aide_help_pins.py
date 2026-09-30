@@ -87,6 +87,13 @@ that moved everything.
   outside the item is an insights.md line and no cell here"* is §9's rule
   about what the caller counts, which no cell the engine writes can measure —
   the engine records the number it is handed.
+* *"The groups are descriptive and not comparable: another engine, another
+  setting or another batch of work sits behind each, and a small one is an
+  anecdote"*, *"where a blank finding cell may also mean no review ran"* and
+  *"the cap is a setting, and it may have moved under the rows"* (`ledger`)
+  — how to read the report and why two pinned behaviours are what they are.
+  *"Each group shows its Stage cells, merged and abandoned counts, …"* is the
+  list of readings, each held by the pin on the cell rule it follows.
 * The `-h` **option** help (`--queue`, `--base`, `--yes`, …). Argparse prints
   those below the description; this row is the description blocks, and an
   option line is one clause about one flag rather than a statement of what the
@@ -1842,6 +1849,66 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_ledger::test_abandon_under_review_off_marks_the_finding_cells",
           "test_aide_ledger::"
           "test_abandon_run_twice_under_review_off_still_records_the_item_once")),
+        # `report` (issue #251): `_ledger_report_command` reads one file and
+        # writes none; `--json` dumps what `ledger_report` returns, `--queue`
+        # is its `queue` filter.
+        ("report: reads the ledger and writes nothing",
+         "test_aide_ledger_report::test_report_prints_json_and_writes_nothing"),
+        ("--queue NNN keeps that queue's rows",
+         "test_aide_ledger_report::test_queue_keeps_that_queues_rows"),
+        # `ledger_report`'s `groups` key `(row["Engine"], row["Kind"])`.
+        ("Rows are grouped by their Engine cell as written, and within it by "
+         "Kind, never pooled across kinds",
+         ("test_aide_ledger_report::"
+          "test_rows_are_grouped_by_engine_cell_and_within_it_by_kind",
+          "test_aide_ledger_report::test_an_engine_cell_is_a_cohort_as_written")),
+        # `_ledger_group`: every reading is `{value/per_item, n}`.
+        ("Every ratio carries its n, the rows it is drawn from",
+         "test_aide_ledger_report::"
+         "test_every_ratio_carries_its_n_and_counts_the_outcomes"),
+        # `_ledger_count` -> None, counted in `unrecorded` and `caller_blank`.
+        ("A blank cell joins no ratio and is counted as unrecorded",
+         "test_aide_ledger_report::"
+         "test_a_blank_cell_joins_no_ratio_and_is_counted_unrecorded"),
+        # The `LEDGER_NO_REVIEW_CELL` `continue` in the finding loop.
+        ("a `-` finding cell joins no finding ratio",
+         "test_aide_ledger_report::"
+         "test_a_no_review_finding_cell_joins_no_finding_ratio"),
+        # `test == 0 and files == 0` on a merged row -> both None.
+        ("a merged row whose Tests and Files are both 0 is read as unrecorded "
+         "in those two cells, never as zero",
+         "test_aide_ledger_report::"
+         "test_a_merged_row_with_zero_tests_and_zero_files_is_unrecorded_not_zero"),
+        # `merged_before` / `dropped`: a repeat merged 0/0 row is left out.
+        ("where the item already has an earlier merged row on the same "
+         "queue: that repeat is a merge re-run's duplicate and is left out, "
+         "and the earlier row counts",
+         "test_aide_ledger_report::"
+         "test_a_repeat_merged_row_with_a_zero_diff_is_left_out_and_the_earlier_counts"),
+        # Every other repeat is kept: the 0/0 test fails for it.
+        ("Any other repeat merged row is a reopened item merged again, and "
+         "both count",
+         "test_aide_ledger_report::test_a_reopened_item_merged_twice_keeps_both_rows"),
+        # `withheld` against `LEDGER_FINDINGS_SINCE`.
+        ("Finding ratios are withheld from a group whose Engine cell is not "
+         "1.59.0 or later",
+         "test_aide_ledger_report::"
+         "test_finding_ratios_are_withheld_from_a_group_before_1_59_0"),
+        # `rounds.histogram`, and no cap read anywhere in `ledger_report`.
+        ("Rounds are a distribution, not a share at the round cap",
+         "test_aide_ledger_report::"
+         "test_rounds_are_a_distribution_and_not_a_share_at_the_cap"),
+        # The width test in `ledger_report`, before padding a 14-cell row.
+        ("A row with a cell count no ledger template draws is skipped and "
+         "named",
+         ("test_aide_ledger_report::"
+          "test_a_row_with_another_cell_count_is_skipped_and_named",
+          "test_aide_ledger_report::"
+          "test_a_fourteen_cell_row_and_a_sixteen_cell_row_read_alike")),
+        # `_ledger_report_command`'s `not path.is_file()` branch.
+        ("A missing ledger is reported and exits 0; report never creates one",
+         "test_aide_ledger_report::"
+         "test_a_missing_ledger_is_reported_exits_0_and_is_never_created"),
     ],
 
     # ---------------------------------------------------------------- queue --
