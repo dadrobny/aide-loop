@@ -7252,6 +7252,52 @@ def queue_end_stages(title: Optional[str]) -> Optional[List[int]]:
     return _introducing_stages(title)
 
 
+def queue_item_title(repo_root: Path, config, titles: Dict[int, str],
+                     number: int) -> Optional[str]:
+    """Item *number*'s title: the queue's `### Item NNN:` line, else its spec's.
+
+    The one title a queue-end reading goes by, so `aide claim`'s hold and
+    `aide check --queue`'s warnings cannot disagree about which item is one.
+    """
+    return titles.get(number) or _spec_stage_and_title(repo_root, config, number)[1]
+
+
+def queue_end_holds(repo_root: Path, config, queue_text: str,
+                    item_status: Dict[int, str]) -> Dict[int, List[int]]:
+    """Each queue-end item the queue lists, with the queue-mates holding it.
+
+    A queue-end item runs after the rest of its queue whatever order the file
+    lists it in (issue #347): it is held by every other item the queue lists
+    that is not itself a queue-end item and whose status still blocks a claim
+    (📋, 🚧, 🔍). Read from the queue file and progress.md alone — an item with
+    no spec is held as surely as one with. Queue-end items never hold each
+    other, since a queue ending on two would otherwise never start either, and
+    an item whose spec depends on the queue-end item — directly or through
+    other queue-mates' `## Dependencies` — never holds it, since each would
+    then wait on the other for ever.
+    """
+    titles = _queue_titles(queue_text)
+    order = queue_item_numbers(queue_text)
+    ends = [n for n in order
+            if queue_end_stages(queue_item_title(repo_root, config, titles, n))
+            is not None]
+    rest = [n for n in order if n not in ends
+            and item_status.get(n, "planned") in BLOCKING_STATUSES]
+    deps = {n: set(_item_dependencies(repo_root, config, n)) for n in rest}
+    holds: Dict[int, List[int]] = {}
+    for end in ends:
+        after: Set[int] = {end}
+        grew = True
+        while grew:
+            grew = False
+            for n in rest:
+                if n not in after and deps[n] & after:
+                    after.add(n)
+                    grew = True
+        holds[end] = [n for n in rest if n not in after]
+    return holds
+
+
 def queue_closed_stages(lines: List[str], qdir: Path, number: int) -> List[str]:
     """The stages queue *number* closes, in progress.md order.
 
@@ -7306,8 +7352,11 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     queue-end item's own spec, and an excluded item's, annotate nothing here —
     the first would count the item as the reason it is not needed. The need is
     met by a queue-end item naming the stage in the queue's trailing run of
-    them. The mirror warning names a planned queue-end item with nothing to do.
-    A queue whose items are all spent gets neither: nothing is left to plan.
+    them, or by one naming it that is still open anywhere on the queue. The
+    mirror warning names a planned queue-end item with nothing to do, and a
+    third names an open queue-end item listed ahead of open work that is not
+    one (issue #347). A queue whose items are all spent gets none of them:
+    nothing is left to plan.
     """
     ddir = docs_dir(repo_root, config)
     qdir, idir = ddir / "queue", ddir / "items"
@@ -7328,14 +7377,23 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     titles = _queue_titles(qtext)
 
     def title_of(n: int) -> Optional[str]:
-        return titles.get(n) or _spec_stage_and_title(repo_root, config, n)[1]
+        return queue_item_title(repo_root, config, titles, n)
 
     end_stages = {n: queue_end_stages(title_of(n)) for n in order}
-    trailing: Set[int] = set()
+    # The need is met by a queue-end item that will run last: one in the
+    # queue's trailing run of them, or one still open anywhere on it, since
+    # `aide claim` holds an open one until the rest of the queue has left the
+    # way (issue #347) — where it sits is `queue-end-not-last`'s business. A
+    # spent one listed before open work ran before that work, so it meets
+    # nothing.
+    met: Set[int] = set()
     for n in reversed(order):
         if end_stages[n] is None:
             break
-        trailing.update(end_stages[n])
+        met.update(end_stages[n])
+    for n in order:
+        if end_stages[n] and item_status.get(n, "planned") not in spent:
+            met.update(end_stages[n])
 
     annotated: Set[Tuple[int, int]] = set()
     specced: Set[int] = set()
@@ -7399,7 +7457,7 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
                              "(## Environment / Hardware Dependencies) with no "
                              "capability row")
         reasons_by_stage[s] = reasons
-        if reasons and s not in trailing:
+        if reasons and s not in met:
             findings.append(SpecFinding(
                 "warning", "queue-end-needed", (number,),
                 f"queue {number:03d} closes stage {s} and needs a queue-end "
@@ -7435,6 +7493,26 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
                 "warning", "queue-end-idle", (n,),
                 f"item {n:03d} is a queue-end item for stage {s}, but {why} — "
                 f"drop it before it is claimed"))
+
+    # Out of place (issue #347): an open queue-end item listed ahead of open
+    # work that is not one. `aide claim` holds it until that work has left the
+    # way, so it still runs last; the warning keeps the file saying so. A
+    # settled record either side (✅, ❌, ⏸️) is history, not a plan (#338),
+    # and an item whose dependencies lead back to it belongs after it.
+    holds = queue_end_holds(repo_root, config, qtext, item_status)
+    for i, n in enumerate(order):
+        if end_stages[n] is None or item_status.get(n, "planned") in spent:
+            continue
+        after = [m for m in order[i + 1:] if m in holds.get(n, ())]
+        if after:
+            findings.append(SpecFinding(
+                "warning", "queue-end-not-last", (n, *after),
+                f"item {n:03d} is a queue-end item, but queue {number:03d} "
+                f"lists open item(s) "
+                + ", ".join(f"{m:03d}" for m in after)
+                + " after it — move it to the end of the queue; `aide claim` "
+                f"holds it until they are ✅, ❌ or ⏸️ either way "
+                f"(§1 → queue-NNN.md)"))
     return findings
 
 
@@ -11231,8 +11309,10 @@ def _pick_item(repo_root: Path, config, queue_text: str,
                claim_branches: List[str]) -> Optional[Tuple[int, str]]:
     """First queue item that is planned, unclaimed, and unblocked. (number, title).
 
-    "Unblocked" covers three things: its `## Dependencies` are all under way,
-    no claim branch exists for it, and **no unresolved human gate holds it**. A
+    "Unblocked" covers four things: its `## Dependencies` are all under way,
+    no claim branch exists for it, **no unresolved human gate holds it**, and,
+    for a queue-end item, no other item of its queue still blocks
+    (`queue_end_holds`). A
     gate naming items (directly, or via a stage reach) skips just those, so the
     queue keeps producing other work; an `all` gate stops everything, which is
     the point of declaring one — a pending decision that could invalidate what
@@ -11254,12 +11334,17 @@ def _pick_item(repo_root: Path, config, queue_text: str,
     claimed_nums = {n for n in (_branch_item_number(br, prefix) for br in claim_branches)
                     if n is not None}
     titles = _queue_titles(queue_text)
+    holds = queue_end_holds(repo_root, config, queue_text, item_status)
     for num in queue_item_numbers(queue_text):
         if item_status.get(num, "planned") != "planned":
             continue
         if num in claimed_nums:
             continue
         if num in gate_blocked:
+            continue
+        # A queue-end item waits for the rest of its queue, spec or no spec
+        # and wherever the file lists it (issue #347).
+        if holds.get(num):
             continue
         deps = _item_dependencies(repo_root, config, num)
         # 🔍 blocks like 🚧 does: an item whose PR is still open is work that is
@@ -11354,8 +11439,10 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     scan_order: List[int] = []
     seen = set()
     titles: Dict[int, str] = {}
+    holds: Dict[int, List[int]] = {}
     for qt in candidates:
         titles.update(_queue_titles(qt))
+        holds.update(queue_end_holds(repo_root, config, qt, item_status))
         for n in queue_item_numbers(qt):
             if n not in seen:
                 seen.add(n)
@@ -11397,7 +11484,7 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
         gated |= _reached(g)
     early = _early_ready(repo_root, config, open_ordered,
                          [(n, g) for n, g, _ in relevant], gated,
-                         claimed, item_status, scan_order)
+                         claimed, item_status, scan_order, holds)
 
     def _stranded_lines() -> None:
         for num in open_ordered:
@@ -11447,10 +11534,14 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
         else:
             blockers = [d for d in _item_dependencies(repo_root, config, num)
                         if item_status.get(d, "planned") in BLOCKING_STATUSES]
+            held_by = holds.get(num, [])
+            blockers += [d for d in held_by if d not in blockers]
             if blockers:
                 print(f"{head} waiting on "
                       + ", ".join(f"{d:03d} ({item_status.get(d, 'planned')})"
-                                  for d in blockers))
+                                  for d in blockers)
+                      + (" — a queue-end item, held until the rest of "
+                         "its queue has left the way" if held_by else ""))
             else:
                 print(f"{head} open and unblocked, yet not offered — please "
                       f"report this")
@@ -11465,7 +11556,8 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
 def _early_ready(repo_root: Path, config, open_ordered: List[int],
                  gates: List[Tuple[int, "HumanGate"]], gated: set,
                  claimed: Dict[int, str], item_status: Dict[int, str],
-                 scan_order: List[int]) -> str:
+                 scan_order: List[int],
+                 holds: Optional[Dict[int, List[int]]] = None) -> str:
     """The ``early ready:`` line ending a ``none left — …`` report that exits 0.
 
     ``yes`` when every gate holding the queue is still ⏳ awaiting its
@@ -11491,9 +11583,14 @@ def _early_ready(repo_root: Path, config, open_ordered: List[int],
     held = {n for n in gated if n not in claimed}
     # An item waiting only on held items is held too: to a fixed point, since
     # a chain of dependencies can hang off one gated item, listed in any order.
+    # A queue-end item waits on its queue-mates (`holds`, issue #347) as it
+    # waits on a declared dependency.
+    holds = holds or {}
     deps = {n: [d for d in _item_dependencies(repo_root, config, n)
                 if item_status.get(d, "planned") in BLOCKING_STATUSES]
             for n in open_ordered}
+    for n in open_ordered:
+        deps[n] += [d for d in holds.get(n, []) if d not in deps[n]]
     grew = True
     while grew:
         grew = False
@@ -15574,12 +15671,15 @@ def build_parser() -> argparse.ArgumentParser:
             "`Validate stage N`, and neither its own spec nor an excluded "
             "item's annotates anything here. The check warns when a stage "
             "with a need has no queue-end item for it among the queue's "
-            "final items, naming each reason, and when a queue-end item not "
+            "final items or still open anywhere on it, naming each reason; "
+            "when an open queue-end item is listed ahead of an open item "
+            "that is not one, which `aide claim` holds it behind; and when "
+            "a queue-end item not "
             "\u2705, \u274c or \u23f8\ufe0f names no stage, a stage the "
             "queue does not close, or one with no need, unless `aide "
             "progress reopen` sent it back and it is still open: it was "
             "needed once, and is back for a fix. A queue whose items "
-            "are all \u2705, \u274c or \u23f8\ufe0f gets neither warning.\n"
+            "are all \u2705, \u274c or \u23f8\ufe0f gets none of them.\n"
             "\n"
             "Over progress.md's tables, ERRORS: a missing stage summary "
             "table, objective coverage table or stage section; a stage "
@@ -16212,7 +16312,11 @@ def register_git_subcommands(sub) -> None:
             "Picks the first 📋 item the queue lists \u2014 its own "
             "order, not the item numbers \u2014 whose dependencies have all "
             "left the way (\u2705, \u274c or "
-            "\u23f8\ufe0f) and that no unresolved human gate reaches. It "
+            "\u23f8\ufe0f) and that no unresolved human gate reaches. A "
+            "queue-end item, one titled `Validate stage N`, waits besides on "
+            "every other item its queue lists that is not one, as on a "
+            "dependency, with or without a spec and wherever the queue lists "
+            "it, bar an item whose dependencies lead back to it. It "
             "will not offer a blocked item: where a gate holds the pick, the "
             "report names that gate, what it blocks and who may resolve it, "
             "rather than an unexplained \"none left\". Every \"none left "

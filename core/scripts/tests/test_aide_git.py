@@ -1684,6 +1684,117 @@ def test_claim_offers_the_first_planned_item_the_queue_lists(tmp_path: Path,
     assert first.startswith("would claim item 028"), first
 
 
+# --------------------------------------------------------------------------- #
+# a queue-end item waits for the rest of its queue (issue #347)
+# --------------------------------------------------------------------------- #
+#: The issue's fixture: 026 done, `Validate stage 1` planned as the last item,
+#: then 028 added after planning and listed after it. No spec for either.
+QUEUE_END_MID = """\
+# Demo — Work Queue 003
+
+### Item 026: Rule engine core
+Core.
+
+### Item 027: Validate stage 1: Rules
+Validates the stage.
+
+### Item 028: Coverage rules
+Coverage, added after planning.
+"""
+
+
+def _queue_end_repo(tmp_path: Path, queue: str = QUEUE_END_MID) -> Path:
+    root = _init_repo(tmp_path / "r", mode="local")
+    (root / "docs" / "aide" / "queue" / "queue-003.md").write_text(queue,
+                                                                   encoding="utf-8")
+    return root
+
+
+def test_claim_holds_a_queue_end_item_behind_a_later_listed_item(tmp_path: Path,
+                                                                 capsys):
+    """The walk reaches 027 first, and 027 has no spec to name a dependency:
+    it is still held, because 028 is its queue-mate and still 📋."""
+    root = _queue_end_repo(tmp_path)
+    cfg = aide.load_config(root)
+    assert aide._pick_item(root, cfg, QUEUE_END_MID, claim_branches=[])[0] == 28
+    assert aide.main(["--repo", str(root), "claim", "--dry-run"]) == 0
+    assert capsys.readouterr().out.splitlines()[0].startswith("would claim item 028")
+
+
+def test_claim_offers_the_queue_end_item_once_the_rest_has_left_the_way(
+        tmp_path: Path, capsys):
+    """🚧 and 🔍 hold it as 📋 does; ✅, ❌ and ⏸️ let it go — the complement
+    of BLOCKING_STATUSES, as for a declared dependency."""
+    root = _queue_end_repo(tmp_path)
+    cfg = aide.load_config(root)
+    ppath = root / "docs" / "aide" / "progress.md"
+    for icon, offered in (("🚧", None), ("🔍", None),
+                          ("✅", 27), ("❌", 27), ("⏸️", 27)):
+        ppath.write_text(PROGRESS.replace("- 📋 Coverage. *(Item 028)*",
+                                          f"- {icon} Coverage. *(Item 028)*"),
+                         encoding="utf-8")
+        pick = aide._pick_item(root, cfg, QUEUE_END_MID, claim_branches=[])
+        assert (pick[0] if pick else None) == offered, icon
+
+
+def test_queue_end_items_never_hold_each_other(tmp_path: Path):
+    """A queue may end on two queue-end items: each waits on the deliverables,
+    never on the other, or neither would ever be offered."""
+    queue = QUEUE_END_MID.replace(
+        "### Item 028: Coverage rules\nCoverage, added after planning.\n",
+        "### Item 028: Validate stage 1: Rules again\nAgain.\n")
+    root = _queue_end_repo(tmp_path, queue)
+    cfg = aide.load_config(root)
+    assert aide._pick_item(root, cfg, queue, claim_branches=[])[0] == 27
+
+
+def test_an_item_depending_on_the_queue_end_item_never_holds_it(tmp_path: Path):
+    """A queue-mate whose spec names the queue-end item as a dependency —
+    directly, or through another mate's — would otherwise wait on it while it
+    waits on them, and neither would ever be offered."""
+    queue = QUEUE_END_MID + "### Item 029: Follow-up\nAfter 028.\n"
+    root = _queue_end_repo(tmp_path, queue)
+    idir = root / "docs" / "aide" / "items"
+    (idir / "028-coverage.md").write_text(
+        "# Item 028 — Coverage rules\n\n## Dependencies\n\n- Item 027\n",
+        encoding="utf-8")
+    (idir / "029-follow-up.md").write_text(
+        "# Item 029 — Follow-up\n\n## Dependencies\n\n- Item 028\n",
+        encoding="utf-8")
+    cfg = aide.load_config(root)
+    holds = aide.queue_end_holds(root, cfg, queue,
+                                 aide._progress_item_status(root, cfg))
+    assert holds[27] == []
+    assert aide._pick_item(root, cfg, queue, claim_branches=[])[0] == 27
+
+
+def test_a_queue_end_item_titled_only_in_its_spec_is_held(tmp_path: Path):
+    """The title falls back to the spec's header, as `aide check --queue`
+    reads it, so the two agree on which item is a queue-end item."""
+    queue = QUEUE_END_MID.replace("### Item 027: Validate stage 1: Rules",
+                                  "### Item 027:")
+    root = _queue_end_repo(tmp_path, queue)
+    (root / "docs" / "aide" / "items" / "027-validate.md").write_text(
+        "# Item 027 — Validate stage 1: Rules\n\n## Dependencies\n\nNone.\n",
+        encoding="utf-8")
+    cfg = aide.load_config(root)
+    assert aide._pick_item(root, cfg, queue, claim_branches=[])[0] == 28
+
+
+def test_none_left_names_the_queue_end_hold(tmp_path: Path, capsys):
+    """With 028 claimed elsewhere, nothing is offerable: the report says 027
+    waits on 028 and why, rather than "open and unblocked, yet not offered"."""
+    root = _queue_end_repo(tmp_path)
+    assert aide.main(["--repo", str(root), "progress", "set", "28",
+                      "in-progress"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "claim", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    line = next(ln for ln in out.splitlines() if ln.startswith("  027"))
+    assert "waiting on 028 (in-progress)" in line and "queue-end item" in line
+    assert "please report this" not in out
+
+
 def test_none_left_reports_in_the_queues_own_order(tmp_path: Path, capsys):
     """The report follows `_pick_item`'s walk, not the item numbers.
 

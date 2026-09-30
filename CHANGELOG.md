@@ -136,6 +136,51 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.26.0] — 2026-09-30
+
+### Changed
+
+- **`aide claim` holds a queue-end item until the rest of its queue has
+  left the way, wherever the queue lists it (issue #347).** A queue planned
+  with `Validate stage N: <stage title>` last had one more deliverable added
+  after planning, numbered and listed after it; with neither specced, the
+  queue-end item had no `## Dependencies` to read, counted as unblocked, and
+  was claimed first — validating a stage whose last deliverable was not
+  built. Claim now holds a queue-end item (the `Validate stage N` title
+  `aide check --queue` already reads, from the queue file or else the spec
+  header) while any other item its queue lists that is not itself a
+  queue-end item is 📋, 🚧 or 🔍, with or without a spec. ✅, ❌ and ⏸️
+  queue-mates never hold it, as for a declared dependency, and two
+  queue-end items never hold each other, so a queue ending on both still
+  runs them. Nor does a queue-mate whose `## Dependencies` lead back to the
+  queue-end item, directly or through other queue-mates, or each would wait
+  on the other for ever. A queue-end item planned mid-queue on purpose, with
+  later work listed after it, now waits for that work too: §1 has planned it
+  as the queue's final item since 2.22.0. A CI fix round (#332) is
+  unaffected in the case it relies on: a queue-end item reopened alone has
+  only ✅ queue-mates and is offered at once, and one reopened beside a
+  deliverable runs after that fix. The
+  `none left — …` report names the hold (`waiting on 028 (in-progress) — a
+  queue-end item, held until the rest of its queue has left the way`)
+  instead of `open and unblocked, yet not offered`, and the `early ready:`
+  line treats the hold like a dependency, so a queue-end item waiting only
+  on gated work reads as held by the gate.
+- **`aide check --queue NNN` warns `queue-end-not-last` when an open
+  queue-end item is listed ahead of open work that is not one.** The
+  finding names the queue-end item and the items after it: `item 002 is a
+  queue-end item, but queue 001 lists open item(s) 003 after it — move it
+  to the end of the queue; …`. ✅, ❌ and ⏸️ records either side are
+  exempt, per #338, and so is an item whose dependencies lead back to the
+  queue-end item: it belongs after it. Alongside it, `queue-end-needed` no
+  longer fires on a stage whose queue-end item is open but not last: that
+  item will run last,
+  so the old `End the queue with Validate stage N` read as a request to plan
+  an item that already exists. The need is met by a queue-end item in the
+  queue's trailing run or one still open anywhere on it; one ✅ ahead of
+  open work ran before that work and still meets nothing. §1 →
+  `queue-NNN.md` states the rule; `aide claim -h` and `aide check -h` state
+  the mechanism, and the `aide-queue-and-inbox` skill delivers it.
+
 ## [2.25.1] — 2026-09-30
 
 ### Fixed
