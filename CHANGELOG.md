@@ -150,19 +150,25 @@ instead — that is the bump policy above, and it is enforced by
   `.aide/VERSION` filled in, prints the entry's ID (the one `list` prints,
   lengthened where a same-day claim shares its four hex digits), and commits
   it the way `tick` does: by default, not under `--no-commit`, and on a
-  commit git refuses the file is put back and the verb exits 1. It creates a
-  missing inbox from the template first, as `list` does; appends after the
+  commit git refuses the file is put back and the verb exits 1 — the ID is
+  printed only once the entry is certain to stay, so a role is never told to
+  cite an entry that was just removed again. It creates a missing inbox from
+  the template first, as `list` does, so a capture into a missing inbox makes
+  two commits: the template, then the entry. It appends after the
   last byte, keeping a BOM and CRLF endings and never gluing onto a last line
   with no newline; and refuses with exit 2, writing nothing, an unknown type,
   an empty claim, a line break in the claim or provenance, a `)` in the
   provenance, a conflicted inbox, and any input whose line would read back
   through the parser as a different entry — an `*(…, date)*` aside in the
-  claim followed by `→`, say. Pre-approving edits of the file was rejected:
+  claim followed by `→`, say. `aide insights -h` adds that in a POSIX shell
+  the claim is single-quoted, so backticks in it stay literal, with an
+  apostrophe written `'\''`. Pre-approving edits of the file was rejected:
   it would wave through hand edits of a file whose claims are immutable.
   A line of the same shape appended by hand is still an entry. `aide
   insights -h` states the verb; §1 → `insights.md`, `core/AGENT-CONTEXT.md`
   and every agent spec's out-of-scope section now say to capture with it,
-  and §1 → `progress.md` routes a `❌ Not met` target through it. The
+  and §1 → `progress.md` routes a `❌ Not met` target through it; the §1
+  index calls the inbox the one every role captures into. The
   always-on page's capture block now shows the verb, and its verb list reads
   `insights add/list/tick/archive/resolve`, so **the always-on floor moves
   from 9,359 to 9,508 content bytes**.
@@ -184,11 +190,19 @@ instead — that is the bump policy above, and it is enforced by
   now reads the commit that last wrote the citing line (`git blame`, once per
   file) and the inbox as it stood in that commit (`git show`, once per
   commit), and names the ID that entry has today — resolvable in the archives
-  too — or says the position named no entry then. A line not yet committed,
-  or a file git does not track, was written against today's inbox and is
-  told so; with no history to read, today's holder is still offered,
-  labelled "today's holder; history unavailable". `aide check -h` and §1 →
-  `insights.md` say so.
+  too — or says the position named no entry then, which it says only when
+  that commit's inbox was read and is shorter. A line not yet committed, or a
+  file git does not track, was written against today's inbox and is told so.
+  Wherever the past inbox is unknown, today's holder is still offered,
+  labelled "today's holder; history unavailable": no git, a blame that fails,
+  a `git show` that fails (the inbox under another path then, say), and a
+  line blamed on a shallow clone's boundary commit, where blame stops rather
+  than where the line was written. The inbox path is read relative to the
+  directory holding `aide.toml`, so a project below the git top level
+  resolves; a BOM on the past inbox is stripped; and blame is asked for git's
+  own line number, counted by `\n` alone, not `splitlines`' — a form feed,
+  U+2028 or lone `\r` before a citation no longer blames the wrong line.
+  `aide check -h` and §1 → `insights.md` say so.
 
 ## [2.27.0] — 2026-09-30
 

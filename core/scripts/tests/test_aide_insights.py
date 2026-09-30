@@ -1985,14 +1985,38 @@ def test_add_no_commit_leaves_the_capture_uncommitted(tmp_path: Path):
 
 
 def test_a_capture_git_will_not_commit_is_put_back_and_exits_1(
-        tmp_path: Path, monkeypatch):
+        tmp_path: Path, monkeypatch, capsys):
     """What `tick` does (issue #309): an edit left written but uncommitted
-    reads as already made to the re-run."""
+    reads as already made to the re-run. And no ID is printed: the entry it
+    would name has just been removed again."""
     repo = _repo(tmp_path)
     before, head = _inbox_bytes(repo), _head(repo)
     _without_git_identity(repo, monkeypatch, tmp_path)
+    capsys.readouterr()
     assert _add(repo, "gap", "a claim") == 1
     assert _inbox_bytes(repo) == before and _head(repo) == head
+    assert "captured insight" not in capsys.readouterr().out
+
+
+def test_the_id_add_prints_is_lengthened_against_an_archived_claim(
+        tmp_path: Path, capsys):
+    """The clash is with an archived entry of the same day: an ID computed
+    over the live inbox alone would print four hex digits, and `check` would
+    then call the citation ambiguous."""
+    first, second = _colliding_claims()
+    repo = _repo(tmp_path, "# Insight Inbox\n\n")
+    quarter = aide.insight_quarter(_today())
+    _cite(repo, f"docs/aide/insights/archive-{quarter}.md",
+          f"# Insight Archive\n\n- [x] gap — {first} *({_today()})* → x\n")
+    assert _add(repo, "gap", second, "--no-commit") == 0
+    printed = capsys.readouterr().out
+    pool = aide.load_insight_pool(repo / "docs" / "aide")
+    ids = aide.insight_ids([e for _, e in pool])
+    mine = ids[[e.text for _, e in pool].index(second)]
+    assert len(mine) > len(_today()) + 1 + aide.INSIGHT_ID_MIN_HEX
+    assert f"captured insight {mine} " in printed
+    _cite(repo, "docs/aide/items/007-x.md", f"Fixes insight {mine}.\n")
+    assert _findings(repo) == ([], [])
 
 
 def test_add_never_glues_onto_a_last_line_with_no_newline(tmp_path: Path):
@@ -2152,3 +2176,118 @@ def test_history_costs_one_blame_per_file_and_one_show_per_commit(
     assert len(warnings) == 4
     assert calls.count("blame") == 2
     assert calls.count("show") == 2           # two distinct commits wrote them
+
+
+def test_a_bom_on_the_inbox_then_does_not_shift_its_positions(tmp_path: Path):
+    """`git show` output is decoded as utf-8, not utf-8-sig: a BOM left on
+    would make the first entry no `- ` line and move every position by one."""
+    # The first entry on the first line, where the BOM lands.
+    bommed = "\ufeff" + _FIVE.split("\n\n", 1)[1]
+    repo = _repo(tmp_path)
+    (repo / "docs" / "aide" / "insights.md").write_bytes(bommed.encode("utf-8"))
+    _cite(repo, "docs/aide/items/007-x.md", "Fixes insight 1 and insight 5.\n")
+    _commit_all(repo)
+    assert aide.main(["--repo", str(repo), "insights", "archive",
+                      "--before", "2026-01-05", "--yes"]) == 0
+    ids = aide.insight_ids(aide.parse_insights(_FIVE))
+    _, warnings = _findings(repo)
+    assert len(warnings) == 2
+    assert f"entry 1 was insight {ids[0]} when " in warnings[0]
+    assert f"entry 5 was insight {ids[4]} when " in warnings[1]
+
+
+def test_history_is_read_when_repo_root_is_below_the_git_top_level(tmp_path: Path):
+    """`<sha>:<path>` is read from git's top level; the inbox path is
+    repo_root's, so it is asked for as `<sha>:./<path>`."""
+    top = tmp_path / "mono"
+    top.mkdir()
+    _run(["git", "init", "-b", "main"], top)
+    _run(["git", "config", "user.email", "t@e.com"], top)
+    _run(["git", "config", "user.name", "T"], top)
+    _run(["git", "config", "core.autocrlf", "false"], top)
+    repo = top / "sub"
+    (repo / "docs" / "aide").mkdir(parents=True)
+    (repo / "aide.toml").write_text(AIDE_TOML, encoding="utf-8")
+    (repo / "docs" / "aide" / "insights.md").write_text(_FIVE, encoding="utf-8")
+    _cite(repo, "docs/aide/items/007-x.md", "Fixes insight 1.\n")
+    _commit_all(top)
+    assert aide.main(["--repo", str(repo), "insights", "archive",
+                      "--before", "2026-01-05", "--yes"]) == 0
+    ids = aide.insight_ids(aide.parse_insights(_FIVE))
+    _, warnings = _findings(repo)
+    assert len(warnings) == 1 and f"entry 1 was insight {ids[0]} when " in warnings[0]
+
+
+def test_an_inbox_that_cannot_be_read_then_is_the_labelled_fallback(tmp_path: Path):
+    """A failed `git show` — here the inbox was never committed — says nothing
+    about the past: not "named no entry", but today's holder, labelled."""
+    repo = _repo(tmp_path, _FIVE)
+    _run(["git", "rm", "-q", "--cached", "docs/aide/insights.md"], repo)
+    _run(["git", "commit", "-q", "-m", "untrack the inbox"], repo)
+    _cite(repo, "docs/aide/items/007-x.md", "Fixes insight 2.\n")
+    _run(["git", "add", "docs/aide/items/007-x.md"], repo)
+    _run(["git", "commit", "-q", "-m", "cite"], repo)
+    ids = aide.insight_ids(aide.parse_insights(_FIVE))
+    _, warnings = _findings(repo)
+    assert len(warnings) == 1
+    assert "named no entry" not in warnings[0]
+    assert "history unavailable" in warnings[0] and f"insight {ids[1]}" in warnings[0]
+
+
+def test_a_line_blamed_on_a_shallow_clones_boundary_is_the_labelled_fallback(
+        tmp_path: Path):
+    """blame stops at the commit the clone was cut at, and `git show` of it is
+    today's inbox — a confident, wrong answer unless the boundary is read."""
+    src = _archived_after_citing(tmp_path, "Fixes insight 1.\n")
+    clone = tmp_path / "clone"
+    _run(["git", "clone", "-q", "--depth", "1", src.resolve().as_uri(),
+          str(clone)], tmp_path)
+    assert _run(["git", "rev-parse", "--is-shallow-repository"],
+                clone).stdout.strip() == "true"
+    ids = aide.insight_ids(aide.parse_insights(_FIVE))
+    _, warnings = _findings(clone)
+    assert len(warnings) == 1
+    assert "history unavailable" in warnings[0]
+    assert f"insight {ids[4]}" in warnings[0] and " was insight " not in warnings[0]
+
+
+def test_a_root_commit_is_history_not_a_boundary(tmp_path: Path):
+    """blame marks a true root commit `boundary` too; only a shallow cut hides
+    history. A citation written in a repository's first commit resolves."""
+    ids = aide.insight_ids(aide.parse_insights(_FIVE))
+    repo = tmp_path / "repo"
+    (repo / "docs" / "aide" / "items").mkdir(parents=True)
+    (repo / "aide.toml").write_text(AIDE_TOML, encoding="utf-8")
+    (repo / "docs" / "aide" / "insights.md").write_text(_FIVE, encoding="utf-8")
+    _cite(repo, "docs/aide/items/007-x.md", "Fixes insight 1.\n")
+    _run(["git", "init", "-b", "main"], repo)
+    _run(["git", "config", "user.email", "t@e.com"], repo)
+    _run(["git", "config", "user.name", "T"], repo)
+    _run(["git", "config", "core.autocrlf", "false"], repo)
+    _commit_all(repo, "root")
+    _, warnings = _findings(repo)
+    assert len(warnings) == 1 and f"entry 1 was insight {ids[0]} when " in warnings[0]
+
+
+@pytest.mark.parametrize("brk", ["\x0c", "\x0b", "\x85", "\u2028", "\r"])
+def test_blame_is_asked_for_gits_line_not_splitlines(tmp_path: Path, brk):
+    """git counts lines by \\n alone; a form feed, a U+2028 or a lone \\r
+    before a citation puts `splitlines`' number past git's, and the blame of
+    the wrong line names the wrong commit."""
+    ids = aide.insight_ids(aide.parse_insights(_FIVE))
+    repo = _repo(tmp_path, _FIVE)
+    cite = repo / "docs" / "aide" / "items" / "007-x.md"
+    cite.parent.mkdir(parents=True, exist_ok=True)
+    cite.write_bytes(f"x{brk}y\nFixes insight 1.\nlast\n".encode("utf-8"))
+    _commit_all(repo)
+    assert aide.main(["--repo", str(repo), "insights", "archive",
+                      "--before", "2026-01-05", "--yes"]) == 0
+    # git's line 3, splitlines' line 4, is edited and left uncommitted.
+    cite.write_bytes(f"x{brk}y\nFixes insight 1.\nlast, edited\n".encode("utf-8"))
+    _, warnings = _findings(repo)
+    assert len(warnings) == 1
+    assert f"entry 1 was insight {ids[0]} when " in warnings[0]
+
+
+def test_git_line_numbers_count_newlines_only():
+    assert aide._git_line_numbers("a\nb\r\nc\x0cd\ne") == [1, 2, 3, 3, 4]

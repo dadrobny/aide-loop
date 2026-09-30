@@ -94,6 +94,11 @@ that moved everything.
   — how to read the report and why two pinned behaviours are what they are.
   *"Each group shows its Stage cells, merged and abandoned counts, …"* is the
   list of readings, each held by the pin on the cell rule it follows.
+* *"In a POSIX shell, single-quote the claim so backticks in it stay
+  literal, and write an apostrophe inside it as '\\''"* (`insights`) — how a
+  caller's shell hands the verb its argument, which the engine never sees:
+  argv arrives already unquoted, and a guard driving a POSIX shell would not
+  run on the Windows leg.
 * The `-h` **option** help (`--queue`, `--base`, `--yes`, …). Argparse prints
   those below the description; this row is the description blocks, and an
   option line is one clause about one flag rather than a statement of what the
@@ -600,13 +605,20 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_a_committed_citation_names_the_entry_it_meant_not_todays_holder",
           "test_aide_insights::test_the_issue_repro_entry_4_names_the_archived_fourth_entry",
           "test_aide_insights::test_a_position_beyond_the_inbox_at_its_commit_named_no_entry",
-          "test_aide_insights::test_history_costs_one_blame_per_file_and_one_show_per_commit")),
+          "test_aide_insights::test_history_costs_one_blame_per_file_and_one_show_per_commit",
+          "test_aide_insights::test_a_bom_on_the_inbox_then_does_not_shift_its_positions",
+          "test_aide_insights::test_history_is_read_when_repo_root_is_below_the_git_top_level",
+          "test_aide_insights::test_a_root_commit_is_history_not_a_boundary",
+          "test_aide_insights::test_blame_is_asked_for_gits_line_not_splitlines")),
         # Same class: blame's all-zero commit (or an untracked file) is
         # today's inbox; no history at all is today's, labelled.
         ("today's holder for a line not yet committed, and today's, labelled "
          "as such, where there is no git history to read",
          ("test_aide_insights::test_an_uncommitted_citation_names_todays_holder",
-          "test_aide_insights::test_without_git_history_todays_holder_is_the_labelled_fallback")),
+          "test_aide_insights::test_without_git_history_todays_holder_is_the_labelled_fallback",
+          "test_aide_insights::test_an_inbox_that_cannot_be_read_then_is_the_labelled_fallback",
+          "test_aide_insights::"
+          "test_a_line_blamed_on_a_shallow_clones_boundary_is_the_labelled_fallback")),
         # `insight_reference_findings` skips `record_documents` before the
         # positional loop, after the ID loop (issue #338).
         ("in a test as in a document other than a record",
@@ -1015,7 +1027,9 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_the_id_add_prints_is_the_one_list_prints_even_when_lengthened",
           "test_aide_insights::"
           "test_add_appends_the_section_shape_with_the_date_and_engine_filled_in",
-          "test_aide_insights::test_a_capture_git_will_not_commit_is_put_back_and_exits_1")),
+          "test_aide_insights::test_a_capture_git_will_not_commit_is_put_back_and_exits_1",
+          "test_aide_insights::"
+          "test_the_id_add_prints_is_lengthened_against_an_archived_claim")),
         # `insight_capture_line`'s refusals, checked before
         # `ensure_insights_inbox` runs; the last one is a parse round trip.
         ("Refuses with exit 2, writing nothing, a type that is not knowledge, "
