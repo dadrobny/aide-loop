@@ -152,9 +152,14 @@ instead — that is the bump policy above, and it is enforced by
   queue-end item is 📋, 🚧 or 🔍, with or without a spec. ✅, ❌ and ⏸️
   queue-mates never hold it, as for a declared dependency, and two
   queue-end items never hold each other, so a queue ending on both still
-  runs them. A CI fix round (#332) is unaffected in the case it relies on: a
-  queue-end item reopened alone has only ✅ queue-mates and is offered at
-  once, and one reopened beside a deliverable runs after that fix. The
+  runs them. Nor does a queue-mate whose `## Dependencies` lead back to the
+  queue-end item, directly or through other queue-mates, or each would wait
+  on the other for ever. A queue-end item planned mid-queue on purpose, with
+  later work listed after it, now waits for that work too: §1 has planned it
+  as the queue's final item since 2.22.0. A CI fix round (#332) is
+  unaffected in the case it relies on: a queue-end item reopened alone has
+  only ✅ queue-mates and is offered at once, and one reopened beside a
+  deliverable runs after that fix. The
   `none left — …` report names the hold (`waiting on 028 (in-progress) — a
   queue-end item, held until the rest of its queue has left the way`)
   instead of `open and unblocked, yet not offered`, and the `early ready:`
@@ -165,7 +170,8 @@ instead — that is the bump policy above, and it is enforced by
   finding names the queue-end item and the items after it: `item 002 is a
   queue-end item, but queue 001 lists open item(s) 003 after it — move it
   to the end of the queue; …`. ✅, ❌ and ⏸️ records either side are
-  exempt, per #338. Alongside it, `queue-end-needed` no longer fires on a
+  exempt, per #338, and so is an item whose dependencies lead back to the
+  queue-end item: it belongs after it. Alongside it, `queue-end-needed` no longer fires on a
   stage whose queue-end item is open but not last: that item will run last,
   so the old `End the queue with Validate stage N` read as a request to plan
   an item that already exists. The need is met by a queue-end item in the

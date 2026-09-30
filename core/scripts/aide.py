@@ -7271,7 +7271,10 @@ def queue_end_holds(repo_root: Path, config, queue_text: str,
     that is not itself a queue-end item and whose status still blocks a claim
     (📋, 🚧, 🔍). Read from the queue file and progress.md alone — an item with
     no spec is held as surely as one with. Queue-end items never hold each
-    other, since a queue ending on two would otherwise never start either.
+    other, since a queue ending on two would otherwise never start either, and
+    an item whose spec depends on the queue-end item — directly or through
+    other queue-mates' `## Dependencies` — never holds it, since each would
+    then wait on the other for ever.
     """
     titles = _queue_titles(queue_text)
     order = queue_item_numbers(queue_text)
@@ -7280,7 +7283,19 @@ def queue_end_holds(repo_root: Path, config, queue_text: str,
             is not None]
     rest = [n for n in order if n not in ends
             and item_status.get(n, "planned") in BLOCKING_STATUSES]
-    return {n: list(rest) for n in ends}
+    deps = {n: set(_item_dependencies(repo_root, config, n)) for n in rest}
+    holds: Dict[int, List[int]] = {}
+    for end in ends:
+        after: Set[int] = {end}
+        grew = True
+        while grew:
+            grew = False
+            for n in rest:
+                if n not in after and deps[n] & after:
+                    after.add(n)
+                    grew = True
+        holds[end] = [n for n in rest if n not in after]
+    return holds
 
 
 def queue_closed_stages(lines: List[str], qdir: Path, number: int) -> List[str]:
@@ -7482,12 +7497,13 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     # Out of place (issue #347): an open queue-end item listed ahead of open
     # work that is not one. `aide claim` holds it until that work has left the
     # way, so it still runs last; the warning keeps the file saying so. A
-    # settled record either side (✅, ❌, ⏸️) is history, not a plan (#338).
+    # settled record either side (✅, ❌, ⏸️) is history, not a plan (#338),
+    # and an item whose dependencies lead back to it belongs after it.
+    holds = queue_end_holds(repo_root, config, qtext, item_status)
     for i, n in enumerate(order):
         if end_stages[n] is None or item_status.get(n, "planned") in spent:
             continue
-        after = [m for m in order[i + 1:] if end_stages[m] is None
-                 and item_status.get(m, "planned") not in spent]
+        after = [m for m in order[i + 1:] if m in holds.get(n, ())]
         if after:
             findings.append(SpecFinding(
                 "warning", "queue-end-not-last", (n, *after),
@@ -16300,7 +16316,7 @@ def register_git_subcommands(sub) -> None:
             "queue-end item, one titled `Validate stage N`, waits besides on "
             "every other item its queue lists that is not one, as on a "
             "dependency, with or without a spec and wherever the queue lists "
-            "it. It "
+            "it, bar an item whose dependencies lead back to it. It "
             "will not offer a blocked item: where a gate holds the pick, the "
             "report names that gate, what it blocks and who may resolve it, "
             "rather than an unexplained \"none left\". Every \"none left "

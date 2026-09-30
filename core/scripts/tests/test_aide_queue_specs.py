@@ -827,6 +827,17 @@ def test_an_open_queue_end_item_that_is_not_final_meets_the_need(tmp_path: Path)
     assert "move it to the end of the queue" in hits[0].message
 
 
+def test_an_item_depending_on_the_queue_end_item_is_not_out_of_place(
+        tmp_path: Path):
+    """028's spec names 029 as a dependency, so it belongs after it: claim
+    does not hold 029 behind it, and the check does not ask to move 029."""
+    repo = _qe_repo(tmp_path, queue_items=(27, 29, 28),
+                    specs={28: "# Item 028 — Thing 28\n\n## Dependencies\n\n"
+                               "- Item 029\n"},
+                    titles={29: "Validate stage 1: Rules"}, progress=_PROGRESS_QE_29)
+    assert _qe(repo, "queue-end-not-last") == []
+
+
 def test_a_spent_queue_end_item_that_is_not_final_does_not_meet_the_need(
         tmp_path: Path):
     """A ✅ `Validate stage 1` listed before open work ran before that work:

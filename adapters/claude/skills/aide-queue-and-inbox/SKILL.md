@@ -136,7 +136,7 @@ reads that warning and never works the need out itself** — with no such
 warning, the queue ends with its last deliverable. **The same check warns on
 a planned queue-end item with nothing to do.** **Wherever the file lists it,
 it runs last**: `aide claim` holds it until the rest of its queue has left
-the way, and `aide check --queue NNN` warns when open work is listed after
+the way, bar an item whose dependencies lead back to it, and `aide check --queue NNN` warns when open work is listed after
 it, so an item added after planning goes above it. **The stage variant is
 titled `Validate stage N: <stage title>`**; `/aide-create-queue` says when to run the
 check and what to write.

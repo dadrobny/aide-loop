@@ -1108,8 +1108,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # other queue-end items and ✅/❌/⏸️ mates never hold.
         ("A queue-end item, one titled `Validate stage N`, waits besides on "
          "every other item its queue lists that is not one, as on a "
-         "dependency, with or without a spec and wherever the queue lists it",
+         "dependency, with or without a spec and wherever the queue lists it, "
+         "bar an item whose dependencies lead back to it",
          ("test_aide_git::test_claim_holds_a_queue_end_item_behind_a_later_listed_item",
+          "test_aide_git::test_an_item_depending_on_the_queue_end_item_never_holds_it",
           "test_aide_git::test_claim_offers_the_queue_end_item_once_the_rest_has_left_the_way",
           "test_aide_git::test_queue_end_items_never_hold_each_other",
           "test_aide_git::test_a_queue_end_item_titled_only_in_its_spec_is_held")),

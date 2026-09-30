@@ -1748,6 +1748,26 @@ def test_queue_end_items_never_hold_each_other(tmp_path: Path):
     assert aide._pick_item(root, cfg, queue, claim_branches=[])[0] == 27
 
 
+def test_an_item_depending_on_the_queue_end_item_never_holds_it(tmp_path: Path):
+    """A queue-mate whose spec names the queue-end item as a dependency —
+    directly, or through another mate's — would otherwise wait on it while it
+    waits on them, and neither would ever be offered."""
+    queue = QUEUE_END_MID + "### Item 029: Follow-up\nAfter 028.\n"
+    root = _queue_end_repo(tmp_path, queue)
+    idir = root / "docs" / "aide" / "items"
+    (idir / "028-coverage.md").write_text(
+        "# Item 028 — Coverage rules\n\n## Dependencies\n\n- Item 027\n",
+        encoding="utf-8")
+    (idir / "029-follow-up.md").write_text(
+        "# Item 029 — Follow-up\n\n## Dependencies\n\n- Item 028\n",
+        encoding="utf-8")
+    cfg = aide.load_config(root)
+    holds = aide.queue_end_holds(root, cfg, queue,
+                                 aide._progress_item_status(root, cfg))
+    assert holds[27] == []
+    assert aide._pick_item(root, cfg, queue, claim_branches=[])[0] == 27
+
+
 def test_a_queue_end_item_titled_only_in_its_spec_is_held(tmp_path: Path):
     """The title falls back to the spec's header, as `aide check --queue`
     reads it, so the two agree on which item is a queue-end item."""
