@@ -7,8 +7,9 @@ carry it out.
 
 `auto-merge` and `pr` differ **only** in how an item lands, inside
 `aide claim` / `aide merge`. `local` also turns off every fetch, pull and push
-any verb makes, not only those of `claim` and `merge`. Agent instructions are
-identical across modes.
+any verb makes, not only those of `claim` and `merge`, and every question to
+the forge. Agent instructions are identical across modes. Any other value is
+an `aide check` error.
 
 - **`auto-merge`** (default) — claim branch pushed; on validator PASS `aide merge`
   direct-merges to `main`, deletes the claim branch, then re-runs the test
@@ -180,7 +181,13 @@ checks" just after a push as the answer: CI may not have started yet.
   `insights` — a reader choosing a mode was told less than it changes (issue
   #307). The rule names what `local` turns off, not a list of verbs: a list
   goes stale the next time a verb learns to fetch, and "every fetch, pull and
-  push" stays true of it.
+  push" stays true of it. The forge was named later (issue #352): `aide
+  status` still asked `gh` for its open-PR line in `local` mode, and printed
+  "could not look (gh is not on PATH)" on a machine meant to be offline.
+- **Why an unknown mode is an error.** Every verb compares the value against
+  `local` or `pr`, so anything else — a `"Local"` — ran as `auto-merge`,
+  pushing from a checkout its owner had set offline, and nothing said so
+  (issue #352).
 - **Why the claim branch goes before the gate run.** So the run sees what a
   fresh clone sees.
 - **Why `aide check` is part of the gate.** Nothing else in the loop ran it

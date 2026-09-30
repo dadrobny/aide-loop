@@ -136,6 +136,94 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.28.2] — 2026-09-30
+
+### Fixed
+
+- **A missing tool ends in one sentence and a non-zero exit — never a
+  traceback, a false OK or a silent no-op (issue #352).** What happened used
+  to depend on which verb met the absence first.
+  - **git not on PATH.** Every git call goes through one guarded entry, and
+    `main()` turns its absence into `aide <verb>: git is not on PATH — install
+    git or put it on PATH, then re-run`, exit 1 (2 for `scope`, where 1 means
+    out of bounds). `status`, `claim`, `sync`, `gc`, `scope`, `test` and the
+    `queue` verbs crashed on `FileNotFoundError`; `merge` refused with "no
+    claim branch found", because the branch reader swallowed the error into
+    an empty list, which it no longer does. A recording verb (`gate`,
+    `progress`, `insights add`/`tick`/`archive`, `ledger abandon`, `queue
+    gate`) in a repository asks before it writes, so it refuses with the edit
+    unmade and no success line. With no git **and** no `.git` at or above the
+    repo root — a directory nothing was ever committed in — it records the
+    edit uncommitted as it always did, with `notice: left uncommitted — git
+    is not on PATH, and there is no .git at or above <repo>`. A `.git` at the
+    repo root that git runs over and cannot read (a `safe.directory` refusal,
+    a bare or corrupt repository, a `gitdir:` pointer to nowhere) is `aide
+    <verb>: git cannot read the repository <repo> is in — <git's own first
+    line>`, never "not inside a git repository". One further up that git
+    refuses — a bare dotfiles repository, a `~/.git` owned by another user —
+    is someone else's: the project reads as no repository, as it did
+    before. `aide check` alone does not refuse either: it
+    is the documents' verdict and has passed with git off PATH since 1.26.0,
+    so it still judges them and adds one warning naming what it could not
+    read — stale claim branches, insight citations' history, the commit of a
+    created inbox — opening with git's refusal where that was the cause.
+  - **The test command not there.** `aide test` says `the test command
+    '<program>' is not on PATH — install it, or fix [python] test_command in
+    aide.toml` and exits 1. `aide merge` still puts the claim branch back with
+    its base, then reports that sentence and exits 1 instead of re-raising;
+    an interrupt or a genuine bug still re-raises. Where the restore itself
+    cannot run, the report says the branch could NOT be put back and names
+    the `git branch` and `git config branch.<b>.aide-base` commands that do
+    it by hand, rather than claiming it was. `merge` now refuses an
+    empty `test_command` before it touches git (`[python] test_command is
+    empty in aide.toml — set it, or pass --no-test`, exit 2), as `aide test`
+    did; it used to make the merge and then die on an `IndexError`.
+  - **One reading of "is this a repository".** Nineteen sites probed
+    `<repo>/.git`, the rest asked git, and they disagreed wherever `aide.toml`
+    sits below git's top level: recording verbs skipped their commit and
+    `merge` found no claim branch. The engine now asks `git rev-parse
+    --show-toplevel` once per invocation and caches the answer. Every reader
+    of the paths git prints — the commit check, `scope`'s diff, `merge`'s
+    reuse of an `aide test` run (whose progress-only exemption never matched),
+    the ledger's test and file counts, rename detection, the unmerged paths
+    `insights resolve` looks for, a restack's conflict list — now names them
+    from the repo root, and every `git show <rev>:<path>` reads the path from
+    there. A change outside the repo root is reported as `../<path>`, so
+    `scope` still refuses it. Claim, scope and merge now run end to end in a
+    consumer one directory below the top level. Outside a
+    repository `sync`, `status`, `claim`, `merge`, `gc`, `scope` and `queue
+    start`/`pr`/`ready`/`restack` refuse with `aide <verb>: <repo> is not
+    inside a git repository — this verb reads and records git state, so run
+    it from a git work tree ('git init' makes one)`, or, where git is not on
+    PATH either, `… tree — git is not on PATH either, so install it first`; `sync` printed `OK — on
+    '', tree clean, remotes fetched` and `status` printed `tree: clean`. `aide
+    test` there still runs the suite, and says the run is not recorded
+    because there is no commit to record it against, not that "HEAD or a
+    tracked file changed while it ran".
+  - **`sync`** says `remotes fetched` only when it fetched, and `no origin to
+    fetch` off `local` mode without an origin.
+  - **`status` in `local` mode** prints `open PRs: - (local mode)` and never
+    asks `gh`; §4 now says `local` turns off every question to the forge, and
+    `aide status -h` says so.
+  - **`aide check` errors on a `[git] mode` other than `auto-merge`, `pr` or
+    `local`.** Every site compared against two of them, so a `"Local"` ran as
+    `auto-merge`. §4 states the error. **A consumer whose `[git] mode` is
+    mistyped now fails `aide check` — and so `aide merge`'s gate — and must
+    correct the value in `aide.toml`**; until now it silently ran as
+    `auto-merge`.
+  - **The hook wrapper** in `.claude/settings.json` ended `done; exit 0`, so a
+    machine with no working `python3` or `python` ran none of the hygiene
+    guard, the spawn guard or the two logs, and said nothing. It now prints
+    `aide: no working python3/python for .claude/hooks/<script>` and exits 1
+    — the non-blocking hook error a missing script already was. `install.py
+    --update` rewrites the 2.4.0–2.28.1 wrapper in a kept `settings.json`
+    (`_RETIRED_HOOK_COMMANDS`); an overlay consumer gets it by regeneration.
+    Each generation's log line now says only what that generation lacked: a
+    2.28.1 wrapper "now reports a missing interpreter", an older one also
+    "resolves its script from the project root".
+    The empty-log hints of `review_permissions.py` and
+    `review_instructions.py` name the missing interpreter as a cause.
+
 ## [2.28.1] — 2026-09-30
 
 ### Fixed

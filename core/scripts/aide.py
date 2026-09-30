@@ -350,6 +350,44 @@ class ConfigError(Exception):
     """
 
 
+class MissingTool(Exception):
+    """A program a verb must run is not there, or cannot do its job — git
+    refusing the repository it is pointed at (issue #352).
+
+    Raised by the one guarded entry for each program the engine runs — `git`
+    and the configured test command — and turned by ``main`` into
+    ``aide <verb>: <sentence>`` and exit 1. Deliberately **not** an
+    ``OSError``: the engine's best-effort readers catch ``OSError`` to degrade
+    one answer, and a missing program is not one answer degraded but every
+    later one — `_list_claim_branches` once read it as "no claim branches",
+    so `merge` refused with "no claim branch found".
+    """
+
+
+class GitMissing(MissingTool):
+    def __init__(self) -> None:
+        super().__init__("git is not on PATH — install git or put it on PATH, "
+                         "then re-run")
+
+
+class GitRefused(MissingTool):
+    """git ran, and could not read a repository whose `.git` is there."""
+
+    def __init__(self, repo_root: Path, stderr: str) -> None:
+        why = next((l.strip() for l in (stderr or "").splitlines() if l.strip()),
+                   "git gave no reason")
+        super().__init__(f"git cannot read the repository {repo_root} is in — "
+                         f"{why}")
+
+
+class RunnerMissing(MissingTool):
+    def __init__(self, program: str) -> None:
+        where = ("does not exist" if ("/" in program or os.sep in program)
+                 else "is not on PATH")
+        super().__init__(f"the test command '{program}' {where} — install it, "
+                         f"or fix [python] test_command in aide.toml")
+
+
 def _parse_toml(text: str) -> Dict[str, Dict[str, object]]:
     """Minimal TOML reader for the flat ``[table] key = value`` shape of aide.toml.
 
@@ -491,9 +529,27 @@ def plan_review(config: Dict[str, Dict[str, object]]
     return value, None
 
 
+#: `[git] mode`'s values. Every site compares against one of them, so any
+#: other string — a `"Local"` — silently ran as `auto-merge` (issue #352).
+GIT_MODE_VALUES = ("auto-merge", "pr", "local")
+
+
+def git_mode_error(config: Dict[str, Dict[str, object]]) -> Optional[str]:
+    """Why ``[git] mode`` is unusable, or ``None``."""
+    value = config.get("git", {}).get("mode", "auto-merge")
+    if isinstance(value, str) and value in GIT_MODE_VALUES:
+        return None
+    return (f"aide.toml [git] mode = {value!r} is not one of "
+            f"{', '.join(repr(v) for v in GIT_MODE_VALUES)} — any other value "
+            f"runs as 'auto-merge' (default 'auto-merge')")
+
+
 def loop_config_errors(config: Dict[str, Dict[str, object]]) -> List[str]:
-    """``aide check``'s errors for the ``[loop]`` keys the engine itself reads."""
-    return [why for _, why in (max_open_queues(config), plan_review(config))
+    """``aide check``'s errors for the ``aide.toml`` keys the loop itself
+    reads: ``[loop]`` ``max_open_queues`` and ``plan_review``, and ``[git]
+    mode``."""
+    return [why for why in (max_open_queues(config)[1], plan_review(config)[1],
+                            git_mode_error(config))
             if why is not None]
 
 
@@ -7113,12 +7169,185 @@ def git(args: List[str], repo_root: Path, check: bool = True) -> subprocess.Comp
     `errors="replace"` rather than strict: a stray byte in one branch name must
     not raise out of `aide claim`. The replacement character fails the same
     match a mangled one did, and does it identically on every platform.
+
+    The one entry the engine runs git through, so the one place its absence
+    is read: `GitMissing`, never a `FileNotFoundError` traceback (issue
+    #352). `shutil.which` decides, because a missing *cwd* raises the same
+    error with git present.
     """
-    return subprocess.run(
-        ["git", *args], cwd=str(repo_root), check=check,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        encoding="utf-8", errors="replace",
-    )
+    try:
+        return subprocess.run(
+            ["git", *args], cwd=str(repo_root), check=check,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            encoding="utf-8", errors="replace",
+        )
+    except FileNotFoundError:
+        if shutil.which("git") is None:
+            if _GIT_OPTIONAL:
+                failed = subprocess.CompletedProcess(
+                    ["git", *args], 127, "", "git is not on PATH")
+                if check:
+                    raise subprocess.CalledProcessError(
+                        127, failed.args, "", failed.stderr) from None
+                return failed
+            raise GitMissing() from None
+        raise
+
+
+#: Set by `aide check` alone, for its one run, when git is not on PATH: a
+#: missing git then reads as a git that failed — no repository, no branches,
+#: no history — instead of `GitMissing`. The check is the documents' verdict,
+#: and it has passed in a repository whose git is off PATH since 1.26.0; what
+#: it could not look at is said in one warning, never passed over.
+_GIT_OPTIONAL = False
+
+#: `git_toplevel`'s answers, by repo root, for one invocation: `main` clears
+#: it, so a test that drives several verbs in one process never reads a stale
+#: one, and a verb asks git at most once however many sites need the answer.
+_TOPLEVEL: Dict[str, Optional[Path]] = {}
+
+
+def _dot_git_at_or_above(repo_root: Path) -> bool:
+    """Is there a `.git` at *repo_root* or any directory above it?
+
+    Not the reading of "is this a repository" — `git_toplevel` is — but what
+    tells the two ways git can fail to give one apart: no git and no `.git`
+    is a directory nothing was ever committed in, while a `.git` git cannot
+    read, or cannot be run over, is a repository something is wrong with.
+    """
+    try:
+        here = Path(repo_root).resolve()
+    except OSError:
+        here = Path(repo_root)
+    return any((d / ".git").exists() for d in (here, *here.parents))
+
+
+def git_toplevel(repo_root: Path) -> Optional[Path]:
+    """The top of the git work tree *repo_root* is in, or ``None`` outside one.
+
+    The engine's one reading of "is this a repository" (issue #352), from git
+    rather than from ``repo_root / ".git"``: `aide.toml` may sit below the
+    top level, where no `.git` is, and a linked worktree's `.git` is a file.
+    Asked once per repo root per invocation, since a spawn costs about 13x
+    as much on Windows.
+
+    Where git cannot answer, a `.git` decides what that means. Git not on
+    PATH: a `.git` at or above *repo_root* is a repository it cannot be run
+    over, so `GitMissing`; none is no repository, and a recording verb leaves
+    its edit uncommitted as it always did. Git ran and refused: only a `.git`
+    at *repo_root itself* is this project's repository, and `GitRefused`
+    carries git's own words (a `safe.directory` ownership check, a bare or
+    corrupt repository). One further up that git refuses — a `~/.git` owned
+    by another user, a bare dotfiles repository — is someone else's, and
+    reads as no repository, as it did before the engine asked git (issue
+    #352). Under `aide check`'s `_GIT_OPTIONAL` every case reads as none.
+    """
+    key = str(repo_root)
+    if key not in _TOPLEVEL:
+        top: Optional[Path] = None
+        if Path(repo_root).is_dir():
+            try:
+                res = git(["rev-parse", "--show-toplevel"], repo_root, check=False)
+            except GitMissing:
+                if _dot_git_at_or_above(repo_root):
+                    raise
+                res = None
+            out = res.stdout.strip() if res is not None else ""
+            if res is not None and res.returncode == 0 and out:
+                top = Path(out)
+            elif (res is not None and not _GIT_OPTIONAL
+                  and (Path(repo_root) / ".git").exists()):
+                raise GitRefused(repo_root, res.stderr)
+        _TOPLEVEL[key] = top
+    return _TOPLEVEL[key]
+
+
+def _root_prefix(repo_root: Path) -> List[str]:
+    """*repo_root*'s path below git's top level, as parts; empty at the top."""
+    top = git_toplevel(repo_root)
+    if top is None:
+        return []
+    try:
+        rel = Path(repo_root).resolve().relative_to(top.resolve())
+    except (ValueError, OSError):
+        return []
+    return [p for p in rel.as_posix().split("/") if p not in ("", ".")]
+
+
+def root_relative(repo_root: Path, paths: List[str]) -> List[str]:
+    """Paths git named from its top level, renamed relative to *repo_root*.
+
+    Every path reader that compares git's output with the engine's own paths
+    goes through this (issue #352): `aide.toml` may sit below the top level,
+    where git's `project/src/a.py` is the engine's `src/a.py`. A path outside
+    *repo_root* comes back as `../…` rather than being dropped, so `scope`
+    still reports a change there — `--relative` would hide it. Unchanged at
+    the top level, the common case, with no spawn beyond the cached one.
+    """
+    prefix = _root_prefix(repo_root)
+    if not prefix:
+        return list(paths)
+    out: List[str] = []
+    for path in paths:
+        parts = path.split("/")
+        i = 0
+        while i < len(prefix) and i < len(parts) - 1 and parts[i] == prefix[i]:
+            i += 1
+        out.append("/".join([".."] * (len(prefix) - i) + parts[i:]))
+    return out
+
+
+def in_repository(repo_root: Path) -> bool:
+    """Is *repo_root* inside a git work tree? See `git_toplevel`."""
+    return git_toplevel(repo_root) is not None
+
+
+def not_a_repository(verb: str, repo_root: Path) -> str:
+    """The one sentence a verb that needs a repository refuses with outside one.
+
+    Its hint depends on git being there: `git init` is no advice on a machine
+    without git, where this is the answer for no `.git` and no git at all.
+    """
+    hint = ("('git init' makes one)" if shutil.which("git") is not None
+            else "— git is not on PATH either, so install it first")
+    return (f"aide {verb}: {repo_root} is not inside a git repository — this "
+            f"verb reads and records git state, so run it from a git work "
+            f"tree {hint}")
+
+
+def _require_repository(verb: str, repo_root: Path) -> bool:
+    """Print `not_a_repository` and return False outside a repository."""
+    if in_repository(repo_root):
+        return True
+    print(not_a_repository(verb, repo_root), file=sys.stderr)
+    return False
+
+
+def _commits_here(no_commit: bool, repo_root: Path,
+                  before: Optional[Dict[Path, Optional[bytes]]] = None) -> bool:
+    """Does a recording verb commit the edit it has just written?
+
+    Not under ``--no-commit``, and not outside a repository. Outside one with
+    git not on PATH either — no `.git` at or above *repo_root* — the edit is
+    kept uncommitted, as it always was there, and a `notice:` says why. A
+    repository git cannot be run over, or cannot read, is different: the
+    edit in *before* is put back before the `MissingTool` goes on to
+    ``main``, since an edit left written and uncommitted reads as made to the
+    re-run that follows (issue #309).
+    """
+    if no_commit:
+        return False
+    try:
+        if in_repository(repo_root):
+            return True
+    except MissingTool:
+        if before:
+            _put_back(before)
+        raise
+    if shutil.which("git") is None:
+        print(f"notice: left uncommitted — git is not on PATH, and there is "
+              f"no .git at or above {repo_root}")
+    return False
 
 
 def _push_new_branch(repo_root: Path, branch: str) -> Optional[str]:
@@ -7146,13 +7375,16 @@ def _push_new_branch(repo_root: Path, branch: str) -> Optional[str]:
 
 
 def _list_claim_branches(repo_root: Path, prefix: str) -> List[str]:
-    if not (repo_root / ".git").exists():
+    """Every claim branch, local or on origin, by its short name.
+
+    Empty outside a repository. A git that cannot be run is *not* empty: it
+    raises, since "no claim branch" is an answer `merge` refuses on and `check`
+    reports no stale branch from (issue #352).
+    """
+    if not in_repository(repo_root):
         return []
-    try:
-        out_local = git(["branch", "--format=%(refname:short)"], repo_root, check=False).stdout
-        out_remote = git(["branch", "-r", "--format=%(refname:short)"], repo_root, check=False).stdout
-    except (OSError, subprocess.SubprocessError):
-        return []
+    out_local = git(["branch", "--format=%(refname:short)"], repo_root, check=False).stdout
+    out_remote = git(["branch", "-r", "--format=%(refname:short)"], repo_root, check=False).stdout
     names: List[str] = []
     for line in (out_local + out_remote).splitlines():
         name = line.strip()
@@ -7795,53 +8027,77 @@ def cmd_check(args: argparse.Namespace) -> int:
               "findings to report without one", file=sys.stderr)
         return 2
 
+    global _GIT_OPTIONAL
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
     ddir = docs_dir(repo_root, config)
-    # Before the checks, so the file they then shape-check is the one that
-    # exists — a run that created the inbox and warned about its absence in
-    # the same breath would be reporting on two different repositories.
-    ensure_insights_inbox(repo_root, config, verb="check")
-    errors, warnings = run_checks(repo_root, config)
+    # A git that is not there fails no document (issue #352): every reading
+    # that needs it comes back empty, and one warning says so — "OK" alone
+    # would claim branches and history were checked.
+    # The same for a git that runs and refuses the repository (a
+    # `safe.directory` check): the refusal's own words are the warning.
+    git_problem: Optional[str] = None
+    if shutil.which("git") is None:
+        git_problem = "git is not on PATH"
+    else:
+        try:
+            in_repository(repo_root)
+        except MissingTool as exc:
+            git_problem = str(exc)
+    _GIT_OPTIONAL = git_problem is not None
+    try:
+        # Before the checks, so the file they then shape-check is the one that
+        # exists — a run that created the inbox and warned about its absence in
+        # the same breath would be reporting on two different repositories.
+        ensure_insights_inbox(repo_root, config, verb="check")
+        errors, warnings = run_checks(repo_root, config)
+        if git_problem is not None:
+            warnings.append(f"{git_problem}, so nothing that reads git was "
+                            f"checked — stale claim branches, insight citations' "
+                            f"history, and the commit of a created inbox")
 
-    if not ddir.exists() and queue is None:
-        # A notice, not a warning: nothing is wrong, but the reader must not
-        # read "OK" as "the documents were checked and are fine".
-        #
-        # Only on a non-`--queue` run. `--queue` sends `queue_spec_findings`
-        # looking for a queue file under the same absent directory, so it runs
-        # and errors — and "only the repo-agnostic checks ran" would be false
-        # next to that error. The notice exists to stop a *pass* being
-        # over-read; a run that fails needs no such guard.
-        print(f"notice: no {_rel_display(ddir, repo_root)}/ — this repo has no "
-              f"AIDE document set, so only the repo-agnostic checks ran")
+        if not ddir.exists() and queue is None:
+            # A notice, not a warning: nothing is wrong, but the reader must not
+            # read "OK" as "the documents were checked and are fine".
+            #
+            # Only on a non-`--queue` run. `--queue` sends `queue_spec_findings`
+            # looking for a queue file under the same absent directory, so it runs
+            # and errors — and "only the repo-agnostic checks ran" would be false
+            # next to that error. The notice exists to stop a *pass* being
+            # over-read; a run that fails needs no such guard.
+            print(f"notice: no {_rel_display(ddir, repo_root)}/ — this repo has no "
+                  f"AIDE document set, so only the repo-agnostic checks ran")
 
-    if queue is not None:
-        findings, unspecced = queue_spec_findings(repo_root, config, queue)
-        # Not a cross-spec conflict, so not `queue_spec_findings`' — but the
-        # same run the planner makes after writing a queue, and the same
-        # worklist the spec-reviewer reads once the specs exist (#333).
-        findings += queue_end_findings(repo_root, config, queue)
-        for f in findings:
-            (errors if f.severity == "error" else warnings).append(f.message)
-        if unspecced:
-            listed = ", ".join(f"{n:03d}" for n in unspecced)
-            print(f"aide check: queue {queue:03d} — {len(unspecced)} item(s) "
-                  f"not yet specced, so not compared: {listed}")
-        report = getattr(args, "report", None)
-        if report:
-            _write_findings_report(Path(report), queue, findings, unspecced)
-            print(f"aide check: wrote {report}")
+        if queue is not None:
+            findings, unspecced = queue_spec_findings(repo_root, config, queue)
+            # Not a cross-spec conflict, so not `queue_spec_findings`' — but the
+            # same run the planner makes after writing a queue, and the same
+            # worklist the spec-reviewer reads once the specs exist (#333).
+            findings += queue_end_findings(repo_root, config, queue)
+            for f in findings:
+                (errors if f.severity == "error" else warnings).append(f.message)
+            if unspecced:
+                listed = ", ".join(f"{n:03d}" for n in unspecced)
+                print(f"aide check: queue {queue:03d} — {len(unspecced)} item(s) "
+                      f"not yet specced, so not compared: {listed}")
+            report = getattr(args, "report", None)
+            if report:
+                _write_findings_report(Path(report), queue, findings, unspecced)
+                print(f"aide check: wrote {report}")
 
-    for w in warnings:
-        print(f"warning: {w}")
-    for e in errors:
-        print(f"error: {e}")
-    if errors:
-        print(f"aide check: FAIL ({len(errors)} error(s), {len(warnings)} warning(s))")
-        return 1
-    print(f"aide check: OK ({len(warnings)} warning(s))")
-    return 0
+        for w in warnings:
+            print(f"warning: {w}")
+        for e in errors:
+            print(f"error: {e}")
+        if errors:
+            print(f"aide check: FAIL ({len(errors)} error(s), {len(warnings)} warning(s))")
+            return 1
+        print(f"aide check: OK ({len(warnings)} warning(s))")
+        return 0
+    finally:
+        # Reset here, not only by the next `main()`: a caller that runs the
+        # check in-process and then another verb must not inherit it.
+        _GIT_OPTIONAL = False
 
 
 def set_gate_status(text: str, index: int, kind: str,
@@ -8022,7 +8278,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
     # position it was resolved at.
     handle = gate_ids(gates)[index - 1] or f"gate {index}"
     print(f"{handle}: {kind}")
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         # A decision left written but uncommitted reads as resolved to a
         # re-run, which would never commit it (issue #309).
         return _commit_or_restore(repo_root, config, f"aide gate {args.action}",
@@ -8175,7 +8431,7 @@ def cmd_progress(args: argparse.Namespace) -> int:
         progress_path.write_text(updated, encoding="utf-8")
         print(f"item {args.number:03d}: set to {args.status}")
         _report_bullet_splits(args.number, updated.splitlines(), splits)
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         message = f"progress(aide): item {args.number:03d} -> {args.status}"
         if before is None:
             # Nothing written, so nothing of this run's to lose: the commit
@@ -8223,7 +8479,7 @@ def _cmd_progress_accept(args: argparse.Namespace) -> int:
         return 0
     before = _snapshot([progress_path])
     progress_path.write_text(updated, encoding="utf-8")
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         what = "all criteria" if args.all_criteria else f"criterion {args.criterion}"
         return _commit_or_restore(
             repo_root, config, "aide progress accept", "the acceptance",
@@ -8378,7 +8634,7 @@ def _cmd_progress_retract(args: argparse.Namespace) -> int:
           f"the tolerated warning set needs widening for stage {args.number} "
           f"criterion {args.criterion}; do it in this change, not at the merge "
           f"gate")
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         rels = [_progress_rel(config)]
         if rel_insights:
             rels.append(rel_insights)
@@ -8457,7 +8713,7 @@ def _cmd_progress_reopen(args: argparse.Namespace) -> int:
           f"the record is permanent, not a defect to clear. A test that pins "
           f"the tolerated warning set needs widening for item "
           f"{args.number:03d}; do it in this change, not at the merge gate")
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         rels = [_progress_rel(config)]
         if rel_insights:
             rels.append(rel_insights)
@@ -8538,7 +8794,7 @@ def _cmd_progress_defer(args: argparse.Namespace) -> int:
     before = _snapshot([progress_path])
     progress_path.write_text(updated, encoding="utf-8")
     _report_bullet_splits(args.number, updated.splitlines(), splits)
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         return _commit_or_restore(
             repo_root, config, "aide progress set", "the deferral",
             f"progress(aide): item {args.number:03d} -> deferred",
@@ -8615,7 +8871,7 @@ def _cmd_progress_defer_deliverable(args: argparse.Namespace) -> int:
         return 0
     before = _snapshot([progress_path])
     progress_path.write_text(updated, encoding="utf-8")
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         return _commit_or_restore(
             repo_root, config, "aide progress set", "the deferral",
             f"progress(aide): stage {args.stage} deliverable "
@@ -8701,7 +8957,7 @@ def _cmd_progress_reword(args: argparse.Namespace) -> int:
         print("  roadmap.md: mirrored")
     else:
         print("  roadmap.md: no acceptance block for this stage — nothing to mirror")
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         return _commit_or_restore(
             repo_root, config, "aide progress reword", "the rewording",
             f"progress(aide): stage {args.number} reword criterion {args.criterion}",
@@ -8751,7 +9007,7 @@ def _cmd_progress_reword_deliverable(args: argparse.Namespace) -> int:
           f"(progress.md:{lineno})")
     print(f"  was: {old}")
     print(f"  now: {args.text.strip()}")
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         return _commit_or_restore(
             repo_root, config, "aide progress reword", "the rewording",
             f"progress(aide): item {args.item:03d} reword deliverable",
@@ -8778,7 +9034,7 @@ def _apply_criterion_edit(args: argparse.Namespace, edit, message: str) -> int:
     before = _snapshot([progress_path])
     progress_path.write_text(updated, encoding="utf-8")
     print(f"stage {args.number}: {msg}")
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         return _commit_or_restore(
             repo_root, config, f"aide progress {args.action}", "the edit",
             f"progress(aide): {message}", [_progress_rel(config)], before)
@@ -8793,6 +9049,15 @@ def _snapshot(paths: List[Path]) -> Dict[Path, Optional[bytes]]:
     """Each path's bytes as they are now — ``None`` for one not yet written —
     for `_commit_or_restore` to put back."""
     return {p: (p.read_bytes() if p.is_file() else None) for p in paths}
+
+
+def _put_back(before: Dict[Path, Optional[bytes]]) -> None:
+    """Every file in *before* back to its bytes; one that did not exist, gone."""
+    for path, data in before.items():
+        if data is not None:
+            path.write_bytes(data)
+        elif path.exists():
+            path.unlink()
 
 
 def _commit_or_put_back(repo_root: Path, config, message: str,
@@ -8826,11 +9091,7 @@ def _commit_or_put_back(repo_root: Path, config, message: str,
         moved = False
     if moved:
         return failure, True
-    for path, data in before.items():
-        if data is not None:
-            path.write_bytes(data)
-        elif path.exists():
-            path.unlink()
+    _put_back(before)
     return failure, False
 
 
@@ -8985,8 +9246,11 @@ def _commit_docs_files(repo_root: Path, config, message: str,
         # One path per line, never whitespace-split: a `docs_dir` with a space
         # in it must match its own entry. `core.quotepath=false` keeps a
         # non-ASCII path literal rather than octal-escaped and quoted.
+        # `--relative`: *rels* are relative to repo_root, which may sit below
+        # git's top level (issue #352), and git names paths from the top.
         out = git(["-c", "core.quotepath=false", "show", "--name-only",
-                   "--format=", "HEAD"], repo_root, check=False).stdout
+                   "--relative", "--format=", "HEAD"], repo_root,
+                  check=False).stdout
         shown = [line.strip() for line in out.splitlines() if line.strip()]
         missing = [r for r in rels if r not in shown]
         if missing:
@@ -9005,7 +9269,7 @@ def _commit_docs_files(repo_root: Path, config, message: str,
         if _has_unpushed_merge(repo_root):
             return None
         pulled = git(["pull", "--rebase"], repo_root, check=False)
-    except (OSError, subprocess.SubprocessError) as exc:
+    except (OSError, subprocess.SubprocessError, MissingTool) as exc:
         # Loud here, not only in the return: the best-effort callers discard
         # the reason, and a verb that prints its success line over an
         # uncommitted edit is the failure this names.
@@ -9097,7 +9361,14 @@ def ensure_insights_inbox(repo_root: Path, config: Dict[str, Dict[str, object]],
     fate = ""
     if not commit:
         fate = ", left uncommitted (--no-commit)"
-    elif (repo_root / ".git").exists():
+    elif shutil.which("git") is None:
+        # Created whatever git's state: the inbox is a file `check` makes on
+        # its caller's behalf, and a missing git is the notice's reason, never
+        # the run's failure (issue #352).
+        fate = (" but NOT committed — git is not on PATH; commit it with the "
+                "next work" if _dot_git_at_or_above(repo_root)
+                else ", left untracked — git is not on PATH")
+    elif _commits_here(False, repo_root, {path: None}):
         why = _commit_created_file(repo_root, config, rel)
         fate = (" and committed it" if why is None
                 else f" but NOT committed — {why}; commit it with the next work")
@@ -9344,7 +9615,7 @@ def _cmd_insights_tick(path: Path, text: str, ddir: Path, ddir_rel: str,
     before = _snapshot([path])
     path.write_text(updated, encoding="utf-8")
     print(f"{message} (insight {handle})" if handle != str(ordinal) else message)
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         return _commit_or_restore(
             repo_root, config, "aide insights tick", "the tick",
             f"docs(aide): triage insight {handle}",
@@ -9461,7 +9732,7 @@ def _cmd_insights_add(path: Path, ddir: Path, ddir_rel: str, repo_root: Path,
                 if rel == "insights.md"]
     iid = live_ids[-1] if live_ids else None
     handle = iid or "(no ID)"
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         rc = _commit_or_restore(
             repo_root, config, "aide insights add", "the capture",
             f"docs(aide): capture insight {handle}",
@@ -9585,7 +9856,7 @@ def _cmd_insights_archive(path: Path, text: str, ddir: Path, ddir_rel: str,
     path.write_text(remaining, encoding="utf-8")
     print(f"aide insights archive: moved {total} entr{'y' if total == 1 else 'ies'}; "
           f"{len(parse_insights(remaining))} remain — their list numbers have shifted")
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         code = _commit_or_restore(
             repo_root, config, "aide insights archive", "the archive",
             f"docs(aide): archive insights closed before {args.before}",
@@ -9612,13 +9883,13 @@ def _is_unmerged(repo_root: Path, rel: str) -> bool:
     routine here — `check`, `claim` and `queue start` each create the inbox
     from the template when it is missing — and conflating the two made the
     verb decline to stage exactly the conflict a consumer hits first.
+
+    Outside a repository, no. A git that is not there, or refuses the
+    repository, is `in_repository`'s `MissingTool`, not an answer here.
     """
-    if not (repo_root / ".git").exists():
+    if not in_repository(repo_root):
         return False
-    try:
-        out = git(["ls-files", "-u", "--", rel], repo_root, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return False
+    out = git(["ls-files", "-u", "--", rel], repo_root, check=False)
     return out.returncode == 0 and bool(out.stdout.strip())
 
 
@@ -9626,16 +9897,14 @@ def _merge_base_text(repo_root: Path, rel: str) -> Optional[str]:
     """Stage 1 of *rel* — the merge base of a stalled merge or rebase, or None.
 
     What turns the resolver's append check from an inference into a fact.
-    ``None`` covers every way it can be absent: no repository, no conflict, an
-    add/add conflict that has no base at all, or git off PATH. The resolver
-    falls back to comparing the two sides alone.
+    ``None`` covers every way it can be absent: no repository, no conflict,
+    or an add/add conflict that has no base at all, and the resolver then
+    falls back to comparing the two sides alone. A git that is not there is
+    not one of them: `_is_unmerged` raises `MissingTool` first (issue #352).
     """
     if not _is_unmerged(repo_root, rel):
         return None
-    try:
-        out = git(["show", f":1:{rel}"], repo_root, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return None
+    out = git(["show", f":1:./{rel}"], repo_root, check=False)
     return out.stdout if out.returncode == 0 else None
 
 
@@ -9922,7 +10191,8 @@ def _ledger_diff_cells(repo_root: Path, config, number: int,
                 merge_base, branch], repo_root, check=False)
     if diff.returncode != 0:
         return "", ""
-    changed = [line.strip() for line in diff.stdout.splitlines() if line.strip()]
+    changed = root_relative(repo_root, [line.strip() for line in
+                                        diff.stdout.splitlines() if line.strip()])
     added = added_test_functions(repo_root, config, changed, merge_base,
                                  renamed_paths(repo_root, merge_base), ref=branch)
     own, others = split_reconciled_tests(repo_root, config, added, number)
@@ -10244,7 +10514,7 @@ def cmd_ledger(args: argparse.Namespace) -> int:
         return 1
     print(f"aide ledger {args.action}: item {args.number:03d} recorded in {rel} "
           f"as abandoned after {args.rounds} round(s)")
-    if not args.no_commit and (repo_root / ".git").exists():
+    if _commits_here(args.no_commit, repo_root, before):
         # No pull: this is an append to a file the loop owns, on whatever
         # branch the cap was hit on, and a verb that only records must not
         # fetch on the caller's behalf (`ensure_insights_inbox` reasons the
@@ -10586,6 +10856,8 @@ def _queue_start(args: argparse.Namespace) -> int:
     """
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
+    if not _require_repository("queue start", repo_root):
+        return 1
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
     branch = (specs_queue_branch_name(prefix, args.number) if args.specs
@@ -10764,7 +11036,7 @@ def _queue_gate(args: argparse.Namespace) -> int:
         gid = next(i for g, i in zip(gates, ids) if gate_hash(g) == key(cell))
         state = "raised" if (cell, blocks) in new else "already raised"
         print(f"{gid}: {state} — {cell} (blocks {blocks})")
-    if new and not args.no_commit and (repo_root / ".git").exists():
+    if new and _commits_here(args.no_commit, repo_root, before):
         # A row left written and uncommitted reads as "already raised" to a
         # re-run, which would then never commit it.
         return _commit_or_restore(repo_root, config, tag, "the gate row",
@@ -10869,6 +11141,8 @@ def _queue_pr(args: argparse.Namespace) -> int:
             return 2
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
+    if not _require_repository("queue pr", repo_root):
+        return 1
     branch, number = _queue_pr_branch(repo_root, config, tag, args.number)
     if branch is None or number is None:
         return 1
@@ -10925,6 +11199,8 @@ def _queue_ready(args: argparse.Namespace) -> int:
     tag = "aide queue ready" + (" --undo" if args.undo else "")
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
+    if not _require_repository("queue ready", repo_root):
+        return 1
     branch, number = _queue_pr_branch(repo_root, config, tag, args.number)
     if branch is None or number is None:
         return 1
@@ -11194,7 +11470,7 @@ def _restack_merge(repo_root: Path, upper: str, other: str, current: str,
         res = git([*cmd, upper, other], repo_root, check=False)
         lines = res.stdout.splitlines()
         if res.returncode == 1:
-            paths = [l.strip() for l in lines[1:] if l.strip()]
+            paths = root_relative(repo_root, [l.strip() for l in lines[1:] if l.strip()])
             return f"conflicts in {', '.join(paths) or 'the tree'}"
         if res.returncode != 0 or not lines:
             return (res.stderr.strip() or f"git merge-tree exited {res.returncode}")
@@ -11240,6 +11516,8 @@ def _queue_restack(args: argparse.Namespace) -> int:
     """
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
+    if not _require_repository("queue restack", repo_root):
+        return 1
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
     main = str(config["git"].get("main_branch", "main"))
@@ -12312,6 +12590,8 @@ def _early_ready(repo_root: Path, config, open_ordered: List[int],
 def cmd_claim(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
+    if not _require_repository("claim", repo_root):
+        return 1
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
     scope = str(config["loop"].get("claim_scope", "live-queue"))
@@ -12496,7 +12776,8 @@ def _unmerged_paths(repo_root: Path) -> List[str]:
         return []
     if out.returncode != 0:
         return []
-    return sorted({line.strip() for line in out.stdout.splitlines() if line.strip()})
+    return sorted(set(root_relative(
+        repo_root, [line.strip() for line in out.stdout.splitlines() if line.strip()])))
 
 
 def _interrupted_op(repo_root: Path) -> Optional[str]:
@@ -12701,7 +12982,7 @@ def _unsafe_tree_state(repo_root: Path,
     # against `repo_root`: `aide.toml` may sit BELOW git's top level, and there
     # git's `docs/aide/progress.md` is this repo's `sub/docs/aide/progress.md`.
     if tick_path is not None and len(paths) == 1:
-        top = git(["rev-parse", "--show-toplevel"], repo_root, check=False).stdout.strip()
+        top = git_toplevel(repo_root)
         try:
             is_tick = (Path(top or repo_root) / paths[0]).resolve() == tick_path.resolve()
         except OSError:                          # an unresolvable path is not the tick
@@ -12868,7 +13149,7 @@ def _promote_item_to_complete(repo_root: Path, config, number: int,
             _report_bullet_splits(number, updated.splitlines(), splits)
             rels.insert(0, str(config["project"].get("docs_dir", "docs/aide"))
                         + "/progress.md")
-    if rels and not no_commit and (repo_root / ".git").exists():
+    if rels and _commits_here(no_commit, repo_root, before):
         failure, committed = _commit_or_put_back(
             repo_root, config, f"progress(aide): item {number:03d} -> done",
             rels, before)
@@ -13005,6 +13286,18 @@ def junit_failure_ids(xml_text: str,
     return tuple(sorted(ids))
 
 
+def _run_suite_argv(argv: List[str], repo_root: Path) -> subprocess.CompletedProcess:
+    """The one entry the engine runs the test command through: a program that
+    is not there is `RunnerMissing`, never a `FileNotFoundError` traceback
+    (issue #352), and an empty command is refused by each verb before this."""
+    try:
+        return subprocess.run(argv, cwd=str(repo_root))
+    except FileNotFoundError:
+        if shutil.which(argv[0]) is None:
+            raise RunnerMissing(argv[0]) from None
+        raise
+
+
 def run_test_suite(repo_root: Path, argv: List[str],
                    identify: bool) -> SuiteRun:
     """Run *argv* in *repo_root* and time it; with *identify*, name the failures.
@@ -13017,7 +13310,7 @@ def run_test_suite(repo_root: Path, argv: List[str],
     """
     if not identify:
         start = time.monotonic()
-        res = subprocess.run(argv, cwd=str(repo_root))
+        res = _run_suite_argv(argv, repo_root)
         # A green run has no failures to name whatever the runner, so it
         # reads back from the store as green (`read_suite_result`).
         if res.returncode == 0:
@@ -13027,8 +13320,8 @@ def run_test_suite(repo_root: Path, argv: List[str],
     with tempfile.TemporaryDirectory(prefix="aide-junit-") as tmp:
         report = Path(tmp) / "report.xml"
         start = time.monotonic()
-        res = subprocess.run([*argv, "--continue-on-collection-errors",
-                              f"--junitxml={report}"], cwd=str(repo_root))
+        res = _run_suite_argv([*argv, "--continue-on-collection-errors",
+                               f"--junitxml={report}"], repo_root)
         seconds = time.monotonic() - start
         if res.returncode == 0:
             return SuiteRun(0, seconds, ())
@@ -13318,8 +13611,8 @@ def validated_suite_run(repo_root: Path, config, argv: List[str], branch: str,
                    repo_root, check=False)
         if diff.returncode != 0:
             continue
-        changed = tuple(sorted(l.strip() for l in diff.stdout.splitlines()
-                               if l.strip()))
+        changed = tuple(sorted(root_relative(
+            repo_root, [l.strip() for l in diff.stdout.splitlines() if l.strip()])))
         others = [c for c in changed if c != progress_rel]
         if others:
             why = (f"{branch} changed {others[0]}"
@@ -13611,7 +13904,8 @@ def cmd_test(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 2
     refusal = failure_identity_refusal(cmd)
-    clean = tree_is_clean(repo_root)
+    repo = in_repository(repo_root)
+    clean = repo and tree_is_clean(repo_root)
     sys.stdout.flush()
     run, tree = recorded_suite_run(repo_root, cmd, identify=refusal is None,
                                    by=SUITE_RECORDED_BY_TEST)
@@ -13630,10 +13924,22 @@ def cmd_test(args: argparse.Namespace) -> int:
               f"at {commit[:10]}, where `aide merge` can take it in place of "
               f"its own run.")
     else:
-        why = ("the tree has tracked changes or an operation in progress, so "
-               "the run is of no commit" if not clean else
-               "HEAD or a tracked file changed while it ran, or the result store could not be "
-               "written")
+        # The cause that was there before the run is named first: outside a
+        # repository, or before the first commit, there is nothing to record
+        # a run against, and "HEAD changed while it ran" would send a reader
+        # looking for a change nobody made (issue #352).
+        if not repo:
+            why = (f"{repo_root} is not inside a git repository, so there is "
+                   f"no commit to record the run against")
+        elif _head_commit(repo_root) is None:
+            why = ("the repository has no commit yet, so there is none to "
+                   "record the run against")
+        elif not clean:
+            why = ("the tree has tracked changes or an operation in progress, "
+                   "so the run is of no commit")
+        else:
+            why = ("HEAD or a tracked file changed while it ran, or the result "
+                   "store could not be written")
         print(f"aide test: {outcome}. NOT recorded: {why}.", file=sys.stderr)
     code = run.returncode
     return code if code >= 0 else 128 - code
@@ -13644,6 +13950,15 @@ def cmd_merge(args: argparse.Namespace) -> int:
     config = load_config(repo_root)
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
+    # Refused before git is touched, as `aide test` refuses it: an empty
+    # command reached the post-merge run as `subprocess.run([])` and left the
+    # merge made and unpushed behind an IndexError (issue #352).
+    if not args.no_test and not resolve_test_command(repo_root, config):
+        print("aide merge: [python] test_command is empty in aide.toml — set "
+              "it, or pass --no-test", file=sys.stderr)
+        return 2
+    if not _require_repository("merge", repo_root):
+        return 1
     branch = args.branch or _find_claim_branch(repo_root, prefix, args.number)
     if not branch:
         print(f"aide merge: no claim branch found for item {args.number:03d}", file=sys.stderr)
@@ -14093,21 +14408,43 @@ def cmd_merge(args: argparse.Namespace) -> int:
             # side effect on the way out and the original exception continues to
             # unwind, so an interrupted run still exits as interrupted.
             #
-            # The restore is owed either way; the WORDING is not. A test
-            # command that is not on PATH raises `FileNotFoundError` here, and
-            # a run that reported itself "interrupted" would send a human
-            # hunting for a signal nobody sent — the same failure the
-            # `--no-commit` message was fixed for in issue #133. So the cause
-            # is named, and the traceback that follows says the rest.
-            _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
-            cause = ("interrupted"
+            # The restore is owed either way; the WORDING is not. A run that
+            # reported itself "interrupted" would send a human hunting for a
+            # signal nobody sent — the same failure the `--no-commit` message
+            # was fixed for in issue #133. So the cause is named. A program
+            # that is not there (`MissingTool`: the test command, or git gone
+            # mid-run) is a state a person fixes, not a bug, so it is
+            # reported and the verb exits 1 (issue #352); an interrupt or a
+            # genuine bug still re-raises, and its traceback says the rest.
+            missing = isinstance(exc, MissingTool)
+            unrestored: Optional[str] = None
+            try:
+                _restore_claim_branch(repo_root, branch, branch_tip, branch_base)
+            except MissingTool as restore_exc:
+                # git itself went with the test run: the message must not
+                # claim a restore that never ran, and names the two commands
+                # that do it by hand.
+                unrestored = str(restore_exc)
+            cause = (f"{exc}; that stopped the run" if missing
+                     else "interrupted"
                      if isinstance(exc, (KeyboardInterrupt, _Terminated))
                      else f"failed with {type(exc).__name__}")
+            if unrestored is None:
+                kept = (f"so {branch} has been put back with {main} recorded "
+                        f"as its base")
+            else:
+                by_hand = f"'git branch {branch} {branch_tip}'"
+                if branch_base:
+                    by_hand += (f" and 'git config branch.{branch}."
+                                f"{_BASE_CONFIG_KEY} {branch_base}'")
+                kept = (f"and {branch} could NOT be put back ({unrestored}). "
+                        f"Restore it by hand: {by_hand}")
             print(f"aide merge: {cause} after {main} took the merge of "
-                  f"{branch} but before it was pushed, so {branch} has been "
-                  f"put back with {main} recorded as its base. The merge is "
+                  f"{branch} but before it was pushed, {kept}. The merge is "
                   f"in THIS repository only. Re-run "
                   f"'merge {args.number:03d} --base {main}'.", file=sys.stderr)
+            if missing:
+                return 1
             raise
 
     if local_gone and remote_gone:
@@ -14943,7 +15280,8 @@ def renamed_paths(repo_root: Path, merge_base: str) -> Dict[str, str]:
     for line in status.stdout.splitlines():
         cells = line.split("\t")
         if len(cells) == 3 and cells[0][:1] in ("R", "C"):
-            out[cells[2].strip()] = cells[1].strip()
+            new, old = root_relative(repo_root, [cells[2].strip(), cells[1].strip()])
+            out[new] = old
     return out
 
 
@@ -14984,11 +15322,11 @@ def added_test_functions(repo_root: Path, config, changed: List[str],
             except (OSError, UnicodeDecodeError):
                 continue
         else:
-            at_ref = git(["show", f"{ref}:{rel}"], repo_root, check=False)
+            at_ref = git(["show", f"{ref}:./{rel}"], repo_root, check=False)
             if at_ref.returncode != 0:
                 continue
             new = _test_functions(at_ref.stdout)
-        shown = git(["show", f"{merge_base}:{renamed.get(rel, rel)}"], repo_root, check=False)
+        shown = git(["show", f"{merge_base}:./{renamed.get(rel, rel)}"], repo_root, check=False)
         # Keyed on the name alone: a function present at the base is an edit,
         # whatever its parametrize ids became.
         old = set(_test_function_names(shown.stdout)) if shown.returncode == 0 else set()
@@ -15171,6 +15509,8 @@ def cmd_scope(args: argparse.Namespace) -> int:
     """
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
+    if not _require_repository("scope", repo_root):
+        return 2
     prefix = str(config["git"].get("branch_prefix", "aide/"))
 
     number = args.number
@@ -15221,7 +15561,10 @@ def cmd_scope(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 2
 
-    changed = [ln.strip() for ln in diff.stdout.splitlines() if ln.strip()]
+    # Relative to repo_root, which may sit below git's top level; a change
+    # outside it comes back as `../…` and is reported, never dropped.
+    changed = root_relative(repo_root, [ln.strip() for ln in
+                                        diff.stdout.splitlines() if ln.strip()])
     ddir_rel = docs_dir(repo_root, config).relative_to(repo_root).as_posix()
     always = _always_authorised_paths(ddir_rel) + (rel_spec,)
     unauthorised, contradictions = scope_findings(changed, authorised, always)
@@ -15327,8 +15670,15 @@ def cmd_sync(args: argparse.Namespace) -> int:
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
     main = str(config["git"].get("main_branch", "main"))
+    # Outside a repository every read below comes back empty, and empty read
+    # as "on '', tree clean" — an OK for a start point that does not exist.
+    if not _require_repository("sync", repo_root):
+        return 1
 
-    if mode != "local" and _has_origin(repo_root):
+    # Whether origin was asked, for the success line: `mode` alone said
+    # "remotes fetched" over a repository with no origin (issue #352).
+    fetched = mode != "local" and _has_origin(repo_root)
+    if fetched:
         res = git(["fetch", "--all", "--prune"], repo_root, check=False)
         if res.returncode != 0:
             print(f"aide sync: fetch failed — {res.stderr.strip()}", file=sys.stderr)
@@ -15413,7 +15763,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
         print(line)
 
     print(f"aide sync: OK — on '{branch}', tree clean"
-          + ("" if mode == "local" else ", remotes fetched"))
+          + (", remotes fetched" if fetched
+             else "" if mode == "local" else ", no origin to fetch"))
     return 0
 
 
@@ -15649,7 +16000,7 @@ def _branch_queue_items(repo_root: Path, config: Dict[str, Dict[str, object]],
     own = int(branch[len(prefix) + len(_QUEUE_TOKEN):])
     items: Set[int] = set()
     for path in _branch_queue_files(repo_root, config, ref, base, own).values():
-        shown = git(["show", f"{ref}:{path}"], repo_root, check=False)
+        shown = git(["show", f"{ref}:./{path}"], repo_root, check=False)
         if shown.returncode == 0:
             items.update(queue_item_numbers(shown.stdout))
     return items
@@ -15671,7 +16022,7 @@ def _queue_branch_ci(repo_root: Path, config: Dict[str, Dict[str, object]],
     items = _branch_queue_items(repo_root, config, ref, base, branch)
     if not items:
         return False, 0
-    shown = git(["show", f"{ref}:{_docs_rel(config)}/progress.md"],
+    shown = git(["show", f"{ref}:./{_docs_rel(config)}/progress.md"],
                 repo_root, check=False)
     if shown.returncode != 0:
         return False, 0
@@ -15896,6 +16247,10 @@ def cmd_status(args: argparse.Namespace) -> int:
     config = load_config(repo_root)
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
+    # Outside a repository the lines below read "branch: (unknown)" and
+    # "tree: clean" — empty git output parsed as an answer (issue #352).
+    if not _require_repository("status", repo_root):
+        return 1
 
     if not args.no_fetch and mode != "local" and _has_origin(repo_root):
         git(["fetch", "--all", "--prune"], repo_root, check=False)
@@ -16087,6 +16442,10 @@ def cmd_status(args: argparse.Namespace) -> int:
           f"{facts.awaiting_review[1]}")
 
     # Every open PR, best effort — and "could not look" said, never silence.
+    # Not asked at all in `local` mode, which makes no network call (§4).
+    if mode == "local":
+        print("  open PRs: - (local mode)")
+        return 0
     if facts.could_not_look is not None:
         out, why = None, facts.could_not_look
     else:
@@ -16270,6 +16629,8 @@ def cmd_gc(args: argparse.Namespace) -> int:
     implicit."""
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
+    if not _require_repository("gc", repo_root):
+        return 1
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
     # The `--merged` ground is "already merged into <base>", so it takes a base
@@ -17483,7 +17844,8 @@ def register_git_subcommands(sub) -> None:
             "nothing \u2014 unknown when none was seen ready but gh could not "
             "be asked, and no otherwise \u2014 in "
             "local mode always. The open-PR list says it could not look, and "
-            "gh's reason, rather than going silent."))
+            "gh's reason, rather than going silent; in local mode it is - "
+            "and gh is not asked."))
     p_status.add_argument("--no-fetch", action="store_true", help="skip the fetch --all --prune preflight")
     p_status.add_argument("--profiles", action="store_true",
                           help="evaluate the [validation] profile each "
@@ -17548,6 +17910,25 @@ def register_git_subcommands(sub) -> None:
     p_scope.set_defaults(func=cmd_scope)
 
 
+#: The verbs, by action, that write a document and then commit it through
+#: `_commits_here` — ``None`` for every action of the verb.
+_RECORDING_ACTIONS: Dict[str, Optional[Tuple[str, ...]]] = {
+    "gate": ("approve", "decline"),
+    "progress": None,
+    "insights": ("add", "tick", "archive"),
+    "ledger": ("abandon",),
+    "queue": ("gate",),
+}
+
+
+def _records_an_edit(args: argparse.Namespace) -> bool:
+    """Will this run write a document and commit it?"""
+    if getattr(args, "no_commit", False) or args.command not in _RECORDING_ACTIONS:
+        return False
+    actions = _RECORDING_ACTIONS[args.command]
+    return actions is None or getattr(args, "action", None) in actions
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     # Windows consoles often default to a non-UTF-8 codepage (cp1252), where
     # printing a status icon raises UnicodeEncodeError and kills the command
@@ -17573,7 +17954,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             args.number = _progress_number(extra[0])
         else:
             parser.error(f"unrecognized arguments: {' '.join(extra)}")
+    global _GIT_OPTIONAL
+    _TOPLEVEL.clear()
+    _GIT_OPTIONAL = False
     try:
+        if _records_an_edit(args):
+            # Asked before the verb writes anything: a repository git cannot
+            # be run over refuses here, so no success line is printed for an
+            # edit `_commits_here` would then put back (issue #352).
+            in_repository(find_repo_root(args.repo))
         return args.func(args)
     except ConfigError as exc:
         # A broken aide.toml is a user-fixable state, not a crash. Every
@@ -17581,6 +17970,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         # traceback off the screen for all of them.
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    except MissingTool as exc:
+        # git or the test command is not there (issue #352): one sentence
+        # naming it, exit 1 — the same end whichever verb met it first. `scope`
+        # keeps its own contract, where 1 is "out of bounds" and "could not
+        # check" is 2.
+        verb = args.command
+        if args.command == "queue":
+            verb += f" {args.action}"
+        print(f"aide {verb}: {exc}", file=sys.stderr)
+        return 2 if args.command == "scope" else 1
 
 
 if __name__ == "__main__":

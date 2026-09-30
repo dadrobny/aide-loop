@@ -112,6 +112,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -1478,6 +1479,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_status_stack::test_could_not_look_is_unknown_and_never_none",
           "test_aide_status_stack::test_gh_missing_from_path_is_a_reason",
           "test_aide_status_stack::test_gh_exiting_non_zero_is_a_reason_naming_the_exit")),
+        # `cmd_status` prints the `local` line and returns before `_gh`
+        # (issue #352).
+        ("in local mode it is - and gh is not asked",
+         "test_aide_status_stack::test_local_mode_asks_no_forge_for_the_open_prs_either"),
     ],
 
     # ---------------------------------------------------------------- scope --
@@ -2749,9 +2754,16 @@ def test_status_prints_the_four_states_it_promises(tmp_path: Path, capsys):
         "- [ ] Rules fire. *(verified 2026-07-01)*\n"
         "  - **2026-07-02** → retracted: the host was misread")
     repo = _repo(tmp_path, progress=text)
+    _git_init(repo)
     assert aide.main(["--repo", str(repo), "status", "--no-fetch"]) == 0
     out = capsys.readouterr().out
     assert "gate 1: Sign off the schema" in out
     assert "target: p95 under 200ms" in out
     assert "retracted: stage 1 criterion 1" in out
     assert "unreadable: progress.md:" in out and "human-gate row" in out
+
+
+def _git_init(path: Path) -> None:
+    """`aide status` refuses outside a repository (issue #352)."""
+    subprocess.run(["git", "init", "-q", "-b", "main", str(path)], check=True,
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)

@@ -33,6 +33,15 @@ _WRAPPER_2_3_0 = ("sh -c 'for py in python3 python; do command -v \"$py\" "
 _SCRIPTS = ("command_hygiene_guard.py", "log_permission_event.py",
             "sibling_instructions.py", "log_instructions_loaded.py")
 
+# What 2.4.0 to 2.28.1 shipped, verbatim: anchored at the project root, and
+# silent — `exit 0` — where no interpreter works (issue #352).
+_WRAPPER_2_28_1 = ("sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] "
+                   "|| { printf \"aide: hook script not found: %s\\n\" \"$f\" "
+                   ">&2; exit 1; }; for py in python3 python; do command -v "
+                   "\"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" "
+                   ">/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; "
+                   "exit 0' _ ")
+
 
 def _base() -> dict:
     return json.loads((ADAPTER_DIR / "settings.json").read_text(encoding="utf-8"))
@@ -100,6 +109,7 @@ def test_a_2_3_0_settings_file_becomes_the_framework_base(tmp_path: Path):
     "sh -c 'exec $(command -v python3 || command -v python) $@' _ "
     ".claude/hooks/command_hygiene_guard.py",
     _WRAPPER_2_3_0 + ".claude/hooks/command_hygiene_guard.py",
+    _WRAPPER_2_28_1 + ".claude/hooks/command_hygiene_guard.py",
 ])
 def test_every_wrapper_a_release_wrote_is_rewritten(tmp_path: Path, old: str):
     settings = _base()
@@ -118,15 +128,50 @@ def test_each_retired_wrapper_maps_to_a_hook_the_base_still_has():
     nothing, silently — say so here instead."""
     names = {h["command"].rsplit("/", 1)[-1]
              for h in install._hook_entries(_base())}
-    for _template, scripts in install._RETIRED_HOOK_COMMANDS:
+    for _template, scripts, _note in install._RETIRED_HOOK_COMMANDS:
         assert set(scripts) <= names
 
 
 def test_the_2_3_0_template_is_what_2_3_0_shipped():
-    templates = [t for t, _ in install._RETIRED_HOOK_COMMANDS]
+    templates = [t for t, _, _ in install._RETIRED_HOOK_COMMANDS]
     for script in _SCRIPTS:
         assert (_WRAPPER_2_3_0 + ".claude/hooks/{}").format(script) in [
             t.format(script) for t in templates]
+
+
+def _as_2_28_1(settings: dict) -> dict:
+    """*settings* with every hook as 2.28.1 wrote it — the file a consumer
+    installed at any release from 2.19.0 to 2.28.1 holds."""
+    for hook in install._hook_entries(settings):
+        script = hook["command"].rsplit("/", 1)[-1]
+        hook["command"] = _WRAPPER_2_28_1 + f".claude/hooks/{script}"
+    return settings
+
+
+def test_the_2_28_1_template_is_what_2_28_1_shipped():
+    """Every registration 2.28.1 shipped, the spawn guard's included, matches
+    a retired template exactly — a near miss would leave it silent."""
+    templates = [t for t, _, _ in install._RETIRED_HOOK_COMMANDS]
+    for hook in install._hook_entries(_as_2_28_1(_base())):
+        script = hook["command"].rsplit("/", 1)[-1]
+        assert hook["command"] in [t.format(script) for t in templates]
+
+
+def test_a_2_28_1_settings_file_becomes_the_framework_base(tmp_path: Path):
+    """Issue #352: the only change a 2.28.1 file needs is the wrapper's tail,
+    and the rewrite makes it the base byte for byte."""
+    dst = tmp_path / "settings.json"
+    _write(dst, _as_2_28_1(_base()))
+    log: list = []
+    edits = install.migrate_settings(_base(), dst, log)
+    assert len(edits) == 6
+    # Only what that generation lacked: it was already anchored (issue #272).
+    assert all(e.endswith(" now reports a missing interpreter (issue #352)")
+               for e in edits), edits
+    assert dst.read_text(encoding="utf-8") == (
+        ADAPTER_DIR / "settings.json").read_text(encoding="utf-8")
+    assert all("no working python3/python for %s" in h["command"]
+               for h in install._hook_entries(_read(dst)))
 
 
 def test_a_projects_own_hooks_and_edited_framework_hooks_are_untouched(tmp_path: Path):

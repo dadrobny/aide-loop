@@ -140,7 +140,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/command_hygiene_guard.py"
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; printf \"aide: no working python3/python for %s\\n\" \"$1\" >&2; exit 1' _ .claude/hooks/command_hygiene_guard.py"
           }
         ]
       },
@@ -149,7 +149,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/spawn_model_guard.py"
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; printf \"aide: no working python3/python for %s\\n\" \"$1\" >&2; exit 1' _ .claude/hooks/spawn_model_guard.py"
           }
         ]
       },
@@ -158,7 +158,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/log_permission_event.py"
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; printf \"aide: no working python3/python for %s\\n\" \"$1\" >&2; exit 1' _ .claude/hooks/log_permission_event.py"
           }
         ]
       },
@@ -167,7 +167,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/sibling_instructions.py"
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; printf \"aide: no working python3/python for %s\\n\" \"$1\" >&2; exit 1' _ .claude/hooks/sibling_instructions.py"
           }
         ]
       }
@@ -178,7 +178,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/log_permission_event.py"
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; printf \"aide: no working python3/python for %s\\n\" \"$1\" >&2; exit 1' _ .claude/hooks/log_permission_event.py"
           }
         ]
       }
@@ -188,7 +188,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; exit 0' _ .claude/hooks/log_instructions_loaded.py"
+            "command": "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf \"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; printf \"aide: no working python3/python for %s\\n\" \"$1\" >&2; exit 1' _ .claude/hooks/log_instructions_loaded.py"
           }
         ]
       }
