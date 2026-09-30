@@ -1738,7 +1738,7 @@ def test_check_is_loud_about_a_branch_whose_work_is_not_found(
     assert ("branch aide/queue-010 was deleted on origin and its work COULD "
             "NOT BE FOUND in main or origin/main") in out
     assert "this checkout holds the only copy" in out
-    assert "Check whether its PR merged" in out
+    assert "Check whether its work merged" in out
     assert "unpublished branch" not in out
     assert "git push" not in out
 
@@ -1852,7 +1852,7 @@ def test_claim_names_an_unfound_claim_branch_deleted_on_origin(tmp_path: Path,
     assert ("claimed by aide/027-bounds-rules, which origin has deleted and "
             "whose work COULD NOT BE FOUND in main or origin/main") in out
     assert "never re-published blindly" in out
-    assert "check whether its PR merged" in out
+    assert "check whether its work merged" in out
 
 
 def test_status_names_a_claim_branch_deleted_on_origin(tmp_path: Path, capsys):
@@ -1874,7 +1874,7 @@ def test_status_is_loud_about_a_branch_whose_work_is_not_found(tmp_path: Path,
     out = capsys.readouterr().out
     assert ("branch: aide/queue-010 (queue branch — not an item claim) — "
             "deleted on origin, its work NOT FOUND in main or origin/main: "
-            "check whether its PR merged") in out
+            "check whether its work merged") in out
     assert "NOT on origin" not in out
 
 

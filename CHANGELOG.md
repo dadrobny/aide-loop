@@ -164,15 +164,15 @@ instead — that is the bump policy above, and it is enforced by
   landed work reads this way too. `check` warns `branch <b> was deleted on
   origin and its work COULD NOT BE FOUND in <bases>`, names both of those
   shapes and the other reading — this checkout holds the only copy — and says
-  to check whether its PR merged: if it did, `git branch -D <b>` (`gc
+  to check whether its work merged: if it did, `git branch -D <b>` (`gc
   --merged` measures the same way and would not take it); if not, land the
   work first. `status` notes `its work NOT FOUND in <bases>: check whether its
-  PR merged`. On a claim branch of an open item, `claim` names either kind in
+  work merged`. On a claim branch of an open item, `claim` names either kind in
   its `none left — …` report and exits 1, as for an unpublished claim, since
   neither is work in flight and neither clears without a person: a landed
   claim branch is also what an abandoned claim leaves, so the report says to
   tick the item if its work landed, then `gc --merged`; a not-found one is
-  never re-published blindly, and the report sends a person to its PR. The
+  never re-published blindly, and the report sends a person to check. The
   listing is now one `for-each-ref` spawn where it was two; the ancestry and
   content probes run only for a gone branch. §2 states the rule, `aide claim
   -h` the exit, and `/aide-run-queue` and `core/README.md` list the deleted

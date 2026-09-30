@@ -7040,7 +7040,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                 f"origin/{br} is gone), so either it landed in a shape this "
                 f"check cannot see — squash-merged and then built over on the "
                 f"same lines, or squash-merged under git older than 2.38 — or "
-                f"this checkout holds the only copy. Check whether its PR "
+                f"this checkout holds the only copy. Check whether its work "
                 f"merged: if it did, 'git branch -D {br}' deletes it ('aide "
                 f"gc --merged' measures the same way and will not); if not, "
                 f"land the work through a reviewed branch before deleting "
@@ -12178,7 +12178,7 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
             print("  A claim branch deleted on origin whose work could not be "
                   "found in its base is never re-published blindly. A squash "
                   "merge the base has since built over, or git older than "
-                  "2.38, hides landed work, so check whether its PR merged: if "
+                  "2.38, hides landed work, so check whether its work merged: if "
                   "it did, record the item ('aide progress set <NNN> done') "
                   "and delete the branch ('git branch -D <branch>'); if not, "
                   "land its work or release the item.")
@@ -16028,7 +16028,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             return (f" — deleted on origin, all of it already in {why.where} "
                     f"('{_gc_merged_hint(why.where, config)}' deletes it)")
         return (f" — deleted on origin, its work NOT FOUND in {why.where}: "
-                f"check whether its PR merged — this checkout may hold the "
+                f"check whether its work merged — this checkout may hold the "
                 f"only copy")
 
     unpublished = {br for br, why in off_origin.items()

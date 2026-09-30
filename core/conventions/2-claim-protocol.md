@@ -45,7 +45,7 @@ as **stale** when everything on it is already in its base or `main_branch`
 (`aide gc --merged` deletes it), and otherwise as work **not found** there.
 Not found is what was measured, not that the work never landed: a squash
 merge the base has since changed over the same lines, or any squash merge
-under git older than 2.38, reads the same way. So check whether its PR merged
+under git older than 2.38, reads the same way. So check whether its work merged
 before deleting it, and land its work first if it did not. Either kind on a
 claim branch holds its item without being work in flight, so `claim` exits
 non-zero on it as on an unpublished claim.
