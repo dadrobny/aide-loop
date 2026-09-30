@@ -38,13 +38,12 @@ one, `aide check` and `aide queue tidy` keep its declared status honest, and
   in the suite, an independent validator — and it is the queue's final item.
   Wherever the file lists it, it runs last: `aide claim` holds it until every
   other item on its queue that is not a queue-end item has left the way, bar
-  one whose dependencies lead back to it, and
-  `aide check --queue NNN` warns when open work is listed after it, so an item
+  one whose dependencies lead back to it, and `aide check --queue NNN` warns
+  when open work that does not depend on it is listed after it, so an item
   added after planning goes above it. Stage validation is its only trigger
   today, so it is planned only on a queue that closes a roadmap stage, and
   only when `aide check --queue NNN` warns that the stage still has work for
-  one. The planner reads that warning
-  and never works the need out itself; with no such warning, the queue ends
+  one. The planner reads that warning and never works the need out itself; with no such warning, the queue ends
   with its last deliverable. The same check warns on a planned queue-end item
   with nothing to do. What closes a stage, and what counts as a need, is
   `aide check -h`. The stage variant is titled `Validate stage N: <stage

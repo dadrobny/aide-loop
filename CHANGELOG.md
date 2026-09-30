@@ -171,8 +171,9 @@ instead — that is the bump policy above, and it is enforced by
   queue-end item, but queue 001 lists open item(s) 003 after it — move it
   to the end of the queue; …`. ✅, ❌ and ⏸️ records either side are
   exempt, per #338, and so is an item whose dependencies lead back to the
-  queue-end item: it belongs after it. Alongside it, `queue-end-needed` no longer fires on a
-  stage whose queue-end item is open but not last: that item will run last,
+  queue-end item: it belongs after it. Alongside it, `queue-end-needed` no
+  longer fires on a stage whose queue-end item is open but not last: that
+  item will run last,
   so the old `End the queue with Validate stage N` read as a request to plan
   an item that already exists. The need is met by a queue-end item in the
   queue's trailing run or one still open anywhere on it; one ✅ ahead of
