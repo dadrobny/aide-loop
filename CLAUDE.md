@@ -251,7 +251,7 @@ proves nothing about and splits the rest into shards balanced by measured test
 time. A new module runs on **both legs** by default; which modules may be
 windows-skipped is a rule stated once, in the docstring of
 [`tests/test_ci_shards.py`](tests/test_ci_shards.py), whose `UBUNTU_ONLY` list
-is the one declaration and which pins every test module into exactly one
+is the declaration the workflow's skip list must match, and which pins every test module into exactly one
 Windows shard otherwise. There is no linter or formatter; `pytest` is the only
 gate.
 

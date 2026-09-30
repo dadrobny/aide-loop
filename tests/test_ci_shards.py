@@ -61,7 +61,9 @@ PYTEST_INI = REPO / "pytest.ini"
 UBUNTU_ONLY = {
     "core/scripts/tests/test_aide_base.py":
         "which base claim, merge, scope and gc read: asserts refs, recorded "
-        "bases and counts; no path text, no bytes, no launch but git",
+        "bases and counts; no path text, no bytes, no launch but git. Its one "
+        "Windows-grep hit (d829185, #126) moved its own git helper to "
+        "encoding=\"utf-8\" in a codec sweep; Windows caught nothing here",
     "core/scripts/tests/test_aide_queue_pr.py":
         "queue pr / queue ready and the CI rollup: `_gh` is a stand-in in "
         "every test; asserts refs, forge calls and exit codes",
@@ -131,6 +133,10 @@ def _windows_shards() -> list:
 
 def _env_ubuntu_only() -> list:
     """The paths the workflow's `UBUNTU_ONLY` env value --ignore's."""
+    keys = re.findall(r"^[ \t]*UBUNTU_ONLY:", _workflow(), flags=re.MULTILINE)
+    assert len(keys) == 1, (
+        f"tests.yml sets UBUNTU_ONLY {len(keys)} times; a second value (a "
+        "step-level override, say) would decide what Windows skips unpinned")
     match = re.search(r"^([ \t]*)UBUNTU_ONLY:[ \t]*>-[ \t]*\n((?:\1[ \t]+\S[^\n]*\n)+)",
                       _workflow(), flags=re.MULTILINE)
     assert match, ("tests.yml has no `UBUNTU_ONLY: >-` block of indented lines; "
@@ -221,6 +227,12 @@ def test_every_module_runs_in_exactly_one_windows_shard():
         named_skips = sorted(set(positional) & set(UBUNTU_ONLY))
         assert not named_skips, (
             f"shard {entry['shard']!r} names {named_skips}, which UBUNTU_ONLY skips")
+        # A file named on the command line runs even when --ignore'd too, so
+        # a shard that does both is read here the way pytest reads it: never.
+        both = sorted(set(positional) & set(ignored))
+        assert not both, (
+            f"shard {entry['shard']!r} both names and --ignores {both}; pytest "
+            "runs a named file regardless")
         runs = set().union(*(_modules_under(p) for p in positional)) if positional else set()
         runs -= set().union(*(_modules_under(p) for p in ignored)) if ignored else set()
         runs -= set(UBUNTU_ONLY)

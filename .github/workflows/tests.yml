@@ -24,8 +24,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Ubuntu runs the whole suite in one job: a bare `pytest`, ~100s of
-        # tests (~2 min a job). The suite is mostly process spawning, almost
+        # Ubuntu runs the whole suite in one job: a bare `pytest`, ~100 s of
+        # test time (~2 min a job). The suite is mostly process spawning, almost
         # all git, and a spawn costs ~13x more on Windows (issue #74) — the git
         # modules run 8-21x slower there, and the old two-shard split let one
         # Windows job reach ~13 min (issue #358). So the Windows leg skips
