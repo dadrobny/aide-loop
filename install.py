@@ -1479,6 +1479,17 @@ _RETIRED_HOOK_COMMANDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
      "\"$@\"; done; exit 0' _ .claude/hooks/{}",
      ("command_hygiene_guard.py", "log_permission_event.py",
       "sibling_instructions.py", "log_instructions_loaded.py")),
+    # 2.4.0 to 2.28.1 — anchored at the project root, but a machine with no
+    # working interpreter ran no hook at all and said nothing (issue #352).
+    # Braces doubled for `str.format`.
+    ("sh -c 'f=\"${{CLAUDE_PROJECT_DIR:-.}}/$1\"; [ -f \"$f\" ] || {{ printf "
+     "\"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }}; for py in "
+     "python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; "
+     "\"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; done; "
+     "exit 0' _ .claude/hooks/{}",
+     ("command_hygiene_guard.py", "spawn_model_guard.py",
+      "log_permission_event.py", "sibling_instructions.py",
+      "log_instructions_loaded.py")),
 )
 
 # Allow entries a release added that an unattended run cannot do without, and
@@ -1632,7 +1643,8 @@ def migrate_settings(base: dict, dst: Path, log: List[str]) -> List[str]:
         if new is not None:
             hook["command"] = new
             edits.append(f"hook for {new.rsplit(' ', 1)[-1]} now resolves its "
-                         f"script from the project root (issue #272)")
+                         f"script from the project root (issue #272) and "
+                         f"reports a missing interpreter (issue #352)")
 
     perms = settings.setdefault("permissions", {})
     allow = perms.setdefault("allow", []) if isinstance(perms, dict) else None

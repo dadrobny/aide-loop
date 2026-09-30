@@ -11,7 +11,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import pytest
 
@@ -2265,15 +2265,7 @@ def test_a_merge_killed_mid_suite_puts_the_branch_and_its_base_back(
     assert "interrupted" in capsys.readouterr().err
 
 
-def test_a_failure_in_the_window_restores_but_is_not_called_an_interrupt(
-        tmp_path: Path, monkeypatch, capsys):
-    """The restore is owed to any exception; the word "interrupted" is not.
-
-    A test command that is not on PATH raises `FileNotFoundError` right here.
-    Reporting that as an interrupt would send a human hunting for a signal
-    nobody sent — the failure class the `--no-commit` message was fixed for in
-    issue #133.
-    """
+def _claimed_and_worked(tmp_path: Path) -> Tuple[Path, str]:
     root = _init_repo(tmp_path / "r", mode="local")
     assert aide.main(["--repo", str(root), "queue", "start", "3"]) == 0
     assert aide.main(["--repo", str(root), "claim", "--queue", "3"]) == 0
@@ -2282,23 +2274,53 @@ def test_a_failure_in_the_window_restores_but_is_not_called_an_interrupt(
     _run(["git", "add", "-A"], root)
     _run(["git", "commit", "-m", "work"], root)
     _run(["git", "switch", "aide/queue-003"], root)
+    return root, branch
 
+
+def test_a_missing_runner_in_the_window_restores_and_is_reported(
+        tmp_path: Path, monkeypatch, capsys):
+    """The restore is owed to any exception; the word "interrupted" is not.
+
+    A test command that is not on PATH is met right here. Reporting that as
+    an interrupt would send a human hunting for a signal nobody sent — the
+    failure class the `--no-commit` message was fixed for in issue #133 — and
+    re-raising it was a traceback over a state a person fixes by installing
+    one program (issue #352): it is named, and the verb exits 1.
+    """
+    root, branch = _claimed_and_worked(tmp_path)
+    monkeypatch.setattr(aide, "resolve_test_command",
+                        lambda repo_root, config: ["nosuchrunner-aide-352", "-q"])
+    assert aide.main(["--repo", str(root), "merge", "27"]) == 1
+
+    assert branch in aide._local_branches(root)
+    assert aide._recorded_branch_base(root, branch) == "aide/queue-003"
+    err = capsys.readouterr().err
+    assert ("aide merge: the test command 'nosuchrunner-aide-352' is not on "
+            "PATH") in err
+    assert "interrupted" not in err and "Traceback" not in err
+
+
+def test_a_genuine_bug_in_the_window_restores_and_still_raises(
+        tmp_path: Path, monkeypatch, capsys):
+    """Only a missing program is reported and swallowed; anything else is a
+    bug whose traceback is the report, after the restore."""
+    root, branch = _claimed_and_worked(tmp_path)
     real_run = aide.subprocess.run
     test_cmd = aide.resolve_test_command(root, aide.load_config(root))
 
-    def _no_such_command(cmd, *a, **kw):
+    def _broken(cmd, *a, **kw):
         if list(cmd)[:len(test_cmd)] == list(test_cmd):
-            raise FileNotFoundError(2, "No such file or directory", cmd[0])
+            raise RuntimeError("a bug in the runner seam")
         return real_run(cmd, *a, **kw)
 
-    monkeypatch.setattr(aide.subprocess, "run", _no_such_command)
-    with pytest.raises(FileNotFoundError):
+    monkeypatch.setattr(aide.subprocess, "run", _broken)
+    with pytest.raises(RuntimeError):
         aide.main(["--repo", str(root), "merge", "27"])
 
     assert branch in aide._local_branches(root)
     assert aide._recorded_branch_base(root, branch) == "aide/queue-003"
     err = capsys.readouterr().err
-    assert "FileNotFoundError" in err and "interrupted" not in err
+    assert "failed with RuntimeError" in err and "interrupted" not in err
 
 
 def test_the_restore_window_ends_at_the_push_not_at_the_return(tmp_path: Path):

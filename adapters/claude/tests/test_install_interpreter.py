@@ -9,7 +9,8 @@ interpreter name that may be absent on a given host. Instead:
   ``sh -c 'f="${CLAUDE_PROJECT_DIR:-.}/$1"; [ -f "$f" ] || { printf "aide: hook
   script not found: %s\\n" "$f" >&2; exit 1; }; for py in python3 python; do command -v
   "$py" >/dev/null 2>&1 || continue; "$py" -c "" >/dev/null 2>&1 || continue;
-  exec "$py" "$f"; done; exit 0' _ <hook>``.
+  exec "$py" "$f"; done; printf "aide: no working python3/python for %s\\n" "$1"
+  >&2; exit 1' _ <hook>``.
   A machine with only ``python3`` (Linux/macOS) *or* only ``python`` (Windows with
   git's ``sh`` on PATH) runs the hook from **one committed file**, with no
   per-machine reconciliation. The functional probe (``"$py" -c ""``) is required
@@ -31,6 +32,9 @@ interpreter name that may be absent on a given host. Instead:
   every call. ``:-.`` keeps a runtime that sets no variable working as before.
   A script that is not there is one stderr line and exit 1: a non-blocking hook
   error, visible, where a silent pass was what hid the defect.
+- **No working interpreter is the same kind of error** (issue #352): one
+  stderr line naming the hook, and exit 1. Until 2.28.2 it was ``exit 0`` —
+  the hygiene guard, the spawn guard and both logs off, with no message.
 - **The allow-list** lists both ``python`` and ``python3`` (harmless auto-approval
   patterns), so either interpreter name auto-approves regardless of host.
 
@@ -40,6 +44,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -79,8 +84,10 @@ def test_hooks_use_self_resolving_selector():
         assert cmd.startswith("sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; "), cmd
         assert ('[ -f "$f" ] || { printf "aide: hook script not found: %s\\n" '
                 '"$f" >&2; exit 1; }') in cmd, cmd
-        # Never blocks an unattended run just because no interpreter was found.
-        assert "done; exit 0'" in cmd, cmd
+        # No interpreter: visible (one line naming the hook) but never a
+        # block — exit 1, the non-blocking hook error (issue #352).
+        assert ('done; printf "aide: no working python3/python for %s\\n" '
+                '"$1" >&2; exit 1\'') in cmd, cmd
         assert ".claude/hooks/" in cmd
         # No bare single-interpreter invocation that could be absent on a host.
         assert not cmd.startswith("python "), cmd
@@ -240,3 +247,30 @@ def test_a_missing_script_is_a_visible_non_blocking_error(tmp_path):
     assert result.returncode == 1
     assert result.stderr.strip() == (
         f"aide: hook script not found: {tmp_path}/.claude/hooks/gone.py")
+
+
+@pytest.mark.skipif(not shutil.which("sh"), reason="no sh on PATH")
+def test_no_working_interpreter_is_a_visible_non_blocking_error(tmp_path):
+    """Issue #352: a PATH with neither `python3` nor `python` on it. The
+    script is there; nothing can run it, and the wrapper says so and exits
+    1 — never 0, which turned every hook off in silence, and never 2, which
+    would block the tool call on the framework's fault."""
+    (tmp_path / ".claude" / "hooks").mkdir(parents=True)
+    (tmp_path / ".claude" / "hooks" / "probe.py").write_text(
+        "print('ran')\n", encoding="utf-8")
+    empty = tmp_path / "empty-bin"
+    empty.mkdir()
+    env = _env(tmp_path)
+    env["PATH"] = str(empty)
+    # The command is itself `sh -c '<wrapper>' _ <script>`, and its `sh` would
+    # not be found on an empty PATH: run the wrapper with this machine's sh,
+    # named in full, so every name *inside* it resolves against the empty dir.
+    argv = shlex.split(_wrapper_for(".claude/hooks/probe.py"))
+    assert argv[:2] == ["sh", "-c"], argv
+    result = subprocess.run([shutil.which("sh"), *argv[1:]],
+                            capture_output=True, encoding="utf-8", cwd=tmp_path,
+                            env=env, timeout=10)
+    assert result.returncode == 1, result.stderr
+    assert result.stdout == ""
+    assert result.stderr.strip() == (
+        "aide: no working python3/python for .claude/hooks/probe.py")

@@ -1045,11 +1045,12 @@ def test_the_shared_committer_is_loud_when_git_cannot_run(
                                   ["docs/aide/insights.md"])
     assert why and "git could not be run" in why
     assert "could not commit docs/aide/insights.md" in capsys.readouterr().err
+    # Through the verb, git's absence is met before the commit: one sentence
+    # naming it, the edit put back first (issue #352).
     assert aide.main(["--repo", str(repo), "insights", "tick", "2",
                       "--pointer", "item 003"]) == 1
     err = capsys.readouterr().err
-    assert "could not commit docs/aide/insights.md" in err and "Traceback" not in err
-    assert "the tick could not be committed" in err
+    assert "aide insights: git is not on PATH" in err and "Traceback" not in err
     monkeypatch.undo()
     assert "- [x] defect" not in _inbox(repo)  # the edit was put back ...
     assert "insights.md" not in _status(repo)  # ... byte for byte

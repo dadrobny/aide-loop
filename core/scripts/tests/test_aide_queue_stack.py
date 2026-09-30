@@ -276,6 +276,26 @@ def test_the_check_accepts_both_keys_at_their_documented_values(tmp_path: Path):
         assert not any("[loop]" in e for e in errors), errors
 
 
+@pytest.mark.parametrize("mode", ["Local", "auto_merge", "offline", ""])
+def test_a_git_mode_outside_the_three_fails_the_check(tmp_path: Path, mode: str):
+    """Issue #352: every site compares against one of the three, so any other
+    string ran as `auto-merge` — `"Local"` pushed from a checkout meant to be
+    offline."""
+    repo = _init(tmp_path / "r", mode=mode)
+    errors, _ = aide.run_checks(repo, aide.load_config(repo))
+    assert [e for e in errors if "[git] mode" in e] == [
+        f"aide.toml [git] mode = {mode!r} is not one of 'auto-merge', 'pr', "
+        f"'local' — any other value runs as 'auto-merge' (default "
+        f"'auto-merge')"]
+
+
+def test_the_check_accepts_the_three_git_modes(tmp_path: Path):
+    for mode in aide.GIT_MODE_VALUES:
+        repo = _init(tmp_path / mode, mode=mode)
+        errors, _ = aide.run_checks(repo, aide.load_config(repo))
+        assert not any("[git] mode" in e for e in errors), errors
+
+
 # --------------------------------------------------------------------------- #
 # [loop] plan_review — the gate `queue gate` raises
 # --------------------------------------------------------------------------- #

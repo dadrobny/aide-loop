@@ -388,6 +388,42 @@ def test_update_rewrites_the_hook_wrappers_a_kept_settings_file_holds(consumer: 
     assert (consumer / ".claude" / "scripts" / "await_run.py").is_file()
 
 
+# What 2.4.0 to 2.28.1 wrote: anchored, and silent where no interpreter works.
+_HOOK_WRAPPER_2_28_1 = (
+    "sh -c 'f=\"${CLAUDE_PROJECT_DIR:-.}/$1\"; [ -f \"$f\" ] || { printf "
+    "\"aide: hook script not found: %s\\n\" \"$f\" >&2; exit 1; }; for py in "
+    "python3 python; do command -v \"$py\" >/dev/null 2>&1 || continue; "
+    "\"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" \"$f\"; "
+    "done; exit 0' _ ")
+
+
+def test_update_makes_a_2_28_1_wrapper_report_a_missing_interpreter(
+        consumer: Path):
+    """Issue #352 at the path a consumer has it: every hook of a kept
+    settings.json as 2.28.1 wrote it, and an update that leaves each one
+    naming a missing interpreter instead of passing in silence."""
+    path = consumer / ".claude" / "settings.json"
+    settings = json.loads(path.read_text(encoding=install.CONSUMER_ENCODING))
+    for groups in settings["hooks"].values():
+        for group in groups:
+            for hook in group["hooks"]:
+                hook["command"] = (_HOOK_WRAPPER_2_28_1
+                                   + hook["command"].rsplit(" ", 1)[-1])
+    path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+
+    assert install.main(["--into", str(consumer), "--update"]) == 0
+
+    after = json.loads(path.read_text(encoding=install.CONSUMER_ENCODING))
+    commands = [hook["command"] for groups in after["hooks"].values()
+                for group in groups for hook in group["hooks"]]
+    assert len(commands) == 6
+    assert all('no working python3/python for %s\\n" "$1" >&2; exit 1\'' in c
+               for c in commands), commands
+    assert path.read_text(encoding="utf-8") == (
+        FRAMEWORK_ROOT / "adapters" / "claude" / "settings.json").read_text(
+            encoding="utf-8")
+
+
 # --------------------------------------------------------------------------- #
 # the per-machine config, at the paths a consumer has it (2.0.0, issue #256)
 #
@@ -4840,3 +4876,180 @@ def test_sync_is_not_stalled_by_the_claude_runtimes_scratch_worktrees(aide, cons
     (scratch / "README.md").write_text("a scratch checkout\n", encoding="utf-8")
     assert aide.main(["--repo", str(consumer), "sync"]) == 0
     assert aide.main(["--repo", str(consumer), "status"]) == 0
+
+
+# --------------------------------------------------------------------------- #
+# a missing tool ends in one sentence and a non-zero exit (issue #352) — never
+# a traceback, a false OK, or a silent no-op
+# --------------------------------------------------------------------------- #
+def _path_without_git(monkeypatch) -> None:
+    """`PATH` with every directory that holds git taken out.
+
+    The engine runs in this process, so nothing else it needs has to stay
+    reachable — the interpreter is already running. Skipped rather than
+    failed where the OS still finds git (Windows looks beside the running
+    interpreter before it looks on `PATH`, for one).
+    """
+    import os
+    kept = [d for d in os.environ.get("PATH", "").split(os.pathsep)
+            if d and shutil.which("git", path=d) is None]
+    monkeypatch.setenv("PATH", os.pathsep.join(kept))
+    if shutil.which("git") is not None:
+        pytest.skip("git is still found with its PATH directories removed")
+
+
+@pytest.mark.parametrize("argv, code", [
+    (["status"], 1), (["claim"], 1), (["merge", "1"], 1), (["sync"], 1),
+    (["gc"], 1),
+    (["scope", "1"], 2),   # scope's 1 is "out of bounds"; 2 is "could not check"
+])
+def test_a_verb_with_git_off_path_says_so_in_one_sentence(
+        aide, consumer: Path, monkeypatch, capsys, argv: list, code: int):
+    """`status` ended in `FileNotFoundError: 'git'`; `merge` refused with "no
+    claim branch found", the branch reader having read the error as none."""
+    _path_without_git(monkeypatch)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), *argv]) == code
+    err = capsys.readouterr().err
+    assert f"aide {argv[0]}: git is not on PATH" in err
+    assert "no claim branch found" not in err
+    assert "Traceback" not in err
+
+
+def test_a_recording_verb_with_git_off_path_puts_its_edit_back(
+        aide, consumer: Path, monkeypatch, capsys):
+    """The edit is written before the verb learns git is missing, and an edit
+    left written and uncommitted reads as made to the re-run (issue #309)."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    before = progress.read_bytes()
+    _path_without_git(monkeypatch)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "in-progress"]) == 1
+    assert "aide progress: git is not on PATH" in capsys.readouterr().err
+    assert progress.read_bytes() == before
+
+
+def test_a_test_command_that_is_not_there_is_named(aide, consumer: Path, capsys):
+    _set_test_command(consumer, "nosuchrunner-aide-352 --x")
+    _commit(consumer, "chore: a runner this machine lacks")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "test"]) == 1
+    err = capsys.readouterr().err
+    assert ("aide test: the test command 'nosuchrunner-aide-352' is not on "
+            "PATH") in err
+    assert "Traceback" not in err
+
+
+def test_merge_with_a_missing_runner_puts_the_branch_back_and_reports(
+        aide, consumer: Path, capsys):
+    """The restore was always owed; the re-raise after it was the traceback.
+    Reported instead, exit 1, and the retry has its branch and its base."""
+    _set_test_command(consumer, "nosuchrunner-aide-352 --x")
+    _commit(consumer, "chore: a runner this machine lacks")
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 1
+    err = capsys.readouterr().err
+    assert ("aide merge: the test command 'nosuchrunner-aide-352' is not on "
+            "PATH") in err
+    assert "has been put back with main recorded as its base" in err
+    assert "Traceback" not in err
+    assert "aide/001-the-greeter" in _branches(consumer)
+    assert _item_status(aide, consumer, 1) != "complete"
+
+
+def test_merge_refuses_an_empty_test_command_before_touching_git(
+        aide, consumer: Path, capsys):
+    """`aide test` refused it; `merge` reached `subprocess.run([])` after the
+    merge was made and died on an IndexError."""
+    _set_test_command(consumer, "")
+    _commit(consumer, "chore: no test command")
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    branch, head = _branch(consumer), _sha(consumer, "HEAD")
+    main_before = _sha(consumer, "main")
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 2
+    assert "aide merge: [python] test_command is empty in aide.toml" in (
+        capsys.readouterr().err)
+    assert _branch(consumer) == branch and _sha(consumer, "HEAD") == head
+    assert _sha(consumer, "main") == main_before
+
+
+@pytest.mark.parametrize("verb", ["sync", "status", "claim", "gc"])
+def test_a_verb_that_needs_a_repository_refuses_outside_one(
+        aide, consumer: Path, capsys, verb: str):
+    """`sync` printed `OK — on '', tree clean` and `status` printed `tree:
+    clean` over a directory git knows nothing of."""
+    (consumer / ".git").rename(consumer / "git-set-aside")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), verb]) == 1
+    out, err = capsys.readouterr()
+    assert f"aide {verb}: {consumer} is not inside a git repository" in err
+    assert "OK" not in out and "tree: clean" not in out
+    assert "Traceback" not in err
+
+
+def test_test_outside_a_repository_says_there_is_no_commit(
+        aide, consumer: Path, capsys):
+    """Not "HEAD or a tracked file changed while it ran": nothing changed."""
+    _set_test_command(consumer, "git --version")
+    (consumer / ".git").rename(consumer / "git-set-aside")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "test"]) == 0
+    err = capsys.readouterr().err
+    assert "is not inside a git repository, so there is no commit" in err
+    assert "changed while it ran" not in err
+
+
+def test_sync_says_remotes_fetched_only_when_it_fetched(
+        aide, consumer: Path, capsys):
+    toml = consumer / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        'mode = "local"', 'mode = "auto-merge"'), encoding="utf-8")
+    _commit(consumer, "chore: auto-merge, and no origin")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "sync"]) == 0
+    out = capsys.readouterr().out
+    assert "aide sync: OK — on 'main', tree clean, no origin to fetch" in out
+    assert "remotes fetched" not in out
+
+
+def test_a_consumer_below_the_git_top_level_is_in_a_repository(
+        aide, tmp_path: Path, prototype: Path, capsys):
+    """`aide.toml` one directory below the top level: the `.git` probe said
+    "no repository", so a recording verb skipped its commit and `merge`
+    found no claim branch while the verbs that asked git worked."""
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    sub = outer / "project"
+    shutil.copytree(prototype, sub, ignore=shutil.ignore_patterns(".git"))
+    _git(["init", "-b", "main"], outer)
+    _git(["config", "user.email", "fixture@example.com"], outer)
+    _git(["config", "user.name", "Fixture"], outer)
+    _commit(outer, "init")
+    _raise_a_gate(sub)
+    head = _sha(outer, "HEAD")
+    assert aide.main(["--repo", str(sub), "gate", "approve", "1",
+                      "--evidence", "reviewed"]) == 0
+    assert _sha(outer, "HEAD") != head and _clean(outer)
+    assert aide.main(["--repo", str(sub), "sync"]) == 0
+    assert "aide sync: OK — on 'main'" in capsys.readouterr().out
+
+
+def test_check_with_git_off_path_still_judges_the_documents_and_says_what_it_skipped(
+        aide, consumer: Path, monkeypatch, capsys):
+    """The one verb that does not refuse: `check` is the documents' verdict,
+    and has passed with git off PATH since 1.26.0. What it could not read is
+    one warning, so its OK is not read as "branches and history checked"."""
+    (consumer / "docs" / "aide" / "insights.md").unlink()
+    _path_without_git(monkeypatch)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out, err = capsys.readouterr()
+    assert "git is not on PATH, so nothing that reads git was checked" in out + err
+    assert (consumer / "docs" / "aide" / "insights.md").is_file()
+    assert "Traceback" not in err
