@@ -164,7 +164,12 @@ python .claude/skills/triage-issues/reorder_project.py             # applies it
 ```
 
 The script is a stable partition and a no-op when the board already matches, so
-running it twice costs one read. Ordering only takes effect on views with no
+running it twice costs one read. It moves only the items out of place — the
+longest run already in order stays put — so a pass that adds three issues makes
+a handful of moves, not one per item. **Run it after the `item-add` calls have
+settled**: `gh project item-list` can lag a just-added item, and a reorder that
+reads the board before it appears leaves it at the bottom. A second
+`--dry-run` shows any such straggler. Ordering only takes effect on views with no
 explicit sort — all three qualify today, view 4 (Board), **view 5 (Table)** and
 view 6 (Open); a view that grows a sort ignores position entirely.
 
