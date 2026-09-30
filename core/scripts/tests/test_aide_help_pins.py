@@ -1223,10 +1223,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `_branches_off_origin`: an upstream origin/<branch> that is gone is
         # a deleted branch, not an unpublished one (issue #364).
         ("A claim branch origin had and has since deleted exits 1 the same "
-         "way, named as already in its base or as deleted before its work "
-         "landed, and is never advised a push",
+         "way, named as already in its base or as work that could not be "
+         "found there, and is never advised a push",
          ("test_aide_git::test_claim_names_a_landed_claim_branch_deleted_on_origin",
-          "test_aide_git::test_claim_names_an_unlanded_claim_branch_deleted_on_origin")),
+          "test_aide_git::test_claim_names_an_unfound_claim_branch_deleted_on_origin")),
         # `if not relevant and not open_items: print("none left")` returns
         # before `_early_ready` is printed.
         ("A bare \"none left\" (nothing open, no gate) carries no such line",

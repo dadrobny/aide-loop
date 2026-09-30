@@ -158,15 +158,21 @@ instead — that is the bump policy above, and it is enforced by
   is already in <base>, so there is nothing to publish — 'aide gc --merged'
   deletes it` (with `--base <base>` when that is not `main_branch`), and
   `status` notes `deleted on origin, all of it already in <base>`. Otherwise
-  it was **deleted before its work landed**: `check` warns `branch <b> was
-  DELETED ON ORIGIN BEFORE ITS WORK LANDED`, that this checkout may hold the
-  only copy, and to find out why before landing or deleting it; `status`
-  notes the same in capitals. On a claim branch of an open item, `claim`
-  names either kind in its `none left — …` report and exits 1, as for an
-  unpublished claim, since neither is work in flight and neither clears
-  without a person: a landed claim branch is also what an abandoned claim
-  leaves, so the report says to tick the item if its work landed, then `gc
-  --merged`; a deleted, unlanded one is never re-published blindly. The
+  its work is **not found** there, which is what was measured and not that
+  it never landed: a squash merge the base has since changed over the same
+  lines makes `merge-tree` conflict, and git < 2.38 cannot ask at all, so
+  landed work reads this way too. `check` warns `branch <b> was deleted on
+  origin and its work COULD NOT BE FOUND in <bases>`, names both of those
+  shapes and the other reading — this checkout holds the only copy — and says
+  to check whether its PR merged: if it did, `git branch -D <b>` (`gc
+  --merged` measures the same way and would not take it); if not, land the
+  work first. `status` notes `its work NOT FOUND in <bases>: check whether its
+  PR merged`. On a claim branch of an open item, `claim` names either kind in
+  its `none left — …` report and exits 1, as for an unpublished claim, since
+  neither is work in flight and neither clears without a person: a landed
+  claim branch is also what an abandoned claim leaves, so the report says to
+  tick the item if its work landed, then `gc --merged`; a not-found one is
+  never re-published blindly, and the report sends a person to its PR. The
   listing is now one `for-each-ref` spawn where it was two; the ancestry and
   content probes run only for a gone branch. §2 states the rule, `aide claim
   -h` the exit, and `/aide-run-queue` and `core/README.md` list the deleted

@@ -42,17 +42,21 @@ push fail the same way.
 upstream `origin/<branch>` is gone was published, and is never advised a push
 — that would recreate a branch deleted on purpose. The same three verbs name it
 as **stale** when everything on it is already in its base or `main_branch`
-(`aide gc --merged` deletes it), and as **deleted before its work landed**
-otherwise, the louder of the two, since this checkout may hold the only copy.
-Either kind on a claim branch holds its item without being work in flight, so
-`claim` exits non-zero on it as on an unpublished claim.
+(`aide gc --merged` deletes it), and otherwise as work **not found** there.
+Not found is what was measured, not that the work never landed: a squash
+merge the base has since changed over the same lines, or any squash merge
+under git older than 2.38, reads the same way. So check whether its PR merged
+before deleting it, and land its work first if it did not. Either kind on a
+claim branch holds its item without being work in flight, so `claim` exits
+non-zero on it as on an unpublished claim.
 
 **`none left` means the ground checked was empty, and nothing else.** A queue
 still open while nothing in it is offerable is a different answer, and `claim`
 gives the reason per item — an unresolved gate, a claim already in flight, a
-dependency not landed, an unpublished or deleted claim — or names the human-gates row it
-cannot read, which holds every item (§1 → human gates). The first three are
-ordinary and exit 0; the last two are defects and exit non-zero.
+dependency not landed, an unpublished or deleted claim — or names the
+human-gates row it cannot read, which holds every item (§1 → human gates). The
+first three are ordinary and exit 0; the last two are defects and exit
+non-zero.
 
 One person (or one loop) owns an item at a time. Abandoning an item means
 deleting its remote branch so the item returns to the pool; `aide check` flags a
@@ -82,6 +86,16 @@ acts on** (`gc -h` says what it asks git, and what it refuses).
   landed claim branch still exits non-zero because an empty one is also what an
   abandoned claim leaves, and only a person knows whether to tick the item or
   release it.
+- **Why "not found" and never "deleted before it landed".** The first cut
+  said the latter, and review of it (PR #367) reproduced landed work reading
+  so: squash-merged, then `main` changed the same lines, so `merge-tree`
+  conflicts and the content question cannot answer. Hosting squash merges are
+  common, so the verdict would have been a frequent false alarm. No cheap
+  probe closes the gap — patch-id matching breaks on a squash whose context
+  moved or whose conflicts were resolved on the host — so the report states
+  the measurement and sends a person to the PR. It stays louder than the
+  stale case because the other reading is that this checkout holds the only
+  copy of the work.
 - **Why `gc` asks git.** A ✅ is a claim made by a document that agents and
   humans both edit, and the action it triggers is `git branch -D` plus a remote
   delete — unrecoverable on a plain git host. So on the ✅ ground `gc` deletes

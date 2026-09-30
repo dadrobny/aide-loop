@@ -7035,12 +7035,16 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
                 f"'{_gc_merged_hint(why.where, config)}' deletes it.")
         elif why is not None:
             warnings.append(
-                f"branch {br} was DELETED ON ORIGIN BEFORE ITS WORK LANDED: it "
-                f"was published (its upstream origin/{br} is gone) but its "
-                f"work is not in {why.where}, so this checkout may hold the "
-                f"only copy. Find out why origin dropped it before acting — "
-                f"land the work through a reviewed branch, or delete it "
-                f"('git branch -D {br}') if it was abandoned.")
+                f"branch {br} was deleted on origin and its work COULD NOT BE "
+                f"FOUND in {why.where}: it was published (its upstream "
+                f"origin/{br} is gone), so either it landed in a shape this "
+                f"check cannot see — squash-merged and then built over on the "
+                f"same lines, or squash-merged under git older than 2.38 — or "
+                f"this checkout holds the only copy. Check whether its PR "
+                f"merged: if it did, 'git branch -D {br}' deletes it ('aide "
+                f"gc --merged' measures the same way and will not); if not, "
+                f"land the work through a reviewed branch before deleting "
+                f"anything. Never re-publish it blindly.")
         if n is None:
             # Not a claim branch. A queue branch is expected and silent; anything
             # else carrying the prefix is reported rather than ignored, so a real
@@ -12143,9 +12147,10 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
             return (f"claimed by {br}, which origin has DELETED and whose every "
                     f"commit is already in {why.where} — its work landed or "
                     f"the claim was abandoned; either way it is not in flight")
-        return (f"claimed by {br}, which origin DELETED BEFORE ITS WORK LANDED "
-                f"— not in flight, and this checkout may hold the only copy of "
-                f"its work")
+        return (f"claimed by {br}, which origin has deleted and whose work "
+                f"COULD NOT BE FOUND in {why.where} — not in flight: it landed "
+                f"in a shape that cannot be measured here, or this checkout "
+                f"holds the only copy of it")
 
     def _stranded_lines() -> None:
         for num in open_ordered:
@@ -12169,11 +12174,14 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
                   "item's, record it ('aide progress set <NNN> done') first; "
                   "then " + " / ".join(f"'{h}'" for h in hints) + " deletes "
                   "the branch, releasing the item if it is still open.")
-        if OFF_ORIGIN_GONE_UNLANDED in kinds:
-            print("  A claim branch deleted on origin before its work landed "
-                  "is never re-published blindly: find out why origin dropped "
-                  "it, then land its work or release the item "
-                  "('git branch -D <branch>').")
+        if OFF_ORIGIN_GONE_UNFOUND in kinds:
+            print("  A claim branch deleted on origin whose work could not be "
+                  "found in its base is never re-published blindly. A squash "
+                  "merge the base has since built over, or git older than "
+                  "2.38, hides landed work, so check whether its PR merged: if "
+                  "it did, record the item ('aide progress set <NNN> done') "
+                  "and delete the branch ('git branch -D <branch>'); if not, "
+                  "land its work or release the item.")
 
     if relevant:
         print("none left — held by an unresolved human gate:")
@@ -14137,16 +14145,19 @@ def _remote_branches(repo_root: Path) -> List[str]:
 #: ``unpublished``: origin never had it — no upstream on origin under its own
 #: name, so no push of it ever landed. ``gone-landed``: it was published and has
 #: since been deleted on origin, and everything on it is already in a base.
-#: ``gone-unlanded``: published, deleted on origin, and its work is in no base.
+#: ``gone-unfound``: published, deleted on origin, and its work could not be
+#: found in any base — which is a measurement, not a verdict: a squash merge
+#: the base has since built over, or any squash merge under git < 2.38, reads
+#: this way too, so the reports say what was measured and never "unlanded".
 OFF_ORIGIN_UNPUBLISHED = "unpublished"
 OFF_ORIGIN_GONE_LANDED = "gone-landed"
-OFF_ORIGIN_GONE_UNLANDED = "gone-unlanded"
+OFF_ORIGIN_GONE_UNFOUND = "gone-unfound"
 
 
 class OffOrigin(NamedTuple):
     """One prefixed branch this checkout has and origin's tracking refs lack."""
     kind: str
-    #: gone-landed: the ref its work is already in. gone-unlanded: every ref
+    #: gone-landed: the ref its work is already in. gone-unfound: every ref
     #: that was asked, joined for a sentence. unpublished: None.
     where: Optional[str] = None
 
@@ -14170,8 +14181,15 @@ def _branches_off_origin(repo_root: Path, config,
     A published-then-deleted branch is ``gone-landed`` when its tip is an
     ancestor of — or, where git can measure it, its content already in — its
     recorded base, ``main_branch`` or ``origin/<main_branch>``; otherwise
-    ``gone-unlanded``. Those probes run only for gone branches, which are rare,
+    ``gone-unfound``. Those probes run only for gone branches, which are rare,
     and the listing itself is one ``for-each-ref`` spawn (issue #74).
+
+    ``gone-unfound`` is what was measured, not that the work never landed. A
+    squash merge that the base has since changed again over the same lines
+    makes ``merge-tree`` conflict, and git < 2.38 cannot ask at all, so landed
+    work reads this way too. No cheap probe closes that: patch-id matching
+    breaks on a squash whose context moved or whose conflicts were resolved on
+    the host. So the reports name both readings and send a person to the PR.
 
     No origin at all is deliberately *not* an exemption. Off ``local`` mode
     the engine pushes every branch it creates, so a repository with no remote
@@ -14223,7 +14241,7 @@ def _branches_off_origin(repo_root: Path, config,
                                if _branch_content_landed(repo_root, t, br) is True),
                               None)
         out[br] = (OffOrigin(OFF_ORIGIN_GONE_LANDED, landed) if landed
-                   else OffOrigin(OFF_ORIGIN_GONE_UNLANDED, " or ".join(targets)))
+                   else OffOrigin(OFF_ORIGIN_GONE_UNFOUND, " or ".join(targets)))
     return out
 
 
@@ -14248,7 +14266,8 @@ def _off_origin_claim_branches(repo_root: Path, config,
 
     A claim branch origin *had* and has deleted is not in flight either, but it
     is not a failed push: its work landed, the claim was abandoned (§2: delete
-    the remote branch), or it was removed before its work landed. The kind says
+    the remote branch), or its work cannot be found in a base — removed before
+    it landed, or landed in a shape that cannot be measured. The kind says
     which, so `claim` never advises re-publishing it (issue #364).
 
     ``local`` mode is the one configuration that reports nothing: there, an
@@ -16008,8 +16027,9 @@ def cmd_status(args: argparse.Namespace) -> int:
         if why.kind == OFF_ORIGIN_GONE_LANDED:
             return (f" — deleted on origin, all of it already in {why.where} "
                     f"('{_gc_merged_hint(why.where, config)}' deletes it)")
-        return (f" — DELETED ON ORIGIN BEFORE ITS WORK LANDED: this checkout "
-                f"may hold the only copy")
+        return (f" — deleted on origin, its work NOT FOUND in {why.where}: "
+                f"check whether its PR merged — this checkout may hold the "
+                f"only copy")
 
     unpublished = {br for br, why in off_origin.items()
                    if why.kind == OFF_ORIGIN_UNPUBLISHED}
@@ -17167,7 +17187,8 @@ def register_git_subcommands(sub) -> None:
             "\u2014 exits 1 with how to publish or release it, whether or not "
             "a gate holds the rest. A claim branch origin had and has since "
             "deleted exits 1 the same way, named as already in its base or "
-            "as deleted before its work landed, and is never advised a push. "
+            "as work that could not be found there, and is never advised a "
+            "push. "
             "A human-gates row it "
             "cannot read holds every item, since what it blocks is unknown: "
             "the report names the row and exits 1. A missing insights.md "

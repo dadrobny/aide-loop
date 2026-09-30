@@ -1669,7 +1669,8 @@ def test_check_is_silent_about_claim_branches_in_local_mode(tmp_path: Path, caps
 def _published_then_deleted(tmp_path: Path, branch: str,
                             land: Optional[str] = None) -> Path:
     """*branch* pushed with ``-u`` as the engine pushes, landed on main by
-    *land* (``"merge"``, ``"squash"`` or not at all), then deleted **on
+    *land* (``"merge"``, ``"squash"``, ``"squash-moved-on"`` — squashed, then
+    main changes the same lines again — or not at all), then deleted **on
     origin** — by hosting on merge, say, not by this checkout — and pruned.
 
     Which leaves exactly #364's state: ``track=[gone]`` on an upstream of
@@ -1683,8 +1684,12 @@ def _published_then_deleted(tmp_path: Path, branch: str,
     _run(["git", "push", "-u", "origin", branch], root)
     if land == "merge":
         _run(["git", "merge", "--no-ff", "-m", f"merge {branch}", branch], root)
-    elif land == "squash":
+    elif land in ("squash", "squash-moved-on"):
         _squash_merge(root, branch, f"squash {branch}")
+    if land == "squash-moved-on":
+        path = root / (branch.replace("/", "-") + ".txt")
+        path.write_text("work\nmore\n", encoding="utf-8")
+        _run(["git", "commit", "-am", "main builds over the squash"], root)
     if land:
         _run(["git", "push", "origin", "main"], root)
     _run(["git", "branch", "-D", branch], remote)
@@ -1719,10 +1724,10 @@ def test_check_reads_a_squash_merged_branch_as_landed(tmp_path: Path, capsys):
     aide.main(["--repo", str(root), "check"])
     out = capsys.readouterr().out
     assert "stale branch aide/queue-010" in out
-    assert "DELETED ON ORIGIN" not in out
+    assert "COULD NOT BE FOUND" not in out
 
 
-def test_check_is_loud_about_a_branch_deleted_on_origin_before_it_landed(
+def test_check_is_loud_about_a_branch_whose_work_is_not_found(
         tmp_path: Path, capsys):
     """Published, deleted on origin, work in no base: this checkout may hold
     the only copy, and a push is still not the advice."""
@@ -1730,11 +1735,81 @@ def test_check_is_loud_about_a_branch_deleted_on_origin_before_it_landed(
     capsys.readouterr()
     aide.main(["--repo", str(root), "check"])
     out = capsys.readouterr().out
-    assert ("branch aide/queue-010 was DELETED ON ORIGIN BEFORE ITS WORK "
-            "LANDED") in out
-    assert "may hold the only copy" in out
+    assert ("branch aide/queue-010 was deleted on origin and its work COULD "
+            "NOT BE FOUND in main or origin/main") in out
+    assert "this checkout holds the only copy" in out
+    assert "Check whether its PR merged" in out
     assert "unpublished branch" not in out
     assert "git push" not in out
+
+
+def test_a_squash_merge_main_built_over_is_not_called_unlanded(tmp_path: Path,
+                                                               capsys):
+    """Review round 1 on PR #367: squashed, then main changed the same lines,
+    so `merge-tree` conflicts and the content question cannot answer. The
+    report must say what was measured — not found — and name this very shape,
+    never that the work was deleted before it landed."""
+    root = _published_then_deleted(tmp_path, "aide/queue-010",
+                                   land="squash-moved-on")
+    capsys.readouterr()
+    aide.main(["--repo", str(root), "check"])
+    out = capsys.readouterr().out
+    assert "stale branch aide/queue-010" not in out
+    assert "COULD NOT BE FOUND in main" in out
+    assert "squash-merged and then built over on the same lines" in out
+    assert "BEFORE ITS WORK LANDED" not in out
+    assert "git push" not in out
+
+
+def test_an_upstream_elsewhere_is_not_evidence_of_publication(tmp_path: Path,
+                                                              capsys):
+    """Only ``origin/<the same name>`` says the branch reached origin: an
+    upstream on another remote, or on origin under another name, leaves the
+    branch unpublished, with today's warning."""
+    remote = _mkbare(tmp_path / "remote.git")
+    fork = _mkbare(tmp_path / "fork.git")
+    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    _run(["git", "remote", "add", "origin", str(remote)], root)
+    _run(["git", "remote", "add", "fork", str(fork)], root)
+    _run(["git", "push", "-u", "origin", "main"], root)
+    _run(["git", "branch", "aide/queue-010"], root)
+    _run(["git", "push", "-u", "fork", "aide/queue-010"], root)
+    _run(["git", "branch", "aide/queue-011"], root)
+    _run(["git", "push", "-u", "origin", "aide/queue-011:elsewhere"], root)
+    capsys.readouterr()
+    aide.main(["--repo", str(root), "check"])
+    out = capsys.readouterr().out
+    assert "unpublished branch aide/queue-010" in out
+    assert "unpublished branch aide/queue-011" in out
+    assert "stale branch" not in out and "COULD NOT BE FOUND" not in out
+
+
+def test_the_gc_hint_names_a_recorded_base_that_is_not_main(tmp_path: Path,
+                                                            capsys):
+    """A claim that landed in its queue branch is collected by measuring
+    against that branch, so the hint carries ``--base``."""
+    remote = _mkbare(tmp_path / "remote.git")
+    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    _run(["git", "remote", "add", "origin", str(remote)], root)
+    _run(["git", "push", "-u", "origin", "main"], root)
+    _run(["git", "switch", "-c", "aide/queue-003"], root)
+    _run(["git", "push", "-u", "origin", "aide/queue-003"], root)
+    branch = "aide/027-bounds-rules"
+    _make_item_branch(root, branch, "bounds.txt", base="aide/queue-003")
+    _run(["git", "push", "-u", "origin", branch], root)
+    _run(["git", "switch", "aide/queue-003"], root)
+    _run(["git", "merge", "--no-ff", "-m", "merge 027", branch], root)
+    _run(["git", "push", "origin", "aide/queue-003"], root)
+    _run(["git", "switch", "main"], root)
+    _run(["git", "branch", "-D", branch], remote)
+    _run(["git", "fetch", "--prune", "origin"], root)
+    capsys.readouterr()
+    aide.main(["--repo", str(root), "check"])
+    out = capsys.readouterr().out
+    assert (f"stale branch {branch}: it was published and has since been "
+            "deleted on origin, and everything on it is already in "
+            "aide/queue-003") in out
+    assert "'aide gc --merged --base aide/queue-003' deletes it" in out
 
 
 def _claim_028_in_flight(root: Path) -> None:
@@ -1764,8 +1839,8 @@ def test_claim_names_a_landed_claim_branch_deleted_on_origin(tmp_path: Path,
     assert "early ready:" not in out
 
 
-def test_claim_names_an_unlanded_claim_branch_deleted_on_origin(tmp_path: Path,
-                                                               capsys):
+def test_claim_names_an_unfound_claim_branch_deleted_on_origin(tmp_path: Path,
+                                                              capsys):
     root = _published_then_deleted(tmp_path, "aide/027-bounds-rules")
     _claim_028_in_flight(root)
     capsys.readouterr()
@@ -1774,9 +1849,10 @@ def test_claim_names_an_unlanded_claim_branch_deleted_on_origin(tmp_path: Path,
     assert rc == 1
     assert "NEVER SEEN" not in out
     assert "git push" not in out
-    assert ("claimed by aide/027-bounds-rules, which origin DELETED BEFORE ITS "
-            "WORK LANDED") in out
+    assert ("claimed by aide/027-bounds-rules, which origin has deleted and "
+            "whose work COULD NOT BE FOUND in main or origin/main") in out
     assert "never re-published blindly" in out
+    assert "check whether its PR merged" in out
 
 
 def test_status_names_a_claim_branch_deleted_on_origin(tmp_path: Path, capsys):
@@ -1790,14 +1866,15 @@ def test_status_names_a_claim_branch_deleted_on_origin(tmp_path: Path, capsys):
     assert "NOT on origin" not in out
 
 
-def test_status_is_loud_about_a_branch_deleted_before_it_landed(tmp_path: Path,
-                                                               capsys):
+def test_status_is_loud_about_a_branch_whose_work_is_not_found(tmp_path: Path,
+                                                              capsys):
     root = _published_then_deleted(tmp_path, "aide/queue-010")
     capsys.readouterr()
     assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
     out = capsys.readouterr().out
     assert ("branch: aide/queue-010 (queue branch — not an item claim) — "
-            "DELETED ON ORIGIN BEFORE ITS WORK LANDED") in out
+            "deleted on origin, its work NOT FOUND in main or origin/main: "
+            "check whether its PR merged") in out
     assert "NOT on origin" not in out
 
 
