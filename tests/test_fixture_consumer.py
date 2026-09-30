@@ -4990,6 +4990,7 @@ def test_a_verb_that_needs_a_repository_refuses_outside_one(
     assert aide.main(["--repo", str(consumer), verb]) == 1
     out, err = capsys.readouterr()
     assert f"aide {verb}: {consumer} is not inside a git repository" in err
+    assert "('git init' makes one)" in err      # git is here, so the hint is
     assert "OK" not in out and "tree: clean" not in out
     assert "Traceback" not in err
 
@@ -5116,6 +5117,56 @@ def test_a_recording_verb_in_a_repository_without_git_prints_no_success(
     assert "aide progress: git is not on PATH" in err
     assert "set to" not in out
     assert progress.read_bytes() == before
+
+
+def test_a_bare_repository_at_the_repo_root_is_quoted_not_called_no_repository(
+        aide, consumer: Path, capsys):
+    """The project's own `.git`, and git refuses to work in it: a bare
+    repository has no work tree, which git says in its own words."""
+    (consumer / ".git").rename(consumer / "git-set-aside")
+    _git(["init", "--bare", "-q", str(consumer / ".git")], consumer)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "status"]) == 1
+    err = capsys.readouterr().err
+    assert f"aide status: git cannot read the repository {consumer} is in — " in err
+    assert "work tree" in err
+    assert "not inside a git repository" not in err
+
+
+def test_a_refused_ancestor_repository_is_not_this_projects(
+        aide, consumer: Path, capsys):
+    """A `.git` above the project that git refuses — a bare dotfiles
+    repository, a `~/.git` owned by another user — is someone else's. The
+    project, with no `.git` of its own, is no repository: its recording verbs
+    keep their edit uncommitted as they always did, and the verbs that need
+    a repository say that, not git's refusal of the ancestor."""
+    (consumer / ".git").rename(consumer / "git-set-aside")
+    anc = consumer.parent / "anc"
+    anc.mkdir()
+    proj = anc / "proj"
+    consumer.rename(proj)
+    _git(["init", "--bare", "-q", str(anc / ".git")], anc)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(proj), "insights", "add", "defect",
+                      "captured under a refused ancestor"]) == 0
+    assert "captured under a refused ancestor" in (
+        proj / "docs" / "aide" / "insights.md").read_text(encoding="utf-8")
+    assert aide.main(["--repo", str(proj), "status"]) == 1
+    err = capsys.readouterr().err
+    assert f"aide status: {proj} is not inside a git repository" in err
+    assert "cannot read" not in err
+
+
+def test_no_repository_and_no_git_does_not_advise_git_init(
+        aide, consumer: Path, monkeypatch, capsys):
+    (consumer / ".git").rename(consumer / "git-set-aside")
+    _path_without_git(monkeypatch)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "sync"]) == 1
+    err = capsys.readouterr().err
+    assert f"aide sync: {consumer} is not inside a git repository" in err
+    assert "git is not on PATH either, so install it first" in err
+    assert "git init" not in err
 
 
 def test_a_git_that_refuses_the_repository_is_quoted_not_called_no_repository(

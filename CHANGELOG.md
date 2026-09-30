@@ -155,11 +155,14 @@ instead — that is the bump policy above, and it is enforced by
     unmade and no success line. With no git **and** no `.git` at or above the
     repo root — a directory nothing was ever committed in — it records the
     edit uncommitted as it always did, with `notice: left uncommitted — git
-    is not on PATH, and there is no .git at or above <repo>`. A `.git` git
-    runs over and cannot read (a `safe.directory` refusal, a corrupt
-    repository, a `gitdir:` pointer to nowhere) is `aide <verb>: git cannot
-    read the repository <repo> is in — <git's own first line>`, never "not
-    inside a git repository". `aide check` alone does not refuse either: it
+    is not on PATH, and there is no .git at or above <repo>`. A `.git` at the
+    repo root that git runs over and cannot read (a `safe.directory` refusal,
+    a bare or corrupt repository, a `gitdir:` pointer to nowhere) is `aide
+    <verb>: git cannot read the repository <repo> is in — <git's own first
+    line>`, never "not inside a git repository". One further up that git
+    refuses — a bare dotfiles repository, a `~/.git` owned by another user —
+    is someone else's: the project reads as no repository, as it did
+    before. `aide check` alone does not refuse either: it
     is the documents' verdict and has passed with git off PATH since 1.26.0,
     so it still judges them and adds one warning naming what it could not
     read — stale claim branches, insight citations' history, the commit of a
@@ -191,7 +194,8 @@ instead — that is the bump policy above, and it is enforced by
     repository `sync`, `status`, `claim`, `merge`, `gc`, `scope` and `queue
     start`/`pr`/`ready`/`restack` refuse with `aide <verb>: <repo> is not
     inside a git repository — this verb reads and records git state, so run
-    it from a git work tree ('git init' makes one)`; `sync` printed `OK — on
+    it from a git work tree ('git init' makes one)`, or, where git is not on
+    PATH either, `… tree — git is not on PATH either, so install it first`; `sync` printed `OK — on
     '', tree clean, remotes fetched` and `status` printed `tree: clean`. `aide
     test` there still runs the suite, and says the run is not recorded
     because there is no commit to record it against, not that "HEAD or a

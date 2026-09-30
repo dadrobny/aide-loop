@@ -7231,13 +7231,16 @@ def git_toplevel(repo_root: Path) -> Optional[Path]:
     Asked once per repo root per invocation, since a spawn costs about 13x
     as much on Windows.
 
-    Where git cannot answer, a `.git` at or above *repo_root* decides what
-    that means. None there: this is no repository, whether or not git is
-    installed, and a recording verb leaves its edit uncommitted as it always
-    did. One there: "cannot tell" is not "no" — `GitMissing` when git is not
-    on PATH, `GitRefused` with git's own words when it ran and refused (a
-    `safe.directory` ownership check, a corrupt repository). Under `aide
-    check`'s `_GIT_OPTIONAL` both read as no repository.
+    Where git cannot answer, a `.git` decides what that means. Git not on
+    PATH: a `.git` at or above *repo_root* is a repository it cannot be run
+    over, so `GitMissing`; none is no repository, and a recording verb leaves
+    its edit uncommitted as it always did. Git ran and refused: only a `.git`
+    at *repo_root itself* is this project's repository, and `GitRefused`
+    carries git's own words (a `safe.directory` ownership check, a bare or
+    corrupt repository). One further up that git refuses — a `~/.git` owned
+    by another user, a bare dotfiles repository — is someone else's, and
+    reads as no repository, as it did before the engine asked git (issue
+    #352). Under `aide check`'s `_GIT_OPTIONAL` every case reads as none.
     """
     key = str(repo_root)
     if key not in _TOPLEVEL:
@@ -7253,7 +7256,7 @@ def git_toplevel(repo_root: Path) -> Optional[Path]:
             if res is not None and res.returncode == 0 and out:
                 top = Path(out)
             elif (res is not None and not _GIT_OPTIONAL
-                  and _dot_git_at_or_above(repo_root)):
+                  and (Path(repo_root) / ".git").exists()):
                 raise GitRefused(repo_root, res.stderr)
         _TOPLEVEL[key] = top
     return _TOPLEVEL[key]
@@ -7300,10 +7303,16 @@ def in_repository(repo_root: Path) -> bool:
 
 
 def not_a_repository(verb: str, repo_root: Path) -> str:
-    """The one sentence a verb that needs a repository refuses with outside one."""
+    """The one sentence a verb that needs a repository refuses with outside one.
+
+    Its hint depends on git being there: `git init` is no advice on a machine
+    without git, where this is the answer for no `.git` and no git at all.
+    """
+    hint = ("('git init' makes one)" if shutil.which("git") is not None
+            else "— git is not on PATH either, so install it first")
     return (f"aide {verb}: {repo_root} is not inside a git repository — this "
             f"verb reads and records git state, so run it from a git work "
-            f"tree ('git init' makes one)")
+            f"tree {hint}")
 
 
 def _require_repository(verb: str, repo_root: Path) -> bool:
@@ -14424,10 +14433,12 @@ def cmd_merge(args: argparse.Namespace) -> int:
                 kept = (f"so {branch} has been put back with {main} recorded "
                         f"as its base")
             else:
+                by_hand = f"'git branch {branch} {branch_tip}'"
+                if branch_base:
+                    by_hand += (f" and 'git config branch.{branch}."
+                                f"{_BASE_CONFIG_KEY} {branch_base}'")
                 kept = (f"and {branch} could NOT be put back ({unrestored}). "
-                        f"Restore it by hand: 'git branch {branch} "
-                        f"{branch_tip}' and 'git config branch.{branch}."
-                        f"{_BASE_CONFIG_KEY} {branch_base}'")
+                        f"Restore it by hand: {by_hand}")
             print(f"aide merge: {cause} after {main} took the merge of "
                   f"{branch} but before it was pushed, {kept}. The merge is "
                   f"in THIS repository only. Re-run "
