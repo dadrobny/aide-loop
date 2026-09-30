@@ -225,6 +225,12 @@ def prototype(tmp_path_factory) -> Path:
     _git(["init", "-b", "main"], target)
     _git(["config", "user.email", "fixture@example.com"], target)
     _git(["config", "user.name", "Fixture"], target)
+    # Issue #370: from git 2.54 the commit below starts a *detached*
+    # `maintenance run --auto` whose loose-objects task (>= 100; the install
+    # is ~160) packs and deletes `.git/objects/??/` while `consumer` copies
+    # the tree. `gc.auto` no longer governs it; `maintenance.auto` does.
+    _git(["config", "maintenance.auto", "false"], target)
+    _git(["config", "gc.auto", "0"], target)
     _git(["add", "-A"], target)
     _git(["commit", "-m", "init"], target)
     return target
@@ -298,6 +304,14 @@ def _land_by_squash(repo: Path, branch: str) -> None:
 def test_the_install_puts_every_load_bearing_file_where_a_consumer_looks(
         prototype: Path, rel: str):
     assert (prototype / rel).is_file(), f"{rel} missing from a real install"
+
+
+def test_the_prototype_starts_no_background_maintenance(prototype: Path):
+    """Issue #370: a detached auto-maintenance run in the prototype races
+    every `copytree` that follows it; the config is what keeps it off."""
+    assert _git(["config", "--get", "maintenance.auto"],
+                prototype).stdout.strip() == "false"
+    assert _git(["config", "--get", "gc.auto"], prototype).stdout.strip() == "0"
 
 
 def test_the_installed_version_matches_the_framework(prototype: Path):
