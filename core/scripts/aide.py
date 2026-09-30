@@ -18,7 +18,7 @@ Subcommands::
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
     python .aide/scripts/aide.py queue gate NNN        # raise a planned queue's plan-review gate
     python .aide/scripts/aide.py queue restack         # merge a stack of queue branches forward
-    python .aide/scripts/aide.py insights list|tick|archive|resolve  # the insight inbox
+    python .aide/scripts/aide.py insights add|list|tick|archive|resolve  # the insight inbox
     python .aide/scripts/aide.py ledger abandon NNN --rounds N  # the ledger row for an item that never merged
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
     python .aide/scripts/aide.py test                  # run the suite, recorded for merge to reuse
@@ -3391,9 +3391,9 @@ def insight_position_citations(repo_root: Path,
     Records are listed too, unlike `aide check`'s positional warning (issue
     #338): the listing is printed once, by the run that moves the entries,
     and its ID is the one the position held before this move — the mapping
-    that preserves what a record's citation meant, which nothing can
-    reconstruct afterwards. The check's warning names the entry there
-    *today*, which on a record is a guess; this one is not.
+    that preserves what a record's citation meant. The check recovers it
+    from git history since issue #361 (``_CitationHistory``), but only where
+    the history is there to read; this listing needs none.
     """
     out: List[Tuple[str, int, str, int]] = []
     docs, tests = _citation_files(repo_root, config, ddir)
@@ -3424,13 +3424,15 @@ def insight_reference_findings(repo_root: Path,
       longer IDs that tell them apart; it resolved when written, and only a
       later same-day capture made its short form ambiguous;
     * a **citation by position** (``_positional_citations``) — a warning
-      naming the ID the position holds today, since an archive or a merge
-      renumbers it. Tests are read too (issue #295): a comment or an assertion
-      message naming "insight 28" goes stale on the same archive a spec does.
-      A record (``record_documents`` — a ✅, ❌ or ⏸️ item's spec, a queue
-      with no open item) is not warned about (issue #338): §1 never rewrites
-      one, so the warning could not be cleared, and its "today" hint names
-      whatever an archive since moved to that number.
+      naming the ID the position held when the citing line was committed
+      (``_CitationHistory``, issue #361), since an archive or a merge
+      renumbers it; today's holder only for an uncommitted line, or as a
+      labelled fallback where there is no history to read. Tests are read
+      too (issue #295): a comment or an assertion message naming "insight
+      28" goes stale on the same archive a spec does. A record
+      (``record_documents`` — a ✅, ❌ or ⏸️ item's spec, a queue with no
+      open item) is not warned about (issue #338): §1 never rewrites one, so
+      the warning could not be cleared.
 
     The first finding holds in a record too: an ID naming nothing is a
     citation no reader can follow, whoever wrote it.
@@ -3449,6 +3451,7 @@ def insight_reference_findings(repo_root: Path,
     # Read lazily and once: most files cite nothing, and a repo whose tests
     # cite no insight never opens the inbox or an archive for this check.
     cache: Dict[str, object] = {}
+    history = _CitationHistory(repo_root, ddir)
 
     def _entries() -> List[InsightEntry]:
         if "pool" not in cache:
@@ -3462,10 +3465,20 @@ def insight_reference_findings(repo_root: Path,
 
     for path in docs + tests:
         try:
-            text = path.read_text(encoding=_ENCODING)
+            # newline="": universal-newline reading turns a lone \r into \n,
+            # which git does not count, so the line numbers git blames by
+            # could no longer be recovered (`_git_line_numbers`).
+            with open(path, encoding=_ENCODING, newline="") as fh:
+                text = fh.read()
         except (OSError, UnicodeDecodeError):
             continue
         where = _rel_display(path, repo_root)
+        gitline = _git_line_numbers(text)
+        if path not in records:
+            # Every cited line first, so the file is blamed once for all.
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                if _positional_citations(line, lambda: len(_entries())):
+                    history.want(path, gitline[lineno - 1])
         for lineno, line in enumerate(text.splitlines(), start=1):
             cited = list(_INSIGHT_ID_CITATION_RE.finditer(line))
             if _INSIGHT_CONTEXT_RE.search(line):
@@ -3492,19 +3505,217 @@ def insight_reference_findings(repo_root: Path,
             if path in records:
                 continue
             for m in _positional_citations(line, lambda: len(_entries())):
-                n = int(m.group("n"))
                 _entries()
-                live_ids = cache["live_ids"]
-                now = ""
-                if 1 <= n <= len(live_ids) and live_ids[n - 1]:  # type: ignore[arg-type,index]
-                    now = (f"; entry {n} of the inbox is insight "
-                           f"{live_ids[n - 1]} today — cite that if it is "  # type: ignore[index]
-                           f"the one meant")
+                meant = history.hint(path, gitline[lineno - 1], int(m.group("n")),
+                                     cache["pool"], cache["ids"])  # type: ignore[arg-type]
                 warnings.append(
                     f"{where}:{lineno}: `{m.group(0).strip()}` cites an insight "
                     f"by position, which an archive or a merge renumbers — "
-                    f"cite its ID (`aide insights list`){now}")
+                    f"cite its ID (`aide insights list`){meant}")
     return errors, warnings
+
+
+class _CitationHistory:
+    """What a positional insight citation meant when it was written (#361).
+
+    `aide check`'s positional warning used to name the entry a position
+    holds *today*. For a citation written before an `insights archive` that
+    is a different claim, and following the hint rewrote the citation to
+    something its author never meant. So the position is resolved against
+    the inbox as it stood in the commit that last wrote the citing line:
+
+    * ``git blame --porcelain`` names that commit — **one run per file**, over
+      every cited line in it at once. Lines are git's, counted by ``\n``
+      alone; the caller maps its own numbering onto them (``_git_line_numbers``);
+    * ``git show <commit>:./<inbox>`` reads the inbox then — **once per
+      commit**, cached, since a batch of citations usually shares one. The
+      path is taken from *repo_root*, which may sit below git's top level;
+    * the entry at that position is named by the ID it has **today**, found
+      by its date and claim hash in the inbox and its archives — an ID
+      resolves in an archive too, so it is always a citation `check` accepts.
+
+    A line not committed yet (blame's all-zero commit), and a file git does
+    not track, were written against the working tree's inbox: today's holder
+    is then the right answer, and the hint says why. Everything that leaves
+    the past inbox unknown falls back to today's holder, **labelled** "history
+    unavailable", rather than stating something about the past: no git, not a
+    work tree, a path outside it, a blame that fails, a ``git show`` that
+    fails (the inbox under another path then, say), and a line blamed on a
+    shallow clone's boundary commit — blame stops there, so the commit it
+    names is where history ends, not where the line was written. "Named no
+    entry" is said only when that commit's inbox was read and is shorter.
+    """
+
+    _ZERO = re.compile(r"^0+$")
+    _HEADER = re.compile(r"^(?P<sha>[0-9a-f]{40,64}) \d+ (?P<final>\d+)(?: \d+)?$")
+    #: A blamed line whose commit is past what this clone holds.
+    UNKNOWN = ""
+
+    def __init__(self, repo_root: Path, ddir: Path) -> None:
+        self.repo_root = repo_root
+        self.inbox_rel = self._rel(insights_path(ddir))
+        self._blame: Dict[Path, Optional[Dict[int, Optional[str]]]] = {}
+        self._shown: Dict[str, Optional[List[InsightEntry]]] = {}
+        self._wanted: Dict[Path, Set[int]] = {}
+        self._grafts: Optional[Set[str]] = None
+
+    def _rel(self, path: Path) -> Optional[str]:
+        try:
+            return path.resolve().relative_to(self.repo_root.resolve()).as_posix()
+        except ValueError:
+            return None
+
+    def want(self, path: Path, gitline: int) -> None:
+        """Register a cited line, so the file's one blame covers all of them."""
+        self._wanted.setdefault(path, set()).add(gitline)
+
+    def _shallow_commits(self) -> Set[str]:
+        """The commits a shallow clone was cut at; empty in a full clone."""
+        if self._grafts is None:
+            self._grafts = set()
+            try:
+                where = git(["rev-parse", "--git-path", "shallow"],
+                            self.repo_root, check=False).stdout.strip()
+                path = Path(where)
+                if where and not path.is_absolute():
+                    path = self.repo_root / path
+                if where and path.is_file():
+                    self._grafts = {l.strip() for l in path.read_text(
+                        encoding="utf-8", errors="replace").splitlines() if l.strip()}
+            except (OSError, subprocess.SubprocessError):
+                pass
+        return self._grafts
+
+    def _commits(self, path: Path) -> Optional[Dict[int, Optional[str]]]:
+        """``{git line: commit, None when not committed, UNKNOWN past a
+        shallow boundary}``; None for the whole file: no history."""
+        if path in self._blame:
+            return self._blame[path]
+        rel = self._rel(path)
+        lines = sorted(self._wanted.get(path, ()))
+        out: Optional[Dict[int, Optional[str]]] = None
+        if rel is not None and lines:
+            try:
+                res = git(["blame", "--porcelain",
+                           *[f"-L{n},{n}" for n in lines], "--", rel],
+                          self.repo_root, check=False)
+                if res.returncode == 0:
+                    out = {}
+                    boundary: Set[str] = set()
+                    current = None
+                    for text in res.stdout.splitlines():
+                        h = self._HEADER.match(text)
+                        if h:
+                            current = h.group("sha")
+                            out[int(h.group("final"))] = (
+                                None if self._ZERO.match(current) else current)
+                        elif text == "boundary" and current:
+                            boundary.add(current)
+                    # `boundary` also marks a true root commit; only one the
+                    # clone was cut at hides where the line was written.
+                    cut = boundary & self._shallow_commits()
+                    for n, sha in out.items():
+                        if sha in cut:
+                            out[n] = self.UNKNOWN
+                elif git(["rev-parse", "--is-inside-work-tree"], self.repo_root,
+                         check=False).stdout.strip() == "true" and git(
+                             ["ls-files", "--error-unmatch", "--", rel],
+                             self.repo_root, check=False).returncode != 0:
+                    # A file git does not track (or a repository with no
+                    # commit yet): every line of it is uncommitted work.
+                    out = {n: None for n in lines}
+            except (OSError, subprocess.SubprocessError):
+                out = None
+        self._blame[path] = out
+        return out
+
+    def _inbox_at(self, sha: str) -> Optional[List[InsightEntry]]:
+        """The inbox's entries in *sha*, or None when they cannot be read."""
+        if sha not in self._shown:
+            entries: Optional[List[InsightEntry]] = None
+            if self.inbox_rel is not None:
+                try:
+                    # `./` makes the path relative to the cwd, repo_root —
+                    # a bare `<sha>:<path>` is read from git's top level.
+                    res = git(["show", f"{sha}:./{self.inbox_rel}"],
+                              self.repo_root, check=False)
+                    if res.returncode == 0:
+                        text = res.stdout
+                        if text.startswith("\ufeff"):
+                            # `git()` decodes as utf-8, not utf-8-sig: a BOM
+                            # would make the first entry no `- ` line.
+                            text = text[1:]
+                        entries = parse_insights(text)
+                except (OSError, subprocess.SubprocessError):
+                    pass
+            self._shown[sha] = entries
+        return self._shown[sha]
+
+    @staticmethod
+    def _fallback(n: int, today: Optional[str]) -> str:
+        if today is None:
+            return f"; history unavailable, and today's inbox has no entry {n}"
+        return (f"; entry {n} of the inbox is insight {today} today "
+                f"(today's holder; history unavailable) — cite that if it is "
+                f"the one meant")
+
+    def hint(self, path: Path, gitline: int, n: int,
+             pool: List[Tuple[str, InsightEntry]],
+             ids: List[Optional[str]]) -> str:
+        """The warning's second half: the ID entry *n* meant, and how known."""
+        live_ids = [i for (rel, _), i in zip(pool, ids) if rel == "insights.md"]
+        today = live_ids[n - 1] if 1 <= n <= len(live_ids) else None
+        commits = self._commits(path)
+        if commits is None or gitline not in commits:
+            return self._fallback(n, today)
+        sha = commits[gitline]
+        if sha is None:
+            if today is None:
+                return (f"; this line is not committed, and today's inbox has "
+                        f"no entry {n}")
+            return (f"; this line is not committed, so it was written against "
+                    f"today's inbox, where entry {n} is insight {today} — cite "
+                    f"that")
+        then = self._inbox_at(sha) if sha else None
+        if then is None:
+            return self._fallback(n, today)
+        when = f"when {sha[:7]} wrote this line"
+        if n > len(then):
+            return (f"; the inbox held no entry {n} {when}, so the citation "
+                    f"named no entry — find the claim meant with `aide "
+                    f"insights list`")
+        entry = then[n - 1]
+        claim = insight_claim_hash(entry)
+        if claim is None:
+            return (f"; entry {n} {when} was a malformed line with no ID — "
+                    f"find the claim meant with `aide insights list`")
+        found = [i for i, (_, e) in enumerate(pool)
+                 if e.date == entry.date and insight_claim_hash(e) == claim]
+        if not found:
+            meant = insight_ids(then)[n - 1]
+            return (f"; entry {n} was insight {meant} {when}, a claim no longer "
+                    f"in the inbox or its archives")
+        meant = ids[found[0]]
+        if meant == today:
+            return f"; entry {n} was insight {meant} {when}, and still is — cite that"
+        return (f"; entry {n} was insight {meant} {when} — cite that; an "
+                f"archive or a merge has moved it since")
+
+
+def _git_line_numbers(text: str) -> List[int]:
+    """For each line `str.splitlines` yields, the line git counts it on.
+
+    git numbers lines by ``\n`` alone; `splitlines` also breaks on ``\r``,
+    ``\x0b``, ``\x0c``, ``\x1c``–``\x1e``, ``\x85``, U+2028 and U+2029, so
+    after any of those the two numberings part — and a blame asked for the
+    wrong line names the wrong commit.
+    """
+    out: List[int] = []
+    line = 1
+    for chunk in text.splitlines(keepends=True):
+        out.append(line)
+        line += chunk.count("\n")
+    return out
 
 
 #: A citation of a human gate by ID: the ``gate-<hex>`` token itself, standing
@@ -8659,7 +8870,7 @@ def _commit_docs_files(repo_root: Path, config, message: str,
 
     What a caller does with a reason is split by who ran it (issue #309).
     A verb a person or an agent runs to record something — `gate`, the
-    `progress` sub-verbs, `insights tick`/`archive`, `ledger`, `queue gate` —
+    `progress` sub-verbs, `insights add`/`tick`/`archive`, `ledger`, `queue gate` —
     goes through `_commit_or_restore`, which turns a reason into exit 1 and,
     when no commit was made, puts the edit back so a re-run makes it again.
     ``ensure_insights_inbox`` keeps the reason a printed notice: the inbox is
@@ -8826,8 +9037,9 @@ def ensure_insights_inbox(repo_root: Path, config: Dict[str, Dict[str, object]],
     no ``docs_dir`` gets nothing, since a project may adopt the CLI without
     the loop and the directory itself is project-owned.
 
-    This is the engine's side of the §1 guarantee that capture is a plain
-    append to a file that exists. Before it, every agent spec told the role to
+    This is the engine's side of the §1 guarantee that capture — `insights
+    add`, or a line of the same shape written by hand — appends to a file
+    that exists. Before it, every agent spec told the role to
     copy the template by hand the first time an insight needed a home — six
     restatements of one step, and the one that made every spec name
     ``templates/`` (issue #85). The copy is byte-exact: ``read_bytes`` /
@@ -8869,7 +9081,7 @@ def ensure_insights_inbox(repo_root: Path, config: Dict[str, Dict[str, object]],
         fate = (" and committed it" if why is None
                 else f" but NOT committed — {why}; commit it with the next work")
     print(f"notice: created {rel} from .aide/templates/insights.md{fate} — the "
-          f"insight inbox, so a capture is a plain append (conventions.md §1)")
+          f"insight inbox, which `insights add` captures into (conventions.md §1)")
     return path
 
 
@@ -8916,27 +9128,47 @@ def cmd_insights(args: argparse.Namespace) -> int:
 
     Every other document has the CLI doing its mechanical work; this one made
     each triage pass an agent reading and hand-parsing the whole file, which is
-    the cost that kept triage getting deferred. ``list`` answers "what is
-    outstanding" without loading the archive with it, ``tick`` performs the one
-    in-place edit the immutability rule permits, ``archive`` keeps the live
-    file the size of its working set, and ``resolve`` merges the file's one
-    recurring conflict — two branches that each appended — without a hand ever
-    retyping a claim.
+    the cost that kept triage getting deferred. ``add`` captures one entry in
+    the §1 shape, ``list`` answers "what is outstanding" without loading the
+    archive with it, ``tick`` performs the one in-place edit the immutability
+    rule permits, ``archive`` keeps the live file the size of its working set,
+    and ``resolve`` merges the file's one recurring conflict — two branches
+    that each appended — without a hand ever retyping a claim.
     """
     import datetime as _dt
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
     ddir = docs_dir(repo_root, config)
     path = insights_path(ddir)
-    if args.action == "list":
+    if args.claim is not None and args.action != "add":
+        print(f"aide insights {args.action}: unexpected argument "
+              f"{args.claim!r} — only add takes a claim", file=sys.stderr)
+        return 2
+    capture: Optional[str] = None
+    if args.action == "add":
+        # Refused before anything is created: a refusal writes nothing, the
+        # inbox included.
+        capture, problem = insight_capture_line(
+            args.number, args.claim, args.provenance,
+            _dt.date.today().isoformat(), _engine_stamp())
+        if problem is not None:
+            print(f"aide insights add: {problem}", file=sys.stderr)
+            return 2
+        if args.date is not None:
+            print("aide insights add: --date is not taken — an entry is dated "
+                  "the day it is captured", file=sys.stderr)
+            return 2
+    if args.action in ("list", "add"):
         # An empty backlog is an answer, not an error: `list` on a repo whose
         # document set has no inbox yet creates the inbox — the same way
-        # `check` does — and reports it empty. The other two verbs edit an
-        # entry, and there is no entry to edit in a file that does not exist.
+        # `check` does — and reports it empty; `add` creates it to append to.
+        # The other verbs edit an entry, and there is no entry to edit in a
+        # file that does not exist.
         if not ddir.is_dir():
+            what = "capture into" if args.action == "add" else "list"
             print(f"aide insights: no {_rel_display(ddir, repo_root)}/ — this "
-                  f"repo has no AIDE document set, so there is no inbox to list",
-                  file=sys.stderr)
+                  f"repo has no AIDE document set, so there is no inbox to "
+                  f"{what}", file=sys.stderr)
             return 2
         ensure_insights_inbox(repo_root, config, verb="insights",
                               commit=not args.no_commit)
@@ -8948,6 +9180,9 @@ def cmd_insights(args: argparse.Namespace) -> int:
     text = path.read_text(encoding=_ENCODING)
     ddir_rel = ddir.relative_to(repo_root).as_posix()
 
+    if args.action == "add":
+        return _cmd_insights_add(path, ddir, ddir_rel, repo_root, config, args,
+                                 capture or "")
     if args.action == "list":
         return _cmd_insights_list(parse_insights(text), load_insight_pool(ddir), args)
     if args.action == "tick":
@@ -9093,6 +9328,133 @@ def _cmd_insights_tick(path: Path, text: str, ddir: Path, ddir_rel: str,
             repo_root, config, "aide insights tick", "the tick",
             f"docs(aide): triage insight {handle}",
             [f"{ddir_rel}/insights.md"], before)
+    return 0
+
+
+def _has_line_break(text: str) -> bool:
+    """Would `str.splitlines` break *text*? It breaks on more than ``\n`` and
+    ``\r`` (``\x0b``, ``\x0c``, ``\x1c``–``\x1e``, ``\x85``, U+2028,
+    U+2029), and `parse_insights` reads the file through it, so any of them
+    inside a claim would split one captured entry into two lines."""
+    return len((text + "x").splitlines()) > 1
+
+
+def insight_capture_line(type_: Optional[str], claim: Optional[str],
+                         provenance: Optional[str], date: str,
+                         stamp: Optional[str]) -> Tuple[str, Optional[str]]:
+    """The entry line `insights add` writes, and why not when it cannot.
+
+    ``(line, None)``, or ``("", reason)`` when the input is refused. The line
+    is §1's shape — ``- [ ] <type> — <claim> *(<provenance>, <date>,
+    <stamp>)*``, the provenance and the stamp each dropped with its comma
+    when absent. Refused: a type §1 does not name, an empty claim, a line
+    break in the claim or the provenance, and **any input whose line would
+    read back as a different entry**. That last one is decided by parsing the
+    line with `parse_insights` and comparing every field to what was given —
+    not by a list of dangerous characters — so the refusal is exactly as wide
+    as the reader: a provenance holding ``)`` (the marker would close early),
+    a claim carrying an ``*(…, YYYY-MM-DD)*`` aside followed by ``→`` (read as
+    the marker and a pointer), a claim or provenance the shape check would
+    warn on. An aside the parser reads past is not refused: it reads back as
+    written.
+    """
+    types = "|".join(_INSIGHT_TYPES)
+    if type_ not in _INSIGHT_TYPES:
+        what = f"{type_!r} is not" if type_ else "no type given; it must be"
+        return "", f"{what} one of {types}"
+    claim = (claim or "").strip()
+    if not claim:
+        return "", "the claim is empty — capture is one line of text"
+    if _has_line_break(claim):
+        return "", ("the claim contains a line break — an entry is one line, "
+                    "so write it as one")
+    prov = (provenance or "").strip() or None
+    if prov is not None and _has_line_break(prov):
+        return "", "--provenance contains a line break — it is part of one line"
+    if prov is not None and ")" in prov:
+        return "", ("--provenance contains ')', which would close the entry's "
+                    "*(…)* marker early — write it without one")
+    marker = ", ".join(x for x in (prov, date, stamp) if x)
+    line = f"- [ ] {type_} — {claim} *({marker})*"
+    parsed = parse_insights(line + "\n")
+    want = {"type": type_, "claim": claim, "provenance": prov, "date": date,
+            "engine note": stamp, "pointer": None}
+    if len(parsed) != 1 or not _INSIGHT_RE.match(line):
+        return "", ("the line would not read back as one well-formed entry — "
+                    "an insights.md shape warning from the moment it landed")
+    e = parsed[0]
+    got = {"type": e.type, "claim": e.text, "provenance": e.source,
+           "date": e.date, "engine note": e.note, "pointer": e.pointer}
+    for field, value in want.items():
+        if got[field] != value:
+            return "", (f"the line would read back with its {field} as "
+                        f"{got[field]!r}, not {value!r} — a `*(…, YYYY-MM-DD)*` "
+                        f"aside in the claim, or a `)` in --provenance, is what "
+                        f"does that; reword it")
+    return line, None
+
+
+def _append_line_bytes(path: Path, line: str) -> None:
+    """Append *line* at the end of *path*, touching no byte already there.
+
+    Bytes rather than text, so a BOM and the file's line endings survive: the
+    new line ends with ``\r\n`` when the file already uses it, and a file
+    whose last line has no newline gets one before the new line rather than
+    the new line glued onto it. An empty file gets the line alone.
+    """
+    data = path.read_bytes()
+    body = data[3:] if data.startswith(b"\xef\xbb\xbf") else data
+    eol = b"\r\n" if b"\r\n" in body else b"\n"
+    lead = eol if body and not body.endswith(b"\n") else b""
+    with open(path, "ab") as fh:
+        fh.write(lead + line.encode("utf-8") + eol)
+
+
+def _cmd_insights_add(path: Path, ddir: Path, ddir_rel: str, repo_root: Path,
+                      config, args: argparse.Namespace, line: str) -> int:
+    """`insights add TYPE CLAIM [--provenance TEXT]` — capture one entry (#363).
+
+    *line* was built and checked by ``insight_capture_line`` before the inbox
+    was created, so nothing here can refuse. The entry is appended, its ID is
+    printed — the one `insights list` would print, computed over the inbox
+    and its archives so a same-day prefix clash is already lengthened — and
+    the file is committed the way `tick` commits: by default, not under
+    --no-commit, and on a failed commit the file is put back and the verb
+    exits 1 (`_commit_or_restore`). The ID is printed only once the entry is
+    certain to stay: after the commit, or under --no-commit — never for an
+    entry the failed commit has just removed again.
+    """
+    text = path.read_text(encoding=_ENCODING)
+    if any(rx.match(l) for l in text.splitlines() for rx in _CONFLICT_LINT_RES):
+        # An entry appended below a conflict's closing marker is one more
+        # line for `resolve` to place, and one the refusal there would name
+        # as a change to the shared history.
+        print("aide insights add: insights.md carries an unresolved git "
+              "conflict — run `python .aide/scripts/aide.py insights resolve` "
+              "first, then capture", file=sys.stderr)
+        return 2
+    before = _snapshot([path])
+    _append_line_bytes(path, line)
+    pool = load_insight_pool(ddir)
+    live_ids = [i for (rel, _), i in zip(pool, insight_ids([e for _, e in pool]))
+                if rel == "insights.md"]
+    iid = live_ids[-1] if live_ids else None
+    handle = iid or "(no ID)"
+    if not args.no_commit and (repo_root / ".git").exists():
+        rc = _commit_or_restore(
+            repo_root, config, "aide insights add", "the capture",
+            f"docs(aide): capture insight {handle}",
+            [f"{ddir_rel}/insights.md"], before)
+        if rc != 0 and _snapshot([path]) == before:
+            # Put back: there is no entry to cite, so no ID is printed.
+            return rc
+        if rc != 0:
+            # Committed, but its replay onto origin stopped: the entry is in
+            # a commit here, and its ID stands.
+            print(f"aide insights add: captured insight {handle} — cite it "
+                  f"by that ID")
+            return rc
+    print(f"aide insights add: captured insight {handle} — cite it by that ID")
     return 0
 
 
@@ -16064,8 +16426,11 @@ def build_parser() -> argparse.ArgumentParser:
             "different claims is a warning naming their longer IDs; and a "
             "citation by position \u2014 insight 28, insights.md entry 28, "
             "or entry 28 on a line that says insight or inbox \u2014 is a "
-            "warning naming the ID that position holds today, in a test as "
-            "in a document other than a record.\n"
+            "warning naming the ID that position held when the citing line "
+            "was last committed, read from git blame and that commit's "
+            "insights.md; today's holder for a line not yet committed, and "
+            "today's, labelled as such, where there is no git history to "
+            "read; in a test as in a document other than a record.\n"
             "\n"
             "Over human-gate citations in docs/aide, the inbox and its "
             "archives excepted: a gate-<hex> token that names no row of "
@@ -16458,9 +16823,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_queue.set_defaults(func=cmd_queue)
 
     p_ins = sub.add_parser(
-        "insights", help="list / tick / archive / resolve the insight inbox",
+        "insights", help="add / list / tick / archive / resolve the insight inbox",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
+            "add:     capture one entry \u2014 append `- [ ] TYPE \u2014 CLAIM "
+            "*(PROVENANCE, YYYY-MM-DD, engine X.Y.Z)*` at the end of the "
+            "inbox, the date today's and the engine version read from "
+            ".aide/VERSION, the provenance and its comma left out when "
+            "--provenance is not given; print the entry's ID, the one list "
+            "prints, and commit. Refuses with exit 2, writing nothing, a type "
+            "that is not knowledge, defect, gap, automation or framework, an "
+            "empty claim, a line break in the claim or the provenance, and a "
+            "claim or provenance whose line would read back as a different "
+            "entry. In a POSIX shell, single-quote the claim so backticks in "
+            "it stay literal, and write an apostrophe inside it as '\\''\n"
             "list:    number the entries by position and print them all, "
             "ticked ones included; --open narrows to the untriaged, and an "
             "archived entry is in neither. Each entry is printed with its ID "
@@ -16493,13 +16869,20 @@ def build_parser() -> argparse.ArgumentParser:
             "or a side that archived.\n"
             "\n"
             "A missing insights.md is created from .aide/templates/insights.md "
-            "by list (and by check, claim and queue start) and committed when "
+            "by list and add (and by check, claim and queue start) and "
+            "committed when "
             "git can — on a branch, with an identity; otherwise it is left "
             "untracked and the notice says why."))
-    p_ins.add_argument("action", choices=["list", "tick", "archive", "resolve"])
-    p_ins.add_argument("number", nargs="?", default=None, metavar="N|ID",
+    p_ins.add_argument("action", choices=["add", "list", "tick", "archive", "resolve"])
+    p_ins.add_argument("number", nargs="?", default=None, metavar="N|ID|TYPE",
                        help="tick: the entry number or ID from `insights list`; "
-                            "list: print that one entry")
+                            "list: print that one entry; add: the entry's type")
+    p_ins.add_argument("claim", nargs="?", default=None, metavar="CLAIM",
+                       help="add: the claim, one line")
+    p_ins.add_argument("--provenance", default=None,
+                       help="add: where the insight came from, free-form "
+                            "(item NNN, queue-NNN, items NNN-NNN); omitted "
+                            "when not given")
     p_ins.add_argument("--open", action="store_true", dest="open_only",
                        help="list: only entries still untriaged")
     p_ins.add_argument("--type", default=None,

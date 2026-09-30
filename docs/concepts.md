@@ -112,7 +112,7 @@ python .aide/scripts/aide.py {check, scope, progress, gate, queue, insights, led
 - **progress** — edit `progress.md` status deterministically.
 - **gate** — list and resolve the human gates recorded in `progress.md`.
 - **queue** — queue branch creation and maintenance (start, tidy).
-- **insights** — the insight inbox: list, tick, archive, resolve.
+- **insights** — the insight inbox: add, list, tick, archive, resolve.
 - **ledger** — the run ledger's row for an item that never merged (`merge`
   writes every other row), and a read-only report of the rows by engine
   version and kind.

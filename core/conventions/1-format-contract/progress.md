@@ -166,8 +166,8 @@ Semantics
   target that is not `✅ Met` cannot roll up to ✅. What `aide check` then says
   about an objective claimed ✅ over one is graded, and `aide check -h` states
   it: an error over a `❌ Not met` target, a warning over any other non-Met.
-- Marking a target `❌ Not met` is a *finding*, so route it like one: append a
-  `- [ ] gap — …` line to `insights.md` in the same edit. The follow-on
+- Marking a target `❌ Not met` is a *finding*, so route it like one: capture
+  a `gap` with `aide insights add` alongside the edit. The follow-on
   deliverables then enter through the queue, never by retro-editing a closed
   stage's deliverable list.
 

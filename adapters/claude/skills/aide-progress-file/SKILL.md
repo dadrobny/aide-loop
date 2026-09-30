@@ -76,7 +76,7 @@ paths:
        objectives it gates — one naming none gates none
      - A table row its reader cannot use is an `aide check` error
      - Marking a target `❌ Not met` is a *finding*, so route it like one:
-       append a `- [ ] gap — …` line to `insights.md` in the same edit
+       capture a `gap` with `aide insights add` alongside the edit
      - The attestation is immutable; what is recorded about it is not
      - Three verbs, and **none of them edits the original line**
      - `amend` appends, and only to a ticked box
@@ -153,7 +153,7 @@ per goal, **its Target cell never empty and its Objective cell naming the
 blocks its stage** — the stage
 closes when its work ships, and the target gates the Objective coverage rows
 instead. **Marking a target `❌ Not met` is a *finding*, so route it like one:
-append a `- [ ] gap — …` line to `insights.md` in the same edit.** Write the
+capture a `gap` with `aide insights add` alongside the edit.** Write the
 row with care: **a table row its reader cannot use is an `aide check`
 error** — a `|` inside a cell, usually.
 

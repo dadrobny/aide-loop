@@ -94,6 +94,11 @@ that moved everything.
   — how to read the report and why two pinned behaviours are what they are.
   *"Each group shows its Stage cells, merged and abandoned counts, …"* is the
   list of readings, each held by the pin on the cell rule it follows.
+* *"In a POSIX shell, single-quote the claim so backticks in it stay
+  literal, and write an apostrophe inside it as '\\''"* (`insights`) — how a
+  caller's shell hands the verb its argument, which the engine never sees:
+  argv arrives already unquoted, and a guard driving a POSIX shell would not
+  run on the Windows leg.
 * The `-h` **option** help (`--queue`, `--base`, `--yes`, …). Argparse prints
   those below the description; this row is the description blocks, and an
   option line is one clause about one flag rather than a statement of what the
@@ -588,10 +593,32 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # Same function: `_positional_citations` over docs and test files
         # alike (issue #295).
         ("a citation by position \u2014 insight 28, insights.md entry 28, or "
-         "entry 28 on a line that says insight or inbox \u2014 is a warning "
-         "naming the ID that position holds today, in a test as in a document",
+         "entry 28 on a line that says insight or inbox \u2014 is a warning",
          ("test_aide_insights::test_a_positional_citation_is_a_warning_naming_the_id",
           "test_aide_insights::test_a_positional_citation_in_a_test_is_a_warning_too")),
+        # `_CitationHistory.hint` (issue #361): blame names the commit, `git
+        # show` that commit's inbox, and the entry there is named by the ID
+        # it has today in the inbox or its archives.
+        ("naming the ID that position held when the citing line was last "
+         "committed, read from git blame and that commit's insights.md",
+         ("test_aide_insights::"
+          "test_a_committed_citation_names_the_entry_it_meant_not_todays_holder",
+          "test_aide_insights::test_the_issue_repro_entry_4_names_the_archived_fourth_entry",
+          "test_aide_insights::test_a_position_beyond_the_inbox_at_its_commit_named_no_entry",
+          "test_aide_insights::test_history_costs_one_blame_per_file_and_one_show_per_commit",
+          "test_aide_insights::test_a_bom_on_the_inbox_then_does_not_shift_its_positions",
+          "test_aide_insights::test_history_is_read_when_repo_root_is_below_the_git_top_level",
+          "test_aide_insights::test_a_root_commit_is_history_not_a_boundary",
+          "test_aide_insights::test_blame_is_asked_for_gits_line_not_splitlines")),
+        # Same class: blame's all-zero commit (or an untracked file) is
+        # today's inbox; no history at all is today's, labelled.
+        ("today's holder for a line not yet committed, and today's, labelled "
+         "as such, where there is no git history to read",
+         ("test_aide_insights::test_an_uncommitted_citation_names_todays_holder",
+          "test_aide_insights::test_without_git_history_todays_holder_is_the_labelled_fallback",
+          "test_aide_insights::test_an_inbox_that_cannot_be_read_then_is_the_labelled_fallback",
+          "test_aide_insights::"
+          "test_a_line_blamed_on_a_shallow_clones_boundary_is_the_labelled_fallback")),
         # `insight_reference_findings` skips `record_documents` before the
         # positional loop, after the ID loop (issue #338).
         ("in a test as in a document other than a record",
@@ -980,6 +1007,38 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
 
     # ------------------------------------------------------------- insights --
     "insights": [
+        # `insight_capture_line` builds the line from today's date and
+        # `_engine_stamp()` (`.aide/VERSION`), dropping an absent provenance
+        # with its comma; `_append_line_bytes` writes it after the last byte
+        # (issue #363).
+        ("append `- [ ] TYPE \u2014 CLAIM *(PROVENANCE, YYYY-MM-DD, engine "
+         "X.Y.Z)*` at the end of the inbox, the date today's and the engine "
+         "version read from .aide/VERSION, the provenance and its comma left "
+         "out when --provenance is not given",
+         ("test_aide_insights::"
+          "test_add_appends_the_section_shape_with_the_date_and_engine_filled_in",
+          "test_aide_insights::test_add_without_provenance_leaves_it_out_with_its_comma",
+          "test_aide_insights::test_add_without_an_engine_version_leaves_the_note_out",
+          "test_aide_insights::test_add_never_glues_onto_a_last_line_with_no_newline")),
+        # `_cmd_insights_add`: the ID from `insight_ids` over the whole pool,
+        # then `_commit_or_restore`, as `tick` does.
+        ("print the entry's ID, the one list prints, and commit",
+         ("test_aide_insights::"
+          "test_the_id_add_prints_is_the_one_list_prints_even_when_lengthened",
+          "test_aide_insights::"
+          "test_add_appends_the_section_shape_with_the_date_and_engine_filled_in",
+          "test_aide_insights::test_a_capture_git_will_not_commit_is_put_back_and_exits_1",
+          "test_aide_insights::"
+          "test_the_id_add_prints_is_lengthened_against_an_archived_claim")),
+        # `insight_capture_line`'s refusals, checked before
+        # `ensure_insights_inbox` runs; the last one is a parse round trip.
+        ("Refuses with exit 2, writing nothing, a type that is not knowledge, "
+         "defect, gap, automation or framework, an empty claim, a line break "
+         "in the claim or the provenance, and a claim or provenance whose line "
+         "would read back as a different entry",
+         ("test_aide_insights::test_add_refuses_with_exit_2_and_writes_nothing",
+          "test_aide_insights::test_a_refused_add_creates_no_inbox_either",
+          "test_aide_insights::test_an_aside_the_parser_reads_past_is_not_refused")),
         # `_cmd_insights_list`: `shown` filters only on --open/--type, and the
         # ordinal is the entry's position in the file.
         ("number the entries by position and print them all, ticked ones included",
@@ -1088,8 +1147,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("or a side that archived",
          "test_aide_insights::test_an_archive_on_one_side_is_refused_by_the_prefix_check_alone"),
         # `ensure_insights_inbox(..., verb="insights")` on the `list` branch.
-        ("A missing insights.md is created from .aide/templates/insights.md by list",
-         "test_aide_insights::test_list_on_a_missing_inbox_creates_it_and_reports_an_empty_backlog"),
+        # ... and on the `add` branch, after its refusals.
+        ("A missing insights.md is created from .aide/templates/insights.md by list and add",
+         ("test_aide_insights::test_list_on_a_missing_inbox_creates_it_and_reports_an_empty_backlog",
+          "test_aide_insights::test_add_creates_a_missing_inbox_and_appends_to_it")),
         # `_commit_created_file` returns the reason; the notice carries it.
         ("committed when git can — on a branch, with an identity; "
          "otherwise it is left untracked and the notice says why",
