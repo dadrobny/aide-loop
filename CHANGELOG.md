@@ -136,6 +136,48 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.28.1] — 2026-09-30
+
+### Fixed
+
+- **A branch origin deleted is no longer called unpublished, nor advised a
+  push (issue #364).** `check`, `claim` and `status` read "origin lacks it
+  now" as "origin never had it": on a checkout whose `main` `aide sync` had
+  just fast-forwarded, `check` called `aide/queue-010` an unpublished branch
+  and advised `git push -u origin aide/queue-010` — for a branch pushed,
+  merged by its queue PR and deleted on origin, which the push would have
+  recreated. Every engine push is `push -u`, so a local branch whose upstream
+  is `origin/<its own name>` and whose remote-tracking ref is gone was
+  published; only a branch with no such upstream is unpublished, and keeps
+  today's warning, `NOT on origin` note, claim line and exit 1 unchanged.
+  Ancestry alone is deliberately not the test: a claim whose push just failed
+  sits at its base's tip and so is already "in" main. A published, deleted
+  branch is **stale** when its tip is an ancestor of — or, on git ≥ 2.38, its
+  content already in — its recorded base, `main_branch` or
+  `origin/<main_branch>`: `check` warns `stale branch <b>: … everything on it
+  is already in <base>, so there is nothing to publish — 'aide gc --merged'
+  deletes it` (with `--base <base>` when that is not `main_branch`), and
+  `status` notes `deleted on origin, all of it already in <base>`. Otherwise
+  its work is **not found** there, which is what was measured and not that
+  it never landed: a squash merge the base has since changed over the same
+  lines makes `merge-tree` conflict, and git < 2.38 cannot ask at all, so
+  landed work reads this way too. `check` warns `branch <b> was deleted on
+  origin and its work COULD NOT BE FOUND in <bases>`, names both of those
+  shapes and the other reading — this checkout holds the only copy — and says
+  to check whether its work merged: if it did, `git branch -D <b>` (`gc
+  --merged` measures the same way and would not take it); if not, land the
+  work first. `status` notes `its work NOT FOUND in <bases>: check whether its
+  work merged`. On a claim branch of an open item, `claim` names either kind in
+  its `none left — …` report and exits 1, as for an unpublished claim, since
+  neither is work in flight and neither clears without a person: a landed
+  claim branch is also what an abandoned claim leaves, so the report says to
+  tick the item if its work landed, then `gc --merged`; a not-found one is
+  never re-published blindly, and the report sends a person to check. The
+  listing is now one `for-each-ref` spawn where it was two; the ancestry and
+  content probes run only for a gone branch. §2 states the rule, `aide claim
+  -h` the exit, and `/aide-run-queue` and `core/README.md` list the deleted
+  claim among the non-zero exits.
+
 ## [2.28.0] — 2026-09-30
 
 ### Added

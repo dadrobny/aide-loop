@@ -118,7 +118,8 @@ Repeat until `aide claim` reports no remaining unclaimed 📋 item **in this que
      gate, a claim already in flight, a dependency not landed — the last line
      reads `early ready: no — …`) relay the reasons
      verbatim and stop. On a **non-zero** exit something is broken — an
-     *unpublished claim* (an `aide claim` whose push failed), or a human-gates
+     *unpublished claim* (an `aide claim` whose push failed), a claim branch
+     origin has deleted (never re-push it), or a human-gates
      row `aide` cannot read, which holds every item — so surface it verbatim
      and stop: publishing or releasing that branch, or repairing that row, is
      the human's call.

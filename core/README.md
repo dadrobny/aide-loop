@@ -114,7 +114,8 @@ locally.
    yes`, so every open item waits on a human gate and some of the queue has
    landed. That second case is an **early ready**: CI runs while a person
    decides. Any other report stops the run as before, and a non-zero exit (an
-   unpublished claim, a gate row `aide` cannot read) is a broken state that
+   unpublished claim, a claim branch origin has deleted, a gate row `aide`
+   cannot read) is a broken state that
    stops it too. `aide claim -h` states when the fact reads `yes`. A bare
    `none left` means no 📋 item is left, not that every item is ✅: an item
    still 🚧 or 🔍 that no planned item waits on can remain, and the PR is
