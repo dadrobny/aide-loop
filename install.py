@@ -1463,14 +1463,20 @@ def install_settings(adapter_dir: Path, claude_dir: Path, target: Path, log: Lis
 # fix to a wrapper reaches it only by this rewrite; matching the exact string
 # is what keeps a project's own hooks, and a framework hook the project edited,
 # out of reach. Retiring a wrapper means adding it here, never removing one:
-# a consumer can be any number of releases behind.
-_RETIRED_HOOK_COMMANDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+# a consumer can be any number of releases behind. The third field is what
+# the rewrite changes for that generation, for the log line — each says only
+# what that generation lacked.
+_ANCHORED_AND_LOUD = ("now resolves its script from the project root (issue "
+                      "#272) and reports a missing interpreter (issue #352)")
+_RETIRED_HOOK_COMMANDS: Tuple[Tuple[str, Tuple[str, ...], str], ...] = (
     # 1c0aa38 — the bootstrap: one interpreter name, cwd-relative.
     ("python .claude/hooks/{}",
-     ("command_hygiene_guard.py", "log_permission_event.py")),
+     ("command_hygiene_guard.py", "log_permission_event.py"),
+     _ANCHORED_AND_LOUD),
     # 009dd14 — the first cross-OS selector.
     ("sh -c 'exec $(command -v python3 || command -v python) $@' _ .claude/hooks/{}",
-     ("command_hygiene_guard.py", "log_permission_event.py")),
+     ("command_hygiene_guard.py", "log_permission_event.py"),
+     _ANCHORED_AND_LOUD),
     # bd64e83 to 2.3.0 — the probing selector, still cwd-relative: in a
     # worktree-isolated sub-agent it ran the worktree's copy of the script, or
     # none (issue #272).
@@ -1478,7 +1484,8 @@ _RETIRED_HOOK_COMMANDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
      "|| continue; \"$py\" -c \"\" >/dev/null 2>&1 || continue; exec \"$py\" "
      "\"$@\"; done; exit 0' _ .claude/hooks/{}",
      ("command_hygiene_guard.py", "log_permission_event.py",
-      "sibling_instructions.py", "log_instructions_loaded.py")),
+      "sibling_instructions.py", "log_instructions_loaded.py"),
+     _ANCHORED_AND_LOUD),
     # 2.4.0 to 2.28.1 — anchored at the project root, but a machine with no
     # working interpreter ran no hook at all and said nothing (issue #352).
     # Braces doubled for `str.format`.
@@ -1489,7 +1496,8 @@ _RETIRED_HOOK_COMMANDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
      "exit 0' _ .claude/hooks/{}",
      ("command_hygiene_guard.py", "spawn_model_guard.py",
       "log_permission_event.py", "sibling_instructions.py",
-      "log_instructions_loaded.py")),
+      "log_instructions_loaded.py"),
+     "now reports a missing interpreter (issue #352)"),
 )
 
 # Allow entries a release added that an unattended run cannot do without, and
@@ -1630,21 +1638,20 @@ def migrate_settings(base: dict, dst: Path, log: List[str]) -> List[str]:
     current: Dict[str, str] = {}
     for hook in _hook_entries(base):
         current[hook["command"].rsplit(" ", 1)[-1]] = hook["command"]
-    retired: Dict[str, str] = {}
-    for template, scripts in _RETIRED_HOOK_COMMANDS:
+    retired: Dict[str, Tuple[str, str]] = {}
+    for template, scripts, note in _RETIRED_HOOK_COMMANDS:
         for script in scripts:
             new = current.get(f".claude/hooks/{script}")
             if new is not None:
-                retired[template.format(script)] = new
+                retired[template.format(script)] = (new, note)
 
     edits: List[str] = []
     for hook in _hook_entries(settings):
-        new = retired.get(hook["command"])
-        if new is not None:
+        found = retired.get(hook["command"])
+        if found is not None:
+            new, note = found
             hook["command"] = new
-            edits.append(f"hook for {new.rsplit(' ', 1)[-1]} now resolves its "
-                         f"script from the project root (issue #272) and "
-                         f"reports a missing interpreter (issue #352)")
+            edits.append(f"hook for {new.rsplit(' ', 1)[-1]} {note}")
 
     perms = settings.setdefault("permissions", {})
     allow = perms.setdefault("allow", []) if isinstance(perms, dict) else None

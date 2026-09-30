@@ -2300,6 +2300,27 @@ def test_a_missing_runner_in_the_window_restores_and_is_reported(
     assert "interrupted" not in err and "Traceback" not in err
 
 
+def test_a_restore_that_cannot_run_is_not_reported_as_made(
+        tmp_path: Path, monkeypatch, capsys):
+    """git gone with the runner: the restore itself raises. The message must
+    not say the branch was put back, and names the two commands that do it."""
+    root, branch = _claimed_and_worked(tmp_path)
+    tip = aide._rev(root, branch)
+    monkeypatch.setattr(aide, "resolve_test_command",
+                        lambda repo_root, config: ["nosuchrunner-aide-352", "-q"])
+
+    def _no_git(*a, **kw):
+        raise aide.GitMissing()
+
+    monkeypatch.setattr(aide, "_restore_claim_branch", _no_git)
+    assert aide.main(["--repo", str(root), "merge", "27"]) == 1
+    err = capsys.readouterr().err
+    assert "has been put back" not in err
+    assert f"{branch} could NOT be put back (git is not on PATH" in err
+    assert (f"Restore it by hand: 'git branch {branch} {tip}' and 'git config "
+            f"branch.{branch}.aide-base aide/queue-003'") in err
+
+
 def test_a_genuine_bug_in_the_window_restores_and_still_raises(
         tmp_path: Path, monkeypatch, capsys):
     """Only a missing program is reported and swallowed; anything else is a

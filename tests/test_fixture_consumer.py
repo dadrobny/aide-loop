@@ -29,6 +29,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Tuple
 
 import pytest
 
@@ -5018,11 +5019,9 @@ def test_sync_says_remotes_fetched_only_when_it_fetched(
     assert "remotes fetched" not in out
 
 
-def test_a_consumer_below_the_git_top_level_is_in_a_repository(
-        aide, tmp_path: Path, prototype: Path, capsys):
-    """`aide.toml` one directory below the top level: the `.git` probe said
-    "no repository", so a recording verb skipped its commit and `merge`
-    found no claim branch while the verbs that asked git worked."""
+def _below_the_top_level(tmp_path: Path, prototype: Path) -> Tuple[Path, Path]:
+    """The fixture consumer as `project/` inside a repository whose top level
+    is the directory above it: ``(top, consumer)``."""
     outer = tmp_path / "outer"
     outer.mkdir()
     sub = outer / "project"
@@ -5031,6 +5030,15 @@ def test_a_consumer_below_the_git_top_level_is_in_a_repository(
     _git(["config", "user.email", "fixture@example.com"], outer)
     _git(["config", "user.name", "Fixture"], outer)
     _commit(outer, "init")
+    return outer, sub
+
+
+def test_a_consumer_below_the_git_top_level_is_in_a_repository(
+        aide, tmp_path: Path, prototype: Path, capsys):
+    """`aide.toml` one directory below the top level: the `.git` probe said
+    "no repository", so a recording verb skipped its commit and `merge`
+    found no claim branch while the verbs that asked git worked."""
+    outer, sub = _below_the_top_level(tmp_path, prototype)
     _raise_a_gate(sub)
     head = _sha(outer, "HEAD")
     assert aide.main(["--repo", str(sub), "gate", "approve", "1",
@@ -5038,6 +5046,92 @@ def test_a_consumer_below_the_git_top_level_is_in_a_repository(
     assert _sha(outer, "HEAD") != head and _clean(outer)
     assert aide.main(["--repo", str(sub), "sync"]) == 0
     assert "aide sync: OK — on 'main'" in capsys.readouterr().out
+
+
+def test_a_consumer_below_the_top_level_claims_scopes_and_merges(
+        aide, tmp_path: Path, prototype: Path, capsys):
+    """The whole item loop below the top level. git names every changed path
+    from the top (`project/src/greeter.py`) and the engine from the repo root
+    (`src/greeter.py`): `scope` failed every authorised path, and `merge`'s
+    progress-only exemption never matched, so a validated run was never
+    reused. Every path reader now names paths from the repo root."""
+    outer, sub = _below_the_top_level(tmp_path, prototype)
+    _set_test_command(sub, "git rev-parse --verify HEAD")
+    _commit(outer, "chore: a passing test command")
+    assert _claim(aide, sub) == 0
+    _do_the_work(sub)
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(sub), "scope", "1"]) == 0
+    # A change outside the repo root is still reported, never dropped.
+    (outer / "elsewhere.txt").write_text("outside\n", encoding="utf-8")
+    _commit(outer, "chore: a file above the repo root")
+    assert aide.main(["--repo", str(sub), "scope", "1"]) == 1
+    assert "../elsewhere.txt" in capsys.readouterr().out
+    _git(["reset", "--hard", "HEAD~1"], outer)
+
+    # Validation's order: the suite, then the progress edit it records.
+    assert aide.main(["--repo", str(sub), "test"]) == 0
+    assert aide.main(["--repo", str(sub), "progress", "set", "1",
+                      "in-review"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(sub), "merge", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "reusing that run" in out
+    assert _item_status(aide, sub, 1) == "complete"
+    assert "aide/001-the-greeter" not in _branches(outer)
+
+
+def test_a_recording_verb_without_git_or_a_repository_keeps_its_edit(
+        aide, consumer: Path, monkeypatch, capsys):
+    """No git and no `.git` is a directory nothing was ever committed in: the
+    inbox takes the entry and the notice says why it is not committed, as
+    `insights -h` promises — not a refusal over git a repo never needed."""
+    (consumer / ".git").rename(consumer / "git-set-aside")
+    _path_without_git(monkeypatch)
+    inbox = consumer / "docs" / "aide" / "insights.md"
+    before = inbox.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "insights", "add", "defect",
+                      "a claim captured with no git"]) == 0
+    out, err = capsys.readouterr()
+    assert inbox.read_text(encoding="utf-8") != before
+    assert "a claim captured with no git" in inbox.read_text(encoding="utf-8")
+    assert "left uncommitted — git is not on PATH, and there is no .git" in out
+    assert "Traceback" not in err
+
+
+def test_a_recording_verb_in_a_repository_without_git_prints_no_success(
+        aide, consumer: Path, monkeypatch, capsys):
+    """The other side: a `.git` git cannot be run over. The verb refuses
+    before it writes, so no "set to" line is printed for an edit that would
+    then be put back."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    before = progress.read_bytes()
+    _path_without_git(monkeypatch)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "in-progress"]) == 1
+    out, err = capsys.readouterr()
+    assert "aide progress: git is not on PATH" in err
+    assert "set to" not in out
+    assert progress.read_bytes() == before
+
+
+def test_a_git_that_refuses_the_repository_is_quoted_not_called_no_repository(
+        aide, consumer: Path, capsys):
+    """A `.git` git cannot read — here a `gitdir:` pointer to nowhere, as a
+    moved worktree leaves; a `safe.directory` refusal reads the same way —
+    is git's own words, never "not inside a git repository"."""
+    (consumer / ".git").rename(consumer / "git-set-aside")
+    (consumer / ".git").write_text(
+        f"gitdir: {consumer / 'no-such-gitdir'}\n", encoding="utf-8")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "sync"]) == 1
+    err = capsys.readouterr().err
+    assert f"aide sync: git cannot read the repository {consumer} is in — " in err
+    assert "not inside a git repository" not in err
+    assert "Traceback" not in err
 
 
 def test_check_with_git_off_path_still_judges_the_documents_and_says_what_it_skipped(
@@ -5051,5 +5145,6 @@ def test_check_with_git_off_path_still_judges_the_documents_and_says_what_it_ski
     assert aide.main(["--repo", str(consumer), "check"]) == 0
     out, err = capsys.readouterr()
     assert "git is not on PATH, so nothing that reads git was checked" in out + err
+    assert aide._GIT_OPTIONAL is False     # reset by the check itself
     assert (consumer / "docs" / "aide" / "insights.md").is_file()
     assert "Traceback" not in err
