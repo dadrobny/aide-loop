@@ -16,7 +16,8 @@ Analyze the current state of the project documents and recent work.
 ### The modular passes this loop may call
 
 Five passes are skills of their own, because each is useful without the rest
-of the retrospective and each costs a whole loop to reach otherwise. Call the ones this run needs; none of them is restated below.
+of the retrospective and each costs a whole loop to reach otherwise. Call the
+ones this run needs; none of them is restated below.
 
 | Pass | What it does | When |
 |---|---|---|

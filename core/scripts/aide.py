@@ -9810,7 +9810,8 @@ def cmd_ledger(args: argparse.Namespace) -> int:
         names = ", ".join("<number>" if o == "number" else
                           "--json" if o == "as_json" else
                           "--" + o.replace("_", "-") for o in stray)
-        print(f"aide ledger {args.action}: {names} does not belong to "
+        verb = "does" if len(stray) == 1 else "do"
+        print(f"aide ledger {args.action}: {names} {verb} not belong to "
               f"{args.action}, which does not read it", file=sys.stderr)
         return 2
     repo_root = find_repo_root(args.repo)
@@ -16574,7 +16575,8 @@ def build_parser() -> argparse.ArgumentParser:
             "blank finding cell may also mean no review ran. Rounds are a "
             "distribution, not a share at the round cap: the cap is a "
             "setting, and it may have moved under the rows. A row with a "
-            "cell count no ledger template draws is skipped and named. A "
+            "cell count no ledger template draws is skipped and named "
+            "(under --queue, only one whose Queue cell names that queue). A "
             "missing ledger is reported and exits 0; report never creates "
             "one.\n"
             "\n"

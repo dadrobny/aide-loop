@@ -165,7 +165,7 @@ instead — that is the bump policy above, and it is enforced by
   have moved under the rows; the verb reads no `aide.toml` key for it. A
   missing ledger is reported and exits 0, and the verb never creates one. A
   14-cell row and a 16-cell row read alike; a row of any other width is
-  skipped and named. `aide ledger -h` states it, and §1 → `ledger.md` says
+  skipped and named (under `--queue`, only one on that queue). `aide ledger -h` states it, and §1 → `ledger.md` says
   the rows are read back through the verb. `core/AGENT-CONTEXT.md`'s verb
   list now reads `ledger abandon/report`, so **the always-on floor moves from
   9,352 to 9,359 content bytes**.
