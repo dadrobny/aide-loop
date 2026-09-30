@@ -233,8 +233,13 @@ def test_every_module_runs_in_exactly_one_windows_shard():
         assert not both, (
             f"shard {entry['shard']!r} both names and --ignores {both}; pytest "
             "runs a named file regardless")
-        runs = set().union(*(_modules_under(p) for p in positional)) if positional else set()
+        # --ignore prunes what pytest finds under a named directory; a named
+        # file runs whatever is ignored, its own directory included.
+        files = {p for p in positional if (REPO / p).is_file()}
+        dirs = [p for p in positional if p not in files]
+        runs = set().union(*(_modules_under(p) for p in dirs)) if dirs else set()
         runs -= set().union(*(_modules_under(p) for p in ignored)) if ignored else set()
+        runs |= set().union(*(_modules_under(p) for p in files)) if files else set()
         runs -= set(UBUNTU_ONLY)
         for rel in runs:
             seen.setdefault(rel, []).append(entry["shard"])
