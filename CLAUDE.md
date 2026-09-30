@@ -245,10 +245,14 @@ pytest adapters/claude/tests/            # hygiene guard, settings overlay, prob
 
 CI ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs `pytest`
 on ubuntu **and** windows — the installer and the CLI both do path work, so a
-POSIX-only assumption fails there and not locally. The windows leg is split
-into one job per group of `pytest.ini` testpaths roots (subprocess spawns cost
-~13x there; issue #74), and `tests/test_ci_shards.py` pins the shards to
-exactly cover testpaths. There is no linter or formatter; `pytest` is the only
+POSIX-only assumption fails there and not locally. Subprocess spawns cost ~13x
+there (issues #74, #358), so the windows leg skips the few modules Windows
+proves nothing about and splits the rest into shards balanced by measured test
+time. A new module runs on **both legs** by default; which modules may be
+windows-skipped is a rule stated once, in the docstring of
+[`tests/test_ci_shards.py`](tests/test_ci_shards.py), whose `UBUNTU_ONLY` list
+is the declaration the workflow's skip list must match, and which pins every
+test module into exactly one Windows shard otherwise. There is no linter or formatter; `pytest` is the only
 gate.
 
 Most of the suite exercises this repo's **source** layout.
