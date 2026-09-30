@@ -15,9 +15,9 @@ Analyze the current state of the project documents and recent work.
 
 ### The modular passes this loop may call
 
-Four passes are skills of their own, because each is useful without the rest of
-the retrospective and each costs a whole loop to reach otherwise. Call the ones
-this run needs; none of them is restated below.
+Five passes are skills of their own, because each is useful without the rest
+of the retrospective and each costs a whole loop to reach otherwise. Call the
+ones this run needs; none of them is restated below.
 
 | Pass | What it does | When |
 |---|---|---|
@@ -25,6 +25,7 @@ this run needs; none of them is restated below.
 | `/aide-review-permissions` | ranks the auto-logged permission prompts an unattended run stalls on | when a run needed a human to approve a command |
 | `/aide-review-instructions` | reports which instruction files actually reached which sessions | when a rule looks like it never bound |
 | `/aide-status-report` | regenerates the living HTML status page | when the visible snapshot has gone stale |
+| `/aide-review-ledger` | reads the run ledger back by engine version and kind, and annotates each cohort boundary with the releases and `aide.toml` changes behind it | when a queue has just closed and `docs/aide/ledger.md` exists; skipped without it |
 
 Triage is the one that always runs, and it runs *first*: what it routes is the
 raw material for everything below.

@@ -3085,6 +3085,82 @@ def test_ledger_abandon_records_an_item_no_merge_will(aide, consumer: Path):
     assert aide.main(["--repo", str(consumer), "check"]) == 0
 
 
+#: A ledger as a consumer accumulates one across engine releases: fourteen-cell
+#: rows from before 2.7.0 beside sixteen-cell ones, a pre-2.25.1 merge recorded
+#: twice by a re-run after a failed push (the repeat with its diff lost as
+#: 0/0), a row with its counts never passed, and one written under review off.
+_MIXED_LEDGER_ROWS = (
+    "| 010 | 002 | 1 | normal | merged | 4 | 8 | 5 | 2 | 0 | 1 | 0 | 2.1.0 | 2026-09-20 |\n"
+    "| 011 | 002 | 1 | maintenance | merged | 2 | 2 | 3 | 1 | 0 | 0 | 0 | 2.1.0 | 2026-09-20 |\n"
+    "| 012 | 003 | 2 | normal | merged | 3 | 6 | 4 | 3 | 1 | 0 | 0 | 2.20.1 | 2026-09-26 | 30 | 0 |\n"
+    "| 012 | 003 | 2 | normal | merged | 3 | 0 | 0 | 3 | 1 | 0 | 0 | 2.20.1 | 2026-09-26 | 31 | 0 |\n"
+    "| 013 | 003 | 2 | normal | abandoned | 2 |  |  |  |  |  |  | 2.20.1 | 2026-09-27 |  |  |\n"
+    "| 014 | 003 | 2 | normal | merged | 2 | 3 | 2 | 1 | - | - | - | 2.20.1 | 2026-09-27 | 12 | 0 |\n"
+)
+
+
+def _write_mixed_ledger(consumer: Path) -> Path:
+    ledger = consumer / "docs" / "aide" / "ledger.md"
+    ledger.write_bytes((consumer / ".aide" / "templates" / "ledger.md").read_bytes()
+                       + _MIXED_LEDGER_ROWS.encode("utf-8"))
+    return ledger
+
+
+def _report(aide, consumer: Path, capsys, *extra: str) -> dict:
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "ledger", "report", "--json",
+                      *extra]) == 0
+    return json.loads(capsys.readouterr().out)
+
+
+def test_ledger_report_reads_a_mixed_ledger_by_engine_and_kind(
+        aide, consumer: Path, capsys):
+    ledger = _write_mixed_ledger(consumer)
+    before = ledger.read_bytes()
+
+    out = _report(aide, consumer, capsys)
+
+    groups = {(c["engine"], c["kind"]): c for c in out["cohorts"]}
+    assert list(groups) == [("2.1.0", "normal"), ("2.1.0", "maintenance"),
+                            ("2.20.1", "normal")]
+    assert out["skipped"] == [] and len(out["counted_once"]) == 1
+    late = groups[("2.20.1", "normal")]
+    # 012 once — the earlier row, its diff intact; the 0/0 repeat is left
+    # out — then 013 and 014.
+    assert (late["rows"], late["merged"], late["abandoned"]) == (3, 2, 1)
+    assert out["counted_once"] == [
+        ledger.read_text(encoding="utf-8").splitlines().index(
+            _MIXED_LEDGER_ROWS.splitlines()[3]) + 1]
+    assert late["unknown_diff"] == 0 and late["unrecorded"]["Tests"] == 1
+    # 012's 6 tests over 3 criteria and 014's 3 over 2; 013 measured none.
+    assert late["tests_per_ac"] == {"value": 1.8, "n": 2}
+    assert late["stages"] == ["2"] and late["first_date"] == "2026-09-26"
+    assert late["rounds"]["n"] == 2 and late["unrecorded"]["Rounds"] == 1
+    # 013's blanks are unrecorded; 014's `-` joins no finding ratio.
+    assert late["findings"]["blocking"] == {"per_item": 1.0, "n": 1}
+    assert late["no_review"] == 1
+    assert late["caller_blank"] == {"blank": 4, "cells": 9}
+    # Report writes nothing, and `check` still reads the file clean.
+    assert ledger.read_bytes() == before
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+
+def test_ledger_report_keeps_one_queue_and_prints_a_table(
+        aide, consumer: Path, capsys):
+    _write_mixed_ledger(consumer)
+    out = _report(aide, consumer, capsys, "--queue", "2")
+    assert out["rows"] == 2
+    assert {c["engine"] for c in out["cohorts"]} == {"2.1.0"}
+    assert aide.main(["--repo", str(consumer), "ledger", "report"]) == 0
+
+
+def test_ledger_report_on_a_consumer_with_no_ledger_exits_0_and_creates_none(
+        aide, consumer: Path, capsys):
+    out = _report(aide, consumer, capsys)
+    assert out["exists"] is False and out["cohorts"] == []
+    assert not (consumer / "docs" / "aide" / "ledger.md").exists()
+
+
 # --------------------------------------------------------------------------- #
 # the gate over a red base — inherited failures (issue #275, §4)
 # --------------------------------------------------------------------------- #

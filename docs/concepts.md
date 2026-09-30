@@ -114,7 +114,8 @@ python .aide/scripts/aide.py {check, scope, progress, gate, queue, insights, led
 - **queue** — queue branch creation and maintenance (start, tidy).
 - **insights** — the insight inbox: list, tick, archive, resolve.
 - **ledger** — the run ledger's row for an item that never merged (`merge`
-  writes every other row).
+  writes every other row), and a read-only report of the rows by engine
+  version and kind.
 - **claim** — pick + claim the next unclaimed item (the recon step; not an agent).
 - **merge** — merge a validated item per `git.mode`, re-run tests, clean up.
 - **env** — venv existence / import check (+ bootstrap).

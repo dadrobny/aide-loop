@@ -40,7 +40,7 @@ documents in the exact shapes `conventions.md` §1 fixes.
 | 6 · execute-item | `aide-execute-item` |
 | 7 · feedback-loop | `aide-feedback-loop` |
 
-Three skills go **beyond the seven** — Claude-specific conveniences, not new
+Four skills go **beyond the seven** — Claude-specific conveniences, not new
 contract obligations:
 
 - **`aide-spec-queue`** — a batch variant of step 5: author specs for *every*
@@ -50,6 +50,10 @@ contract obligations:
   so the pass that always runs at a queue boundary can be reached without the
   retrospective around it. It routes by the §1 routing table, judges duplicates and
   decayed premises, and files `framework` entries as issues.
+- **`aide-review-ledger`** — step 7's reading of the run ledger: runs `aide ledger
+  report`, annotates each engine-version cohort boundary with the framework release
+  notes and the `aide.toml` history behind it, and routes what it suggests into the
+  inbox or a suggestion to the person. It edits nothing.
 - **`aide-status-report`** — an auxiliary reporter: an evolving HTML status summary
   from the AIDE documents, test suite, and QC outputs. Not part of the loop.
 
@@ -534,7 +538,7 @@ adapters/claude/
 │                  spec-reviewer (queue boundary, not an item role)
 ├── skills/        workflow: aide-{create-vision,-roadmap,-progress,-queue,-item} ·
 │                  aide-execute-item · aide-feedback-loop · aide-spec-queue ·
-│                  aide-review-insights · aide-status-report
+│                  aide-review-insights · aide-review-ledger · aide-status-report
 │                  section (user-invocable: false, preloaded by role):
 │                  aide-document-format · aide-human-gates · aide-progress-file ·
 │                  aide-queue-and-inbox · aide-item-specs ·
