@@ -9810,8 +9810,8 @@ def cmd_ledger(args: argparse.Namespace) -> int:
         names = ", ".join("<number>" if o == "number" else
                           "--json" if o == "as_json" else
                           "--" + o.replace("_", "-") for o in stray)
-        print(f"aide ledger {args.action}: {names} belong(s) to the other "
-              f"action and {args.action} does not read it", file=sys.stderr)
+        print(f"aide ledger {args.action}: {names} does not belong to "
+              f"{args.action}, which does not read it", file=sys.stderr)
         return 2
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
@@ -9917,15 +9917,16 @@ def ledger_report(text: str, queue: Optional[int] = None) -> Dict[str, object]:
     """
     skipped: List[int] = []
     rows: List[Tuple[int, Dict[str, str]]] = []
+    queue_at = LEDGER_COLUMNS.index("Queue")
     for lineno, cells in ledger_rows(text):
+        if queue is not None and (len(cells) <= queue_at
+                                  or _ledger_count(cells[queue_at]) != queue):
+            continue
         if len(cells) not in (len(LEDGER_COLUMNS), LEDGER_TEMPLATE_2_WIDTH):
             skipped.append(lineno)
             continue
         cells = cells + [""] * (len(LEDGER_COLUMNS) - len(cells))
-        row = dict(zip(LEDGER_COLUMNS, cells))
-        if queue is not None and _ledger_count(row["Queue"]) != queue:
-            continue
-        rows.append((lineno, row))
+        rows.append((lineno, dict(zip(LEDGER_COLUMNS, cells))))
 
     # A merge re-run after a failed push, before 2.25.1 (issue #346),
     # appended a second `merged` row for the item with its diff read after
@@ -9984,7 +9985,8 @@ def _ledger_group(engine: str, kind: str,
             unknown_diff += 1
         for column, value in (("ACs", ac), ("Tests", test), ("Files", files)):
             unrecorded[column] += value is None
-        if ac is not None and test is not None:
+        # A spec with no criterion has no tests-per-criterion to give.
+        if ac and test is not None:
             tests, criteria, tests_n = tests + test, criteria + ac, tests_n + 1
         r = _ledger_count(row["Rounds"])
         cells += 1

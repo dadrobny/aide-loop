@@ -6,9 +6,8 @@ it cost in build↔validate rounds, and what it added. Two verbs write it —
 readers are the person standing at a queue boundary, who asks what the batch
 cost, and the feedback-loop pass over a finished queue, which reads the
 project's own ratios and their trend. **The rows are read back through
-`aide ledger report`**, which reads the cells exactly as this section defines them,
-groups rows by the `Engine` cell and then by `kind`, and draws no conclusion;
-what the readings mean is the reader's. *(aide ledger report)*
+`aide ledger report`**, which draws no conclusion: what the readings mean is
+the reader's.
 
 - **One row per item, appended where the ✅ is.** `aide merge` adds the row in
   the commit that ticks the item, so a row exists exactly for an item the

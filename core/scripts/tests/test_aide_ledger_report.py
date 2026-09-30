@@ -190,6 +190,21 @@ def test_finding_ratios_are_withheld_from_a_group_before_1_59_0():
     assert groups[("", "normal")]["findings"] is None
 
 
+def test_the_1_59_0_boundary_compares_versions_not_strings():
+    """"1.9.0" sorts after "1.59.0" as a string and "1.100.0" before it."""
+    groups = _groups(aide.ledger_report(_ledger(
+        _row(item="001", engine="1.9.0"), _row(item="002", engine="1.100.0"))))
+    assert groups[("1.9.0", "normal")]["findings"] is None
+    assert groups[("1.100.0", "normal")]["findings"]["blocking"]["n"] == 1
+
+
+def test_a_row_with_no_criterion_joins_no_tests_per_criterion():
+    (g,) = aide.ledger_report(_ledger(
+        _row(item="001", acs="0", tests="2"),
+        _row(item="002", acs="3", tests="6")))["cohorts"]
+    assert g["tests_per_ac"] == {"value": 2.0, "n": 1}
+
+
 # --------------------------------------------------------------------------- #
 # row shapes
 # --------------------------------------------------------------------------- #
@@ -214,6 +229,13 @@ def test_queue_keeps_that_queues_rows():
         _row(item="003", queue="")), queue=22)
     assert report["rows"] == 1
     assert report["cohorts"][0]["queues"] == ["022"]
+
+
+def test_queue_leaves_another_queues_malformed_row_unnamed():
+    report = aide.ledger_report(_ledger(
+        _row(item="001", queue="022"), _row(item="002", queue="021", width=12)),
+        queue=22)
+    assert report["rows"] == 1 and report["skipped"] == []
 
 
 # --------------------------------------------------------------------------- #
