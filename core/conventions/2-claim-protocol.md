@@ -38,10 +38,19 @@ never seen is reported as an **unpublished claim** by `claim`, `status` and
 `check`, never counted as work in flight. `queue start` and `merge`'s `pr`-mode
 push fail the same way.
 
+**A branch origin deleted is not one origin never saw.** A branch whose
+upstream `origin/<branch>` is gone was published, and is never advised a push
+— that would recreate a branch deleted on purpose. The same three verbs name it
+as **stale** when everything on it is already in its base or `main_branch`
+(`aide gc --merged` deletes it), and as **deleted before its work landed**
+otherwise, the louder of the two, since this checkout may hold the only copy.
+Either kind on a claim branch holds its item without being work in flight, so
+`claim` exits non-zero on it as on an unpublished claim.
+
 **`none left` means the ground checked was empty, and nothing else.** A queue
 still open while nothing in it is offerable is a different answer, and `claim`
 gives the reason per item — an unresolved gate, a claim already in flight, a
-dependency not landed, an unpublished claim — or names the human-gates row it
+dependency not landed, an unpublished or deleted claim — or names the human-gates row it
 cannot read, which holds every item (§1 → human gates). The first three are
 ordinary and exit 0; the last two are defects and exit non-zero.
 
@@ -64,6 +73,15 @@ acts on** (`gc -h` says what it asks git, and what it refuses).
 - **Why an unpublished claim is an error.** It holds an item on evidence no
   other checkout can see, and a run that reads it as exhaustion finishes
   reporting success over work it never started.
+- **Why the upstream decides, and not ancestry.** The engine reported every
+  branch origin lacked as unpublished and advised `git push -u` for a queue
+  branch its PR had merged and hosting had deleted (issue #364). Every engine
+  push sets the upstream, so a gone upstream is git's own record that a push
+  landed. Ancestry alone cannot be the test: a claim whose push just failed
+  sits at its base's tip, already "in" main, and is the half-claim above. A
+  landed claim branch still exits non-zero because an empty one is also what an
+  abandoned claim leaves, and only a person knows whether to tick the item or
+  release it.
 - **Why `gc` asks git.** A ✅ is a claim made by a document that agents and
   humans both edit, and the action it triggers is `git branch -D` plus a remote
   delete — unrecoverable on a plain git host. So on the ✅ ground `gc` deletes

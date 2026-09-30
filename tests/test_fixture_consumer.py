@@ -2389,6 +2389,48 @@ def test_a_failed_claim_push_is_a_sentence_and_never_none_left(
     assert out.count("ORIGIN HAS NEVER SEEN") == 2
 
 
+def test_a_claim_branch_merged_then_deleted_on_origin_is_never_told_to_push(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    """#364: origin lacking a branch *now* is not origin never having had it.
+
+    001's claim is published, its work lands on main, and origin deletes the
+    branch — hosting does that on merge. The local copy is stale, not an
+    unpublished claim: `claim` exits 1 without reading it as a failed push or
+    as work in flight, and `check` points at `gc`, never at `git push -u`,
+    which would recreate a branch deleted on purpose.
+    """
+    toml = consumer / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        'mode = "local"', 'mode = "auto-merge"'), encoding="utf-8")
+    _commit(consumer, "chore: auto-merge mode")
+    remote = tmp_path / "origin.git"
+    _git(["init", "--bare", "-b", "main", str(remote)], tmp_path)
+    _git(["remote", "add", "origin", str(remote)], consumer)
+    _git(["push", "-u", "origin", "main"], consumer)
+
+    assert _claim(aide, consumer) == 0          # 001, published
+    branch = _branch(consumer)
+    _do_the_work(consumer)
+    _git(["push"], consumer)
+    _git(["switch", "main"], consumer)
+    _git(["merge", "--no-ff", "-m", f"merge {branch}", branch], consumer)
+    _git(["push", "origin", "main"], consumer)
+    _git(["branch", "-D", branch], remote)      # deleted on origin, not here
+    assert _claim(aide, consumer) == 0          # 002, published; fetch prunes
+    capsys.readouterr()
+
+    rc = _claim(aide, consumer)
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "NEVER SEEN" not in out and "git push" not in out
+    assert f"claimed by {branch}, which origin has DELETED" in out
+
+    aide.main(["--repo", str(consumer), "check"])
+    out = capsys.readouterr().out
+    assert f"stale branch {branch}" in out
+    assert "unpublished branch" not in out and "git push" not in out
+
+
 # --------------------------------------------------------------------------- #
 # scope — the diff against the spec's authorised paths
 # --------------------------------------------------------------------------- #

@@ -7012,18 +7012,35 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     if branches is None:
         branches = _list_claim_branches(repo_root, prefix)
     _, _, item_status = _parse_item_status(lines)
-    unpublished = (set(_unpublished_branches(repo_root, config, prefix))
-                   if branches else set())
+    off_origin = (_branches_off_origin(repo_root, config, prefix)
+                  if branches else {})
     for br in branches:
         n = _branch_item_number(br, prefix)
-        if br in unpublished:
-            # Read against the last fetch, like every other remote question
-            # here, and a warning rather than an error for that reason.
+        why = off_origin.get(br)
+        # Read against the last fetch, like every other remote question here,
+        # and a warning rather than an error for that reason. Only a branch
+        # origin never had is advised a push: one deleted there was deleted
+        # on purpose, as far as this checkout can tell (issue #364).
+        if why is not None and why.kind == OFF_ORIGIN_UNPUBLISHED:
             warnings.append(
                 f"unpublished branch {br}: this checkout has it and origin "
                 f"does not, so it is invisible to every other checkout — a "
                 f"failed 'aide claim' or 'aide queue start' push is the usual "
                 f"cause. Publish it ('git push -u origin {br}') or delete it.")
+        elif why is not None and why.kind == OFF_ORIGIN_GONE_LANDED:
+            warnings.append(
+                f"stale branch {br}: it was published and has since been "
+                f"deleted on origin, and everything on it is already in "
+                f"{why.where}, so there is nothing to publish — "
+                f"'{_gc_merged_hint(why.where, config)}' deletes it.")
+        elif why is not None:
+            warnings.append(
+                f"branch {br} was DELETED ON ORIGIN BEFORE ITS WORK LANDED: it "
+                f"was published (its upstream origin/{br} is gone) but its "
+                f"work is not in {why.where}, so this checkout may hold the "
+                f"only copy. Find out why origin dropped it before acting — "
+                f"land the work through a reviewed branch, or delete it "
+                f"('git branch -D {br}') if it was abandoned.")
         if n is None:
             # Not a claim branch. A queue branch is expected and silent; anything
             # else carrying the prefix is reported rather than ignored, so a real
@@ -12103,8 +12120,11 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
         num = _branch_item_number(br, prefix)
         if num is not None:
             claimed.setdefault(num, br)
-    stranded = {n: br for n, br
-                in _unpublished_claim_branches(repo_root, config, prefix).items()
+    # A claim branch origin lacks holds its item without being work in flight,
+    # for one of three reasons (issue #364), and each exits 1: an exit 0 would
+    # tell the runner to wait on a hold nothing in the loop will release.
+    stranded = {n: pair for n, pair
+                in _off_origin_claim_branches(repo_root, config, prefix).items()
                 if n in open_items}
     gated: set = set()
     for _, g, _ in relevant:
@@ -12113,18 +12133,47 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
                          [(n, g) for n, g, _ in relevant], gated,
                          claimed, item_status, scan_order, holds)
 
+    def _stranded_reason(num: int) -> str:
+        br, why = stranded[num]
+        if why.kind == OFF_ORIGIN_UNPUBLISHED:
+            return (f"claimed by {br}, WHICH ORIGIN HAS NEVER SEEN — the "
+                    f"claim's push did not land, so this item is held by a "
+                    f"claim no other checkout can see")
+        if why.kind == OFF_ORIGIN_GONE_LANDED:
+            return (f"claimed by {br}, which origin has DELETED and whose every "
+                    f"commit is already in {why.where} — its work landed or "
+                    f"the claim was abandoned; either way it is not in flight")
+        return (f"claimed by {br}, which origin DELETED BEFORE ITS WORK LANDED "
+                f"— not in flight, and this checkout may hold the only copy of "
+                f"its work")
+
     def _stranded_lines() -> None:
         for num in open_ordered:
             if num in stranded:
                 print(f"  {num:03d} {titles.get(num, 'item ' + str(num))} — "
-                      f"claimed by {stranded[num]}, WHICH ORIGIN HAS NEVER "
-                      f"SEEN — the claim's push did not land, so this item is "
-                      f"held by a claim no other checkout can see")
+                      f"{_stranded_reason(num)}")
 
     def _stranded_notice() -> None:
-        print("  An unpublished claim is a failed 'aide claim' push, not work "
-              "in flight. Publish it ('git push -u origin <branch>') or "
-              "release the item ('git branch -D <branch>'), then claim again.")
+        kinds = {why.kind for _, why in stranded.values()}
+        if OFF_ORIGIN_UNPUBLISHED in kinds:
+            print("  An unpublished claim is a failed 'aide claim' push, not "
+                  "work in flight. Publish it ('git push -u origin <branch>') "
+                  "or release the item ('git branch -D <branch>'), then claim "
+                  "again.")
+        if OFF_ORIGIN_GONE_LANDED in kinds:
+            hints = sorted({_gc_merged_hint(why.where, config)
+                            for _, why in stranded.values()
+                            if why.kind == OFF_ORIGIN_GONE_LANDED})
+            print("  A claim branch deleted on origin with all of it already "
+                  "in its base is never re-published. If its work is the "
+                  "item's, record it ('aide progress set <NNN> done') first; "
+                  "then " + " / ".join(f"'{h}'" for h in hints) + " deletes "
+                  "the branch, releasing the item if it is still open.")
+        if OFF_ORIGIN_GONE_UNLANDED in kinds:
+            print("  A claim branch deleted on origin before its work landed "
+                  "is never re-published blindly: find out why origin dropped "
+                  "it, then land its work or release the item "
+                  "('git branch -D <branch>').")
 
     if relevant:
         print("none left — held by an unresolved human gate:")
@@ -12135,8 +12184,8 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
             print(f"  gate {n}: {g.text}{f' ({gid})' if gid else ''} — blocks {where}")
         print("  A person decides these, never an agent. Once decided: "
               "aide gate approve <n|ID> --evidence \"…\" (or gate decline <n|ID>).")
-        # A broken state is not hidden behind a gate: an unpublished claim
-        # exits 1 on this path exactly as on the per-item one.
+        # A broken state is not hidden behind a gate: an unpublished or
+        # deleted claim exits 1 on this path exactly as on the per-item one.
         if stranded:
             _stranded_lines()
             _stranded_notice()
@@ -12153,9 +12202,7 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
         head = f"  {num:03d} {titles.get(num, 'item ' + str(num))} —"
         br = claimed.get(num)
         if num in stranded:
-            print(f"{head} claimed by {stranded[num]}, WHICH ORIGIN HAS NEVER "
-                  f"SEEN — the claim's push did not land, so this item is held "
-                  f"by a claim no other checkout can see")
+            print(f"{head} {_stranded_reason(num)}")
         elif br is not None:
             print(f"{head} claimed by {br}, already in flight")
         else:
@@ -14086,11 +14133,45 @@ def _remote_branches(repo_root: Path) -> List[str]:
     return names
 
 
-def _unpublished_branches(repo_root: Path, config, prefix: str) -> List[str]:
-    """Branches under *prefix* that this checkout has and origin has not.
+#: Why a prefixed branch this checkout has is missing from origin (issue #364).
+#: ``unpublished``: origin never had it — no upstream on origin under its own
+#: name, so no push of it ever landed. ``gone-landed``: it was published and has
+#: since been deleted on origin, and everything on it is already in a base.
+#: ``gone-unlanded``: published, deleted on origin, and its work is in no base.
+OFF_ORIGIN_UNPUBLISHED = "unpublished"
+OFF_ORIGIN_GONE_LANDED = "gone-landed"
+OFF_ORIGIN_GONE_UNLANDED = "gone-unlanded"
+
+
+class OffOrigin(NamedTuple):
+    """One prefixed branch this checkout has and origin's tracking refs lack."""
+    kind: str
+    #: gone-landed: the ref its work is already in. gone-unlanded: every ref
+    #: that was asked, joined for a sentence. unpublished: None.
+    where: Optional[str] = None
+
+
+def _branches_off_origin(repo_root: Path, config,
+                         prefix: str) -> Dict[str, OffOrigin]:
+    """Branches under *prefix* that this checkout has and origin has not, and why.
 
     Read against the remote-tracking refs, so it reports what the last fetch
     saw — `claim` fetches first and `status` does too unless asked not to.
+
+    "Origin lacks it now" is not "origin never had it" (issue #364): a queue
+    branch whose PR merged is routinely deleted on origin — hosting may do it
+    on merge — and advising `git push -u` for it recreates a branch deleted on
+    purpose. Every engine push is `push -u` (`_push_new_branch`), so an upstream
+    of ``refs/remotes/origin/<the same name>`` whose ref is gone is git's own
+    record that a push landed and the branch was removed since. Ancestry alone
+    cannot be the test: a claim whose push just failed sits at its base's tip,
+    already "in" main, and is exactly the half-claim of issue #137.
+
+    A published-then-deleted branch is ``gone-landed`` when its tip is an
+    ancestor of — or, where git can measure it, its content already in — its
+    recorded base, ``main_branch`` or ``origin/<main_branch>``; otherwise
+    ``gone-unlanded``. Those probes run only for gone branches, which are rare,
+    and the listing itself is one ``for-each-ref`` spawn (issue #74).
 
     No origin at all is deliberately *not* an exemption. Off ``local`` mode
     the engine pushes every branch it creates, so a repository with no remote
@@ -14100,17 +14181,63 @@ def _unpublished_branches(repo_root: Path, config, prefix: str) -> List[str]:
     an unpushed claim branch is the design rather than a failure.
     """
     if str(config["git"].get("mode", "auto-merge")) == "local":
-        return []
-    remote = set(_remote_branches(repo_root))
-    out = [line.strip() for line
-           in git(["branch", "--format=%(refname:short)"],
-                  repo_root, check=False).stdout.splitlines()]
-    return sorted(br for br in out if br.startswith(prefix) and br not in remote)
+        return {}
+    # Tab-separated: a refname cannot contain a control character, so the
+    # split is exact on every platform, and no shell is involved.
+    listing = git(["for-each-ref", "--format=%(refname)%09%(upstream)",
+                   "refs/heads/", "refs/remotes/origin/"],
+                  repo_root, check=False).stdout
+    local: Dict[str, str] = {}
+    remote: Set[str] = set()
+    for line in listing.splitlines():
+        ref, _, upstream = line.partition("\t")
+        ref = ref.strip()
+        if ref.startswith("refs/remotes/origin/"):
+            remote.add(ref[len("refs/remotes/origin/"):])
+        elif ref.startswith("refs/heads/"):
+            local[ref[len("refs/heads/"):]] = upstream.strip()
+    out: Dict[str, OffOrigin] = {}
+    main = str(config["git"].get("main_branch", "main"))
+    can_measure: Optional[bool] = None
+    for br in sorted(local):
+        if not br.startswith(prefix) or br in remote:
+            continue
+        if local[br] != f"refs/remotes/origin/{br}":
+            out[br] = OffOrigin(OFF_ORIGIN_UNPUBLISHED)
+            continue
+        targets: List[str] = []
+        for ref in (_recorded_branch_base(repo_root, br), main, f"origin/{main}"):
+            if ref and ref != br and ref not in targets:
+                targets.append(ref)
+        # Exit 0 is "ancestor"; 1 is "not", and 128 an unreadable ref — both
+        # simply move on to the next base.
+        landed = next((t for t in targets
+                       if git(["merge-base", "--is-ancestor", br, t],
+                              repo_root, check=False).returncode == 0), None)
+        if landed is None:
+            # A squash merge leaves the tip off every base: ask for content.
+            if can_measure is None:
+                can_measure = _has_merge_tree(repo_root)
+            if can_measure:
+                landed = next((t for t in targets
+                               if _branch_content_landed(repo_root, t, br) is True),
+                              None)
+        out[br] = (OffOrigin(OFF_ORIGIN_GONE_LANDED, landed) if landed
+                   else OffOrigin(OFF_ORIGIN_GONE_UNLANDED, " or ".join(targets)))
+    return out
 
 
-def _unpublished_claim_branches(repo_root: Path, config,
-                                prefix: str) -> Dict[int, str]:
-    """Item number -> a claim branch this checkout has that origin has not.
+def _gc_merged_hint(landed_in: str, config) -> str:
+    """The `gc` invocation that collects a branch whose work is in *landed_in*."""
+    main = str(config["git"].get("main_branch", "main"))
+    return ("aide gc --merged" if landed_in == main
+            else f"aide gc --merged --base {landed_in}")
+
+
+def _off_origin_claim_branches(repo_root: Path, config,
+                               prefix: str) -> Dict[int, Tuple[str, OffOrigin]]:
+    """Item number -> (claim branch, why origin lacks it), for claim branches
+    this checkout has and origin has not.
 
     Off ``local`` mode a claim is published by construction: `claim` creates
     the branch and pushes it in the same breath, and refuses out loud when the
@@ -14119,15 +14246,20 @@ def _unpublished_claim_branches(repo_root: Path, config,
     counted as a claim by `_pick_item` regardless. That is the half-claim of
     issue #137, and naming it is what stops it reading as work in flight.
 
+    A claim branch origin *had* and has deleted is not in flight either, but it
+    is not a failed push: its work landed, the claim was abandoned (§2: delete
+    the remote branch), or it was removed before its work landed. The kind says
+    which, so `claim` never advises re-publishing it (issue #364).
+
     ``local`` mode is the one configuration that reports nothing: there, an
     unpushed claim branch is the design. A repository with no origin at all is
-    *not* an exemption — see `_unpublished_branches`, which this narrows.
+    *not* an exemption — see `_branches_off_origin`, which this narrows.
     """
-    out: Dict[int, str] = {}
-    for br in _unpublished_branches(repo_root, config, prefix):
+    out: Dict[int, Tuple[str, OffOrigin]] = {}
+    for br, why in _branches_off_origin(repo_root, config, prefix).items():
         num = _branch_item_number(br, prefix)
         if num is not None:
-            out.setdefault(num, br)
+            out.setdefault(num, (br, why))
     return out
 
 
@@ -15862,17 +15994,32 @@ def cmd_status(args: argparse.Namespace) -> int:
                   f"{again}")
 
     branches = _list_claim_branches(repo_root, prefix)
-    # Guarded the way `run_checks` guards it: two git spawns are not worth
+    # Guarded the way `run_checks` guards it: a git spawn is not worth
     # paying on every `status` in the common "claims: none" case, and the
     # windows leg spends ~13x on a spawn (issue #74).
-    unpublished = (set(_unpublished_branches(repo_root, config, prefix))
-                   if branches else set())
+    off_origin = (_branches_off_origin(repo_root, config, prefix)
+                  if branches else {})
+
+    def _gone_note(br: str) -> str:
+        """The note for a branch origin had and deleted (issue #364), or ''."""
+        why = off_origin.get(br)
+        if why is None or why.kind == OFF_ORIGIN_UNPUBLISHED:
+            return ""
+        if why.kind == OFF_ORIGIN_GONE_LANDED:
+            return (f" — deleted on origin, all of it already in {why.where} "
+                    f"('{_gc_merged_hint(why.where, config)}' deletes it)")
+        return (f" — DELETED ON ORIGIN BEFORE ITS WORK LANDED: this checkout "
+                f"may hold the only copy")
+
+    unpublished = {br for br, why in off_origin.items()
+                   if why.kind == OFF_ORIGIN_UNPUBLISHED}
     if branches:
         for br in branches:
             num = _branch_item_number(br, prefix)
             if num is None:
                 kind = "queue branch" if _is_queue_branch(br, prefix) else "unrecognised"
-                extra = " — NOT on origin" if br in unpublished else ""
+                extra = (" — NOT on origin" if br in unpublished
+                         else _gone_note(br))
                 print(f"  branch: {br} ({kind} — not an item claim){extra}")
                 continue
             st = item_status.get(num, "planned")
@@ -15890,6 +16037,7 @@ def cmd_status(args: argparse.Namespace) -> int:
                 note += (f" — NOT on origin: the claim's push did not land, so "
                          f"no other checkout can see this claim "
                          f"('git push -u origin {br}' to publish it)")
+            note += _gone_note(br)
             print(f"  claim: {br} (item {num:03d}: {st}){note}")
     else:
         print("  claims: none")
@@ -17017,7 +17165,9 @@ def register_git_subcommands(sub) -> None:
             "\"none left\" (nothing open, no gate) carries no such line. An "
             "unpublished claim \u2014 a claim branch origin has never seen "
             "\u2014 exits 1 with how to publish or release it, whether or not "
-            "a gate holds the rest. "
+            "a gate holds the rest. A claim branch origin had and has since "
+            "deleted exits 1 the same way, named as already in its base or "
+            "as deleted before its work landed, and is never advised a push. "
             "A human-gates row it "
             "cannot read holds every item, since what it blocks is unknown: "
             "the report names the row and exits 1. A missing insights.md "
