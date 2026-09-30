@@ -19,6 +19,11 @@ Retiring long-Done items is part of the default pass, governed by the one
 the issue — but it decides what the *next* triage can see, so run --dry-run
 first and show the list.
 
+Only the items that must move are moved: the longest run of the board already
+in target order stays put, and every other item is placed once, after its
+target predecessor. Rewriting all ~150 positions took over two minutes, one
+`gh` spawn per item, when the typical pass needs a dozen moves.
+
 Idempotent, and a fixpoint: a second run over an ordered board with nothing
 newly stale issues no mutations, and an interrupted run is finished by
 re-running it.
@@ -234,6 +239,54 @@ def retire(gh: str, items: list[dict], days: int, dry_run: bool) -> list[dict]:
     return remaining
 
 
+def stays_put(ranks: list[int]) -> set[int]:
+    """Indexes into `ranks` forming one longest strictly increasing run.
+
+    `ranks[k]` is the target position of the item now at position k. The
+    items of an increasing run are already in target order relative to each
+    other, so they need no move; the longest such run leaves the fewest to
+    move. Patience sorting, O(n log n).
+    """
+    tails: list[int] = []            # tails[L] = index ending the best run of length L+1
+    back: list[int | None] = []      # back[k] = index before k in its run
+    for k, r in enumerate(ranks):
+        lo, hi = 0, len(tails)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if ranks[tails[mid]] < r:
+                lo = mid + 1
+            else:
+                hi = mid
+        back.append(tails[lo - 1] if lo else None)
+        if lo == len(tails):
+            tails.append(k)
+        else:
+            tails[lo] = k
+    keep: set[int] = set()
+    k = tails[-1] if tails else None
+    while k is not None:
+        keep.add(k)
+        k = back[k]
+    return keep
+
+
+def plan_moves(current: list[dict], desired: list[dict]) -> list[tuple[dict, dict | None]]:
+    """The fewest (item, after) moves that turn `current` into `desired`.
+
+    Moves are listed in target order and each puts an item right after its
+    target predecessor (None: the top). That predecessor is either an item
+    that stays put or one moved earlier in the list, and no staying item can
+    sit between an item's target predecessor and its target successor — the
+    ranks between them all belong to moved items — so each move lands where
+    the target order wants it.
+    """
+    rank = {item["id"]: n for n, item in enumerate(desired)}
+    keep = {current[k]["id"]
+            for k in stays_put([rank[i["id"]] for i in current])}
+    return [(item, desired[n - 1] if n else None)
+            for n, item in enumerate(desired) if item["id"] not in keep]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true",
@@ -275,39 +328,36 @@ def main() -> int:
         print("board already in order — nothing to reorder")
         return 0
 
-    # 1-based, to match the board's own numbering: an unchanged item can sit
-    # between two changed ones, so a 0-based index printed as a "position"
-    # names the row above the one that actually moves.
-    moved = [(n + 1, i) for n, (i, j) in enumerate(zip(desired, current))
-             if i["id"] != j["id"]]
-    print(f"{len(moved)} of {len(current)} positions change; "
-          "the pass rewrites every position to be deterministic.\n")
-    for pos, item in moved[:20]:
-        print(f"  -> {pos:>3} [{names[bucket(item)]:<9}] {label(item)}")
-    if len(moved) > 20:
-        print(f"  … and {len(moved) - 20} more")
+    moves = plan_moves(current, desired)
+    # 1-based target position, to match the board's own numbering.
+    where = {item["id"]: n + 1 for n, item in enumerate(desired)}
+    print(f"{len(moves)} of {len(current)} items move; the rest are already "
+          "in order relative to each other and stay put.\n")
+    for item, _ in moves[:20]:
+        print(f"  -> {where[item['id']]:>3} [{names[bucket(item)]:<9}] "
+              f"{label(item)}")
+    if len(moves) > 20:
+        print(f"  … and {len(moves) - 20} more")
 
     if args.dry_run:
         print("\n--dry-run: nothing written")
         return 0
 
     print()
-    after: str | None = None
-    for pos, item in enumerate(desired):
+    for done, (item, after) in enumerate(moves):
         argv = [args.gh, "api", "graphql", "-f", f"query={MOVE}",
                 "-f", f"p={PROJECT_ID}", "-f", f"i={item['id']}"]
         if after is not None:
-            argv += ["-f", f"a={after}"]
+            argv += ["-f", f"a={after['id']}"]
         try:
             run(argv)
         except (SystemExit, KeyboardInterrupt):
             sys.stdout.flush()
-            print(f"\nboard partially reordered — {pos} of {len(desired)} "
-                  "placed; re-run to finish, the pass is a fixpoint",
+            print(f"\nboard partially reordered — {done} of {len(moves)} "
+                  "moved; re-run to finish, the pass is a fixpoint",
                   file=sys.stderr)
             raise
-        after = item["id"]
-        print(f"  {pos + 1}/{len(desired)} {label(item)}")
+        print(f"  {done + 1}/{len(moves)} {label(item)}")
 
     print("\nreordered")
     return 0
