@@ -12,23 +12,51 @@ on:
 jobs:
   pytest:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    env:
+      # Test modules Windows proves nothing about: every Windows job skips
+      # them, the ubuntu job runs them. The rule deciding which modules may
+      # be here, and each one's reason, are tests/test_ci_shards.py's
+      # UBUNTU_ONLY — which fails when this list and that one disagree.
+      UBUNTU_ONLY: >-
+        --ignore=core/scripts/tests/test_aide_base.py
+        --ignore=core/scripts/tests/test_aide_queue_pr.py
+        --ignore=core/scripts/tests/test_aide_restack.py
     strategy:
       fail-fast: false
       matrix:
-        # Ubuntu runs the whole suite in one job (a bare `pytest`, ~20s).
-        # Windows pays ~70ms per subprocess spawn (issue #74), so its leg is
-        # split into one job per group of pytest.ini testpaths roots.
-        # tests/test_ci_shards.py pins the shards to exactly cover testpaths —
-        # a new test root added there must be added to a shard here too.
+        # Ubuntu runs the whole suite in one job: a bare `pytest`, ~100s of
+        # tests (~2 min a job). The suite is mostly process spawning, almost
+        # all git, and a spawn costs ~13x more on Windows (issue #74) — the git
+        # modules run 8-21x slower there, and the old two-shard split let one
+        # Windows job reach ~13 min (issue #358). So the Windows leg skips
+        # UBUNTU_ONLY and splits the rest by measured test time (seconds, last
+        # green main run before #358): fixture consumer 326; git 103 +
+        # merge_inherited 81 + status_stack 75; the rest ~255. Each job adds
+        # ~30-60s of setup. "the rest" names every testpaths root, so a new
+        # module runs on Windows with no edit here, and --ignores each file a
+        # shard above names. tests/test_ci_shards.py pins that every test
+        # module runs in exactly one Windows shard, unless it is UBUNTU_ONLY.
         include:
           - os: ubuntu-latest
+            shard: whole suite
             tests: ""
           - os: windows-latest
-            tests: "core"
+            shard: fixture consumer
+            tests: "tests/test_fixture_consumer.py"
           - os: windows-latest
-            tests: "adapters tests"
+            shard: engine git verbs
+            tests: "core/scripts/tests/test_aide_git.py
+                    core/scripts/tests/test_aide_merge_inherited.py
+                    core/scripts/tests/test_aide_status_stack.py"
+          - os: windows-latest
+            shard: the rest
+            tests: "core adapters tests
+                    --ignore=tests/test_fixture_consumer.py
+                    --ignore=core/scripts/tests/test_aide_git.py
+                    --ignore=core/scripts/tests/test_aide_merge_inherited.py
+                    --ignore=core/scripts/tests/test_aide_status_stack.py"
     runs-on: ${{ matrix.os }}
-    name: pytest (${{ matrix.os }}) ${{ matrix.tests }}
+    name: pytest (${{ matrix.os }}) ${{ matrix.shard }}
     steps:
       # The windows-latest image already ships Defender with real-time
       # scanning disabled and C:\ + D:\ excluded (runner-images'
@@ -63,4 +91,4 @@ jobs:
         with:
           python-version: "3.x"
       - run: pip install pytest
-      - run: pytest ${{ matrix.tests }}
+      - run: pytest ${{ matrix.tests }} ${{ runner.os == 'Windows' && env.UBUNTU_ONLY || '' }}
