@@ -136,6 +136,32 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.25.1] — 2026-09-30
+
+### Fixed
+
+- **An `aide merge` re-run after a failed push no longer appends a second
+  ledger row for the same item (issue #346).** When the tick's commit landed
+  and only the `git push` after it failed, nothing was put back — #312's
+  restore covers a commit that does not happen — so the re-run the message
+  invites appended the row again, in a `progress(aide): item NNN -> done`
+  commit of its own, and that second row was wrong in three cells: Tests and
+  Files read 0, the claim branch's diff against its base being empty once
+  merged, and `Suite s` was the re-run's own suite time rather than the
+  validated run. §1 → `ledger.md` says one row per merge. Before appending,
+  the merge now reads whether the item is already ✅ on every bullet and the
+  ledger already holds a `merged` row for it on its queue; if both, it
+  appends nothing and says `ledger row for item NNN already recorded
+  (ledger.md:N) — not appended`, so the re-run makes no commit and retries only the push. A
+  reopened item still takes its second row: `aide progress reopen` sends it
+  back to 📋, so it is never ✅ when it merges again. An item ticked by hand
+  ahead of its merge still takes its first row, since there is no `merged`
+  row to find. The tick itself was already a no-op on the re-run, the
+  inherited-failures entry already skips failures an open entry names, and a
+  CI reopening's gap is ticked once, so the row was the one write that
+  doubled. Deduplicating on the row alone was rejected: it would drop the
+  second row §1 asks for after a reopen. `aide merge -h` says so.
+
 ## [2.25.0] — 2026-09-29
 
 ### Added

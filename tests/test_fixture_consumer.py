@@ -1282,6 +1282,40 @@ def test_a_merge_whose_tick_cannot_be_committed_refuses_and_the_re_run_lands(
         assert not _remote_has(consumer, branch)
 
 
+def test_a_merge_re_run_after_a_failed_push_writes_no_second_ledger_row(
+        aide, consumer: Path, tmp_path: Path):
+    """Issue #346: the tick's commit lands and only the push fails, so nothing
+    is put back and the re-run finds the ✅ and the row already there. It used
+    to append a second row for the one merge — Tests and Files 0, the claim
+    branch's diff being empty once merged — in a commit of its own. Now the
+    re-run pushes what the first run committed and writes nothing."""
+    _with_origin(consumer, tmp_path)
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    branch = "aide/001-the-greeter"
+    # Fetches still reach origin; only pushes are sent somewhere that is not.
+    _git(["remote", "set-url", "--push", "origin",
+          str(tmp_path / "missing.git")], consumer)
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    assert _item_status(aide, consumer, 1) == "complete"
+    assert branch in _branches(consumer)
+    assert len(_ledger_rows(aide, consumer)) == 1
+    ticked = _sha(consumer, "main")
+
+    _git(["config", "--unset", "remote.origin.pushurl"], consumer)
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--base", "main",
+                      "--no-test"]) == 0
+
+    rows = _ledger_rows(aide, consumer)
+    assert len(rows) == 1 and rows[0]["Tests"] == "1"
+    assert _sha(consumer, "main") == ticked         # no second tick commit
+    assert _git(["ls-remote", "origin", "main"],
+                consumer).stdout.split()[0] == ticked
+    assert branch not in _branches(consumer) and not _remote_has(consumer, branch)
+    assert _clean(consumer)
+
+
 def test_check_warns_on_a_root_document_missing_its_mandatory_sections(
         aide, consumer: Path, capsys):
     """Issue #86: a vision written free-hand, missing every section its
