@@ -155,8 +155,9 @@ instead — that is the bump policy above, and it is enforced by
   way out; the queue-end step reports no forge and ends, as in `local` mode,
   and `/aide-run-roadmap` goes on without a queue PR. With `ci = "none"`:
   `status` prints `checks=-` beside the PR, and `await_run.py poll-ci`
-  answers at once with a new exit, 16, which `/aide-run-queue`'s table reads
-  as "CI: none declared" and a stop for the merge. `aide check` errors on
+  answers at once on a PR marked ready with a new exit, 16, which
+  `/aide-run-queue`'s table reads as "CI: none declared" and a stop for the
+  merge; a draft is still 15. `aide check` errors on
   either key outside its values, on `mode = "pr"` with `forge = "none"`, and
   on `ci = "pr"` with `forge = "none"`. The defaults are today's behaviour,
   so no consumer edits anything; `install.py` scaffolds both keys commented

@@ -173,7 +173,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
     "env": [
         # `dependency_report`: `pushes = mode != "local"` sets `needed_by` and
         # the refusal of the origin and gh lines alike.
-        # `dependency_report`: no gh line where `pushes and no_forge` (#355).
+        # `dependency_report`: no gh line under forge none, in any mode (#355).
         ("[git] forge = \"none\" declares no forge: gh is then not needed, "
          "and its line is left out",
          "test_aide_env_report::test_no_forge_needs_no_gh_and_leaves_its_line_out"),

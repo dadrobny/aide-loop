@@ -12489,7 +12489,7 @@ def dependency_report(repo_root: Path, config: Dict[str, Dict[str, object]],
     no_forge = declared_forge(config) == "none"
     # Out of a gh refusal's ways out under `pr`, which needs a forge.
     other = (' or [git] forge = "none"' if mode != "pr" else "")
-    if not offline and not (pushes and no_forge):
+    if not offline and not no_forge:
         try:
             gh = resolve_tool("gh", repo_root)
             misconfigured = None
@@ -16647,8 +16647,10 @@ class StackBranch(NamedTuple):
     Each field is one token of the ``stack N:`` line, spelled as printed:
     ``base`` the recorded base or ``?``; ``pr`` ``#N/open|draft|merged|closed``,
     ``#N/draft(fixing)``, ``none``, ``unknown`` (could not look) or ``-``
-    (local mode); ``checks`` ``none|pending|success|failure|unknown``, or
-    ``-`` with no PR to ask about; ``lower`` ``current``, ``moved``,
+    (local mode, or no forge declared); ``checks``
+    ``none|pending|success|failure|unknown``, or ``-`` with no PR to ask
+    about and beside one under ``[git] ci = "none"`` (no CI declared, the
+    one ``-`` beside a PR); ``lower`` ``current``, ``moved``,
     ``landed``, ``gone``, ``unknown`` or ``-`` (based on no queue branch);
     ``orphaned`` ``yes``, ``no``, ``unknown`` or ``-``. ``failing`` names
     each failed check and ``checks_why`` why checks are unknown; each is

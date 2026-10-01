@@ -175,8 +175,8 @@ This is the queue-end step `.aide/README.md` → *The queue-end step* defines
    | 12 | `unknown` | Report the `checks unknown:` reason and stop. |
    | 13 | — | No PR, a closed or merged one, or the branch is no longer an unmerged queue branch: report it. |
    | 15 | — | The PR is a draft. Plain `#N/draft`: `queue ready` did not take — run step 3 again, then restart the wait once; a second 15 is a stop. `#N/draft(fixing)`: a CI fix round is under way and its reopened items are still open — go back to **Loop** and claim them; a claim that offers none is reported, and the run stops. |
-   | 16 | `-` | `aide.toml` declares no CI (`[git] ci = "none"`). Report "CI: none declared" — not a failure: the merge gate already ran the suite — and stop for the merge as for 0; under `/aide-run-roadmap`, go back to its **Queue end** for the stack decision. |
    | 14 | `pending` | CI was still running after an hour: report it; a re-run of this section waits again. When the tail already names a `failing check:` beside the `pending check:` legs, report those failing lines too: they are known, so the user can start the **CI fix round** on them now or re-run the wait for the rest. |
+   | 16 | `-` | `aide.toml` declares no CI (`[git] ci = "none"`). Report "CI: none declared" — not a failure: the merge gate already ran the suite — and stop for the merge as for 0; under `/aide-run-roadmap`, go back to its **Queue end** for the stack decision. |
    | other | — | The poll itself broke (90 died, 91 stopped, 1 a crash): report the tail and stop. |
 
 6. **After an early ready**, stop whatever the answer — a red one runs no

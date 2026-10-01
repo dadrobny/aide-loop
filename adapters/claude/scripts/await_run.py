@@ -56,7 +56,7 @@ running (issue #332), and
 neither is ``checks=none`` until it has held for {grace} s, since just after a
 push or ``aide queue ready`` CI may not have registered a run; ``unknown`` is
 the answer once {unknown} readings in a row say it, since one failed ``gh``
-call is not. ``checks=-`` beside an open or draft PR is ``status`` saying
+call is not. ``checks=-`` beside an open PR is ``status`` saying
 ``[git] ci = "none"`` declares no CI, and answers at once: ``aide.toml`` has
 one reader, the engine (issue #355). It gives up after {ceiling} s. Its log
 is the stack line and the ``failing check:`` / ``pending check:`` / ``checks unknown:`` / ``ci fix
@@ -94,7 +94,7 @@ Exit codes:
                         with a leg still running included
     {draft}                  the PR is a draft (pr=#N/draft…, (fixing) included),
                         so CI that skips drafts has nothing to run
-    {none_declared}                  checks=- on an open or draft PR: aide.toml declares
+    {none_declared}                  checks=- on an open PR: aide.toml declares
                         no CI ([git] ci = "none"), so there is none to wait on
 
 None of 64, 75 or 90–93 is a code pytest (0–5), ``aide merge`` or ``ci``
@@ -397,16 +397,18 @@ def poll_ci(branch: str, read_status, *, interval: float = CI_INTERVAL,
             print(f"ci: PR {pr} is {state}, so there is no CI to wait on",
                   flush=True)
             return CI_NO_PR
-        # `checks=-` beside a PR is `status` saying no CI is declared — it
-        # prints a CI state for every PR it can ask about otherwise (#355).
-        if checks == "-" and (state == "open" or state.startswith("draft")):
-            print(f"ci: none declared — aide.toml's [git] ci = \"none\", so "
-                  f"PR {pr} has no CI to wait on", flush=True)
-            return CI_NONE_DECLARED
         if state.startswith("draft"):
             print(f"ci: PR {pr} is a draft, not marked ready, so CI that skips "
                   f"drafts will not run on it", flush=True)
             return CI_DRAFT
+        # `checks=-` beside a PR is `status` saying no CI is declared — it
+        # prints a CI state for every PR it can ask about otherwise (#355).
+        # A draft answered above: one `queue ready` did not take, or one a
+        # fix round reopened, is never "stop for the merge".
+        if checks == "-" and state == "open":
+            print(f"ci: none declared — aide.toml's [git] ci = \"none\", so "
+                  f"PR {pr} has no CI to wait on", flush=True)
+            return CI_NONE_DECLARED
         if checks == "success":
             print("ci: success", flush=True)
             return CI_SUCCESS

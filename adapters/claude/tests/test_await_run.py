@@ -381,13 +381,20 @@ def test_a_draft_is_its_own_answer_not_a_lasting_none(pr, capsys):
     assert "is a draft" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("pr", ["#7/open", "#7/draft", "#7/draft(fixing)"])
-def test_no_ci_declared_answers_at_once_not_after_the_grace(pr, capsys):
+def test_no_ci_declared_answers_at_once_not_after_the_grace(capsys):
     """#355: `status` prints `checks=-` beside a PR only under `[git] ci =
     "none"`; that is the answer, not a lasting `none` to wait out."""
-    assert _poll([_stack("-", pr)], grace=300) == (ar.CI_NONE_DECLARED, 1)
+    assert _poll([_stack("-", "#7/open")], grace=300) == (
+        ar.CI_NONE_DECLARED, 1)
     assert capsys.readouterr().out.strip().splitlines()[-1].startswith(
         "ci: none declared")
+
+
+@pytest.mark.parametrize("pr", ["#7/draft", "#7/draft(fixing)"])
+def test_no_ci_declared_still_reads_a_draft_as_a_draft(pr):
+    """A draft under `ci = "none"` is a `queue ready` that did not take, or a
+    fix round's reopened items: 15, never 16's "stop for the merge"."""
+    assert _poll([_stack("-", pr)], grace=300) == (ar.CI_DRAFT, 1)
 
 
 def test_ci_gives_up_pending_at_the_ceiling():

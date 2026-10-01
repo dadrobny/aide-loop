@@ -131,11 +131,13 @@ def test_a_pushing_mode_without_gh_is_refused(tmp_path: Path, capsys,
 _real_resolve = aide.resolve_tool
 
 
+@pytest.mark.parametrize("mode", ["auto-merge", "local"])
 def test_no_forge_needs_no_gh_and_leaves_its_line_out(
-        tmp_path: Path, capsys, monkeypatch, logged_in):
+        tmp_path: Path, capsys, monkeypatch, logged_in, mode):
     """Issue #355: `auto-merge` pushing to a remote with no GitHub behind
-    it — origin is still needed, gh is neither asked nor listed."""
-    repo = _repo(tmp_path, mode="auto-merge", origin=True)
+    it — origin is still needed, gh is neither asked nor listed; under
+    `local` the line is left out too, not listed as unneeded."""
+    repo = _repo(tmp_path, mode=mode, origin=True)
     with (repo / "aide.toml").open("a", encoding="utf-8") as f:
         f.write('forge = "none"\n')
     monkeypatch.setattr(aide, "resolve_tool", lambda name, root: (
