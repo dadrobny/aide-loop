@@ -445,12 +445,27 @@ def _local_tools(repo_root: Path) -> Dict[str, object]:
         parse = _parse_toml
     table: List[str] = []
     inside = False
+    top_level = True
     for line in text.splitlines():
-        header = re.match(r"\s*\[\s*([^\]]*?)\s*\]", line)
-        if header and not re.match(r"\s*\[\[", line):
-            inside = header.group(1) == "tools"
-        elif re.match(r"\s*\[\[", line):
-            inside = False
+        header = re.match(r"\s*\[(\[?)\s*([^\]]*?)\s*\]", line)
+        if header:
+            top_level = False
+            name = header.group(2)
+            inside = name == "tools" and not header.group(1)
+            if inside:
+                # Canonical, so the 3.9 reader — which knows only a bare
+                # `[name]` line — sees the header a trailing comment hides.
+                table.append("[tools]")
+                continue
+            if name.strip("\"'") == "tools":
+                raise ToolMisconfigured(
+                    f"{LOCAL_CONFIG.as_posix()}: {line.strip()} is not the "
+                    f"[tools] table — write it as [tools] with one key per "
+                    f"program")
+        elif top_level and re.match(r"\s*[\"']?tools[\"']?\s*[.=]", line):
+            raise ToolMisconfigured(
+                f"{LOCAL_CONFIG.as_posix()}: {line.strip()} is not the [tools] "
+                f"table — write it as [tools] with one key per program")
         if inside:
             table.append(line)
     if not table:
@@ -461,12 +476,7 @@ def _local_tools(repo_root: Path) -> Dict[str, object]:
         raise ToolMisconfigured(f"{LOCAL_CONFIG.as_posix()} is malformed "
                                 f"({exc}), so where its [tools] table puts a "
                                 f"program is unknown — fix it") from None
-    tools = parsed.get("tools", {})
-    if not isinstance(tools, dict):
-        raise ToolMisconfigured(f"{LOCAL_CONFIG.as_posix()}: tools is not a "
-                                f"table — write it as [tools] with one key per "
-                                f"program")
-    return tools
+    return parsed.get("tools", {})
 
 
 def _has_directory(command: str) -> bool:
@@ -474,6 +484,19 @@ def _has_directory(command: str) -> bool:
     return (os.path.isabs(command) or "/" in command
             or (os.sep != "/" and os.sep in command)
             or bool(os.altsep and os.altsep in command))
+
+
+def _pathext_file(path: str) -> Optional[str]:
+    """*path* with the first PATHEXT suffix that names a file, or None.
+
+    `shutil.which` applies PATHEXT to a path only from Python 3.12, so on an
+    older Windows interpreter `C:/tools/gh` would miss the `gh.exe` beside
+    it — and `gh-2.40` its `gh-2.40.exe`: a dot is not always a suffix.
+    """
+    for ext in os.environ.get("PATHEXT", ".EXE;.CMD;.BAT").split(os.pathsep):
+        if ext and os.path.isfile(path + ext):
+            return path + ext
+    return None
 
 
 def resolve_tool(name: str, repo_root: Path) -> Optional[str]:
@@ -504,13 +527,8 @@ def resolve_tool(name: str, repo_root: Path) -> Optional[str]:
         if not where.is_absolute():
             where = Path(repo_root) / where
         found = shutil.which(str(where))
-        if found is None and os.name == "nt" and not where.suffix:
-            # `which` applies PATHEXT to a path only from Python 3.12, so
-            # `C:/tools/gh` names the `gh.exe` beside it here as it does there.
-            for ext in os.environ.get("PATHEXT", ".EXE;.CMD;.BAT").split(";"):
-                if ext and Path(str(where) + ext).is_file():
-                    found = str(where) + ext
-                    break
+        if found is None and os.name == "nt":
+            found = _pathext_file(str(where))
     else:
         where = None
         found = shutil.which(command)

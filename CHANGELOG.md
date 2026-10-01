@@ -158,7 +158,8 @@ instead — that is the bump policy above, and it is enforced by
   check` still runs and names it in its git warning. A `[tools]` table that
   cannot be parsed is refused the same way, by the verbs that run `git` or
   `gh` and by no other; only that table is parsed, so the other tables keep
-  the hooks' lenient reading. `[tools] python` sets the interpreter the engine
+  the hooks' lenient reading, and `tools` written any other way (`tools.gh =`,
+  an inline table, `[[tools]]`) is refused rather than read as unset. `[tools] python` sets the interpreter the engine
   prints in its suggested commands (`python3 .aide/scripts/aide.py gc`); it
   runs nothing, and the control files, the allow-list and `-h` keep saying
   `python` — on a host with only `python3`, put a `python` on PATH (a shim,

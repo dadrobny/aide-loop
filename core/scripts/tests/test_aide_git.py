@@ -2490,6 +2490,34 @@ def test_only_the_tools_table_is_parsed(tmp_path: Path):
     assert aide.resolve_tool("gh", tmp_path) == shutil.which("gh")
 
 
+@pytest.mark.parametrize("header", ["[tools] # this machine", "[ tools ]"])
+def test_a_tools_header_either_reader_accepts_is_read(tmp_path: Path, header: str):
+    _local_tools(tmp_path, f"{header}\ngh = '{sys.executable}'\n")
+    assert _same_file(aide.resolve_tool("gh", tmp_path), Path(sys.executable))
+
+
+@pytest.mark.parametrize("body", ["tools = { gh = 'x' }\n", "tools.gh = 'x'\n",
+                                  "[[tools]]\ngh = 'x'\n", "[\"tools\"]\ngh = 'x'\n"])
+def test_tools_written_other_than_as_its_table_is_refused(tmp_path: Path, body: str):
+    """Read as "nothing configured", these would fall back to PATH behind a
+    key someone wrote."""
+    _local_tools(tmp_path, body)
+    with pytest.raises(aide.ToolMisconfigured, match="is not the \\[tools\\] table"):
+        aide.resolve_tool("gh", tmp_path)
+
+
+@pytest.mark.parametrize("name", ["gh", "gh-2.40"])
+def test_a_configured_path_finds_its_pathext_file(tmp_path: Path, monkeypatch,
+                                                  name: str):
+    """What the resolver adds on Windows, where `which` applies PATHEXT to a
+    path only from 3.12 — whether or not the name already holds a dot."""
+    (tmp_path / f"{name}.EXE").write_text("", encoding="utf-8")
+    monkeypatch.setenv("PATHEXT", os.pathsep.join([".COM", ".EXE"]))
+    where = str(tmp_path / name)
+    assert aide._pathext_file(where) == where + ".EXE"
+    assert aide._pathext_file(str(tmp_path / "absent")) is None
+
+
 def test_tools_python_is_the_interpreter_suggested_commands_print(tmp_path: Path):
     _local_tools(tmp_path, '[tools]\npython = "python3"\n')
     assert aide.aide_command(tmp_path, "gc") == "python3 .aide/scripts/aide.py gc"
