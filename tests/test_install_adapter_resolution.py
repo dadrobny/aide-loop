@@ -138,10 +138,10 @@ def test_the_engine_wins_over_a_decoy_aide_on_the_path_and_in_sys_modules(
     target = _target(tmp_path, "copilot")
     saved_path = list(sys.path)
     saved_mod = sys.modules.get("aide")
-    saved_cache = install._ENGINE_LOAD_CONFIG
+    saved_cache = install._ENGINE
     sys.path.insert(0, str(decoy_dir))
     sys.modules["aide"] = decoy_mod
-    install._ENGINE_LOAD_CONFIG = None   # force a real load, not a warm cache
+    install._ENGINE = None   # force a real load, not a warm cache
     try:
         assert install.resolve_adapter(target, None) == ("copilot", None)
     finally:
@@ -151,7 +151,7 @@ def test_the_engine_wins_over_a_decoy_aide_on_the_path_and_in_sys_modules(
         sys.modules.pop("aide", None)
         if saved_mod is not None:
             sys.modules["aide"] = saved_mod
-        install._ENGINE_LOAD_CONFIG = saved_cache
+        install._ENGINE = saved_cache
 
 
 def test_a_missing_engine_file_falls_back_rather_than_crashing(tmp_path: Path,
@@ -159,7 +159,7 @@ def test_a_missing_engine_file_falls_back_rather_than_crashing(tmp_path: Path,
     """The readers fall back on any exception; the loader must raise a *named*
     one rather than an AttributeError from an unusable spec."""
     monkeypatch.setattr(install, "FRAMEWORK_ROOT", tmp_path / "nowhere")
-    monkeypatch.setattr(install, "_ENGINE_LOAD_CONFIG", None)
+    monkeypatch.setattr(install, "_ENGINE", None)
     assert install.resolve_adapter(_target(tmp_path, "copilot"),
                                    None) == (install.DEFAULT_ADAPTER, None)
     assert install._project_scope(tmp_path) == ("src", "tests")

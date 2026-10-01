@@ -118,7 +118,9 @@ python .aide/scripts/aide.py {check, scope, progress, gate, queue, insights, led
   version and kind.
 - **claim** — pick + claim the next unclaimed item (the recon step; not an agent).
 - **merge** — merge a validated item per `git.mode`, re-run tests, clean up.
-- **env** — venv existence / import check (+ bootstrap).
+- **env** — what this machine has for the project's configuration — git, the
+  repository, `origin`, `gh`, the test command, Python, the venv — refusing a
+  requirement the configuration needs and the machine lacks (+ venv bootstrap).
 - **sync** — session preflight: fetch, clean-tree check, land on the right branch.
 - **gc** — delete claim branches whose work has landed (dry-run by default).
 - **status** — one-call roadmap-state report: branch + divergence, derived queue

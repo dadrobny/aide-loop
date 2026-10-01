@@ -136,6 +136,61 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.30.0] — 2026-10-01
+
+### Added
+
+- **`aide env` reports what this machine has for the project's configuration,
+  and refuses a requirement the configuration needs and the machine lacks
+  (issue #354).** Nothing said whether a machine could run what `aide.toml`
+  asked for, so a missing requirement was found mid-run by whichever verb met
+  it first — worst, `auto-merge` with no `origin`: `merge` did all of its
+  local work, ticked ✅, then failed at the push on every retry. `env` now
+  prints one line per requirement — git (its version, and whether it has the
+  `merge-tree --write-tree` `gc` uses, 2.38+, and the `--merge-base` `queue
+  restack` uses, 2.40+), the repository and whether `aide.toml` is at its top
+  level, `origin`, `gh` and whether `gh auth status` confirms a login, the
+  test command's program, the interpreter the engine runs on and the one its
+  suggestions print (`[tools] python`), and the venv as before — with what
+  was found and which setting needs it. `origin` and `gh` are needed under
+  every `[git] mode` but `local`. A requirement needed and missing is a
+  refusal naming the setting and the two ways out, e.g. `[git] mode =
+  "auto-merge" in aide.toml needs a remote named origin — add one ('git
+  remote add origin <url>'), or set [git] mode = "local"`, and `env` exits 1;
+  nothing lowers the mode to fit the machine. `env --bootstrap` still builds
+  the venv and answers for the venv alone, so a validator bootstrapping a
+  suite runner is not failed by a `gh` login it does not need. §4 states the
+  rule; `aide env -h` states each line.
+- **`[python] venv = ""` says the project keeps no venv.** `env` leaves the
+  venv line out instead of failing a non-Python project forever, `env
+  --bootstrap` refuses, and a leading `python` in the test command is no
+  longer bound to a venv at the repository root. The scaffolded `aide.toml`
+  names the key in a comment.
+- **The installer reports what the target lacks, and offers `local` where
+  there is no `origin`.** After writing — install and `--update` alike — it
+  runs the offline half of the same report through the engine it already
+  loads by path, so the two cannot disagree, and prints each missing
+  requirement as a warning: a target that is not a repository, `auto-merge`
+  or `pr` with no `origin`, a test command this machine cannot run. The exit
+  code is unchanged. The interactive `git.mode` prompt defaults to `local` on
+  a target with no `origin` and says why; `--yes` keeps `auto-merge`, and the
+  report warns.
+
+### Changed
+
+- **`aide check` errors on a requirement of the configuration this machine
+  lacks that is decided offline** — git, the repository, `origin` under a
+  mode other than `local`, the test command's program — worded as `env`
+  words it, wherever an `aide.toml` is present (a repo with none still gets
+  only the lints). `gh`'s login, the interpreter and the venv stay `env`'s.
+  With git off PATH the check still judges every document and still warns
+  about what it could not read, as since 2.28.2, and now also fails on the
+  missing git. **A consumer whose `aide check` runs on a machine without a
+  remote under `auto-merge` or `pr`, or with a test command that machine
+  cannot run, now fails it: add the remote or set `[git] mode = "local"`,
+  and install the runner, build the venv, or fix `[python] test_command`.**
+  `aide merge`'s document gate is unchanged and does not run these checks.
+
 ## [2.29.0] — 2026-10-01
 
 ### Added

@@ -23,7 +23,7 @@ Subcommands::
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
     python .aide/scripts/aide.py test                  # run the suite, recorded for merge to reuse
     python .aide/scripts/aide.py merge NNN [--base R]  # merge a validated item per git.mode
-    python .aide/scripts/aide.py env                   # venv existence / import check + bootstrap
+    python .aide/scripts/aide.py env                   # dependency report (git, origin, gh, runner, venv) + bootstrap
     python .aide/scripts/aide.py sync [--item NNN]     # preflight: fetch, clean-tree check, right branch
     python .aide/scripts/aide.py gc [--merged] [--yes] # delete claim branches whose work landed
     python .aide/scripts/aide.py status                # one-call roadmap-state report
@@ -7393,8 +7393,10 @@ def git(args: List[str], repo_root: Path, check: bool = True) -> subprocess.Comp
 #: Set by `aide check` alone, for its one run, when git is not on PATH: a
 #: missing git then reads as a git that failed — no repository, no branches,
 #: no history — instead of `GitMissing`. The check is the documents' verdict,
-#: and it has passed in a repository whose git is off PATH since 1.26.0; what
-#: it could not look at is said in one warning, never passed over.
+#: and it has judged them in a repository whose git is off PATH since 1.26.0;
+#: what it could not look at is said in one warning, never passed over. That
+#: aide.toml needs a git this machine lacks is a separate error, from the
+#: dependency report (issue #354).
 _GIT_OPTIONAL = False
 
 #: `git_toplevel`'s answers, by repo root, for one invocation: `main` clears
@@ -8241,6 +8243,13 @@ def cmd_check(args: argparse.Namespace) -> int:
             in_repository(repo_root)
         except MissingTool as exc:
             git_problem = str(exc)
+    # What the committed configuration needs of this machine and it lacks,
+    # decided offline (issue #354). Asked before git turns optional below,
+    # so a repository git refuses is git's own words here too. Only where
+    # an aide.toml is there: the check also lints repos with no AIDE
+    # configuration, whose defaults nobody committed.
+    machine_errors = (dependency_errors(repo_root, config)
+                      if (repo_root / "aide.toml").is_file() else [])
     _GIT_OPTIONAL = git_problem is not None
     try:
         # Before the checks, so the file they then shape-check is the one that
@@ -8248,6 +8257,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         # the same breath would be reporting on two different repositories.
         ensure_insights_inbox(repo_root, config, verb="check")
         errors, warnings = run_checks(repo_root, config)
+        errors.extend(machine_errors)
         if git_problem is not None:
             warnings.append(f"{git_problem}, so nothing that reads git was "
                             f"checked — stale claim branches, insight citations' "
@@ -9369,7 +9379,8 @@ def _commit_docs_files(repo_root: Path, config, message: str,
     to "modified" or "untracked" rather than "staged": ``aide sync`` refuses
     either, but a caller can say which and why. A ``git`` that cannot be run
     at all is a reason, not a traceback; ``check`` in particular must keep
-    passing in a repo whose ``git`` is off PATH, as it did before 1.26.0.
+    judging the documents in a repo whose ``git`` is off PATH, as it did
+    before 1.26.0.
 
     *pull* rebases the new commit onto the upstream **afterwards**, which is
     right for an edit to a file other machines also edit (a tick, an archive)
@@ -12111,11 +12122,18 @@ def venv_python(repo_root: Path, config: Dict[str, Dict[str, object]]) -> Path:
     return venv / "bin" / "python"
 
 
+def has_venv(config: Dict[str, Dict[str, object]]) -> bool:
+    """Does this project keep a venv? ``[python] venv = ""`` says it does not
+    (issue #354): a project in another language, whose `aide env` would
+    otherwise fail forever on a venv nobody meant to build."""
+    return bool(str(config["python"].get("venv", ".venv") or "").strip())
+
+
 def resolve_test_command(repo_root: Path, config: Dict[str, Dict[str, object]]) -> List[str]:
     """The configured test command, with a leading ``python`` bound to the venv."""
     raw = str(config["python"].get("test_command", "python -m pytest")).split()
     vpy = venv_python(repo_root, config)
-    if raw and raw[0] == "python" and vpy.exists():
+    if raw and raw[0] == "python" and has_venv(config) and vpy.exists():
         return [str(vpy), *raw[1:]]
     return raw
 
@@ -12252,6 +12270,251 @@ def env_status(repo_root: Path, config: Dict[str, Dict[str, object]]) -> str:
     return env_report(repo_root, config)[0]
 
 
+# --------------------------------------------------------------------------- #
+# the dependency report — what this machine has for what the config asks
+# --------------------------------------------------------------------------- #
+class Requirement(NamedTuple):
+    """One line of `aide env`'s dependency report (issue #354).
+
+    ``needed_by`` is what makes the requirement one — ``"always"``, or the
+    setting that asks for it (``[git] mode = "pr"``) — and ``None`` where the
+    configuration does not need it. ``refusal`` is the sentence for a
+    requirement the configuration needs and this machine lacks, naming the
+    setting and the two ways out: meet it, or change the setting. Never an
+    adaptation: nothing here lowers a mode to fit the machine. ``in_check``
+    marks the four `aide check` also errors on — git, the repository,
+    `origin`, the test command — decidable offline and about the project; a
+    gh login needs the network, and the interpreter and venv are `env`'s own.
+    """
+    name: str
+    found: str
+    needed_by: Optional[str]
+    refusal: Optional[str] = None
+    in_check: bool = False
+
+
+def origin_url(repo_root: Path) -> Optional[str]:
+    """The URL of the remote named ``origin``, or None when there is none."""
+    res = git(["remote", "get-url", "origin"], repo_root, check=False)
+    url = res.stdout.strip()
+    return url if res.returncode == 0 and url else None
+
+
+def _version_text(repo_root: Path) -> Optional[str]:
+    """git's own version string (``2.43.0``), or None when unreadable."""
+    out = git(["--version"], repo_root, check=False).stdout
+    m = re.search(r"\d+\.\d+(?:\.\d+)?", out)
+    return m.group(0) if m else None
+
+
+def _git_requirement(repo_root: Path, offline: bool
+                     ) -> Tuple[Requirement, bool]:
+    """The git line, and whether git can be run for the lines after it.
+    *offline* leaves the version out: it decides no refusal, and a check
+    pays for every spawn."""
+    try:
+        exe = resolve_tool("git", repo_root)
+    except ToolMisconfigured as exc:
+        return Requirement("git", "not run", "always", str(exc), True), False
+    if exe is None:
+        return Requirement(
+            "git", "not on PATH", "always",
+            "git is not on PATH — every claim, merge and document edit is "
+            "recorded in git; install it, or name one in [tools] git in "
+            f"{LOCAL_CONFIG.as_posix()}", True), False
+    if offline:
+        return Requirement("git", exe, "always", None, True), True
+    text = _version_text(repo_root)
+    version = (tuple(int(n) for n in text.split(".")[:2])
+               if text is not None else None)
+    features = []
+    for minimum, what in ((_MERGE_TREE_MIN_GIT, "merge-tree --write-tree "
+                           "(gc's landed check)"),
+                          (_MERGE_BASE_OPTION_MIN_GIT, "merge-tree --merge-base "
+                           "(queue restack past a squash)")):
+        has = version is not None and version >= minimum
+        features.append(f"{what}, {minimum[0]}.{minimum[1]}+: "
+                        f"{'yes' if has else 'no'}")
+    found = f"{exe}, {text or 'version unreadable'} — {'; '.join(features)}"
+    return Requirement("git", found, "always", None, True), True
+
+
+def _repository_requirement(repo_root: Path, git_runs: bool
+                            ) -> Tuple[Requirement, bool]:
+    """The repository line, and whether there is one for `origin` to be in."""
+    if not git_runs:
+        return Requirement("repository", "not asked — git cannot be run",
+                           "always", None, True), False
+    try:
+        top = git_toplevel(repo_root)
+    except MissingTool as exc:
+        return Requirement("repository", "unreadable", "always", str(exc),
+                           True), False
+    if top is None:
+        return Requirement(
+            "repository", "none", "always",
+            f"{repo_root} is not inside a git repository — the loop records "
+            f"its work in git; run 'git init' there", True), False
+    if not (Path(repo_root) / "aide.toml").is_file():
+        where = "no aide.toml at the repo root, so the defaults apply"
+    else:
+        rel = _root_prefix(repo_root)
+        where = ("aide.toml at its top level" if not rel
+                 else f"aide.toml in {'/'.join(rel)}/, below its top level")
+    return Requirement("repository", f"{top} ({where})", "always", None,
+                       True), True
+
+
+def dependency_report(repo_root: Path, config: Dict[str, Dict[str, object]],
+                      offline: bool = False) -> List[Requirement]:
+    """Each requirement this project's configuration makes of the machine,
+    what the machine has, and the refusal where a needed one is missing
+    (issue #354): git, the repository, `origin`, `gh`, the test command,
+    Python and the venv, in that order.
+
+    *offline* is the half `aide check` and `install.py` run — git, the
+    repository, `origin` and the test command, the lines marked
+    ``in_check``: the `gh` login is asked of the forge, and the interpreter
+    and the venv cost spawns a check has no use for. A
+    requirement that cannot be asked because an earlier one is missing (no
+    `origin` without a repository) says so and adds no refusal of its own.
+    Under ``[git] mode`` other than ``local`` — any value but ``local`` runs
+    as a mode that pushes — `origin` and `gh` are needed; until the
+    configuration names a forge, the mode is what asks for `gh`.
+    """
+    lines: List[Requirement] = []
+    git_line, git_runs = _git_requirement(repo_root, offline)
+    lines.append(git_line)
+    repo_line, in_repo = _repository_requirement(repo_root, git_runs)
+    lines.append(repo_line)
+
+    mode = config.get("git", {}).get("mode", "auto-merge")
+    pushes = mode != "local"
+    setting = f'[git] mode = "{mode}"' if pushes else None
+    unneeded = '' if pushes else ' (not needed under [git] mode = "local")'
+    if not in_repo:
+        lines.append(Requirement("origin", "not asked — no repository",
+                                 setting, None, True))
+    else:
+        url = origin_url(repo_root)
+        refusal = None
+        if url is None and pushes:
+            refusal = (f'{setting} in aide.toml needs a remote named origin — '
+                       f"add one ('git remote add origin <url>'), or set "
+                       f'[git] mode = "local"')
+        lines.append(Requirement("origin", (url or "none") + unneeded,
+                                 setting, refusal, True))
+
+    if not offline:
+        try:
+            gh = resolve_tool("gh", repo_root)
+            misconfigured = None
+        except ToolMisconfigured as exc:
+            gh, misconfigured = None, str(exc)
+        refusal = None
+        if misconfigured is not None:
+            found = "not run"
+            refusal = misconfigured if pushes else None
+        elif gh is None:
+            found = "not on PATH"
+            if pushes:
+                refusal = (f"{setting} in aide.toml needs gh, which opens and "
+                           f"reads the queue's pull request — install it, or "
+                           f"name one in [tools] gh in "
+                           f"{LOCAL_CONFIG.as_posix()}, or set [git] mode = "
+                           f'"local"')
+        elif not pushes:
+            found = gh                  # never asked: `local` asks no forge
+        else:
+            _, why = _gh(repo_root, ["auth", "status"])
+            found = f"{gh}, " + ("logged in" if why is None
+                                 else f"no login confirmed ({why})")
+            if why is not None:
+                refusal = (f"{setting} in aide.toml needs gh logged in, and "
+                           f"'gh auth status' did not confirm one ({why}) — "
+                           f"run 'gh auth login', or set [git] mode = "
+                           f'"local"')
+        lines.append(Requirement("gh", found + unneeded, setting, refusal))
+
+    raw = str(config["python"].get("test_command", "python -m pytest")).split()
+    if not raw:
+        lines.append(Requirement(
+            "test command", "empty", "always",
+            "[python] test_command is empty in aide.toml — set it", True))
+    else:
+        argv = resolve_test_command(repo_root, config)
+        if argv[0] != raw[0]:
+            lines.append(Requirement("test command",
+                                     f"{raw[0]} → {argv[0]} (the venv)",
+                                     "always", None, True))
+        elif argv[0] == "git" and not git_runs:
+            lines.append(Requirement("test command", "git, as above",
+                                     "always", None, True))
+        else:
+            try:
+                found_at = resolve_tool(argv[0], repo_root)
+                refusal = None
+            except ToolMisconfigured as exc:
+                found_at, refusal = None, str(exc)
+            if refusal is not None:
+                pass
+            elif found_at is None and raw[0] == "python":
+                build = (f"build the venv ('{aide_command(repo_root, 'env --bootstrap')}'), "
+                         if has_venv(config) else "")
+                refusal = (f"the test command's 'python' is not on PATH, and "
+                           f"there is no venv to run it from — {build}put a "
+                           f"python on PATH, or change [python] test_command "
+                           f"in aide.toml")
+            elif found_at is None:
+                refusal = str(RunnerMissing(argv[0]))
+            lines.append(Requirement("test command",
+                                     f"{argv[0]} → {found_at or 'not found'}",
+                                     "always", refusal, True))
+
+    if offline:
+        return lines
+    printed = printed_python(repo_root)
+    bare = printed.strip('"')
+    if _has_directory(bare) and not os.path.isabs(bare):
+        bare = str(Path(repo_root) / bare)
+    printed_at = shutil.which(bare)
+    if printed_at is None and os.name == "nt" and _has_directory(bare):
+        printed_at = _pathext_file(bare)
+    found = (f"the engine runs on {sys.executable} "
+             f"({sys.version_info[0]}.{sys.version_info[1]}); the commands it "
+             f"suggests start {printed}"
+             + (f" ({printed_at})" if printed_at else ", which is not found"))
+    refusal = None
+    if printed_at is None:
+        refusal = (f"the engine prints '{printed}' in the commands it suggests, "
+                   f"and this machine has no {printed} — put one on PATH, or "
+                   f"name the interpreter to print in [tools] python in "
+                   f"{LOCAL_CONFIG.as_posix()}")
+    lines.append(Requirement("python", found, "always", refusal))
+
+    if has_venv(config):
+        venv = str(config["python"].get("venv", ".venv"))
+        status, detail = env_report(repo_root, config)
+        refusal = None
+        if status != "ok":
+            refusal = (f"the venv is {status} — {detail}; run "
+                       f"'{aide_command(repo_root, 'env --bootstrap')}' to "
+                       f'build it, or set [python] venv = "" in aide.toml '
+                       f"for a project with no venv")
+        lines.append(Requirement("venv", f"{status} — {detail}",
+                                 f'[python] venv = "{venv}"', refusal))
+    return lines
+
+
+def dependency_errors(repo_root: Path,
+                      config: Dict[str, Dict[str, object]]) -> List[str]:
+    """`aide check`'s errors from the offline half of the dependency report:
+    a missing git, repository, `origin` or test command (issue #354)."""
+    found = [r.refusal for r in dependency_report(repo_root, config, offline=True)
+             if r.refusal and r.in_check]
+    return list(dict.fromkeys(found))
+
+
 #: Seconds a ``[validation]`` expression may run. Generous — importing a GPU
 #: stack and initialising its driver takes seconds — but finite: a profile is
 #: evaluated inside unattended runs, where a hang stalls the loop silently.
@@ -12275,7 +12538,8 @@ def evaluate_profile(repo_root: Path, config: Dict[str, Dict[str, object]],
     never disagree about whether this machine has a capability.
     """
     vpy = venv_python(repo_root, config)
-    interpreter = str(vpy) if vpy.exists() else sys.executable
+    interpreter = (str(vpy) if has_venv(config) and vpy.exists()
+                   else sys.executable)
     code = f"import sys\nsys.exit(0 if ({expr}) else 1)"
     try:
         # §6: name the codec — a traceback carrying a non-ASCII path decodes
@@ -12313,14 +12577,49 @@ def cmd_env(args: argparse.Namespace) -> int:
               f"validation gated on it must record '❓ Unverified', never a silent pass")
         return 1
 
-    status, detail = env_report(repo_root, config)
-    if status == "ok":
-        print(f"aide env: OK ({detail})")
-        return 0
-    if not args.bootstrap:
-        print(f"aide env: {status} — {detail}; run "
-              f"'{aide_command(repo_root, 'env --bootstrap')}' to build it")
+    if args.bootstrap and not has_venv(config):
+        print('aide env: [python] venv = "" in aide.toml says this project '
+              'keeps no venv, so there is none to build — set it to a '
+              'directory to build one there', file=sys.stderr)
         return 1
+    if args.bootstrap:
+        # The venv alone, as before the report existed: the validator runs
+        # this to get a suite runner, and a gh login it does not need for
+        # that must not read as a failed build.
+        status, detail = env_report(repo_root, config)
+        if status == "ok":
+            print(f"aide env: OK ({detail})")
+            return 0
+        return _bootstrap_venv(repo_root, config)
+    return _print_dependency_report(repo_root, config)
+
+
+def _print_dependency_report(repo_root: Path,
+                             config: Dict[str, Dict[str, object]]) -> int:
+    """Print `dependency_report`, one line per requirement, then each
+    refusal and the verdict: exit 0 when nothing needed is missing, else 1."""
+    lines = dependency_report(repo_root, config)
+    print("aide env: what this machine has for this project's configuration")
+    width = max(len(r.name) for r in lines)
+    for r in lines:
+        needed = ("needed always" if r.needed_by == "always"
+                  else f"needed by {r.needed_by}" if r.needed_by
+                  else "not needed")
+        print(f"  {r.name:<{width}}  {r.found} · {needed}")
+    refusals = list(dict.fromkeys(r.refusal for r in lines if r.refusal))
+    for refusal in refusals:
+        print(f"aide env: {refusal}")
+    if refusals:
+        print(f"aide env: FAIL — {len(refusals)} requirement(s) this "
+              f"configuration needs are not met on this machine")
+        return 1
+    venv = next((r.found for r in lines if r.name == "venv"), None)
+    print(f"aide env: OK ({venv.partition(' — ')[2] if venv else 'no venv'})")
+    return 0
+
+
+def _bootstrap_venv(repo_root: Path, config: Dict[str, Dict[str, object]]) -> int:
+    """Build and populate the venv from `[python] interpreter`; 0 when built."""
     venv = _venv_dir(repo_root, config)
     bootstrap = str(config["python"].get("bootstrap", "pip install -e .[dev]")).split()
     interpreter = _configured_interpreter(config)
@@ -16995,6 +17294,13 @@ def build_parser() -> argparse.ArgumentParser:
         "template, and the file --report names)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
+            "Where aide.toml is there, the check also ERRORS on each "
+            "requirement of its configuration this machine lacks that is "
+            "decided offline: git, the repository, a remote named origin "
+            "under a [git] mode other than local, and the test command's "
+            "program, each worded as `aide env` words it. gh's login, the "
+            "interpreter and the venv are reported by `aide env` alone.\n"
+            "\n"
             "--queue NNN checks one queue's specs against each other: two items "
             "claiming one path under May change (warning), one item changing a "
             "path another pins under Asserts against (error), a dependency "
@@ -17918,11 +18224,40 @@ def register_git_subcommands(sub) -> None:
             "base had moved, or anything else changed, it runs the suite."))
     p_test.set_defaults(func=cmd_test)
 
-    p_env = sub.add_parser("env", help="venv health (exists, bootstrap finished, "
-                                        "interpreter matches, imports, test runner) + bootstrap")
+    p_env = sub.add_parser(
+        "env", help="what this machine has for this project's configuration "
+                    "(git, repository, origin, gh, test command, Python, venv "
+                    "health) + venv bootstrap",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Reports, one line each, what this project's configuration needs "
+            "of this machine and what the machine has: git, with its version "
+            "and the merge-tree features gc (2.38+) and queue restack (2.40+) "
+            "use; the repository, and whether aide.toml is at its top level; "
+            "a remote named origin; gh, and whether `gh auth status` confirms "
+            "a login; the test command's program; the interpreter the engine "
+            "runs on and the one its suggested commands print ([tools] python "
+            "in .aide/local.toml); and the venv \u2014 it exists, its last "
+            "bootstrap finished, it is the [python] interpreter's version, "
+            "import_check and a `python -m` test runner import.\n"
+            "\n"
+            "origin and gh are needed under every [git] mode but local. A "
+            "requirement the configuration needs and this machine lacks is a "
+            "refusal naming the setting that needs it and the two ways out "
+            "\u2014 meet it, or change the setting \u2014 and exits 1; nothing "
+            "is adapted to fit the machine. [python] venv = \"\" means the "
+            "project keeps no venv: the venv line is left out, and --bootstrap "
+            "refuses. Exits 0 when every requirement the configuration needs "
+            "is met. `aide check` errors on the offline part of the same "
+            "report.\n"
+            "\n"
+            "--bootstrap builds the venv where it is missing or stale and "
+            "reports on the venv alone: exit 0 when the venv is OK, whatever "
+            "else the report would refuse."))
     p_env.add_argument("--bootstrap", action="store_true",
                        help="create + populate the venv if missing/stale, from "
-                            "[python] interpreter when set")
+                            "[python] interpreter when set; reports on the "
+                            "venv alone")
     p_env.add_argument("--profile", default=None,
                        help="evaluate a named [validation] environment profile "
                             "(exit 0 iff satisfied; one that runs past "

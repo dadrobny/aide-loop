@@ -22,6 +22,15 @@ aide = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = aide
 _spec.loader.exec_module(aide)  # type: ignore[union-attr]
 
+
+@pytest.fixture(autouse=True)
+def _documents_not_the_machine(monkeypatch):
+    """`aide check` also errors on what aide.toml needs of this machine and it
+    lacks (issue #354) — a repository, `origin`, a runnable test command.
+    These tests judge documents in scratch directories, so that half is
+    taken out of them; `test_aide_env_report.py` holds it."""
+    monkeypatch.setattr(aide, "dependency_errors", lambda repo_root, config: [])
+
 AIDE_TOML = ('[project]\nname = "Demo"\ndocs_dir = "docs/aide"\n\n'
              '[git]\nmode = "local"\nmain_branch = "main"\nbranch_prefix = "aide/"\n')
 
