@@ -105,9 +105,11 @@ order.
 Both queue runners end a queue branch the same way: `/aide-run-queue` runs
 this step on its way out, and `/aide-run-roadmap` runs it and then makes its
 own decision about the stack. A queue run from `main` has no queue PR, and
-nor does `local` mode or a checkout with no remote; there the step reports
-that no forge exists and ends, since the merge gate has already run the suite
-locally.
+nor does `local` mode, a project whose `aide.toml` declares `[git] forge =
+"none"`, or a checkout with no remote; there the step reports that no forge
+exists and ends, since the merge gate has already run the suite locally. For
+the same reason, under `[git] ci = "none"` the step goes from marking the PR
+ready straight to stopping for the merge, and reports "CI: none declared".
 
 1. **Trigger.** `aide claim` prints a bare `none left`, so the queue is
    exhausted; or it prints a `none left — …` report ending `early ready:
@@ -126,7 +128,8 @@ locally.
 3. **Mark the PR ready.** `aide queue ready` pushes the branch where origin
    lacks its commits and marks the queue's PR ready for review. A refusal
    ends the step with its sentence reported: no PR (`aide queue pr` opens
-   the draft), a closed or merged one, `local` mode, or no remote.
+   the draft), a closed or merged one, `local` mode, no forge declared, or
+   no remote.
 4. **Wait for CI.** Read the branch's `checks=` from `aide status`, in
    bounded waits that each fit inside one tool call of the runtime; the
    orchestrator waits in its own session rather than handing the wait to a
@@ -142,8 +145,11 @@ locally.
      the answer is informational instead: report each `failing check:`
      line and stop, since the gated items are still to land.
    - `none`: report that no CI ran on the PR, naming the likely cause: no
-     workflow, or a trigger that ignores this PR (below).
+     workflow, or a trigger that ignores this PR (below). A project with no
+     CI declares `[git] ci = "none"` instead of waiting this out each time.
    - `unknown`: report the `checks unknown:` reason and stop.
+   - `-` on a PR (`[git] ci = "none"`): report "CI: none declared" and stop
+     for the merge, as on `success`.
    - A PR closed or merged during the wait, or one still a draft after
      `aide queue ready` has been run once more, is reported, and the step
      stops.

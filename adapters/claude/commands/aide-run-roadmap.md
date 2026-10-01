@@ -191,7 +191,9 @@ end**, below the cap. Call the base `<base>` below — `main`, or
   ```
   On exit 1 relay its sentence and **stop** — a PR on the branch that was
   closed or merged is a person's decision, and the verb opens no second PR
-  over it. A gate row the planner raised is committed on the branch either
+  over it. The exception is no forge (`local` mode, or `[git] forge =
+  "none"`): say so and go on without a PR — the queue branch is what a
+  person reviews. A gate row the planner raised is committed on the branch either
   way, so nothing it holds can be built until a person has looked at it.
 - **If `queue gate` raised a gate, STOP and tell the user**: review the draft
   PR — reshape the plan there if it needs it, and front-load the specs with
@@ -229,7 +231,9 @@ already ready: push, restack, and re-read the state instead of going on below.
 
 A red answer is not a stop by itself: `/aide-run-queue` → **Queue end**
 runs the CI fix round, goes back to its loop, and ends on the round's own
-answer — take that one. Go on below only on CI `success`. Anything else,
+answer — take that one. Go on below only on CI `success`, or on CI none
+declared (`[git] ci = "none"`), and with no forge at all (`local` mode, or
+`[git] forge = "none"`) where `aide queue ready` refused for that. Anything else,
 and an early ready above all (a gate still holds items of this queue), is a
 **stop**: report the answer and the batches awaiting review.
 

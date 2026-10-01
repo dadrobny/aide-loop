@@ -117,8 +117,8 @@ def test_every_requirement_met_under_pr_exits_zero(
 @pytest.mark.parametrize("mode", ["pr", "auto-merge"])
 def test_a_pushing_mode_without_gh_is_refused(tmp_path: Path, capsys,
                                               monkeypatch, mode: str):
-    """Until the configuration names a forge (#355), every mode but `local`
-    asks for gh — `auto-merge` too, whose queue end opens a PR."""
+    """Unless `[git] forge = "none"` declares no forge (#355), every mode
+    but `local` asks for gh — `auto-merge` too, whose queue end opens a PR."""
     repo = _repo(tmp_path, mode=mode, origin=True)
     monkeypatch.setattr(aide, "resolve_tool", lambda name, root: (
         None if name == "gh" else _real_resolve(name, root)))
@@ -129,6 +129,34 @@ def test_a_pushing_mode_without_gh_is_refused(tmp_path: Path, capsys,
 
 
 _real_resolve = aide.resolve_tool
+
+
+def test_no_forge_needs_no_gh_and_leaves_its_line_out(
+        tmp_path: Path, capsys, monkeypatch, logged_in):
+    """Issue #355: `auto-merge` pushing to a remote with no GitHub behind
+    it — origin is still needed, gh is neither asked nor listed."""
+    repo = _repo(tmp_path, mode="auto-merge", origin=True)
+    with (repo / "aide.toml").open("a", encoding="utf-8") as f:
+        f.write('forge = "none"\n')
+    monkeypatch.setattr(aide, "resolve_tool", lambda name, root: (
+        None if name == "gh" else _real_resolve(name, root)))
+    code, out = _env(repo, capsys)
+    assert code == 0, out
+    assert not any(line.split()[:1] == ["gh"] for line in out.splitlines())
+    assert "needs gh" not in out
+    assert logged_in == []
+
+
+def test_a_gh_refusal_names_no_forge_as_a_way_out_except_under_pr(
+        tmp_path: Path, capsys, monkeypatch):
+    monkeypatch.setattr(aide, "resolve_tool", lambda name, root: (
+        None if name == "gh" else _real_resolve(name, root)))
+    (tmp_path / "a").mkdir()
+    (tmp_path / "p").mkdir()
+    auto = _repo(tmp_path / "a", mode="auto-merge", origin=True)
+    assert 'or [git] forge = "none"' in _env(auto, capsys)[1]
+    pr = _repo(tmp_path / "p", mode="pr", origin=True)
+    assert "[git] forge" not in _env(pr, capsys)[1]
 
 
 def test_pr_with_no_login_is_refused(tmp_path: Path, capsys, monkeypatch):

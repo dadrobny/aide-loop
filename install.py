@@ -285,6 +285,12 @@ test_command = "{test_command}"
 mode = "{git_mode}"
 main_branch = "main"
 branch_prefix = "aide/"
+# The forge the queue's PR lives on: "github", or "none" for a project with
+# none (a remote that is not GitHub, say). And where CI runs: "pr" on the
+# queue PR, or "none" for a project with no CI; unset, "pr" with a forge and
+# "none" without (.aide/conventions.md §4).
+# forge = "github"
+# ci = "pr"
 
 [loop]
 queue_cap = 10

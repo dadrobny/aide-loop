@@ -173,6 +173,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
     "env": [
         # `dependency_report`: `pushes = mode != "local"` sets `needed_by` and
         # the refusal of the origin and gh lines alike.
+        # `dependency_report`: no gh line where `pushes and no_forge` (#355).
+        ("[git] forge = \"none\" declares no forge: gh is then not needed, "
+         "and its line is left out",
+         "test_aide_env_report::test_no_forge_needs_no_gh_and_leaves_its_line_out"),
         ("origin and gh are needed under every [git] mode but local",
          ("test_aide_env_report::"
           "test_auto_merge_with_no_origin_is_refused_naming_the_setting",
@@ -1552,6 +1556,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_status_stack::test_could_not_look_is_unknown_and_never_none",
           "test_aide_status_stack::test_gh_missing_from_path_is_a_reason",
           "test_aide_status_stack::test_gh_exiting_non_zero_is_a_reason_naming_the_exit")),
+        # `queue_stack_facts`: `look` false and `no_ci` (#355); `cmd_status`
+        # returns before `_gh` with no forge declared.
+        ("Under [git] forge = \"none\" no forge is asked at all: pr=, "
+         "checks= and orphaned= are - as in local mode, awaiting review is no "
+         "and the open-PR list is -",
+         "test_aide_queue_pr::test_no_forge_reads_every_forge_field_as_a_dash_and_asks_nothing"),
+        ("Under [git] ci = \"none\" checks= is - on every stack line, a PR "
+         "or not",
+         "test_aide_queue_pr::test_no_ci_reads_checks_as_a_dash_on_a_pr_whatever_the_rollup"),
         # `cmd_status` prints the `local` line and returns before `_gh`
         # (issue #352).
         ("in local mode it is - and gh is not asked",
@@ -2199,6 +2212,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "nothing; one already a draft is left alone, exit 0",
          ("test_aide_queue_pr::test_undo_turns_a_ready_pr_back_to_draft_and_pushes_nothing",
           "test_aide_queue_pr::test_undo_leaves_a_draft_alone_and_exits_0")),
+        # `_queue_pr_branch`: `declared_forge` before the mode (#355).
+        ("Under [git] forge = \"none\" both refuse, exit 1, before the forge "
+         "is asked anything",
+         "test_aide_queue_pr::test_no_forge_refuses_pr_and_ready_and_asks_nothing"),
         # `_queue_stray_options`, first thing in `cmd_queue`.
         ("An option the action does not read is refused, exit 2, before "
          "anything is done",

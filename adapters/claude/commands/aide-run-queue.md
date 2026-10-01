@@ -87,7 +87,7 @@ is a queue branch (`<prefix>queue-NNN`), find its `stack N:` line in
   merged**, which a person decided and no second PR goes over.
 - **`pr=#N/…` open or draft** (a draft may read `#N/draft(fixing)`, so match
   `/draft` as a prefix) — carry on.
-- **`pr=-`** (`local` mode) or **`pr=unknown`** — carry on, saying so for
+- **`pr=-`** (`local` mode, or `[git] forge = "none"`) or **`pr=unknown`** — carry on, saying so for
   `unknown`; the queue-end step reports it again when it needs the PR.
 - **`pr=#N/merged` or `#N/closed`** — stop and report it: this queue's batch
   was already decided.
@@ -147,9 +147,9 @@ This is the queue-end step `.aide/README.md` → *The queue-end step* defines
 2. **No queue branch, no PR.** A legacy queue run from `main` has no queue
    PR: skip to the report.
 3. **Mark it ready.** `python .aide/scripts/aide.py queue ready`. On exit 1
-   relay its sentence and go to the report: `local` mode or no origin (no
-   forge exists — the merge gate already ran the suite), no PR, or a closed
-   or merged one.
+   relay its sentence and go to the report: `local` mode, no forge declared
+   (`[git] forge = "none"`) or no origin (no forge exists — the merge gate
+   already ran the suite), no PR, or a closed or merged one.
 4. **Wait for CI, in this session.** Start the poll, then wait on its label
    until it answers:
    ```
@@ -163,7 +163,8 @@ This is the queue-end step `.aide/README.md` → *The queue-end step* defines
    orchestrator, never to a sub-agent or a backgrounded command: its cache
    outlives a 540-second wait, and a sub-agent that ends its turn to wait is
    never woken. The poll reads `aide status`, so it never asks the forge
-   itself, and it does not take a first `checks=none` as the answer.
+   itself, and it does not take a first `checks=none` as the answer. Under
+   `[git] ci = "none"` it answers at once (16).
 5. **Read the exit code** `wait` returns once the poll has answered:
 
    | Code | `checks=` | Do |
@@ -174,6 +175,7 @@ This is the queue-end step `.aide/README.md` → *The queue-end step* defines
    | 12 | `unknown` | Report the `checks unknown:` reason and stop. |
    | 13 | — | No PR, a closed or merged one, or the branch is no longer an unmerged queue branch: report it. |
    | 15 | — | The PR is a draft. Plain `#N/draft`: `queue ready` did not take — run step 3 again, then restart the wait once; a second 15 is a stop. `#N/draft(fixing)`: a CI fix round is under way and its reopened items are still open — go back to **Loop** and claim them; a claim that offers none is reported, and the run stops. |
+   | 16 | `-` | `aide.toml` declares no CI (`[git] ci = "none"`). Report "CI: none declared" — not a failure: the merge gate already ran the suite — and stop for the merge as for 0; under `/aide-run-roadmap`, go back to its **Queue end** for the stack decision. |
    | 14 | `pending` | CI was still running after an hour: report it; a re-run of this section waits again. When the tail already names a `failing check:` beside the `pending check:` legs, report those failing lines too: they are known, so the user can start the **CI fix round** on them now or re-run the wait for the rest. |
    | other | — | The poll itself broke (90 died, 91 stopped, 1 a crash): report the tail and stop. |
 

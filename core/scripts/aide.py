@@ -739,12 +739,73 @@ def git_mode_error(config: Dict[str, Dict[str, object]]) -> Optional[str]:
             f"runs as 'auto-merge' (default 'auto-merge')")
 
 
+#: `[git] forge`'s values: "github" is the one forge the engine can ask, through
+#: `gh`; "none" declares there is none (issue #355).
+GIT_FORGE_VALUES = ("github", "none")
+#: `[git] ci`'s values: "pr" runs CI on the queue PR, "none" declares no CI.
+#: There is no push-triggered value: the queue end reads only the PR.
+GIT_CI_VALUES = ("pr", "none")
+
+
+def declared_forge(config: Dict[str, Dict[str, object]]) -> str:
+    """``[git] forge`` as the verbs act on it: ``none`` only when it says so.
+
+    Any other value — ``github``, unset, or one `aide check` reports as an
+    error — is ``github``, so a misspelt key keeps today's behaviour rather
+    than silently dropping the queue PR.
+    """
+    return "none" if config.get("git", {}).get("forge") == "none" else "github"
+
+
+def declared_ci(config: Dict[str, Dict[str, object]]) -> str:
+    """``[git] ci`` as the verbs act on it: ``pr`` or ``none``.
+
+    Unset, it follows the forge: ``pr`` on ``github``, ``none`` with no forge,
+    since CI on a pull request needs a forge to hold one. A forge of ``none``
+    is ``none`` whatever ``ci`` says; `aide check` reports the contradiction.
+    """
+    if declared_forge(config) == "none":
+        return "none"
+    return "none" if config.get("git", {}).get("ci") == "none" else "pr"
+
+
+def git_forge_errors(config: Dict[str, Dict[str, object]]) -> List[str]:
+    """Why ``[git] forge`` / ``[git] ci`` are unusable, alone or together."""
+    git_cfg = config.get("git", {})
+    errors: List[str] = []
+    forge = git_cfg.get("forge", "github")
+    if not (isinstance(forge, str) and forge in GIT_FORGE_VALUES):
+        errors.append(
+            f"aide.toml [git] forge = {forge!r} is not one of "
+            f"{', '.join(repr(v) for v in GIT_FORGE_VALUES)} — any other "
+            f"value runs as 'github' (default 'github')")
+    ci = git_cfg.get("ci")
+    if ci is not None and not (isinstance(ci, str) and ci in GIT_CI_VALUES):
+        errors.append(
+            f"aide.toml [git] ci = {ci!r} is not one of "
+            f"{', '.join(repr(v) for v in GIT_CI_VALUES)} — any other value "
+            f"runs as the default ('pr' with a forge, 'none' without)")
+    if forge == "none":
+        if git_cfg.get("mode", "auto-merge") == "pr":
+            errors.append(
+                'aide.toml [git] mode = "pr" with forge = "none": under pr a '
+                "person opens each item's pull request on the forge, so the "
+                'mode needs one — declare forge = "github", or set mode = '
+                '"auto-merge" or "local"')
+        if ci == "pr":
+            errors.append(
+                'aide.toml [git] ci = "pr" with forge = "none": CI on the '
+                "queue PR needs a forge to hold the PR — set ci = \"none\", "
+                'or declare forge = "github"')
+    return errors
+
+
 def loop_config_errors(config: Dict[str, Dict[str, object]]) -> List[str]:
     """``aide check``'s errors for the ``aide.toml`` keys the loop itself
     reads: ``[loop]`` ``max_open_queues`` and ``plan_review``, and ``[git]
-    mode``."""
+    mode``, ``forge`` and ``ci``."""
     return [why for why in (max_open_queues(config)[1], plan_review(config)[1],
-                            git_mode_error(config))
+                            git_mode_error(config), *git_forge_errors(config))
             if why is not None]
 
 
@@ -11279,7 +11340,8 @@ def _queue_pr_branch(repo_root: Path, config: Dict[str, Dict[str, object]],
     ``<prefix>queue-NNN``, which must be a local branch, else the current
     branch, which must be one. A specs-queue branch is not: its work lands on
     its queue branch, which carries the PR. Then the forge must be reachable
-    at all — `local` mode and a checkout with no origin open no PR.
+    at all — `[git] forge = "none"`, `local` mode and a checkout with no
+    origin open no PR.
     """
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
@@ -11297,6 +11359,10 @@ def _queue_pr_branch(repo_root: Path, config: Dict[str, Dict[str, object]],
                   f"queue number", file=sys.stderr)
             return None, None
         number = int(branch[len(prefix) + len(_QUEUE_TOKEN):])
+    if declared_forge(config) == "none":
+        print(f'{tag}: no forge is declared (git.forge = "none")',
+              file=sys.stderr)
+        return None, None
     if mode == "local":
         print(f"{tag}: git.mode is \"local\", which pushes nothing and opens "
               f"no pull request", file=sys.stderr)
@@ -12393,8 +12459,9 @@ def dependency_report(repo_root: Path, config: Dict[str, Dict[str, object]],
     requirement that cannot be asked because an earlier one is missing (no
     `origin` without a repository) says so and adds no refusal of its own.
     Under ``[git] mode`` other than ``local`` — any value but ``local`` runs
-    as a mode that pushes — `origin` and `gh` are needed; until the
-    configuration names a forge, the mode is what asks for `gh`.
+    as a mode that pushes — `origin` is needed, and `gh` too unless ``[git]
+    forge = "none"`` declares no forge, which leaves the `gh` line out
+    (issue #355).
     """
     lines: List[Requirement] = []
     git_line, git_runs = _git_requirement(repo_root, offline)
@@ -12419,7 +12486,10 @@ def dependency_report(repo_root: Path, config: Dict[str, Dict[str, object]],
         lines.append(Requirement("origin", (url or "none") + unneeded,
                                  setting, refusal, True))
 
-    if not offline:
+    no_forge = declared_forge(config) == "none"
+    # Out of a gh refusal's ways out under `pr`, which needs a forge.
+    other = (' or [git] forge = "none"' if mode != "pr" else "")
+    if not offline and not (pushes and no_forge):
         try:
             gh = resolve_tool("gh", repo_root)
             misconfigured = None
@@ -12436,7 +12506,7 @@ def dependency_report(repo_root: Path, config: Dict[str, Dict[str, object]],
                            f"reads the queue's pull request — install it, or "
                            f"name one in [tools] gh in "
                            f"{LOCAL_CONFIG.as_posix()}, or set [git] mode = "
-                           f'"local"')
+                           f'"local"{other}')
         elif not pushes:
             found = gh                  # never asked: `local` asks no forge
         else:
@@ -12447,7 +12517,7 @@ def dependency_report(repo_root: Path, config: Dict[str, Dict[str, object]],
                 refusal = (f"{setting} in aide.toml needs gh logged in, and "
                            f"'gh auth status' did not confirm one ({why}) — "
                            f"run 'gh auth login', or set [git] mode = "
-                           f'"local"')
+                           f'"local"{other}')
         lines.append(Requirement("gh", found + unneeded, setting, refusal))
 
     raw = str(config["python"].get("test_command", "python -m pytest")).split()
@@ -16615,7 +16685,8 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
 
     The stack is `_unmerged_queue_branches` — the set `queue start` counts
     against the cap — ordered bottom first by recorded base. The forge is
-    asked about each branch's pull request only off `local` mode, and about
+    asked about each branch's pull request only off `local` mode and where
+    `[git] forge` declares one, its checks only where `[git] ci` does, and about
     a recorded lower that has left the stack without landing (``gone``), so a
     lower closed and then deleted still orphans what sits on it. A lower that
     git says landed is not orphaning, whatever its PR says: content is git's
@@ -16624,11 +16695,16 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
     """
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
-    look = mode != "local"
+    pushes = mode != "local"
+    no_forge = declared_forge(config) == "none"
+    # The forge is asked only where one is declared and the mode is not
+    # offline; origin's branches are git's, read under any pushing mode.
+    look = pushes and not no_forge
+    no_ci = declared_ci(config) == "none"
     unmerged = _unmerged_queue_branches(repo_root, config)
     local = set(_local_branches(repo_root))
     remote = (set(_remote_branches(repo_root))
-              if look and _has_origin(repo_root) else set())
+              if pushes and _has_origin(repo_root) else set())
 
     def newest(b: str) -> str:
         """Origin's tip where it is ahead of this checkout's, else the local one."""
@@ -16682,6 +16758,8 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
             elif got is None:
                 prs[b] = "none"
             else:
+                if no_ci:               # no CI declared: no checks read (#355)
+                    got = got._replace(checks="-", failing=[], running=())
                 facts[b] = got
                 prs[b] = got.label
                 # A draft with reopened items still open is one a CI fix
@@ -16721,7 +16799,7 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
         return "unknown" if unsure else "no"
 
     def checks(b: str) -> Tuple[str, Tuple[str, ...], Optional[str]]:
-        if not look:
+        if not look or no_ci:           # no forge, or no CI declared (#355)
             return "-", (), None
         if b in facts:
             f = facts[b]
@@ -16760,7 +16838,8 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
 
     open_prs = [s for s in branches if s.pr.endswith("/open")]
     if not look:
-        awaiting = ("no", "local mode opens no pull requests")
+        awaiting = ("no", "no forge is declared" if no_forge
+                    else "local mode opens no pull requests")
     elif open_prs:
         awaiting = ("yes", ", ".join(f"{s.pr.split('/')[0]} ({s.name})"
                                      for s in open_prs))
@@ -16984,6 +17063,9 @@ def cmd_status(args: argparse.Namespace) -> int:
     # Not asked at all in `local` mode, which makes no network call (§4).
     if mode == "local":
         print("  open PRs: - (local mode)")
+        return 0
+    if declared_forge(config) == "none":
+        print("  open PRs: - (no forge declared)")
         return 0
     if facts.could_not_look is not None:
         out, why = None, facts.could_not_look
@@ -17864,7 +17946,8 @@ def build_parser() -> argparse.ArgumentParser:
             "refuse, exit 1: a branch that is not a queue branch, local mode "
             "or no origin, a branch with no PR (`queue pr` opens it), a PR "
             "closed or merged, a forge that could not be asked, and a failed "
-            "push or change.\n"
+            "push or change. Under [git] forge = \"none\" both refuse, exit "
+            "1, before the forge is asked anything: no forge is declared.\n"
             "\n"
             "An option the action does not read is refused, exit 2, before "
             "anything is done: pr and ready take no --dry-run, --base, "
@@ -18278,7 +18361,9 @@ def register_git_subcommands(sub) -> None:
             "bootstrap finished, it is the [python] interpreter's version, "
             "import_check and a `python -m` test runner import.\n"
             "\n"
-            "origin and gh are needed under every [git] mode but local. A "
+            "origin and gh are needed under every [git] mode but local. "
+            "[git] forge = \"none\" declares no forge: gh is then not needed, "
+            "and its line is left out. A "
             "requirement the configuration needs and this machine lacks is a "
             "refusal naming the setting that needs it and the two ways out "
             "\u2014 meet it, or change the setting \u2014 and exits 1; nothing "
@@ -18413,6 +18498,11 @@ def register_git_subcommands(sub) -> None:
             "the stack was closed without merging, and a lower git says "
             "landed never orphans; unknown when one below it could not be "
             "looked up or has no recorded base; - in local mode.\n\n"
+            "Under [git] forge = \"none\" no forge is asked at all: pr=, "
+            "checks= and orphaned= are - as in local mode, awaiting review "
+            "is no and the open-PR list is -. Under [git] ci = \"none\" "
+            "checks= is - on every stack line, a PR or not: no CI is "
+            "declared, so none is read.\n\n"
             "Two facts follow, each `yes`, `no` or (the second only) "
             "`unknown` before an em dash, and a repo can be both. "
             "runnable: is no when a queue PR in the stack was closed without "
