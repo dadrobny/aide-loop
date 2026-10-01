@@ -136,6 +136,48 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.29.0] — 2026-10-01
+
+### Added
+
+- **`[tools]` in `.aide/local.toml` says where `gh` and `git` are on this
+  machine, and the engine reads it through one resolver (issue #353).** The
+  engine found `gh` only on PATH, so on a machine with `gh` installed
+  elsewhere every queue end stopped at `checks=unknown — gh is not on PATH`
+  with nothing able to say where it was. `resolve_tool` now locates `git`
+  (every git call) and `gh` (`status`, `queue pr`, `queue ready`), and says
+  whether the test command's program is missing (resolving a relative one
+  against the repository root, where it runs): a non-empty `[tools]
+  gh` / `git` is a path (absolute, or relative to the repository root) or a
+  command looked up on PATH, and empty or absent is PATH as before. A key
+  naming a program that is not there is refused by name — `aide <verb>:
+  [tools] git = '…' in .aide/local.toml does not exist — fix it, or remove
+  the key to look for git on PATH`, exit 1 (2 for `scope`) — and never falls
+  back to PATH. For `gh` that sentence is `status`'s could-not-look reason
+  (`checks=unknown`, the open-PR list), as a missing `gh` already was; `aide
+  check` still runs and names it in its git warning. A `[tools]` table that
+  cannot be parsed is refused the same way, by the verbs that run `git` or
+  `gh` and by no other; only that table is parsed, so the other tables keep
+  the hooks' lenient reading, and `tools` written any other way (`tools.gh =`,
+  an inline table, `[[tools]]`) is refused rather than read as unset. `[tools] python` sets the interpreter the engine
+  prints in its suggested commands (`python3 .aide/scripts/aide.py gc`); it
+  runs nothing, and the control files, the allow-list and `-h` keep saying
+  `python` — on a host with only `python3`, put a `python` on PATH (a shim,
+  or `python-is-python3`). `.aide/local.toml.example` gains the table and
+  says the engine now reads the file; copy the table into your own
+  `local.toml` to use it.
+
+### Fixed
+
+- **The hooks read `.aide/local.toml` from the project root, not the hook's
+  working directory (issue #353).** The command-hygiene guard and the
+  sibling-instructions hook opened `.aide/local.toml` relative to the
+  process's cwd. In a worktree-isolated sub-agent that file — gitignored —
+  is absent, so `[framework] local_path` and `[hygiene] extra_repos` were
+  silently undeclared there, and a declared `git -C` was refused. They now
+  read the first of `$CLAUDE_PROJECT_DIR` and the cwd that holds the file,
+  and a relative declaration is relative to the directory it was read from.
+
 ## [2.28.2] — 2026-09-30
 
 ### Fixed

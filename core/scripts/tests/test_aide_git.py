@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -2390,3 +2391,138 @@ def test_restore_records_the_base_the_run_merged_into_not_the_old_record(tmp_pat
     aide._restore_claim_branch(root, branch, tip, "main")      # branch still exists
     assert aide._recorded_branch_base(root, branch) == "main"
     assert aide.resolve_base(root, aide.load_config(root), None, branch) == "main"
+
+
+# --------------------------------------------------------------------------- #
+# [tools] in .aide/local.toml — where a program is, read by one resolver
+# (issue #353)
+# --------------------------------------------------------------------------- #
+def _local_tools(root: Path, body: str) -> None:
+    (root / ".aide").mkdir(parents=True, exist_ok=True)
+    (root / ".aide" / "local.toml").write_text(body, encoding="utf-8")
+
+
+def _stub_on_path(tmp_path: Path, monkeypatch, name: str) -> Path:
+    """A runnable *name* in a directory that is all of PATH: a `.cmd` on
+    Windows, where PATHEXT finds it, an executable script elsewhere."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    if os.name == "nt":
+        stub = bin_dir / f"{name}.cmd"
+        stub.write_text("@echo off\r\n", encoding="utf-8")
+    else:
+        stub = bin_dir / name
+        stub.write_text("#!/bin/sh\n", encoding="utf-8")
+        stub.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    return stub
+
+
+def _same_file(a: Optional[str], b: Path) -> bool:
+    return a is not None and os.path.normcase(os.path.abspath(a)) == \
+        os.path.normcase(os.path.abspath(str(b)))
+
+
+def test_a_configured_tool_that_is_there_is_the_one_run(tmp_path: Path):
+    _local_tools(tmp_path, f"[tools]\ngit = '{sys.executable}'\n")
+    assert _same_file(aide.resolve_tool("git", tmp_path), Path(sys.executable))
+
+
+def test_a_configured_tool_path_that_is_not_there_is_refused_naming_the_key(
+        tmp_path: Path, monkeypatch):
+    """Never a fallback to PATH: the `gh` on PATH is not the one named."""
+    _stub_on_path(tmp_path, monkeypatch, "gh")
+    missing = (tmp_path / "nowhere" / "gh").as_posix()
+    _local_tools(tmp_path, f"[tools]\ngh = '{missing}'\n")
+    with pytest.raises(aide.ToolMisconfigured) as exc:
+        aide.resolve_tool("gh", tmp_path)
+    assert isinstance(exc.value, aide.MissingTool)
+    assert f"[tools] gh = '{missing}'" in str(exc.value)
+    assert "does not exist" in str(exc.value)
+    # `status` reads it as could-not-look, with the key as the reason.
+    out, why = aide._gh(tmp_path, ["pr", "list"])
+    assert out is None and why.startswith("[tools] gh = ")
+
+
+def test_an_unset_tool_is_found_on_path(tmp_path: Path, monkeypatch):
+    stub = _stub_on_path(tmp_path, monkeypatch, "gh")
+    assert _same_file(aide.resolve_tool("gh", tmp_path), stub)
+    _local_tools(tmp_path, '[tools]\ngh = ""\n')       # empty reads as unset
+    assert _same_file(aide.resolve_tool("gh", tmp_path), stub)
+
+
+def test_an_unset_tool_not_on_path_is_none(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    assert aide.resolve_tool("gh", tmp_path) is None
+
+
+def test_a_configured_bare_name_is_looked_up_on_path(tmp_path: Path, monkeypatch):
+    stub = _stub_on_path(tmp_path, monkeypatch, "gh-2")
+    _local_tools(tmp_path, '[tools]\ngh = "gh-2"\n')
+    assert _same_file(aide.resolve_tool("gh", tmp_path), stub)
+    _local_tools(tmp_path, '[tools]\ngh = "gh-3"\n')
+    with pytest.raises(aide.ToolMisconfigured, match=r"gh-3.*is not on PATH"):
+        aide.resolve_tool("gh", tmp_path)
+
+
+def test_a_configured_git_that_is_not_there_refuses_every_git_call(tmp_path: Path):
+    _local_tools(tmp_path, "[tools]\ngit = 'no/such/git'\n")
+    with pytest.raises(aide.ToolMisconfigured, match=r"\[tools\] git = "):
+        aide.git(["--version"], tmp_path)
+
+
+def test_a_malformed_local_toml_is_refused_where_a_program_is_needed(tmp_path: Path):
+    _local_tools(tmp_path, '[tools]\ngh = "unterminated\n')
+    with pytest.raises(aide.ToolMisconfigured, match="local.toml is malformed"):
+        aide.resolve_tool("gh", tmp_path)
+    # Printing a suggested command is not running one: it reads as unset.
+    assert aide.aide_command(tmp_path, "check") == "python .aide/scripts/aide.py check"
+
+
+def test_only_the_tools_table_is_parsed(tmp_path: Path):
+    """The hooks' tables are read leniently by the hooks; a Windows path in
+    `extra_repos` that strict TOML rejects never stops a git call (#353)."""
+    _local_tools(tmp_path, '[hygiene]\nextra_repos = ["C:\\Users\\me\\repo"]\n'
+                 f"[tools]\ngh = '{sys.executable}'\n"
+                 '[framework]\nlocal_path = "C:\\aide"\n')
+    assert _same_file(aide.resolve_tool("gh", tmp_path), Path(sys.executable))
+    _local_tools(tmp_path, '[hygiene]\nextra_repos = ["C:\\Users\\me"]\n')
+    assert aide.resolve_tool("gh", tmp_path) == shutil.which("gh")
+
+
+@pytest.mark.parametrize("header", ["[tools] # this machine", "[ tools ]"])
+def test_a_tools_header_either_reader_accepts_is_read(tmp_path: Path, header: str):
+    _local_tools(tmp_path, f"{header}\ngh = '{sys.executable}'\n")
+    assert _same_file(aide.resolve_tool("gh", tmp_path), Path(sys.executable))
+
+
+@pytest.mark.parametrize("body", ["tools = { gh = 'x' }\n", "tools.gh = 'x'\n",
+                                  "[[tools]]\ngh = 'x'\n", "[\"tools\"]\ngh = 'x'\n"])
+def test_tools_written_other_than_as_its_table_is_refused(tmp_path: Path, body: str):
+    """Read as "nothing configured", these would fall back to PATH behind a
+    key someone wrote."""
+    _local_tools(tmp_path, body)
+    with pytest.raises(aide.ToolMisconfigured, match="is not the \\[tools\\] table"):
+        aide.resolve_tool("gh", tmp_path)
+
+
+@pytest.mark.parametrize("name", ["gh", "gh-2.40"])
+def test_a_configured_path_finds_its_pathext_file(tmp_path: Path, monkeypatch,
+                                                  name: str):
+    """What the resolver adds on Windows, where `which` applies PATHEXT to a
+    path only from 3.12 — whether or not the name already holds a dot."""
+    (tmp_path / f"{name}.EXE").write_text("", encoding="utf-8")
+    monkeypatch.setenv("PATHEXT", os.pathsep.join([".COM", ".EXE"]))
+    where = str(tmp_path / name)
+    assert aide._pathext_file(where) == where + ".EXE"
+    assert aide._pathext_file(str(tmp_path / "absent")) is None
+
+
+def test_tools_python_is_the_interpreter_suggested_commands_print(tmp_path: Path):
+    _local_tools(tmp_path, '[tools]\npython = "python3"\n')
+    assert aide.aide_command(tmp_path, "gc") == "python3 .aide/scripts/aide.py gc"
+    ddir = tmp_path / "docs" / "aide"
+    ddir.mkdir(parents=True)
+    (ddir / "insights.md").write_text("<<<<<<< HEAD\n", encoding="utf-8")
+    assert any("`python3 .aide/scripts/aide.py insights resolve`" in e
+               for e in aide.conflict_marker_errors(ddir, tmp_path))

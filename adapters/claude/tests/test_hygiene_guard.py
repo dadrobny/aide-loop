@@ -18,6 +18,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 _MODULE_PATH = Path(__file__).resolve().parents[1] / "hooks" / "command_hygiene_guard.py"
 _spec = importlib.util.spec_from_file_location("hygiene_guard", _MODULE_PATH)
 guard = importlib.util.module_from_spec(_spec)
@@ -252,6 +254,37 @@ def test_extra_repo_is_allowed(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert guard.violations("git -C ../programme-repo add -A") == []
     assert guard.violations("git -C ../programme-repo commit -m 'rescue docs'") == []
+
+
+@pytest.mark.parametrize("where", ["subdirectory", "worktree"])
+def test_extra_repos_is_read_from_the_project_root_not_the_cwd(
+        tmp_path, monkeypatch, where):
+    """A sub-agent's hook may run below the root, or in an isolated worktree
+    where the gitignored file was never checked out; `CLAUDE_PROJECT_DIR`
+    still names the file the developer wrote (issue #353). A relative
+    declaration stays relative to that root."""
+    root = tmp_path / "consumer"
+    _declare_extra_repos(root, ["../programme-repo"])
+    cwd = (root / "src" / "pkg" if where == "subdirectory"
+           else tmp_path / "worktrees" / "agent-1")
+    cwd.mkdir(parents=True)
+    monkeypatch.chdir(cwd)
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(root))
+    assert guard._hygiene_extra_repos() == ["../programme-repo"]
+    target = os.path.relpath(tmp_path / "programme-repo", cwd)
+    assert guard.violations(f"git -C {target} add -A") == []
+    assert _OVERRIDE_MARKER in _titles("git -C ../somewhere-else push")
+
+
+def test_a_cwd_file_is_read_when_the_project_root_has_none(tmp_path, monkeypatch):
+    """The project root first, then the working directory: a root without
+    the file leaves the cwd's declaration in force."""
+    _declare_extra_repos(tmp_path, ["../programme-repo"])
+    empty = tmp_path / "elsewhere"
+    empty.mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(empty))
+    assert guard._hygiene_extra_repos() == ["../programme-repo"]
 
 
 def test_undeclared_repo_still_blocked_when_others_are_declared(tmp_path, monkeypatch):

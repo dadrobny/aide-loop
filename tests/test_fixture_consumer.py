@@ -2125,6 +2125,74 @@ def test_status_reads_a_failing_check_on_the_queue_pr(
     assert read["stack"][0][1]["checks"] == "failure"
 
 
+def _gh_at_a_configured_path(repo: Path, tmp_path: Path, monkeypatch,
+                             answer: dict) -> Path:
+    """A `gh` the engine can find only through `[tools] gh` (issue #353).
+
+    A real program — a python script behind a `.cmd` on Windows, a shell
+    script elsewhere — answering `pr list --head <branch>` from *answer*,
+    and every directory holding another `gh` taken off PATH, so a pass
+    cannot have come from there. `git` may share such a directory (a CI
+    runner's `/usr/bin`), so it is configured too, at wherever it was.
+    """
+    import os
+    tools = tmp_path / "machine-tools"
+    tools.mkdir()
+    script = tools / "gh_stub.py"
+    script.write_text(
+        "import json, sys\n"
+        f"answer = json.loads({json.dumps(json.dumps(answer))})\n"
+        "args = sys.argv[1:]\n"
+        "branch = args[args.index('--head') + 1] if '--head' in args else None\n"
+        "print(json.dumps(answer.get(branch, [])))\n", encoding="utf-8")
+    if os.name == "nt":
+        gh = tools / "gh.cmd"
+        gh.write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="utf-8")
+    else:
+        gh = tools / "gh"
+        gh.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n',
+                      encoding="utf-8")
+        gh.chmod(0o755)
+    git_exe = shutil.which("git")
+    assert git_exe is not None
+    kept = [d for d in os.environ.get("PATH", "").split(os.pathsep)
+            if d and shutil.which("gh", path=d) is None]
+    monkeypatch.setenv("PATH", os.pathsep.join(kept))
+    assert shutil.which("gh") is None
+    (repo / ".aide" / "local.toml").write_text(
+        f"[tools]\ngh = '{gh.as_posix()}'\n"
+        f"git = '{Path(git_exe).as_posix()}'\n", encoding="utf-8")
+    return gh
+
+
+def test_status_reads_the_forge_through_a_gh_configured_off_path(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys):
+    """`gh` installed where PATH does not reach stopped every queue end at
+    `checks=unknown — gh is not on PATH`; `[tools] gh` names it (#353)."""
+    _to_pr_mode_with_origin(consumer, tmp_path)
+    assert _start(aide, consumer, 1) == 0
+    _gh_at_a_configured_path(consumer, tmp_path, monkeypatch, {Q1: [{
+        "number": 3, "state": "OPEN", "isDraft": False,
+        "statusCheckRollup": [{"name": "build", "status": "COMPLETED",
+                               "conclusion": "SUCCESS"}]}]})
+    read = _stack_read(aide, consumer, capsys)
+    assert read["stack"][0][1]["pr"] == "#3/open"
+    assert read["stack"][0][1]["checks"] == "success"
+
+
+def test_status_with_a_configured_gh_that_is_not_there_names_the_key(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    _to_pr_mode_with_origin(consumer, tmp_path)
+    assert _start(aide, consumer, 1) == 0
+    (consumer / ".aide" / "local.toml").write_text(
+        f"[tools]\ngh = '{(tmp_path / 'gone' / 'gh').as_posix()}'\n",
+        encoding="utf-8")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "status", "--no-fetch"]) == 0
+    out = capsys.readouterr().out
+    assert "[tools] gh = " in out and "does not exist" in out
+
+
 # --------------------------------------------------------------------------- #
 # queue pr / queue ready — the refusals a checkout with no forge meets (#330)
 # --------------------------------------------------------------------------- #
@@ -4929,6 +4997,40 @@ def test_a_verb_with_git_off_path_says_so_in_one_sentence(
     assert f"aide {argv[0]}: git is not on PATH" in err
     assert "no claim branch found" not in err
     assert "Traceback" not in err
+
+
+def _git_configured_where_none_is(consumer: Path, tmp_path: Path) -> None:
+    (consumer / ".aide" / "local.toml").write_text(
+        f"[tools]\ngit = '{(tmp_path / 'gone' / 'git').as_posix()}'\n",
+        encoding="utf-8")
+
+
+@pytest.mark.parametrize("argv, code", [
+    (["status"], 1), (["sync"], 1), (["scope", "1"], 2),
+    (["progress", "set", "1", "in-progress"], 1),
+])
+def test_a_configured_git_that_is_not_there_is_refused_naming_the_key(
+        aide, consumer: Path, tmp_path: Path, capsys, argv: list, code: int):
+    """Never a fallback to the git on PATH (issue #353): one sentence naming
+    the key, the same end a git off PATH meets, and no edit left behind."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    before = progress.read_bytes()
+    _git_configured_where_none_is(consumer, tmp_path)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), *argv]) == code
+    err = capsys.readouterr().err
+    assert f"aide {argv[0]}: [tools] git = " in err and "does not exist" in err
+    assert "Traceback" not in err
+    assert progress.read_bytes() == before
+
+
+def test_check_runs_with_a_configured_git_that_is_not_there(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    _git_configured_where_none_is(consumer, tmp_path)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "warning: [tools] git = " in out and "nothing that reads git" in out
 
 
 def test_a_recording_verb_with_git_off_path_puts_its_edit_back(
