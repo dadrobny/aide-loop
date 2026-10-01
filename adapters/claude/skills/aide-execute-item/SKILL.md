@@ -37,7 +37,9 @@ python .aide/scripts/aide.py claim           # claim the next unclaimed item
 
 or, resuming an existing claim, `python .aide/scripts/aide.py sync --item NNN`
 (it lands on the claim branch and pulls it up to date). Verify the venv first:
-`python .aide/scripts/aide.py env` (add `--bootstrap` if missing/stale).
+`python .aide/scripts/aide.py env --bootstrap` (it builds the venv only if
+missing/stale, and answers for the venv alone); skip it when `aide.toml` sets
+`[python] venv = ""`, which keeps no venv.
 
 ### During implementation
 

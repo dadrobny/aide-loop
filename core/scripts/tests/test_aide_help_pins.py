@@ -169,8 +169,81 @@ def _help_for(verb: str) -> str:
 #: a claim is never half-guarded by a test that covers the easier half.
 HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
 
+    # ------------------------------------------------------------------ env --
+    "env": [
+        # `dependency_report`: `pushes = mode != "local"` sets `needed_by` and
+        # the refusal of the origin and gh lines alike.
+        ("origin and gh are needed under every [git] mode but local",
+         ("test_aide_env_report::"
+          "test_auto_merge_with_no_origin_is_refused_naming_the_setting",
+          "test_aide_env_report::test_local_needs_no_origin_and_never_asks_the_forge",
+          "test_aide_env_report::test_a_pushing_mode_without_gh_is_refused",
+          "test_aide_env_report::test_pr_with_no_login_is_refused")),
+        # `_print_dependency_report`: any refusal -> exit 1; aide.toml is never
+        # written.
+        ("A requirement the configuration needs and this machine lacks is a "
+         "refusal naming the setting that needs it and the two ways out "
+         "\u2014 meet it, or change the setting \u2014 and exits 1; nothing "
+         "is adapted to fit the machine",
+         "test_aide_env_report::"
+         "test_auto_merge_with_no_origin_is_refused_naming_the_setting"),
+        # The python line's `note`, never its `refusal`.
+        ("A printed interpreter this machine lacks is a note that fails "
+         "nothing",
+         ("test_aide_env_report::test_a_printed_interpreter_this_machine_lacks_is_a_note",
+          "test_aide_env_report::test_with_no_python3_either_the_note_names_the_key")),
+        # `has_venv` false: no venv line; `cmd_env` refuses --bootstrap.
+        ("[python] venv = \"\" means the project keeps no venv: the venv "
+         "line is left out, and --bootstrap refuses",
+         ("test_aide_env_report::test_an_empty_venv_setting_leaves_the_venv_line_out",
+          "test_aide_env_report::test_bootstrap_refuses_when_no_venv_is_kept")),
+        # `cmd_env`: `--bootstrap` returns on `env_report` / `_bootstrap_venv`
+        # and never reaches `_print_dependency_report`.
+        ("--bootstrap builds the venv where it is missing or stale and "
+         "reports on the venv alone: exit 0 when the venv is OK, whatever "
+         "else the report would refuse",
+         ("test_aide_env_report::test_bootstrap_answers_for_the_venv_alone",
+          "test_aide_git::test_bootstrap_with_an_interpreter_this_machine_lacks_is_a_sentence")),
+        ("Exits 0 when every requirement the configuration needs is met",
+         ("test_aide_env_report::test_every_requirement_met_under_pr_exits_zero",
+          "test_aide_git::test_a_stdlib_runner_in_a_bare_venv_is_ok")),
+        # The lines `dependency_report` builds, in order; the venv's facts are
+        # `env_report`'s, held by the #166 tests in test_aide_git.
+        ("the interpreter the engine runs on and the one its suggested "
+         "commands print ([tools] python in .aide/local.toml)",
+         "test_aide_env_report::test_a_printed_interpreter_this_machine_lacks_is_a_note"),
+        ("git, with its version and the merge-tree features gc (2.38+) and "
+         "queue restack (2.40+) use",
+         "test_aide_env_report::test_the_git_line_names_the_merge_tree_features"),
+        ("it exists, its last bootstrap finished, it is the [python] "
+         "interpreter's version, import_check and a `python -m` test runner "
+         "import",
+         ("test_aide_git::test_a_venv_with_no_test_runner_cannot_report_ok",
+          "test_aide_git::test_a_failed_bootstrap_record_makes_the_venv_stale",
+          "test_aide_git::test_the_configured_interpreter_is_compared_with_the_venvs_version")),
+    ],
+
     # ---------------------------------------------------------------- check --
     "check": [
+        # `cmd_check`: `dependency_errors` only where `aide.toml` is a file;
+        # it keeps the report's `in_check` lines, built with `offline=True`.
+        ("Without --queue, where aide.toml is there, the check also ERRORS on "
+         "each requirement of its configuration this machine lacks that is "
+         "decided offline: git, the repository, a remote named origin under "
+         "a [git] mode other than local, and the test command's program, "
+         "each prefixed `this machine:`",
+         ("test_aide_env_report::test_check_errors_on_auto_merge_with_no_origin",
+          "test_aide_env_report::"
+          "test_check_errors_outside_a_repository_and_on_a_missing_runner",
+          "test_aide_env_report::test_check_without_an_aide_toml_judges_no_machine",
+          "test_aide_env_report::test_check_under_local_with_no_origin_passes")),
+        # `cmd_check`: `machine_errors` only when `queue is None`.
+        ("A --queue run judges documents only",
+         "test_aide_env_report::test_check_queue_never_fails_on_the_machine"),
+        # `offline=True` returns before the gh, python and venv lines.
+        ("gh's login, the interpreter and the venv are reported by `aide env` "
+         "alone",
+         "test_aide_env_report::test_check_leaves_gh_the_interpreter_and_the_venv_to_env"),
         # `queue_spec_findings`, row 1: severity "warning", kind
         # "may-change-overlap", and `bookkeeping` excluded from it.
         ("two items claiming one path under May change (warning)",
@@ -2374,7 +2447,7 @@ def test_the_normaliser_still_sees_a_reword():
 
 
 def test_every_verb_with_a_description_block_is_registered():
-    """Seven blocks, seven entries — the register is the whole row, not a
+    """Every block, one entry each — the register is the whole row, not a
     sample of it. A verb that grows a description block and no pin would be a
     copy of engine text with nobody deciding anything about it, which is the
     state issue #205 exists to end."""
@@ -2620,13 +2693,16 @@ def test_a_retracted_criterion_reaches_check_as_a_warning(tmp_path: Path):
     assert not any("retracted" in e for e in errors), errors
 
 
-def test_a_warning_alone_still_exits_zero(tmp_path: Path, capsys):
+def test_a_warning_alone_still_exits_zero(tmp_path: Path, capsys, monkeypatch):
     """`cmd_check` returns 1 iff `errors` — the whole meaning of the split.
 
     A run with warnings and no errors exits 0 and prints them, so a consumer
     with a known-normal state (a blocking gate, a retracted criterion) is not
     stopped by it, and an unattended loop does not stall on a report.
     """
+    # Documents, not the machine: `aide check` also errors on what aide.toml
+    # needs of this machine (issue #354), which a scratch directory lacks.
+    monkeypatch.setattr(aide, "dependency_errors", lambda repo_root, config: [])
     text = PROGRESS + """
 ## Human gates
 

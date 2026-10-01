@@ -44,15 +44,19 @@ Commit the scaffold so the loop has a clean starting point.
 From inside your repo:
 
 ```
-python .aide/scripts/aide.py env      # venv health: exists, bootstrap finished, imports, test runner (add --bootstrap to build it)
+python .aide/scripts/aide.py env      # what this machine has for aide.toml: git, origin, gh, test command, Python, venv (add --bootstrap to build the venv)
 python .aide/scripts/aide.py check    # consistency gate over docs/aide/
 ```
 
 `check` will report the living documents as missing — expected, you create them
-next. (`env` is only relevant if your project uses a venv; set `[python]` in
-`aide.toml` — `interpreter = "python3.12"` there pins what `--bootstrap`
-builds the venv from, when the dependency closure resolves on a narrower
-Python range than the project declares.)
+next. Both also refuse a setting this machine cannot meet: `git.mode =
+"auto-merge"` or `"pr"` with no remote named `origin`, say, is an error naming
+the two ways out — add the remote, or set `mode = "local"`. `env` adds `gh`'s
+login, the interpreter the engine prints in its suggestions, and the venv.
+A project that keeps no venv sets `venv = ""` under `[python]` in `aide.toml`
+and `env` leaves that line out; otherwise `interpreter = "python3.12"` there
+pins what `--bootstrap` builds the venv from, when the dependency closure
+resolves on a narrower Python range than the project declares.
 
 ## 3. Author the plan (one-time)
 

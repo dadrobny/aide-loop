@@ -41,7 +41,8 @@ into a target repo:
            with the defaults it is byte-identical to the committed file.
   3. scaffold <target>/aide.toml from a template (prompts for source_dir, tests_dir,
      test_command, git.mode; skipped if aide.toml already exists) — done BEFORE (2)
-     so the settings write-scope can read it.
+     so the settings write-scope can read it. The git.mode prompt defaults to
+     `local` on a target with no remote named origin, and says why.
   4. move a pre-2.0.0 <target>/.aide/loop/loop.local.toml to <target>/.aide/local.toml
      — the per-machine config's new home now the supervisor that shared the file
      is retired (`migrate_local_config`). A no-op where there is nothing to move.
@@ -55,6 +56,11 @@ into a target repo:
      after every other step has succeeded: it is what --check compares, so a
      failure anywhere above leaves the old version (or none) in place and the
      partial install stays visibly behind instead of claiming to be complete.
+  7. warn, on install and update alike, about each requirement aide.toml makes
+     that this machine lacks and that can be decided offline — git, the
+     repository, a remote named origin, the test command — by running the
+     engine's own dependency report (`dependency_warnings`; `aide env` is
+     the whole report). Never an exit code.
 
     python install.py --into <target-repo> --update
 
@@ -265,6 +271,9 @@ docs_dir = "docs/aide"
 
 [python]
 test_command = "{test_command}"
+# The project venv `aide env` checks and `env --bootstrap` builds; "" for a
+# project that keeps none, which leaves the venv out of `aide env`.
+# venv = ".venv"
 # The Python `env --bootstrap` builds the venv from — a command on PATH
 # ("python3.12", "py -3.12") or an absolute path. Unset, it is whatever Python
 # launched the CLI. Set it when the dependency closure resolves on a narrower
@@ -1726,31 +1735,33 @@ def _scope_rewrites(source_dir: str, tests_dir: str) -> Dict[str, str]:
     return out
 
 
-_ENGINE_LOAD_CONFIG = None
+_ENGINE = None
 
 
-def _engine_load_config():
-    """The engine's own ``load_config``, loaded by file path.
+def _engine():
+    """The engine module, loaded by file path.
 
-    Both readers below use it so install.py and the engine interpret one
-    aide.toml identically — same TOML subset, same defaults. Deliberately not
-    ``import aide``: that name resolves through ``sys.path`` *and*
-    ``sys.modules``, and neither is ours to rely on. Prepending to `sys.path`
-    fixes only the first, leaves an entry behind unless carefully unwound, and
-    is beaten outright by a host process that already bound some other `aide`
-    before install.py ran.
+    Its ``load_config`` lets install.py and the engine interpret one aide.toml
+    identically — same TOML subset, same defaults — and its dependency report
+    is the one reading of what this machine has for that configuration
+    (issue #354), so the installer never keeps a second copy of either.
+    Deliberately not ``import aide``: that name resolves through ``sys.path``
+    *and* ``sys.modules``, and neither is ours to rely on. Prepending to
+    `sys.path` fixes only the first, leaves an entry behind unless carefully
+    unwound, and is beaten outright by a host process that already bound some
+    other `aide` before install.py ran.
 
     Loading the file whose path we already know removes both questions, touches
     no global import state, and is how every test module in this repo loads the
-    engine. Cached because the reader is called more than once per run and the
-    module is 3k lines.
+    engine. Cached because it is called more than once per run and the module
+    is large.
     """
-    global _ENGINE_LOAD_CONFIG
-    if _ENGINE_LOAD_CONFIG is None:
+    global _ENGINE
+    if _ENGINE is None:
         path = FRAMEWORK_ROOT / "core" / "scripts" / "aide.py"
         spec = importlib.util.spec_from_file_location("_aide_engine", path)
         if spec is None or spec.loader is None:
-            # Both callers fall back on any exception, so this would otherwise
+            # Every caller falls back on any exception, so this would otherwise
             # surface as an AttributeError two lines down and be swallowed as
             # "engine unavailable". Naming the file that could not be loaded is
             # the difference between a debuggable fallback and a silent one.
@@ -1760,8 +1771,13 @@ def _engine_load_config():
         # the engine, and publishing it under a guessable name is the very
         # collision the path-based load exists to avoid.
         spec.loader.exec_module(module)
-        _ENGINE_LOAD_CONFIG = module.load_config
-    return _ENGINE_LOAD_CONFIG
+        _ENGINE = module
+    return _ENGINE
+
+
+def _engine_load_config():
+    """The engine's own ``load_config`` (see `_engine`)."""
+    return _engine().load_config
 
 
 def _project_scope(target: Path) -> Tuple[str, str]:
@@ -2002,7 +2018,20 @@ def scaffold_aide_toml(target: Path, adapter: str, version: str, args: argparse.
     source_dir = args.source_dir or prompt("source_dir", "src", interactive)
     tests_dir = args.tests_dir or prompt("tests_dir", "tests", interactive)
     test_command = args.test_command or prompt("test_command", "python -m pytest", interactive)
-    git_mode = args.git_mode or prompt("git.mode", "auto-merge", interactive, GIT_MODES)
+    git_mode = args.git_mode
+    if not git_mode:
+        # The default a person accepts with Enter is one this machine can
+        # run: `auto-merge` and `pr` push to origin, so a target without one
+        # is offered `local`, with the reason (issue #354). `--yes` keeps
+        # `auto-merge`, and the dependency report after the install warns.
+        default, why = "auto-merge", None
+        if interactive:
+            why = origin_missing(target)
+            if why is not None:
+                default = "local"
+                print(f"  git.mode defaults to local: {why}, and auto-merge "
+                      f"and pr need a repository with a remote named origin")
+        git_mode = prompt("git.mode", default, interactive, GIT_MODES)
 
     path.write_text(
         AIDE_TOML_TEMPLATE.format(
@@ -2013,6 +2042,43 @@ def scaffold_aide_toml(target: Path, adapter: str, version: str, args: argparse.
         encoding="utf-8",
     )
     log.append(f"  + {path}")
+
+
+def origin_missing(target: Path) -> Optional[str]:
+    """Why *target* has no remote named origin, or None when it has one — or
+    when it cannot be asked at all, where the old default stands. Asked of the
+    engine, the one reading of both questions; never breaks the install."""
+    try:
+        engine = _engine()
+        engine._TOPLEVEL.clear()   # a target may have been `git init`ed since
+        if not engine.in_repository(target):
+            return f"{target} is not a git repository yet"
+        if engine.origin_url(target) is None:
+            return f"{target} has no remote named origin"
+    except Exception:  # no engine, no git, a repository git refuses: no opinion
+        return None
+    return None
+
+
+def dependency_warnings(target: Path) -> List[str]:
+    """The offline half of `aide env`'s dependency report for *target*: one
+    sentence per requirement its aide.toml needs and this machine lacks — git,
+    the repository, a remote named origin, the test command (issue #354).
+
+    The engine's own report, never a second reading of it, so the installer
+    and `aide check` cannot disagree. Run after writing, and never fails the
+    install: what is missing is the machine's or the project's to fix, and the
+    files just written are right either way.
+    """
+    try:
+        engine = _engine()
+        engine._TOPLEVEL.clear()
+        lines = engine.dependency_report(target, engine.load_config(target),
+                                         offline=True)
+    except Exception as exc:  # incl. a malformed aide.toml or a missing engine
+        return [f"this machine's dependencies were not checked ({exc}) — run "
+                f"`python .aide/scripts/aide.py env` in the target"]
+    return [r.refusal for r in lines if r.refusal]
 
 
 def default_context_declaration(adapter_dir: Path) -> Optional[Tuple[str, str]]:
@@ -2542,6 +2608,14 @@ def run(args: argparse.Namespace) -> int:
               f"'{adapter}' adapter no longer ships:")
         for path in retired:
             print(f"  - {path}")
+    # 10. What this machine lacks for the configuration just written or kept —
+    #     after every write, and a warning only (issue #354).
+    lacking = dependency_warnings(target)
+    if lacking:
+        print("\nThis machine lacks what aide.toml needs (`aide env` lists "
+              "every requirement):")
+        for sentence in lacking:
+            print(f"  warning: {sentence}")
     print(f"\nDone. Installed engine version recorded at {aide_dir / 'VERSION'}.")
     # The engine's own suite ships with every install and no default `pytest`
     # run collects it (.aide/ is a dot-directory; norecursedirs skips `.*`),

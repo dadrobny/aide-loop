@@ -1231,7 +1231,10 @@ def test_insight_malformed_entry_warns(tmp_path: Path):
 # --------------------------------------------------------------------------- #
 # CLI end-to-end
 # --------------------------------------------------------------------------- #
-def test_cli_check_ok(tmp_path: Path, capsys):
+def test_cli_check_ok(tmp_path: Path, capsys, monkeypatch):
+    # Documents, not the machine: `aide check` also errors on what aide.toml
+    # needs of this machine (issue #354), which a scratch directory lacks.
+    monkeypatch.setattr(aide, "dependency_errors", lambda repo_root, config: [])
     root = _docs(tmp_path)
     rc = aide.main(["--repo", str(root), "check"])
     assert rc == 0

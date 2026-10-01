@@ -2154,6 +2154,16 @@ def test_a_venv_with_no_test_runner_cannot_report_ok(bare_venv: Path, capsys):
 def test_a_stdlib_runner_in_a_bare_venv_is_ok(bare_venv: Path, capsys):
     (bare_venv / "aide.toml").write_text(_env_toml("python -m unittest"), encoding="utf-8")
     assert aide.env_status(bare_venv, aide.load_config(bare_venv)) == "ok"
+    # The rest of `env`'s report met too (issue #354): a repository, `local`
+    # so no origin or gh is needed, and a printed interpreter that exists.
+    subprocess.run(["git", "init", "-q", str(bare_venv)], check=True,
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    with (bare_venv / "aide.toml").open("a", encoding="utf-8") as f:
+        f.write('[git]\nmode = "local"\n')
+    (bare_venv / ".aide").mkdir(exist_ok=True)
+    (bare_venv / ".aide" / "local.toml").write_text(
+        f"[tools]\npython = '{Path(sys.executable).as_posix()}'\n",
+        encoding="utf-8")
     assert aide.main(["--repo", str(bare_venv), "env"]) == 0
     assert "venv is Python" in capsys.readouterr().out
 

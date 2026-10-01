@@ -63,7 +63,8 @@ Framework/process changes land via a **reviewed PR**, never a direct merge.
 ### 4. Consistency, permission bottlenecks & instruction delivery
 
 - Run `python .aide/scripts/aide.py check` — fix any format-contract errors it
-  reports (they break the scripts the loop depends on).
+  reports (they break the scripts the loop depends on). A `this machine:`
+  error is reported to the human, never fixed by editing `aide.toml`.
 - **Permission bottlenecks and instruction delivery are queue-boundary questions
   too**, and both have a pass of their own (table above): run
   `/aide-review-permissions` for the prompts an unattended run stalled on, and

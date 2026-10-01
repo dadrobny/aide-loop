@@ -691,9 +691,12 @@ def test_check_queue_fails_on_an_error_finding(tmp_path: Path, capsys):
     assert "Asserts against" in capsys.readouterr().out
 
 
-def test_check_without_queue_is_unchanged(tmp_path: Path, capsys):
+def test_check_without_queue_is_unchanged(tmp_path: Path, capsys, monkeypatch):
     """The cross-spec checks are opt-in: a bare `aide check` must not start
     reporting them."""
+    # Documents, not the machine: `aide check` also errors on what aide.toml
+    # needs of this machine (issue #354), which a scratch directory lacks.
+    monkeypatch.setattr(aide, "dependency_errors", lambda repo_root, config: [])
     repo = _make_repo(tmp_path, {
         27: _spec_text(27, may=["src/cli.py"]),
         28: _spec_text(28, may=["src/other.py"], asserts=["src/cli.py"]),

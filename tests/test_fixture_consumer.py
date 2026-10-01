@@ -205,12 +205,17 @@ def prototype(tmp_path_factory) -> Path:
     Built once: the install is ~700 KB and every test wants its own mutable
     git repo, so copying the finished tree is far cheaper than re-installing.
     `git.mode = "local"` because the default (`auto-merge`) reaches for a
-    remote; the modes that need one build their own origin below.
+    remote; the modes that need one build their own origin below. The test
+    command is `git --version` for the reason `_set_test_command` gives: the
+    fixture has no venv, and `aide check` errors on a test command this
+    machine cannot run (issue #354), which a bare `python` is on a host that
+    has only `python3`.
     """
     target = tmp_path_factory.mktemp("prototype") / "consumer"
     target.mkdir()
     assert install.main(["--into", str(target), "--yes",
-                         "--git-mode", "local", "--name", "Fixture"]) == 0
+                         "--git-mode", "local", "--name", "Fixture",
+                         "--test-command", "git --version"]) == 0
 
     ddir = target / "docs" / "aide"
     (ddir / "queue").mkdir(parents=True)
@@ -4950,6 +4955,60 @@ def test_an_interpreter_this_machine_lacks_stops_the_bootstrap_before_the_venv(
     assert not (consumer / ".venv").exists()
 
 
+# --------------------------------------------------------------------------- #
+# the dependency report: a mode this machine cannot meet is refused, never
+# adapted (issue #354)
+# --------------------------------------------------------------------------- #
+def _met_but_the_mode(consumer: Path, mode: str) -> None:
+    """Every other requirement met — no venv kept, the running interpreter as
+    the one the engine prints — and *mode* in place of the fixture's
+    `local`, committed."""
+    _set_python_keys(consumer, venv="")
+    (consumer / ".aide" / "local.toml").write_text(
+        f"[tools]\npython = '{Path(sys.executable).as_posix()}'\n",
+        encoding="utf-8")
+    _set_mode(consumer, "local", mode)
+
+
+def _set_mode(consumer: Path, old: str, new: str) -> None:
+    toml = consumer / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        f'mode = "{old}"', f'mode = "{new}"'), encoding="utf-8")
+    _commit(consumer, f"chore: {new}, and no origin")
+
+
+def test_env_refuses_auto_merge_with_no_origin_and_passes_it_under_local(
+        aide, consumer: Path, monkeypatch, capsys):
+    """`merge` did all its local work, ticked ✅, then failed at the push on
+    every retry; `env` now says so before the run, naming the setting."""
+    monkeypatch.setattr(aide, "_gh", lambda root, args: (None, "not asked here"))
+    _met_but_the_mode(consumer, "auto-merge")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "env"]) == 1
+    out = capsys.readouterr().out
+    assert ('aide env: [git] mode = "auto-merge" in aide.toml needs a remote '
+            'named origin — add one') in out
+    assert 'mode = "auto-merge"' in (consumer / "aide.toml").read_text(encoding="utf-8")
+
+    _set_mode(consumer, "auto-merge", "local")
+    assert aide.main(["--repo", str(consumer), "env"]) == 0
+    assert "aide env: OK" in capsys.readouterr().out
+
+
+def test_check_errors_on_auto_merge_with_no_origin(aide, consumer: Path, capsys):
+    _met_but_the_mode(consumer, "auto-merge")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
+    out = capsys.readouterr().out
+    assert ('error: this machine: [git] mode = "auto-merge" in aide.toml needs a remote '
+            'named origin') in out
+
+    # `--queue` is the planner's run: documents only, so the same machine is
+    # judged exactly as under `local`.
+    assert aide.main(["--repo", str(consumer), "check", "--queue", "1"]) == 0
+    assert "this machine:" not in capsys.readouterr().out
+
+
 def test_sync_is_not_stalled_by_the_claude_runtimes_scratch_worktrees(aide, consumer: Path):
     """#165: `/code-review` leaves a scratch checkout under `.claude/worktrees/`;
     an unattended run stalled on `sync`'s unclean-tree refusal over it. The
@@ -5026,11 +5085,16 @@ def test_a_configured_git_that_is_not_there_is_refused_naming_the_key(
 
 def test_check_runs_with_a_configured_git_that_is_not_there(
         aide, consumer: Path, tmp_path: Path, capsys):
+    """The documents are still judged and what was skipped is a warning; the
+    missing git is one error, since aide.toml needs it (issue #354) — said
+    once, though the fixture's test command is git too."""
     _git_configured_where_none_is(consumer, tmp_path)
     capsys.readouterr()
-    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
     out = capsys.readouterr().out
     assert "warning: [tools] git = " in out and "nothing that reads git" in out
+    assert out.count("error: this machine: [tools] git = ") == 1
+    assert "aide check: FAIL (1 error(s)" in out
 
 
 def test_a_recording_verb_with_git_off_path_puts_its_edit_back(
@@ -5304,14 +5368,17 @@ def test_a_git_that_refuses_the_repository_is_quoted_not_called_no_repository(
 def test_check_with_git_off_path_still_judges_the_documents_and_says_what_it_skipped(
         aide, consumer: Path, monkeypatch, capsys):
     """The one verb that does not refuse: `check` is the documents' verdict,
-    and has passed with git off PATH since 1.26.0. What it could not read is
-    one warning, so its OK is not read as "branches and history checked"."""
+    and still judges them with git off PATH. What it could not read is one
+    warning, so nothing reads as "branches and history checked"; that
+    aide.toml needs a git this machine lacks is one error (issue #354)."""
     (consumer / "docs" / "aide" / "insights.md").unlink()
     _path_without_git(monkeypatch)
     capsys.readouterr()
-    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
     out, err = capsys.readouterr()
     assert "git is not on PATH, so nothing that reads git was checked" in out + err
+    assert out.count("error: this machine: git is not on PATH — ") == 1
+    assert "aide check: FAIL (1 error(s)" in out
     assert aide._GIT_OPTIONAL is False     # reset by the check itself
     assert (consumer / "docs" / "aide" / "insights.md").is_file()
     assert "Traceback" not in err

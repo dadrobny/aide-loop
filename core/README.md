@@ -255,7 +255,7 @@ validation. The reviewer is off unless `aide.toml` sets
 `loop.review = "background"`, and where it runs, the merge waits for both.
 
 **Deterministic work is scripted, not delegated** — recon/claim, progress
-reconciliation, queue tidy, the recorded suite run, merge+cleanup, venv check, the consistency check,
+reconciliation, queue tidy, the recorded suite run, merge+cleanup, the dependency report and venv bootstrap, the consistency check,
 session preflight, branch clean-up, opening and marking ready a queue's own
 PR, and the state report are all `aide.py` subcommands. Agents keep only the reasoning: prioritisation, AC design, test
 design, implementation, quality judgment.
