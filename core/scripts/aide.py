@@ -381,9 +381,14 @@ class GitRefused(MissingTool):
 
 
 class RunnerMissing(MissingTool):
-    def __init__(self, program: str) -> None:
-        where = ("does not exist" if ("/" in program or os.sep in program)
-                 else "is not on PATH")
+    def __init__(self, program: str, repo_root: Optional[Path] = None) -> None:
+        # A path is read from the repository root, where the command runs.
+        at = Path(program)
+        if not at.is_absolute() and repo_root is not None:
+            at = Path(repo_root) / at
+        where = ("is not on PATH" if not ("/" in program or os.sep in program)
+                 else "is not an executable file" if at.is_file()
+                 else "does not exist")
         super().__init__(f"the test command '{program}' {where} — install it, "
                          f"or fix [python] test_command in aide.toml")
 
@@ -8246,10 +8251,16 @@ def cmd_check(args: argparse.Namespace) -> int:
     # What the committed configuration needs of this machine and it lacks,
     # decided offline (issue #354). Asked before git turns optional below,
     # so a repository git refuses is git's own words here too. Only where
-    # an aide.toml is there: the check also lints repos with no AIDE
-    # configuration, whose defaults nobody committed.
-    machine_errors = (dependency_errors(repo_root, config)
-                      if (repo_root / "aide.toml").is_file() else [])
+    # an aide.toml is there — the check also lints repos with no AIDE
+    # configuration, whose defaults nobody committed — and only on a plain
+    # run: `--queue` is a planner's or reviewer's judgement of documents,
+    # and a machine error there would invite the edit of `[git] mode` or
+    # `test_command` §4 forbids. Prefixed, so no reader takes one for a
+    # document error.
+    machine_errors = ([f"{MACHINE_PREFIX}{e}" for e in
+                       dependency_errors(repo_root, config)]
+                      if queue is None and (repo_root / "aide.toml").is_file()
+                      else [])
     _GIT_OPTIONAL = git_problem is not None
     try:
         # Before the checks, so the file they then shape-check is the one that
@@ -12285,12 +12296,15 @@ class Requirement(NamedTuple):
     marks the four `aide check` also errors on — git, the repository,
     `origin`, the test command — decidable offline and about the project; a
     gh login needs the network, and the interpreter and venv are `env`'s own.
+    ``note`` is a fact worth fixing that fails nothing: the interpreter the
+    engine prints in its suggestions, which no verb runs.
     """
     name: str
     found: str
     needed_by: Optional[str]
     refusal: Optional[str] = None
     in_check: bool = False
+    note: Optional[str] = None
 
 
 def origin_url(repo_root: Path) -> Optional[str]:
@@ -12461,12 +12475,17 @@ def dependency_report(repo_root: Path, config: Dict[str, Dict[str, object]],
             elif found_at is None and raw[0] == "python":
                 build = (f"build the venv ('{aide_command(repo_root, 'env --bootstrap')}'), "
                          if has_venv(config) else "")
+                instead = ""
+                if shutil.which("python3"):
+                    instead = (" — this machine has python3, so '"
+                               + " ".join(["python3", *raw[1:]])
+                               + "' would run")
                 refusal = (f"the test command's 'python' is not on PATH, and "
                            f"there is no venv to run it from — {build}put a "
                            f"python on PATH, or change [python] test_command "
-                           f"in aide.toml")
+                           f"in aide.toml{instead}")
             elif found_at is None:
-                refusal = str(RunnerMissing(argv[0]))
+                refusal = str(RunnerMissing(argv[0], repo_root))
             lines.append(Requirement("test command",
                                      f"{argv[0]} → {found_at or 'not found'}",
                                      "always", refusal, True))
@@ -12484,13 +12503,18 @@ def dependency_report(repo_root: Path, config: Dict[str, Dict[str, object]],
              f"({sys.version_info[0]}.{sys.version_info[1]}); the commands it "
              f"suggests start {printed}"
              + (f" ({printed_at})" if printed_at else ", which is not found"))
-    refusal = None
+    # A note, never a refusal: the printed interpreter decides only what a
+    # suggestion says, not what any verb runs (§4).
+    note = None
     if printed_at is None:
-        refusal = (f"the engine prints '{printed}' in the commands it suggests, "
-                   f"and this machine has no {printed} — put one on PATH, or "
-                   f"name the interpreter to print in [tools] python in "
-                   f"{LOCAL_CONFIG.as_posix()}")
-    lines.append(Requirement("python", found, "always", refusal))
+        fix = (f"set [tools] python = \"python3\" in "
+               f"{LOCAL_CONFIG.as_posix()} — this machine has python3"
+               if printed != "python3" and shutil.which("python3")
+               else f"put one on PATH, or name the interpreter to print in "
+                    f"[tools] python in {LOCAL_CONFIG.as_posix()}")
+        note = (f"the engine prints '{printed}' in the commands it suggests, "
+                f"and this machine has no {printed} on PATH; {fix}")
+    lines.append(Requirement("python", found, "always", None, note=note))
 
     if has_venv(config):
         venv = str(config["python"].get("venv", ".venv"))
@@ -12504,6 +12528,12 @@ def dependency_report(repo_root: Path, config: Dict[str, Dict[str, object]],
         lines.append(Requirement("venv", f"{status} — {detail}",
                                  f'[python] venv = "{venv}"', refusal))
     return lines
+
+
+#: What `aide check` puts before an error about the machine rather than the
+#: documents (issue #354): reported to a person, never fixed by editing
+#: `aide.toml` to fit.
+MACHINE_PREFIX = "this machine: "
 
 
 def dependency_errors(repo_root: Path,
@@ -12606,6 +12636,9 @@ def _print_dependency_report(repo_root: Path,
                   else f"needed by {r.needed_by}" if r.needed_by
                   else "not needed")
         print(f"  {r.name:<{width}}  {r.found} · {needed}")
+    for r in lines:
+        if r.note:
+            print(f"aide env: note: {r.note}")
     refusals = list(dict.fromkeys(r.refusal for r in lines if r.refusal))
     for refusal in refusals:
         print(f"aide env: {refusal}")
@@ -13791,9 +13824,10 @@ def _run_suite_argv(argv: List[str], repo_root: Path) -> subprocess.CompletedPro
     (issue #352), and an empty command is refused by each verb before this."""
     try:
         return subprocess.run(argv, cwd=str(repo_root))
-    except FileNotFoundError:
+    except (FileNotFoundError, PermissionError):
+        # PermissionError: a path that names a file with no execute bit.
         if resolve_tool(argv[0], repo_root) is None:
-            raise RunnerMissing(argv[0]) from None
+            raise RunnerMissing(argv[0], repo_root) from None
         raise
 
 
@@ -17294,12 +17328,15 @@ def build_parser() -> argparse.ArgumentParser:
         "template, and the file --report names)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "Where aide.toml is there, the check also ERRORS on each "
-            "requirement of its configuration this machine lacks that is "
-            "decided offline: git, the repository, a remote named origin "
-            "under a [git] mode other than local, and the test command's "
-            "program, each worded as `aide env` words it. gh's login, the "
-            "interpreter and the venv are reported by `aide env` alone.\n"
+            "Without --queue, where aide.toml is there, the check also "
+            "ERRORS on each requirement of its configuration this machine "
+            "lacks that is decided offline: git, the repository, a remote "
+            "named origin under a [git] mode other than local, and the test "
+            "command's program, each prefixed `this machine:` and worded as "
+            "`aide env` words it. Such an error is the machine's, for a "
+            "person to meet, not a document to edit. A --queue run judges "
+            "documents only. gh's login, the interpreter and the venv are "
+            "reported by `aide env` alone.\n"
             "\n"
             "--queue NNN checks one queue's specs against each other: two items "
             "claiming one path under May change (warning), one item changing a "
@@ -18245,11 +18282,13 @@ def register_git_subcommands(sub) -> None:
             "requirement the configuration needs and this machine lacks is a "
             "refusal naming the setting that needs it and the two ways out "
             "\u2014 meet it, or change the setting \u2014 and exits 1; nothing "
-            "is adapted to fit the machine. [python] venv = \"\" means the "
+            "is adapted to fit the machine. A printed interpreter this "
+            "machine lacks is a note that fails nothing: it decides only "
+            "what a suggestion says. [python] venv = \"\" means the "
             "project keeps no venv: the venv line is left out, and --bootstrap "
             "refuses. Exits 0 when every requirement the configuration needs "
-            "is met. `aide check` errors on the offline part of the same "
-            "report.\n"
+            "is met. `aide check` without --queue errors on the offline "
+            "part of the same report.\n"
             "\n"
             "--bootstrap builds the venv where it is missing or stale and "
             "reports on the venv alone: exit 0 when the venv is OK, whatever "

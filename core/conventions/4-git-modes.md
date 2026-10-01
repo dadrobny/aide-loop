@@ -24,16 +24,14 @@ an `aide check` error.
   the same gate.
 
 **A mode this machine cannot meet is refused, never adapted.** Every mode but
-`local` needs a remote named `origin` and the forge's CLI, `gh`, logged in.
-`aide env` reports each requirement the configuration makes of the machine
-— git, the repository, `origin`, `gh`, the test command, Python and the
-venv — beside what the machine has. A requirement the configuration needs and
-the machine lacks is a refusal that names the setting needing it and the two
-ways out: meet it, or change the setting. No verb lowers the mode to fit the
-machine. `aide check` errors on the part decidable offline (git, the
-repository, `origin`, the test command), and the installer reports that part
-after it writes, offering `local` as the default mode on a target with no
-`origin`. `aide env -h` states each line.
+`local` needs a remote named `origin` and the forge's CLI, `gh`, logged in. A
+requirement the configuration needs and the machine lacks is a refusal that
+names the setting needing it and the two ways out: meet it, or change the
+setting. No verb and no role lowers the mode or rewrites `test_command` to
+fit the machine; a refusal goes to a person. `aide env` reports every
+requirement. A plain `aide check` errors on the part decided offline, each
+error marked `this machine:`; `aide check --queue` judges documents only.
+`aide env -h` and `aide check -h` state each line.
 
 **A red test run is compared with the base before it refuses.** Where the
 test command's report names each failing test — pytest, run as a module —
@@ -202,13 +200,21 @@ checks" just after a push as the answer: CI may not have started yet.
   `auto-merge` with no `origin`: `merge` did all of its local work, ticked ✅,
   then failed at the push on every retry. The installer scaffolded
   `auto-merge` into a target with no remote, or one that was no repository at
-  all (issue #354). Lowering the mode to `local` instead would silently keep
-  every item on one machine for an owner who chose to publish — the failure an
-  unknown mode already had. `gh`'s login is left out of `aide check` because
-  asking needs the network, and the check runs where there may be none. The
-  venv is left out because `aide env --bootstrap` is what builds it, and the
-  interpreter the engine prints because it decides only what a suggestion
-  says, not what any verb runs.
+  all (issue #354); it now reports the offline part after it writes, and its
+  interactive prompt offers `local` on a target with no `origin`. Lowering the
+  mode to `local` instead would silently keep every item on one machine for
+  an owner who chose to publish — the failure an unknown mode already had.
+- **Why the check judges only part of the machine, and only when plain.** The
+  offline part is git, the repository, `origin` and the test command. `gh`'s
+  login is left out because asking needs the network, and the check runs
+  where there may be none; the venv because `aide env --bootstrap` is what
+  builds it. `--queue` is the planner's and the spec-reviewer's run, and a
+  machine error there would read as a document to fix — the edit of `[git]
+  mode` or `test_command` this rule forbids. The `this machine:` mark keeps
+  the plain run's errors apart for the same reason.
+- **Why the printed interpreter is a note.** It decides only what a suggested
+  command says, not what any verb runs, so a host with only `python3` is told
+  the `[tools] python` that fixes the suggestion and fails nothing.
 - **Why an unknown mode is an error.** Every verb compares the value against
   `local` or `pr`, so anything else — a `"Local"` — ran as `auto-merge`,
   pushing from a checkout its owner had set offline, and nothing said so

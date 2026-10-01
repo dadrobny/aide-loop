@@ -177,7 +177,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_env_report::"
           "test_auto_merge_with_no_origin_is_refused_naming_the_setting",
           "test_aide_env_report::test_local_needs_no_origin_and_never_asks_the_forge",
-          "test_aide_env_report::test_pr_without_gh_is_refused",
+          "test_aide_env_report::test_a_pushing_mode_without_gh_is_refused",
           "test_aide_env_report::test_pr_with_no_login_is_refused")),
         # `_print_dependency_report`: any refusal -> exit 1; aide.toml is never
         # written.
@@ -187,6 +187,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "is adapted to fit the machine",
          "test_aide_env_report::"
          "test_auto_merge_with_no_origin_is_refused_naming_the_setting"),
+        # The python line's `note`, never its `refusal`.
+        ("A printed interpreter this machine lacks is a note that fails "
+         "nothing",
+         ("test_aide_env_report::test_a_printed_interpreter_this_machine_lacks_is_a_note",
+          "test_aide_env_report::test_with_no_python3_either_the_note_names_the_key")),
         # `has_venv` false: no venv line; `cmd_env` refuses --bootstrap.
         ("[python] venv = \"\" means the project keeps no venv: the venv "
          "line is left out, and --bootstrap refuses",
@@ -206,7 +211,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `env_report`'s, held by the #166 tests in test_aide_git.
         ("the interpreter the engine runs on and the one its suggested "
          "commands print ([tools] python in .aide/local.toml)",
-         "test_aide_env_report::test_a_printed_interpreter_this_machine_lacks_is_refused"),
+         "test_aide_env_report::test_a_printed_interpreter_this_machine_lacks_is_a_note"),
         ("git, with its version and the merge-tree features gc (2.38+) and "
          "queue restack (2.40+) use",
          "test_aide_env_report::test_the_git_line_names_the_merge_tree_features"),
@@ -222,14 +227,19 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
     "check": [
         # `cmd_check`: `dependency_errors` only where `aide.toml` is a file;
         # it keeps the report's `in_check` lines, built with `offline=True`.
-        ("Where aide.toml is there, the check also ERRORS on each requirement "
-         "of its configuration this machine lacks that is decided offline: "
-         "git, the repository, a remote named origin under a [git] mode "
-         "other than local, and the test command's program",
+        ("Without --queue, where aide.toml is there, the check also ERRORS on "
+         "each requirement of its configuration this machine lacks that is "
+         "decided offline: git, the repository, a remote named origin under "
+         "a [git] mode other than local, and the test command's program, "
+         "each prefixed `this machine:`",
          ("test_aide_env_report::test_check_errors_on_auto_merge_with_no_origin",
           "test_aide_env_report::"
           "test_check_errors_outside_a_repository_and_on_a_missing_runner",
-          "test_aide_env_report::test_check_without_an_aide_toml_judges_no_machine")),
+          "test_aide_env_report::test_check_without_an_aide_toml_judges_no_machine",
+          "test_aide_env_report::test_check_under_local_with_no_origin_passes")),
+        # `cmd_check`: `machine_errors` only when `queue is None`.
+        ("A --queue run judges documents only",
+         "test_aide_env_report::test_check_queue_never_fails_on_the_machine"),
         # `offline=True` returns before the gh, python and venv lines.
         ("gh's login, the interpreter and the venv are reported by `aide env` "
          "alone",

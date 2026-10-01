@@ -152,15 +152,19 @@ instead — that is the bump policy above, and it is enforced by
   level, `origin`, `gh` and whether `gh auth status` confirms a login, the
   test command's program, the interpreter the engine runs on and the one its
   suggestions print (`[tools] python`), and the venv as before — with what
-  was found and which setting needs it. `origin` and `gh` are needed under
+  was found and which setting needs it. A printed interpreter this machine
+  lacks is a note that fails nothing, and names `[tools] python = "python3"`
+  where the machine has `python3`. `origin` and `gh` are needed under
   every `[git] mode` but `local`. A requirement needed and missing is a
   refusal naming the setting and the two ways out, e.g. `[git] mode =
   "auto-merge" in aide.toml needs a remote named origin — add one ('git
   remote add origin <url>'), or set [git] mode = "local"`, and `env` exits 1;
   nothing lowers the mode to fit the machine. `env --bootstrap` still builds
   the venv and answers for the venv alone, so a validator bootstrapping a
-  suite runner is not failed by a `gh` login it does not need. §4 states the
-  rule; `aide env -h` states each line.
+  suite runner is not failed by a `gh` login it does not need; the
+  `aide-execute-item` and `aide-status-report` skills, which ran `env` as a
+  venv check, now run `env --bootstrap`. §4 states the rule; `aide env -h`
+  states each line.
 - **`[python] venv = ""` says the project keeps no venv.** `env` leaves the
   venv line out instead of failing a non-Python project forever, `env
   --bootstrap` refuses, and a leading `python` in the test command is no
@@ -171,25 +175,33 @@ instead — that is the bump policy above, and it is enforced by
   runs the offline half of the same report through the engine it already
   loads by path, so the two cannot disagree, and prints each missing
   requirement as a warning: a target that is not a repository, `auto-merge`
-  or `pr` with no `origin`, a test command this machine cannot run. The exit
-  code is unchanged. The interactive `git.mode` prompt defaults to `local` on
+  or `pr` with no `origin`, a test command this machine cannot run — naming
+  `python3` where the scaffold's `python -m pytest` meets a host with only
+  that. The exit code is unchanged. The interactive `git.mode` prompt defaults to `local` on
   a target with no `origin` and says why; `--yes` keeps `auto-merge`, and the
   report warns.
 
 ### Changed
 
-- **`aide check` errors on a requirement of the configuration this machine
-  lacks that is decided offline** — git, the repository, `origin` under a
-  mode other than `local`, the test command's program — worded as `env`
-  words it, wherever an `aide.toml` is present (a repo with none still gets
-  only the lints). `gh`'s login, the interpreter and the venv stay `env`'s.
-  With git off PATH the check still judges every document and still warns
-  about what it could not read, as since 2.28.2, and now also fails on the
-  missing git. **A consumer whose `aide check` runs on a machine without a
-  remote under `auto-merge` or `pr`, or with a test command that machine
-  cannot run, now fails it: add the remote or set `[git] mode = "local"`,
-  and install the runner, build the venv, or fix `[python] test_command`.**
-  `aide merge`'s document gate is unchanged and does not run these checks.
+- **A plain `aide check` also errors on a requirement of the configuration
+  this machine lacks that is decided offline** — git, the repository,
+  `origin` under a mode other than `local`, the test command's program —
+  each prefixed `this machine:` and worded as `env` words it, wherever an
+  `aide.toml` is present (a repo with none still gets only the lints). `aide
+  check --queue NNN` judges documents only, so the planner and spec-reviewer
+  are never sent to edit `[git] mode` or `test_command` to fit a machine,
+  and `aide merge`'s document gate does not run these checks either. `gh`'s
+  login, the interpreter and the venv stay `env`'s. With git off PATH the
+  check still judges every document and warns about what it could not read,
+  as since 2.28.2, and now also errors on the missing git. A consumer whose
+  machine meets its configuration edits nothing; where one does not, the
+  error names the two ways out, and the `aide-create-progress` and
+  `aide-feedback-loop` skills say a `this machine:` error goes to the human
+  rather than into `aide.toml`.
+- **A test command that names a file with no execute bit is said to be
+  that**, not "does not exist", by `aide test`, `aide merge` and the report.
+  On POSIX, where running such a file is a permission error, `aide test` and
+  `aide merge` ended in a traceback before.
 
 ## [2.29.0] — 2026-10-01
 

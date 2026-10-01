@@ -12,6 +12,7 @@ machine with a real `gh` neither waits on the network nor changes a verdict.
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -92,8 +93,6 @@ def test_auto_merge_with_no_origin_is_refused_naming_the_setting(
     assert f"aide env: {ORIGIN_REFUSAL}" in out
     assert 'or set [git] mode = "local"' in out
     assert "aide env: FAIL" in out
-    # Never an adaptation: the mode written is the mode that stays.
-    assert 'mode = "auto-merge"' in (repo / "aide.toml").read_text(encoding="utf-8")
 
 
 def test_local_needs_no_origin_and_never_asks_the_forge(
@@ -115,14 +114,18 @@ def test_every_requirement_met_under_pr_exits_zero(
     assert "logged in" in out
 
 
-def test_pr_without_gh_is_refused(tmp_path: Path, capsys, monkeypatch):
-    repo = _repo(tmp_path, mode="pr", origin=True)
+@pytest.mark.parametrize("mode", ["pr", "auto-merge"])
+def test_a_pushing_mode_without_gh_is_refused(tmp_path: Path, capsys,
+                                              monkeypatch, mode: str):
+    """Until the configuration names a forge (#355), every mode but `local`
+    asks for gh — `auto-merge` too, whose queue end opens a PR."""
+    repo = _repo(tmp_path, mode=mode, origin=True)
     monkeypatch.setattr(aide, "resolve_tool", lambda name, root: (
         None if name == "gh" else _real_resolve(name, root)))
     code, out = _env(repo, capsys)
     assert code == 1
-    assert ('aide env: [git] mode = "pr" in aide.toml needs gh, which opens '
-            'and reads the queue\'s pull request') in out
+    assert (f'aide env: [git] mode = "{mode}" in aide.toml needs gh, which '
+            f"opens and reads the queue's pull request") in out
 
 
 _real_resolve = aide.resolve_tool
@@ -152,20 +155,50 @@ def test_a_test_command_this_machine_lacks_is_refused(tmp_path: Path, capsys):
     assert "aide env: the test command 'nosuchrunner-aide-354' is not on PATH" in out
 
 
-def test_a_printed_interpreter_this_machine_lacks_is_refused(
-        tmp_path: Path, capsys):
+def test_a_printed_interpreter_this_machine_lacks_is_a_note(
+        tmp_path: Path, capsys, monkeypatch):
+    """It decides only what a suggestion says, never what a verb runs (§4):
+    a note, and `env` still exits 0."""
     repo = _repo(tmp_path, python="no-such-python-aide-354")
+    monkeypatch.setattr(aide.shutil, "which", lambda name, *a, **k: (
+        "/usr/bin/python3" if name == "python3" else _real_which(name, *a, **k)))
     code, out = _env(repo, capsys)
-    assert code == 1
-    assert ("aide env: the engine prints 'no-such-python-aide-354' in the "
-            "commands it suggests") in out
+    assert code == 0, out
+    assert ("aide env: note: the engine prints 'no-such-python-aide-354' in "
+            "the commands it suggests") in out
+    assert '[tools] python = "python3"' in out     # the machine has one
     assert sys.executable in out           # what the engine itself runs on
 
 
-def test_the_git_line_names_the_merge_tree_features(tmp_path: Path, capsys):
-    code, out = _env(_repo(tmp_path), capsys)
+def test_with_no_python3_either_the_note_names_the_key(
+        tmp_path: Path, capsys, monkeypatch):
+    repo = _repo(tmp_path, python="no-such-python-aide-354")
+    monkeypatch.setattr(aide.shutil, "which", lambda name, *a, **k: (
+        None if name == "python3" else _real_which(name, *a, **k)))
+    code, out = _env(repo, capsys)
     assert code == 0, out
-    assert "merge-tree --write-tree" in out and "merge-tree --merge-base" in out
+    assert "put one on PATH, or name the interpreter to print" in out
+    assert '"python3"' not in out
+
+
+_real_which = aide.shutil.which
+
+
+def test_the_git_line_names_the_merge_tree_features(tmp_path: Path, capsys,
+                                                    monkeypatch):
+    """Each feature against its own minimum: 2.39 has the first and not the
+    second; 2.37 has neither; 2.40 has both."""
+    repo = _repo(tmp_path)
+    for version, write_tree, merge_base in (("2.39.1", "yes", "no"),
+                                            ("2.37.0", "no", "no"),
+                                            ("2.40.0", "yes", "yes")):
+        monkeypatch.setattr(aide, "_version_text", lambda root, v=version: v)
+        code, out = _env(repo, capsys)
+        assert code == 0, out
+        assert f", {version} — " in out
+        assert f"merge-tree --write-tree (gc's landed check), 2.38+: {write_tree}" in out
+        assert (f"merge-tree --merge-base (queue restack past a squash), "
+                f"2.40+: {merge_base}") in out
 
 
 # --------------------------------------------------------------------------- #
@@ -220,7 +253,7 @@ def test_check_errors_on_auto_merge_with_no_origin(tmp_path: Path, capsys):
     repo = _repo(tmp_path, mode="auto-merge")
     capsys.readouterr()
     assert aide.main(["--repo", str(repo), "check"]) == 1
-    assert f"error: {ORIGIN_REFUSAL}" in capsys.readouterr().out
+    assert f"error: this machine: {ORIGIN_REFUSAL}" in capsys.readouterr().out
 
 
 def test_check_errors_outside_a_repository_and_on_a_missing_runner(
@@ -229,8 +262,9 @@ def test_check_errors_outside_a_repository_and_on_a_missing_runner(
     capsys.readouterr()
     assert aide.main(["--repo", str(repo), "check"]) == 1
     out = capsys.readouterr().out
-    assert f"error: {repo} is not inside a git repository" in out
-    assert "error: the test command 'nosuchrunner-aide-354' is not on PATH" in out
+    assert f"error: this machine: {repo} is not inside a git repository" in out
+    assert ("error: this machine: the test command 'nosuchrunner-aide-354' is "
+            "not on PATH") in out
 
 
 def test_check_leaves_gh_the_interpreter_and_the_venv_to_env(
@@ -257,3 +291,83 @@ def test_check_without_an_aide_toml_judges_no_machine(tmp_path: Path, capsys):
     capsys.readouterr()
     assert aide.main(["--repo", str(repo), "check"]) == 0
     assert "error:" not in capsys.readouterr().out
+
+
+PROGRESS = """\
+# Demo — Progress
+
+## Stage summary
+
+| Stage | Title | Objectives | Status |
+|-------|-------|-----------|--------|
+| 1 | Rules | G1 | 📋 |
+
+## Objective coverage
+
+| Objective | Delivered by | Status |
+|-----------|--------------|--------|
+| G1 Rules | Stage 1 | 📋 |
+
+## Stage 1 — Rules — 📋
+
+**Deliverables.**
+- 📋 A. *(Item 027)*
+
+**Acceptance.**
+- [ ] Rules fire.
+"""
+
+
+def test_check_queue_never_fails_on_the_machine(tmp_path: Path, capsys):
+    """`--queue` is a planner's or reviewer's judgement of documents: a
+    machine error there would invite the `[git] mode` edit §4 forbids."""
+    repo = _repo(tmp_path, mode="auto-merge")
+    d = repo / "docs" / "aide"
+    (d / "queue").mkdir(parents=True)
+    (d / "items").mkdir()
+    (d / "progress.md").write_text(PROGRESS, encoding="utf-8")
+    (d / "queue" / "queue-003.md").write_text(
+        "# Demo — Work Queue 003\n\n### Item 027: Thing\nDoes a thing.\n",
+        encoding="utf-8")
+    (d / "items" / "027-thing.md").write_text(
+        "# Item 027 — Demo\n\n## Authorised paths\n\n**May change:**\n\n"
+        "- `src/a.py` — work\n\n## Dependencies\n\nNone.\n", encoding="utf-8")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "check", "--queue", "3"]) == 0, (
+        capsys.readouterr().out)
+    assert "this machine:" not in capsys.readouterr().out
+    assert aide.main(["--repo", str(repo), "check"]) == 1      # plain: it is
+    assert f"error: this machine: {ORIGIN_REFUSAL}" in capsys.readouterr().out
+
+
+def test_check_under_local_with_no_origin_passes(tmp_path: Path, capsys):
+    """Nothing stubbed: `local` needs no origin, so a machine without one
+    meets it."""
+    repo = _repo(tmp_path, mode="local")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "check"]) == 0
+    assert "error:" not in capsys.readouterr().out
+
+
+def test_a_runner_path_that_is_not_executable_says_so(tmp_path: Path):
+    repo = tmp_path / "r"
+    (repo / "tools").mkdir(parents=True)
+    (repo / "tools" / "run").write_text("not a program\n", encoding="utf-8")
+    assert "'tools/run' is not an executable file" in str(
+        aide.RunnerMissing("tools/run", repo))
+    assert "'tools/gone' does not exist" in str(
+        aide.RunnerMissing("tools/gone", repo))
+
+
+@pytest.mark.skipif(os.name == "nt", reason="an execute bit is POSIX")
+def test_test_names_a_runner_file_with_no_execute_bit(tmp_path: Path, capsys):
+    """Running it is a PermissionError, which ended `aide test` in a
+    traceback; now the sentence `aide env` and `check` use."""
+    repo = _repo(tmp_path, test_command="tools/run")
+    (repo / "tools").mkdir()
+    (repo / "tools" / "run").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "test"]) == 1
+    err = capsys.readouterr().err
+    assert "aide test: the test command 'tools/run' is not an executable file" in err
+    assert "Traceback" not in err

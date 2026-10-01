@@ -13,6 +13,7 @@ Stdlib + pytest only; `install.py` is imported as a module.
 from __future__ import annotations
 
 import builtins
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -118,6 +119,29 @@ def test_an_update_reports_what_the_kept_config_needs(tmp_path: Path, capsys):
     assert "needs a remote named origin" in capsys.readouterr().out
 
 
+def test_a_non_repository_target_is_told_what_the_pushing_modes_need(
+        tmp_path: Path, monkeypatch, capsys):
+    target = tmp_path / "plain"
+    target.mkdir()
+    out = _install_pressing_enter(target, monkeypatch, capsys)
+    assert (f"git.mode defaults to local: {target} is not a git repository "
+            f"yet, and auto-merge and pr need a repository with a remote "
+            f"named origin") in out
+    assert _mode(target) == 'mode = "local"'
+
+
+def test_a_failure_asking_the_engine_never_breaks_the_prompt(
+        tmp_path: Path, monkeypatch):
+    class Broken:
+        _TOPLEVEL: dict = {}
+
+        @staticmethod
+        def in_repository(target):
+            raise RuntimeError("anything at all")
+    monkeypatch.setattr(install, "_engine", lambda: Broken)
+    assert install.origin_missing(tmp_path) is None
+
+
 def test_an_engine_that_cannot_load_is_a_warning_never_a_failed_install(
         tmp_path: Path, capsys, monkeypatch):
     monkeypatch.setattr(install, "_engine", lambda: (_ for _ in ()).throw(
@@ -126,3 +150,20 @@ def test_an_engine_that_cannot_load_is_a_warning_never_a_failed_install(
         "this machine's dependencies were not checked (no engine here) — run "
         "`python .aide/scripts/aide.py env` in the target"]
     assert install.origin_missing(tmp_path) is None
+
+
+def test_a_default_runner_on_a_python3_only_host_names_python3(
+        tmp_path: Path, capsys, monkeypatch):
+    """The scaffold's `python -m pytest` on a host that has only python3:
+    the warning says what would run, not only what does not."""
+    real = shutil.which
+    monkeypatch.setattr(shutil, "which", lambda name, *a, **k: (
+        None if name == "python" else
+        "/usr/bin/python3" if name == "python3" else real(name, *a, **k)))
+    _git_init(tmp_path)
+    capsys.readouterr()
+    assert install.main(["--into", str(tmp_path), "--yes",
+                         "--git-mode", "local"]) == 0
+    out = capsys.readouterr().out
+    assert "warning: the test command's 'python' is not on PATH" in out
+    assert "this machine has python3, so 'python3 -m pytest' would run" in out

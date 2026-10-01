@@ -5000,8 +5000,13 @@ def test_check_errors_on_auto_merge_with_no_origin(aide, consumer: Path, capsys)
     capsys.readouterr()
     assert aide.main(["--repo", str(consumer), "check"]) == 1
     out = capsys.readouterr().out
-    assert ('error: [git] mode = "auto-merge" in aide.toml needs a remote '
+    assert ('error: this machine: [git] mode = "auto-merge" in aide.toml needs a remote '
             'named origin') in out
+
+    # `--queue` is the planner's run: documents only, so the same machine is
+    # judged exactly as under `local`.
+    assert aide.main(["--repo", str(consumer), "check", "--queue", "1"]) == 0
+    assert "this machine:" not in capsys.readouterr().out
 
 
 def test_sync_is_not_stalled_by_the_claude_runtimes_scratch_worktrees(aide, consumer: Path):
@@ -5088,7 +5093,7 @@ def test_check_runs_with_a_configured_git_that_is_not_there(
     assert aide.main(["--repo", str(consumer), "check"]) == 1
     out = capsys.readouterr().out
     assert "warning: [tools] git = " in out and "nothing that reads git" in out
-    assert out.count("error: [tools] git = ") == 1
+    assert out.count("error: this machine: [tools] git = ") == 1
     assert "aide check: FAIL (1 error(s)" in out
 
 
@@ -5372,7 +5377,7 @@ def test_check_with_git_off_path_still_judges_the_documents_and_says_what_it_ski
     assert aide.main(["--repo", str(consumer), "check"]) == 1
     out, err = capsys.readouterr()
     assert "git is not on PATH, so nothing that reads git was checked" in out + err
-    assert out.count("error: git is not on PATH — ") == 1
+    assert out.count("error: this machine: git is not on PATH — ") == 1
     assert "aide check: FAIL (1 error(s)" in out
     assert aide._GIT_OPTIONAL is False     # reset by the check itself
     assert (consumer / "docs" / "aide" / "insights.md").is_file()

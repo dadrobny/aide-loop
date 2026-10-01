@@ -2030,7 +2030,7 @@ def scaffold_aide_toml(target: Path, adapter: str, version: str, args: argparse.
             if why is not None:
                 default = "local"
                 print(f"  git.mode defaults to local: {why}, and auto-merge "
-                      f"and pr push to it")
+                      f"and pr need a repository with a remote named origin")
         git_mode = prompt("git.mode", default, interactive, GIT_MODES)
 
     path.write_text(
@@ -2045,21 +2045,18 @@ def scaffold_aide_toml(target: Path, adapter: str, version: str, args: argparse.
 
 
 def origin_missing(target: Path) -> Optional[str]:
-    """Why *target* has no remote named origin, or None when it has one, or
-    when the engine that would say cannot be loaded — the old default stands
-    then. Asked of the engine, the one reading of both questions."""
+    """Why *target* has no remote named origin, or None when it has one — or
+    when it cannot be asked at all, where the old default stands. Asked of the
+    engine, the one reading of both questions; never breaks the install."""
     try:
         engine = _engine()
-    except Exception:  # an engine that cannot load must never break the install
-        return None
-    try:
         engine._TOPLEVEL.clear()   # a target may have been `git init`ed since
         if not engine.in_repository(target):
             return f"{target} is not a git repository yet"
         if engine.origin_url(target) is None:
             return f"{target} has no remote named origin"
-    except engine.MissingTool as exc:
-        return f"whether {target} has a remote named origin is unknown ({exc})"
+    except Exception:  # no engine, no git, a repository git refuses: no opinion
+        return None
     return None
 
 
