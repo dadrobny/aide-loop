@@ -148,7 +148,7 @@ ready straight to stopping for the merge, and reports "CI: none declared".
      workflow, or a trigger that ignores this PR (below). A project with no
      CI declares `[git] ci = "none"` instead of waiting this out each time.
    - `unknown`: report the `checks unknown:` reason and stop.
-   - `-` on a PR (`[git] ci = "none"`): report "CI: none declared" and stop
+   - `-` on a ready PR (`[git] ci = "none"`): report "CI: none declared" and stop
      for the merge, as on `success`.
    - A PR closed or merged during the wait, or one still a draft after
      `aide queue ready` has been run once more, is reported, and the step
