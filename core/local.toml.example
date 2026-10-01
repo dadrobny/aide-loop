@@ -19,8 +19,9 @@
 # PATH or a path (absolute, or relative to the repository root; use forward
 # slashes or a 'single-quoted' string on Windows). Empty/absent = looked up on
 # PATH. A value naming a program that is not there is refused by name — the
-# engine never falls back to PATH behind a key you wrote. A file that cannot
-# be parsed is refused the same way by every verb that runs git or gh.
+# engine never falls back to PATH behind a key you wrote. A [tools] table
+# that cannot be parsed is refused the same way by every verb that runs git or
+# gh; the engine parses this table alone, never the two below it.
 gh = ""       # the forge CLI `aide status` and `aide queue pr|ready` ask
 git = ""
 # The interpreter the engine PRINTS in the commands it suggests ("run

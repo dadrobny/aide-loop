@@ -414,11 +414,14 @@ def _local_tools(repo_root: Path) -> Dict[str, object]:
     """The `[tools]` table of *repo_root*'s `.aide/local.toml`; empty when
     the file or the table is absent.
 
-    A file that is there and cannot be read or parsed raises
-    `ToolMisconfigured`: where it puts a program is then unknowable, and
-    reading it as "nothing configured" is the silent fallback to PATH a key
-    exists to prevent. Only a verb that runs a program asks, so one that
-    runs none is untouched by a malformed file.
+    Only the `[tools]` table's own lines are parsed. The other tables belong
+    to an adapter's hooks, whose reader is lenient, so a file those hooks
+    have always accepted — a double-quoted Windows path in `extra_repos`,
+    say — never stops a git call here. A `[tools]` table that is there and
+    cannot be read or parsed raises `ToolMisconfigured`: where it puts a
+    program is then unknowable, and reading it as "nothing configured" is
+    the silent fallback to PATH a key exists to prevent. Only a verb that
+    runs a program asks, so one that runs none is untouched by it.
 
     Read on every ask, never cached: the file is a few lines, a spawn costs
     far more, and a cache would outlive an edit made between two verbs run in
@@ -440,8 +443,20 @@ def _local_tools(repo_root: Path) -> Dict[str, object]:
         parse = tomllib.loads
     except ModuleNotFoundError:
         parse = _parse_toml
+    table: List[str] = []
+    inside = False
+    for line in text.splitlines():
+        header = re.match(r"\s*\[\s*([^\]]*?)\s*\]", line)
+        if header and not re.match(r"\s*\[\[", line):
+            inside = header.group(1) == "tools"
+        elif re.match(r"\s*\[\[", line):
+            inside = False
+        if inside:
+            table.append(line)
+    if not table:
+        return {}
     try:
-        parsed = parse(text)
+        parsed = parse("\n".join(table) + "\n")
     except (ConfigError, ValueError) as exc:
         raise ToolMisconfigured(f"{LOCAL_CONFIG.as_posix()} is malformed "
                                 f"({exc}), so where its [tools] table puts a "
@@ -489,6 +504,13 @@ def resolve_tool(name: str, repo_root: Path) -> Optional[str]:
         if not where.is_absolute():
             where = Path(repo_root) / where
         found = shutil.which(str(where))
+        if found is None and os.name == "nt" and not where.suffix:
+            # `which` applies PATHEXT to a path only from Python 3.12, so
+            # `C:/tools/gh` names the `gh.exe` beside it here as it does there.
+            for ext in os.environ.get("PATHEXT", ".EXE;.CMD;.BAT").split(";"):
+                if ext and Path(str(where) + ext).is_file():
+                    found = str(where) + ext
+                    break
     else:
         where = None
         found = shutil.which(command)

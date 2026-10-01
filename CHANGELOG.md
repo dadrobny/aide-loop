@@ -144,9 +144,10 @@ instead — that is the bump policy above, and it is enforced by
   machine, and the engine reads it through one resolver (issue #353).** The
   engine found `gh` only on PATH, so on a machine with `gh` installed
   elsewhere every queue end stopped at `checks=unknown — gh is not on PATH`
-  with nothing able to say where it was. `resolve_tool` now locates every
-  program the engine starts — `git` (every git call), `gh` (`status`, `queue
-  pr`, `queue ready`) and the test command's program: a non-empty `[tools]
+  with nothing able to say where it was. `resolve_tool` now locates `git`
+  (every git call) and `gh` (`status`, `queue pr`, `queue ready`), and says
+  whether the test command's program is missing (resolving a relative one
+  against the repository root, where it runs): a non-empty `[tools]
   gh` / `git` is a path (absolute, or relative to the repository root) or a
   command looked up on PATH, and empty or absent is PATH as before. A key
   naming a program that is not there is refused by name — `aide <verb>:
@@ -154,9 +155,10 @@ instead — that is the bump policy above, and it is enforced by
   the key to look for git on PATH`, exit 1 (2 for `scope`) — and never falls
   back to PATH. For `gh` that sentence is `status`'s could-not-look reason
   (`checks=unknown`, the open-PR list), as a missing `gh` already was; `aide
-  check` still runs and names it in its git warning. A `local.toml` that
+  check` still runs and names it in its git warning. A `[tools]` table that
   cannot be parsed is refused the same way, by the verbs that run `git` or
-  `gh` and by no other. `[tools] python` sets the interpreter the engine
+  `gh` and by no other; only that table is parsed, so the other tables keep
+  the hooks' lenient reading. `[tools] python` sets the interpreter the engine
   prints in its suggested commands (`python3 .aide/scripts/aide.py gc`); it
   runs nothing, and the control files, the allow-list and `-h` keep saying
   `python` — on a host with only `python3`, put a `python` on PATH (a shim,

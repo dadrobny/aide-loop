@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -2476,6 +2477,17 @@ def test_a_malformed_local_toml_is_refused_where_a_program_is_needed(tmp_path: P
         aide.resolve_tool("gh", tmp_path)
     # Printing a suggested command is not running one: it reads as unset.
     assert aide.aide_command(tmp_path, "check") == "python .aide/scripts/aide.py check"
+
+
+def test_only_the_tools_table_is_parsed(tmp_path: Path):
+    """The hooks' tables are read leniently by the hooks; a Windows path in
+    `extra_repos` that strict TOML rejects never stops a git call (#353)."""
+    _local_tools(tmp_path, '[hygiene]\nextra_repos = ["C:\\Users\\me\\repo"]\n'
+                 f"[tools]\ngh = '{sys.executable}'\n"
+                 '[framework]\nlocal_path = "C:\\aide"\n')
+    assert _same_file(aide.resolve_tool("gh", tmp_path), Path(sys.executable))
+    _local_tools(tmp_path, '[hygiene]\nextra_repos = ["C:\\Users\\me"]\n')
+    assert aide.resolve_tool("gh", tmp_path) == shutil.which("gh")
 
 
 def test_tools_python_is_the_interpreter_suggested_commands_print(tmp_path: Path):

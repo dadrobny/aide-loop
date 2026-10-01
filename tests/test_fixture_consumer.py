@@ -2132,7 +2132,8 @@ def _gh_at_a_configured_path(repo: Path, tmp_path: Path, monkeypatch,
     A real program — a python script behind a `.cmd` on Windows, a shell
     script elsewhere — answering `pr list --head <branch>` from *answer*,
     and every directory holding another `gh` taken off PATH, so a pass
-    cannot have come from there.
+    cannot have come from there. `git` may share such a directory (a CI
+    runner's `/usr/bin`), so it is configured too, at wherever it was.
     """
     import os
     tools = tmp_path / "machine-tools"
@@ -2152,12 +2153,15 @@ def _gh_at_a_configured_path(repo: Path, tmp_path: Path, monkeypatch,
         gh.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n',
                       encoding="utf-8")
         gh.chmod(0o755)
+    git_exe = shutil.which("git")
+    assert git_exe is not None
     kept = [d for d in os.environ.get("PATH", "").split(os.pathsep)
             if d and shutil.which("gh", path=d) is None]
     monkeypatch.setenv("PATH", os.pathsep.join(kept))
     assert shutil.which("gh") is None
     (repo / ".aide" / "local.toml").write_text(
-        f"[tools]\ngh = '{gh.as_posix()}'\n", encoding="utf-8")
+        f"[tools]\ngh = '{gh.as_posix()}'\n"
+        f"git = '{Path(git_exe).as_posix()}'\n", encoding="utf-8")
     return gh
 
 
@@ -2190,7 +2194,6 @@ def test_status_with_a_configured_gh_that_is_not_there_names_the_key(
 
 
 # --------------------------------------------------------------------------- #
-# queue pr / queue ready — the refusals a checkout with no forge meets (#330)# --------------------------------------------------------------------------- #
 # queue pr / queue ready — the refusals a checkout with no forge meets (#330)
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("argv", [["pr", "--body", "Plan."], ["ready"],
