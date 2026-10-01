@@ -17,6 +17,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -413,6 +414,27 @@ def test_a_malformed_local_toml_injects_nothing(tmp_path, monkeypatch):
     sibling.mkdir()
     (sibling / "CLAUDE.md").write_text("nope\n", encoding="utf-8")
     assert _run(monkeypatch, repo, "Edit", {"file_path": str(sibling / "x.py")}) is None
+
+
+def test_a_hook_in_a_worktree_reads_the_project_roots_declaration(tmp_path):
+    """Run as the runtime runs it for an isolated sub-agent: cwd a worktree
+    with no `.aide/local.toml` (it is gitignored, so never checked out), and
+    `CLAUDE_PROJECT_DIR` naming the root that has one (issue #353)."""
+    repo = _consumer(tmp_path, extra_repos=["../sibling"])
+    worktree = tmp_path / "worktrees" / "agent-1"
+    worktree.mkdir(parents=True)
+    payload = json.dumps({
+        "session_id": "wt", "cwd": str(worktree), "tool_name": "Edit",
+        "tool_input": {"file_path": str((repo / ".." / "sibling" / "x.py").resolve())},
+    })
+    proc = subprocess.run(
+        [sys.executable, str(_MODULE_PATH)],
+        input=payload, capture_output=True, encoding="utf-8",
+        cwd=str(worktree), env={**os.environ, "CLAUDE_PROJECT_DIR": str(repo)},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert str((repo / ".." / "sibling" / "CLAUDE.md").resolve()) in json.loads(
+        proc.stdout)["hookSpecificOutput"]["additionalContext"]
 
 
 def test_the_happy_path_also_exits_zero_as_a_subprocess(tmp_path):

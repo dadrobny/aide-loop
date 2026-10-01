@@ -388,6 +388,156 @@ class RunnerMissing(MissingTool):
                          f"or fix [python] test_command in aide.toml")
 
 
+class ToolMisconfigured(MissingTool):
+    """`.aide/local.toml` names where a program is, and it is not there — or
+    the file cannot be read, so where it puts the program cannot be known
+    (issue #353).
+
+    Raised by `resolve_tool` and never passed over for whatever PATH holds:
+    a key someone wrote is a decision, and a run that quietly used another
+    `gh` or `git` than the one named would report on a machine nobody
+    configured.
+    """
+
+
+#: The per-machine config, relative to the repository root: machine facts —
+#: where a program is, the framework clone, sibling repos — that a committed
+#: `aide.toml` may not hold. Gitignored; `local.toml.example` is its shape.
+LOCAL_CONFIG = Path(".aide") / "local.toml"
+
+#: The programs `[tools]` in `LOCAL_CONFIG` may locate for the engine to run.
+#: `python` is in the table too, but it is only ever printed (`printed_python`).
+RUN_TOOLS = ("gh", "git")
+
+
+def _local_tools(repo_root: Path) -> Dict[str, object]:
+    """The `[tools]` table of *repo_root*'s `.aide/local.toml`; empty when
+    the file or the table is absent.
+
+    A file that is there and cannot be read or parsed raises
+    `ToolMisconfigured`: where it puts a program is then unknowable, and
+    reading it as "nothing configured" is the silent fallback to PATH a key
+    exists to prevent. Only a verb that runs a program asks, so one that
+    runs none is untouched by a malformed file.
+
+    Read on every ask, never cached: the file is a few lines, a spawn costs
+    far more, and a cache would outlive an edit made between two verbs run in
+    one process.
+    """
+    path = Path(repo_root) / LOCAL_CONFIG
+    try:
+        text = path.read_text(encoding=_ENCODING)
+    except FileNotFoundError:
+        return {}
+    except (OSError, UnicodeDecodeError) as exc:
+        if not path.exists():
+            return {}
+        raise ToolMisconfigured(f"{LOCAL_CONFIG.as_posix()} cannot be read "
+                                f"({exc}), so where its [tools] table puts a "
+                                f"program is unknown — fix or remove it") from None
+    try:
+        import tomllib  # type: ignore
+        parse = tomllib.loads
+    except ModuleNotFoundError:
+        parse = _parse_toml
+    try:
+        parsed = parse(text)
+    except (ConfigError, ValueError) as exc:
+        raise ToolMisconfigured(f"{LOCAL_CONFIG.as_posix()} is malformed "
+                                f"({exc}), so where its [tools] table puts a "
+                                f"program is unknown — fix it") from None
+    tools = parsed.get("tools", {})
+    if not isinstance(tools, dict):
+        raise ToolMisconfigured(f"{LOCAL_CONFIG.as_posix()}: tools is not a "
+                                f"table — write it as [tools] with one key per "
+                                f"program")
+    return tools
+
+
+def _has_directory(command: str) -> bool:
+    """Does *command* name a file by its path, rather than a name for PATH?"""
+    return (os.path.isabs(command) or "/" in command
+            or (os.sep != "/" and os.sep in command)
+            or bool(os.altsep and os.altsep in command))
+
+
+def resolve_tool(name: str, repo_root: Path) -> Optional[str]:
+    """Where the program *name* is, for the engine to run: the one resolver
+    every program the engine starts goes through (issue #353).
+
+    For `gh` and `git` (`RUN_TOOLS`), a non-empty `[tools] <name>` in
+    *repo_root*'s `.aide/local.toml` decides: a path (absolute, or relative
+    to *repo_root*) must be an executable file, and a bare name is looked up
+    on PATH. Either way, one that is not there raises `ToolMisconfigured`
+    naming the key — never a fallback to PATH. Unset or empty, *name* is
+    looked up on PATH, and ``None`` is "not there": the caller says what that
+    means for it. Any other *name* — a test command's program — is only
+    looked up, from *repo_root* when it carries a directory. `shutil.which`
+    applies PATHEXT on Windows, so `gh` finds the `gh.exe` installed there.
+    """
+    configured = _local_tools(repo_root).get(name) if name in RUN_TOOLS else None
+    if configured is None or configured == "":
+        command = name
+    elif not isinstance(configured, str):
+        raise ToolMisconfigured(f"[tools] {name} = {configured!r} in "
+                                f"{LOCAL_CONFIG.as_posix()} is not a string — "
+                                f"write a command on PATH or a path, in quotes")
+    else:
+        command = configured.strip()
+    if _has_directory(command):
+        where = Path(command)
+        if not where.is_absolute():
+            where = Path(repo_root) / where
+        found = shutil.which(str(where))
+    else:
+        where = None
+        found = shutil.which(command)
+    if found is not None or configured in (None, ""):
+        return found
+    if where is None:
+        why = "is not on PATH"
+    elif where.is_file():
+        why = "is not an executable file"
+    else:
+        why = "does not exist"
+    raise ToolMisconfigured(f"[tools] {name} = {configured!r} in "
+                            f"{LOCAL_CONFIG.as_posix()} {why} — fix it, or "
+                            f"remove the key to look for {name} on PATH")
+
+
+def _git_unavailable(repo_root: Path) -> Optional[str]:
+    """Why git cannot be run for *repo_root*, or None when it can."""
+    try:
+        return None if resolve_tool("git", repo_root) else "git is not on PATH"
+    except ToolMisconfigured as exc:
+        return str(exc)
+
+
+def printed_python(repo_root: Optional[Path]) -> str:
+    """The interpreter the engine prints in the commands it suggests:
+    `[tools] python`, else ``python``.
+
+    Printed, never run and never checked — a suggestion is not a spawn, and
+    a malformed file reads as unset here, since every program the engine
+    does run refuses on it already. Quoted when it holds a space, so a
+    pasted `C:/Program Files/…` stays one word.
+    """
+    value = "python"
+    if repo_root is not None:
+        try:
+            configured = _local_tools(repo_root).get("python")
+        except ToolMisconfigured:
+            configured = None
+        if isinstance(configured, str) and configured.strip():
+            value = configured.strip()
+    return f'"{value}"' if " " in value else value
+
+
+def aide_command(repo_root: Optional[Path], rest: str) -> str:
+    """``<python> .aide/scripts/aide.py <rest>``, as the engine prints it."""
+    return f"{printed_python(repo_root)} .aide/scripts/aide.py {rest}"
+
+
 def _parse_toml(text: str) -> Dict[str, Dict[str, object]]:
     """Minimal TOML reader for the flat ``[table] key = value`` shape of aide.toml.
 
@@ -3039,7 +3189,8 @@ _CONFLICT_CLOSE_RE = re.compile(r"^>{7}(?: |$)")
 _CONFLICT_LINT_RES = (_CONFLICT_OPEN_RE, _CONFLICT_BASE_RE, _CONFLICT_CLOSE_RE)
 
 
-def conflict_marker_errors(ddir: Path) -> List[str]:
+def conflict_marker_errors(ddir: Path,
+                           repo_root: Optional[Path] = None) -> List[str]:
     """Flag git conflict markers committed into ``insights.md`` — an error.
 
     The inbox is append-only by contract (conventions.md §1 → ``insights.md``),
@@ -3068,7 +3219,7 @@ def conflict_marker_errors(ddir: Path) -> List[str]:
                 f"insights.md:{lineno}: an unresolved git conflict marker "
                 f"({line.split(' ')[0]}) — the inbox is append-only, so this "
                 f"merge is a union of entries; resolve it with "
-                f"`python .aide/scripts/aide.py insights resolve` (add "
+                f"`{aide_command(repo_root, 'insights resolve')}` (add "
                 f"--dry-run to see it first) rather than by hand, which is "
                 f"where a captured claim gets reworded"
             )
@@ -6885,7 +7036,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     # is wrong whether or not this repo keeps a document set (issue #302).
     errors.extend(loop_config_errors(config))
     errors.extend(template_residue_errors(ddir))
-    errors.extend(conflict_marker_errors(ddir))
+    errors.extend(conflict_marker_errors(ddir, repo_root))
     warnings.extend(stray_icon_warnings(ddir))
     warnings.extend(insight_warnings(ddir))
     # Reads tests_dir as well as docs_dir, so it runs before the early
@@ -7172,26 +7323,31 @@ def git(args: List[str], repo_root: Path, check: bool = True) -> subprocess.Comp
 
     The one entry the engine runs git through, so the one place its absence
     is read: `GitMissing`, never a `FileNotFoundError` traceback (issue
-    #352). `shutil.which` decides, because a missing *cwd* raises the same
-    error with git present.
+    #352). `resolve_tool` decides where git is — `[tools] git` in
+    `.aide/local.toml`, else PATH — and a key naming a git that is not there
+    is its `ToolMisconfigured` (issue #353). Decided before the spawn,
+    because a missing *cwd* raises the same error with git present.
     """
     try:
-        return subprocess.run(
-            ["git", *args], cwd=str(repo_root), check=check,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            encoding="utf-8", errors="replace",
-        )
-    except FileNotFoundError:
-        if shutil.which("git") is None:
-            if _GIT_OPTIONAL:
-                failed = subprocess.CompletedProcess(
-                    ["git", *args], 127, "", "git is not on PATH")
-                if check:
-                    raise subprocess.CalledProcessError(
-                        127, failed.args, "", failed.stderr) from None
-                return failed
-            raise GitMissing() from None
-        raise
+        exe = resolve_tool("git", repo_root)
+        missing: Optional[MissingTool] = None if exe else GitMissing()
+    except ToolMisconfigured as exc:
+        exe, missing = None, exc
+    if exe is None:
+        assert missing is not None
+        if _GIT_OPTIONAL:
+            failed = subprocess.CompletedProcess(
+                ["git", *args], 127, "", str(missing))
+            if check:
+                raise subprocess.CalledProcessError(
+                    127, failed.args, "", failed.stderr)
+            return failed
+        raise missing
+    return subprocess.run(
+        [exe, *args], cwd=str(repo_root), check=check,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        encoding="utf-8", errors="replace",
+    )
 
 
 #: Set by `aide check` alone, for its one run, when git is not on PATH: a
@@ -7308,8 +7464,10 @@ def not_a_repository(verb: str, repo_root: Path) -> str:
     Its hint depends on git being there: `git init` is no advice on a machine
     without git, where this is the answer for no `.git` and no git at all.
     """
-    hint = ("('git init' makes one)" if shutil.which("git") is not None
-            else "— git is not on PATH either, so install it first")
+    why = _git_unavailable(repo_root)
+    hint = ("('git init' makes one)" if why is None
+            else "— git is not on PATH either, so install it first"
+            if why == "git is not on PATH" else f"— and {why}")
     return (f"aide {verb}: {repo_root} is not inside a git repository — this "
             f"verb reads and records git state, so run it from a git work "
             f"tree {hint}")
@@ -7344,8 +7502,9 @@ def _commits_here(no_commit: bool, repo_root: Path,
         if before:
             _put_back(before)
         raise
-    if shutil.which("git") is None:
-        print(f"notice: left uncommitted — git is not on PATH, and there is "
+    why = _git_unavailable(repo_root)
+    if why is not None:
+        print(f"notice: left uncommitted — {why}, and there is "
               f"no .git at or above {repo_root}")
     return False
 
@@ -8036,10 +8195,8 @@ def cmd_check(args: argparse.Namespace) -> int:
     # would claim branches and history were checked.
     # The same for a git that runs and refuses the repository (a
     # `safe.directory` check): the refusal's own words are the warning.
-    git_problem: Optional[str] = None
-    if shutil.which("git") is None:
-        git_problem = "git is not on PATH"
-    else:
+    git_problem = _git_unavailable(repo_root)
+    if git_problem is None:
         try:
             in_repository(repo_root)
         except MissingTool as exc:
@@ -9354,20 +9511,22 @@ def ensure_insights_inbox(repo_root: Path, config: Dict[str, Dict[str, object]],
     if not template.is_file():
         print(f"aide {verb}: {rel} is missing and could not be created — "
               f"{_rel_display(template, repo_root)} is not there, so the install "
-              f"is incomplete (`python install.py --into . --check` from a "
+              f"is incomplete (`{printed_python(repo_root)} install.py --into . "
+              f"--check` from a "
               f"framework checkout says how)", file=sys.stderr)
         return None
     path.write_bytes(template.read_bytes())
     fate = ""
     if not commit:
         fate = ", left uncommitted (--no-commit)"
-    elif shutil.which("git") is None:
+    elif _git_unavailable(repo_root) is not None:
         # Created whatever git's state: the inbox is a file `check` makes on
         # its caller's behalf, and a missing git is the notice's reason, never
         # the run's failure (issue #352).
-        fate = (" but NOT committed — git is not on PATH; commit it with the "
+        why = _git_unavailable(repo_root)
+        fate = (f" but NOT committed — {why}; commit it with the "
                 "next work" if _dot_git_at_or_above(repo_root)
-                else ", left untracked — git is not on PATH")
+                else f", left untracked — {why}")
     elif _commits_here(False, repo_root, {path: None}):
         why = _commit_created_file(repo_root, config, rel)
         fate = (" and committed it" if why is None
@@ -9721,9 +9880,9 @@ def _cmd_insights_add(path: Path, ddir: Path, ddir_rel: str, repo_root: Path,
         # An entry appended below a conflict's closing marker is one more
         # line for `resolve` to place, and one the refusal there would name
         # as a change to the shared history.
-        print("aide insights add: insights.md carries an unresolved git "
-              "conflict — run `python .aide/scripts/aide.py insights resolve` "
-              "first, then capture", file=sys.stderr)
+        print(f"aide insights add: insights.md carries an unresolved git "
+              f"conflict — run `{aide_command(repo_root, 'insights resolve')}` "
+              f"first, then capture", file=sys.stderr)
         return 2
     before = _snapshot([path])
     _append_line_bytes(path, line)
@@ -10308,7 +10467,8 @@ def append_ledger_row(repo_root: Path, config, cells: List[str],
         if not template.is_file():
             print(f"aide {verb}: {rel} is missing and could not be created — "
                   f"{_rel_display(template, repo_root)} is not there, so the "
-                  f"install is incomplete (`python install.py --into . --check` "
+                  f"install is incomplete (`{printed_python(repo_root)} "
+                  f"install.py --into . --check` "
                   f"from a framework checkout says how)", file=sys.stderr)
             return None
         path.write_bytes(template.read_bytes())
@@ -12119,7 +12279,7 @@ def cmd_env(args: argparse.Namespace) -> int:
         return 0
     if not args.bootstrap:
         print(f"aide env: {status} — {detail}; run "
-              f"'python .aide/scripts/aide.py env --bootstrap' to build it")
+              f"'{aide_command(repo_root, 'env --bootstrap')}' to build it")
         return 1
     venv = _venv_dir(repo_root, config)
     bootstrap = str(config["python"].get("bootstrap", "pip install -e .[dev]")).split()
@@ -12850,7 +13010,7 @@ def _inbox_conflict_hint(repo_root: Path,
     unmerged = _unmerged_paths(repo_root)
     if rel not in unmerged:
         return None
-    verb = "python .aide/scripts/aide.py insights resolve"
+    verb = aide_command(repo_root, "insights resolve")
     warn = (f"Do NOT resolve {rel} by hand — it is append-only, so the "
             f"conflict is a union of entries, and retyping the block is where "
             f"a captured claim gets reworded (conventions.md §1).")
@@ -13293,7 +13453,7 @@ def _run_suite_argv(argv: List[str], repo_root: Path) -> subprocess.CompletedPro
     try:
         return subprocess.run(argv, cwd=str(repo_root))
     except FileNotFoundError:
-        if shutil.which(argv[0]) is None:
+        if resolve_tool(argv[0], repo_root) is None:
             raise RunnerMissing(argv[0]) from None
         raise
 
@@ -14254,7 +14414,7 @@ def cmd_merge(args: argparse.Namespace) -> int:
             if doc_warnings:
                 print(f"aide merge: `aide check` reports {len(doc_warnings)} "
                       f"warning(s), which do not block a merge; "
-                      f"'python .aide/scripts/aide.py check' lists them.")
+                      f"'{aide_command(repo_root, 'check')}' lists them.")
 
             # ✅ is set HERE, by the process that just did the merge, so it always means
             # "merged" — not "an agent said so before attempting one". The validator
@@ -14456,7 +14616,8 @@ def cmd_merge(args: argparse.Namespace) -> int:
         print(f"aide merge: item {args.number:03d} merged to {main}, but the "
               f"{'/'.join(where)} claim branch {branch} could NOT be deleted:\n"
               f"{(del_res.stderr or '').strip()}\n"
-              f"Run 'python .aide/scripts/aide.py gc' to sweep it up.", file=sys.stderr)
+              f"Run '{aide_command(repo_root, 'gc')}' to sweep it up.",
+              file=sys.stderr)
     return 0
 
 
@@ -15654,8 +15815,8 @@ def _landed_review_items(repo_root: Path, config, prefix: str,
         if landed is not None:
             base = landed
             lines.append(f"aide sync: item {num:03d} is 🔍 but its work is now in "
-                         f"{base} — run 'python .aide/scripts/aide.py progress "
-                         f"set {num:03d} done'")
+                         f"{base} — run "
+                         f"'{aide_command(repo_root, f'progress set {num:03d} done')}'")
     return lines
 
 
@@ -15711,7 +15872,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
         claim = _find_claim_branch(repo_root, prefix, args.item)
         if not claim:
             print(f"aide sync: no claim branch for item {args.item:03d} — run "
-                  f"'python .aide/scripts/aide.py claim' first", file=sys.stderr)
+                  f"'{aide_command(repo_root, 'claim')}' first", file=sys.stderr)
             return 1
         if branch != claim:
             res = git(["switch", claim], repo_root, check=False)
@@ -15784,12 +15945,16 @@ def _gh(repo_root: Path, args: List[str]) -> Tuple[Optional[str], Optional[str]]
     and `queue pr` / `queue ready` open and flip the queue's own PR through
     it (issue #330). Never raises: missing, unauthenticated, offline and timed out all come
     back as a reason, which is what lets `status` tell "no PR" from "could
-    not look" (issue #303). Resolved through `shutil.which`, which applies
-    PATHEXT on Windows, so the `gh.exe` the GitHub CLI installs is found as
-    `gh` is on POSIX. Tests replace this function; nothing else in the engine
-    calls the forge.
+    not look" (issue #303). Located by `resolve_tool`: `[tools] gh` in
+    `.aide/local.toml`, else PATH, where the `gh.exe` the GitHub CLI installs
+    on Windows is found as `gh` is on POSIX; a key naming a `gh` that is not
+    there is the reason, never a look on PATH instead (issue #353). Tests
+    replace this function; nothing else in the engine calls the forge.
     """
-    exe = shutil.which("gh")
+    try:
+        exe = resolve_tool("gh", repo_root)
+    except ToolMisconfigured as exc:
+        return None, str(exc)
     if exe is None:
         return None, "gh is not on PATH"
     try:
@@ -15853,7 +16018,8 @@ def _branch_pr_facts(repo_root: Path, branch: str
     out, why = ask("number,state,isDraft,statusCheckRollup")
     rollup_why: Optional[str] = None
     if (out is None and why is not None
-            and not why.startswith(("gh is not on PATH", "gh could not start"))):
+            and not why.startswith(("gh is not on PATH", "gh could not start",
+                                    "[tools] gh", LOCAL_CONFIG.as_posix()))):
         rollup_why = why
         out, why = ask("number,state,isDraft")
     if out is None:

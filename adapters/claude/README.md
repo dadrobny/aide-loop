@@ -248,6 +248,11 @@ allow-list" framing** are adapter-local and documented here.
   run with the worktree as cwd, where a relative path ran the worktree's copy
   of the script, or blocked every call where it had none. A script that is
   missing is one stderr line and exit 1, a non-blocking hook error.
+- **The hooks read `.aide/local.toml` from the project root too** — the first
+  of `$CLAUDE_PROJECT_DIR` and the cwd that holds one (issue #353). The file
+  is gitignored, so an isolated worktree never has a copy, and a guard reading
+  it from the cwd there quietly dropped every `[framework]` and `[hygiene]`
+  declaration. A relative path declared in it is relative to that root.
 
 **Allow-list command shaping.** The allow-list matches a command **prefix** and
 auto-approves a compound only if *every* part matches — so beyond the runtime-general
@@ -269,6 +274,11 @@ not restated per agent:
   `tests/test_queue_pr_automation.py` holds both halves). Since issue #331 §3
   forbids the raw forms outright and the runners type only the verbs, so the
   ask entry is what enforces it: a person approves every other PR.
+  On a host with `python3` and no `python`, the answer is a `python` on
+  PATH — a shim, or Debian's `python-is-python3` — since every control file
+  and the allow-list name `python`. `[tools] python` in `.aide/local.toml`
+  changes only what the engine *prints* in a suggested command, and the sh
+  hook wrapper never reads it.
 - **Command substitution in commits** (`$(…)`/backticks) is **never** auto-approved —
   use `-m`/`-F` per `conventions.md` §3.
 
