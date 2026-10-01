@@ -163,7 +163,8 @@ instead — that is the bump policy above, and it is enforced by
   the venv and answers for the venv alone, so a validator bootstrapping a
   suite runner is not failed by a `gh` login it does not need; the
   `aide-execute-item` and `aide-status-report` skills, which ran `env` as a
-  venv check, now run `env --bootstrap`. §4 states the rule; `aide env -h`
+  venv check, now run `env --bootstrap`, and `aide-execute-item` skips it
+  under `venv = ""`. §4 states the rule; `aide env -h`
   states each line.
 - **`[python] venv = ""` says the project keeps no venv.** `env` leaves the
   venv line out instead of failing a non-Python project forever, `env
