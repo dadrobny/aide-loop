@@ -381,6 +381,22 @@ def test_a_draft_is_its_own_answer_not_a_lasting_none(pr, capsys):
     assert "is a draft" in capsys.readouterr().out
 
 
+def test_no_ci_declared_answers_at_once_not_after_the_grace(capsys):
+    """#355: `status` prints `checks=-` beside a PR only under `[git] ci =
+    "none"`; that is the answer, not a lasting `none` to wait out."""
+    assert _poll([_stack("-", "#7/open")], grace=300) == (
+        ar.CI_NONE_DECLARED, 1)
+    assert capsys.readouterr().out.strip().splitlines()[-1].startswith(
+        "ci: none declared")
+
+
+@pytest.mark.parametrize("pr", ["#7/draft", "#7/draft(fixing)"])
+def test_no_ci_declared_still_reads_a_draft_as_a_draft(pr):
+    """A draft under `ci = "none"` is a `queue ready` that did not take, or a
+    fix round's reopened items: 15, never 16's "stop for the merge"."""
+    assert _poll([_stack("-", pr)], grace=300) == (ar.CI_DRAFT, 1)
+
+
 def test_ci_gives_up_pending_at_the_ceiling():
     code, reads = _poll([_stack("pending")], ceiling=90)
     assert (code, reads) == (ar.CI_PENDING, 4)
@@ -401,7 +417,7 @@ def test_start_ci_polls_the_branch_checked_out(repo: Path):
 def test_the_ci_codes_collide_with_none_of_the_wrappers_own():
     ci = [getattr(ar, n) for n in ("CI_SUCCESS", "CI_FAILURE", "CI_NONE",
                                    "CI_UNKNOWN", "CI_NO_PR", "CI_PENDING",
-                                   "CI_DRAFT")]
+                                   "CI_DRAFT", "CI_NONE_DECLARED")]
     assert len(set(ci)) == len(ci)
     assert not set(ci) & {getattr(ar, n) for n in _OWN_CODES}
     assert 1 not in ci                  # a crash of the poll itself
@@ -409,6 +425,20 @@ def test_the_ci_codes_collide_with_none_of_the_wrappers_own():
     for code in ci[1:]:
         assert f"\n    {code} " in text, code
     assert f"{ar.CI_NONE_GRACE} s" in text and f"{ar.CI_CEILING} s" in text
+
+
+def test_the_runner_table_has_a_row_for_every_ci_code():
+    """`/aide-run-queue`'s **Queue end** step 5 reads `wait`'s exit code
+    from a table: a code the poll can return with no row there is an answer
+    the runner cannot read — the declared-none exit above all (#355)."""
+    text = (FRAMEWORK_ROOT / "adapters" / "claude" / "commands"
+            / "aide-run-queue.md").read_text(encoding="utf-8")
+    for name in ("CI_SUCCESS", "CI_FAILURE", "CI_NONE", "CI_UNKNOWN",
+                 "CI_NO_PR", "CI_PENDING", "CI_DRAFT", "CI_NONE_DECLARED"):
+        assert f"\n   | {getattr(ar, name)} |" in text, name
+    row = next(line for line in text.splitlines()
+               if line.startswith(f"   | {ar.CI_NONE_DECLARED} |"))
+    assert "CI: none declared" in row
 
 
 # --------------------------------------------------------------------------- #

@@ -214,7 +214,9 @@ PR anyway.
 
 **Push/PR is the caller's job, not this step's:**
 
-- **Run standalone (manual)** — also `git pull --rebase` then `git push`.
+- **Run standalone (manual)** — also `git pull --rebase` then `git push`,
+  except in `local` mode (§4) or with no origin — `aide env`'s `origin` line
+  then reads `not needed` or `none` — where the commit stays local.
 - **Invoked as the `queue-planner` subagent inside `/aide-run-roadmap`** — commit
   only; the orchestrator pushes the `aide/queue-NNN` branch and opens its draft
   PR, which the built items later join. Say in your summary that you wrote two

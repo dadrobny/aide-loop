@@ -136,6 +136,60 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.31.1] — 2026-10-02
+
+### Fixed
+
+- **The roadmap runner and the queue skills no longer pull or push in `local`
+  mode or with no origin (issue #356).** `/aide-run-roadmap` typed `git pull`
+  and `git push` unconditionally — switching to the branch to build, after a
+  queue PR merged, before `queue start` off `main`, and after a plan gate's
+  approval — and so did `/aide-spec-queue` (a `git pull` on the queue branch,
+  and a push justified by "the branch already tracks its upstream") and
+  `/aide-create-queue` run standalone (`git pull --rebase` then `git push`);
+  `/aide-create-item`'s manual path ran `git fetch --all --prune`. In `local`
+  mode a push contradicts the mode (§4: no fetch, pull or push at all), and
+  with no origin it fails with "No configured push destination". Each site
+  now says it is skipped there, keyed to `aide env`'s `origin` line, which
+  reads `not needed` in `local` mode and `none` with no origin; the manual
+  claim check reads local branches instead. `[git] forge = "none"` is not one of them — a
+  project may push to a remote with no forge — so the roadmap's gate step no
+  longer says a forge-less approval has nothing to push. `/aide-review-insights`
+  leaves a `framework` entry `(pending handover)` and names the `gh issue
+  create` command in its report where the `ask` is denied, as in an
+  unattended `-p` run. A new `adapters/claude/tests/test_local_mode_git.py`
+  fails on any `git push`, `git pull` or `git fetch` in an agent spec,
+  command, skill or rule whose paragraph does not say both "`local` mode"
+  and "no origin".
+
+## [2.31.0] — 2026-10-02
+
+### Added
+
+- **`[git] forge` and `[git] ci` declare whether the project has a forge and
+  whether CI runs on its queue PR (issue #355).** Both were inferred: "no
+  forge" only as `local` mode or no `origin`, and "no CI" by waiting — the
+  queue-end poll held `checks=none` for 300 s at every queue end, then
+  reported that no CI ran. A consumer pushing to a non-GitHub remote under
+  `auto-merge` got a permanent `aide env` refusal for `gh`. `forge` is
+  `"github"` (default) or `"none"`; `ci` is `"pr"` or `"none"`, and defaults
+  to `"pr"` with a forge and `"none"` without one. With `forge = "none"`:
+  `aide queue pr` / `queue ready` refuse with `no forge is declared
+  (git.forge = "none")`; `aide status` prints `pr=-`, `checks=-` and
+  `orphaned=-` and never calls `gh`; `aide env` drops the `gh` line and its
+  refusal, and a `gh` refusal under `auto-merge` names `forge = "none"` as a
+  way out; the queue-end step reports no forge and ends, as in `local` mode,
+  and `/aide-run-roadmap` goes on without a queue PR. With `ci = "none"`:
+  `status` prints `checks=-` beside the PR, and `await_run.py poll-ci`
+  answers at once on a PR marked ready with a new exit, 16, which
+  `/aide-run-queue`'s table reads as "CI: none declared" and a stop for the
+  merge; a draft is still 15. `aide check` errors on
+  either key outside its values, on `mode = "pr"` with `forge = "none"`, and
+  on `ci = "pr"` with `forge = "none"`. The defaults are today's behaviour,
+  so no consumer edits anything; `install.py` scaffolds both keys commented
+  out. §4 states the rule; `aide queue -h`, `aide status -h` and `aide env -h`
+  state the mechanism.
+
 ## [2.30.0] — 2026-10-01
 
 ### Added

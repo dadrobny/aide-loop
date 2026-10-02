@@ -2230,6 +2230,75 @@ def test_queue_pr_and_ready_refuse_without_a_forge_and_change_nothing(
 
 
 # --------------------------------------------------------------------------- #
+# [git] forge = "none" / ci = "none" — declared, never inferred (#355)
+# --------------------------------------------------------------------------- #
+def _no_forge_auto_merge(aide, consumer: Path, tmp_path: Path) -> None:
+    """`auto-merge` with an origin that is no GitHub: the forge declared
+    absent, a queue branch started (and pushed) with a plan on it."""
+    _to_pr_mode_with_origin(consumer, tmp_path)
+    toml = consumer / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        'mode = "pr"', 'mode = "auto-merge"\nforge = "none"'), encoding="utf-8")
+    _commit(consumer, "chore: no forge")
+    assert _start(aide, consumer, 1) == 0
+    (consumer / "docs" / "aide" / "plan.md").write_text("plan\n", encoding="utf-8")
+    _commit(consumer, "docs: the plan")
+
+
+@pytest.mark.parametrize("argv", [["pr", "--body", "Plan."], ["ready"]],
+                         ids=["pr", "ready"])
+def test_no_forge_refuses_the_queue_pr_verbs_with_the_sentence(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys, argv):
+    _no_forge_auto_merge(aide, consumer, tmp_path)
+    asked: list = []
+    monkeypatch.setattr(aide, "_gh", lambda repo_root, args: (
+        asked.append(args), (None, "must not be asked"))[1])
+    head = _sha(consumer, "HEAD")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "queue", *argv]) == 1
+    assert 'no forge is declared (git.forge = "none")' in capsys.readouterr().err
+    assert asked == [] and _sha(consumer, "HEAD") == head
+
+
+def test_status_with_no_forge_never_calls_gh(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys):
+    _no_forge_auto_merge(aide, consumer, tmp_path)
+
+    def must_not_run(repo_root, args):
+        raise AssertionError(f"_gh called with no forge declared: {args}")
+
+    monkeypatch.setattr(aide, "_gh", must_not_run)
+    read = _stack_read(aide, consumer, capsys)
+    assert read["stack"] == [(Q1, {"base": "main", "pr": "-", "checks": "-",
+                                   "lower": "-", "orphaned": "-"})]
+    assert read["awaiting"] == "no"
+
+
+def test_check_fails_on_pr_mode_with_no_forge(aide, consumer: Path, capsys):
+    assert aide.main(["--repo", str(consumer), "check", "--queue", "1"]) == 0
+    toml = consumer / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        'mode = "local"', 'mode = "pr"\nforge = "none"'), encoding="utf-8")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check", "--queue", "1"]) == 1
+    assert '[git] mode = "pr" with forge = "none"' in capsys.readouterr().out
+
+
+def test_status_with_no_ci_reads_checks_as_a_dash_beside_the_pr(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys):
+    _to_pr_mode_with_origin(consumer, tmp_path)
+    toml = consumer / "aide.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace(
+        'mode = "pr"', 'mode = "pr"\nci = "none"'), encoding="utf-8")
+    assert _start(aide, consumer, 1) == 0
+    _forge(aide, monkeypatch, {Q1: [{"number": 3, "state": "OPEN",
+                                     "statusCheckRollup": []}]})
+    read = _stack_read(aide, consumer, capsys)
+    assert (read["stack"][0][1]["pr"], read["stack"][0][1]["checks"]) == (
+        "#3/open", "-")
+
+
+# --------------------------------------------------------------------------- #
 # claim — creates the branch and records its base
 # --------------------------------------------------------------------------- #
 def test_claim_creates_switches_to_and_records_the_branch(aide, consumer: Path):
