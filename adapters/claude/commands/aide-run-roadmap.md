@@ -90,8 +90,10 @@ series of improvised git/gh probes:
    fields, then the `runnable:` and `awaiting review:` lines. What each
    value means is `aide status -h`'s to say; the table below keys on the
    values and restates none of it. Then `python .aide/scripts/aide.py env`:
-   its `origin` line reads `not needed` in `local` mode (§4) and `none` with
-   no origin, and either way skip every `git pull` and `git push` below.
+   read its `origin` line whatever the exit status (a refusal elsewhere in
+   the report is not a stop here). It reads `not needed` in `local` mode
+   (§4) and `none` with no origin, and either way skip every `git pull` and
+   `git push` below.
 3. Take every queue branch's PR state from its `pr=` field — never from a
    `gh` probe of your own, so the command and the engine cannot disagree
    about what is blocked. `pr=unknown` (or `awaiting review: unknown`) means
