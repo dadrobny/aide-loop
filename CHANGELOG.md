@@ -150,17 +150,17 @@ instead — that is the bump policy above, and it is enforced by
   `/aide-create-item`'s manual path ran `git fetch --all --prune`. In `local`
   mode a push contradicts the mode (§4: no fetch, pull or push at all), and
   with no origin it fails with "No configured push destination". Each site
-  now says it is skipped there, keyed to `aide status`'s `branch:` line,
-  which names no `origin/` in either case; the manual claim check reads
-  local branches instead. `[git] forge = "none"` is not one of them — a
+  now says it is skipped there, keyed to `aide env`'s `origin` line, which
+  reads `not needed` in `local` mode and `none` with no origin; the manual
+  claim check reads local branches instead. `[git] forge = "none"` is not one of them — a
   project may push to a remote with no forge — so the roadmap's gate step no
   longer says a forge-less approval has nothing to push. `/aide-review-insights`
   leaves a `framework` entry `(pending handover)` and names the `gh issue
   create` command in its report where the `ask` is denied, as in an
   unattended `-p` run. A new `adapters/claude/tests/test_local_mode_git.py`
   fails on any `git push`, `git pull` or `git fetch` in an agent spec,
-  command, skill or rule whose paragraph does not name both `local` and
-  origin.
+  command, skill or rule whose paragraph does not say both "`local` mode"
+  and "no origin".
 
 ## [2.31.0] — 2026-10-02
 

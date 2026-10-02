@@ -8,12 +8,15 @@ push in `local` mode contradicts the mode, and with no origin it fails with
 "No configured push destination". Each site now says, in a sentence of its
 own, that it is skipped in `local` mode or with no origin. This holds the next
 one to the same: a `git push`, `git pull` or `git fetch` in an agent spec,
-command, skill or rule needs a mention of `local` and of origin **in the same
-paragraph** — the table row itself when the line is one; else the lines between
+command, skill or rule needs the phrases "`local` mode" and "no origin" **in
+the same paragraph** — the table row itself when the line is one; else the lines between
 two blank lines, or, where those are a list, the outermost list item the line
 stands in, so a mention in one step does not cover the next. A prohibition
-("do not improvise `git fetch`") instructs nothing, and is passed when
-"improvise" stands before the command on its line.
+("do not improvise `git fetch`") instructs nothing, and is passed when "do
+not improvise", "do **not** improvise" or "never improvise" stands right
+before the command. The phrases are exact because a dense paragraph says
+"origin" for other reasons — "deleted on origin" — and would otherwise pass
+with its guard gone.
 Stdlib + pytest only.
 """
 from __future__ import annotations
@@ -34,8 +37,11 @@ CONTROL_FILES = sorted(
     + list((ADAPTER / "rules").glob("*.md")))
 
 _GIT_REMOTE = re.compile(r"\bgit (?:push|pull|fetch)\b")
-_LOCAL = re.compile(r"`local`")
-_ORIGIN = re.compile(r"\borigin\b")
+_LOCAL = re.compile(r"`local`\s+mode")
+_ORIGIN = re.compile(r"\bno\s+origin\b")
+#: The two prohibitions, in their exact form: "Do not improvise `git fetch`"
+#: and "do **not** improvise `git fetch`" — the command right after it.
+_PROHIBITION = re.compile(r"(?i)\b(?:do (?:\*\*not\*\*|not)|never) improvise `$")
 
 
 def _sites(text: str) -> List[Tuple[int, str, str]]:
@@ -45,7 +51,7 @@ def _sites(text: str) -> List[Tuple[int, str, str]]:
     out = []
     for i, line in enumerate(lines):
         for m in _GIT_REMOTE.finditer(line):
-            if "improvise" in line[:m.start()]:
+            if _PROHIBITION.search(line[:m.start()]):
                 continue
             out.append((i + 1, line, _unit(lines, i)))
     return out
@@ -106,12 +112,13 @@ def test_the_runners_and_queue_skills_carry_guarded_sites():
 
 def test_a_prohibition_is_passed_and_an_instruction_is_not():
     text = ("Do not improvise `git fetch` here.\n\n"
-            "Then `git push`.\n\n"
+            "Then `git push`, deleted on origin, `local` too.\n\n"
             "Then `git pull` — not in `local` mode or with no origin.\n\n"
             "| row | `git push` |\n| row | `local` mode or no origin |\n\n"
             "1. Then `git pull`, not in `local` mode or with no origin.\n"
             "   - and `git push` under it is covered by its step.\n"
-            "2. But `git push` in the next step is not.\n")
+            "2. But `git push` in the next step is not.\n\n"
+            "Improvise nothing, then `git pull`.\n")
     unguarded = [n for n, _, para in _sites(text)
                  if not (_LOCAL.search(para) and _ORIGIN.search(para))]
-    assert unguarded == [3, 7, 12]
+    assert unguarded == [3, 7, 12, 14]

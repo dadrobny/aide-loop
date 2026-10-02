@@ -37,9 +37,9 @@ lowest-numbered one with open items).
      `/aide-run-roadmap` or `aide queue start NNN` planned it: switch to that
      branch, with its name exactly as `python .aide/scripts/aide.py status`
      lists it (or as the head of the queue's draft PR), then `git pull` —
-     skipped when that `status` output's `branch:` line names no `origin/`,
-     as in `local` mode (§4) or with no origin. The specs join the plan
-     there. Do **not** start a specs-queue branch beside it — that splits the
+     skipped in `local` mode (§4) or with no origin, where
+     `python .aide/scripts/aide.py env`'s `origin` line reads `not needed`
+     or `none`. The specs join the plan there. Do **not** start a specs-queue branch beside it — that splits the
      queue's review across two PRs.
    - **The queue file is already on `main`** — a queue planned before this
      flow, with no queue branch — let the CLI create a specs-queue branch:
@@ -112,9 +112,9 @@ lowest-numbered one with open items).
    ```
    git push
    ```
-   In `local` mode or with no origin (`aide status`'s `branch:` line names
-   no `origin/`), skip every push here: the specs stay committed on the
-   branch.
+   In `local` mode or with no origin (`aide env`'s `origin` line reads
+   `not needed` or `none`), skip every push here: the specs stay committed
+   on the branch.
    - **On the queue branch**, that is all: the specs join the queue's draft PR,
      and no second PR is opened. Tell the user to read them with the plan and
      then, where the queue has a plan gate, approve it on that branch
