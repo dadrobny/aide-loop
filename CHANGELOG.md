@@ -169,7 +169,12 @@ instead — that is the bump policy above, and it is enforced by
   `queue-planner` agent quotes the rule in its step 4 (pinned to the
   section), queues neither the waiting stage nor its deferred bullets, and
   hands back when that leaves nothing to queue;
-  `/aide-create-queue` points at it.
+  `/aide-create-queue` points at it. The section's `Rationale` says why an
+  item still reads a ⏸️ dependency as out of its way while a stage does not:
+  the item rule orders claims mid-run, the stage rule acts at planning time.
+- **`aide check`'s remedy for a ⏸️ cell over open deliverables with no item
+  marker names the drop form beside the deferral (issue #362)** — `dropped`
+  in place of `deferred`, for a bullet the stage does not need.
 
 ## [2.31.1] — 2026-10-02
 

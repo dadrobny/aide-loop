@@ -660,7 +660,7 @@ def test_the_hand_deferred_stage_over_unmarked_bullets_names_the_positional_form
     assert "roll up to 📋 planned" in hits[0]
     assert ("its open deliverables carry no item marker, so defer them with "
             "'aide progress set --stage 3 --deliverable K deferred --reason …' "
-            "(K = 1, 2), or restore 📋") in hits[0]
+            "(K = 1, 2) — or `dropped` in place of `deferred` for one the stage does not need, or restore 📋") in hits[0]
     assert "set NNN" not in hits[0]
 
 
@@ -673,7 +673,8 @@ def test_a_stage_with_marked_and_unmarked_open_bullets_names_both_forms(
     hits = _about(warnings, "stage 3:")
     assert len(hits) == 1, warnings
     assert "'aide progress set NNN deferred --reason …'" in hits[0]
-    assert "'aide progress set --stage 3 --deliverable K deferred --reason …' (K = 2)" in hits[0]
+    assert ("'aide progress set --stage 3 --deliverable K deferred --reason …' "
+            "(K = 2) — or `dropped` in place of `deferred` for one the stage does not need") in hits[0]
 
 
 def test_defer_deliverable_flips_the_bullet_and_writes_the_trail_under_its_last_line():
@@ -846,7 +847,7 @@ def test_the_objective_warning_over_unmarked_bullets_names_the_positional_form(
     assert hits[0].endswith(
         "its open deliverables carry no item marker, so defer them with "
         "'aide progress set --stage 3 --deliverable K deferred --reason …' "
-        "(K = 1, 2), or restore 📋"), hits[0]
+        "(K = 1, 2) — or `dropped` in place of `deferred` for one the stage does not need, or restore 📋"), hits[0]
     mixed = UNMARKED.replace("- 📋 Plugin/registration API for new heuristics.",
                              "- 📋 Plugin/registration API for new heuristics. "
                              "*(Item 040)*")
@@ -856,7 +857,8 @@ def test_the_objective_warning_over_unmarked_bullets_names_the_positional_form(
     assert hits[0].endswith(
         "defer the open items with 'aide progress set NNN deferred --reason …' "
         "and the deliverables with no item marker with 'aide progress set "
-        "--stage 3 --deliverable K deferred --reason …' (K = 2), or restore 📋")
+        "--stage 3 --deliverable K deferred --reason …' (K = 2) — or `dropped` in place of `deferred` for one the stage does not need, "
+        "or restore 📋")
 
 
 def test_the_objective_warning_over_two_stages_names_each_stages_positions():
@@ -875,7 +877,7 @@ def test_the_objective_warning_over_two_stages_names_each_stages_positions():
     hits = _about(warnings, "objective G3")
     assert len(hits) == 1, warnings
     assert ("'aide progress set --stage N --deliverable K deferred --reason …' "
-            "(stage 3: K = 1, 2; stage 4: K = 2)") in hits[0], hits[0]
+            "(stage 3: K = 1, 2; stage 4: K = 2) — or `dropped` in place of `deferred` for one the stage does not need") in hits[0], hits[0]
 
 
 NESTED = PROGRESS.replace(

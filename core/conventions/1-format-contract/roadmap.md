@@ -106,8 +106,20 @@ waits on.
   stage it names. A 📋, 🚧 or 🔍 earlier stage is the ordinary case — a queue
   lands its work, the next one or the same one for a phase — so queueing
   behind it is all the rule asks; ⏸️ is the one state that waits on a
-  decision rather than a queue, which is why it needs the owner. The owner's remedy for a deliverable never
-  needed is the drop route, which closes the stage ✅.
+  decision rather than a queue, which is why it needs the owner. The owner's
+  remedy for a deliverable never needed is the drop route, which closes the
+  stage ✅.
+- **Why an item reads a ⏸️ dependency the other way.** An item's
+  `## Dependencies` are met by a ⏸️ item, which "leaves the queue's way"
+  (§1 → `items.md`), while a stage's are not met by a ⏸️ stage. The two act
+  at different moments. The item rule orders claims inside a queue already
+  planned and approved, during an unattended run with no owner to ask; a
+  deferred item that still blocked would stall every item behind it until the
+  queue ends. The stage rule acts when the next queue is planned, the moment
+  the owner is at the plan gate anyway, so waiting on the owner's decision
+  costs one hand-back rather than a stalled run. A dependent item built past a
+  deferred one is the price, paid in the open: the deferral's reason is on
+  the deferred item's trail.
 - **Why the coverage table is checked for completeness.** The check said
   only that the table existed, so a G-code no row mapped — an objective no
   stage was planned to deliver — and a row naming a stage the roadmap never

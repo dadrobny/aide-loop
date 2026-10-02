@@ -7014,7 +7014,10 @@ def _deferral_fix(whose: str, unmarked: List[Tuple[str, List[int]]],
     *unmarked* pairs each stage with the 1-based positions of its open bullets
     that carry no item marker (issue #336), which only the positional form
     reaches; *marked_open* says an itemised bullet is open too, so the item
-    form is named beside it.
+    form is named beside it. The positional form also drops such a bullet
+    the stage does not need (issue #362), so the remedy names that beside it:
+    a ⏸️ cell over an unmarked bullet the owner meant as "not needed" is the
+    case the drop exists for.
     """
     restore = f"or restore {STATUS_TO_ICON[derived]}"
     item_form = "'aide progress set NNN deferred --reason …'"
@@ -7029,6 +7032,8 @@ def _deferral_fix(whose: str, unmarked: List[Tuple[str, List[int]]],
                           for n, ks in unmarked)
         by_position = (f"'aide progress set --stage N --deliverable K "
                        f"deferred --reason …' ({where})")
+    by_position += (" — or `dropped` in place of `deferred` for one the "
+                    "stage does not need")
     if marked_open:
         return (f"defer {whose} open items with {item_form} and the "
                 f"deliverables with no item marker with {by_position}, "
