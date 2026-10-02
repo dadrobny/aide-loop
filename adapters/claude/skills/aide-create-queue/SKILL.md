@@ -168,6 +168,15 @@ as the reason.
    - **Never change a deliverable's status icon** — leave it 📋. This step only
      makes the item *trackable*; status transitions (📋→🚧→✅) are
      `aide progress set`'s job during execution.
+   - **Wire a marker onto a 📋 bullet only.** An item born on a ⏸️ or ❌
+     bullet is settled from the start, so its queue would read done the
+     moment it is written (§1 → `progress.md`). Queue a ⏸️ bullet only where
+     its owner decided to resume it, and resume it first, by its place, the
+     owner's decision and why it is queued now as the reason —
+     `python .aide/scripts/aide.py progress set --stage N --deliverable K
+     resumed --reason "…"` — then wire the marker onto the 📋 bullet it
+     leaves and name the deferred work you queued, with why, in your summary.
+     A ❌ bullet is not queued: the owner decided the stage does not need it.
    - Why: `aide progress set NNN` finds the bullet to flip by its `*(Item NNN)*`
      reference. An item with no reference is untracked, and `progress set` now
      hard-errors on it (engine ≥ 1.0.1) rather than silently no-op'ing — so a
@@ -182,10 +191,11 @@ Mark the superseded queue NNN-1 completed with the CLI:
 python .aide/scripts/aide.py queue tidy <NNN-1>
 ```
 
-Then, if any of its item lines still read 📋, reflect their final `progress.md`
-state (✅ done, ⏸️/❌ if carried or dropped — a carried item is deferred in
-`progress.md` with `aide progress set NNN deferred --reason …` first, so the
-why is on record). Skip if this is the first queue.
+Write nothing else into that file: a queue entry carries no icon, and an
+item's status lives in `progress.md` alone (§1 → `progress.md`). An item
+carried to the next queue is deferred there with `aide progress set NNN
+deferred --reason …`, so the why is on record. Skip if this is the first
+queue.
 
 ### Output
 

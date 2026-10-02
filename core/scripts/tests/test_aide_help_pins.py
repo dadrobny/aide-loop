@@ -46,8 +46,9 @@ that moved everything.
   first's edits"*, *"an item awaiting review or deferred has not shipped"* and
   *"each attestation was made separately and is corrected or withdrawn
   separately"*, *"a deferral is a decision about order, not a finding"* and
-  *"dropping a deliverable is a decision about scope, not a finding"*
-  (`progress`), *"the stage is dropped, so its bullets no longer speak for
+  *"dropping a deliverable is a decision about scope, not a finding"*,
+  *"only deferred work is resumed"* and *"Resume such a bullet before it is
+  itemised"* (`progress`), *"the stage is dropped, so its bullets no longer speak for
   it"* (`check`), *"roadmap.md's deliverables carry no item marker, so there
   is no bullet of the item to mirror"* (`progress`) — rationale for a rule
   pinned beside them, not a second rule.
@@ -927,17 +928,23 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "never rolls up",
          "test_aide_core::test_unmet_target_blocks_objective_rollup_not_stage"),
         # `RANK` guards the write: a lower-ranked status is not applied.
-        ("Apart from deferring and dropping, set never downgrades a status",
+        ("Apart from deferring, dropping and resuming, set never downgrades "
+         "a status",
          ("test_aide_core::test_set_item_never_downgrades",
           "test_aide_defer::test_deferring_the_only_in_progress_item_rolls_the_stage_back_to_planned",
-          "test_aide_defer::test_dropping_the_only_in_progress_bullet_rolls_the_stage_back_down")),
-        # ⏸️ ranks below 🚧, 🔍 and ✅ in `RANK`, so the forward flip applies.
-        ("a \u23f8\ufe0f item resumes under any other status set names",
-         ("test_aide_defer::test_a_deferred_item_resumes_under_any_forward_status",
+          "test_aide_defer::test_dropping_the_only_in_progress_bullet_rolls_the_stage_back_down",
+          "test_aide_defer::test_resuming_the_only_open_item_rolls_a_deferred_stage_back_to_planned")),
+        # `cmd_progress` refuses a forward status over an item whose bullets
+        # are all ⏸️ or 📋 before it writes, and lets a mixed one through
+        # (issue #380); `resume_item` writes 📋.
+        ("an item whose bullets are all \u23f8\ufe0f or \U0001f4cb leaves "
+         "\u23f8\ufe0f by resuming alone, back to \U0001f4cb",
+         ("test_aide_defer::test_a_forward_set_over_a_deferred_item_is_refused_naming_the_resume",
+          "test_aide_defer::test_a_forward_set_still_moves_an_item_resumed_would_refuse",
           "test_aide_defer::test_resuming_a_deferred_item_moves_the_stage_back_up")),
         # `reopen_item` refuses any bullet not ✅, and is the one caller that
         # passes `downgrade_stages` to `_recompute_rollups` (issue #271).
-        ("only reopen moves one back, and only from \u2705",
+        ("only reopen moves a \u2705 item back",
          ("test_aide_reopen::test_reopen_refuses_an_item_that_is_not_done_and_names_its_status",
           "test_aide_reopen::test_reopen_rolls_the_stage_and_its_objective_back_down")),
         # `stage_deliverable_statuses` skips `_CHECKBOX_RE` lines, and nothing
@@ -1070,13 +1077,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # usage refusals in `_cmd_progress_defer_deliverable`.
         ("set --stage N --deliverable K counts the stage's deliverable bullets "
          "from 1 in file order, a wrapped line belonging to its bullet, and "
-         "takes no NNN and no status but deferred or dropped",
+         "takes no NNN and no status but deferred, dropped or resumed",
          ("test_aide_defer::test_defer_deliverable_flips_the_bullet_and_writes_the_trail_under_its_last_line",
           "test_aide_defer::test_set_by_position_refuses_its_usage_errors_with_exit_2",
-          "test_aide_defer::test_drop_by_position_writes_through_the_cli_and_no_insight")),
-        # `_unmarked_deliverable_at`, shared by both writers (issue #362),
-        # and the reason checks in `_cmd_progress_defer_deliverable`.
-        ("Either form refuses, writing nothing, without a stated reason, when "
+          "test_aide_defer::test_drop_by_position_writes_through_the_cli_and_no_insight",
+          "test_aide_defer::test_resume_by_position_writes_through_the_cli")),
+        # `_unmarked_deliverable_at`, shared by the three writers (issues
+        # #362, #380), and the reason checks in
+        # `_cmd_progress_defer_deliverable`.
+        ("Each form refuses, writing nothing, without a stated reason, when "
          "stage N has no Kth bullet, or when that bullet carries an item "
          "marker",
          ("test_aide_defer::test_set_by_position_refuses_its_usage_errors_with_exit_2",
@@ -1084,15 +1093,60 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_defer::test_defer_deliverable_refuses",
           "test_aide_defer::test_drop_by_position_refuses_its_usage_errors_with_exit_2",
           "test_aide_defer::test_drop_by_position_refuses_what_it_cannot_drop_with_exit_1",
-          "test_aide_defer::test_drop_deliverable_refuses")),
+          "test_aide_defer::test_drop_deliverable_refuses",
+          "test_aide_defer::test_resume_by_position_refuses_and_writes_nothing")),
         # `defer_deliverable`'s `_DEFERRABLE` check.
         ("set --stage N --deliverable K deferred also refuses a bullet that "
          "is \u2705 or \u274c",
          "test_aide_defer::test_defer_deliverable_refuses_a_finished_bullet"),
         ("a bullet already \u23f8\ufe0f is no change",
          "test_aide_defer::test_defer_deliverable_again_is_no_change"),
-        ("Such a bullet resumes once it is itemised, under set NNN",
-         "test_aide_defer::test_an_unmarked_deferred_bullet_resumes_once_itemised"),
+
+        # `resume_deliverable` (issue #380): `_unmarked_deliverable_at`, the
+        # ⏸️-only check, and `_write_unmarked_deliverable` to 📋.
+        ("set --stage N --deliverable K resumed writes what set NNN resumed "
+         "writes, to a \u23f8\ufe0f bullet; it refuses any other but "
+         "\U0001f4cb, which is no change",
+         ("test_aide_defer::test_an_unmarked_deferred_bullet_resumes_by_place_then_is_itemised",
+          "test_aide_defer::test_resume_deliverable_refuses_a_bullet_that_is_not_deferred",
+          "test_aide_defer::test_resume_deliverable_again_is_no_change")),
+        # A marker wired onto a ⏸️ bullet leaves `_parse_item_status` reading
+        # the item ⏸️, which `queue_is_open` counts as settled.
+        ("an item born on a \u23f8\ufe0f bullet is \u23f8\ufe0f from the "
+         "start",
+         "test_aide_defer::test_an_itemised_deferred_bullet_resumes_by_its_item"),
+
+        # `resume_item` and `_cmd_progress_defer` (issue #380): the
+        # `_RESUMED_PREFIX` trail line through `_insert_trail_line`, and
+        # `_recompute_rollups` with the stages allowed down.
+        ("`set NNN resumed --reason TEXT` takes a \u23f8\ufe0f item back to "
+         "\U0001f4cb with a dated `resumed: <reason>` line",
+         ("test_aide_defer::test_resuming_a_deferred_item_moves_the_stage_back_up",
+          "test_aide_defer::test_set_resumed_writes_through_the_cli_and_no_insight")),
+        ("set NNN resumed flips each \u23f8\ufe0f bullet whose trailing "
+         "marker names the item back to \U0001f4cb, writes the reason on a "
+         "dated trail line under it, and rolls its stage up again, moving "
+         "down where its bullets now say less",
+         ("test_aide_defer::test_resuming_a_deferred_item_moves_the_stage_back_up",
+          "test_aide_defer::test_resuming_the_only_open_item_rolls_a_deferred_stage_back_to_planned",
+          "test_aide_defer::test_resume_desugars_a_shared_marker_and_moves_only_the_named_item")),
+        ("an item already \U0001f4cb throughout is no change",
+         "test_aide_defer::test_resuming_a_planned_item_is_no_change"),
+        # `_pick_item` offers a 📋 item with no claim branch and skips one
+        # that has one; `_report_nothing_claimable` names the branch.
+        ("The item is then claimable: claim offers it, or, where a claim "
+         "branch from before the deferral still exists, holds it as in "
+         "flight on that branch",
+         "test_aide_git::test_a_resumed_item_is_claimed_again_or_held_on_its_branch"),
+        ("It refuses, writing nothing, without a stated reason, or when a "
+         "bullet naming the item is \U0001f6a7, \U0001f50d, \u2705 or "
+         "\u274c",
+         ("test_aide_defer::test_set_resumed_refuses_and_writes_nothing",
+          "test_aide_defer::test_resume_refuses_an_item_that_is_not_deferred_and_names_its_status")),
+        ("set NNN in-progress, in-review and done each refuse a "
+         "\u23f8\ufe0f item, writing nothing, and name the resume",
+         ("test_aide_defer::test_a_forward_set_over_a_deferred_item_is_refused_naming_the_resume",
+          "test_aide_git::test_a_resumed_item_is_claimed_again_or_held_on_its_branch")),
 
         # `_cmd_progress_defer_deliverable` / `drop_deliverable` (issue #362):
         # `_DROPPABLE`, the `_DROPPED_PREFIX` trail line through

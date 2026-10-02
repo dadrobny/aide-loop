@@ -136,6 +136,51 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.33.0] — 2026-10-02
+
+### Added
+
+- **`aide progress set NNN resumed --reason TEXT` takes a ⏸️ item back to 📋,
+  and `set --stage N --deliverable K resumed --reason TEXT` does the same to
+  an un-itemised ⏸️ bullet (issue #380).** §1 said deferred work resumed
+  "through any forward `aide progress set`" and an unmarked ⏸️ bullet "once it
+  is itemised", and neither route led back into the loop: `aide claim` hands
+  out 📋 items alone, so `set NNN in-progress` on a ⏸️ item never claimed left
+  it 🚧 with no branch — `claim` said "none left", `aide status` counted it as
+  work to build and `aide sync --item` asked for a claim — and an item wired
+  onto a ⏸️ bullet was ⏸️ from birth, its queue done as it was written.
+  `resumed` flips each ⏸️ bullet to 📋 under a dated `resumed: <reason>` trail
+  line, beside the deferral's, and rolls the stage back down; `claim` then
+  offers the item, or names it in flight on a claim branch it kept from before
+  the deferral, which `/aide-run-queue`'s resume step picks up. The reason is
+  required; a 🚧, 🔍, ✅ or ❌ item or bullet is refused, writing nothing (a
+  ❌ was decided against, not postponed — #381 owns leaving ❌); an item or
+  bullet already 📋 is no change; an itemised bullet by position is refused
+  with the item form named. No insight is captured. `aide progress -h` states
+  it; §1 → `progress.md` and `status-icons.md` name the route, and the
+  `aide-progress-file` section skill carries and pins it.
+
+### Changed
+
+- **`aide progress set NNN in-progress|in-review|done` refuses an item whose
+  bullets are all ⏸️ or 📋, writing nothing, and names `set NNN resumed`
+  (issue #380)** — the forward set was what left a never-claimed item 🚧 with
+  no branch. Exit 1, as other state refusals. A ⏸️ bullet beside started or
+  settled work, which only a hand edit makes, is one `resumed` refuses, so
+  the forward set stays its way out there. `aide merge` still ticks a ⏸️ item
+  ✅: a merge records work that landed.
+- **The `queue-planner` agent and `/aide-create-queue` wire an item marker
+  onto a 📋 bullet only (issue #380).** A ⏸️ bullet is queued only where its
+  owner decided to resume it, and is resumed first by its place, with that
+  decision as the reason, then itemised; a ❌ bullet is not queued. The step
+  that tidies the previous queue no longer asks for an item's state to be
+  "reflected" in the queue file — a queue entry carries no icon, and status
+  lives in `progress.md` alone.
+- **`/aide-run-queue`'s resume step says what to do with a ⏸️ or 🔍 item that
+  still has a claim branch (issue #380):** skip both — the ⏸️ one waits on its
+  owner and is resumed there once it reads 📋 again, and the 🔍 one awaits a
+  human's merge, which `sync` names once it has landed.
+
 ## [2.32.0] — 2026-10-02
 
 ### Added

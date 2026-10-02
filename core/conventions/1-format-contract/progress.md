@@ -88,10 +88,9 @@ over a derived cell is drift `aide check` reports.
 Postpone an item with `aide progress set NNN deferred --reason …`, never by
 typing ⏸️ over a bullet or a stage: the verb keeps the why on the bullet's
 trail, and a stage whose only open work is deferred rolls up to ⏸️ by itself —
-never to ✅. Deferred work resumes through any forward `aide progress set`. A
-bullet no item marker names is deferred by its place instead, with `aide
-progress set --stage N --deliverable K deferred --reason …`, K counting the
-stage's deliverable bullets from 1; it resumes once it is itemised. A
+never to ✅. A bullet no item marker names is deferred by its place instead,
+with `aide progress set --stage N --deliverable K deferred --reason …`, K
+counting the stage's deliverable bullets from 1. A
 ⏸️ stage header, summary row or Objective row the rollup does not compute is a
 hand edit that stands until a verb moves a bullet of that stage, and `aide
 check` warns on it for as long as it disagrees, as it does on a stage that
@@ -100,6 +99,17 @@ bullets, each by the form that addresses it, or restore the icon the rollup
 computes, and the warning ends. A ❌ cell is outside the
 comparison, and a ❌ summary row takes its stage's header with it: its bullets
 no longer speak for the stage.
+
+**Deferred work resumes with its own verb, back to 📋, with its reason.**
+Resume an item with `aide progress set NNN resumed --reason …`, and a bullet no
+item marker names with `aide progress set --stage N --deliverable K resumed
+--reason …`: each ⏸️ bullet flips to 📋 under a dated trail line beside the
+deferral's, and the stage follows. A resumed item is claimable again — `aide
+claim` offers it, or the runner picks it up on a claim branch it still has. A
+forward `aide progress set` refuses an item whose bullets are all ⏸️ or 📋.
+Resuming is the owner's decision, and the reason says why the work is wanted
+now. A ⏸️ or ❌ bullet is never itemised as it stands: a ⏸️ one is resumed
+first, and a ❌ one was decided against, so it is not queued.
 
 **A deliverable the stage turns out not to need is dropped, with its reason,
 and the stage can close.** Drop a bullet no item marker names with `aide
@@ -220,9 +230,10 @@ Semantics
   bullet is the hand edit this section forbids, and restoring 📋 would have
   undone a real, dated deferral — so no remedy the warning named applied.
   Addressing the bullet by its place in the stage gives it the same write and
-  trail. Only ⏸️ and ❌ are written that way, the two decisions an owner makes
-  about the bullet itself: an unmarked bullet has no item for work to resume
-  under, and itemising it is the queue-planner's step, not a status.
+  trail. Only ⏸️, ❌ and the resume from ⏸️ are written that way, the
+  decisions an owner makes about the bullet itself: an unmarked bullet has no
+  item for work to move forward under, and itemising it is the
+  queue-planner's step, not a status.
 - **Why an unmarked bullet can be dropped.** Issue #362, from a consumer on
   2.25.0: a started stage held two shipped items, every acceptance box
   ticked, and one optional deliverable nobody had itemised. Deferring it —
@@ -244,6 +255,30 @@ Semantics
   with it because an objective's rollup reads its stages' bullets, not their
   summary rows, so a hand-held ⏸️ objective over the withdrawn stage would
   still warn.
+- **Why resuming has a verb, and a forward set refuses ⏸️.** Issue #380,
+  from the status-model review alongside #362: the section said deferred work
+  resumed "through any forward `aide progress set`" and an unmarked ⏸️ bullet
+  "once it is itemised", and neither route led back into the loop. `aide
+  claim` hands out 📋 items alone, so `set NNN in-progress` on a ⏸️ item never
+  claimed left it 🚧 with no branch — `claim` said "none left" and exited 0,
+  which a runner reads as the queue exhausted, while `aide status` counted an
+  item to build and `aide sync --item` asked for a claim first. Three verbs
+  disagreed, and the only way out was typing 📋 over the bullet. Itemising a
+  ⏸️ bullet failed the other way: the planner's wiring never changes an icon,
+  so the item was ⏸️ from birth, its queue counted done as it was written,
+  `claim` found no open queue, and `check` was silent — and since 2.32.0 the
+  same held for a ❌ bullet. 📋 is the one status every verb agrees is
+  unstarted work, so resuming lands there, and the claim — or the runner's
+  resume of a branch the item still has — takes it on. The reason is required
+  for the reason a deferral's is: the decision has to read cold, beside the
+  why of the deferral it undoes. A forward set is refused rather than taught
+  to resume, because only `claim` makes the branch a 🚧 item is built on, and
+  an item is held there only while its bullets are ⏸️ or 📋 — one with a ⏸️
+  bullet beside started or settled work, which only a hand edit makes, is
+  one `resumed` refuses, so the forward set stays its way out. The
+  resume reaches ⏸️ only: leaving ❌ is a reversal of a decision against the
+  work, not a postponement ended, and issue #381 settles its route. `aide
+  merge` still ticks a ⏸️ item ✅ — a merge records work that landed.
 - **Why every derived cell is compared, with none of the writer's restraint.**
   Issue #285: the sentence that a typed-over derived cell is drift `aide check`
   reports held for ✅ and ⏸️ only. A 🚧 over bullets all 📋, a 🔍 the rollup

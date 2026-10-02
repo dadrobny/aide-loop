@@ -64,7 +64,12 @@ stranded otherwise.
 1. `git branch | grep aide/` — list local `aide/*` branches.
 2. If none, skip to the loop.
 3. For each `aide/NNN-*` branch, read `docs/aide/progress.md`: if the item is
-   already ✅/❌, skip it; if 🚧 or 📋, it is unfinished.
+   already ✅/❌, skip it; if 🚧 or 📋, it is unfinished. Skip a ⏸️ item too:
+   it waits on its owner, and once they resume it (`aide progress set NNN
+   resumed --reason …`) it reads 📋 and is resumed here on the branch it
+   kept. Skip a 🔍 item: its work is pushed and awaits a human's merge;
+   step 0's `sync` names it once it has landed, with the `aide progress set
+   NNN done` that records it.
 4. For each unfinished item (item-number order), hand it to **`/aide-run-item NNN
    aide/NNN-short-name`**. `/aide-run-item` is itself resumable — its spec-author
    step returns an existing spec, re-checking a pinned dependency's interface
