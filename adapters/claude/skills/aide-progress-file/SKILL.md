@@ -161,9 +161,8 @@ Resume an item with `aide progress set NNN resumed --reason …`, and a bullet n
 item marker names with `aide progress set --stage N --deliverable K resumed
 --reason …`; a resumed item is claimable again. A forward `aide progress set`
 refuses a ⏸️ item. Resuming is the owner's decision, and the reason says why
-the work is wanted now. A ⏸️ or ❌ bullet is never itemised as it stands — an
-item born on it is settled from the start: a ⏸️ one is resumed first, and a ❌
-one was decided against, so it is not queued.
+the work is wanted now. A ⏸️ or ❌ bullet is never itemised as it stands: a ⏸️
+one is resumed first, and a ❌ one was decided against, so it is not queued.
 
 **A deliverable the stage turns out not to need is dropped, with its reason,
 and the stage can close.** Drop a bullet no item marker names with `aide

@@ -267,9 +267,10 @@ next queue** off `main`.
 
 Tidying the now-superseded queue NNN-1 is the planner's step, not yours: it
 runs `python .aide/scripts/aide.py queue tidy <NNN-1>`, which writes the
-completion note, then reflects each item's final `progress.md` state so a stale
-📋 list isn't left implying open work, and commits that alongside the new queue
-on the `aide/queue-NNN` branch — branched from a `main` the previous queue's
+completion note — it writes nothing else into that file, since a queue entry
+carries no icon and status lives in `progress.md` alone, and defers any item it
+carries over with `aide progress set NNN deferred --reason …` — and commits that
+alongside the new queue on the `aide/queue-NNN` branch — branched from a `main` the previous queue's
 PR has already landed on, or, on a stack, from the previous queue's branch.
 
 The shape of the stamp is `.aide/conventions.md` §1 → `queue-NNN.md`'s, and the

@@ -165,7 +165,9 @@ instead — that is the bump policy above, and it is enforced by
 - **`aide progress set NNN in-progress|in-review|done` refuses a ⏸️ item,
   writing nothing, and names `set NNN resumed` (issue #380)** — the forward
   set was what left a never-claimed item 🚧 with no branch. Exit 1, as other
-  state refusals. `aide merge` still ticks a ⏸️ item ✅: a merge records work
+  state refusals. Only an item whose bullets are all ⏸️ or 📋 is held: one
+  with a ⏸️ bullet beside started or settled work is one `resumed` refuses,
+  so the forward set stays its way out. `aide merge` still ticks a ⏸️ item ✅: a merge records work
   that landed.
 - **The `queue-planner` agent and `/aide-create-queue` wire an item marker
   onto a 📋 bullet only (issue #380).** A ⏸️ bullet is queued only where its

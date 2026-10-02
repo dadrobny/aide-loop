@@ -106,11 +106,9 @@ item marker names with `aide progress set --stage N --deliverable K resumed
 --reason …`: each ⏸️ bullet flips to 📋 under a dated trail line beside the
 deferral's, and the stage follows. A resumed item is claimable again — `aide
 claim` offers it, or the runner picks it up on a claim branch it still has. A
-forward `aide progress set` refuses a ⏸️ item: 🚧 with no claim branch is a
-state no verb offers or finishes. Resuming is the owner's decision, and the
+forward `aide progress set` refuses a ⏸️ item. Resuming is the owner's decision, and the
 reason says why the work is wanted now. A ⏸️ or ❌ bullet is never itemised as
-it stands, since an item born on it is settled from the start and its queue
-reads done the moment it is written: a ⏸️ one is resumed first, and a ❌ one
+it stands: a ⏸️ one is resumed first, and a ❌ one
 was decided against, so it is not queued.
 
 **A deliverable the stage turns out not to need is dropped, with its reason,
@@ -274,7 +272,10 @@ Semantics
   resume of a branch the item still has — takes it on. The reason is required
   for the reason a deferral's is: the decision has to read cold, beside the
   why of the deferral it undoes. A forward set is refused rather than taught
-  to resume, because only `claim` makes the branch a 🚧 item is built on. The
+  to resume, because only `claim` makes the branch a 🚧 item is built on, and
+  an item is held there only while its bullets are ⏸️ or 📋 — one with a ⏸️
+  bullet beside started or settled work (a hand edit, or a file from before
+  2.33.0) is one `resumed` refuses, so the forward set stays its way out. The
   resume reaches ⏸️ only: leaving ❌ is a reversal of a decision against the
   work, not a postponement ended, and issue #381 settles its route. `aide
   merge` still ticks a ⏸️ item ✅ — a merge records work that landed.

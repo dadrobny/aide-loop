@@ -8875,8 +8875,13 @@ def cmd_progress(args: argparse.Namespace) -> int:
     # status over it used to resume it, and `in-progress` on one never
     # claimed left it 🚧 with no branch: `claim` offered nothing, `status`
     # counted it as work to build and `sync --item` asked for a claim.
-    held = [st for st in _item_bullet_statuses(text.splitlines(), args.number)
-            if st == "deferred"]
+    # Only an item `resumed` can take is held: one whose bullets are all ⏸️
+    # or 📋. A ⏸️ beside a 🚧/🔍/✅/❌ bullet (a hand edit, or a file from
+    # before 2.33.0) is one `resumed` refuses, so the forward set stays its
+    # way out.
+    bullets = _item_bullet_statuses(text.splitlines(), args.number)
+    held = ("deferred" in bullets
+            and all(st in ("deferred", "planned") for st in bullets))
     if held:
         print(f"error: item {args.number:03d} is ⏸️ deferred, and a deferred "
               f"item is not set forward — resume it with `aide progress set "

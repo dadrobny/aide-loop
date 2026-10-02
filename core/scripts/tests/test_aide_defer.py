@@ -1305,6 +1305,24 @@ def test_a_forward_set_over_a_deferred_item_is_refused_naming_the_resume(
     assert path.read_bytes() == before
 
 
+def test_a_forward_set_still_moves_an_item_resumed_would_refuse(
+        tmp_path: Path, capsys):
+    """A ⏸️ bullet beside a ✅ one (a hand edit, or a pre-2.33.0 file) is an
+    item `resumed` refuses, so the forward set is not held there: refusing
+    both would leave only typing over the icons."""
+    text = _defer().replace("- ✅ Summary. *(Item 030)*",
+                            "- ✅ Summary. *(Item 031)*")
+    repo = _repo(tmp_path, text)
+    assert aide.main(["--repo", str(repo), "progress", "set", "31", "resumed",
+                      "--reason", "x", "--no-commit"]) == 1
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "progress", "set", "31", "done",
+                      "--no-commit"]) == 0
+    assert aide._item_bullet_statuses((repo / "docs" / "aide" / "progress.md")
+                                      .read_text(encoding="utf-8").splitlines(),
+                                      31) == ["complete", "complete"]
+
+
 def test_set_resumed_writes_through_the_cli_and_no_insight(tmp_path: Path, capsys):
     repo = _repo(tmp_path, _defer())
     path = repo / "docs" / "aide" / "progress.md"
