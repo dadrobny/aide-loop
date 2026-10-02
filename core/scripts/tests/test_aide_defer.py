@@ -905,9 +905,9 @@ def test_set_by_position_writes_through_the_cli_and_no_insight(tmp_path: Path, c
     (["--stage", "3", "--deliverable", "1", "deferred", "--reason", "a\nb"],
      "line break"),
     (["--stage", "3", "--deliverable", "1", "done"],
-     "only `deferred`, `dropped` or `resumed` is set by position"),
+     "only `deferred`, `dropped`, `resumed` or `restored` is set by position"),
     (["--stage", "3", "--deliverable", "1"],
-     "only `deferred`, `dropped` or `resumed` is set by position"),
+     "only `deferred`, `dropped`, `resumed` or `restored` is set by position"),
     (["--stage", "3", "deferred", "--reason", "x"], "go together"),
     (["--deliverable", "1", "deferred", "--reason", "x"], "go together"),
     (["31", "deferred", "--stage", "3", "--deliverable", "1", "--reason", "x"],
@@ -947,8 +947,8 @@ def test_stage_and_deliverable_belong_to_set_alone(tmp_path: Path, capsys):
     repo = _repo(tmp_path, UNMARKED)
     assert aide.main(["--repo", str(repo), "progress", "accept", "3",
                       "--stage", "3", "--deliverable", "1", "--no-commit"]) == 2
-    assert ("belong to `set … deferred`, `set … dropped` and `set … "
-            "resumed` alone" in capsys.readouterr().err)
+    assert ("belong to `set … deferred`, `set … dropped`, `set … resumed` "
+            "and `set … restored` alone" in capsys.readouterr().err)
 
 
 def _progress_parser():
@@ -1160,8 +1160,8 @@ def test_drop_deliverable_refuses_a_shipped_bullet():
     (9, 1, r"no '## Stage 9' section"),
     (3, 4, "stage 3 has 3 deliverable bullets, numbered from 1"),
     (3, 0, "stage 3 has 3 deliverable bullets, numbered from 1"),
-    (3, 1, r"itemised — its trailing marker names item 101, so its status is "
-           r"its item's and it is not dropped by position"),
+    (3, 1, r"itemised — its trailing marker names item 101, so drop it by "
+           r"item with `aide progress set 101 dropped --reason …`"),
 ], ids=["unknown-stage", "past-the-end", "zero", "itemised"])
 def test_drop_deliverable_refuses(stage, k, match):
     with pytest.raises(ValueError, match=match):
@@ -1199,9 +1199,7 @@ def test_drop_by_position_writes_through_the_cli_and_no_insight(
     (["--stage", "3", "--deliverable", "3", "dropped", "--all",
       "--reason", "x"], "a deliverable is dropped whole"),
     (["--stage", "3", "dropped", "--reason", "x"], "go together"),
-    (["31", "dropped", "--reason", "x"], "`dropped` is set by position alone"),
-], ids=["no-reason", "blank-reason", "two-lines", "with-all", "stage-alone",
-        "by-item"])
+], ids=["no-reason", "blank-reason", "two-lines", "with-all", "stage-alone"])
 def test_drop_by_position_refuses_its_usage_errors_with_exit_2(
         tmp_path: Path, capsys, argv, message):
     repo = _repo(tmp_path, ISSUE)
@@ -1215,7 +1213,8 @@ def test_drop_by_position_refuses_its_usage_errors_with_exit_2(
 @pytest.mark.parametrize("text, stage, k, message", [
     (ISSUE.replace("- 📋 Optional plugin", "- ✅ Optional plugin"), "3", "3",
      "nothing to drop"),
-    (ISSUE, "3", "2", "item 102, so its status is its item's"),
+    (ISSUE, "3", "2", "item 102, so drop it by item with `aide progress set "
+                      "102 dropped --reason …`"),
     (ISSUE, "3", "4", "stage 3 has 3 deliverable bullets"),
 ], ids=["shipped", "itemised", "no-kth-bullet"])
 def test_drop_by_position_refuses_what_it_cannot_drop_with_exit_1(
@@ -1278,8 +1277,8 @@ def test_an_item_number_on_the_drop_form_is_refused_in_its_own_words(
                       "--stage", "3", "--deliverable", "3", "--reason", "x",
                       "--no-commit"]) == 2
     err = capsys.readouterr().err
-    assert ("takes no item number — an itemised bullet's status is its "
-            "item's, so it is not dropped by position") in err
+    assert ("takes no item number — an itemised bullet is dropped with "
+            "`aide progress set NNN dropped --reason …`") in err
     assert "deferred with" not in err
     assert (repo / "docs" / "aide" / "progress.md").read_bytes() == before
 
@@ -1390,3 +1389,327 @@ def test_resume_by_position_refuses_and_writes_nothing(tmp_path: Path, capsys,
     captured = capsys.readouterr()
     assert message in captured.err + captured.out
     assert path.read_bytes() == before
+
+
+# --------------------------------------------------------------------------- #
+# set NNN dropped / set NNN restored / set --stage N --deliverable K restored
+# (issue #381)
+# --------------------------------------------------------------------------- #
+DROP_ITEM_REASON = "the owner decided against charts"
+
+
+def _drop(text: str = PROGRESS, num: int = 32, reason: str = DROP_ITEM_REASON,
+          date: str = "2026-10-02") -> str:
+    return aide.drop_item(text, num, reason, date)[0]
+
+
+def test_drop_item_flips_its_bullet_and_writes_the_reason_under_it():
+    out, message = aide.drop_item(PROGRESS, 31, DROP_ITEM_REASON, "2026-10-02")
+    assert message == f"item 031: dropped — {DROP_ITEM_REASON}"
+    lines = out.splitlines()
+    i = lines.index("- ❌ Export, a deliverable long enough that its author")
+    assert lines[i + 1] == "  wrapped it onto a second line. *(Item 031)*"
+    assert lines[i + 2] == f"  - **2026-10-02** → dropped: {DROP_ITEM_REASON}"
+    assert aide._parse_item_status(lines)[2][31] == "excluded"
+    # ✅ 030 beside 📋 032: the stage is still 🚧.
+    assert "## Stage 2 — Reports — 🚧" in out
+    assert aide.derived_cell_findings(lines) == ([], [], set())
+
+
+def test_dropping_every_open_item_lets_the_stage_close():
+    """❌ counts toward ✅, so with 030 shipped and 031, 032 dropped the stage,
+    its row and its objective close — the item form of #362's drop."""
+    out = _drop(_drop(), 31)
+    assert "## Stage 2 — Reports — ✅" in out
+    assert "| 2 | Reports | G2 | ✅ |" in out
+    assert "| G2 Reports | Stage 2 | ✅ |" in out
+    assert "- [ ] Reports render." in out  # no box is ticked by a drop
+    assert aide.derived_cell_findings(out.splitlines()) == ([], [], set())
+
+
+@pytest.mark.parametrize("icon", ["📋", "🚧", "🔍", "⏸️"])
+def test_drop_item_takes_every_open_bullet(icon):
+    text = PROGRESS.replace("- 📋 Charts. *(Item 032)*", f"- {icon} Charts. *(Item 032)*")
+    out = _drop(text)
+    assert "- ❌ Charts. *(Item 032)*" in out
+    assert aide.derived_cell_findings(out.splitlines()) == ([], [], set())
+
+
+def test_drop_item_refuses_a_shipped_item_naming_reopen():
+    with pytest.raises(ValueError, match=r"item 030 is ✅ complete; it shipped, "
+                                         r"so there is nothing to drop — send it "
+                                         r"back with `aide progress reopen` first"):
+        aide.drop_item(PROGRESS, 30, "x", "2026-10-02")
+
+
+def test_drop_item_refuses_an_item_no_bullet_names():
+    with pytest.raises(ValueError, match="nothing to drop"):
+        aide.drop_item(PROGRESS, 99, "x", "2026-10-02")
+
+
+def test_drop_item_refuses_leaving_a_stage_all_dropped():
+    """The item form of #362's refusal: a stage whose every bullet is ❌ rolls
+    up 📋, a stage still to plan, so it is withdrawn whole instead."""
+    only = PROGRESS.replace("- ✅ Summary. *(Item 030)*\n", "").replace(
+        "- 📋 Charts. *(Item 032)*\n", "")
+    with pytest.raises(ValueError, match=(
+            r"dropping item 031 would leave every deliverable of stage 2 ❌.*"
+            r"marking its row in the Stage summary table ❌")):
+        aide.drop_item(only, 31, "x", "2026-10-02")
+
+
+def test_dropping_a_dropped_item_is_no_change():
+    once = _drop()
+    again, message = aide.drop_item(once, 32, "again", "2026-10-03")
+    assert again == once and message == "item 032: no change (already dropped)"
+
+
+def test_drop_item_desugars_a_shared_marker_and_moves_only_the_named_item():
+    shared = PROGRESS.replace("- 📋 Charts. *(Item 032)*",
+                              "- 📋 Charts and tables. *(Items 032, 033)*")
+    splits = []
+    out = aide.drop_item(shared, 33, "no tables", "2026-10-02", splits)[0]
+    lines = out.splitlines()
+    assert "- 📋 Charts and tables. *(Item 032)*" in lines
+    i = lines.index("- ❌ Charts and tables. *(Item 033)*")
+    assert lines[i + 1] == "  - **2026-10-02** → dropped: no tables"
+    assert len(splits) == 1
+
+
+def test_restoring_a_dropped_item_reopens_the_stage_it_let_close():
+    """Dropped work wanted after all goes back to 📋 under a `restored:` line
+    beside the drop's, and the stage the drop let close follows it down."""
+    closed = _drop(_drop(), 31)
+    out, message = aide.restore_item(closed, 32, "charts are wanted after all",
+                                     "2026-10-03")
+    assert message == "item 032: restored — charts are wanted after all"
+    lines = out.splitlines()
+    i = lines.index("- 📋 Charts. *(Item 032)*")
+    assert lines[i + 1:i + 3] == [
+        f"  - **2026-10-02** → dropped: {DROP_ITEM_REASON}",
+        "  - **2026-10-03** → restored: charts are wanted after all"]
+    assert "## Stage 2 — Reports — 🚧" in out
+    assert "| 2 | Reports | G2 | 🚧 |" in out
+    assert "| G2 Reports | Stage 2 | 🚧 |" in out
+    assert aide._parse_item_status(lines)[2][32] == "planned"
+    assert aide.derived_cell_findings(lines) == ([], [], set())
+
+
+@pytest.mark.parametrize("icon,status", [
+    ("🚧", "in-progress"), ("🔍", "in-review"), ("✅", "complete"),
+    ("⏸️", "deferred")])
+def test_restore_refuses_an_item_that_is_not_dropped_and_names_its_status(
+        icon, status):
+    text = PROGRESS.replace("- 📋 Charts. *(Item 032)*", f"- {icon} Charts. *(Item 032)*")
+    with pytest.raises(ValueError, match=f"item 032 is {icon} {status}; only "
+                                         f"a ❌ dropped item can be restored"):
+        aide.restore_item(text, 32, "x", "2026-10-02")
+
+
+def test_restore_names_the_resume_for_a_deferred_item():
+    with pytest.raises(ValueError, match=r"a ⏸️ item is resumed with `aide "
+                                         r"progress set 031 resumed --reason …`"):
+        aide.restore_item(_defer(), 31, "x", "2026-10-02")
+
+
+def test_restoring_a_planned_item_is_no_change():
+    out, message = aide.restore_item(PROGRESS, 32, "x", "2026-10-02")
+    assert out == PROGRESS and "no change" in message
+
+
+def test_restore_deliverable_takes_a_dropped_bullet_back_to_planned():
+    """The positional way back from `drop_deliverable`: the stage the drop
+    closed is open work again."""
+    dropped = _drop_at(ISSUE)
+    assert "## Stage 3 — Plugins — ✅" in dropped
+    out, message = aide.restore_deliverable(dropped, 3, 3, "wanted", "2026-10-03")
+    assert message == "stage 3 deliverable 3: restored — wanted"
+    lines = out.splitlines()
+    i = lines.index("- 📋 Optional plugin marketplace, a deliverable long enough that its")
+    assert lines[i + 2:i + 4] == [f"  - **2026-10-02** → dropped: {DROP_REASON}",
+                                  "  - **2026-10-03** → restored: wanted"]
+    assert "## Stage 3 — Plugins — 🚧" in out
+    assert "| 3 | Plugins | G3 | 🚧 |" in out
+    assert "| G3 Plugins | Stage 3 | 🚧 |" in out
+    assert aide.derived_cell_findings(lines) == ([], [], set())
+    again, message = aide.restore_deliverable(out, 3, 3, "y", "2026-10-04")
+    assert again == out and "no change" in message
+
+
+@pytest.mark.parametrize("icon,status", [
+    ("🚧", "in-progress"), ("🔍", "in-review"), ("✅", "complete"),
+    ("⏸️", "deferred")])
+def test_restore_deliverable_refuses_a_bullet_that_is_not_dropped(icon, status):
+    text = ISSUE.replace("- 📋 Optional plugin", f"- {icon} Optional plugin")
+    with pytest.raises(ValueError, match=f"stage 3 deliverable 3 is {icon} "
+                                         f"{status}; only a ❌ dropped "
+                                         f"deliverable can be restored"):
+        aide.restore_deliverable(text, 3, 3, "x", "2026-10-02")
+
+
+def test_restore_deliverable_refuses_an_itemised_bullet_naming_the_item_form():
+    with pytest.raises(ValueError, match=r"restore it by item with `aide "
+                                         r"progress set 101 restored --reason …`"):
+        aide.restore_deliverable(ISSUE, 3, 1, "x", "2026-10-02")
+
+
+@pytest.mark.parametrize("status", ["in-progress", "in-review", "done"])
+def test_a_forward_set_over_a_dropped_item_is_refused_naming_the_restore(
+        tmp_path: Path, capsys, status):
+    """`RANK` puts ❌ lowest, so a forward set cleared a drop silently — no
+    reason, no trail line. Refused now, writing nothing, naming the way back."""
+    repo = _repo(tmp_path, _drop())
+    path = repo / "docs" / "aide" / "progress.md"
+    before = path.read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", "32", status,
+                      "--no-commit"]) == 1
+    err = capsys.readouterr().err
+    assert "item 032 is ❌ dropped" in err
+    assert "`aide progress set 032 restored --reason …`" in err
+    assert "NOT changed" in err
+    assert path.read_bytes() == before
+
+
+def test_a_forward_set_still_moves_an_item_restored_would_refuse(
+        tmp_path: Path, capsys):
+    """A ❌ bullet beside a ✅ one (a hand edit) is an item `restored`
+    refuses, so the forward set is not held there: refusing both would leave
+    only typing over the icons."""
+    text = _drop().replace("- ✅ Summary. *(Item 030)*",
+                           "- ✅ Summary. *(Item 032)*")
+    repo = _repo(tmp_path, text)
+    assert aide.main(["--repo", str(repo), "progress", "set", "32", "restored",
+                      "--reason", "x", "--no-commit"]) == 1
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "progress", "set", "32", "done",
+                      "--no-commit"]) == 0
+    assert aide._item_bullet_statuses((repo / "docs" / "aide" / "progress.md")
+                                      .read_text(encoding="utf-8").splitlines(),
+                                      32) == ["complete", "complete"]
+
+
+def test_set_dropped_and_restored_write_through_the_cli_and_no_insight(
+        tmp_path: Path, capsys):
+    repo = _repo(tmp_path)
+    path = repo / "docs" / "aide" / "progress.md"
+    base = ["--repo", str(repo), "progress", "set", "32"]
+    assert aide.main([*base, "dropped", "--reason", DROP_ITEM_REASON,
+                      "--date", "2026-10-02", "--no-commit"]) == 0
+    assert f"item 032: dropped — {DROP_ITEM_REASON}" in capsys.readouterr().out
+    assert path.read_text(encoding="utf-8") == _drop()
+    assert aide.main([*base, "restored", "--reason", "wanted", "--date",
+                      "2026-10-03", "--no-commit"]) == 0
+    assert "item 032: restored — wanted" in capsys.readouterr().out
+    assert path.read_text(encoding="utf-8") == aide.restore_item(
+        _drop(), 32, "wanted", "2026-10-03")[0]
+    assert (repo / "docs" / "aide" / "insights.md").read_text(
+        encoding="utf-8") == "# Insight Inbox\n"
+    # Restored, the item moves forward again.
+    assert aide.main([*base, "in-progress", "--no-commit"]) == 0
+
+
+@pytest.mark.parametrize("argv, code, message", [
+    (["32", "dropped"], 2, "--reason is required"),
+    (["32", "restored", "--reason", "  "], 2, "--reason is required"),
+    (["32", "dropped", "--reason", "a\nb"], 2, "line break"),
+    (["32", "dropped", "--criterion", "1", "--reason", "x"], 2, "dropped whole"),
+    (["30", "dropped", "--reason", "x"], 1, "nothing to drop"),
+    (["32", "restored", "--reason", "x"], 0, "no change"),
+    (["31", "restored", "--reason", "x"], 1,
+     "only a ❌ dropped item can be restored"),
+], ids=["no-reason", "blank-reason", "two-lines", "with-criterion",
+        "done-item", "planned-item", "in-progress-item"])
+def test_set_dropped_and_restored_refuse_and_write_nothing(
+        tmp_path: Path, capsys, argv, code, message):
+    repo = _repo(tmp_path)
+    path = repo / "docs" / "aide" / "progress.md"
+    before = path.read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", *argv,
+                      "--no-commit"]) == code
+    captured = capsys.readouterr()
+    assert message in captured.err + captured.out
+    assert path.read_bytes() == before
+
+
+def test_restore_by_position_writes_through_the_cli(tmp_path: Path, capsys):
+    dropped = _drop_at(ISSUE)
+    repo = _repo(tmp_path, dropped)
+    path = repo / "docs" / "aide" / "progress.md"
+    assert aide.main(["--repo", str(repo), "progress", "set", "--stage", "3",
+                      "--deliverable", "3", "restored", "--reason", "wanted",
+                      "--date", "2026-10-03", "--no-commit"]) == 0
+    assert path.read_text(encoding="utf-8") == aide.restore_deliverable(
+        dropped, 3, 3, "wanted", "2026-10-03")[0]
+    before = path.read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", "101", "restored",
+                      "--stage", "3", "--deliverable", "1", "--reason", "x",
+                      "--no-commit"]) == 2
+    assert ("an itemised bullet is restored with `aide progress set NNN "
+            "restored --reason …`") in capsys.readouterr().err
+    assert path.read_bytes() == before
+
+
+# --------------------------------------------------------------------------- #
+# a ❌-withdrawn stage and the objective rollup (issue #382)
+# --------------------------------------------------------------------------- #
+#: G1 is delivered by stages 1 and 2; stage 2 is withdrawn whole — its
+#: summary row ❌ — with its bullets left as they were.
+WITHDRAWN = (PROGRESS
+             .replace("| 2 | Reports | G2 | 🚧 |", "| 2 | Reports | G2 | ❌ |")
+             .replace("| G1 Rules | Stage 1 | ✅ |", "| G1 Rules | Stages 1, 2 | ✅ |")
+             .replace("| G2 Reports | Stage 2 | 🚧 |", "| G2 Reports | Stage 2 | ❌ |"))
+
+
+def test_a_withdrawn_stage_is_left_out_of_the_objective_rollup():
+    lines = WITHDRAWN.splitlines()
+    assert aide.withdrawn_stages(lines) == {"2"}
+    status = aide.stage_rollups(lines)
+    assert status["2"] == "in-progress"  # its bullets still say 🚧
+    assert aide.objective_rollup(["1", "2"], status, {"2"}) == "complete"
+    assert aide.objective_rollup(["2"], status, {"2"}) == "excluded"
+    # Read from the bullets alone, as before #382.
+    assert aide.objective_rollup(["1", "2"], status) == "in-progress"
+
+
+def test_check_reads_an_objective_from_the_stages_still_in_scope(tmp_path: Path):
+    """Stage 1 ✅ and stage 2 withdrawn: G1 ✅ is what the stages in scope
+    say, not the error it was, and a G1 left 🚧 is the warning."""
+    errors, warnings = _checks(_repo(tmp_path, WITHDRAWN))
+    assert errors == [] and not _about(warnings, "objective "), (errors, warnings)
+    stale = WITHDRAWN.replace("| G1 Rules | Stages 1, 2 | ✅ |",
+                              "| G1 Rules | Stages 1, 2 | 🚧 |")
+    errors, warnings = _checks(_repo(tmp_path, stale, "stale"))
+    assert errors == []
+    assert _about(warnings, "objective G1:") == [
+        "objective G1: 🚧 in-progress but the stages it names (stage 1 ✅, "
+        "2 ❌ withdrawn) roll up to ✅ complete — an Objective row follows "
+        "its stages, so set it to ✅"], warnings
+
+
+@pytest.mark.parametrize("icon, status, where", [
+    ("📋", "planned", "warnings"), ("🚧", "in-progress", "warnings"),
+    ("✅", "complete", "errors")])
+def test_an_objective_whose_every_stage_is_withdrawn_reads_excluded(
+        tmp_path: Path, icon, status, where):
+    text = WITHDRAWN.replace("| G2 Reports | Stage 2 | ❌ |",
+                             f"| G2 Reports | Stage 2 | {icon} |")
+    errors, warnings = _checks(_repo(tmp_path, text))
+    found = {"errors": errors, "warnings": warnings}[where]
+    assert _about(found, "objective G2:") == [
+        f"objective G2: {icon} {status} but every stage it names (stage 2) "
+        f"is withdrawn — ❌ in the Stage summary table — so set it to ❌"], found
+
+
+def test_the_writer_follows_a_withdrawn_stage_and_check_stays_silent():
+    """A verb over stage 1 rolls G1 up to ✅ past the withdrawn stage 2, and
+    writes ❌ on G2, which only withdrawn stages deliver."""
+    text = (WITHDRAWN.replace("- ✅ Bounds. *(Item 027)*", "- 🚧 Bounds. *(Item 027)*")
+            .replace("## Stage 1 — Rules — ✅", "## Stage 1 — Rules — 🚧")
+            .replace("| 1 | Rules | G1 | ✅ |", "| 1 | Rules | G1 | 🚧 |")
+            .replace("| G1 Rules | Stages 1, 2 | ✅ |", "| G1 Rules | Stages 1, 2 | 🚧 |")
+            .replace("| G2 Reports | Stage 2 | ❌ |", "| G2 Reports | Stage 2 | 🚧 |"))
+    out = aide.set_item_status(text, 27, "complete")
+    assert "| G1 Rules | Stages 1, 2 | ✅ |" in out
+    assert "| G2 Reports | Stage 2 | ❌ |" in out
+    assert "| 2 | Reports | G2 | ❌ |" in out  # the withdrawal stands
+    assert aide.derived_cell_findings(out.splitlines()) == ([], [], set())

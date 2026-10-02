@@ -70,7 +70,10 @@ Follow the `aide-create-queue` skill in full. In brief:
    queue entry carries no icon, and an item's status lives in `progress.md`
    alone (§1 → `progress.md`, preloaded above). An item of it carried to
    the next queue is deferred there with `aide progress set NNN deferred
-   --reason …`, so the why is on record, and named in step 8's summary.
+   --reason …`, and one its owner decided against — your brief says so,
+   naming the item — is dropped with `aide progress set NNN dropped --reason
+   …`, so the why is on record either way; never type ⏸️ or ❌ over it. Name
+   each in step 8's summary.
 4. **Write** `docs/aide/queue/queue-NNN.md` from `.aide/templates/queue.md`: the
    next batch of logical, locally-testable items, no duplicates, each as
    `### Item NNN: Short Title` + a description paragraph. **Scope the batch to one
@@ -90,6 +93,13 @@ Follow the `aide-create-queue` skill in full. In brief:
    naming the waiting stage, the ⏸️ one and its deferred bullets: resuming
    them, or dropping those the stage does not need, is the owner's decision
    (§1 → `progress.md`, preloaded above).
+
+   **A blocking dependency on a withdrawn stage is never met** — one whose
+   summary row in `progress.md` is ❌ — **so the dependent stage is
+   re-planned, not queued.** Do not queue it: rewording its Dependencies, or
+   withdrawing it too, changes `roadmap.md`, which you never edit. If that
+   leaves nothing to queue, stop and hand back, naming the dependent stage
+   and the withdrawn one.
 5. **Wire every item into `progress.md`.** For each `### Item NNN` you just wrote,
    ensure the number appears as an `*(Item NNN)*` reference on the matching
    **deliverable bullet** under that item's roadmap **stage section** in
@@ -226,8 +236,9 @@ and resolving it destroys the only thing the gate protects.
 - **Do NOT run `pytest`.**
 - Edit only `docs/aide/queue/*.md` and `docs/aide/progress.md` — and in
   `progress.md` only the item-reference back-fill (step 5), the deferral of
-  a carried item (step 3) and the resume of a deferred bullet its owner
-  decided to queue (step 5), each by its verb, and
+  a carried item or the drop of one its owner decided against (step 3) and
+  the resume of a deferred bullet its owner decided to queue (step 5), each
+  by its verb, and
   **adding a row to `## Human gates`** (above), never a deliverable's status
   icon by hand and never new stages/acceptance. Adding a gate row
   is permitted because raising a blocker is safe; **resolving** one is not
@@ -286,6 +297,8 @@ only writes allowed outside your edit scope.
        is ✅
      - A ⏸️ earlier stage does not meet the dependency either, and its
        deferred work waits on its owner's decision, not on the next queue
+     - A blocking dependency on a withdrawn stage is never met
+     - so the dependent stage is re-planned, not queued
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/queue-NNN.md

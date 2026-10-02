@@ -47,14 +47,17 @@ that moved everything.
   *"each attestation was made separately and is corrected or withdrawn
   separately"*, *"a deferral is a decision about order, not a finding"* and
   *"dropping a deliverable is a decision about scope, not a finding"*,
-  *"only deferred work is resumed"* and *"Resume such a bullet before it is
-  itemised"* (`progress`), *"the stage is dropped, so its bullets no longer speak for
+  *"only deferred work is resumed"*, *"only dropped work is restored"* and
+  *"Resume such a bullet before it is itemised"* (`progress`), *"a merge
+  records work that landed"* (`merge`), *"the stage is dropped, so its bullets no longer speak for
   it"* (`check`), *"roadmap.md's deliverables carry no item marker, so there
   is no bullet of the item to mirror"* (`progress`) — rationale for a rule
   pinned beside them, not a second rule.
 * *"reopen a ✅ item first"*, *"defer that one by its item"* and *"Otherwise
-  it writes what set NNN deferred writes"* (`progress`) — pointers at another
-  form, the refusal or the write they point at being pinned.
+  it writes what set NNN deferred writes"* (`progress`), and *"its owner's,
+  and `aide progress set NNN dropped --reason TEXT` records one against the
+  work"* (`ledger`) — pointers at another form, the refusal or the write they
+  point at being pinned.
 * *"since the row is dropped from every check it would have fed"*, *"the
   goal-level mirror of that over-claim"*, *"a normal state rather than a
   defect"* (twice), *"a satisfied profile under an unverified row is a row
@@ -484,6 +487,14 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("every human gate still blocking",
          ("test_aide_gates::test_awaiting_gate_warns_with_its_reach",
           "test_aide_help_pins::test_a_warning_alone_still_exits_zero")),
+        # `withdrawn` from the summary rows, passed to `objective_rollup` in
+        # `derived_cell_findings`, and its `derived == "excluded"` branch
+        # (issue #382).
+        ("an Objective row's rollup being the same rule over the rollups of "
+         "the stages its Delivered by cell names, less any whose summary row "
+         "is \u274c, and \u274c where every stage it names has such a row",
+         ("test_aide_defer::test_check_reads_an_objective_from_the_stages_still_in_scope",
+          "test_aide_defer::test_an_objective_whose_every_stage_is_withdrawn_reads_excluded")),
         # `if summ == "excluded": continue` — before every stage comparison
         # in `derived_cell_findings`, not just the warning.
         ("A summary row marked \u274c is left out of every "
@@ -928,12 +939,29 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "never rolls up",
          "test_aide_core::test_unmet_target_blocks_objective_rollup_not_stage"),
         # `RANK` guards the write: a lower-ranked status is not applied.
-        ("Apart from deferring, dropping and resuming, set never downgrades "
-         "a status",
+        ("Apart from deferring, dropping, resuming and restoring, set never "
+         "downgrades a status",
          ("test_aide_core::test_set_item_never_downgrades",
           "test_aide_defer::test_deferring_the_only_in_progress_item_rolls_the_stage_back_to_planned",
           "test_aide_defer::test_dropping_the_only_in_progress_bullet_rolls_the_stage_back_down",
-          "test_aide_defer::test_resuming_the_only_open_item_rolls_a_deferred_stage_back_to_planned")),
+          "test_aide_defer::test_resuming_the_only_open_item_rolls_a_deferred_stage_back_to_planned",
+          "test_aide_defer::test_restoring_a_dropped_item_reopens_the_stage_it_let_close")),
+        # `held_from_forward`'s ❌ arm in `cmd_progress` (issue #381): an item
+        # whose bullets are all ❌ or 📋 is refused, a mixed one is let
+        # through; `restore_item` writes 📋.
+        ("one whose bullets are all \u274c or \U0001f4cb leaves \u274c by "
+         "restoring alone, back to \U0001f4cb",
+         ("test_aide_defer::test_a_forward_set_over_a_dropped_item_is_refused_naming_the_restore",
+          "test_aide_defer::test_a_forward_set_still_moves_an_item_restored_would_refuse",
+          "test_aide_defer::test_restoring_a_dropped_item_reopens_the_stage_it_let_close")),
+        # `withdrawn_stages` read by `_apply_objective_rollup` and
+        # `objective_rollup` (issue #382): a ❌ summary row's stage is left
+        # out, and a row naming withdrawn stages alone derives to ❌.
+        ("A stage whose summary row is \u274c is withdrawn and left out of "
+         "every Objective row that names it, and a row naming withdrawn "
+         "stages alone reads \u274c",
+         ("test_aide_defer::test_the_writer_follows_a_withdrawn_stage_and_check_stays_silent",
+          "test_aide_defer::test_a_withdrawn_stage_is_left_out_of_the_objective_rollup")),
         # `cmd_progress` refuses a forward status over an item whose bullets
         # are all ⏸️ or 📋 before it writes, and lets a mixed one through
         # (issue #380); `resume_item` writes 📋.
@@ -1077,11 +1105,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # usage refusals in `_cmd_progress_defer_deliverable`.
         ("set --stage N --deliverable K counts the stage's deliverable bullets "
          "from 1 in file order, a wrapped line belonging to its bullet, and "
-         "takes no NNN and no status but deferred, dropped or resumed",
+         "takes no NNN and no status but deferred, dropped, resumed or "
+         "restored",
          ("test_aide_defer::test_defer_deliverable_flips_the_bullet_and_writes_the_trail_under_its_last_line",
           "test_aide_defer::test_set_by_position_refuses_its_usage_errors_with_exit_2",
           "test_aide_defer::test_drop_by_position_writes_through_the_cli_and_no_insight",
-          "test_aide_defer::test_resume_by_position_writes_through_the_cli")),
+          "test_aide_defer::test_resume_by_position_writes_through_the_cli",
+          "test_aide_defer::test_restore_by_position_writes_through_the_cli")),
         # `_unmarked_deliverable_at`, shared by the three writers (issues
         # #362, #380), and the reason checks in
         # `_cmd_progress_defer_deliverable`.
@@ -1094,7 +1124,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_defer::test_drop_by_position_refuses_its_usage_errors_with_exit_2",
           "test_aide_defer::test_drop_by_position_refuses_what_it_cannot_drop_with_exit_1",
           "test_aide_defer::test_drop_deliverable_refuses",
-          "test_aide_defer::test_resume_by_position_refuses_and_writes_nothing")),
+          "test_aide_defer::test_resume_by_position_refuses_and_writes_nothing",
+          "test_aide_defer::test_restore_deliverable_refuses_an_itemised_bullet_naming_the_item_form")),
         # `defer_deliverable`'s `_DEFERRABLE` check.
         ("set --stage N --deliverable K deferred also refuses a bullet that "
          "is \u2705 or \u274c",
@@ -1147,6 +1178,60 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "\u23f8\ufe0f item, writing nothing, and name the resume",
          ("test_aide_defer::test_a_forward_set_over_a_deferred_item_is_refused_naming_the_resume",
           "test_aide_git::test_a_resumed_item_is_claimed_again_or_held_on_its_branch")),
+
+        # `drop_item` and `_cmd_progress_defer` (issue #381): the
+        # `_DROPPED_PREFIX` trail line, `_recompute_rollups` with the stages
+        # allowed down, and `restore_item`'s `_RESTORED_PREFIX` the same way.
+        ("`set NNN dropped --reason TEXT` flips an item's bullets to \u274c "
+         "with a dated `dropped: <reason>` line, and `set NNN restored "
+         "--reason TEXT` takes a \u274c item back to \U0001f4cb with a "
+         "dated `restored: <reason>` line",
+         ("test_aide_defer::test_drop_item_flips_its_bullet_and_writes_the_reason_under_it",
+          "test_aide_defer::test_set_dropped_and_restored_write_through_the_cli_and_no_insight")),
+        ("set NNN dropped flips each \U0001f4cb, \U0001f6a7, \U0001f50d or "
+         "\u23f8\ufe0f bullet whose trailing marker names the item to "
+         "\u274c, writes the reason on a dated trail line under it, and "
+         "rolls its stage up again, moving down where its bullets now say "
+         "less; an item already \u274c throughout is no change",
+         ("test_aide_defer::test_drop_item_takes_every_open_bullet",
+          "test_aide_defer::test_dropping_every_open_item_lets_the_stage_close",
+          "test_aide_defer::test_drop_item_desugars_a_shared_marker_and_moves_only_the_named_item",
+          "test_aide_defer::test_dropping_a_dropped_item_is_no_change")),
+        # `drop_item`'s ✅ check and `_stages_left_all_dropped`, both raised
+        # before the caller writes.
+        ("It refuses, writing nothing, without a stated reason, when a "
+         "bullet naming the item is \u2705 \u2014 reopen it first \u2014 "
+         "or when the drop would leave every deliverable bullet of a stage "
+         "\u274c",
+         ("test_aide_defer::test_set_dropped_and_restored_refuse_and_write_nothing",
+          "test_aide_defer::test_drop_item_refuses_a_shipped_item_naming_reopen",
+          "test_aide_defer::test_drop_item_refuses_leaving_a_stage_all_dropped")),
+        ("set NNN restored flips each \u274c bullet whose trailing marker "
+         "names the item back to \U0001f4cb, writes the reason on a dated "
+         "trail line under it, and rolls its stage up again, moving down "
+         "where its bullets now say less",
+         ("test_aide_defer::test_restoring_a_dropped_item_reopens_the_stage_it_let_close",
+          "test_aide_defer::test_restoring_a_planned_item_is_no_change")),
+        ("It refuses, writing nothing, without a stated reason, or when a "
+         "bullet naming the item is \U0001f6a7, \U0001f50d, \u2705 or "
+         "\u23f8\ufe0f",
+         ("test_aide_defer::test_set_dropped_and_restored_refuse_and_write_nothing",
+          "test_aide_defer::test_restore_refuses_an_item_that_is_not_dropped_and_names_its_status")),
+        # `held_from_forward` in `cmd_progress`, and `_merge_dropped_item`
+        # in `cmd_merge`, before any git work.
+        ("set NNN in-progress, in-review and done each refuse an item whose "
+         "bullets are all \u274c or \U0001f4cb, writing nothing, and name "
+         "the restore; `aide merge` refuses it too",
+         ("test_aide_defer::test_a_forward_set_over_a_dropped_item_is_refused_naming_the_restore",
+          "test_aide_git::test_merge_refuses_a_dropped_item_until_it_is_restored")),
+        # `restore_deliverable`: `_unmarked_deliverable_at`, the ❌-only
+        # check, and `_write_unmarked_deliverable` to 📋.
+        ("set --stage N --deliverable K restored writes what set NNN "
+         "restored writes, to a \u274c bullet; it refuses any other but "
+         "\U0001f4cb, which is no change",
+         ("test_aide_defer::test_restore_deliverable_takes_a_dropped_bullet_back_to_planned",
+          "test_aide_defer::test_restore_deliverable_refuses_a_bullet_that_is_not_dropped",
+          "test_aide_defer::test_restore_by_position_writes_through_the_cli")),
 
         # `_cmd_progress_defer_deliverable` / `drop_deliverable` (issue #362):
         # `_DROPPABLE`, the `_DROPPED_PREFIX` trail line through
@@ -1781,6 +1866,17 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
     # #275); everything else `merge` does is stated in its option help, which
     # this register does not read.
     "merge": [
+        # `_merge_dropped_item` over the working tree and `git show
+        # <base>:progress.md`, read by `held_from_forward` before the pr-mode
+        # push and before `git switch` (issue #381); its ⏸️ arm is not read.
+        ("An item progress.md shows \u274c dropped \u2014 every bullet "
+         "naming it \u274c or \U0001f4cb, in the working tree or on the "
+         "base \u2014 is refused before anything is merged, pushed or "
+         "written, exit 1, and the refusal names `aide progress set NNN "
+         "restored`",
+         "test_aide_git::test_merge_refuses_a_dropped_item_until_it_is_restored"),
+        ("A \u23f8\ufe0f item is merged and ticked",
+         "test_aide_git::test_merge_refuses_a_dropped_item_until_it_is_restored"),
         # `pending_row` -> `append_ledger_row`, one row, `ledger_path(ddir)`.
         ("The row is one per item, in docs/aide/ledger.md",
          "test_aide_ledger::"

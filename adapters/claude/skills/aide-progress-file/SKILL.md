@@ -80,9 +80,21 @@ paths:
      - the bullet reads ❌, which counts toward its stage's ✅ where a ⏸️
        bullet never does
      - defer what the stage needs later, drop what it does not need
+     - Drop an item with `aide progress set NNN dropped --reason …`
+     - a shipped item is reopened first
      - A drop that would leave every deliverable bullet of the stage ❌ is
        refused: a stage with nothing left to deliver is withdrawn whole, by
        a ❌ on its summary row and on any Objective row only it delivers
+     - Dropped work is restored with its own verb, back to 📋, with its reason
+     - Restore an item with `aide progress set NNN restored --reason …`, and
+       a bullet no item marker names with `aide progress set --stage N
+       --deliverable K restored --reason …`
+     - A forward `aide progress set`, and `aide merge`, refuse an item whose
+       bullets are all ❌ or 📋
+     - Restoring is the owner's decision, and the reason says why the work
+       is wanted after all
+     - A withdrawn stage speaks for no objective
+     - reads ❌ only when every stage it names is withdrawn
      - A box is ticked only by a human — or by an agent acting on a check it
        actually performed
      - A stage may be ✅ with an unticked box; say why in an annotation beside it
@@ -171,9 +183,22 @@ progress set --stage N --deliverable K dropped --reason …`, never by typing �
 over it: the bullet reads ❌, which counts toward its stage's ✅ where a ⏸️
 bullet never does — a ⏸️ bullet included, once its owner decides the stage
 does not need it at all. Defer what the stage needs later, drop what it does
-not need. A drop that would leave every deliverable bullet of the stage ❌ is
-refused: a stage with nothing left to deliver is withdrawn whole, by a ❌ on
-its summary row and on any Objective row only it delivers.
+not need. Drop an item with `aide progress set NNN dropped --reason …` — a
+shipped item is reopened first. A drop that would leave every deliverable
+bullet of the stage ❌ is refused: a stage with nothing left to deliver is
+withdrawn whole, by a ❌ on its summary row and on any Objective row only it
+delivers.
+
+**Dropped work is restored with its own verb, back to 📋, with its reason.**
+Restore an item with `aide progress set NNN restored --reason …`, and a bullet
+no item marker names with `aide progress set --stage N --deliverable K
+restored --reason …`. A forward `aide progress set`, and `aide merge`, refuse
+an item whose bullets are all ❌ or 📋. Restoring is the owner's decision, and
+the reason says why the work is wanted after all.
+
+**A withdrawn stage speaks for no objective**: an Objective row reads ❌ only
+when every stage it names is withdrawn, and is otherwise derived from the
+stages still in scope.
 
 **A stage may be ✅ with an unticked box; say why in an annotation beside it.**
 

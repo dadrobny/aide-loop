@@ -34,6 +34,13 @@ NNN deferred --reason …` writes it, and `aide progress set NNN resumed
 --reason …` alone takes it back, to 📋 — `set` refuses to move it forward
 while its bullets are all ⏸️ or 📋 (§1 → `progress.md`).
 
+A ❌ item **is work decided against**: it counts toward its stage's ✅, as
+nothing is left to wait for. `aide progress set NNN dropped --reason …` writes
+it, and `aide progress set NNN restored --reason …` alone takes it back, to
+📋 — `set` and `aide merge` refuse to move it forward while its bullets are
+all ❌ or 📋 (§1 → `progress.md`). A stage whose summary row is ❌ is
+withdrawn whole, and speaks for no objective.
+
 **Structural positions only.** The parsers read icons *only* at structural
 positions: a table row's **Status (last) cell**, a stage header's **trailing**
 `— <icon>`, and the **leading** icon of a deliverable bullet. An icon anywhere
@@ -57,6 +64,10 @@ take it for the header's status; other documents are not scanned.
   produced ⏸️, so a stage an owner had deferred read 📋 or 🚧 and could not be
   told from one nobody had started, or one in flight. It is computed now,
   from bullets a verb writes with a reason.
+- **Why ❌ has a way back and no way forward.** Until issue #381 ❌ ranked
+  lowest and nothing guarded it, so any forward `set`, or a merge's tick,
+  silently undid an owner's drop; the refusal and the restore keep that
+  decision on the record, beside the drop's reason.
 - **Why the landed-🔍 check is a content check.** `sync` and `status` use the
   same merge-tree comparison `gc` uses, so closing a 🔍 item needs no forge
   call that could silently degrade to "no open PRs found".

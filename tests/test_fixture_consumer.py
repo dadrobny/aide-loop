@@ -2587,11 +2587,72 @@ def test_an_optional_deliverable_the_stage_does_not_need_is_dropped_and_the_stag
     before, head = ppath.read_bytes(), _sha(consumer, "HEAD")
     assert aide.main([*base, "--stage", "1", "--deliverable", "1",
                       "dropped"]) == 2
-    assert aide.main([*base, "1", "dropped", "--reason", "x"]) == 2
+    # The item form (issue #381) refuses a ✅ item: it shipped.
+    assert aide.main([*base, "1", "dropped", "--reason", "x"]) == 1
     assert aide.main([*base, "--stage", "1", "--deliverable", "1", "dropped",
                       "--reason", "x"]) == 1
     assert ppath.read_bytes() == before and _sha(consumer, "HEAD") == head
     assert _clean(consumer)
+
+
+def test_an_item_is_dropped_and_restored_by_its_verbs_and_a_withdrawn_stage_speaks_for_no_objective(
+        aide, consumer: Path, capsys):
+    """Issue #381 through the installed engine: `progress set NNN dropped`
+    writes ❌ with a dated trail line and commits; a forward `set` over the ❌
+    item is refused, writing nothing, and names `restored`, which takes it
+    back to 📋 beside the drop's line. Issue #382: with a second stage
+    withdrawn by its ❌ summary row, the objective both stages deliver rolls
+    up to ✅ once stage 1 ships, and `check` passes over every step."""
+    ppath = consumer / "docs" / "aide" / "progress.md"
+    prog = ["--repo", str(consumer), "progress", "set"]
+
+    head = _sha(consumer, "HEAD")
+    assert aide.main([*prog, "2", "dropped", "--reason", "owner decided against it",
+                      "--date", "2026-10-02"]) == 0
+    assert _clean(consumer) and _sha(consumer, "HEAD~1") == head
+    lines = ppath.read_text(encoding="utf-8").splitlines()
+    i = lines.index("- ❌ The farewell. *(Item 002)*")
+    assert lines[i + 1] == "  - **2026-10-02** → dropped: owner decided against it"
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+    before, head = ppath.read_bytes(), _sha(consumer, "HEAD")
+    for status in ("in-progress", "done"):
+        assert aide.main([*prog, "2", status]) == 1
+        assert ("`aide progress set 002 restored --reason …`"
+                in capsys.readouterr().err)
+    assert aide.main([*prog, "2", "restored"]) == 2
+    assert ppath.read_bytes() == before and _sha(consumer, "HEAD") == head
+
+    assert aide.main([*prog, "2", "restored", "--reason", "wanted after all",
+                      "--date", "2026-10-03"]) == 0
+    assert _clean(consumer) and _sha(consumer, "HEAD~1") == head
+    lines = ppath.read_text(encoding="utf-8").splitlines()
+    i = lines.index("- 📋 The farewell. *(Item 002)*")
+    assert lines[i + 1:i + 3] == [
+        "  - **2026-10-02** → dropped: owner decided against it",
+        "  - **2026-10-03** → restored: wanted after all"]
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+    # Issue #382: stage 2 withdrawn whole, its bullet never itemised.
+    ppath.write_text(ppath.read_text(encoding="utf-8")
+                     .replace("| 1 | Foundations | G1 | 📋 |\n",
+                              "| 1 | Foundations | G1 | 📋 |\n"
+                              "| 2 | Extras | G1 | ❌ |\n")
+                     .replace("| G1 Foundations | Stage 1 | 📋 |",
+                              "| G1 Foundations | Stages 1, 2 | 📋 |")
+                     + "\n## Stage 2 — Extras — 📋\n\n**Deliverables.**\n"
+                       "- 📋 A greeting card.\n", encoding="utf-8")
+    _commit(consumer, "docs: stage 2 withdrawn")
+    for n in ("1", "2"):
+        assert aide.main([*prog, n, "done"]) == 0
+    text = ppath.read_text(encoding="utf-8")
+    assert "| G1 Foundations | Stages 1, 2 | ✅ |" in text
+    assert "| 2 | Extras | G1 | ❌ |" in text
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "objective G1" not in capsys.readouterr().out
 
 
 def test_an_exhausted_queue_is_no_longer_open_to_claim_from(aide, consumer: Path, capsys):

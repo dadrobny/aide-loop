@@ -118,10 +118,26 @@ over it: the verb keeps the why on the bullet's trail, and the bullet reads ❌,
 which counts toward its stage's ✅ where a ⏸️ bullet never does. A ⏸️ bullet
 is dropped the same way once its owner decides the stage does not need it at
 all — defer what the stage needs later, drop what it does not need. An
-itemised bullet is not dropped by its place: its status is its item's. A drop
-that would leave every deliverable bullet of the stage ❌ is refused: a stage
+itemised bullet is not dropped by its place: its status is its item's. Drop
+an item with `aide progress set NNN dropped --reason …` — one abandoned at
+the validation-round cap, or one its owner decides against — once it is not
+✅; a shipped item is reopened first. A drop that would leave every
+deliverable bullet of the stage ❌ is refused: a stage
 with nothing left to deliver is withdrawn whole, by a ❌ on its summary row
 and on any Objective row only it delivers. The deliverable stays in `roadmap.md` as written.
+
+**Dropped work is restored with its own verb, back to 📋, with its reason.**
+Restore an item with `aide progress set NNN restored --reason …`, and a
+bullet no item marker names with `aide progress set --stage N --deliverable K
+restored --reason …`: each ❌ bullet flips to 📋 under a dated trail line
+beside the drop's, and the stage follows. A forward `aide progress set`, and
+`aide merge`, refuse an item whose bullets are all ❌ or 📋. Restoring is the
+owner's decision, and the reason says why the work is wanted after all.
+
+**A withdrawn stage speaks for no objective.** An Objective row is derived
+from the stages it names whose summary row is not ❌, and reads ❌ only when
+every stage it names is withdrawn; `aide progress` writes it so and `aide
+check` compares it so.
 
 **Acceptance boxes are attestations, and no rollup ever ticks one.** They are
 outside the derivation entirely: the rollup skips checkbox lines, `aide check`
@@ -251,10 +267,11 @@ Semantics
   over a hand-deferred stage of two unmarked bullets (issue #362) left a
   stage the planner would queue, under a header still saying it was
   deferred, and `check` silent. Withdrawing a stage already has its cell —
-  the ❌ summary row, which no rollup overwrites. The Objective row is named
-  with it because an objective's rollup reads its stages' bullets, not their
-  summary rows, so a hand-held ⏸️ objective over the withdrawn stage would
-  still warn.
+  the ❌ summary row, which no rollup overwrites. The Objective row was named
+  with it because an objective's rollup read its stages' bullets, not their
+  summary rows, so a hand-held ⏸️ objective over the withdrawn stage still
+  warned; since issue #382 the rollup reads the summary row, and an
+  objective only withdrawn stages deliver derives to ❌ itself.
 - **Why resuming has a verb, and a forward set refuses ⏸️.** Issue #380,
   from the status-model review alongside #362: the section said deferred work
   resumed "through any forward `aide progress set`" and an unmarked ⏸️ bullet
@@ -277,8 +294,36 @@ Semantics
   bullet beside started or settled work, which only a hand edit makes, is
   one `resumed` refuses, so the forward set stays its way out. The
   resume reaches ⏸️ only: leaving ❌ is a reversal of a decision against the
-  work, not a postponement ended, and issue #381 settles its route. `aide
+  work, not a postponement ended, and has its own verb (below). `aide
   merge` still ticks a ⏸️ item ✅ — a merge records work that landed.
+- **Why an item is dropped by its verb, and leaves ❌ by another.** Issue
+  #381, from the same review: 2.32.0 let an owner drop an un-itemised
+  bullet, and nothing wrote ❌ on an item. An item abandoned at the
+  validation-round cap stayed 🚧 after `aide ledger abandon`, an item carried
+  to the next queue was hand-typed ❌, and one its owner decided against was a
+  hand edit — the edit this section forbids. The other way was silent: ❌
+  ranks lowest, so `set NNN in-progress` on a ❌ item, or `aide merge`'s
+  tick, cleared a drop with no reason and no trail line, while `set NNN
+  deferred` refused the same item. The drop verb is the positional one
+  addressed by marker, refusing ✅ and an all-❌ stage for the same reasons.
+  The forward set and the merge are refused rather than given a reason
+  flag, as #380 refused them over ⏸️: only `claim` makes the branch a 🚧
+  item is built on, so the way back lands on 📋, and the refusal is held to
+  the items `restored` can take — one whose bullets are all ❌ or 📋 — so a
+  ❌ bullet beside started or settled work, which only a hand edit makes,
+  keeps the forward set as its way out. The restore is the owner's for the
+  reason the drop is: it reverses a decision about scope, and the reason has
+  to read cold beside the drop's. It has a positional form because the drop
+  does; no insight is captured by either.
+- **Why a withdrawn stage speaks for no objective.** Issue #382: a ❌ summary
+  row excluded its stage from every stage comparison, but an Objective row
+  was derived from its stages' bullets, so stage 1 ✅ beside a withdrawn
+  stage 2 whose bullets still read 📋 held an objective both delivered at 🚧
+  for good, and a ✅ typed there was an error — no verb and no hand edit of a
+  derived cell could close it. Reading the summary row is what the stage
+  comparisons already did; an objective every stage of which is withdrawn
+  has nothing left to deliver it, which is ❌, the icon the drop rule above
+  already asked for by hand.
 - **Why every derived cell is compared, with none of the writer's restraint.**
   Issue #285: the sentence that a typed-over derived cell is drift `aide check`
   reports held for ✅ and ⏸️ only. A 🚧 over bullets all 📋, a 🔍 the rollup
