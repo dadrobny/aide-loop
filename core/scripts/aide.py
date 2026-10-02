@@ -15062,7 +15062,9 @@ def _merge_dropped_item(repo_root: Path, config, number: int,
     Both are read because a drop is recorded where its owner stood: on the
     queue branch the item lands on, or on the checkout the merge runs from.
     `held_from_forward` decides, so a ❌ beside started work — a hand edit,
-    which `restored` refuses — does not hold the merge.
+    which `restored` refuses — does not hold the merge. The item branch is
+    deliberately not read: a drop is the owner's, made on the queue branch
+    or the checkout, never from inside the item being built.
     """
     rel = _progress_rel(config)
     places: List[str] = []

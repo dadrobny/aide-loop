@@ -85,7 +85,7 @@ paths:
      - A drop that would leave every deliverable bullet of the stage ❌ is
        refused: a stage with nothing left to deliver is withdrawn whole, by
        a ❌ on its summary row and on any Objective row only it delivers
-     - in a stage already withdrawn so, the last bullet drops like any other
+     - a stage already withdrawn that way refuses no drop
      - Dropped work is restored with its own verb, back to 📋, with its reason
      - Restore an item with `aide progress set NNN restored --reason …`, and
        a bullet no item marker names with `aide progress set --stage N
@@ -176,7 +176,8 @@ item marker names with `aide progress set --stage N --deliverable K resumed
 --reason …`; a resumed item is claimable again. A forward `aide progress set`
 refuses an item whose bullets are all ⏸️ or 📋. Resuming is the owner's decision, and the reason says why
 the work is wanted now. A ⏸️ or ❌ bullet is never itemised as it stands: a ⏸️
-one is resumed first, and a ❌ one was decided against, so it is not queued.
+one is resumed first, and a ❌ one was decided against, so it is not queued
+until it is restored.
 
 **A deliverable the stage turns out not to need is dropped, with its reason,
 and the stage can close.** Drop a bullet no item marker names with `aide
@@ -188,8 +189,7 @@ not need. Drop an item with `aide progress set NNN dropped --reason …` — a
 shipped item is reopened first. A drop that would leave every deliverable
 bullet of the stage ❌ is refused: a stage with nothing left to deliver is
 withdrawn whole, by a ❌ on its summary row and on any Objective row only it
-delivers; in a stage already withdrawn so, the last bullet drops like any
-other.
+delivers; a stage already withdrawn that way refuses no drop.
 
 **Dropped work is restored with its own verb, back to 📋, with its reason.**
 Restore an item with `aide progress set NNN restored --reason …`, and a bullet

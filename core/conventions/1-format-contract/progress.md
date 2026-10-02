@@ -109,7 +109,8 @@ claim` offers it, or the runner picks it up on a claim branch it still has. A
 forward `aide progress set` refuses an item whose bullets are all ⏸️ or 📋.
 Resuming is the owner's decision, and the reason says why the work is wanted
 now. A ⏸️ or ❌ bullet is never itemised as it stands: a ⏸️ one is resumed
-first, and a ❌ one was decided against, so it is not queued.
+first, and a ❌ one was decided against, so it is not queued until it is
+restored.
 
 **A deliverable the stage turns out not to need is dropped, with its reason,
 and the stage can close.** Drop a bullet no item marker names with `aide
@@ -124,8 +125,8 @@ the validation-round cap, or one its owner decides against — once it is not
 ✅; a shipped item is reopened first. A drop that would leave every
 deliverable bullet of the stage ❌ is refused: a stage
 with nothing left to deliver is withdrawn whole, by a ❌ on its summary row
-and on any Objective row only it delivers; in a stage already withdrawn so,
-the last bullet drops like any other. The deliverable stays in `roadmap.md` as written.
+and on any Objective row only it delivers; a stage already withdrawn that way
+refuses no drop. The deliverable stays in `roadmap.md` as written.
 
 **Dropped work is restored with its own verb, back to 📋, with its reason.**
 Restore an item with `aide progress set NNN restored --reason …`, and a
