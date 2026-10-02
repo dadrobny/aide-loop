@@ -1713,3 +1713,66 @@ def test_the_writer_follows_a_withdrawn_stage_and_check_stays_silent():
     assert "| G2 Reports | Stage 2 | ❌ |" in out
     assert "| 2 | Reports | G2 | ❌ |" in out  # the withdrawal stands
     assert aide.derived_cell_findings(out.splitlines()) == ([], [], set())
+
+
+# --------------------------------------------------------------------------- #
+# PR #386 review: the ❌-beside-📋 item, and a stage already withdrawn
+# --------------------------------------------------------------------------- #
+#: Item 032 with one ❌ bullet and one 📋 bullet — a hand edit, but one
+#: `restored` can take, so a forward set holds it.
+MIXED_DROP = PROGRESS.replace(
+    "- 📋 Charts. *(Item 032)*",
+    "- 📋 Charts. *(Item 032)*\n- ❌ Chart export. *(Item 032)*")
+
+
+def test_an_item_with_a_dropped_and_a_planned_bullet_is_held_and_restored(
+        tmp_path: Path, capsys):
+    """`held_from_forward` holds an item whose bullets are all ❌ or 📋, not
+    only all ❌: the forward set refuses it, and `restored` takes the ❌
+    bullet to 📋 and leaves the 📋 one as it was."""
+    assert aide.held_from_forward(MIXED_DROP.splitlines(), 32) == "excluded"
+    repo = _repo(tmp_path, MIXED_DROP)
+    path = repo / "docs" / "aide" / "progress.md"
+    before = path.read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", "32",
+                      "in-progress", "--no-commit"]) == 1
+    assert "`aide progress set 032 restored --reason …`" in capsys.readouterr().err
+    assert path.read_bytes() == before
+    assert aide.main(["--repo", str(repo), "progress", "set", "32", "restored",
+                      "--reason", "export wanted", "--date", "2026-10-03",
+                      "--no-commit"]) == 0
+    lines = path.read_text(encoding="utf-8").splitlines()
+    i = lines.index("- 📋 Charts. *(Item 032)*")
+    assert lines[i + 1:i + 3] == ["- 📋 Chart export. *(Item 032)*",
+                                  "  - **2026-10-03** → restored: export wanted"]
+    assert aide._item_bullet_statuses(lines, 32) == ["planned", "planned"]
+    assert aide.main(["--repo", str(repo), "progress", "set", "32",
+                      "in-progress", "--no-commit"]) == 0
+
+
+def test_a_withdrawn_stage_lets_its_last_bullet_drop_by_either_form():
+    """The all-❌ refusal sends the owner to the ❌ summary row; where that row
+    already reads ❌ there is nothing to send them to, so the last bullet
+    drops like any other, by its item or by its place."""
+    only = (PROGRESS.replace("- ✅ Summary. *(Item 030)*\n", "")
+            .replace("- 📋 Charts. *(Item 032)*\n", "")
+            .replace("| 2 | Reports | G2 | 🚧 |", "| 2 | Reports | G2 | ❌ |"))
+    out = _drop(only, 31)
+    assert "- ❌ Export, a deliverable long enough that its author" in out
+    assert "| 2 | Reports | G2 | ❌ |" in out
+    assert "| G2 Reports | Stage 2 | ❌ |" in out
+    assert aide.derived_cell_findings(out.splitlines()) == ([], [], set())
+    # Not withdrawn, the same drop is refused (the rule this narrows).
+    with pytest.raises(ValueError, match="would leave every deliverable"):
+        aide.drop_item(only.replace("| 2 | Reports | G2 | ❌ |",
+                                    "| 2 | Reports | G2 | 🚧 |"), 31, "x",
+                       "2026-10-02")
+
+    withdrawn = UNMARKED.replace("| 3 | Plugins | G3 | ⏸️ |",
+                                 "| 3 | Plugins | G3 | ❌ |")
+    out = _drop_at(_drop_at(withdrawn, 3, 1), 3, 2)
+    assert "- ❌ Ingestion of human abnormality labels; a classification arm" in out
+    assert "| G3 Plugins | Stage 3 | ❌ |" in out
+    assert aide.derived_cell_findings(out.splitlines()) == ([], [], set())
+    with pytest.raises(ValueError, match="is the last deliverable of stage 3"):
+        aide.drop_deliverable(_drop_at(UNMARKED, 3, 1), 3, 2, "x", "2026-10-02")

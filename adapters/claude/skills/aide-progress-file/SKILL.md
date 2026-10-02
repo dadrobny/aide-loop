@@ -85,6 +85,7 @@ paths:
      - A drop that would leave every deliverable bullet of the stage ❌ is
        refused: a stage with nothing left to deliver is withdrawn whole, by
        a ❌ on its summary row and on any Objective row only it delivers
+     - in a stage already withdrawn so, the last bullet drops like any other
      - Dropped work is restored with its own verb, back to 📋, with its reason
      - Restore an item with `aide progress set NNN restored --reason …`, and
        a bullet no item marker names with `aide progress set --stage N
@@ -187,7 +188,8 @@ not need. Drop an item with `aide progress set NNN dropped --reason …` — a
 shipped item is reopened first. A drop that would leave every deliverable
 bullet of the stage ❌ is refused: a stage with nothing left to deliver is
 withdrawn whole, by a ❌ on its summary row and on any Objective row only it
-delivers.
+delivers; in a stage already withdrawn so, the last bullet drops like any
+other.
 
 **Dropped work is restored with its own verb, back to 📋, with its reason.**
 Restore an item with `aide progress set NNN restored --reason …`, and a bullet

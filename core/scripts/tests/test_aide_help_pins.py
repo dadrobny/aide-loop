@@ -953,7 +953,9 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "restoring alone, back to \U0001f4cb",
          ("test_aide_defer::test_a_forward_set_over_a_dropped_item_is_refused_naming_the_restore",
           "test_aide_defer::test_a_forward_set_still_moves_an_item_restored_would_refuse",
-          "test_aide_defer::test_restoring_a_dropped_item_reopens_the_stage_it_let_close")),
+          "test_aide_defer::test_restoring_a_dropped_item_reopens_the_stage_it_let_close",
+          "test_aide_defer::test_an_item_with_a_dropped_and_a_planned_bullet_is_held_and_restored",
+          "test_aide_git::test_merge_refuses_a_dropped_item_until_it_is_restored")),
         # `withdrawn_stages` read by `_apply_objective_rollup` and
         # `objective_rollup` (issue #382): a ❌ summary row's stage is left
         # out, and a row naming withdrawn stages alone derives to ❌.
@@ -1206,6 +1208,9 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_defer::test_set_dropped_and_restored_refuse_and_write_nothing",
           "test_aide_defer::test_drop_item_refuses_a_shipped_item_naming_reopen",
           "test_aide_defer::test_drop_item_refuses_leaving_a_stage_all_dropped")),
+        # `_stages_left_all_dropped` skips `withdrawn_stages` (PR #386 review).
+        ("unless that stage's summary row is already \u274c",
+         "test_aide_defer::test_a_withdrawn_stage_lets_its_last_bullet_drop_by_either_form"),
         ("set NNN restored flips each \u274c bullet whose trailing marker "
          "names the item back to \U0001f4cb, writes the reason on a dated "
          "trail line under it, and rolls its stage up again, moving down "
@@ -1266,6 +1271,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "deliverable bullet of the stage \u274c",
          ("test_aide_defer::test_a_drop_that_would_leave_every_bullet_dropped_is_refused",
           "test_aide_defer::test_the_cli_refuses_dropping_the_last_bullet_and_writes_nothing")),
+        # `drop_deliverable`'s refusal skips a stage in `withdrawn_stages`.
+        ("A stage whose summary row is already \u274c is withdrawn, so "
+         "neither drop form refuses there",
+         "test_aide_defer::test_a_withdrawn_stage_lets_its_last_bullet_drop_by_either_form"),
     ],
 
     # ------------------------------------------------------------- insights --
@@ -1874,7 +1883,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "base \u2014 is refused before anything is merged, pushed or "
          "written, exit 1, and the refusal names `aide progress set NNN "
          "restored`",
-         "test_aide_git::test_merge_refuses_a_dropped_item_until_it_is_restored"),
+         ("test_aide_git::test_merge_refuses_a_dropped_item_until_it_is_restored",
+          "test_aide_git::test_pr_mode_merge_refuses_a_dropped_item_and_pushes_nothing")),
         ("A \u23f8\ufe0f item is merged and ticked",
          "test_aide_git::test_merge_refuses_a_dropped_item_until_it_is_restored"),
         # `pending_row` -> `append_ledger_row`, one row, `ledger_path(ddir)`.

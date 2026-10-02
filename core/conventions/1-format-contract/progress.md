@@ -124,7 +124,8 @@ the validation-round cap, or one its owner decides against — once it is not
 ✅; a shipped item is reopened first. A drop that would leave every
 deliverable bullet of the stage ❌ is refused: a stage
 with nothing left to deliver is withdrawn whole, by a ❌ on its summary row
-and on any Objective row only it delivers. The deliverable stays in `roadmap.md` as written.
+and on any Objective row only it delivers; in a stage already withdrawn so,
+the last bullet drops like any other. The deliverable stays in `roadmap.md` as written.
 
 **Dropped work is restored with its own verb, back to 📋, with its reason.**
 Restore an item with `aide progress set NNN restored --reason …`, and a

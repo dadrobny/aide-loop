@@ -2750,11 +2750,16 @@ def held_from_forward(lines: List[str], num: int) -> Optional[str]:
 
 def _stages_left_all_dropped(lines: List[str], stages: Set[str]) -> List[str]:
     """Those of *stages* whose every deliverable bullet reads ❌ — the stage a
-    drop must not leave behind, which the rollup reads as 📋 (issue #362)."""
+    drop must not leave behind, which the rollup reads as 📋 (issue #362).
+
+    A stage already withdrawn — its summary row ❌ — is not one: the refusal
+    exists to send the owner to that row, and its bullets no longer speak for
+    the stage (issue #381, PR #386 review)."""
     out: List[str] = []
+    withdrawn = withdrawn_stages(lines)
     for start, end, stage_num in stage_sections(lines):
         statuses = stage_deliverable_statuses(lines, start, end)
-        if (stage_num in stages and statuses
+        if (stage_num in stages and stage_num not in withdrawn and statuses
                 and all(st == "excluded" for st in statuses)):
             out.append(stage_num)
     return out
@@ -3043,7 +3048,10 @@ def drop_deliverable(text: str, stage: int, position: int, reason: str,
     others = [ICON_TO_STATUS[_BULLET_RE.match(lines[first]).group("icon")]
               for first, _ in stage_deliverable_spans(lines, str(stage)) or []
               if first != start]
-    if all(st == "excluded" for st in others):
+    # A stage already withdrawn by its ❌ summary row is not refused: the
+    # refusal points at that row, which already says it (PR #386 review).
+    if (all(st == "excluded" for st in others)
+            and str(stage) not in withdrawn_stages(lines)):
         raise ValueError(
             f"{where} is the last deliverable of stage {stage} not ❌, and a "
             f"stage whose every deliverable is dropped has nothing left to "
@@ -18302,7 +18310,8 @@ def build_parser() -> argparse.ArgumentParser:
             "refuses, writing nothing, without a stated reason, when a "
             "bullet naming the item is \u2705 \u2014 reopen it first "
             "\u2014 or when the drop would leave every deliverable bullet of "
-            "a stage \u274c.\n"
+            "a stage \u274c, unless that stage's summary row is already "
+            "\u274c.\n"
             "\n"
             "set NNN restored flips each \u274c bullet whose trailing marker "
             "names the item back to \U0001f4cb, writes the reason on a dated "
@@ -18349,6 +18358,8 @@ def build_parser() -> argparse.ArgumentParser:
             "stage \u274c, which the rollup reads as \U0001f4cb: a stage "
             "with nothing left to deliver is withdrawn whole, by a \u274c "
             "on its summary row and on any Objective row only it delivers. "
+            "A stage whose summary row is already \u274c is withdrawn, so "
+            "neither drop form refuses there. "
             "No insight is captured: "
             "dropping a deliverable is a decision about scope, not a "
             "finding."))

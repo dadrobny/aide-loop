@@ -151,7 +151,9 @@ instead — that is the bump policy above, and it is enforced by
   line and rolls the stage up, a stage moving down where its bullets now say
   less; it refuses, writing nothing, a ✅ item (reopen it first) and a drop
   that would leave every deliverable bullet of a stage ❌ (withdraw the stage
-  by its summary row instead), as the positional form does. `restored` flips
+  by its summary row instead), as the positional form does — neither form
+  refuses that in a stage whose summary row is already ❌, where the refusal
+  had pointed at a row that already said it. `restored` flips
   each ❌ bullet back to 📋 under a dated `restored: <reason>` line beside
   the drop's, and rolls the stage back down; it refuses a 🚧, 🔍, ✅ or ⏸️
   item or bullet (a ⏸️ one is resumed, and the refusal says so). Both need a
