@@ -2650,6 +2650,15 @@ def _unmarked_open_positions(lines: List[str], stage: str) -> List[int]:
     return out
 
 
+def _stage_can_lose_a_bullet(lines: List[str], stage: str) -> bool:
+    """Whether dropping one of stage *stage*'s open bullets leaves a bullet
+    that is not ❌ — the condition `drop_deliverable` refuses without, so a
+    remedy names the drop only where it would be taken (issue #362)."""
+    spans = stage_deliverable_spans(lines, stage) or []
+    return sum(ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
+               != "excluded" for start, _ in spans) >= 2
+
+
 def _unmarked_deliverable_at(lines: List[str], stage: int, position: int,
                              verb: str) -> Tuple[int, int, str, str]:
     """``(first, last, where, status)`` of stage *stage*'s *position*-th
@@ -7007,7 +7016,8 @@ def _cells_shown(cells: List[Tuple[str, str]]) -> str:
 
 
 def _deferral_fix(whose: str, unmarked: List[Tuple[str, List[int]]],
-                  marked_open: bool, derived: str) -> str:
+                  marked_open: bool, derived: str,
+                  droppable: bool = False) -> str:
     """The remedy for a ⏸️ cell over open work: defer that work, each bullet
     by the form that addresses it, or restore what the rollup computes.
 
@@ -7015,9 +7025,10 @@ def _deferral_fix(whose: str, unmarked: List[Tuple[str, List[int]]],
     that carry no item marker (issue #336), which only the positional form
     reaches; *marked_open* says an itemised bullet is open too, so the item
     form is named beside it. The positional form also drops such a bullet
-    the stage does not need (issue #362), so the remedy names that beside it:
-    a ⏸️ cell over an unmarked bullet the owner meant as "not needed" is the
-    case the drop exists for.
+    the stage does not need (issue #362), so the remedy names that beside it
+    where *droppable* says every stage in *unmarked* would take the drop: a
+    ⏸️ cell over an unmarked bullet the owner meant as "not needed" is the
+    case the drop exists for, and a stage left all ❌ is the one it refuses.
     """
     restore = f"or restore {STATUS_TO_ICON[derived]}"
     item_form = "'aide progress set NNN deferred --reason …'"
@@ -7032,8 +7043,9 @@ def _deferral_fix(whose: str, unmarked: List[Tuple[str, List[int]]],
                           for n, ks in unmarked)
         by_position = (f"'aide progress set --stage N --deliverable K "
                        f"deferred --reason …' ({where})")
-    by_position += (" — or `dropped` in place of `deferred` for one the "
-                    "stage does not need")
+    if droppable:
+        by_position += (" — or `dropped` in place of `deferred` for one the "
+                        "stage does not need")
     if marked_open:
         return (f"defer {whose} open items with {item_form} and the "
                 f"deliverables with no item marker with {by_position}, "
@@ -7044,7 +7056,7 @@ def _deferral_fix(whose: str, unmarked: List[Tuple[str, List[int]]],
 
 def _stage_drift_fix(off: List[Tuple[str, str]], derived: str,
                      stage: str = "N", unmarked: Sequence[int] = (),
-                     marked_open: bool = True) -> str:
+                     marked_open: bool = True, droppable: bool = False) -> str:
     """The remedy a stage's drift warning names, by what the cells and the
     bullets disagree about.
 
@@ -7061,7 +7073,8 @@ def _stage_drift_fix(off: List[Tuple[str, str]], derived: str,
             return "nothing is left open to defer, so restore ✅"
         return _deferral_fix("the stage's" if marked_open or not unmarked
                              else "its", [(stage, list(unmarked))]
-                             if unmarked else [], marked_open, derived)
+                             if unmarked else [], marked_open, derived,
+                             droppable)
     return (f"a stage's cells follow its bullets, so set the {target} to "
             f"{STATUS_TO_ICON[derived]}, or move the bullets with "
             f"'aide progress set'")
@@ -7132,7 +7145,7 @@ def derived_cell_findings(lines: List[str]
                 warnings.append(
                     f"stage {num}: {_cells_shown(rest)} but its deliverables "
                     f"roll up to {STATUS_TO_ICON[derived]} {derived} — "
-                    f"{_stage_drift_fix(rest, derived, num, unmarked, marked_open)}")
+                    f"{_stage_drift_fix(rest, derived, num, unmarked, marked_open, _stage_can_lose_a_bullet(lines, num))}")
         if not off and header_status and summ and header_status != summ:
             warnings.append(
                 f"stage {num}: header {header_status} disagrees with summary {summ}")
@@ -7190,7 +7203,10 @@ def derived_cell_findings(lines: List[str]
                              for st in stage_deliverable_statuses(lines, start, end))
             marked_open = open_total > sum(len(ks) for _, ks in unmarked)
             fix = _deferral_fix("the" if marked_open or not unmarked else "its",
-                                unmarked, marked_open, derived)
+                                unmarked, marked_open, derived,
+                                bool(unmarked) and all(
+                                    _stage_can_lose_a_bullet(lines, n)
+                                    for n, _ in unmarked))
         else:
             fix = (f"an Objective row follows its stages, so set it to "
                    f"{STATUS_TO_ICON[derived]}")

@@ -664,6 +664,24 @@ def test_the_hand_deferred_stage_over_unmarked_bullets_names_the_positional_form
     assert "set NNN" not in hits[0]
 
 
+def test_the_remedy_names_the_drop_only_where_the_drop_would_be_taken(
+        tmp_path: Path):
+    """A stage whose one bullet not ❌ is the open one: dropping it would leave
+    the stage all ❌, which `drop_deliverable` refuses (issue #362), so the
+    remedy names the deferral alone — for the stage and its Objective row."""
+    last_open = UNMARKED.replace(
+        "- 📋 Plugin/registration API for new heuristics.",
+        "- ❌ Plugin/registration API for new heuristics.")
+    _, warnings = _checks(_repo(tmp_path, last_open))
+    for about in ("stage 3:", "objective G3"):
+        hits = _about(warnings, about)
+        assert len(hits) == 1, warnings
+        assert "--stage 3 --deliverable K deferred --reason …' (K = 2)" in hits[0]
+        assert "dropped" not in hits[0], hits[0]
+    with pytest.raises(ValueError, match="last deliverable"):
+        aide.drop_deliverable(last_open, 3, 2, "not needed", "2026-10-02")
+
+
 def test_a_stage_with_marked_and_unmarked_open_bullets_names_both_forms(
         tmp_path: Path):
     mixed = UNMARKED.replace("- 📋 Plugin/registration API for new heuristics.",

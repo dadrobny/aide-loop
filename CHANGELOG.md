@@ -174,7 +174,9 @@ instead — that is the bump policy above, and it is enforced by
   the item rule orders claims mid-run, the stage rule acts at planning time.
 - **`aide check`'s remedy for a ⏸️ cell over open deliverables with no item
   marker names the drop form beside the deferral (issue #362)** — `dropped`
-  in place of `deferred`, for a bullet the stage does not need.
+  in place of `deferred`, for a bullet the stage does not need — wherever the
+  drop would be taken: not for a stage whose one bullet not ❌ is the open
+  one, which the drop refuses.
 
 ## [2.31.1] — 2026-10-02
 

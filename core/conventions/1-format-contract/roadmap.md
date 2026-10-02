@@ -115,9 +115,9 @@ waits on.
   at different moments. The item rule orders claims inside a queue already
   planned and approved, during an unattended run with no owner to ask; a
   deferred item that still blocked would stall every item behind it until the
-  queue ends. The stage rule acts when the next queue is planned, the moment
-  the owner is at the plan gate anyway, so waiting on the owner's decision
-  costs one hand-back rather than a stalled run. A dependent item built past a
+  queue ends. The stage rule acts when the next queue is planned, before any
+  item is built, so waiting on the owner's decision costs one hand-back
+  rather than a stalled run. A dependent item built past a
   deferred one is the price, paid in the open: the deferral's reason is on
   the deferred item's trail.
 - **Why the coverage table is checked for completeness.** The check said
