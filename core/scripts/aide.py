@@ -8876,8 +8876,8 @@ def cmd_progress(args: argparse.Namespace) -> int:
     # claimed left it 🚧 with no branch: `claim` offered nothing, `status`
     # counted it as work to build and `sync --item` asked for a claim.
     # Only an item `resumed` can take is held: one whose bullets are all ⏸️
-    # or 📋. A ⏸️ beside a 🚧/🔍/✅/❌ bullet (a hand edit, or a file from
-    # before 2.33.0) is one `resumed` refuses, so the forward set stays its
+    # or 📋. A ⏸️ beside a 🚧/🔍/✅/❌ bullet (only a hand edit makes one)
+    # is one `resumed` refuses, so the forward set stays its
     # way out.
     bullets = _item_bullet_statuses(text.splitlines(), args.number)
     held = ("deferred" in bullets
@@ -17939,8 +17939,9 @@ def build_parser() -> argparse.ArgumentParser:
             "\u2705 Met never rolls up. A header, summary row or Objective "
             "row marked \u23f8\ufe0f by hand stays as it reads until a verb "
             "moves a bullet of its stage. Apart from deferring, dropping and "
-            "resuming, set never downgrades a status; a \u23f8\ufe0f item "
-            "leaves \u23f8\ufe0f by resuming alone, back to \U0001f4cb, "
+            "resuming, set never downgrades a status; an item whose bullets "
+            "are all \u23f8\ufe0f or \U0001f4cb leaves \u23f8\ufe0f by "
+            "resuming alone, back to \U0001f4cb, "
             "and only reopen moves a \u2705 item back. No rollup ever "
             "ticks an acceptance box.\n"
             "\n"

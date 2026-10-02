@@ -66,7 +66,8 @@ paths:
      - Resume an item with `aide progress set NNN resumed --reason …`, and a
        bullet no item marker names with `aide progress set --stage N
        --deliverable K resumed --reason …`
-     - A forward `aide progress set` refuses a ⏸️ item
+     - A forward `aide progress set` refuses an item whose bullets are all ⏸️
+       or 📋
      - Resuming is the owner's decision, and the reason says why the work is
        wanted now
      - A ⏸️ or ❌ bullet is never itemised as it stands
@@ -160,7 +161,7 @@ deferred --reason …`, K counting the stage's deliverable bullets from 1.
 Resume an item with `aide progress set NNN resumed --reason …`, and a bullet no
 item marker names with `aide progress set --stage N --deliverable K resumed
 --reason …`; a resumed item is claimable again. A forward `aide progress set`
-refuses a ⏸️ item. Resuming is the owner's decision, and the reason says why
+refuses an item whose bullets are all ⏸️ or 📋. Resuming is the owner's decision, and the reason says why
 the work is wanted now. A ⏸️ or ❌ bullet is never itemised as it stands: a ⏸️
 one is resumed first, and a ❌ one was decided against, so it is not queued.
 

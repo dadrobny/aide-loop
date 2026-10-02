@@ -934,11 +934,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_defer::test_deferring_the_only_in_progress_item_rolls_the_stage_back_to_planned",
           "test_aide_defer::test_dropping_the_only_in_progress_bullet_rolls_the_stage_back_down",
           "test_aide_defer::test_resuming_the_only_open_item_rolls_a_deferred_stage_back_to_planned")),
-        # `cmd_progress` refuses a forward status over any ⏸️ bullet of the
-        # item before it writes (issue #380); `resume_item` writes 📋.
-        ("a \u23f8\ufe0f item leaves \u23f8\ufe0f by resuming alone, back "
-         "to \U0001f4cb",
+        # `cmd_progress` refuses a forward status over an item whose bullets
+        # are all ⏸️ or 📋 before it writes, and lets a mixed one through
+        # (issue #380); `resume_item` writes 📋.
+        ("an item whose bullets are all \u23f8\ufe0f or \U0001f4cb leaves "
+         "\u23f8\ufe0f by resuming alone, back to \U0001f4cb",
          ("test_aide_defer::test_a_forward_set_over_a_deferred_item_is_refused_naming_the_resume",
+          "test_aide_defer::test_a_forward_set_still_moves_an_item_resumed_would_refuse",
           "test_aide_defer::test_resuming_a_deferred_item_moves_the_stage_back_up")),
         # `reopen_item` refuses any bullet not ✅, and is the one caller that
         # passes `downgrade_stages` to `_recompute_rollups` (issue #271).
