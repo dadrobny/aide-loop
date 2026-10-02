@@ -769,8 +769,8 @@ def test_set_by_position_writes_through_the_cli_and_no_insight(tmp_path: Path, c
     (["--stage", "3", "--deliverable", "1", "deferred"], "--reason is required"),
     (["--stage", "3", "--deliverable", "1", "deferred", "--reason", "a\nb"],
      "line break"),
-    (["--stage", "3", "--deliverable", "1", "done"], "only `deferred` is set by position"),
-    (["--stage", "3", "--deliverable", "1"], "only `deferred` is set by position"),
+    (["--stage", "3", "--deliverable", "1", "done"], "only `deferred` or `dropped` is set by position"),
+    (["--stage", "3", "--deliverable", "1"], "only `deferred` or `dropped` is set by position"),
     (["--stage", "3", "deferred", "--reason", "x"], "go together"),
     (["--deliverable", "1", "deferred", "--reason", "x"], "go together"),
     (["31", "deferred", "--stage", "3", "--deliverable", "1", "--reason", "x"],
@@ -810,7 +810,8 @@ def test_stage_and_deliverable_belong_to_set_alone(tmp_path: Path, capsys):
     repo = _repo(tmp_path, UNMARKED)
     assert aide.main(["--repo", str(repo), "progress", "accept", "3",
                       "--stage", "3", "--deliverable", "1", "--no-commit"]) == 2
-    assert "belong to `set … deferred` alone" in capsys.readouterr().err
+    assert ("belong to `set … deferred` and `set … dropped` alone"
+            in capsys.readouterr().err)
 
 
 def _progress_parser():
@@ -904,3 +905,188 @@ def test_a_second_trail_line_follows_the_first_under_a_nested_bullet():
     i = again.index("  - 📋 Legends. *(Item 033)*")
     assert again[i + 1:i + 3] == ["    - **2026-09-29** → deferred: later",
                                   "    - **2026-09-30** → reopened: regressed"]
+
+
+# --------------------------------------------------------------------------- #
+# set --stage N --deliverable K dropped — a bullet the stage does not need
+# (issue #362)
+# --------------------------------------------------------------------------- #
+#: The issue's reproduction: a started stage whose two itemised bullets
+#: shipped, every acceptance box ticked, and one optional bullet nobody
+#: itemised still 📋.
+ISSUE = PROGRESS.replace("| 2 | Reports | G2 | 🚧 |\n",
+                         "| 2 | Reports | G2 | 🚧 |\n| 3 | Plugins | G3 | 🚧 |\n"
+                         ).replace(
+    "| G2 Reports | Stage 2 | 🚧 |\n",
+    "| G2 Reports | Stage 2 | 🚧 |\n| G3 Plugins | Stage 3 | 🚧 |\n") + """
+## Stage 3 — Plugins — 🚧
+
+**Deliverables.**
+- ✅ Plugin registry. *(Item 101)*
+- ✅ Plugin loader. *(Item 102)*
+- 📋 Optional plugin marketplace, a deliverable long enough that its
+  author wrapped it.
+
+**Acceptance.**
+- [x] Plugins load.
+"""
+
+DROP_REASON = "the stage does not need a marketplace"
+
+
+def _drop_at(text: str, stage: int = 3, k: int = 3, reason: str = DROP_REASON,
+             date: str = "2026-10-02") -> str:
+    return aide.drop_deliverable(text, stage, k, reason, date)[0]
+
+
+def test_dropping_the_deferred_bullet_closes_the_issues_stage():
+    """The issue: deferring bullet 3 holds the stage at ⏸️ for good (#173);
+    dropping it lets the stage close ✅, header, summary and objective, with
+    both decisions on the trail."""
+    deferred = _defer_at(ISSUE, 3, 3, "later, maybe")
+    assert "## Stage 3 — Plugins — ⏸️" in deferred
+    assert "| 3 | Plugins | G3 | ⏸️ |" in deferred
+    out = _drop_at(deferred)
+    lines = out.splitlines()
+    i = lines.index("- ❌ Optional plugin marketplace, a deliverable long enough that its")
+    assert lines[i + 1] == "  author wrapped it."
+    assert lines[i + 2:i + 4] == ["  - **2026-09-29** → deferred: later, maybe",
+                                  f"  - **2026-10-02** → dropped: {DROP_REASON}"]
+    assert "## Stage 3 — Plugins — ✅" in out
+    assert "| 3 | Plugins | G3 | ✅ |" in out
+    assert "| G3 Plugins | Stage 3 | ✅ |" in out
+    # Boxes are attestations: the drop ticks or unticks nothing.
+    assert "- [x] Plugins load." in out
+    assert aide.derived_cell_findings(lines) == ([], [], set())
+
+
+@pytest.mark.parametrize("icon", ["📋", "🚧", "🔍", "⏸️"])
+def test_drop_deliverable_takes_every_open_bullet(icon):
+    text = ISSUE.replace("- 📋 Optional plugin", f"- {icon} Optional plugin")
+    out, message = aide.drop_deliverable(text, 3, 3, DROP_REASON, "2026-10-02")
+    assert message == f"stage 3 deliverable 3: dropped — {DROP_REASON}"
+    lines = out.splitlines()
+    i = lines.index("- ❌ Optional plugin marketplace, a deliverable long enough that its")
+    assert lines[i + 2] == f"  - **2026-10-02** → dropped: {DROP_REASON}"
+    assert "## Stage 3 — Plugins — ✅" in out
+    assert aide.derived_cell_findings(lines) == ([], [], set())
+
+
+def test_dropping_the_only_in_progress_bullet_rolls_the_stage_back_down():
+    """A drop moves the cells down where the bullets now say less, as a
+    deferral does: 🚧 came from the dropped bullet alone."""
+    text = UNMARKED.replace("- 📋 Plugin/registration", "- 🚧 Plugin/registration"
+                            ).replace("## Stage 3 — Plugins — Deferred — ⏸️",
+                                      "## Stage 3 — Plugins — 🚧"
+                            ).replace("| 3 | Plugins | G3 | ⏸️ |",
+                                      "| 3 | Plugins | G3 | 🚧 |"
+                            ).replace("| G3 Plugins | Stage 3 | ⏸️ |",
+                                      "| G3 Plugins | Stage 3 | 🚧 |")
+    out = _drop_at(text, 3, 1)
+    assert "- ❌ Plugin/registration API for new heuristics." in out
+    assert "## Stage 3 — Plugins — 📋" in out
+    assert "| 3 | Plugins | G3 | 📋 |" in out
+    assert "| G3 Plugins | Stage 3 | 📋 |" in out
+    assert aide.derived_cell_findings(out.splitlines()) == ([], [], set())
+
+
+def test_a_drop_releases_a_header_held_at_deferred_by_hand():
+    """A ⏸️ typed over the issue's stage stands under a `set` elsewhere, and
+    follows the bullets once a verb moves one of its own."""
+    hand = (ISSUE.replace("## Stage 3 — Plugins — 🚧", "## Stage 3 — Plugins — ⏸️")
+            .replace("| 3 | Plugins | G3 | 🚧 |", "| 3 | Plugins | G3 | ⏸️ |")
+            .replace("| G3 Plugins | Stage 3 | 🚧 |", "| G3 Plugins | Stage 3 | ⏸️ |"))
+    elsewhere = aide.set_item_status(hand, 32, "complete")
+    assert "## Stage 3 — Plugins — ⏸️" in elsewhere
+    out = _drop_at(elsewhere)
+    assert "## Stage 3 — Plugins — ✅" in out
+    assert "| 3 | Plugins | G3 | ✅ |" in out
+    assert "| G3 Plugins | Stage 3 | ✅ |" in out
+
+
+def test_drop_deliverable_again_is_no_change():
+    once = _drop_at(ISSUE)
+    again, message = aide.drop_deliverable(once, 3, 3, "again", "2026-10-03")
+    assert again == once
+    assert message == "stage 3 deliverable 3: no change (already dropped)"
+
+
+def test_drop_deliverable_refuses_a_shipped_bullet():
+    text = ISSUE.replace("- 📋 Optional plugin", "- ✅ Optional plugin")
+    with pytest.raises(ValueError, match="stage 3 deliverable 3 is ✅ complete; "
+                                         "it shipped, so there is nothing to drop"):
+        aide.drop_deliverable(text, 3, 3, "x", "2026-10-02")
+
+
+@pytest.mark.parametrize("stage, k, match", [
+    (9, 1, r"no '## Stage 9' section"),
+    (3, 4, "stage 3 has 3 deliverable bullets, numbered from 1"),
+    (3, 0, "stage 3 has 3 deliverable bullets, numbered from 1"),
+    (3, 1, r"itemised — its trailing marker names item 101, so its status is "
+           r"its item's and it is not dropped by position"),
+], ids=["unknown-stage", "past-the-end", "zero", "itemised"])
+def test_drop_deliverable_refuses(stage, k, match):
+    with pytest.raises(ValueError, match=match):
+        aide.drop_deliverable(ISSUE, stage, k, "x", "2026-10-02")
+
+
+def test_drop_by_position_writes_through_the_cli_and_no_insight(
+        tmp_path: Path, capsys):
+    """The status word after the flags goes through `main`'s one-leftover-word
+    route, as `deferred` does; it may come first as well."""
+    repo = _repo(tmp_path, ISSUE)
+    path = repo / "docs" / "aide" / "progress.md"
+    assert aide.main(["--repo", str(repo), "progress", "set", "--stage", "3",
+                      "--deliverable", "3", "dropped", "--reason", DROP_REASON,
+                      "--date", "2026-10-02", "--no-commit"]) == 0
+    assert path.read_text(encoding="utf-8") == _drop_at(ISSUE)
+    assert ("stage 3 deliverable 3: dropped — "
+            f"{DROP_REASON}") in capsys.readouterr().out
+    assert aide.main(["--repo", str(repo), "progress", "set", "dropped",
+                      "--stage", "3", "--deliverable", "3", "--reason", "x",
+                      "--no-commit"]) == 0
+    assert "no change (already dropped)" in capsys.readouterr().out
+    assert path.read_text(encoding="utf-8") == _drop_at(ISSUE)
+    assert (repo / "docs" / "aide" / "insights.md").read_text(
+        encoding="utf-8") == "# Insight Inbox\n"
+
+
+@pytest.mark.parametrize("argv, message", [
+    (["--stage", "3", "--deliverable", "3", "dropped"],
+     "dropped: --reason is required"),
+    (["--stage", "3", "--deliverable", "3", "dropped", "--reason", " "],
+     "dropped: --reason is required"),
+    (["--stage", "3", "--deliverable", "3", "dropped", "--reason", "a\nb"],
+     "line break"),
+    (["--stage", "3", "--deliverable", "3", "dropped", "--all",
+      "--reason", "x"], "a deliverable is dropped whole"),
+    (["--stage", "3", "dropped", "--reason", "x"], "go together"),
+    (["31", "dropped", "--reason", "x"], "`dropped` is set by position alone"),
+], ids=["no-reason", "blank-reason", "two-lines", "with-all", "stage-alone",
+        "by-item"])
+def test_drop_by_position_refuses_its_usage_errors_with_exit_2(
+        tmp_path: Path, capsys, argv, message):
+    repo = _repo(tmp_path, ISSUE)
+    before = (repo / "docs" / "aide" / "progress.md").read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", *argv,
+                      "--no-commit"]) == 2
+    assert message in capsys.readouterr().err
+    assert (repo / "docs" / "aide" / "progress.md").read_bytes() == before
+
+
+@pytest.mark.parametrize("text, stage, k, message", [
+    (ISSUE.replace("- 📋 Optional plugin", "- ✅ Optional plugin"), "3", "3",
+     "nothing to drop"),
+    (ISSUE, "3", "2", "item 102, so its status is its item's"),
+    (ISSUE, "3", "4", "stage 3 has 3 deliverable bullets"),
+], ids=["shipped", "itemised", "no-kth-bullet"])
+def test_drop_by_position_refuses_what_it_cannot_drop_with_exit_1(
+        tmp_path: Path, capsys, text, stage, k, message):
+    repo = _repo(tmp_path, text)
+    before = (repo / "docs" / "aide" / "progress.md").read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", "--stage", stage,
+                      "--deliverable", k, "dropped", "--reason", "x",
+                      "--no-commit"]) == 1
+    err = capsys.readouterr().err
+    assert message in err and "NOT changed" in err
+    assert (repo / "docs" / "aide" / "progress.md").read_bytes() == before

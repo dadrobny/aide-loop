@@ -2480,6 +2480,58 @@ def test_a_stage_deferred_by_hand_over_unmarked_bullets_is_deferred_by_position(
     assert ppath.read_bytes() == before
 
 
+def test_an_optional_deliverable_the_stage_does_not_need_is_dropped_and_the_stage_closes(
+        aide, consumer: Path, capsys):
+    """Issue #362 through the installed engine: a started stage whose items
+    both shipped and whose one optional, never-itemised bullet was deferred
+    reads ⏸️ for good, since ⏸️ is kept out of the ✅ rule. `progress set
+    --stage N --deliverable K dropped` flips that bullet to ❌ with a dated
+    trail line and commits, the stage closes ✅, and `check` says nothing
+    about it. An itemised bullet is refused by position, writing nothing."""
+    ppath = consumer / "docs" / "aide" / "progress.md"
+    ppath.write_text(ppath.read_text(encoding="utf-8").replace(
+        "- 📋 The farewell. *(Item 002)*\n",
+        "- 📋 The farewell. *(Item 002)*\n- 📋 An optional greeting card.\n"),
+        encoding="utf-8")
+    _commit(consumer, "docs: an optional deliverable")
+    base = ["--repo", str(consumer), "progress", "set"]
+    for n in ("1", "2"):
+        assert aide.main([*base, n, "done"]) == 0
+    assert aide.main(["--repo", str(consumer), "progress", "accept", "1",
+                      "--all", "--evidence", "both landed"]) == 0
+    by_place = [*base, "--stage", "1", "--deliverable", "3"]
+    assert aide.main([*by_place, "deferred", "--reason", "later, maybe",
+                      "--date", "2026-10-01"]) == 0
+    text = ppath.read_text(encoding="utf-8")
+    assert "## Stage 1 — Foundations — ⏸️" in text
+    assert "| 1 | Foundations | G1 | ⏸️ |" in text
+
+    head = _sha(consumer, "HEAD")
+    assert aide.main([*by_place, "dropped", "--reason", "not needed after all",
+                      "--date", "2026-10-02"]) == 0
+    assert _clean(consumer) and _sha(consumer, "HEAD~1") == head
+    lines = ppath.read_text(encoding="utf-8").splitlines()
+    i = lines.index("- ❌ An optional greeting card.")
+    assert lines[i + 1:i + 3] == ["  - **2026-10-01** → deferred: later, maybe",
+                                  "  - **2026-10-02** → dropped: not needed after all"]
+    assert "## Stage 1 — Foundations — ✅" in lines
+    assert "| 1 | Foundations | G1 | ✅ |" in lines
+    assert "| G1 Foundations | Stage 1 | ✅ |" in lines
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "stage 1:" not in capsys.readouterr().out
+
+    # Without a reason, or by item, or over an itemised bullet: nothing written.
+    before, head = ppath.read_bytes(), _sha(consumer, "HEAD")
+    assert aide.main([*base, "--stage", "1", "--deliverable", "1",
+                      "dropped"]) == 2
+    assert aide.main([*base, "1", "dropped", "--reason", "x"]) == 2
+    assert aide.main([*base, "--stage", "1", "--deliverable", "1", "dropped",
+                      "--reason", "x"]) == 1
+    assert ppath.read_bytes() == before and _sha(consumer, "HEAD") == head
+    assert _clean(consumer)
+
+
 def test_an_exhausted_queue_is_no_longer_open_to_claim_from(aide, consumer: Path, capsys):
     """Every item ✅ makes the queue closed, not empty — so `claim` exits 1 and
     says there is no open queue. That non-zero exit is what stops

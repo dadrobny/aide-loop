@@ -45,7 +45,8 @@ that moved everything.
   *"an excluded item is never offered"*, *"whichever builds second inherits the
   first's edits"*, *"an item awaiting review or deferred has not shipped"* and
   *"each attestation was made separately and is corrected or withdrawn
-  separately"* and *"a deferral is a decision about order, not a finding"*
+  separately"*, *"a deferral is a decision about order, not a finding"* and
+  *"dropping a deliverable is a decision about scope, not a finding"*
   (`progress`), *"the stage is dropped, so its bullets no longer speak for
   it"* (`check`), *"roadmap.md's deliverables carry no item marker, so there
   is no bullet of the item to mirror"* (`progress`) — rationale for a rule
@@ -926,9 +927,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "never rolls up",
          "test_aide_core::test_unmet_target_blocks_objective_rollup_not_stage"),
         # `RANK` guards the write: a lower-ranked status is not applied.
-        ("Apart from deferring, set never downgrades a status",
+        ("Apart from deferring and dropping, set never downgrades a status",
          ("test_aide_core::test_set_item_never_downgrades",
-          "test_aide_defer::test_deferring_the_only_in_progress_item_rolls_the_stage_back_to_planned")),
+          "test_aide_defer::test_deferring_the_only_in_progress_item_rolls_the_stage_back_to_planned",
+          "test_aide_defer::test_dropping_the_only_in_progress_bullet_rolls_the_stage_back_down")),
         # ⏸️ ranks below 🚧, 🔍 and ✅ in `RANK`, so the forward flip applies.
         ("a \u23f8\ufe0f item resumes under any other status set names",
          ("test_aide_defer::test_a_deferred_item_resumes_under_any_forward_status",
@@ -1055,7 +1057,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_aide_defer::test_deferring_a_deferred_item_again_is_no_change"),
         ("No insight is captured",
          ("test_aide_defer::test_set_deferred_writes_no_insight",
-          "test_aide_defer::test_set_deferred_on_a_done_item_exits_one_and_writes_nothing")),
+          "test_aide_defer::test_set_deferred_on_a_done_item_exits_one_and_writes_nothing",
+          "test_aide_defer::test_drop_by_position_writes_through_the_cli_and_no_insight")),
 
         # `_cmd_progress_defer_deliverable` / `defer_deliverable` (issue #336).
         ("`set --stage N --deliverable K deferred --reason TEXT` does the same "
@@ -1067,20 +1070,57 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # usage refusals in `_cmd_progress_defer_deliverable`.
         ("set --stage N --deliverable K counts the stage's deliverable bullets "
          "from 1 in file order, a wrapped line belonging to its bullet, and "
-         "takes no NNN and no status but deferred",
+         "takes no NNN and no status but deferred or dropped",
          ("test_aide_defer::test_defer_deliverable_flips_the_bullet_and_writes_the_trail_under_its_last_line",
-          "test_aide_defer::test_set_by_position_refuses_its_usage_errors_with_exit_2")),
-        ("It refuses, writing nothing, without a stated reason, when stage N "
-         "has no Kth bullet, when that bullet is \u2705 or \u274c, or when it "
-         "carries an item marker",
+          "test_aide_defer::test_set_by_position_refuses_its_usage_errors_with_exit_2",
+          "test_aide_defer::test_drop_by_position_writes_through_the_cli_and_no_insight")),
+        # `_unmarked_deliverable_at`, shared by both writers (issue #362),
+        # and the reason checks in `_cmd_progress_defer_deliverable`.
+        ("Either form refuses, writing nothing, without a stated reason, when "
+         "stage N has no Kth bullet, or when that bullet carries an item "
+         "marker",
          ("test_aide_defer::test_set_by_position_refuses_its_usage_errors_with_exit_2",
           "test_aide_defer::test_set_by_position_refuses_what_it_cannot_defer_with_exit_1",
           "test_aide_defer::test_defer_deliverable_refuses",
-          "test_aide_defer::test_defer_deliverable_refuses_a_finished_bullet")),
+          "test_aide_defer::test_drop_by_position_refuses_its_usage_errors_with_exit_2",
+          "test_aide_defer::test_drop_by_position_refuses_what_it_cannot_drop_with_exit_1",
+          "test_aide_defer::test_drop_deliverable_refuses")),
+        # `defer_deliverable`'s `_DEFERRABLE` check.
+        ("set --stage N --deliverable K deferred also refuses a bullet that "
+         "is \u2705 or \u274c",
+         "test_aide_defer::test_defer_deliverable_refuses_a_finished_bullet"),
         ("a bullet already \u23f8\ufe0f is no change",
          "test_aide_defer::test_defer_deliverable_again_is_no_change"),
         ("Such a bullet resumes once it is itemised, under set NNN",
          "test_aide_defer::test_an_unmarked_deferred_bullet_resumes_once_itemised"),
+
+        # `_cmd_progress_defer_deliverable` / `drop_deliverable` (issue #362):
+        # `_DROPPABLE`, the `_DROPPED_PREFIX` trail line through
+        # `_insert_trail_line`, and `_recompute_rollups` with the stage
+        # allowed down, which also releases a ⏸️ cell held by hand.
+        ("`set --stage N --deliverable K dropped --reason TEXT` flips such a "
+         "bullet to \u274c instead, with a dated `dropped: <reason>` line, "
+         "for a deliverable the stage does not need",
+         ("test_aide_defer::test_dropping_the_deferred_bullet_closes_the_issues_stage",
+          "test_aide_defer::test_drop_by_position_writes_through_the_cli_and_no_insight")),
+        ("set --stage N --deliverable K dropped flips a \U0001f4cb, "
+         "\U0001f6a7, \U0001f50d or \u23f8\ufe0f bullet to \u274c, writes "
+         "the reason on a dated trail line under it, and rolls its stage up "
+         "again, moving down where its bullets now say less",
+         ("test_aide_defer::test_drop_deliverable_takes_every_open_bullet",
+          "test_aide_defer::test_dropping_the_only_in_progress_bullet_rolls_the_stage_back_down",
+          "test_aide_defer::test_a_drop_releases_a_header_held_at_deferred_by_hand")),
+        # `rollup_status`'s ✅ arm takes `("complete", "excluded")`; the
+        # model test compares the predicate over the whole input space.
+        ("\u274c counts toward the \u2705 rule above where \u23f8\ufe0f "
+         "does not",
+         ("test_aide_defer::test_dropping_the_deferred_bullet_closes_the_issues_stage",
+          "test_aide_core::test_progress_help_states_the_rollup_the_code_applies")),
+        ("It refuses a \u2705 bullet, which shipped, and a bullet already "
+         "\u274c is no change",
+         ("test_aide_defer::test_drop_deliverable_refuses_a_shipped_bullet",
+          "test_aide_defer::test_drop_by_position_refuses_what_it_cannot_drop_with_exit_1",
+          "test_aide_defer::test_drop_deliverable_again_is_no_change")),
     ],
 
     # ------------------------------------------------------------- insights --
