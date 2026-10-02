@@ -2759,7 +2759,8 @@ def drop_deliverable(text: str, stage: int, position: int, reason: str,
     that carries a marker, a ✅ bullet, and a drop that would leave every
     deliverable bullet of the stage ❌ — which the rollup reads as 📋, a stage
     still to plan. A stage with nothing left to deliver is withdrawn whole, by
-    a ❌ summary row, which no rollup overwrites. A bullet already ❌ is no
+    a ❌ on its summary row, which no rollup overwrites, and on any Objective
+    row only it delivers. A bullet already ❌ is no
     change.
     """
     lines = text.splitlines()
@@ -2780,7 +2781,8 @@ def drop_deliverable(text: str, stage: int, position: int, reason: str,
             f"{where} is the last deliverable of stage {stage} not ❌, and a "
             f"stage whose every deliverable is dropped has nothing left to "
             f"deliver — withdraw the stage whole instead, by marking its row "
-            f"in the Stage summary table ❌, which takes its header with it")
+            f"in the Stage summary table ❌, which takes its header with it, and "
+            f"any Objective row only this stage delivers")
     return (_write_unmarked_deliverable(text, lines, start, last, "excluded",
                                         date, _DROPPED_PREFIX + reason),
             f"{where}: dropped — {reason}")
@@ -17856,7 +17858,8 @@ def build_parser() -> argparse.ArgumentParser:
             "nothing, a drop that would leave every deliverable bullet of the "
             "stage \u274c, which the rollup reads as \U0001f4cb: a stage "
             "with nothing left to deliver is withdrawn whole, by a \u274c "
-            "summary row. No insight is captured: "
+            "on its summary row and on any Objective row only it delivers. "
+            "No insight is captured: "
             "dropping a deliverable is a decision about scope, not a "
             "finding."))
     p_prog.add_argument("action",

@@ -110,8 +110,8 @@ is dropped the same way once its owner decides the stage does not need it at
 all — defer what the stage needs later, drop what it does not need. An
 itemised bullet is not dropped by its place: its status is its item's. A drop
 that would leave every deliverable bullet of the stage ❌ is refused: a stage
-with nothing left to deliver is withdrawn whole, by its ❌ summary row. The
-deliverable stays in `roadmap.md` as written.
+with nothing left to deliver is withdrawn whole, by a ❌ on its summary row
+and on any Objective row only it delivers. The deliverable stays in `roadmap.md` as written.
 
 **Acceptance boxes are attestations, and no rollup ever ticks one.** They are
 outside the derivation entirely: the rollup skips checkbox lines, `aide check`
@@ -237,10 +237,13 @@ Semantics
   is not touched, because a started stage is frozen there and its
   deliverables carry no status to mirror. A drop that would leave the stage
   all ❌ is refused because the rollup reads such a stage as 📋: two drops
-  over a hand-deferred stage of two unmarked bullets, found in the PR's
-  review, left a stage the planner would queue, under a header still saying
-  it was deferred, and `check` silent. Withdrawing a stage already has its
-  cell — the ❌ summary row, which no rollup overwrites.
+  over a hand-deferred stage of two unmarked bullets (issue #362) left a
+  stage the planner would queue, under a header still saying it was
+  deferred, and `check` silent. Withdrawing a stage already has its cell —
+  the ❌ summary row, which no rollup overwrites. The Objective row is named
+  with it because an objective's rollup reads its stages' bullets, not their
+  summary rows, so a hand-held ⏸️ objective over the withdrawn stage would
+  still warn.
 - **Why every derived cell is compared, with none of the writer's restraint.**
   Issue #285: the sentence that a typed-over derived cell is drift `aide check`
   reports held for ✅ and ⏸️ only. A 🚧 over bullets all 📋, a 🔍 the rollup

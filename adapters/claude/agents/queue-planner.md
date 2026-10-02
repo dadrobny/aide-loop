@@ -83,8 +83,7 @@ Follow the `aide-create-queue` skill in full. In brief:
    stage behind an earlier 📋, 🚧 or 🔍 one it depends on, never ahead of it.
    **A ⏸️ earlier stage does not meet the dependency either, and its
    deferred work waits on its owner's decision, not on the next queue**, so
-   do not queue the stage that waits on it, nor the deferred bullets on your
-   own initiative. If that leaves nothing to queue, stop and hand back,
+   do not queue the stage that waits on it, nor its deferred bullets. If that leaves nothing to queue, stop and hand back,
    naming the waiting stage, the ⏸️ one and its deferred bullets: resuming
    them, or dropping those the stage does not need, is the owner's decision
    (§1 → `progress.md`, preloaded above).

@@ -73,7 +73,7 @@ paths:
      - defer what the stage needs later, drop what it does not need
      - A drop that would leave every deliverable bullet of the stage ❌ is
        refused: a stage with nothing left to deliver is withdrawn whole, by
-       its ❌ summary row
+       a ❌ on its summary row and on any Objective row only it delivers
      - A box is ticked only by a human — or by an agent acting on a check it
        actually performed
      - A stage may be ✅ with an unticked box; say why in an annotation beside it
@@ -157,8 +157,8 @@ over it: the bullet reads ❌, which counts toward its stage's ✅ where a ⏸�
 bullet never does — a ⏸️ bullet included, once its owner decides the stage
 does not need it at all. Defer what the stage needs later, drop what it does
 not need. A drop that would leave every deliverable bullet of the stage ❌ is
-refused: a stage with nothing left to deliver is withdrawn whole, by its ❌
-summary row.
+refused: a stage with nothing left to deliver is withdrawn whole, by a ❌ on
+its summary row and on any Objective row only it delivers.
 
 **A stage may be ✅ with an unticked box; say why in an annotation beside it.**
 
