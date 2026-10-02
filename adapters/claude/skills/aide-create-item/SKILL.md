@@ -41,7 +41,9 @@ python .aide/scripts/aide.py claim               # create + push aide/NNN-*
 
 If selecting manually instead: `git fetch --all --prune`, check
 `git branch -r | grep aide/` for an existing `aide/NNN-*` branch, and stop if the
-item is already claimed.
+item is already claimed. In `local` mode (§4) or with no origin — `aide
+status`'s `branch:` line then names no `origin/` — skip the fetch and check
+`git branch | grep aide/` instead.
 
 ### Clarify before writing (per `loop.clarify` in `aide.toml`)
 
