@@ -136,6 +136,48 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.32.0] — 2026-10-02
+
+### Added
+
+- **`aide progress set --stage N --deliverable K dropped --reason TEXT` drops
+  a deliverable the stage does not need, so the stage can close (issue
+  #362).** Since 2.25.0 (#336) an owner could defer an optional bullet no item
+  marker names, and after that the stage could roll up no further than ⏸️ —
+  ⏸️ stays out of the ✅ rule (#173) — with no verb to say the bullet was not
+  needed at all. `dropped` flips a 📋, 🚧, 🔍 or ⏸️ un-itemised bullet to ❌
+  and writes a dated `dropped: <reason>` trail line under it; ❌ counts toward
+  ✅, so a stage whose other bullets shipped closes ✅, and its header,
+  summary row and Objective rows follow (a ⏸️ held there by hand is
+  released, since a verb moved a bullet of the stage). The reason is
+  required, a bullet already ❌ is no change, and a ✅ bullet, an itemised
+  bullet, a missing Kth bullet and a missing reason are refused, writing
+  nothing; `set NNN dropped` is refused with the positional form named. So is
+  a drop that would leave every deliverable bullet of the stage ❌, which the
+  rollup reads as 📋 — a stage with nothing left to deliver is withdrawn
+  whole, by a ❌ on its summary row and on any Objective row only it
+  delivers. No insight is captured, and `roadmap.md` is not touched. `aide progress -h`
+  states it; §1 → `progress.md` names the route, and the
+  `aide-progress-file` section skill carries and pins it.
+- **§1 → `roadmap.md` now says when a dependency on an earlier stage is met:
+  only once that stage is ✅ (issue #362).** A ⏸️ earlier stage does not meet
+  it, and its deferred work waits on the owner's decision, not on the next
+  queue, so the dependent stage waits for the owner to resume the deferred
+  bullets or drop those the stage does not need; a 📋, 🚧 or 🔍 earlier
+  stage is queued ahead of the stage that depends on it, in an earlier queue or the same one for a phase. The ⏸️ that
+  excuses a forward dependency excuses the dependent stage only. The
+  `queue-planner` agent quotes the rule in its step 4 (pinned to the
+  section), queues neither the waiting stage nor its deferred bullets, and
+  hands back when that leaves nothing to queue;
+  `/aide-create-queue` points at it. The section's `Rationale` says why an
+  item still reads a ⏸️ dependency as out of its way while a stage does not:
+  the item rule orders claims mid-run, the stage rule acts at planning time.
+- **`aide check`'s remedy for a ⏸️ cell over open deliverables with no item
+  marker names the drop form beside the deferral (issue #362)** — `dropped`
+  in place of `deferred`, for a bullet the stage does not need — wherever the
+  drop would be taken: not for a stage whose one bullet not ❌ is the open
+  one, which the drop refuses.
+
 ## [2.31.1] — 2026-10-02
 
 ### Fixed

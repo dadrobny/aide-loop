@@ -64,6 +64,16 @@ paths:
        `aide progress set --stage N --deliverable K deferred --reason …`, K
        counting the stage's deliverable bullets from 1; it resumes once it is
        itemised
+     - A deliverable the stage turns out not to need is dropped, with its
+       reason, and the stage can close
+     - Drop a bullet no item marker names with `aide progress set --stage N
+       --deliverable K dropped --reason …`, never by typing ❌ over it
+     - the bullet reads ❌, which counts toward its stage's ✅ where a ⏸️
+       bullet never does
+     - defer what the stage needs later, drop what it does not need
+     - A drop that would leave every deliverable bullet of the stage ❌ is
+       refused: a stage with nothing left to deliver is withdrawn whole, by
+       a ❌ on its summary row and on any Objective row only it delivers
      - A box is ticked only by a human — or by an agent acting on a check it
        actually performed
      - A stage may be ✅ with an unticked box; say why in an annotation beside it
@@ -139,6 +149,16 @@ typing ⏸️ over a bullet or a stage; deferred work resumes through any forwar
 instead, with `aide progress set --stage N --deliverable K deferred --reason …`,
 K counting the stage's deliverable bullets from 1; it resumes once it is
 itemised.
+
+**A deliverable the stage turns out not to need is dropped, with its reason,
+and the stage can close.** Drop a bullet no item marker names with `aide
+progress set --stage N --deliverable K dropped --reason …`, never by typing ❌
+over it: the bullet reads ❌, which counts toward its stage's ✅ where a ⏸️
+bullet never does — a ⏸️ bullet included, once its owner decides the stage
+does not need it at all. Defer what the stage needs later, drop what it does
+not need. A drop that would leave every deliverable bullet of the stage ❌ is
+refused: a stage with nothing left to deliver is withdrawn whole, by a ❌ on
+its summary row and on any Objective row only it delivers.
 
 **A stage may be ✅ with an unticked box; say why in an annotation beside it.**
 

@@ -91,7 +91,8 @@ as the reason.
      whole.
    - A stage needing more than the cap spans multiple queues.
    The cap is a **context budget, not a target**. Prioritise by roadmap order and
-   unblocked dependencies.
+   unblocked dependencies; whether an earlier stage's icon meets a blocking
+   dependency on it — a ⏸️ one included — is §1 → `roadmap.md`'s to say.
 
    **"Run alongside" in a roadmap means independence, not concurrency.** One
    queue is live at a time, by design — the queue boundary is the human

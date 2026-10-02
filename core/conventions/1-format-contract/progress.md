@@ -101,6 +101,18 @@ computes, and the warning ends. A ❌ cell is outside the
 comparison, and a ❌ summary row takes its stage's header with it: its bullets
 no longer speak for the stage.
 
+**A deliverable the stage turns out not to need is dropped, with its reason,
+and the stage can close.** Drop a bullet no item marker names with `aide
+progress set --stage N --deliverable K dropped --reason …`, never by typing ❌
+over it: the verb keeps the why on the bullet's trail, and the bullet reads ❌,
+which counts toward its stage's ✅ where a ⏸️ bullet never does. A ⏸️ bullet
+is dropped the same way once its owner decides the stage does not need it at
+all — defer what the stage needs later, drop what it does not need. An
+itemised bullet is not dropped by its place: its status is its item's. A drop
+that would leave every deliverable bullet of the stage ❌ is refused: a stage
+with nothing left to deliver is withdrawn whole, by a ❌ on its summary row
+and on any Objective row only it delivers. The deliverable stays in `roadmap.md` as written.
+
 **Acceptance boxes are attestations, and no rollup ever ticks one.** They are
 outside the derivation entirely: the rollup skips checkbox lines, `aide check`
 never gates a ✅ stage on them, and `aide progress set` leaves them exactly as
@@ -208,8 +220,30 @@ Semantics
   bullet is the hand edit this section forbids, and restoring 📋 would have
   undone a real, dated deferral — so no remedy the warning named applied.
   Addressing the bullet by its place in the stage gives it the same write and
-  trail. Only ⏸️ is written that way: an unmarked bullet has no item for work
-  to resume under, and itemising it is the queue-planner's step, not a status.
+  trail. Only ⏸️ and ❌ are written that way, the two decisions an owner makes
+  about the bullet itself: an unmarked bullet has no item for work to resume
+  under, and itemising it is the queue-planner's step, not a status.
+- **Why an unmarked bullet can be dropped.** Issue #362, from a consumer on
+  2.25.0: a started stage held two shipped items, every acceptance box
+  ticked, and one optional deliverable nobody had itemised. Deferring it —
+  the one verb that reached it — held the stage at ⏸️ for good, since ⏸️
+  stays out of the ✅ rule (#173), and nothing said whether the next stage,
+  whose Dependencies named it, could be queued (§1 → `roadmap.md` now does).
+  A deferral says the work is still wanted; the owner's decision was that it
+  was not, and ❌ is the icon for that — there is nothing left to wait for, so
+  the stage closes. The reason is required for the reason a deferral's is:
+  the decision has to read cold. No insight is captured, as on a deferral — a
+  drop is a decision about scope, not a finding about the work. `roadmap.md`
+  is not touched, because a started stage is frozen there and its
+  deliverables carry no status to mirror. A drop that would leave the stage
+  all ❌ is refused because the rollup reads such a stage as 📋: two drops
+  over a hand-deferred stage of two unmarked bullets (issue #362) left a
+  stage the planner would queue, under a header still saying it was
+  deferred, and `check` silent. Withdrawing a stage already has its cell —
+  the ❌ summary row, which no rollup overwrites. The Objective row is named
+  with it because an objective's rollup reads its stages' bullets, not their
+  summary rows, so a hand-held ⏸️ objective over the withdrawn stage would
+  still warn.
 - **Why every derived cell is compared, with none of the writer's restraint.**
   Issue #285: the sentence that a typed-over derived cell is drift `aide check`
   reports held for ✅ and ⏸️ only. A 🚧 over bullets all 📋, a 🔍 the rollup
