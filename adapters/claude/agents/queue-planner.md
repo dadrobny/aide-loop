@@ -81,12 +81,13 @@ Follow the `aide-create-queue` skill in full. In brief:
    **A blocking dependency on an earlier stage is met only once that stage is
    ✅** (§1 → `roadmap.md`, which is not preloaded — read it there): queue a
    stage behind an earlier 📋, 🚧 or 🔍 one it depends on, never ahead of it.
-   **A ⏸️ earlier stage does not meet the dependency either, and no queue
-   lands its deferred work**, so do not queue the stage that waits on it. If
-   that leaves nothing to queue, stop and hand back, naming the waiting stage,
-   the ⏸️ one and its deferred bullets: resuming them, or dropping those the
-   stage does not need, is the owner's decision (§1 → `progress.md`,
-   preloaded above).
+   **A ⏸️ earlier stage does not meet the dependency either, and its
+   deferred work waits on its owner's decision, not on the next queue**, so
+   do not queue the stage that waits on it, nor the deferred bullets on your
+   own initiative. If that leaves nothing to queue, stop and hand back,
+   naming the waiting stage, the ⏸️ one and its deferred bullets: resuming
+   them, or dropping those the stage does not need, is the owner's decision
+   (§1 → `progress.md`, preloaded above).
 5. **Wire every item into `progress.md`.** For each `### Item NNN` you just wrote,
    ensure the number appears as an `*(Item NNN)*` reference on the matching
    **deliverable bullet** under that item's roadmap **stage section** in
@@ -263,8 +264,8 @@ only writes allowed outside your edit scope.
      this role is not preloaded with (issue #362).
      - A blocking dependency on an earlier stage is met only once that stage
        is ✅
-     - A ⏸️ earlier stage does not meet the dependency either, and no queue
-       lands its deferred work
+     - A ⏸️ earlier stage does not meet the dependency either, and its
+       deferred work waits on its owner's decision, not on the next queue
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/queue-NNN.md

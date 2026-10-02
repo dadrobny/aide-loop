@@ -2756,7 +2756,11 @@ def drop_deliverable(text: str, stage: int, position: int, reason: str,
     a deferral's does.
 
     Refuses an unknown stage, a position outside the stage's bullets, a bullet
-    that carries a marker, and a ✅ bullet. A bullet already ❌ is no change.
+    that carries a marker, a ✅ bullet, and a drop that would leave every
+    deliverable bullet of the stage ❌ — which the rollup reads as 📋, a stage
+    still to plan. A stage with nothing left to deliver is withdrawn whole, by
+    a ❌ summary row, which no rollup overwrites. A bullet already ❌ is no
+    change.
     """
     lines = text.splitlines()
     start, last, where, current = _unmarked_deliverable_at(
@@ -2768,6 +2772,15 @@ def drop_deliverable(text: str, stage: int, position: int, reason: str,
             f"{where} is {STATUS_TO_ICON[current]} {current}; it shipped, so "
             f"there is nothing to drop — only a 📋, 🚧, 🔍 or ⏸️ deliverable "
             f"can be dropped")
+    others = [ICON_TO_STATUS[_BULLET_RE.match(lines[first]).group("icon")]
+              for first, _ in stage_deliverable_spans(lines, str(stage)) or []
+              if first != start]
+    if all(st == "excluded" for st in others):
+        raise ValueError(
+            f"{where} is the last deliverable of stage {stage} not ❌, and a "
+            f"stage whose every deliverable is dropped has nothing left to "
+            f"deliver — withdraw the stage whole instead, by marking its row "
+            f"in the Stage summary table ❌, which takes its header with it")
     return (_write_unmarked_deliverable(text, lines, start, last, "excluded",
                                         date, _DROPPED_PREFIX + reason),
             f"{where}: dropped — {reason}")
@@ -9194,9 +9207,14 @@ def _cmd_progress_defer_deliverable(args: argparse.Namespace) -> int:
     if isinstance(args.number, str) and status is None:
         status = args.number
     elif args.number is not None:
-        print(f"{usage}\n{tag}: takes no item number — an itemised bullet is "
-              f"deferred with `aide progress set NNN deferred --reason …`",
-              file=sys.stderr)
+        if status == "dropped":
+            print(f"{usage}\n{tag}: takes no item number — an itemised "
+                  f"bullet's status is its item's, so it is not dropped by "
+                  f"position", file=sys.stderr)
+        else:
+            print(f"{usage}\n{tag}: takes no item number — an itemised bullet "
+                  f"is deferred with `aide progress set NNN deferred --reason "
+                  f"…`", file=sys.stderr)
         return 2
     if status not in _POSITIONAL_SET:
         shown = f"'{status}'" if status else "no status"
@@ -17834,7 +17852,11 @@ def build_parser() -> argparse.ArgumentParser:
             "stage up again, moving down where its bullets now say less; "
             "\u274c counts toward the \u2705 rule above where "
             "\u23f8\ufe0f does not. It refuses a \u2705 bullet, which shipped, and a "
-            "bullet already \u274c is no change. No insight is captured: "
+            "bullet already \u274c is no change. It also refuses, writing "
+            "nothing, a drop that would leave every deliverable bullet of the "
+            "stage \u274c, which the rollup reads as \U0001f4cb: a stage "
+            "with nothing left to deliver is withdrawn whole, by a \u274c "
+            "summary row. No insight is captured: "
             "dropping a deliverable is a decision about scope, not a "
             "finding."))
     p_prog.add_argument("action",

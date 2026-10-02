@@ -55,10 +55,11 @@ warns on a forward dependency whose stage is not ⏸️.
 **A blocking dependency on an earlier stage is met only once that stage is
 ✅.** A 📋, 🚧 or 🔍 earlier stage still has work to land, so the dependent
 stage is queued behind it — after its queue, or in the same one where a phase
-fits the cap. A ⏸️ earlier stage does not meet the dependency either, and no
-queue lands its deferred work: the dependent stage waits until the owner
-resumes the deferred bullets, or drops those the stage turns out not to need
-(§1 → `progress.md`), and the earlier stage closes ✅. The ⏸️ that excuses a
+fits the cap. A ⏸️ earlier stage does not meet the dependency either, and its
+deferred work waits on its owner's decision, not on the next queue: the
+dependent stage waits until the owner resumes the deferred bullets, or drops
+those the stage turns out not to need (§1 → `progress.md`), and the earlier
+stage closes ✅. The ⏸️ that excuses a
 *forward* dependency above excuses the dependent stage, never the stage it
 waits on.
 
@@ -104,8 +105,8 @@ waits on.
   work not yet done; reading it as met would let the plan run ahead of the
   stage it names. A 📋, 🚧 or 🔍 earlier stage is the ordinary case — a queue
   lands its work, the next one or the same one for a phase — so queueing
-  behind it is all the rule asks; ⏸️ is the one state no queue moves, which
-  is why it needs the owner. The owner's remedy for a deliverable never
+  behind it is all the rule asks; ⏸️ is the one state that waits on a
+  decision rather than a queue, which is why it needs the owner. The owner's remedy for a deliverable never
   needed is the drop route, which closes the stage ✅.
 - **Why the coverage table is checked for completeness.** The check said
   only that the table existed, so a G-code no row mapped — an objective no

@@ -152,19 +152,23 @@ instead — that is the bump policy above, and it is enforced by
   released, since a verb moved a bullet of the stage). The reason is
   required, a bullet already ❌ is no change, and a ✅ bullet, an itemised
   bullet, a missing Kth bullet and a missing reason are refused, writing
-  nothing; `set NNN dropped` is refused with the positional form named. No
+  nothing; `set NNN dropped` is refused with the positional form named. So is
+  a drop that would leave every deliverable bullet of the stage ❌, which the
+  rollup reads as 📋 — a stage with nothing left to deliver is withdrawn
+  whole, by its ❌ summary row. No
   insight is captured, and `roadmap.md` is not touched. `aide progress -h`
   states it; §1 → `progress.md` names the route, and the
   `aide-progress-file` section skill carries and pins it.
 - **§1 → `roadmap.md` now says when a dependency on an earlier stage is met:
   only once that stage is ✅ (issue #362).** A ⏸️ earlier stage does not meet
-  it, and no queue lands its deferred work, so the dependent stage waits for
-  the owner to resume the deferred bullets or drop those the stage does not
-  need; a 📋, 🚧 or 🔍 earlier stage is queued ahead of the stage that depends
+  it, and its deferred work waits on the owner's decision, not on the next
+  queue, so the dependent stage waits for the owner to resume the deferred
+  bullets or drop those the stage does not need; a 📋, 🚧 or 🔍 earlier stage is queued ahead of the stage that depends
   on it, in an earlier queue or the same one for a phase. The ⏸️ that
   excuses a forward dependency excuses the dependent stage only. The
   `queue-planner` agent quotes the rule in its step 4 (pinned to the
-  section), and hands back when a ⏸️ earlier stage leaves nothing to queue;
+  section), queues neither the waiting stage nor the deferred bullets on its
+  own initiative, and hands back when that leaves nothing to queue;
   `/aide-create-queue` points at it.
 
 ## [2.31.1] — 2026-10-02

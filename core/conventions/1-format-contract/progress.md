@@ -108,7 +108,9 @@ over it: the verb keeps the why on the bullet's trail, and the bullet reads ❌,
 which counts toward its stage's ✅ where a ⏸️ bullet never does. A ⏸️ bullet
 is dropped the same way once its owner decides the stage does not need it at
 all — defer what the stage needs later, drop what it does not need. An
-itemised bullet is not dropped by its place: its status is its item's. The
+itemised bullet is not dropped by its place: its status is its item's. A drop
+that would leave every deliverable bullet of the stage ❌ is refused: a stage
+with nothing left to deliver is withdrawn whole, by its ❌ summary row. The
 deliverable stays in `roadmap.md` as written.
 
 **Acceptance boxes are attestations, and no rollup ever ticks one.** They are
@@ -233,7 +235,12 @@ Semantics
   the decision has to read cold. No insight is captured, as on a deferral — a
   drop is a decision about scope, not a finding about the work. `roadmap.md`
   is not touched, because a started stage is frozen there and its
-  deliverables carry no status to mirror.
+  deliverables carry no status to mirror. A drop that would leave the stage
+  all ❌ is refused because the rollup reads such a stage as 📋: two drops
+  over a hand-deferred stage of two unmarked bullets, found in the PR's
+  review, left a stage the planner would queue, under a header still saying
+  it was deferred, and `check` silent. Withdrawing a stage already has its
+  cell — the ❌ summary row, which no rollup overwrites.
 - **Why every derived cell is compared, with none of the writer's restraint.**
   Issue #285: the sentence that a typed-over derived cell is drift `aide check`
   reports held for ✅ and ⏸️ only. A 🚧 over bullets all 📋, a 🔍 the rollup

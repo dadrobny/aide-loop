@@ -2506,7 +2506,14 @@ def test_an_optional_deliverable_the_stage_does_not_need_is_dropped_and_the_stag
     assert "## Stage 1 — Foundations — ⏸️" in text
     assert "| 1 | Foundations | G1 | ⏸️ |" in text
 
-    head = _sha(consumer, "HEAD")
+    # A failed commit puts the drop back, as every recording verb does.
+    before, head = ppath.read_bytes(), _sha(consumer, "HEAD")
+    argv = ["progress", "set", "--stage", "1", "--deliverable", "3", "dropped",
+            "--reason", "not needed after all", "--date", "2026-10-02"]
+    assert _under_a_held_index_lock(aide, consumer, argv) == 1
+    assert ppath.read_bytes() == before and _sha(consumer, "HEAD") == head
+    assert _clean(consumer)
+
     assert aide.main([*by_place, "dropped", "--reason", "not needed after all",
                       "--date", "2026-10-02"]) == 0
     assert _clean(consumer) and _sha(consumer, "HEAD~1") == head

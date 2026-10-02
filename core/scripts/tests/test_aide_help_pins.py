@@ -1121,6 +1121,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_defer::test_drop_deliverable_refuses_a_shipped_bullet",
           "test_aide_defer::test_drop_by_position_refuses_what_it_cannot_drop_with_exit_1",
           "test_aide_defer::test_drop_deliverable_again_is_no_change")),
+        # `drop_deliverable`'s check over the stage's other bullets, raised
+        # before any write.
+        ("It also refuses, writing nothing, a drop that would leave every "
+         "deliverable bullet of the stage \u274c",
+         ("test_aide_defer::test_a_drop_that_would_leave_every_bullet_dropped_is_refused",
+          "test_aide_defer::test_the_cli_refuses_dropping_the_last_bullet_and_writes_nothing")),
     ],
 
     # ------------------------------------------------------------- insights --

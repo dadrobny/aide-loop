@@ -1090,3 +1090,57 @@ def test_drop_by_position_refuses_what_it_cannot_drop_with_exit_1(
     err = capsys.readouterr().err
     assert message in err and "NOT changed" in err
     assert (repo / "docs" / "aide" / "progress.md").read_bytes() == before
+
+
+def test_a_drop_that_would_leave_every_bullet_dropped_is_refused():
+    """The review's case: a hand-⏸️ stage of two unmarked 📋 bullets, both
+    dropped, would roll up 📋 under a stale "Deferred" header with nothing
+    left to deliver. The second drop is refused, writing nothing; withdrawing
+    a stage whole is its ❌ summary row's job."""
+    once = _drop_at(UNMARKED, 3, 1)
+    assert "- ❌ Plugin/registration API for new heuristics." in once
+    with pytest.raises(ValueError, match=(
+            "stage 3 deliverable 2 is the last deliverable of stage 3 not ❌.*"
+            "marking its row in the Stage summary table ❌")):
+        aide.drop_deliverable(once, 3, 2, "x", "2026-10-02")
+    # A stage of one unmarked bullet: that bullet is the last as well.
+    sole = UNMARKED.replace(
+        "- 📋 Plugin/registration API for new heuristics.\n", "")
+    with pytest.raises(ValueError, match="is the last deliverable of stage 3"):
+        aide.drop_deliverable(sole, 3, 1, "x", "2026-10-02")
+
+
+def test_one_shipped_bullet_beside_the_dropped_one_still_closes_the_stage():
+    text = ISSUE.replace("- ✅ Plugin loader. *(Item 102)*\n", "")
+    out = _drop_at(text, 3, 2)
+    assert "## Stage 3 — Plugins — ✅" in out
+    assert "| 3 | Plugins | G3 | ✅ |" in out
+    assert "| G3 Plugins | Stage 3 | ✅ |" in out
+
+
+def test_the_cli_refuses_dropping_the_last_bullet_and_writes_nothing(
+        tmp_path: Path, capsys):
+    repo = _repo(tmp_path, _drop_at(UNMARKED, 3, 1))
+    path = repo / "docs" / "aide" / "progress.md"
+    before = path.read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", "--stage", "3",
+                      "--deliverable", "2", "dropped", "--reason", "x",
+                      "--no-commit"]) == 1
+    err = capsys.readouterr().err
+    assert "is the last deliverable of stage 3 not ❌" in err
+    assert "NOT changed" in err
+    assert path.read_bytes() == before
+
+
+def test_an_item_number_on_the_drop_form_is_refused_in_its_own_words(
+        tmp_path: Path, capsys):
+    repo = _repo(tmp_path, ISSUE)
+    before = (repo / "docs" / "aide" / "progress.md").read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", "31", "dropped",
+                      "--stage", "3", "--deliverable", "3", "--reason", "x",
+                      "--no-commit"]) == 2
+    err = capsys.readouterr().err
+    assert ("takes no item number — an itemised bullet's status is its "
+            "item's, so it is not dropped by position") in err
+    assert "deferred with" not in err
+    assert (repo / "docs" / "aide" / "progress.md").read_bytes() == before
