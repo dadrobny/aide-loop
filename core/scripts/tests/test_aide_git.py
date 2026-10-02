@@ -1571,6 +1571,38 @@ def test_a_published_claim_is_in_flight_not_a_failure(tmp_path: Path, capsys):
     assert "ORIGIN HAS NEVER SEEN" not in out
 
 
+def test_a_resumed_item_is_claimed_again_or_held_on_its_branch(
+        tmp_path: Path, capsys):
+    """Issue #380. A ⏸️ item set forward used to land 🚧 with no branch,
+    which `claim` never offers; the forward set is refused now, and `set NNN
+    resumed` sends the item back to 📋, which `claim` offers. Deferred again
+    after its claim and resumed once more, it is held as in flight on the
+    branch it already has — the runner's resume step picks it up there."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    prog = ["--repo", str(root), "progress", "set"]
+    for n in ("027", "028"):
+        assert aide.main([*prog, n, "deferred", "--reason", "later"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "claim"]) == 1
+    assert "no open queue" in capsys.readouterr().err
+
+    assert aide.main([*prog, "027", "in-progress"]) == 1
+    assert "resumed --reason" in capsys.readouterr().err
+    assert aide.main([*prog, "027", "resumed", "--reason", "wanted now"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "claim"]) == 0
+    assert _current_branch(root) == "aide/027-bounds-rules"
+
+    # Deferred mid-build and resumed: 📋 again, with its claim branch still
+    # there, so claim names it in flight rather than offering it twice.
+    assert aide.main([*prog, "027", "deferred", "--reason", "blocked"]) == 0
+    assert aide.main([*prog, "027", "resumed", "--reason", "unblocked"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "claim"]) == 0
+    out = capsys.readouterr().out
+    assert "027 Bounds rules — claimed by aide/027-bounds-rules, already in flight" in out
+
+
 def test_local_mode_never_calls_a_claim_branch_unpublished(tmp_path: Path, capsys):
     """`local` mode is the one place an unpushed claim branch is the design."""
     root = _init_repo(tmp_path / "r", mode="local")

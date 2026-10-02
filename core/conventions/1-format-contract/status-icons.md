@@ -30,8 +30,9 @@ item**, never an agent reading the merge off the forge.
 
 A ⏸️ item **is work postponed, not work done**: it never lets its stage reach
 ✅, and a stage whose only open bullets are ⏸️ reads ⏸️. `aide progress set
-NNN deferred --reason …` writes it, and any forward `aide progress set`
-resumes it (§1 → `progress.md`).
+NNN deferred --reason …` writes it, and `aide progress set NNN resumed
+--reason …` alone takes it back, to 📋 — `set` refuses to move a ⏸️ item
+forward (§1 → `progress.md`).
 
 **Structural positions only.** The parsers read icons *only* at structural
 positions: a table row's **Status (last) cell**, a stage header's **trailing**

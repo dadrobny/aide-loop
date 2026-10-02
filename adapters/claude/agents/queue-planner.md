@@ -66,8 +66,11 @@ Follow the `aide-create-queue` skill in full. In brief:
    ```
    python .aide/scripts/aide.py queue tidy <NNN-1>
    ```
-   (Skip if this is the first queue.) Then reflect each item's final `progress.md`
-   state in that file if any still read 📋.
+   (Skip if this is the first queue.) Write nothing else into that file: a
+   queue entry carries no icon, and an item's status lives in `progress.md`
+   alone (§1 → `progress.md`, preloaded above). An item of it carried to
+   the next queue is deferred there with `aide progress set NNN deferred
+   --reason …`, so the why is on record, and named in step 8's summary.
 4. **Write** `docs/aide/queue/queue-NNN.md` from `.aide/templates/queue.md`: the
    next batch of logical, locally-testable items, no duplicates, each as
    `### Item NNN: Short Title` + a description paragraph. **Scope the batch to one
@@ -96,7 +99,23 @@ Follow the `aide-create-queue` skill in full. In brief:
    shorthand, not a shared status cell: the first status change to any of its
    items splits the bullet into one per item. **Never change a status
    icon** (leave deliverables 📋 — status transitions are `aide progress set`'s job
-   during execution). Item numbers are born here, so their `progress.md` references
+   during execution).
+
+   **Wire a marker onto a 📋 bullet only.** An item born on a ⏸️ or ❌
+   bullet is settled from the start, and its queue reads done the moment it
+   is written (§1 → `progress.md`, preloaded above). A ⏸️ bullet is queued
+   only where its owner decided to resume it — your brief says so, naming the
+   bullet — and you resume it first, by its place, with the owner's decision
+   and why it is queued now as the reason:
+   ```
+   python .aide/scripts/aide.py progress set --stage N --deliverable K resumed --reason "<owner's decision: why now>"
+   ```
+   then wire the marker onto the 📋 bullet it leaves, and say in step 8's
+   summary which deferred work you queued and why. With no such decision it
+   is not queued (step 4). A ❌ bullet is never queued: the owner decided
+   the stage does not need it.
+
+   Item numbers are born here, so their `progress.md` references
    must be recorded here: `aide progress set NNN` locates the bullet to flip by its
    reference and now **hard-errors** on an unreferenced item (engine ≥ 1.0.1)
    instead of silently no-op'ing.
@@ -206,9 +225,11 @@ and resolving it destroys the only thing the gate protects.
 - **Do NOT push or open a PR.** Commit only; the orchestrator handles push/PR.
 - **Do NOT run `pytest`.**
 - Edit only `docs/aide/queue/*.md` and `docs/aide/progress.md` — and in
-  `progress.md` only the item-reference back-fill (step 5), the tidy reflection
-  (step 3), and **adding a row to `## Human gates`** (above), never a
-  deliverable's status icon and never new stages/acceptance. Adding a gate row
+  `progress.md` only the item-reference back-fill (step 5), the deferral of
+  a carried item (step 3) and the resume of a deferred bullet its owner
+  decided to queue (step 5), each by its verb, and
+  **adding a row to `## Human gates`** (above), never a deliverable's status
+  icon by hand and never new stages/acceptance. Adding a gate row
   is permitted because raising a blocker is safe; **resolving** one is not
   yours, ever.
 - `docs/aide/insights.md` is the one file outside that scope you touch, and

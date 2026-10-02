@@ -958,7 +958,8 @@ def test_a_file_the_progress_verbs_wrote_passes_every_derived_cell(
     installed engine. (The queue's decorative Live line is another lint's.)"""
     prog = ["--repo", str(consumer), "progress", "set"]
     steps = (["1", "in-progress"], ["2", "deferred", "--reason", "later"],
-             ["1", "done"], ["2", "in-progress"], ["2", "done"])
+             ["1", "done"], ["2", "resumed", "--reason", "now"],
+             ["2", "in-progress"], ["2", "done"])
     for step in steps:
         assert aide.main([*prog, *step]) == 0, step
         capsys.readouterr()
@@ -2378,8 +2379,11 @@ def test_deferring_every_item_defers_the_stage_and_resuming_reopens_it(
     """Issue #281 through the installed engine: `progress set NNN deferred`
     needs a reason, writes ⏸️ with the reason under the bullet, rolls a stage
     whose only open work is deferred up to ⏸️ — header, summary and objective
-    — and leaves nothing to claim; a forward `set` resumes it; `check` passes
-    over every step with no stage warning."""
+    — and leaves nothing to claim. Issue #380: a forward `set` over a ⏸️ item
+    is refused, writing nothing, and `set NNN resumed` takes it back to 📋,
+    where `claim` offers it, `status` and `sync --item` agree, and the item
+    moves forward again; `check` passes over every step with no stage
+    warning."""
     ppath = consumer / "docs" / "aide" / "progress.md"
     prog = ["--repo", str(consumer), "progress", "set"]
 
@@ -2404,6 +2408,34 @@ def test_deferring_every_item_defers_the_stage_and_resuming_reopens_it(
     assert aide.main(["--repo", str(consumer), "check"]) == 0
     assert "stage 1:" not in capsys.readouterr().out
     assert _claim(aide, consumer) == 1  # nothing open: deferred is not work to do
+
+    # The forward set that used to strand it 🚧 with no branch is refused.
+    before, head = ppath.read_bytes(), _sha(consumer, "HEAD")
+    capsys.readouterr()
+    assert aide.main([*prog, "1", "in-progress"]) == 1
+    assert "`aide progress set 001 resumed --reason …`" in capsys.readouterr().err
+    assert ppath.read_bytes() == before and _sha(consumer, "HEAD") == head
+    assert aide.main([*prog, "1", "resumed"]) == 2
+    assert ppath.read_bytes() == before
+
+    assert aide.main([*prog, "1", "resumed", "--reason", "owner wants it now",
+                      "--date", "2026-10-02"]) == 0
+    assert _clean(consumer) and _sha(consumer, "HEAD~1") == head
+    lines = ppath.read_text(encoding="utf-8").splitlines()
+    i = lines.index("- 📋 The greeter. *(Item 001)*")
+    assert lines[i + 1:i + 3] == ["  - **2026-09-24** → deferred: owner postponed",
+                                  "  - **2026-10-02** → resumed: owner wants it now"]
+    assert "## Stage 1 — Foundations — 📋" in lines
+    assert "| 1 | Foundations | G1 | 📋 |" in lines
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "stage 1:" not in capsys.readouterr().out
+    # status, claim and sync agree: one item to build, offered, claimable.
+    assert aide.main(["--repo", str(consumer), "status", "--no-fetch"]) == 0
+    assert "runnable: yes" in capsys.readouterr().out
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "aide/001-the-greeter"
+    assert aide.main(["--repo", str(consumer), "sync", "--item", "1"]) == 0
 
     assert aide.main([*prog, "1", "in-progress"]) == 0
     text = ppath.read_text(encoding="utf-8")
@@ -2477,6 +2509,29 @@ def test_a_stage_deferred_by_hand_over_unmarked_bullets_is_deferred_by_position(
     assert aide.main(["--repo", str(consumer), "progress", "set", "--stage", "1",
                       "--deliverable", "1", "deferred", "--reason", "x"]) == 1
     assert "`aide progress set 001 deferred" in capsys.readouterr().err
+    assert ppath.read_bytes() == before
+
+    # Issue #380: the owner resumes one bullet by its place — 📋 under a
+    # dated `resumed:` line, the stage back to 📋 beside the ⏸️ one — so it
+    # can be itemised as open work; an itemised bullet is refused by place.
+    head = _sha(consumer, "HEAD")
+    assert aide.main([*prog, "--deliverable", "1", "resumed", "--reason",
+                      "queued for v2", "--date", "2026-10-02"]) == 0
+    assert _clean(consumer) and _sha(consumer, "HEAD~1") == head
+    lines = ppath.read_text(encoding="utf-8").splitlines()
+    i = lines.index("- 📋 Plugin/registration API for new heuristics.")
+    assert lines[i + 1:i + 3] == ["  - **2026-09-29** → deferred: owner postponed",
+                                  "  - **2026-10-02** → resumed: queued for v2"]
+    assert "## Stage 2 — Extensions — Deferred — 📋" in lines
+    assert "| 2 | Extensions | G2 | 📋 |" in lines
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "stage 2:" not in out and "objective G2" not in out
+    before = ppath.read_bytes()
+    assert aide.main(["--repo", str(consumer), "progress", "set", "--stage", "1",
+                      "--deliverable", "1", "resumed", "--reason", "x"]) == 1
+    assert "`aide progress set 001 resumed" in capsys.readouterr().err
     assert ppath.read_bytes() == before
 
 

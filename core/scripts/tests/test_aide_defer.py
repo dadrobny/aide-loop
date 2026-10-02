@@ -8,8 +8,10 @@ hand-set ⏸️ summary row was skipped by `aide check` without a word.
 
 `aide progress set NNN deferred --reason …` now flips the item's bullets to ⏸️
 with a dated `deferred: <reason>` trail line under each, the rollup reads ⏸️
-once nothing but deferred work is left open, a ⏸️ item resumes under any
-forward `set`, and `check` warns where a ⏸️ cell and the rollup disagree.
+once nothing but deferred work is left open, and `check` warns where a ⏸️
+cell and the rollup disagree. Since 2.33.0 (issue #380) a ⏸️ item resumes by
+`set NNN resumed --reason …` alone, back to 📋 where `claim` offers it, and a
+forward `set` over it is refused.
 """
 from __future__ import annotations
 
@@ -125,18 +127,75 @@ def test_deferring_the_only_in_progress_item_rolls_the_stage_back_to_planned():
 
 
 def test_resuming_a_deferred_item_moves_the_stage_back_up():
+    """Every open item deferred, the stage ⏸️; resuming one sends its bullet
+    to 📋 under a `resumed:` line, and the stage, its row and its objective
+    follow it down to 🚧 — ✅ 030 beside 📋 work."""
     deferred = _defer(_defer(), 32)
-    out = aide.set_item_status(deferred, 31, "in-progress")
-    assert "- 🚧 Export, a deliverable long enough that its author" in out
+    out, message = aide.resume_item(deferred, 31, "owner wants it now",
+                                    "2026-10-02")
+    assert message == "item 031: resumed — owner wants it now"
+    lines = out.splitlines()
+    i = lines.index("- 📋 Export, a deliverable long enough that its author")
+    # The trail stays: the deferral is history, and the resumption joins it.
+    assert lines[i + 2:i + 4] == [
+        f"  - **2026-09-24** → deferred: {REASON}",
+        "  - **2026-10-02** → resumed: owner wants it now"]
     assert "## Stage 2 — Reports — 🚧" in out
     assert "| 2 | Reports | G2 | 🚧 |" in out
     assert "| G2 Reports | Stage 2 | 🚧 |" in out
-    # The trail stays: the deferral is history, not state.
-    assert f"  - **2026-09-24** → deferred: {REASON}" in out
+    assert aide._parse_item_status(lines)[2][31] == "planned"
+    assert aide.derived_cell_findings(lines) == ([], [], set())
+
+
+def test_resuming_the_only_open_item_rolls_a_deferred_stage_back_to_planned():
+    only = PROGRESS.replace("- ✅ Summary. *(Item 030)*\n", "").replace(
+        "- 📋 Charts. *(Item 032)*\n", "")
+    deferred = _defer(only)
+    assert "## Stage 2 — Reports — ⏸️" in deferred
+    out = aide.resume_item(deferred, 31, "now", "2026-10-02")[0]
+    assert "## Stage 2 — Reports — 📋" in out
+    assert "| 2 | Reports | G2 | 📋 |" in out
+    assert aide.derived_cell_findings(out.splitlines()) == ([], [], set())
+
+
+@pytest.mark.parametrize("icon,status", [
+    ("🚧", "in-progress"), ("🔍", "in-review"), ("✅", "complete"),
+    ("❌", "excluded")])
+def test_resume_refuses_an_item_that_is_not_deferred_and_names_its_status(
+        icon, status):
+    text = PROGRESS.replace("- 📋 Charts. *(Item 032)*", f"- {icon} Charts. *(Item 032)*")
+    with pytest.raises(ValueError, match=f"item 032 is {icon} {status}; only "
+                                         f"a ⏸️ deferred item can be resumed"):
+        aide.resume_item(text, 32, "x", "2026-10-02")
+
+
+def test_resume_refuses_an_item_no_bullet_names():
+    with pytest.raises(ValueError, match="nothing to resume"):
+        aide.resume_item(PROGRESS, 99, "x", "2026-10-02")
+
+
+def test_resuming_a_planned_item_is_no_change():
+    out, message = aide.resume_item(PROGRESS, 32, "x", "2026-10-02")
+    assert out == PROGRESS and "no change" in message
+
+
+def test_resume_desugars_a_shared_marker_and_moves_only_the_named_item():
+    shared = PROGRESS.replace("- 📋 Charts. *(Item 032)*",
+                              "- ⏸️ Charts and tables. *(Items 032, 033)*")
+    splits = []
+    out, _ = aide.resume_item(shared, 33, "tables now", "2026-10-02", splits)
+    lines = out.splitlines()
+    assert "- ⏸️ Charts and tables. *(Item 032)*" in lines
+    i = lines.index("- 📋 Charts and tables. *(Item 033)*")
+    assert lines[i + 1] == "  - **2026-10-02** → resumed: tables now"
+    assert len(splits) == 1
 
 
 @pytest.mark.parametrize("status", ["in-review", "complete"])
-def test_a_deferred_item_resumes_under_any_forward_status(status):
+def test_the_writer_still_moves_a_deferred_bullet_forward(status):
+    """`set_item_status` itself still advances a ⏸️ bullet — it is `merge`'s
+    tick too, and a merge records work that landed. The refusal of a forward
+    status over a ⏸️ item is the `set` verb's (issue #380)."""
     out = aide.set_item_status(_defer(), 31, status)
     assert aide._parse_item_status(out.splitlines())[2][31] == status
 
@@ -332,6 +391,11 @@ def test_a_file_the_verbs_wrote_raises_no_warning(tmp_path: Path, capsys):
     assert stage_warnings() == []
     assert aide.main([*base, "32", "done", "--no-commit"]) == 0
     assert "## Stage 2 — Reports — ⏸️" in path.read_text(encoding="utf-8")
+    assert stage_warnings() == []
+    assert aide.main([*base, "31", "resumed", "--reason", "now",
+                      "--no-commit"]) == 0
+    # ✅ 030 and 032 beside a 📋 bullet: started work, so 🚧.
+    assert "## Stage 2 — Reports — 🚧" in path.read_text(encoding="utf-8")
     assert stage_warnings() == []
     assert aide.main([*base, "31", "in-progress", "--no-commit"]) == 0
     assert "## Stage 2 — Reports — 🚧" in path.read_text(encoding="utf-8")
@@ -549,6 +613,7 @@ def test_a_multi_stage_file_the_verbs_wrote_trips_no_derived_cell(tmp_path: Path
         lambda t: aide.set_item_status(t, 20, "complete"),
         lambda t: aide.defer_item(t, 30, "later", date)[0],
         lambda t: aide.reopen_item(t, 20, "regressed", date)[0],
+        lambda t: aide.resume_item(t, 30, "wanted now", date)[0],
         lambda t: aide.set_item_status(t, 30, "in-progress"),
         lambda t: aide.set_item_status(t, 11, "complete"),
         lambda t: aide.set_item_status(t, 20, "complete"),
@@ -751,18 +816,69 @@ def test_defer_deliverable_refuses_a_finished_bullet(icon, status):
         aide.defer_deliverable(text, 3, 1, "x", "2026-09-29")
 
 
-def test_an_unmarked_deferred_bullet_resumes_once_itemised():
-    """No positional forward status: the bullet gets its marker, and `set NNN`
-    moves a ⏸️ item as it always has."""
+def test_an_unmarked_deferred_bullet_resumes_by_place_then_is_itemised():
+    """Issue #380: an item born on a ⏸️ bullet is ⏸️ from the start, so its
+    queue reads done as soon as it is written. The bullet is resumed by its
+    place first — 📋 under a `resumed:` line, its stage rolled back down —
+    and the item wired onto it then moves forward under `set NNN`."""
     out = _defer_at(_defer_at(UNMARKED, 3, 1), 3, 2)
-    itemised = out.replace("- ⏸️ Plugin/registration API for new heuristics.",
-                           "- ⏸️ Plugin/registration API for new heuristics. "
-                           "*(Item 040)*")
+    resumed, message = aide.resume_deliverable(out, 3, 1, "owner queues it",
+                                               "2026-10-02")
+    assert message == "stage 3 deliverable 1: resumed — owner queues it"
+    lines = resumed.splitlines()
+    i = lines.index("- 📋 Plugin/registration API for new heuristics.")
+    assert lines[i + 1:i + 3] == ["  - **2026-09-29** → deferred: v2",
+                                  "  - **2026-10-02** → resumed: owner queues it"]
+    # ⏸️ beside 📋 reads 📋: the stage is open work again.
+    assert "## Stage 3 — Plugins — Deferred — 📋" in resumed
+    assert "| 3 | Plugins | G3 | 📋 |" in resumed
+    assert aide.derived_cell_findings(lines) == ([], [], set())
+    itemised = resumed.replace("- 📋 Plugin/registration API for new heuristics.",
+                               "- 📋 Plugin/registration API for new heuristics. "
+                               "*(Item 040)*")
+    assert aide._parse_item_status(itemised.splitlines())[2][40] == "planned"
     moved = aide.set_item_status(itemised, 40, "in-progress")
     assert "- 🚧 Plugin/registration API for new heuristics. *(Item 040)*" in moved
     assert "## Stage 3 — Plugins — Deferred — 🚧" in moved
     assert "| 3 | Plugins | G3 | 🚧 |" in moved
     assert aide.derived_cell_findings(moved.splitlines()) == ([], [], set())
+
+
+def test_an_itemised_deferred_bullet_resumes_by_its_item():
+    """The other order: a marker wired onto a ⏸️ bullet leaves a ⏸️ item,
+    which `set NNN resumed` takes back to 📋."""
+    out = _defer_at(_defer_at(UNMARKED, 3, 1), 3, 2)
+    itemised = out.replace("- ⏸️ Plugin/registration API for new heuristics.",
+                           "- ⏸️ Plugin/registration API for new heuristics. "
+                           "*(Item 040)*")
+    moved = aide.resume_item(itemised, 40, "queued", "2026-10-02")[0]
+    assert "- 📋 Plugin/registration API for new heuristics. *(Item 040)*" in moved
+    assert aide.derived_cell_findings(moved.splitlines()) == ([], [], set())
+
+
+def test_resume_deliverable_again_is_no_change():
+    once = aide.resume_deliverable(_defer_at(UNMARKED, 3, 1), 3, 1, "x",
+                                   "2026-10-02")[0]
+    again, message = aide.resume_deliverable(once, 3, 1, "y", "2026-10-03")
+    assert again == once and "no change" in message
+
+
+@pytest.mark.parametrize("icon,status", [
+    ("🚧", "in-progress"), ("🔍", "in-review"), ("✅", "complete"),
+    ("❌", "excluded")])
+def test_resume_deliverable_refuses_a_bullet_that_is_not_deferred(icon, status):
+    text = UNMARKED.replace("- 📋 Plugin/registration API",
+                            f"- {icon} Plugin/registration API")
+    with pytest.raises(ValueError, match=f"stage 3 deliverable 1 is {icon} "
+                                         f"{status}; only a ⏸️ deferred "
+                                         f"deliverable can be resumed"):
+        aide.resume_deliverable(text, 3, 1, "x", "2026-10-02")
+
+
+def test_resume_deliverable_refuses_an_itemised_bullet_naming_the_item_form():
+    with pytest.raises(ValueError, match=r"resume it by item with `aide "
+                                         r"progress set 031 resumed --reason …`"):
+        aide.resume_deliverable(_defer(UNMARKED), 2, 2, "x", "2026-10-02")
 
 
 def test_set_by_position_writes_through_the_cli_and_no_insight(tmp_path: Path, capsys):
@@ -788,8 +904,10 @@ def test_set_by_position_writes_through_the_cli_and_no_insight(tmp_path: Path, c
     (["--stage", "3", "--deliverable", "1", "deferred"], "--reason is required"),
     (["--stage", "3", "--deliverable", "1", "deferred", "--reason", "a\nb"],
      "line break"),
-    (["--stage", "3", "--deliverable", "1", "done"], "only `deferred` or `dropped` is set by position"),
-    (["--stage", "3", "--deliverable", "1"], "only `deferred` or `dropped` is set by position"),
+    (["--stage", "3", "--deliverable", "1", "done"],
+     "only `deferred`, `dropped` or `resumed` is set by position"),
+    (["--stage", "3", "--deliverable", "1"],
+     "only `deferred`, `dropped` or `resumed` is set by position"),
     (["--stage", "3", "deferred", "--reason", "x"], "go together"),
     (["--deliverable", "1", "deferred", "--reason", "x"], "go together"),
     (["31", "deferred", "--stage", "3", "--deliverable", "1", "--reason", "x"],
@@ -829,8 +947,8 @@ def test_stage_and_deliverable_belong_to_set_alone(tmp_path: Path, capsys):
     repo = _repo(tmp_path, UNMARKED)
     assert aide.main(["--repo", str(repo), "progress", "accept", "3",
                       "--stage", "3", "--deliverable", "1", "--no-commit"]) == 2
-    assert ("belong to `set … deferred` and `set … dropped` alone"
-            in capsys.readouterr().err)
+    assert ("belong to `set … deferred`, `set … dropped` and `set … "
+            "resumed` alone" in capsys.readouterr().err)
 
 
 def _progress_parser():
@@ -1164,3 +1282,93 @@ def test_an_item_number_on_the_drop_form_is_refused_in_its_own_words(
             "item's, so it is not dropped by position") in err
     assert "deferred with" not in err
     assert (repo / "docs" / "aide" / "progress.md").read_bytes() == before
+
+
+# --------------------------------------------------------------------------- #
+# set NNN resumed / set --stage N --deliverable K resumed (issue #380)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("status", ["in-progress", "in-review", "done"])
+def test_a_forward_set_over_a_deferred_item_is_refused_naming_the_resume(
+        tmp_path: Path, capsys, status):
+    """`set NNN in-progress` on a ⏸️ item never claimed left it 🚧 with no
+    branch, which `claim` never offers. Every forward status is refused now,
+    writing nothing, and the message names the one way back."""
+    repo = _repo(tmp_path, _defer())
+    path = repo / "docs" / "aide" / "progress.md"
+    before = path.read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", "31", status,
+                      "--no-commit"]) == 1
+    err = capsys.readouterr().err
+    assert "item 031 is ⏸️ deferred" in err
+    assert "`aide progress set 031 resumed --reason …`" in err
+    assert "NOT changed" in err
+    assert path.read_bytes() == before
+
+
+def test_set_resumed_writes_through_the_cli_and_no_insight(tmp_path: Path, capsys):
+    repo = _repo(tmp_path, _defer())
+    path = repo / "docs" / "aide" / "progress.md"
+    assert aide.main(["--repo", str(repo), "progress", "set", "31", "resumed",
+                      "--reason", "owner wants it now", "--date", "2026-10-02",
+                      "--no-commit"]) == 0
+    assert "item 031: resumed — owner wants it now" in capsys.readouterr().out
+    assert path.read_text(encoding="utf-8") == aide.resume_item(
+        _defer(), 31, "owner wants it now", "2026-10-02")[0]
+    assert (repo / "docs" / "aide" / "insights.md").read_text(
+        encoding="utf-8") == "# Insight Inbox\n"
+    # Resumed, the item moves forward again.
+    assert aide.main(["--repo", str(repo), "progress", "set", "31",
+                      "in-progress", "--no-commit"]) == 0
+
+
+@pytest.mark.parametrize("argv, code, message", [
+    (["31", "resumed"], 2, "--reason is required"),
+    (["31", "resumed", "--reason", "  "], 2, "--reason is required"),
+    (["31", "resumed", "--reason", "a\nb"], 2, "line break"),
+    (["31", "resumed", "--criterion", "1", "--reason", "x"], 2, "resumed whole"),
+    (["30", "resumed", "--reason", "x"], 1, "only a ⏸️ deferred item can be resumed"),
+], ids=["no-reason", "blank-reason", "two-lines", "with-criterion", "done-item"])
+def test_set_resumed_refuses_and_writes_nothing(tmp_path: Path, capsys, argv,
+                                                code, message):
+    repo = _repo(tmp_path, _defer())
+    path = repo / "docs" / "aide" / "progress.md"
+    before = path.read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", *argv,
+                      "--no-commit"]) == code
+    assert message in capsys.readouterr().err
+    assert path.read_bytes() == before
+
+
+def test_resume_by_position_writes_through_the_cli(tmp_path: Path, capsys):
+    deferred = _defer_at(UNMARKED, 3, 1)
+    repo = _repo(tmp_path, deferred)
+    path = repo / "docs" / "aide" / "progress.md"
+    assert aide.main(["--repo", str(repo), "progress", "set", "--stage", "3",
+                      "--deliverable", "1", "resumed", "--reason", "queued",
+                      "--date", "2026-10-02", "--no-commit"]) == 0
+    assert path.read_text(encoding="utf-8") == aide.resume_deliverable(
+        deferred, 3, 1, "queued", "2026-10-02")[0]
+    assert (repo / "docs" / "aide" / "insights.md").read_text(
+        encoding="utf-8") == "# Insight Inbox\n"
+
+
+@pytest.mark.parametrize("argv, code, message", [
+    (["--stage", "3", "--deliverable", "1", "resumed"], 2,
+     "--reason is required"),
+    (["31", "resumed", "--stage", "3", "--deliverable", "1", "--reason", "x"],
+     2, "an itemised bullet is resumed with `aide progress set NNN resumed"),
+    (["--stage", "3", "--deliverable", "2", "resumed", "--reason", "x"], 0,
+     "no change"),
+    (["--stage", "2", "--deliverable", "2", "resumed", "--reason", "x"], 1,
+     "`aide progress set 031 resumed --reason …`"),
+], ids=["no-reason", "with-number", "planned-bullet", "itemised"])
+def test_resume_by_position_refuses_and_writes_nothing(tmp_path: Path, capsys,
+                                                       argv, code, message):
+    repo = _repo(tmp_path, _defer_at(UNMARKED, 3, 1))
+    path = repo / "docs" / "aide" / "progress.md"
+    before = path.read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", *argv,
+                      "--no-commit"]) == code
+    captured = capsys.readouterr()
+    assert message in captured.err + captured.out
+    assert path.read_bytes() == before
