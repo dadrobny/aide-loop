@@ -163,7 +163,7 @@ instead — that is the bump policy above, and it is enforced by
   now stale on the same ground as a ✅ one (a 🚧 or ⏸️ item in a withdrawn
   stage is not, until its owner drops it with `aide progress set NNN
   dropped`): `aide check` warns `stale claim branch …:
-  item NNN is ❌ (dropped)` (or `(withdrawn with stage N)`), `aide status`
+  item NNN is ❌ (dropped)` (or `is 📋 in withdrawn stage N`), `aide status`
   marks it STALE, and `aide gc` takes it as a candidate. `gc`'s safety is
   unchanged: it still asks git, so a ❌ item's branch carrying work not in
   its base is skipped, and `--abandon` is the explicit route. A 🔍 item's

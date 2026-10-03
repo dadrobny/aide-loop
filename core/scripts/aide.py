@@ -2234,9 +2234,10 @@ def withdrawn_stage_items(lines: List[str]) -> Dict[int, List[str]]:
 def spent_by_withdrawal(lines: List[str],
                         item_status: Dict[int, str]) -> Dict[int, str]:
     """Items whose claim branch is spent by a ❌ rather than a ✅, each with
-    the words saying which ❌ (issue #387): ``dropped`` for an item ❌ by
-    its own bullets, ``withdrawn with stage N`` for one every bullet of which
-    sits in a withdrawn stage.
+    the words saying what the item is (issue #387): ``❌ (dropped)`` for an
+    item ❌ by its own bullets, ``📋 in withdrawn stage N`` for one every
+    bullet of which sits in a withdrawn stage — the stage is ❌, not the
+    item, so the message says which.
 
     The ❌ half of §2's stale-claim ground, which `aide check`, `aide status`
     and `aide gc` read beside the ✅ half. The withdrawn-stage route takes a
@@ -2245,11 +2246,11 @@ def spent_by_withdrawal(lines: List[str],
     branch is an open PR's head — none is stale until its owner drops it
     (`aide progress set NNN dropped`), which puts it on the dropped ground.
     """
-    out: Dict[int, str] = {n: "dropped" for n, st in item_status.items()
+    out: Dict[int, str] = {n: "❌ (dropped)" for n, st in item_status.items()
                            if st == "excluded"}
     for n, stages in withdrawn_stage_items(lines).items():
         if n not in out and item_status.get(n, "planned") == "planned":
-            out[n] = (f"withdrawn with stage{'' if len(stages) == 1 else 's'} "
+            out[n] = (f"📋 in withdrawn stage{'' if len(stages) == 1 else 's'} "
                       + ", ".join(stages))
     return out
 
@@ -7938,8 +7939,8 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
             # The ❌ half of the stale ground (issue #387): a dropped item's
             # branch had no route out, since `merge` refuses a ❌ item.
             warnings.append(
-                f"stale claim branch {br}: item {n:03d} is ❌ "
-                f"({withdrawn_items[n]}), so nothing will merge it — 'aide gc' "
+                f"stale claim branch {br}: item {n:03d} is "
+                f"{withdrawn_items[n]}, so nothing will merge it — 'aide gc' "
                 f"deletes it once git shows nothing on it unlanded, and "
                 f"'aide gc --abandon' deletes it with its work")
 
@@ -17716,7 +17717,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             if st == "complete":
                 note = " — STALE (item ✅; run 'aide gc')"
             elif num in withdrawn_items:
-                note = f" — STALE (item ❌, {withdrawn_items[num]}; run 'aide gc')"
+                note = f" — STALE (item {withdrawn_items[num]}; run 'aide gc')"
             elif st == "in-review":
                 # Recommending `gc` here would be recommending the deletion of
                 # an open PR's head branch. It is awaiting a human, not stale.
@@ -17998,7 +17999,7 @@ def cmd_gc(args: argparse.Namespace) -> int:
         if num is not None and (item_status.get(num) == "complete"
                                 or num in withdrawn_items):
             reason = (f"item {num:03d} is ✅" if num not in withdrawn_items
-                      else f"item {num:03d} is ❌, {withdrawn_items[num]}")
+                      else f"item {num:03d} is {withdrawn_items[num]}")
             # `progress.md` is a document, edited by agents and humans; git is
             # the authority on whether the commits landed, and until 1.20.0 it
             # was never asked. A ✅ can outrun the merge easily — a commit added

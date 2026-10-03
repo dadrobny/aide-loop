@@ -821,8 +821,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_aide_git::test_check_does_not_call_a_branch_awaiting_review_stale"),
         # The ✅ half is `item_status.get(n) == "complete"`, the ❌ half
         # `spent_by_withdrawal` — `item_status` "excluded", or every bullet
-        # in a `withdrawn_stages` section (`withdrawn_stage_items`), bar ✅
-        # and 🔍 (issue #387).
+        # in a `withdrawn_stages` section (`withdrawn_stage_items`) for a 📋
+        # item only (issue #387).
         ("A claim branch is reported stale when its item is \u2705, or "
          "\u274c by its own bullets, or \U0001f4cb with every bullet in a "
          "stage whose summary row is \u274c",

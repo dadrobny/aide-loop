@@ -123,7 +123,11 @@ acts on** (`gc -h` says what it asks git, and what it refuses).
   one by one until each was dropped (issue #387). The ❌ ground goes through
   the same oracle as the ✅ one, so a dropped item's branch carrying work is
   kept until `--abandon` says to discard it; the document's ❌ decides only
-  that the branch is a candidate, never that its work may go.
+  that the branch is a candidate, never that its work may go. A withdrawn
+  stage spends only its 📋 items: a 🚧 or ⏸️ one there is work someone is
+  doing or holding, and reading the stage's ❌ as their drop would let `gc`
+  take a fresh claim branch from under its builder — the owner's own drop is
+  the signal.
 - **Why the preview is exact.** A dry run a human is asked to approve must not
   overstate, so every skip — checked out, unlanded, git too old — is decided
   before anything is printed and shown on both paths.

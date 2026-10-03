@@ -2701,7 +2701,7 @@ def test_withdrawn_stage_items_reads_only_items_wholly_inside_one():
     assert aide.withdrawn_stage_items(lines) == {29: ["2"]}
     status = aide._parse_item_status(lines)[2]
     assert aide.spent_by_withdrawal(lines, status) == {
-        27: "dropped", 29: "withdrawn with stage 2"}
+        27: "❌ (dropped)", 29: "📋 in withdrawn stage 2"}
 
 
 def test_spent_by_withdrawal_takes_only_a_planned_item_of_a_withdrawn_stage():
@@ -2760,13 +2760,13 @@ def test_check_and_status_name_a_withdrawn_items_branch_stale(tmp_path: Path,
     stale = [w for w in warnings if w.startswith("stale claim branch")]
     assert len(stale) == 2
     assert any("item 027 is ❌ (dropped)" in w for w in stale)
-    assert any("item 029 is ❌ (withdrawn with stage 2)" in w for w in stale)
+    assert any("item 029 is 📋 in withdrawn stage 2" in w for w in stale)
     _run(["git", "branch", "aide/029-extras"], root)
     _run(["git", "branch", "aide/030-shared"], root)
     capsys.readouterr()
     aide.main(["--repo", str(root), "status"])
     out = capsys.readouterr().out
-    assert "aide/029-extras (item 029: planned) — STALE (item ❌" in out
+    assert "aide/029-extras (item 029: planned) — STALE (item 📋 in withdrawn stage 2" in out
     assert "aide/030-shared (item 030: planned)\n" in out
 
 
@@ -2790,7 +2790,7 @@ def test_gc_keeps_a_withdrawn_items_branch_carrying_work(tmp_path: Path, capsys)
     assert rc == 0
     branches = _run(["git", "branch"], root).stdout
     assert "aide/029-extras" in branches and "aide/027-bounds-rules" in branches
-    assert "skipping aide/029-extras" in out and "item 029 is ❌" in out
+    assert "skipping aide/029-extras" in out and "item 029 is 📋 in withdrawn stage 2" in out
     assert aide.main(["--repo", str(root), "gc", "--abandon", "--yes"]) == 0
     branches = _run(["git", "branch"], root).stdout
     assert "aide/029-extras" not in branches
