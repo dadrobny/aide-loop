@@ -12,9 +12,11 @@ branch** (config `git.branch_prefix`, default `aide/`) — not `progress.md`'s
 2. Read the live queue (§1 → `queue-NNN.md`) + `progress.md`; pick the item
    the rule in `aide claim -h` names — the **first** 📋 item the queue lists
    whose dependencies have all left the way, that no unresolved human gate
-   reaches, and that has no existing `aide/NNN-*` branch. The pick is
-   mechanism the CLI owns, so `-h` is where it is stated; what matters here is
-   that a role never chooses an item itself. With `loop.claim_scope = "all-open"` in
+   reaches, and that has no existing `aide/NNN-*` branch. **Withdrawn work is
+   never offered**: a dropped item is ❌, not 📋, and an item whose every
+   bullet sits in a stage whose summary row is ❌ is skipped and named. The
+   pick is mechanism the CLI owns, so `-h` is where it is stated; what matters
+   here is that a role never chooses an item itself. With `loop.claim_scope = "all-open"` in
    `aide.toml`, claiming scans **every** open queue in number order instead —
    opt-in, because the one-queue scope is also the human-checkpoint boundary.
 3. Create and push `aide/NNN-short-name` (push depends on `git.mode`; `local`
@@ -53,10 +55,10 @@ non-zero on it as on an unpublished claim.
 **`none left` means the ground checked was empty, and nothing else.** A queue
 still open while nothing in it is offerable is a different answer, and `claim`
 gives the reason per item — an unresolved gate, a claim already in flight, a
-dependency not landed, an unpublished or deleted claim — or names the
-human-gates row it cannot read, which holds every item (§1 → human gates). The
-first three are ordinary and exit 0; the last two are defects and exit
-non-zero.
+dependency not landed, a withdrawn stage, an unpublished or deleted claim — or
+names the human-gates row it cannot read, which holds every item (§1 → human
+gates). The first four are ordinary and exit 0; the last two are defects and
+exit non-zero.
 
 One person (or one loop) owns an item at a time. Abandoning an item means
 deleting its remote branch so the item returns to the pool; `aide check` flags a
@@ -64,7 +66,13 @@ claim branch whose item is already ✅ (stale claim), and `aide gc` deletes such
 branches — local and remote — deterministically (dry-run by default, `--yes` to
 act; `--merged` also collects branches already merged into main).
 
-**`gc` asks git, not the document.** A ✅ item whose branch still carries
+**A ❌ item's claim is spent as a ✅ one is.** An item dropped by its own
+bullets, or one whose every bullet sits in a withdrawn stage, will never be
+merged, so its claim branch is stale on the same ground: `check` and `status`
+name it, and `gc` collects it. A 🔍 item's branch is never stale, however its
+stage is marked — it is an open PR's head.
+
+**`gc` asks git, not the document.** A ✅ or ❌ item whose branch still carries
 unlanded content is **skipped** with the base named; `--abandon` deletes it
 anyway, for the genuinely abandoned claim. **The preview is the set `--yes`
 acts on** (`gc -h` says what it asks git, and what it refuses).
@@ -105,6 +113,15 @@ acts on** (`gc -h` says what it asks git, and what it refuses).
   and which also strengthens `--merged`. `merge-tree --write-tree` needs
   git ≥ 2.38, and on older git the ✅ ground refuses rather than falling back
   to a weaker test — old git is always *more* conservative, never less.
+- **Why ❌ is a stale ground, and not only ✅.** 2.34.0 gave ❌ two routes —
+  `aide progress set NNN dropped` for an item, a ❌ summary row for a stage —
+  and `merge` began refusing a ❌ item, but the stale ground stayed ✅ alone:
+  a 🚧 item dropped at the round cap kept its claim branch with nothing
+  pointing at it, and `claim` still handed out a withdrawn stage's 📋 items
+  one by one until each was dropped (issue #387). The ❌ ground goes through
+  the same oracle as the ✅ one, so a dropped item's branch carrying work is
+  kept until `--abandon` says to discard it; the document's ❌ decides only
+  that the branch is a candidate, never that its work may go.
 - **Why the preview is exact.** A dry run a human is asked to approve must not
   overstate, so every skip — checked out, unlanded, git too old — is decided
   before anything is printed and shown on both paths.

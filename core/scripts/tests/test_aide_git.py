@@ -2651,3 +2651,154 @@ def test_tools_python_is_the_interpreter_suggested_commands_print(tmp_path: Path
     (ddir / "insights.md").write_text("<<<<<<< HEAD\n", encoding="utf-8")
     assert any("`python3 .aide/scripts/aide.py insights resolve`" in e
                for e in aide.conflict_marker_errors(ddir, tmp_path))
+
+
+# --------------------------------------------------------------------------- #
+# Withdrawn work and the claim protocol — issue #387
+# --------------------------------------------------------------------------- #
+# Since 2.34.0 ❌ has two routes: `aide progress set NNN dropped` for an item,
+# and a ❌ Stage summary row for a whole stage. `claim` offered a withdrawn
+# stage's 📋 items, and a ❌ item's claim branch had no route out: the stale
+# ground was ✅ alone, and `merge` refuses a ❌ item.
+WITHDRAWN_PROGRESS = """\
+# Demo — Progress
+
+## Stage summary
+
+| Stage | Title | Objectives | Status |
+|-------|-------|-----------|--------|
+| 1 | Rules | G1 | 🚧 |
+| 2 | Later | G1 | ❌ |
+
+## Objective coverage
+
+| Objective | Delivered by | Status |
+|-----------|--------------|--------|
+| G1 Rules | Stage 1, 2 | 🚧 |
+
+## Stage 1 — Rules — 🚧
+
+**Deliverables.**
+- ✅ Core. *(Item 026)*
+- ❌ Bounds. *(Item 027)*
+- 📋 Coverage. *(Item 028)*
+- 📋 Shared, first half. *(Item 030)*
+
+## Stage 2 — Later
+
+**Deliverables.**
+- 📋 Extras. *(Item 029)*
+- 📋 Shared, second half. *(Item 030)*
+
+**Acceptance.**
+- [ ] Rules fire.
+"""
+
+
+def test_withdrawn_stage_items_reads_only_items_wholly_inside_one():
+    lines = WITHDRAWN_PROGRESS.splitlines()
+    # 030 has a bullet in stage 1 as well, so part of it is still wanted.
+    assert aide.withdrawn_stage_items(lines) == {29: ["2"]}
+    status = aide._parse_item_status(lines)[2]
+    assert aide.spent_by_withdrawal(lines, status) == {
+        27: "dropped", 29: "withdrawn with stage 2"}
+
+
+def test_spent_by_withdrawal_leaves_a_review_and_a_landed_item_out():
+    """A 🔍 item's branch is an open PR's head, and a ✅ one is stale on the
+    ✅ ground already."""
+    for icon in ("🔍", "✅"):
+        lines = WITHDRAWN_PROGRESS.replace("- 📋 Extras.",
+                                           f"- {icon} Extras.").splitlines()
+        status = aide._parse_item_status(lines)[2]
+        assert 29 not in aide.spent_by_withdrawal(lines, status)
+
+
+def _withdrawn_repo(tmp_path: Path) -> Path:
+    root = _init_repo(tmp_path / "r", mode="local")
+    d = root / "docs" / "aide"
+    (d / "progress.md").write_text(WITHDRAWN_PROGRESS, encoding="utf-8")
+    (d / "queue" / "queue-003.md").write_text(
+        QUEUE.replace("### Item 026", "### Item 029: Extras\nExtras.\n\n"
+                                      "### Item 026"), encoding="utf-8")
+    _run(["git", "add", "-A"], root)
+    _run(["git", "commit", "-m", "withdraw stage 2"], root)
+    return root
+
+
+def test_claim_skips_an_item_of_a_withdrawn_stage(tmp_path: Path, capsys):
+    """029 is listed first and 📋, but stage 2 is withdrawn; 027 is ❌."""
+    root = _withdrawn_repo(tmp_path)
+    assert aide.main(["--repo", str(root), "claim", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "would claim item 028" in out
+
+
+def test_claim_names_a_withdrawn_stage_as_the_reason(tmp_path: Path, capsys):
+    root = _withdrawn_repo(tmp_path)
+    d = root / "docs" / "aide"
+    text = (d / "progress.md").read_text(encoding="utf-8")
+    (d / "progress.md").write_text(
+        text.replace("- 📋 Coverage.", "- ✅ Coverage.")
+            .replace("- 📋 Shared, first half.", "- ✅ Shared, first half."),
+        encoding="utf-8")
+    rc = aide.main(["--repo", str(root), "claim", "--dry-run"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "none left — 1 item(s) still open" in out
+    assert "029 Extras — in withdrawn stage 2" in out
+    assert "early ready: no" in out
+
+
+def test_check_and_status_name_a_withdrawn_items_branch_stale(tmp_path: Path,
+                                                             capsys):
+    root = _withdrawn_repo(tmp_path)
+    cfg = aide.load_config(root)
+    branches = ["aide/027-bounds-rules", "aide/029-extras", "aide/030-shared"]
+    _, warnings = aide.run_checks(root, cfg, branches=branches)
+    stale = [w for w in warnings if w.startswith("stale claim branch")]
+    assert len(stale) == 2
+    assert any("item 027 is ❌ (dropped)" in w for w in stale)
+    assert any("item 029 is ❌ (withdrawn with stage 2)" in w for w in stale)
+    _run(["git", "branch", "aide/029-extras"], root)
+    _run(["git", "branch", "aide/030-shared"], root)
+    capsys.readouterr()
+    aide.main(["--repo", str(root), "status"])
+    out = capsys.readouterr().out
+    assert "aide/029-extras (item 029: planned) — STALE (item ❌" in out
+    assert "aide/030-shared (item 030: planned)\n" in out
+
+
+def test_gc_collects_a_dropped_items_landed_branch(tmp_path: Path):
+    """An empty ❌ claim branch — nothing on it the base lacks — goes."""
+    root = _withdrawn_repo(tmp_path)
+    _run(["git", "branch", "aide/027-bounds-rules"], root)
+    aide._record_branch_base(root, "aide/027-bounds-rules", "main")
+    assert aide.main(["--repo", str(root), "gc", "--yes"]) == 0
+    assert "aide/027-bounds-rules" not in _run(["git", "branch"], root).stdout
+
+
+def test_gc_keeps_a_withdrawn_items_branch_carrying_work(tmp_path: Path, capsys):
+    """The safety is the ✅ ground's: git is asked, and work on the branch
+    holds it until --abandon says to discard it."""
+    root = _withdrawn_repo(tmp_path)
+    _make_item_branch(root, "aide/029-extras", "extras.txt")
+    _make_item_branch(root, "aide/027-bounds-rules", "bounds.txt")
+    rc = aide.main(["--repo", str(root), "gc", "--yes"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    branches = _run(["git", "branch"], root).stdout
+    assert "aide/029-extras" in branches and "aide/027-bounds-rules" in branches
+    assert "skipping aide/029-extras" in out and "item 029 is ❌" in out
+    assert aide.main(["--repo", str(root), "gc", "--abandon", "--yes"]) == 0
+    branches = _run(["git", "branch"], root).stdout
+    assert "aide/029-extras" not in branches
+    assert "aide/027-bounds-rules" not in branches
+
+
+def test_gc_leaves_a_live_item_of_the_shared_stage_alone(tmp_path: Path):
+    """030 has a bullet in a stage still in scope: not withdrawn, not stale."""
+    root = _withdrawn_repo(tmp_path)
+    _run(["git", "branch", "aide/030-shared"], root)
+    assert aide.main(["--repo", str(root), "gc", "--abandon", "--yes"]) == 0
+    assert "aide/030-shared" in _run(["git", "branch"], root).stdout

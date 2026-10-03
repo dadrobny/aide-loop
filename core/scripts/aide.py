@@ -2206,6 +2206,52 @@ def withdrawn_stages(lines: List[str]) -> Set[str]:
     return out
 
 
+def withdrawn_stage_items(lines: List[str]) -> Dict[int, List[str]]:
+    """Items every deliverable bullet of which sits in a withdrawn stage,
+    each mapped to those stages' numbers (issue #387).
+
+    A ❌ summary row withdraws the stage's work whatever its bullets still
+    read (`withdrawn_stages`), so an item with a bullet in any stage still in
+    scope, or outside every stage section, is not one: part of it is still
+    wanted. Stage numbers are matched by value, so `Stage 07` is stage 7.
+    """
+    withdrawn = {str(int(s)) if s.isdigit() else s
+                 for s in withdrawn_stages(lines)}
+    if not withdrawn:
+        return {}
+    inside: Dict[int, List[str]] = {}
+    rest = list(lines)
+    for start, end, num in stage_sections(lines):
+        if (str(int(num)) if num.isdigit() else num) not in withdrawn:
+            continue
+        for n in _parse_item_status(lines[start:end])[2]:
+            inside.setdefault(n, []).append(num)
+        rest[start:end] = [""] * (end - start)
+    elsewhere = _parse_item_status(rest)[2]
+    return {n: stages for n, stages in inside.items() if n not in elsewhere}
+
+
+def spent_by_withdrawal(lines: List[str],
+                        item_status: Dict[int, str]) -> Dict[int, str]:
+    """Items whose claim branch is spent by a ❌ rather than a ✅, each with
+    the words saying which ❌ (issue #387): ``dropped`` for an item ❌ by
+    its own bullets, ``withdrawn with stage N`` for one every bullet of which
+    sits in a withdrawn stage.
+
+    The ❌ half of §2's stale-claim ground, which `aide check`, `aide status`
+    and `aide gc` read beside the ✅ half. A ✅ item is the other half and
+    is left out; so is a 🔍 one, whose branch is an open PR's head however
+    its stage is marked.
+    """
+    out: Dict[int, str] = {n: "dropped" for n, st in item_status.items()
+                           if st == "excluded"}
+    for n, stages in withdrawn_stage_items(lines).items():
+        if n not in out and item_status.get(n) not in ("complete", "in-review"):
+            out[n] = (f"withdrawn with stage{'' if len(stages) == 1 else 's'} "
+                      + ", ".join(stages))
+    return out
+
+
 def objective_rollup(nums: List[str], stage_status: Dict[str, str],
                      withdrawn: Set[str] = frozenset()) -> Optional[str]:
     """What an Objective row derives to from the stages it names — in full.
@@ -6685,6 +6731,30 @@ def _roadmap_dependency_text(lines: List[str], start: int, end: int) -> Optional
     return " ".join(p for p in parts if p)
 
 
+def _stages_under_way(ddir: Path, plines: List[str]) -> Set[str]:
+    """Stage numbers (by value) that are under way, for issue #384's warning:
+    deliverables rolling up to 🚧, or a 📋 item listed in an open queue.
+
+    The open queues are `queue_is_open`'s, read from the queue files under
+    *ddir*; an item belongs to the stages whose bullets name it
+    (`stage_item_numbers`).
+    """
+    out = {str(int(n)) for n, st in stage_rollups(plines).items()
+           if n.isdigit() and st == "in-progress"}
+    item_status = _parse_item_status(plines)[2]
+    queued: Set[int] = set()
+    for path in iter_queue_paths(ddir / "queue"):
+        text = path.read_text(encoding=_ENCODING)
+        if queue_is_open(text, item_status):
+            queued.update(n for n in queue_item_numbers(text)
+                          if item_status.get(n, "planned") == "planned")
+    if queued:
+        for _start, _end, num in stage_sections(plines):
+            if num.isdigit() and queued & set(stage_item_numbers(plines, num)):
+                out.add(str(int(num)))
+    return out
+
+
 def forward_dependency_warnings(ddir: Path) -> List[str]:
     """Roadmap stages whose blocking Dependencies name a later-numbered stage.
 
@@ -6704,12 +6774,24 @@ def forward_dependency_warnings(ddir: Path) -> List[str]:
     started stage is frozen, so an error would fail a document the author has
     no edit left to fix but a deferral — a decision for the human at the
     queue boundary, who reads warnings.
+
+    The same pass warns on a stage **under way over an unmet earlier
+    dependency** (issue #384): one whose deliverables roll up to 🚧 in
+    `progress.md`, or that has a 📋 item listed in an open queue, while an
+    earlier stage its blocking slot names is ⏸️ (header or summary row) or
+    withdrawn (summary row ❌, `withdrawn_stages`). §1 → roadmap.md meets a
+    dependency only once its stage is ✅; a 📋, 🚧 or 🔍 earlier stage is
+    the ordinary wait a queue ends, so only the two states a queue cannot
+    end are named. A dependent stage itself ⏸️ or withdrawn is not under way;
+    with no `progress.md` nothing is.
     """
     rpath = ddir / "roadmap.md"
     if not rpath.is_file():
         return []
     rlines = rpath.read_text(encoding=_ENCODING).splitlines()
     deferred: Set[str] = set()
+    withdrawn: Set[str] = set()
+    under_way: Set[str] = set()
     ppath = ddir / "progress.md"
     if ppath.is_file():
         plines = ppath.read_text(encoding=_ENCODING).splitlines()
@@ -6721,12 +6803,35 @@ def forward_dependency_warnings(ddir: Path) -> List[str]:
             if (cells and _reads(_STAGE_SUMMARY, cells) and cells[0].isdigit()
                     and _icon_status(cells[3]) == "deferred"):
                 deferred.add(str(int(cells[0])))
+        withdrawn = {str(int(n)) for n in withdrawn_stages(plines) if n.isdigit()}
+        under_way = _stages_under_way(ddir, plines) - deferred - withdrawn
     out: List[str] = []
     for start, end, num in stage_sections(rlines):
         text = _roadmap_dependency_text(rlines, start, end)
         if text is None:
             continue
-        later = [n for n in blocking_dependency_stages(text) if n > int(num)]
+        named_deps = blocking_dependency_stages(text)
+        if str(int(num)) in under_way:
+            for dep in (n for n in named_deps if n < int(num)):
+                if str(dep) in withdrawn:
+                    out.append(
+                        f"roadmap.md: stage {int(num)} is under way while "
+                        f"stage {dep}, which its Dependencies name, is "
+                        f"withdrawn (❌ summary row in progress.md) — a "
+                        f"dependency on a withdrawn stage is never met, so "
+                        f"stage {int(num)} is re-planned: its Dependencies "
+                        f"reworded while it is 📋, or it is withdrawn too, or "
+                        f"what it still needs enters as a new stage — "
+                        f"§1 → roadmap.md")
+                elif str(dep) in deferred:
+                    out.append(
+                        f"roadmap.md: stage {int(num)} is under way while "
+                        f"stage {dep}, which its Dependencies name, is ⏸️ "
+                        f"deferred — a dependency is met only once its stage "
+                        f"is ✅, so stage {int(num)} waits until stage "
+                        f"{dep}'s owner resumes or drops its deferred work "
+                        f"— §1 → roadmap.md")
+        later = [n for n in named_deps if n > int(num)]
         if not later or str(int(num)) in deferred:
             continue
         named = ", ".join(str(n) for n in later)
@@ -7775,6 +7880,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     if branches is None:
         branches = _list_claim_branches(repo_root, prefix)
     _, _, item_status = _parse_item_status(lines)
+    withdrawn_items = spent_by_withdrawal(lines, item_status)
     off_origin = (_branches_off_origin(repo_root, config, prefix)
                   if branches else {})
     for br in branches:
@@ -7825,6 +7931,14 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
         # until the human merges is how a real warning gets tuned out.
         if item_status.get(n) == "complete":
             warnings.append(f"stale claim branch {br}: item {n:03d} is already ✅")
+        elif n in withdrawn_items:
+            # The ❌ half of the stale ground (issue #387): a dropped item's
+            # branch had no route out, since `merge` refuses a ❌ item.
+            warnings.append(
+                f"stale claim branch {br}: item {n:03d} is ❌ "
+                f"({withdrawn_items[n]}), so nothing will merge it — 'aide gc' "
+                f"deletes it once git shows nothing on it unlanded, and "
+                f"'aide gc --abandon' deletes it with its work")
 
     return errors, warnings
 
@@ -13346,7 +13460,9 @@ def _pick_item(repo_root: Path, config, queue_text: str,
     "Unblocked" covers four things: its `## Dependencies` are all under way,
     no claim branch exists for it, **no unresolved human gate holds it**, and,
     for a queue-end item, no other item of its queue still blocks
-    (`queue_end_holds`). A
+    (`queue_end_holds`). An item every bullet of which sits in a withdrawn
+    stage is not planned work at all, and is skipped first
+    (`withdrawn_stage_items`, issue #387). A
     gate naming items (directly, or via a stage reach) skips just those, so the
     queue keeps producing other work; an `all` gate stops everything, which is
     the point of declaring one — a pending decision that could invalidate what
@@ -13369,8 +13485,14 @@ def _pick_item(repo_root: Path, config, queue_text: str,
                     if n is not None}
     titles = _queue_titles(queue_text)
     holds = queue_end_holds(repo_root, config, queue_text, item_status)
+    withdrawn = withdrawn_stage_items(plines)
     for num in queue_item_numbers(queue_text):
         if item_status.get(num, "planned") != "planned":
+            continue
+        # A 📋 item whose every bullet sits in a withdrawn stage is work the
+        # plan no longer wants (issue #387); a dropped item is ❌, and so
+        # never reaches here.
+        if num in withdrawn:
             continue
         if num in claimed_nums:
             continue
@@ -13439,10 +13561,11 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     started: issue #137, where a failed push left a claim branch behind and
     the next run called the queue exhausted.
 
-    Two of the reasons are ordinary — a claim in flight, a dependency not
-    landed — and keep exit 0. An **unpublished** claim is not: it is a `claim`
-    whose push failed, holding an item on evidence no other checkout can see,
-    so it exits 1 and says how to finish or release it. Nor is an
+    Three of the reasons are ordinary — a claim in flight, a dependency not
+    landed, a stage withdrawn under a 📋 item (issue #387) — and keep exit
+    0. An **unpublished** claim is not: it is a `claim` whose push failed,
+    holding an item on evidence no other checkout can see, so it exits 1 and
+    says how to finish or release it. Nor is an
     **unreadable gate row**, which holds every item on a gate nobody can read:
     exit 1, naming the row.
 
@@ -13484,6 +13607,13 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     open_items = {n for n in seen
                   if item_status.get(n, "planned") == "planned"}
     open_ordered = [n for n in scan_order if n in open_items]
+    # 📋 items of a withdrawn stage (issue #387) are named, never offered,
+    # and wait on nothing a gate or a claim could release: every reading
+    # below of what holds the queue takes the rest.
+    withdrawn = {n: st for n, st in withdrawn_stage_items(plines).items()
+                 if n in open_items}
+    live_items = open_items - set(withdrawn)
+    live_ordered = [n for n in open_ordered if n not in withdrawn]
 
     # Attribute the empty result to a gate ONLY when a gate actually explains
     # it: an `all` gate, or a gate reaching an item that is still open in a
@@ -13492,10 +13622,10 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     # false explanation, which is worse than none.
     def _reached(g):
         if g.blocks_all:
-            return set(open_items)
+            return set(live_items)
         if g.stage is not None:
-            return set(gate_stage_items(plines, g)) & open_items
-        return set(g.blocks) & open_items
+            return set(gate_stage_items(plines, g)) & live_items
+        return set(g.blocks) & live_items
 
     all_gates = human_gates(plines)
     relevant = [(n, g, gid) for n, (g, gid)
@@ -13515,11 +13645,11 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     # tell the runner to wait on a hold nothing in the loop will release.
     stranded = {n: pair for n, pair
                 in _off_origin_claim_branches(repo_root, config, prefix).items()
-                if n in open_items}
+                if n in live_items}
     gated: set = set()
     for _, g, _ in relevant:
         gated |= _reached(g)
-    early = _early_ready(repo_root, config, open_ordered,
+    early = _early_ready(repo_root, config, live_ordered,
                          [(n, g) for n, g, _ in relevant], gated,
                          claimed, item_status, scan_order, holds)
 
@@ -13595,7 +13725,14 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     for num in open_ordered:
         head = f"  {num:03d} {titles.get(num, 'item ' + str(num))} —"
         br = claimed.get(num)
-        if num in stranded:
+        if num in withdrawn:
+            stages = withdrawn[num]
+            print(f"{head} in withdrawn stage"
+                  f"{'' if len(stages) == 1 else 's'} {', '.join(stages)} "
+                  f"(❌ summary row), so not offered — drop it ('aide "
+                  f"progress set {num:03d} dropped --reason …'), or take the "
+                  f"stage's summary row off ❌")
+        elif num in stranded:
             print(f"{head} {_stranded_reason(num)}")
         elif br is not None:
             print(f"{head} claimed by {br}, already in flight")
@@ -17557,6 +17694,11 @@ def cmd_status(args: argparse.Namespace) -> int:
 
     unpublished = {br for br, why in off_origin.items()
                    if why.kind == OFF_ORIGIN_UNPUBLISHED}
+    withdrawn_items: Dict[int, str] = {}
+    ppath = docs_dir(repo_root, config) / "progress.md"
+    if branches and ppath.is_file():
+        withdrawn_items = spent_by_withdrawal(
+            ppath.read_text(encoding=_ENCODING).splitlines(), item_status)
     if branches:
         for br in branches:
             num = _branch_item_number(br, prefix)
@@ -17570,6 +17712,8 @@ def cmd_status(args: argparse.Namespace) -> int:
             note = ""
             if st == "complete":
                 note = " — STALE (item ✅; run 'aide gc')"
+            elif num in withdrawn_items:
+                note = f" — STALE (item ❌, {withdrawn_items[num]}; run 'aide gc')"
             elif st == "in-review":
                 # Recommending `gc` here would be recommending the deletion of
                 # an open PR's head branch. It is awaiting a human, not stale.
@@ -17795,8 +17939,9 @@ def _gc_ref(branch: str, local: List[str]) -> str:
 
 
 def cmd_gc(args: argparse.Namespace) -> int:
-    """Delete claim branches whose work has landed (item ✅ in progress.md, or
-    ``--merged`` branches already merged into main). Dry-run by default; pass
+    """Delete claim branches whose work has landed (item ✅ in progress.md —
+    or ❌, dropped or withdrawn with its stage — or ``--merged`` branches
+    already merged into main). Dry-run by default; pass
     ``--yes`` to delete. The one destructive verb in the CLI, so it is never
     implicit."""
     repo_root = find_repo_root(args.repo)
@@ -17815,9 +17960,11 @@ def cmd_gc(args: argparse.Namespace) -> int:
 
     progress_path = docs_dir(repo_root, config) / "progress.md"
     item_status: Dict[int, str] = {}
+    withdrawn_items: Dict[int, str] = {}
     if progress_path.is_file():
-        _, _, item_status = _parse_item_status(
-            progress_path.read_text(encoding=_ENCODING).splitlines())
+        plines = progress_path.read_text(encoding=_ENCODING).splitlines()
+        _, _, item_status = _parse_item_status(plines)
+        withdrawn_items = spent_by_withdrawal(plines, item_status)
 
     local = [b for b in _local_branches(repo_root) if b.startswith(prefix)]
     remote = [b for b in _remote_branches(repo_root) if b.startswith(prefix)]
@@ -17841,8 +17988,14 @@ def cmd_gc(args: argparse.Namespace) -> int:
         # unreviewed work. It stays eligible under --merged, where the ground
         # is "already merged into main" and is checked against git itself.
         num = _branch_item_number(br, prefix)
-        if num is not None and item_status.get(num) == "complete":
-            reason = f"item {num:03d} is ✅"
+        # A ❌ item's branch — dropped, or withdrawn with its stage — is on
+        # the item ground too (issue #387): `merge` refuses it, so nothing
+        # else ever collects it. Same oracle, so a ❌ branch carrying work
+        # is skipped exactly as a ✅ one is, and `--abandon` is its route.
+        if num is not None and (item_status.get(num) == "complete"
+                                or num in withdrawn_items):
+            reason = (f"item {num:03d} is ✅" if num not in withdrawn_items
+                      else f"item {num:03d} is ❌, {withdrawn_items[num]}")
             # `progress.md` is a document, edited by agents and humans; git is
             # the authority on whether the commits landed, and until 1.20.0 it
             # was never asked. A ✅ can outrun the merge easily — a commit added
@@ -18098,7 +18251,13 @@ def build_parser() -> argparse.ArgumentParser:
             "before', where a stage number is one "
             "after the word Stage or Stages, or a slot of bare numbers "
             "\u2014 unless progress.md shows that stage \u23f8\ufe0f on "
-            "its header or summary row; a progress.md stage section with no "
+            "its header or summary row; a roadmap.md stage under way \u2014 "
+            "its deliverables rolling up to \U0001f6a7, or a \U0001f4cb "
+            "item of it listed in an open queue \u2014 while an earlier "
+            "stage its blocking slot names is \u23f8\ufe0f on its header or "
+            "summary row, or withdrawn by a \u274c summary row, where a "
+            "stage itself \u23f8\ufe0f or withdrawn is never under way; a "
+            "progress.md stage section with no "
             "Stage summary row, \u23f8\ufe0f and \u274c stages included, "
             "where a row the reader cannot use still counts for the stage "
             "its Stage cell names; a vision.md G-code with no row in "
@@ -18127,8 +18286,10 @@ def build_parser() -> argparse.ArgumentParser:
             "insights.md and ledger.md, on a queue while it is open and on an "
             "item spec "
             "until its item is \u2705 or \u274c, and never on a document with "
-            "no such line. A \U0001f50d item's claim branch "
-            "is not reported stale.\n"
+            "no such line. A claim branch is reported stale when its item "
+            "is \u2705, or \u274c \u2014 dropped by its own bullets, or "
+            "every bullet in a stage whose summary row is \u274c. A "
+            "\U0001f50d item's claim branch is not reported stale.\n"
             "\n"
             "Over insight citations in docs/aide and tests_dir, the inbox and "
             "its archives excepted: an insight ID written after the word "
@@ -18804,7 +18965,11 @@ def register_git_subcommands(sub) -> None:
             "Picks the first 📋 item the queue lists \u2014 its own "
             "order, not the item numbers \u2014 whose dependencies have all "
             "left the way (\u2705, \u274c or "
-            "\u23f8\ufe0f) and that no unresolved human gate reaches. A "
+            "\u23f8\ufe0f) and that no unresolved human gate reaches. An "
+            "item every deliverable bullet of which sits in a stage whose "
+            "Stage summary row is \u274c \u2014 withdrawn whole \u2014 "
+            "is not offered either, and the report names the stage; an item "
+            "dropped by its own bullets is \u274c, not \U0001f4cb. A "
             "queue-end item, one titled `Validate stage N`, waits besides on "
             "every other item its queue lists that is not one, as on a "
             "dependency, with or without a spec and wherever the queue lists "
@@ -19052,7 +19217,10 @@ def register_git_subcommands(sub) -> None:
         description=(
             "Deletes claim branches, local and remote, whose item is \u2705 in "
             "progress.md, and with --merged also branches already merged into "
-            "the base. On the \u2705 ground a branch goes only when "
+            "the base. An item that is \u274c \u2014 dropped by its own "
+            "bullets, or every bullet in a stage whose summary row is "
+            "\u274c \u2014 is on the \u2705 ground too, bar a "
+            "\U0001f50d one. On the \u2705 ground a branch goes only when "
             "`git merge-tree --write-tree` says merging it into the base would "
             "change nothing; a branch that still carries unlanded content is "
             "skipped with the base named, unless --abandon. merge-tree "
@@ -19071,8 +19239,9 @@ def register_git_subcommands(sub) -> None:
                       help="ref --merged is measured against (default: the "
                            "current branch's recorded base, else main_branch)")
     p_gc.add_argument("--abandon", action="store_true",
-                      help="delete a ✅ item's branch even though its content "
-                           "is not in the base — for a genuinely abandoned claim")
+                      help="delete a ✅ or ❌ item's branch even though its "
+                           "content is not in the base — for a genuinely "
+                           "abandoned claim")
     p_gc.add_argument("--yes", action="store_true", help="actually delete (default: dry run)")
     p_gc.set_defaults(func=cmd_gc)
 

@@ -146,8 +146,8 @@ This is the queue-end step `.aide/README.md` → *The queue-end step* defines
 
 1. **Clean up.** `python .aide/scripts/aide.py gc` to preview, then re-run
    with `--yes` if the list is right. The preview is exactly the set `--yes`
-   deletes, and `gc` deletes on the ✅ ground only after asking git whether
-   the work actually landed. **A `pr`-mode item awaiting its merge is 🔍, not
+   deletes, and `gc` deletes on the ✅ or ❌ ground only after asking git
+   whether the work actually landed. **A `pr`-mode item awaiting its merge is 🔍, not
    ✅, so it is never in that list**; report those as awaiting review instead.
 2. **No queue branch, no PR.** A legacy queue run from `main` has no queue
    PR: skip to the report.

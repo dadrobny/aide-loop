@@ -136,6 +136,38 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.35.0] — 2026-10-03
+
+### Added
+
+- **`aide check` warns on a stage under way over a ⏸️ or withdrawn earlier
+  dependency (issue #384).** Since 2.32.0 §1 → `roadmap.md` meets a blocking
+  dependency on an earlier stage only once that stage is ✅, and since 2.34.0
+  a dependency on a withdrawn stage is never met; the queue-planner hands
+  back on both, but nothing checked them. A stage whose deliverables roll up
+  to 🚧, or that has a 📋 item in an open queue, while an earlier stage its
+  blocking Dependencies name is ⏸️ (header or summary row) or ❌ on its
+  summary row, is now a warning naming both stages and the remedy. A 📋, 🚧
+  or 🔍 earlier stage — the ordinary wait — is not named, and neither is a
+  dependent stage that is ✅, ⏸️, withdrawn, or 📋 and queued nowhere.
+  `aide check -h` and §1 → `roadmap.md` state it.
+
+### Changed
+
+- **The claim protocol honours ❌ work (issue #387).** `aide claim` no
+  longer offers a 📋 item every bullet of which sits in a stage whose Stage
+  summary row is ❌: it skips it, and a `none left — …` report names the
+  withdrawn stage as the item's reason, an ordinary hold that exits 0. A
+  dropped item was already never offered, being ❌ rather than 📋. A ❌
+  item's claim branch — dropped, or withdrawn with its stage — is now stale
+  on the same ground as a ✅ one: `aide check` warns `stale claim branch …:
+  item NNN is ❌ (dropped)` (or `(withdrawn with stage N)`), `aide status`
+  marks it STALE, and `aide gc` takes it as a candidate. `gc`'s safety is
+  unchanged: it still asks git, so a ❌ item's branch carrying work not in
+  its base is skipped, and `--abandon` is the explicit route. A 🔍 item's
+  branch is never stale. §2, `aide claim -h`, `aide check -h` and `aide gc
+  -h` state it, and `/aide-run-queue`'s clean-up step names the ❌ ground.
+
 ## [2.34.0] — 2026-10-02
 
 ### Added
