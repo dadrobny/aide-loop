@@ -217,14 +217,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `bootstrap_argv` reads the first word; `bootstrap_command_env` and
         # `resolve_tool(..., path=)` give a command the venv (issue #378).
         ("pip runs as the venv's `python -m pip`; python or python3 is "
-         "replaced by the venv's Python; an option (-m, -c) or a .py file "
-         "is passed to the venv's Python; anything else is a command",
+         "replaced by the venv's Python; an option (-m, -c), a .py file or "
+         "another file in the repository is passed to the venv's Python, as "
+         "every bootstrap but pip was before; anything else is a command",
          ("test_aide_git::test_each_bootstrap_reading_builds_its_argv",
           "test_aide_git::test_a_bootstrap_python_reading_runs_with_the_environment_unchanged")),
         ("found in the venv's script directory first and then on PATH, and "
-         "run with VIRTUAL_ENV set to the venv and that directory first on "
-         "PATH. A command found in neither is a failed bootstrap that names "
-         "it",
+         "run with that directory first on PATH and VIRTUAL_ENV and "
+         "UV_PROJECT_ENVIRONMENT set to the venv. A command found in "
+         "neither is a failed bootstrap that names it",
          ("test_aide_git::test_a_bootstrap_command_runs_with_the_venv_active",
           "test_aide_git::test_a_bootstrap_command_found_nowhere_is_a_failed_bootstrap_that_names_it")),
         ("Exits 0 when every requirement the configuration needs is met",

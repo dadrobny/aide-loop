@@ -13460,18 +13460,29 @@ def _print_dependency_report(repo_root: Path,
 _BOOTSTRAP_PYTHONS = ("python", "python3")
 
 
-def bootstrap_argv(tokens: List[str], vpy: Path) -> Tuple[List[str], bool]:
+def bootstrap_argv(tokens: List[str], vpy: Path,
+                   repo_root: Path) -> Tuple[List[str], bool]:
     """How `env --bootstrap` runs `[python] bootstrap` (split on whitespace,
     as *tokens*) in the venv whose interpreter is *vpy*: the argv, and
     whether it is a command to look up (True) rather than *vpy* run with
     arguments (False).
 
-    A leading `pip` is the venv's `python -m pip`. A leading `python` or
-    `python3` is the venv's Python. A leading option (`-m poetry install`)
-    or `.py` file (`setup.py develop`) is arguments to it — the reading every
-    bootstrap but `pip` had before issue #378, kept so no `aide.toml` that
-    worked has to change. Anything else (`uv sync`, `make dev`) is a command, which
-    used to run as `<venv python> uv sync` and could never succeed.
+    Before issue #378 every bootstrap but a leading `pip` ran as `<vpy>
+    <value>`, so `uv sync` looked for a script file named `uv` and could
+    never succeed. The command reading applies only to a first word that
+    reading could never have run, so every bootstrap that worked runs the
+    same way:
+
+    1. A leading option (`-m poetry install`, `-c …`) or `.py` file
+       (`setup.py develop`) is arguments to the venv's Python.
+    2. A leading `pip` is the venv's `python -m pip`.
+    3. A leading `python` or `python3` is replaced by the venv's Python.
+    4. A first word naming an existing file under *repo_root* (`manage
+       install`, `tools/bootstrap`, `app.pyz install`), or a directory
+       holding a `__main__.py`, is arguments to the venv's Python, as
+       before — so a repository shell script is written
+       `sh tools/bootstrap.sh`.
+    5. Anything else (`uv sync`, `make dev`) is a command.
     """
     first = tokens[0] if tokens else ""
     if not tokens or first.startswith("-") or first.lower().endswith(".py"):
@@ -13480,18 +13491,24 @@ def bootstrap_argv(tokens: List[str], vpy: Path) -> Tuple[List[str], bool]:
         return [str(vpy), "-m", *tokens], False
     if first in _BOOTSTRAP_PYTHONS:
         return [str(vpy), *tokens[1:]], False
+    named = Path(repo_root) / first
+    if named.is_file() or (named / "__main__.py").is_file():
+        return [str(vpy), *tokens], False
     return list(tokens), True
 
 
 def bootstrap_command_env(venv: Path, scripts: Path) -> Dict[str, str]:
     """The environment a bootstrap *command* runs in: this process's, with
-    `VIRTUAL_ENV` naming the venv and its script directory *scripts* first
-    on PATH — what activating the venv sets, so a tool that installs into
-    the active environment (`uv sync`, `poetry install`) installs into this
-    one. `PYTHONHOME` is dropped, as activation drops it."""
+    the venv's script directory *scripts* first on PATH, `VIRTUAL_ENV`
+    naming the venv — what activating it sets, and what `poetry install` or
+    `pdm install` install into — and `UV_PROJECT_ENVIRONMENT` naming it too,
+    since `uv sync` ignores `VIRTUAL_ENV` without `--active` and would fill
+    the project's `.venv` instead of a venv configured elsewhere.
+    `PYTHONHOME` is dropped, as activation drops it."""
     env = dict(os.environ)
     env.pop("PYTHONHOME", None)
     env["VIRTUAL_ENV"] = str(venv)
+    env["UV_PROJECT_ENVIRONMENT"] = str(venv)
     env["PATH"] = os.pathsep.join(
         p for p in (str(scripts), env.get("PATH", "")) if p)
     return env
@@ -13499,12 +13516,14 @@ def bootstrap_command_env(venv: Path, scripts: Path) -> Dict[str, str]:
 
 def _bootstrap_unfound(program: str, repo_root: Path, scripts: Path) -> str:
     """Why the bootstrap command's *program* cannot be found, in the words
-    `RunnerMissing` uses for the test command's (issue #352)."""
+    `RunnerMissing` uses for the test command's (issue #352). A path to a
+    file never reaches here: `bootstrap_argv` hands any existing file to the
+    venv's Python, so a path is missing or names a directory."""
     if _has_directory(program):
         at = Path(program)
         if not at.is_absolute():
             at = repo_root / at
-        where = "is not an executable file" if at.is_file() else "does not exist"
+        where = "is not a file" if at.exists() else "does not exist"
     else:
         where = f"is neither in {scripts} nor on PATH"
     return (f"the [python] bootstrap program '{program}' {where} — install "
@@ -13536,7 +13555,7 @@ def _bootstrap_venv(repo_root: Path, config: Dict[str, Dict[str, object]]) -> in
               f"{made.returncode} — nothing was built.", file=sys.stderr)
         return 1
     vpy = venv_python(repo_root, config)
-    cmd, is_command = bootstrap_argv(bootstrap, vpy)
+    cmd, is_command = bootstrap_argv(bootstrap, vpy, repo_root)
     env: Optional[Dict[str, str]] = None
     unrun: Optional[str] = None
     if is_command:
@@ -19599,12 +19618,16 @@ def register_git_subcommands(sub) -> None:
             "else the report would refuse. It installs with [python] "
             "bootstrap, split on whitespace and read by its first word: pip "
             "runs as the venv's `python -m pip`; python or python3 is "
-            "replaced by the venv's Python; an option (-m, -c) or a .py file "
-            "is passed to the venv's Python; anything else is a command, "
-            "found in the venv's script directory first and then on PATH, "
-            "and run with VIRTUAL_ENV set to the venv and that directory "
-            "first on PATH. A command found in neither is a failed "
-            "bootstrap that names it."))
+            "replaced by the venv's Python; an option (-m, -c), a .py file "
+            "or another file in the repository is passed to the venv's "
+            "Python, as every bootstrap but pip was before; anything else "
+            "is a command, found in the venv's script directory first and "
+            "then on PATH, and run with that directory first on PATH and "
+            "VIRTUAL_ENV and UV_PROJECT_ENVIRONMENT set to the venv. A "
+            "command found in neither is a failed bootstrap that names it. "
+            "Only a first word the old reading could never have run is a "
+            "command, so a bootstrap that worked runs the same way, and a "
+            "shell script in the repository is written `sh <script>`."))
     p_env.add_argument("--bootstrap", action="store_true",
                        help="create + populate the venv if missing/stale, from "
                             "[python] interpreter when set; reports on the "

@@ -5424,8 +5424,8 @@ def test_an_interpreter_this_machine_lacks_stops_the_bootstrap_before_the_venv(
 
 
 # `[python] bootstrap` read by its first word (issue #378): one real build
-# per reading, and one for a program found nowhere — each costs a venv with
-# pip in it, so there are four.
+# per reading — each costs a venv with pip in it, so there are three, and a
+# program found nowhere is left to test_aide_git's stubbed launches.
 def _bootstrap_with(aide, consumer: Path, bootstrap: str) -> int:
     _set_python_keys(consumer, venv=".venv", bootstrap=bootstrap)
     _set_test_command(consumer, "git --version")   # no runner to install
@@ -5468,19 +5468,6 @@ def test_a_bare_command_bootstrap_runs_from_the_venv(aide, consumer: Path):
     assert record["exit"] == 0 and "unrun" not in record
     assert Path(record["command"][0]).parent == scripts
     assert record["command"][1:] == ["--version"]
-
-
-def test_a_bootstrap_command_this_machine_lacks_fails_and_stays_stale(
-        aide, consumer: Path, capsys):
-    """The venv is built, the program is looked for and not found, nothing
-    runs, and `env` keeps refusing the venv until a bootstrap completes."""
-    capsys.readouterr()
-    assert _bootstrap_with(aide, consumer, "no-such-tool-aide-378 sync") == 1
-    assert "Traceback" not in capsys.readouterr().err
-    _, record = _built_venv(consumer)
-    assert record["exit"] != 0 and record["unrun"]
-    status, _ = aide.env_report(consumer, aide.load_config(consumer))
-    assert status == "stale"
 
 
 # --------------------------------------------------------------------------- #

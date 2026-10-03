@@ -2415,7 +2415,15 @@ def test_an_interpreter_path_with_a_space_is_one_command(tmp_path: Path):
 # --------------------------------------------------------------------------- #
 def test_each_bootstrap_reading_builds_its_argv(tmp_path: Path):
     """`uv sync` ran as `<venv python> uv sync`, which looks for a script
-    file named `uv`. pip and the Python-argv forms keep what they ran."""
+    file named `uv`. Only a first word that reading could never have run is
+    a command: pip, the Python-argv forms and a file in the repository keep
+    what they ran."""
+    repo = tmp_path / "repo"
+    (repo / "tools").mkdir(parents=True)
+    for name in ("manage", "tools/bootstrap", "app.pyz"):
+        (repo / name).write_text("", encoding="utf-8")
+    (repo / "tool").mkdir()
+    (repo / "tool" / "__main__.py").write_text("", encoding="utf-8")
     vpy = tmp_path / ".venv" / "bin" / "python"
     v = str(vpy)
     cases = {
@@ -2426,13 +2434,33 @@ def test_each_bootstrap_reading_builds_its_argv(tmp_path: Path):
         "-c pass": ([v, "-c", "pass"], False),
         "setup.py develop": ([v, "setup.py", "develop"], False),
         "tools/Setup.PY": ([v, "tools/Setup.PY"], False),
+        "manage install": ([v, "manage", "install"], False),
+        "tools/bootstrap": ([v, "tools/bootstrap"], False),
+        "app.pyz install": ([v, "app.pyz", "install"], False),
+        "tool install": ([v, "tool", "install"], False),
+        "tools install": (["tools", "install"], True),
+        "./nope.sh": (["./nope.sh"], True),
+        "sh tools/bootstrap": (["sh", "tools/bootstrap"], True),
         "uv sync": (["uv", "sync"], True),
         "make dev": (["make", "dev"], True),
         "pip3 install .": (["pip3", "install", "."], True),
         "py -3.12 -m pip install .": (["py", "-3.12", "-m", "pip", "install", "."], True),
     }
     for value, expected in cases.items():
-        assert aide.bootstrap_argv(value.split(), vpy) == expected, value
+        assert aide.bootstrap_argv(value.split(), vpy, repo) == expected, value
+
+
+def test_a_bootstrap_path_that_is_no_file_is_named_for_what_it_is(tmp_path: Path):
+    """An existing file is the venv's Python's to run, so a path that
+    reaches the command lookup is missing or a directory."""
+    (tmp_path / "tools").mkdir()
+    scripts = tmp_path / ".venv" / "bin"
+    assert "'./nope.sh' does not exist" in aide._bootstrap_unfound(
+        "./nope.sh", tmp_path, scripts)
+    assert "'tools/' is not a file" in aide._bootstrap_unfound(
+        "tools/", tmp_path, scripts)
+    assert f"is neither in {scripts} nor on PATH" in aide._bootstrap_unfound(
+        "uv", tmp_path, scripts)
 
 
 def _scripts_dir(venv: Path) -> Path:
@@ -2448,12 +2476,14 @@ def _fake_program(directory: Path, name: str) -> Path:
     return path
 
 
-def _stub_bootstrap_runs(monkeypatch, venv: Path, program: Optional[str]):
+def _stub_bootstrap_runs(monkeypatch, venv: Path, program: Optional[str],
+                         fail: Optional[OSError] = None):
     """Stand in for every launch `_bootstrap_venv` makes: the venv build
     leaves an interpreter (and *program*) in the venv's script directory,
     a version probe answers, and the bootstrap's own run is recorded and
-    exits 0. The bootstrap runs are returned, each as ``(argv, env)``; the
-    venv report is a stub, since the interpreter left is an empty file."""
+    exits 0 — or raises *fail*. The bootstrap runs are returned, each as
+    ``(argv, env)``; the venv report is a stub, since the interpreter left
+    is an empty file."""
     calls = []
 
     def run(argv, cwd=None, env=None, **_kw):
@@ -2466,6 +2496,8 @@ def _stub_bootstrap_runs(monkeypatch, venv: Path, program: Optional[str]):
         if "-c" in argv and "sys.version_info" in argv[-1]:
             return subprocess.CompletedProcess(argv, 0, stdout="3.12\n", stderr="")
         calls.append((argv, env))
+        if fail is not None:
+            raise fail
         return subprocess.CompletedProcess(argv, 0)
 
     monkeypatch.setattr(aide.subprocess, "run", run)
@@ -2477,8 +2509,9 @@ def _stub_bootstrap_runs(monkeypatch, venv: Path, program: Optional[str]):
 
 def test_a_bootstrap_command_runs_with_the_venv_active(tmp_path: Path, monkeypatch):
     """A bare command is looked up with the venv's script directory first —
-    ahead of a same-named program already on PATH — and runs with that PATH
-    and VIRTUAL_ENV, so `uv sync` installs into this venv. The record names
+    ahead of a same-named program already on PATH — and runs with that PATH,
+    VIRTUAL_ENV and UV_PROJECT_ENVIRONMENT, so `poetry install` and `uv
+    sync` install into this venv, and with no PYTHONHOME. The record names
     the program that ran."""
     (tmp_path / "aide.toml").write_text(
         '[python]\nvenv = ".venv"\nbootstrap = "faketool378 sync --frozen"\n',
@@ -2486,6 +2519,7 @@ def test_a_bootstrap_command_runs_with_the_venv_active(tmp_path: Path, monkeypat
     elsewhere = tmp_path / "elsewhere"
     _fake_program(elsewhere, "faketool378")
     monkeypatch.setenv("PATH", str(elsewhere))
+    monkeypatch.setenv("PYTHONHOME", str(tmp_path / "some-other-python"))
     venv = tmp_path / ".venv"
     calls = _stub_bootstrap_runs(monkeypatch, venv, "faketool378")
 
@@ -2496,6 +2530,8 @@ def test_a_bootstrap_command_runs_with_the_venv_active(tmp_path: Path, monkeypat
     assert Path(argv[0]).name.lower().startswith("faketool378")
     assert argv[1:] == ["sync", "--frozen"]
     assert env["VIRTUAL_ENV"] == str(venv)
+    assert env["UV_PROJECT_ENVIRONMENT"] == str(venv)
+    assert "PYTHONHOME" not in env
     assert env["PATH"].split(os.pathsep) == [str(scripts), str(elsewhere)]
     record = aide._read_bootstrap_record(venv)
     assert record["exit"] == 0 and record["command"] == argv
@@ -2533,6 +2569,23 @@ def test_a_bootstrap_command_found_nowhere_is_a_failed_bootstrap_that_names_it(
     assert "Traceback" not in err
     record = aide._read_bootstrap_record(venv)
     assert record["exit"] == 127 and "no-such-tool-378" in record["unrun"]
+
+
+def test_a_bootstrap_that_cannot_start_is_a_failed_bootstrap_not_a_traceback(
+        tmp_path: Path, monkeypatch, capsys):
+    (tmp_path / "aide.toml").write_text(
+        '[python]\nvenv = ".venv"\nbootstrap = "python -m pip install ."\n',
+        encoding="utf-8")
+    venv = tmp_path / ".venv"
+    calls = _stub_bootstrap_runs(monkeypatch, venv, None,
+                                 fail=OSError(8, "Exec format error"))
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(tmp_path), "env", "--bootstrap"]) == 1
+    assert len(calls) == 1
+    assert "Traceback" not in capsys.readouterr().err
+    record = aide._read_bootstrap_record(venv)
+    assert record["exit"] == 126 and "cannot be run" in record["unrun"]
 
 
 def test_an_unrun_bootstrap_record_makes_the_venv_stale(bare_venv: Path):
