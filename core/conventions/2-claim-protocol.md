@@ -69,11 +69,11 @@ act; `--merged` also collects branches already merged into main).
 **A ❌ item's claim is spent as a ✅ one is.** An item dropped by its own
 bullets, or a 📋 one whose every bullet sits in a withdrawn stage, will never
 be merged — `aide merge` refuses both — so its claim branch is stale on the
-same ground: `check` and
-`status` name it, and `gc` collects it. A 🚧 or ⏸️ item in a withdrawn stage is
-live or owner-held work, not stale until its owner drops it (`aide progress set
-NNN dropped`), and `merge` takes it. A 🔍 item's branch is never stale, however its stage is marked —
-it is an open PR's head.
+same ground: `check` and `status` name it, and `gc` collects it. A 🚧 or ⏸️
+item in a withdrawn stage is live or owner-held work, not stale until its
+owner drops it (`aide progress set NNN dropped`), and `merge` takes it. A 🔍
+item's branch is never stale, however its stage is marked — it is an open
+PR's head.
 
 **`gc` asks git, not the document.** A ✅ or ❌ item whose branch still carries
 unlanded content is **skipped** with the base named; `--abandon` deletes it

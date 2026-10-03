@@ -41,9 +41,8 @@ one, `aide check` and `aide queue tidy` keep its declared status honest, and
   Wherever the file lists it, it runs last: `aide claim` holds it until every
   other item on its queue that is not a queue-end item has left the way, bar
   one whose dependencies lead back to it and a 📋 one of a withdrawn stage,
-  and `aide check --queue NNN` warns
-  when open work that does not depend on it is listed after it, so an item
-  added after planning goes above it. Stage validation is its only trigger
+  and `aide check --queue NNN` warns when open work that does not depend on
+  it is listed after it, so an item added after planning goes above it. Stage validation is its only trigger
   today, so it is planned only on a queue that closes a roadmap stage, and
   only when `aide check --queue NNN` warns that the stage still has work for
   one. The planner reads that warning and never works the need out itself; with no such warning, the queue ends
