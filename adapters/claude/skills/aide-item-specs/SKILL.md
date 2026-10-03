@@ -212,11 +212,12 @@ agree with a later engine.
 **`## Dependencies` blocks `aide claim`**: every item number named there is
 read as something this item is blocked on until that item is merged (✅), or
 leaves the queue's way as ❌ excluded, ⏸️ deferred, or 📋 in a withdrawn stage
-(summary row ❌) — 🚧 and 🔍 both still block, in a withdrawn stage too. Text at or after a literal `**Downstream` marker is excluded from that
-scan, so put such asides after the marker, never before it. The rest of any
-line from a backticked or bold `Blocks:` label on is excluded too, so quoting a
-gate row's reach adds no edges; keep a reach quote on one line — the exclusion
-does not extend past it.
+(summary row ❌) — 🚧 and 🔍 both still block, in a withdrawn stage too. Text
+at or after a literal `**Downstream` marker is excluded from that scan, so put
+such asides after the marker, never before it. The rest of any line from a
+backticked or bold `Blocks:` label on is excluded too, so quoting a gate row's
+reach adds no edges; keep a reach quote on one line — the exclusion does not
+extend past it.
 
 **An acceptance criterion is an invariant over the resulting content** — never
 a bound on the diff that produced it, and never a premise about a sibling

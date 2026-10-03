@@ -153,11 +153,14 @@ instead — that is the bump policy above, and it is enforced by
   items — the one `aide queue tidy` stamps completed — and a queue declared
   `Live` over the same tree is warned with `every item is finished or 📋 in
   a withdrawn stage`. Such an item's spec, and a queue left with only such
-  items, are records, as a ⏸️ item's are: the sweeps that ask an author to
-  edit a document skip them, read afresh on every run, and a template-drift
-  warning no longer names that queue. A 🚧 or 🔍 item of a withdrawn stage
-  is unchanged everywhere — live work until its owner drops it. `aide check
-  -h` states the record half.
+  items, are records, as a ⏸️ item's are, read afresh on every run: the
+  insight and gate citation-by-position warnings and the stale
+  engine-marker assumption warning skip them. The template-drift warning no
+  longer names such a queue, and keeps such a spec in scope, as it does a ⏸️
+  one, since a summary row taken off ❌ revives it. A 🚧 or 🔍 item of a
+  withdrawn stage is unchanged everywhere — live work until its owner drops
+  it. §1 → `insights.md` and `items.md` and `aide check -h` state the record
+  half.
 - **A dependency on a withdrawn stage's 📋 item has left the queue's way, as
   a ❌ one has (issue #393).** It read as 📋, a blocking status, so its
   dependents were held for good — `claim` reported them `waiting on NNN
@@ -167,13 +170,13 @@ instead — that is the bump policy above, and it is enforced by
   `aide check --queue`'s ordering and cycle graph, so they cannot disagree.
   `aide check --queue` also counts such an item spent, as an excluded one:
   no scope conflict with it is reported, and a queue whose items are all
-  spent or withdrawn gets no queue-end findings, and `claim`'s interface-pin
+  spent or withdrawn gets no queue-end findings. `claim`'s interface-pin
   line names such a dependency as having no code to check against, as §5
   does for a ❌ or ⏸️ one. A 🚧 or 🔍 dependency in a withdrawn stage still
-  blocks. §1 → `items.md` states it (the
-  `## Dependencies` sentence and the record sentence, with the why in its
-  Rationale) and §5 the interface-pin case, the `aide-item-specs` section
-  skill carries and pins both, and `aide claim -h` names the case.
+  blocks. §1 → `items.md` states it (the `## Dependencies` sentence, with
+  the why in its Rationale) and §5 the interface-pin case; the
+  `aide-item-specs` section skill carries and pins both, and `aide claim -h`
+  names the case.
 
 ## [2.35.1] — 2026-10-03
 

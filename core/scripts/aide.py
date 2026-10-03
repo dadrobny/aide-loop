@@ -4256,9 +4256,10 @@ def insight_reference_findings(repo_root: Path,
       labelled fallback where there is no history to read. Tests are read
       too (issue #295): a comment or an assertion message naming "insight
       28" goes stale on the same archive a spec does. A record
-      (``record_documents`` — a ✅, ❌ or ⏸️ item's spec, a queue with no
-      open item) is not warned about (issue #338): §1 never rewrites one, so
-      the warning could not be cleared.
+      (``record_documents`` — a ✅, ❌ or ⏸️ item's spec, or a 📋 one of a
+      withdrawn stage, and a queue with no open item) is not warned about
+      (issue #338, #393): §1 never rewrites one, so the warning could not be
+      cleared.
 
     The first finding holds in a record too: an ID naming nothing is a
     citation no reader can follow, whoever wrote it.
@@ -7312,10 +7313,11 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide",
     A fifth is advisory rather than structural: an assumption marked with the
     engine it was true for — `- **A8 (engine 1.28.1):** …` — whose engine
     predates the installed one. See `_stale_assumption_pins`. It is read on
-    live specs only — not one whose item progress.md shows ✅, ❌ or ⏸️
-    (``record_documents``, issue #338): §1 never rewrites a merged spec, and
-    the appended re-check that clears the warning goes stale at the next
-    release, so on a record it would return forever.
+    live specs only — not one whose item progress.md shows ✅, ❌ or ⏸️, or 📋
+    in a withdrawn stage (``record_documents``, issues #338, #393): §1 never
+    rewrites a merged spec, and the appended re-check that clears the
+    warning goes stale at the next release, so on a record it would return
+    forever.
 
     None of them reads a file that no lookup finds: one whose name
     `item_spec_number` rejects gets a single warning naming the rename instead
@@ -8478,9 +8480,10 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     # two items. A dependency `aide claim` no longer waits for does not hold
     # its dependent back: a ⏸️ deferred blocker — or a ❌ or withdrawn-stage 📋
     # one (`still_blocks`) — is skipped by `_pick_item`, so the dependent is
-    # claimable today and would pin a tree the blocker has not touched yet. Filtering the edges rather than the pairs also
-    # settles the transitive case, where the link that fails to hold is an
-    # intermediate: `b → c (⏸️) → a` leaves b free to build before a.
+    # claimable today and would pin a tree the blocker has not touched yet.
+    # Filtering the edges rather than the pairs also settles the transitive
+    # case, where the link that fails to hold is an intermediate: `b → c (⏸️)
+    # → a` leaves b free to build before a.
     ordering_edges = {num: [d for d in deps
                             if still_blocks(d, item_status, withdrawn)]
                       for num, deps in deps_by_item.items()}
@@ -17810,9 +17813,8 @@ def cmd_status(args: argparse.Namespace) -> int:
             nums = queue_item_numbers(path.read_text(encoding=_ENCODING))
             idle = [n for n in nums if n in withdrawn
                     and item_status.get(n, "planned") == "planned"]
-            open_nums = [n for n in nums if n not in idle
-                         and item_status.get(n, "planned")
-                         in ("planned", "in-progress", "in-review")]
+            open_nums = [n for n in nums
+                         if still_blocks(n, item_status, withdrawn)]
             aside = (("not offered, 📋 in a withdrawn stage: "
                       + ", ".join(f"{n:03d}" for n in idle)) if idle else "")
             if open_nums:
