@@ -100,7 +100,7 @@ def test_no_control_file_instructs_a_raw_pr_command(path: Path):
 # a planner hand-back is never followed by `queue pr` (issue #383)
 # --------------------------------------------------------------------------- #
 _ROADMAP = ADAPTER / "commands" / "aide-run-roadmap.md"
-_QUEUE_CHECK = "git ls-files docs/aide/queue/queue-NNN.md"
+_QUEUE_CHECK = "git cat-file -e HEAD:docs/aide/queue/queue-NNN.md"
 _DISCARD = "python .aide/scripts/aide.py queue discard NNN"
 
 
@@ -124,6 +124,19 @@ def test_the_roadmap_runner_checks_for_the_queue_file_before_queue_pr():
         assert phrase in handback, phrase
 
 
+def test_the_state_reading_checks_the_queue_file_before_built_out():
+    """`status` gives no queue-file signal, so the state reading asks git,
+    and the row that check selects is read before the *built out* row a
+    queue with no file would otherwise match."""
+    text = _ROADMAP.read_text(encoding="utf-8")
+    table = text.split("| State | Action |", 1)[1].split("\n\n", 1)[0]
+    assert "git cat-file -e HEAD:docs/aide/queue/queue-NNN.md" in (
+        text.split("| State | Action |", 1)[0])
+    assert (table.index("carries no queue file of its own number")
+            < table.index("being built is built out"))
+    assert "ls-files" not in text
+
+
 def test_the_runner_discards_through_the_verb_and_never_the_raw_git():
     """The no-commit precondition lives in the verb, not in prose copies of
     it: both places the runner discards a queue branch call it, and nothing
@@ -135,7 +148,7 @@ def test_the_runner_discards_through_the_verb_and_never_the_raw_git():
 
 
 @pytest.mark.parametrize("command", [
-    "git ls-files docs/aide/queue/queue-012.md",
+    "git cat-file -e HEAD:docs/aide/queue/queue-012.md",
     "python .aide/scripts/aide.py queue discard 012",
 ])
 def test_the_hand_back_steps_run_unattended(command):

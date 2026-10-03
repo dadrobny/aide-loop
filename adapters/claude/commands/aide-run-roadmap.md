@@ -111,7 +111,12 @@ series of improvised git/gh probes:
    to it and `git pull` (not in `local` mode or with no origin), and run
    `status` **again there**: its queue file, its items' states and its plan
    gate live on that branch only, so a `status` on `main` cannot see them.
-   `python .aide/scripts/aide.py gate list` prints each gate's ID.
+   `python .aide/scripts/aide.py gate list` prints each gate's ID. Before
+   reading its items, ask git whether the branch's own queue file is
+   committed there — `status` does not say:
+   `git cat-file -e HEAD:docs/aide/queue/queue-NNN.md`, NNN from the
+   branch's name. A non-zero exit is the table's *no queue file* row, which
+   is read before *built out*: a branch with no queue has no items either.
 
 Read `docs/aide/roadmap.md`, `docs/aide/progress.md` and the queue files as
 needed. The loop runs **in-place in the primary checkout** (see *Working in
@@ -124,7 +129,7 @@ parallel* below if you need isolation).
 | **A queue branch's PR was closed without merging** — a line reads `pr=#N/closed` or `orphaned=yes` (`runnable: no` says so too) | **Stop.** Say the PR was closed unmerged and ask the human whether the queue is abandoned (delete the branch and re-plan, via `/aide-feedback-loop` if the roadmap needs it) or the PR should be reopened. Name every `orphaned=yes` branch — built on a batch that was rejected; never restack, build on, approve for, or reopen any of them yourself. |
 | **`queue restack` stopped** (exit 1) | **Stop.** Report its message: a conflict names both branches and leaves everything as it was, and a lower branch git cannot judge names both remedies. |
 | **A lower queue branch has 📋 items again** — a person added an item to its PR in review, and `restack` carried it up the stack | Build it **on that branch**, not the top: switch to it and go to **Run a queue**. Its PR stays ready. When it is exhausted, push (not in `local` mode or with no origin), run `queue restack` to carry the result up, and re-read the state. |
-| **An open queue branch carries no queue file of its own number** — `queue start` made it and no plan was committed on it: a session that ended mid-plan, or a planner hand-back that left a commit behind | `python .aide/scripts/aide.py queue discard NNN`. Exit 0 → re-read the state; the next queue is generated afresh. Exit 1 → **stop** and relay its sentence: a branch carrying commits no plan review covers is a person's to land or delete. |
+| **An open queue branch carries no queue file of its own number** — step 5's `git cat-file -e HEAD:docs/aide/queue/queue-NNN.md` exits non-zero on it: `queue start` made it and no plan was committed on it, a session that ended mid-plan or a planner hand-back that left a commit behind. Read before the *built out* row below | `python .aide/scripts/aide.py queue discard NNN`. Exit 0 → re-read the state; the next queue is generated afresh. Exit 1 → **stop** and relay its sentence: a branch carrying commits no plan review covers is a person's to land or delete. |
 | **The open queue branch being built is built out** — its queue has no 📋/🚧 item left | Go to **Queue end**. |
 | **The open queue branch being built has 📋 items held by its plan gate**, still ⏳ Awaiting (or ❌ Declined) | **Stop.** Tell the human to review the draft PR, and to approve the gate on that branch (see **Generate the next queue**); a declined one is re-planned, not approved. If the branch has no PR yet, open it as that section says first. |
 | **The open queue branch being built has 📋 items and no gate holds them** — its plan gate approved, or none raised under `plan_review` | Run the queue on its branch → go to **Run a queue**. |
@@ -187,8 +192,10 @@ end**, below the cap. Call the base `<base>` below — `main`, or
   nothing it may queue — the next stage waits on a ⏸️ or withdrawn one, or
   queueing it needs a framework-file edit, or the roadmap is ambiguous — hands
   back and writes none. Ask git rather than its summary:
-  `git ls-files docs/aide/queue/queue-NNN.md` (the lower number, for a pair)
-  prints the path once it is committed on the branch. When it prints nothing:
+  `git cat-file -e HEAD:docs/aide/queue/queue-NNN.md` (the lower number, for
+  a pair) exits 0 only once the file is committed on the branch — a file
+  written and not committed does not count, as it does not for `queue pr`.
+  When it exits non-zero:
   1. Run nothing below — no `queue pr`, no gate handling. `aide queue pr`
      refuses a queue branch carrying no queue file of its own number, so a
      misread hand-back still opens no PR.

@@ -145,9 +145,14 @@ instead — that is the bump policy above, and it is enforced by
   refuses one that does (issue #383).** The undo of `queue start` for a
   queue nobody planned. It counts the branch, and origin's copy as last
   fetched, against the base, and deletes origin's copy with a lease on the
-  commit it counted, so a push made since the fetch is never deleted. A
-  checked-out branch is left for its base first; uncommitted changes to
-  tracked files, a branch checked out in another worktree, no recorded base
+  commit it counted, so a push made since the fetch is never deleted; a
+  copy origin no longer has (a stale remote-tracking ref, asked of origin
+  rather than read from git's message) counts as deleted. A checked-out
+  branch is left for its base first, and a refusal after that switch says
+  the checkout is now on the base. A queue file of the number written and
+  not committed — which the switch would carry onto the base, stranded —
+  uncommitted changes to tracked files or an unfinished merge or rebase, a
+  branch checked out in another worktree, no recorded base
   (the message names `git branch -D` as the person's route), a branch only
   on origin and no such branch are each refused, exit 1, with one sentence
   and nothing discarded. `local` mode never touches origin, and off `local`
@@ -180,15 +185,18 @@ instead — that is the bump policy above, and it is enforced by
   one — writes no queue file, so the run opened a PR for a branch holding no
   plan, or failed on the missing file, rather than stopping with the
   planner's question. The runner now asks git whether
-  `docs/aide/queue/queue-NNN.md` is committed on the branch before anything
-  else. When it is not, it runs `aide queue discard NNN`, so the next run
+  `docs/aide/queue/queue-NNN.md` is committed on the branch (`git cat-file
+  -e HEAD:…`, the commit and not the index, as `queue pr` reads it) before
+  anything else. When it is not, it runs `aide queue discard NNN`, so the next run
   does not read an open, empty queue branch counting against
   `max_open_queues`, then stops and relays the hand-back verbatim; a
   discard refusal is relayed too. Until the stage's owner decides, each run
   plans the same stage and stops on the same question; the state table and
   the stop list say so, and a new state row covers a queue branch found
-  with no queue file: discarded and re-planned, or a stop on the verb's
-  refusal. The queue-planner spec now says a hand-back writes nothing — no
+  with no queue file — the same check, made in the state reading before the
+  *built out* row, since `aide status` gives no queue-file signal — so a
+  session that ended mid-plan reaches a discard and a fresh plan, or a stop
+  on the verb's refusal, rather than **Queue end**. The queue-planner spec now says a hand-back writes nothing — no
   tidy, no `progress.md` edit, no commit, not even an insight capture,
   which it names in the hand-back instead — and is decided before step 3's
   tidy, so the branch is left as `queue start` made it.

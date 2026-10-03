@@ -534,7 +534,7 @@ def test_pr_opens_no_second_pr_over_a_closed_or_merged_one(
 def test_pr_refuses_a_branch_with_nothing_ahead_of_its_base(
         tmp_path: Path, monkeypatch, capsys):
     """The queue file is already on the base, so the branch carries it and
-    the refusal is the commit count's (since 2.36.1 a branch with no queue
+    the refusal is the commit count's (since 2.37.0 a branch with no queue
     file at all is refused before that; issue #383)."""
     repo = _init(tmp_path)
     _plan(repo, 1)
@@ -1141,7 +1141,9 @@ def test_discard_refuses_where_origins_copy_carries_a_commit(
 
     capsys.readouterr()
     assert _discard(repo, "1") == 1             # not fetched: the lease
-    assert "origin did not delete" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "origin did not delete" in err
+    assert "the checkout is now on main" in err and _current(repo) == "main"
     assert _local(repo, Q1) and _on_origin(repo, Q1) == pushed
 
     _git(["switch", Q1], repo)
@@ -1203,3 +1205,67 @@ def test_discard_usage_is_exit_2_and_discards_nothing(tmp_path: Path, argv):
     _start(repo, 1)
     assert _discard(repo, *argv) == 2
     assert _local(repo, Q1) and _on_origin(repo, Q1) is not None
+
+
+@pytest.mark.parametrize("staged", [False, True], ids=["untracked", "staged"])
+def test_discard_refuses_a_queue_file_written_and_not_committed(
+        tmp_path: Path, capsys, staged):
+    """A planner that wrote its plan and handed back anyway: the switch to
+    the base would carry the file there, stranded, so nothing is discarded.
+    Another number's file is no obstacle."""
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    qdir = repo / "docs" / "aide" / "queue"
+    (qdir / "queue-007.md").write_text("# other\n", encoding="utf-8")
+    (qdir / "queue-001-stage-2.md").write_text("# plan\n", encoding="utf-8")
+    if staged:
+        _git(["add", "docs/aide/queue/queue-001-stage-2.md"], repo)
+    capsys.readouterr()
+    assert _discard(repo, "1") == 1
+    err = capsys.readouterr().err
+    assert "docs/aide/queue/queue-001-stage-2.md is written and not committed" in err
+    assert "queue-007" not in err
+    assert _current(repo) == Q1 and _on_origin(repo, Q1) is not None
+    (qdir / "queue-001-stage-2.md").unlink()
+    if staged:
+        _git(["rm", "--cached", "-q", "docs/aide/queue/queue-001-stage-2.md"], repo)
+    assert _discard(repo, "1") == 0
+
+
+def test_discard_from_a_detached_head_is_not_another_worktree(tmp_path: Path):
+    """Detached at main's commit, which is also the fresh branch's: no
+    worktree sits on the branch, so it is discarded."""
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _git(["switch", "--detach", "main"], repo)
+    assert _discard(repo, "1") == 0
+    assert not _local(repo, Q1) and _on_origin(repo, Q1) is None
+
+
+def test_discard_counts_origins_copy_already_gone_as_deleted(
+        tmp_path: Path, capsys):
+    """Deleted on origin since the last fetch: the tracking ref is stale,
+    origin is asked, and the branch is discarded here too."""
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _git(["branch", "-D", Q1], tmp_path / "origin.git")
+    assert _git(["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{Q1}"],
+                repo, check=False).returncode == 0
+    capsys.readouterr()
+    assert _discard(repo, "1") == 0
+    assert capsys.readouterr().out.strip() == f"discarded {Q1} (base main)"
+    assert not _local(repo, Q1)
+    assert _git(["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{Q1}"],
+                repo, check=False).returncode != 0
+
+
+def test_discard_refuses_an_unfinished_merge_on_the_checked_out_branch(
+        tmp_path: Path, capsys):
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    (repo / ".git" / "MERGE_HEAD").write_text(_head(repo) + "\n",
+                                              encoding="utf-8")
+    capsys.readouterr()
+    assert _discard(repo, "1") == 1
+    assert "refusing" in capsys.readouterr().err
+    assert _current(repo) == Q1 and _local(repo, Q1)

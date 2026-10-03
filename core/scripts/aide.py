@@ -11994,6 +11994,12 @@ def _queue_discard(args: argparse.Namespace) -> int:
     Off `local` mode with no remote named origin it still runs, and deletes
     the local branch only: nothing on origin can be reached, and the local
     branch is still the one counted against the cap.
+
+    A queue file for the number written and not committed is refused too: a
+    planner that broke "a hand-back writes nothing" would otherwise have its
+    plan carried onto the base by the switch, stranded there. Origin's copy
+    already gone (a stale remote-tracking ref) is asked of origin itself,
+    never read from git's localised message, and counts as deleted.
     """
     tag = "aide queue discard"
     repo_root = find_repo_root(args.repo)
@@ -12037,8 +12043,34 @@ def _queue_discard(args: argparse.Namespace) -> int:
                   f"{'it' if ahead == '1' else 'them'} is a person's call; "
                   f"nothing was discarded", file=sys.stderr)
             return 1
+    qrel = f"{_docs_rel(config)}/queue"
+    status = git(["status", "--porcelain", "-z", "--untracked-files=all",
+                  "--", qrel], repo_root, check=False)
+    fields, written = status.stdout.split("\0"), set()
+    while fields:
+        record = fields.pop(0)
+        if len(record) < 4:
+            continue
+        if record[0] in "RC" and fields:
+            fields.pop(0)                  # a rename's source is its own field
+        written.add(record[3:])
+    loose = sorted(p for p in written if p.endswith(".md")
+                   and queue_number(Path(p)) == args.number)
+    if loose:
+        print(f"{tag}: {', '.join(loose)} is written and not committed — a "
+              f"plan for this queue, which discarding the branch would leave "
+              f"stranded on {base}; commit it on {branch} or remove it, then "
+              f"re-run. Nothing was discarded.", file=sys.stderr)
+        return 1
     current = _current_branch(repo_root)
-    if branch != current and branch in _checked_out_branches(repo_root):
+    # `worktree list` names the branch each attached worktree sits on. Not
+    # `_checked_out_branches`, which on a detached HEAD adds every branch at
+    # HEAD's commit — a fresh queue branch is at its base's.
+    sitting = {line[len("branch refs/heads/"):].strip() for line in
+               git(["worktree", "list", "--porcelain"], repo_root,
+                   check=False).stdout.splitlines()
+               if line.startswith("branch refs/heads/")}
+    if branch != current and branch in sitting:
         print(f"{tag}: {branch} is checked out in another worktree, and git "
               f"deletes no branch a checkout is sitting on — switch that "
               f"worktree off it first; nothing was discarded", file=sys.stderr)
@@ -12051,27 +12083,37 @@ def _queue_discard(args: argparse.Namespace) -> int:
                   f"that state first. Nothing was discarded.", file=sys.stderr)
             return 1
         switched = git(["switch", base], repo_root, check=False)
+        moved = f"; the checkout is now on {base}"
         if switched.returncode != 0:
             print(f"{tag}: git would not switch to {base} "
                   f"({switched.stderr.strip() or 'no answer'}); nothing was "
                   f"discarded", file=sys.stderr)
             return 1
+    else:
+        moved = ""
     if on_origin:
         lease = f"--force-with-lease=refs/heads/{branch}:{_rev(repo_root, tracking)}"
         pushed = git(["push", lease, "origin", "--delete", branch],
                      repo_root, check=False)
         if pushed.returncode != 0:
-            print(f"{tag}: origin did not delete {branch} "
-                  f"({pushed.stderr.strip() or 'no answer'}) — origin may "
-                  f"hold a commit pushed since the last fetch; nothing was "
-                  f"discarded", file=sys.stderr)
-            return 1
+            there = git(["ls-remote", "origin", f"refs/heads/{branch}"],
+                        repo_root, check=False)
+            if there.returncode == 0 and not there.stdout.strip():
+                # Already gone on origin: the tracking ref was stale.
+                git(["update-ref", "-d", f"refs/remotes/{tracking}"],
+                    repo_root, check=False)
+            else:
+                print(f"{tag}: origin did not delete {branch} "
+                      f"({pushed.stderr.strip() or 'no answer'}) — origin "
+                      f"may hold a commit pushed since the last fetch; "
+                      f"nothing was discarded{moved}", file=sys.stderr)
+                return 1
     deleted = git(["branch", "-D", branch], repo_root, check=False)
     if deleted.returncode != 0:
         print(f"{tag}: git would not delete {branch} "
               f"({deleted.stderr.strip() or 'no answer'})"
               + ("; its copy on origin is already deleted" if on_origin
-                 else ""), file=sys.stderr)
+                 else "") + moved, file=sys.stderr)
         return 1
     print(f"discarded {branch} (base {base})")
     return 0
@@ -19338,12 +19380,16 @@ def build_parser() -> argparse.ArgumentParser:
             "files are refused. local mode never touches origin, and off "
             "local mode with no remote named origin only the local branch "
             "is deleted. The branch's recorded base and start go with it. "
-            "Exit 0: discarded. 1: refused, nothing discarded — no such "
+            "Exit 0: discarded; origin's copy found already gone there "
+            "counts as deleted. 1: refused, nothing discarded — no such "
             "branch here or on origin, one on origin only, no recorded "
-            "base, a commit beyond the base, the branch checked out in "
-            "another worktree, uncommitted changes, or a switch or push git "
-            "refused; and a local delete git refused, where origin's copy, "
-            "if any, is already gone and the message says so. 2: usage."))
+            "base, a commit beyond the base or commits git could not count, "
+            "a queue file of the number written and not committed, the "
+            "branch checked out in another worktree, uncommitted changes or "
+            "an unfinished merge or rebase, or a switch or push git refused "
+            "(after a switch, the message says the checkout is now on the "
+            "base); and a local delete git refused, where origin's copy, if "
+            "any, is already gone and the message says so. 2: usage."))
     p_queue.add_argument("action", choices=["start", "tidy", "restack", "gate",
                                             "pr", "ready", "discard"])
     p_queue.add_argument("number", type=int, nargs="?", default=None,
