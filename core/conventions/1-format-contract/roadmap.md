@@ -72,6 +72,11 @@ stage. Either is the owner's decision, made through the create-roadmap entry
 point (§5); the queue planner hands back rather than queue the dependent
 stage.
 
+`aide check` warns on a stage under way — 🚧 in `progress.md`, or with a 📋
+item in an open queue — while an earlier stage its blocking Dependencies name
+is ⏸️ or withdrawn: the two states no queue ends. A 📋, 🚧 or 🔍 earlier stage
+is the ordinary wait, and is not named.
+
 #### Rationale
 
 - **Why a started stage is frozen.** Queues were cut from it, items were
@@ -127,6 +132,15 @@ stage.
   is the one the roadmap lets be edited, which is why rewording is offered
   there and withdrawal or a new stage past it. The planner hands back
   because the answer changes `roadmap.md`, which it never edits.
+- **Why the check names a stage under way over an unmet dependency.** Issue
+  #384: the two rules above bound the planner, which hands back on them, but
+  nothing checked them, so a queue cut over a ⏸️ or withdrawn dependency by
+  hand, or by a runtime without the planner's rule, built on work that was not
+  coming and `aide check` passed it clean. Under way, not merely named: a 📋
+  stage queued nowhere is doing what the rule asks — waiting — and warning on
+  it would fire on every roadmap with a deferral in it. A warning, for the
+  forward-dependency reason above: a started stage is frozen, and what follows
+  is the owner's decision.
 - **Why an item reads a ⏸️ dependency the other way.** An item's
   `## Dependencies` are met by a ⏸️ item, which "leaves the queue's way"
   (§1 → `items.md`), while a stage's are not met by a ⏸️ stage. The two act

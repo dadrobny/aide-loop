@@ -600,6 +600,22 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "summary row",
          ("test_aide_forward_deps::test_a_deferred_stage_is_exempt",
           "test_aide_forward_deps::test_any_other_status_is_not_exempt")),
+        # The same pass (issue #384): `_stages_under_way` — `stage_rollups`
+        # "in-progress", or a 📋 item `queue_is_open` lists — minus the
+        # deferred and `withdrawn_stages` sets, over earlier deps only.
+        ("a roadmap.md stage under way \u2014 its deliverables rolling up to "
+         "\U0001f6a7, or a \U0001f4cb item of it listed in an open queue "
+         "\u2014 while an earlier stage its blocking slot names is "
+         "\u23f8\ufe0f on its header or summary row, or withdrawn by a "
+         "\u274c summary row",
+         ("test_aide_forward_deps::"
+          "test_a_started_stage_over_a_deferred_or_withdrawn_dependency_warns",
+          "test_aide_forward_deps::test_a_queued_stage_over_a_withdrawn_dependency_warns",
+          "test_aide_forward_deps::test_a_dependency_a_queue_can_still_meet_is_silent",
+          "test_aide_forward_deps::"
+          "test_check_reports_an_unmet_earlier_dependency_as_a_warning")),
+        ("where a stage itself \u23f8\ufe0f or withdrawn is never under way",
+         "test_aide_forward_deps::test_a_stage_not_under_way_is_silent"),
         # `coverage_completeness_warnings` (issue #289), called from
         # run_checks on the warnings side. Case 1 takes every row
         # `_table_rows(_STAGE_SUMMARY)` yields, an unusable one by the number
@@ -803,6 +819,20 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # "in-review": its PR is open, and its branch is not litter.
         ("A \U0001f50d item's claim branch is not reported stale",
          "test_aide_git::test_check_does_not_call_a_branch_awaiting_review_stale"),
+        # The ✅ half is `item_status.get(n) == "complete"`, the ❌ half
+        # `spent_by_withdrawal` — `item_status` "excluded", or every bullet
+        # in a `withdrawn_stages` section (`withdrawn_stage_items`) for a 📋
+        # item only (issue #387).
+        ("A claim branch is reported stale when its item is \u2705, or "
+         "\u274c by its own bullets, or \U0001f4cb with every bullet in a "
+         "stage whose summary row is \u274c",
+         ("test_aide_core::test_check_warns_stale_claim_branch",
+          "test_aide_git::test_check_and_status_name_a_withdrawn_items_branch_stale",
+          "test_aide_git::test_withdrawn_stage_items_reads_only_items_wholly_inside_one")),
+        ("a \U0001f6a7 or \u23f8\ufe0f item in such a stage is not, until "
+         "it is dropped",
+         ("test_aide_git::test_spent_by_withdrawal_takes_only_a_planned_item_of_a_withdrawn_stage",
+          "test_aide_git::test_a_started_item_of_a_withdrawn_stage_is_not_stale_nor_collected")),
     ],
 
     # ------------------------------------------------------------- progress --
@@ -1455,6 +1485,17 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_git::test_claim_offers_the_queue_end_item_once_the_rest_has_left_the_way",
           "test_aide_git::test_queue_end_items_never_hold_each_other",
           "test_aide_git::test_a_queue_end_item_titled_only_in_its_spec_is_held")),
+        # `withdrawn_stage_items(plines)` -> `if num in withdrawn: continue`,
+        # right after the 📋 test that already skips a dropped (❌) item, and
+        # the report's per-item reason (issue #387).
+        ("An item every deliverable bullet of which sits in a stage whose "
+         "Stage summary row is \u274c \u2014 withdrawn whole \u2014 is not "
+         "offered either, and the report names the stage",
+         ("test_aide_git::test_claim_skips_an_item_of_a_withdrawn_stage",
+          "test_aide_git::test_claim_names_a_withdrawn_stage_as_the_reason",
+          "test_aide_git::test_withdrawn_stage_items_reads_only_items_wholly_inside_one")),
+        ("an item dropped by its own bullets is \u274c, not \U0001f4cb",
+         "test_aide_git::test_claim_skips_an_item_of_a_withdrawn_stage"),
         # The "none left" report is built from the gates that actually apply.
         ("It will not offer a blocked item",
          "test_aide_gates::test_none_left_names_only_the_gates_that_apply"),
@@ -1532,6 +1573,16 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("Deletes claim branches, local and remote, whose item is ✅ in "
          "progress.md",
          "test_aide_git::test_gc_yes_deletes_local_and_remote"),
+        # `or num in withdrawn_items` beside the ✅ test, through the same
+        # oracle and the same `--abandon` (issue #387).
+        ("An item \u274c by its own bullets, or \U0001f4cb with every "
+         "bullet in a stage whose summary row is \u274c, is on the \u2705 "
+         "ground too",
+         ("test_aide_git::test_a_started_item_of_a_withdrawn_stage_is_not_stale_nor_collected",
+          "test_aide_git::test_gc_collects_a_dropped_items_landed_branch",
+          "test_aide_git::test_gc_keeps_a_withdrawn_items_branch_carrying_work",
+          "test_aide_git::test_gc_leaves_a_live_item_of_the_shared_stage_alone",
+          "test_aide_git::test_spent_by_withdrawal_takes_only_a_planned_item_of_a_withdrawn_stage")),
         # `_merged_prefixed_branches(repo_root, main, prefix)`.
         ("with --merged also branches already merged into the base",
          "test_aide_git::test_gc_merged_deletes_merged_branch"),

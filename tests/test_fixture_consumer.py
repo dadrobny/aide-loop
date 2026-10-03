@@ -3015,6 +3015,67 @@ def test_a_run_under_pr_mode_never_offers_to_delete_an_open_prs_branch(
     assert "stale claim branch" not in capsys.readouterr().out
 
 
+def test_a_dropped_items_claim_branch_is_stale_and_gc_asks_git(
+        aide, consumer: Path, capsys):
+    """Issue #387: a ❌ item's claim branch had no route out — the stale
+    ground was ✅ alone and `merge` refuses a ❌ item. Now `check` names it,
+    and `gc` collects it through the same oracle as a ✅ one: work on the
+    branch keeps it until `--abandon`."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    _git(["switch", "main"], consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "dropped", "--reason", "not needed after all"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert ("stale claim branch aide/001-the-greeter: item 001 is ❌"
+            in capsys.readouterr().out)
+    assert aide.main(["--repo", str(consumer), "gc", "--yes"]) == 0
+    assert "aide/001-the-greeter" in _branches(consumer)
+    assert aide.main(["--repo", str(consumer), "gc", "--abandon", "--yes"]) == 0
+    assert "aide/001-the-greeter" not in _branches(consumer)
+
+
+def test_claim_never_offers_a_withdrawn_stages_item(aide, consumer: Path,
+                                                    capsys):
+    """Issue #387: a ❌ Stage summary row withdraws the stage's 📋 items, so
+    `claim` names them and creates no branch — exit 0, an ordinary hold."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "| 1 | Foundations | G1 | 📋 |", "| 1 | Foundations | G1 | ❌ |"),
+        encoding="utf-8")
+    _commit(consumer, "docs: withdraw stage 1")
+    capsys.readouterr()
+    assert _claim(aide, consumer) == 0
+    assert "in withdrawn stage 1" in capsys.readouterr().out
+    assert _branch(consumer) == "main"
+    assert not [b for b in _branches(consumer) if b.startswith("aide/0")]
+
+
+@pytest.mark.parametrize("icon", ["⏸️", "❌"])
+def test_check_warns_on_a_stage_under_way_over_an_unmet_dependency(
+        aide, consumer: Path, capsys, icon: str):
+    """Issue #384: stage 2 is 🚧 while stage 1, which it depends on, is ⏸️
+    or withdrawn — a dependency no queue will meet. A warning: exit 0."""
+    ddir = consumer / "docs" / "aide"
+    (ddir / "roadmap.md").write_text(
+        "# Fixture — Roadmap\n\n"
+        "## Stage 1 — Foundations\n\n**Dependencies.** None.\n\n"
+        "## Stage 2 — Later\n\n**Dependencies.** Stage 1.\n",
+        encoding="utf-8")
+    progress = ddir / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8")
+        .replace("| 1 | Foundations | G1 | 📋 |",
+                 f"| 1 | Foundations | G1 | {icon} |\n| 2 | Later | G1 | 🚧 |")
+        .replace("- 📋 The farewell. *(Item 002)*\n", "")
+        + _stage_block(2, "Later", "- 🚧 The farewell. *(Item 002)*\n")
+        .replace("Later — 📋", "Later — 🚧"), encoding="utf-8")
+    _commit(consumer, "docs: stage 2 under way")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "stage 2 is under way while stage 1" in capsys.readouterr().out
+
+
 def test_an_item_awaiting_review_keeps_its_queue_open(aide, consumer: Path, capsys):
     for n, st in (("1", "in-review"), ("2", "done")):
         assert aide.main(["--repo", str(consumer), "progress", "set", n, st]) == 0
