@@ -156,11 +156,20 @@ instead — that is the bump policy above, and it is enforced by
   `_require_origin`, holds the check. `local` mode is unchanged, and so is
   an `origin` that is there but unreachable: that still fails at the push
   and says what survives. `aide queue pr` and `aide queue ready` already
-  refused with no origin and are unchanged. §4 states the rule (core) and
-  its history (Rationale); §2 says a claim with no origin creates nothing;
-  `aide claim -h`, `aide merge -h` and `aide queue -h` state it per verb,
-  and `queue start`'s cap remedy reads `in local mode` where it read `in
-  local mode or with no origin`, a case that now never reaches it.
+  refused with no origin and are unchanged. Two restack runs that used to
+  succeed there now exit 1 as well: off local mode with no origin, a `queue
+  restack` with nothing to merge (`every stack is consistent`) and the
+  record-only form of `queue restack NNN --base REF` exited 0, having had
+  nothing to push, and are now refused like every other restack there. §4
+  states the rule (core) and its history (Rationale); §2 says a claim with
+  no origin creates nothing; `aide claim -h`, `aide merge -h` and `aide
+  queue -h` state it per verb.
+  `queue start`'s cap refusal printed "with no origin to pull from, a queue
+  lands when…" for every checkout that was in local mode or had no origin,
+  local mode with an origin included; with no origin now refused off local
+  mode, it is printed in local mode only and reads "in local mode nothing
+  is pulled, so a queue lands when…", and `aide queue -h` says "in local
+  mode" where it said "in local mode or with no origin".
 
 ## [2.35.2] — 2026-10-03
 

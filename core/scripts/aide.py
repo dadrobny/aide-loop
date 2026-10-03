@@ -8252,9 +8252,10 @@ def _commits_here(no_commit: bool, repo_root: Path,
 def _push_new_branch(repo_root: Path, branch: str) -> Optional[str]:
     """``git push -u origin <branch>``: None on success, else a sentence.
 
-    Three verbs publish a branch they have just created — `queue start`,
-    `claim`, and `merge` under `pr` mode — and all three pushed with git()'s
-    default `check=True`, so every cause of a failed push (no remote at all,
+    Three verbs published a branch they had just created — `queue start`,
+    `claim`, and `merge` under `pr` mode; `queue restack` and `_push_if_ahead`
+    (`queue pr`, `queue ready`) call it too now — and all three pushed with
+    git()'s default `check=True`, so every cause of a failed push (no remote at all,
     origin unreachable, expired credentials, a rejecting server-side hook)
     left `main()` on a `CalledProcessError`: a raw traceback in a flow whose
     whole point is to run unattended. `cmd_queue_start` guarded exactly one
@@ -8264,6 +8265,11 @@ def _push_new_branch(repo_root: Path, branch: str) -> Optional[str]:
     already on disk when it fails. Handing back git's own words lets each
     caller say what survives and how to finish it by hand, which is the
     difference between a stall a person can act on and a stack trace.
+
+    No remote at all is no longer a cause it normally meets: every caller off
+    local mode refuses a missing origin up front, through `_require_origin`,
+    before its local half exists (issue #377). What reaches here is an origin
+    that is there and does not take the push.
     """
     res = git(["push", "-u", "origin", branch], repo_root, check=False)
     if res.returncode == 0:
@@ -18875,8 +18881,8 @@ def build_parser() -> argparse.ArgumentParser:
             "and off local mode pushes it; --specs creates "
             "<prefix>specs-queue-NNN instead, which is never counted or "
             "stacked. Off local mode a checkout with no remote named origin "
-            "is refused, exit 1, before any other check, --dry-run "
-            "included. A queue branch is unmerged until its own work has "
+            "is refused, exit 1, before the base, the cap or --dry-run is "
+            "considered. A queue branch is unmerged until its own work has "
             "landed in main_branch, judged exactly as restack judges it "
             "(below), against this checkout's main_branch — and, off local "
             "mode, over origin's queue branches as last fetched too; one git "
@@ -18983,7 +18989,8 @@ def build_parser() -> argparse.ArgumentParser:
             "from origin, and once every merge has succeeded pushes, without "
             "force, each stack branch it merged into or that is ahead of "
             "origin; with no remote named origin it refuses, exit 1, before "
-            "anything changes. local mode never fetches or pushes.\n"
+            "anything changes, --dry-run included. local mode never fetches "
+            "or pushes.\n"
             "\n"
             "It needs a clean tree, and refuses a stack branch checked out "
             "in another worktree. A conflict aborts that merge, leaves the "

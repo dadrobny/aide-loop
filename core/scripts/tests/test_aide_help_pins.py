@@ -2403,7 +2403,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `_require_origin` straight after `_require_repository`, before the
         # base, the cap and the `--dry-run` return (issue #377).
         ("Off local mode a checkout with no remote named origin is refused, "
-         "exit 1, before any other check, --dry-run included",
+         "exit 1, before the base, the cap or --dry-run is considered",
          "test_aide_queue_stack::test_a_start_with_no_origin_is_refused_before_any_branch_exists"),
         # `if not args.specs:` around the whole block; `_is_stack_branch`
         # never matches `specs-queue-`.
@@ -2656,7 +2656,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_restack::test_a_stack_branch_ahead_of_origin_is_pushed_by_a_re_run")),
         # `_require_origin` before the fetch, the plan and the dry run.
         ("with no remote named origin it refuses, exit 1, before anything "
-         "changes",
+         "changes, --dry-run included",
          "test_aide_restack::test_no_origin_off_local_mode_is_refused_before_anything_changes"),
         ("local mode never fetches or pushes",
          "test_aide_restack::test_local_mode_never_fetches_or_pushes"),
