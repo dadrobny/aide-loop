@@ -2988,3 +2988,222 @@ def test_merge_refuses_a_planned_item_of_a_withdrawn_stage(tmp_path: Path,
         (root / "docs" / "aide" / "progress.md").read_text(
             encoding="utf-8").splitlines())[2]
     assert status[29] == "complete"
+
+
+# --------------------------------------------------------------------------- #
+# Withdrawn work and the remaining readers of "open" — issue #393
+# --------------------------------------------------------------------------- #
+# 2.35.1 gave `queue_is_open` the withdrawn set for `claim`; `status`,
+# `check`'s declared-status comparison and the record readers kept the
+# bullets alone, so the commands disagreed about the same tree.
+def _withdrawn_docs(tmp_path: Path, queue: str) -> Path:
+    """A docs dir with WITHDRAWN_PROGRESS, queue 003 as *queue*, and specs
+    for 029 (📋 in withdrawn stage 2) and 030 (a bullet still in scope)."""
+    ddir = tmp_path / "docs" / "aide"
+    (ddir / "queue").mkdir(parents=True)
+    (ddir / "items").mkdir()
+    (ddir / "progress.md").write_text(WITHDRAWN_PROGRESS, encoding="utf-8")
+    (ddir / "queue" / "queue-003.md").write_text(queue, encoding="utf-8")
+    for name in ("029-extras.md", "030-shared.md"):
+        (ddir / "items" / name).write_text(
+            "<!-- aide-template: item 1 -->\n# Item\n", encoding="utf-8")
+    return ddir
+
+
+def test_record_documents_settles_a_withdrawn_stages_planned_item(
+        tmp_path: Path):
+    """029's spec is a record as a ⏸️ one is, and a queue left with 026 ✅,
+    027 ❌ and 029 is one; 030 still has a bullet in scope, so neither."""
+    ddir = _withdrawn_docs(
+        tmp_path, "# Q\n\n### Item 026: A\n\n### Item 027: B\n\n"
+                  "### Item 029: C\n")
+    lines = WITHDRAWN_PROGRESS.splitlines()
+    status = aide._parse_item_status(lines)[2]
+    withdrawn = aide.withdrawn_stage_items(lines)
+    assert aide.record_documents(ddir, status, withdrawn) == {
+        ddir / "queue" / "queue-003.md", ddir / "items" / "029-extras.md"}
+    # Without the set the bullets alone are read, as before.
+    assert aide.record_documents(ddir, status) == set()
+    assert aide._docs_records(ddir) == aide.record_documents(
+        ddir, status, withdrawn)
+    # A 🚧 029 is live work until its owner drops it (§2).
+    started = WITHDRAWN_PROGRESS.replace("- 📋 Extras.", "- 🚧 Extras.")
+    (ddir / "progress.md").write_text(started, encoding="utf-8")
+    assert aide._docs_records(ddir) == set()
+
+
+def test_template_drift_skips_a_queue_left_with_only_withdrawn_items(
+        tmp_path: Path):
+    ddir = _withdrawn_docs(
+        tmp_path, "<!-- aide-template: queue 1 -->\n# Q\n\n"
+                  "### Item 026: A\n\n### Item 029: C\n")
+    lines = WITHDRAWN_PROGRESS.splitlines()
+    status = aide._parse_item_status(lines)[2]
+    installed = {"queue": 2, "item": 1}
+    assert any(w.startswith("queue/queue-003.md")
+               for w in aide.template_drift_warnings(ddir, status, installed))
+    assert not any(w.startswith("queue/queue-003.md")
+                   for w in aide.template_drift_warnings(
+                       ddir, status, installed,
+                       withdrawn=aide.withdrawn_stage_items(lines)))
+
+
+def _completed_queue_of_withdrawn_items(tmp_path: Path) -> Path:
+    """Queue 003 stamped completed with 026 ✅, 027 ❌, 028 ✅ and 029 📋 in
+    withdrawn stage 2 — done as `claim` reads it."""
+    root = _withdrawn_repo(tmp_path)
+    _only_withdrawn_left(root)
+    assert aide.main(["--repo", str(root), "queue", "tidy", "3",
+                      "--date", "2026-10-03"]) == 0
+    return root
+
+
+def test_check_takes_a_completed_queue_of_withdrawn_items_as_done(
+        tmp_path: Path):
+    root = _completed_queue_of_withdrawn_items(tmp_path)
+    cfg = aide.load_config(root)
+    _, warnings = aide.run_checks(root, cfg, branches=[])
+    assert not any("still has open items" in w for w in warnings)
+    # Declared Live over the same tree, the warning says what is left.
+    qpath = root / "docs" / "aide" / "queue" / "queue-003.md"
+    qpath.write_text("\n".join(
+        "> **Status:** 🚧 Live" if line.startswith("> **Status:**") else line
+        for line in qpath.read_text(encoding="utf-8").splitlines()) + "\n",
+        encoding="utf-8")
+    _, warnings = aide.run_checks(root, cfg, branches=[])
+    assert any("declares 'Live' but every item is finished or 📋 in a "
+               "withdrawn stage" in w for w in warnings)
+
+
+def test_check_still_reads_a_started_withdrawn_item_as_open(tmp_path: Path):
+    root = _completed_queue_of_withdrawn_items(tmp_path)
+    ppath = root / "docs" / "aide" / "progress.md"
+    ppath.write_text(ppath.read_text(encoding="utf-8").replace(
+        "- 📋 Extras.", "- 🚧 Extras."), encoding="utf-8")
+    _, warnings = aide.run_checks(root, aide.load_config(root), branches=[])
+    assert any("queue-003.md: marked completed but still has open items"
+               in w for w in warnings)
+
+
+def test_status_moves_the_live_marker_past_withdrawn_items(tmp_path: Path,
+                                                            capsys):
+    root = _withdrawn_repo(tmp_path)
+    _only_withdrawn_left(root)
+    d = root / "docs" / "aide"
+    (d / "progress.md").write_text(
+        (d / "progress.md").read_text(encoding="utf-8").replace(
+            "- 📋 Shared, first half. *(Item 030)*\n",
+            "- 📋 Shared, first half. *(Item 030)*\n- 📋 Next. *(Item 031)*\n"),
+        encoding="utf-8")
+    (d / "queue" / "queue-004.md").write_text(
+        "# Demo — Work Queue 004\n\n### Item 031: Next\nNext.\n",
+        encoding="utf-8")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
+    out = capsys.readouterr().out
+    assert ("queue-003.md: done — not offered, 📋 in a withdrawn stage: 029"
+            in out)
+    assert "queue-004.md: open (live) — 1/1 items open (031)" in out
+
+
+# A dependency on a withdrawn stage's 📋 item — issue #393. §1 → items.md:
+# it has left the queue's way as a ❌ item has; a 🚧 one still blocks.
+def _028_depends_on(root: Path, *deps: int) -> None:
+    (root / "docs" / "aide" / "items" / "028-coverage.md").write_text(
+        "# Item 028 — Coverage rules\n\n## Dependencies\n"
+        + "".join(f"- Item {d:03d} provides X.\n" for d in deps)
+        + "\n## End\n", encoding="utf-8")
+
+
+def test_a_withdrawn_planned_dependency_has_left_the_way(tmp_path: Path,
+                                                         capsys):
+    """028 depends on 029, 📋 in withdrawn stage 2: claim offers 028."""
+    root = _withdrawn_repo(tmp_path)
+    _028_depends_on(root, 29)
+    lines = WITHDRAWN_PROGRESS.splitlines()
+    status = aide._parse_item_status(lines)[2]
+    assert not aide.still_blocks(29, status, aide.withdrawn_stage_items(lines))
+    assert aide.still_blocks(29, status)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "claim", "--dry-run"]) == 0
+    assert capsys.readouterr().out.startswith("would claim item 028")
+
+
+def test_a_started_dependency_of_a_withdrawn_stage_still_blocks(
+        tmp_path: Path, capsys):
+    """A 🚧 029 is live work until its owner drops it (§2), so 028 waits."""
+    root = _withdrawn_repo(tmp_path)
+    _028_depends_on(root, 29)
+    ppath = root / "docs" / "aide" / "progress.md"
+    ppath.write_text(WITHDRAWN_PROGRESS.replace("- 📋 Extras.",
+                                                "- 🚧 Extras."),
+                     encoding="utf-8")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "claim", "--queue", "3",
+                      "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "none left" in out
+    assert "028 Coverage rules — waiting on 029 (in-progress)" in out
+
+
+def test_early_ready_does_not_wait_on_a_withdrawn_planned_dependency(
+        tmp_path: Path):
+    """030 is gated; 028 waits on 030 and on 029, 📋 in withdrawn stage 2 —
+    so 028 waits only on what the gate holds, and the queue is ready."""
+    import types
+    root = _withdrawn_repo(tmp_path)
+    _028_depends_on(root, 30, 29)
+    lines = WITHDRAWN_PROGRESS.splitlines()
+    status = aide._parse_item_status(lines)[2]
+    withdrawn = aide.withdrawn_stage_items(lines)
+    gate = types.SimpleNamespace(kind="awaiting")
+    args = (root, aide.load_config(root), [28, 30], [(1, gate)], {30}, {},
+            status, [26, 27, 28, 29, 30], {})
+    assert aide._early_ready(*args, withdrawn).startswith("early ready: yes")
+    assert aide._early_ready(*args).startswith("early ready: no — 028")
+
+
+def test_check_queue_reads_a_withdrawn_planned_item_as_spent(tmp_path: Path):
+    """029 — 📋 in withdrawn stage 2 — orders nothing and blocks no claim, so
+    a dependency loop through it is no cycle, and a scope overlap with it is
+    never built."""
+    root = _withdrawn_repo(tmp_path)
+    idir = root / "docs" / "aide" / "items"
+    scope = ("## Authorised paths\n\n**May change**\n- `src/rules.py`\n\n"
+             "**Asserts against**\n\n")
+    (idir / "028-coverage.md").write_text(
+        "# Item 028 — Coverage rules\n\n## Dependencies\n- Item 029.\n\n"
+        + scope, encoding="utf-8")
+    (idir / "029-extras.md").write_text(
+        "# Item 029 — Extras\n\n## Dependencies\n- Item 028.\n\n" + scope,
+        encoding="utf-8")
+    findings, _ = aide.queue_spec_findings(root, aide.load_config(root), 3)
+    assert not [f for f in findings
+                if f.kind in ("dependency-cycle", "may-change-overlap")]
+    # A 🚧 029 is live work: the loop is a cycle again.
+    (root / "docs" / "aide" / "progress.md").write_text(
+        WITHDRAWN_PROGRESS.replace("- 📋 Extras.", "- 🚧 Extras."),
+        encoding="utf-8")
+    findings, _ = aide.queue_spec_findings(root, aide.load_config(root), 3)
+    assert any(f.kind == "dependency-cycle" for f in findings)
+
+
+def test_queue_end_findings_take_a_queue_of_withdrawn_items_as_spent(
+        tmp_path: Path):
+    """Queue 003 left with 029 and an idle `Validate stage 7`, both 📋 in
+    withdrawn stage 2: nothing is left to plan, so nothing is said — where a
+    🚧 one is live work, and is told it is idle."""
+    root = _withdrawn_repo(tmp_path)
+    (root / "docs" / "aide" / "queue" / "queue-003.md").write_text(
+        "# Demo — Work Queue 003\n\n### Item 029: Extras\nExtras.\n\n"
+        "### Item 031: Validate stage 7: Nothing\nValidates.\n",
+        encoding="utf-8")
+    ppath = root / "docs" / "aide" / "progress.md"
+    cfg = aide.load_config(root)
+    for icon, kinds in (("📋", []), ("🚧", ["queue-end-idle"])):
+        ppath.write_text(WITHDRAWN_PROGRESS.replace(
+            "- 📋 Extras. *(Item 029)*\n",
+            f"- 📋 Extras. *(Item 029)*\n- {icon} Check. *(Item 031)*\n"),
+            encoding="utf-8")
+        assert [f.kind for f in aide.queue_end_findings(root, cfg, 3)] == \
+            kinds, icon

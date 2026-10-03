@@ -79,12 +79,31 @@ RANK = {"planned": 0, "excluded": 1, "deferred": 2, "in-progress": 3,
         "in-review": 4, "complete": 5}
 #: The statuses that still hold a dependent back. A dependency leaves the way
 #: only by being merged (✅) or by leaving the queue's path (❌ excluded,
-#: ⏸️ deferred) — 🚧 and 🔍 both block, because work in progress and work whose
-#: PR is still open are alike missing from the base a dependent would branch
-#: from. Named once because two separate decisions turn on it being the same
-#: set: which item `aide claim` may offer, and whether a declared dependency
-#: actually orders two specs (`queue_spec_findings`).
+#: ⏸️ deferred, or 📋 in a withdrawn stage — `still_blocks`) — 🚧 and 🔍 both
+#: block, because work in progress and work whose PR is still open are alike
+#: missing from the base a dependent would branch from. Named once because
+#: two separate decisions turn on it being the same set: which item `aide
+#: claim` may offer, and whether a declared dependency actually orders two
+#: specs (`queue_spec_findings`).
 BLOCKING_STATUSES = ("planned", "in-progress", "in-review")
+
+
+def still_blocks(n: int, item_status: Dict[int, str],
+                 withdrawn: Collection[int] = ()) -> bool:
+    """Whether item *n* still holds back what waits on it — a dependent, a
+    queue-end item, or its queue's open state.
+
+    `BLOCKING_STATUSES`, bar a 📋 item in *withdrawn* (`withdrawn_stage_items`,
+    every bullet of it in a stage whose summary row is ❌): `claim` never
+    offers one, so it has left the queue's way as a ❌ item has, and blocking
+    on it stranded its dependents for good (issue #393). A 🚧 or 🔍 item of a
+    withdrawn stage still blocks — live work until its owner drops it (§2).
+    An item progress.md does not know counts as 📋. The one reading behind
+    `queue_is_open`, `queue_end_holds`, `_pick_item`, the `none left` report,
+    `_early_ready` and `check --queue`, so they cannot disagree.
+    """
+    st = item_status.get(n, "planned")
+    return st in BLOCKING_STATUSES and not (st == "planned" and n in withdrawn)
 
 # Icons may be multi-codepoint (⏸️ = U+23F8 U+FE0F), so match by alternation
 # (longest first), never a character class.
@@ -3546,15 +3565,13 @@ def queue_is_open(text: str, item_status: Dict[int, str],
     never offer it: a queue left with only such items stayed the live queue
     and `claim` reported them held rather than moving on (issue #389). A 🚧
     or 🔍 item there still counts — live work until its owner drops it, as
-    §2 reads it for the stale ground. Callers that do not pass the set read
-    the bullets alone, as before.
+    §2 reads it for the stale ground. Every engine reader of "open" passes
+    the set since issue #393 — `status`, `check`'s declared-status comparison
+    and the record readers had kept the bullets alone and disagreed with
+    `claim` about the same tree; without it the bullets alone are read.
     """
-    for n in queue_item_numbers(text):
-        st = item_status.get(n, "planned")
-        if st in ("in-progress", "in-review") or (
-                st == "planned" and n not in withdrawn):
-            return True
-    return False
+    return any(still_blocks(n, item_status, withdrawn)
+               for n in queue_item_numbers(text))
 
 
 def _progress_item_status(repo_root: Path, config) -> Dict[int, str]:
@@ -3575,7 +3592,8 @@ def _progress_item_status(repo_root: Path, config) -> Dict[int, str]:
 _RECORD_ITEM_STATUSES = ("complete", "excluded", "deferred")
 
 
-def record_documents(ddir: Path, item_status: Dict[int, str]) -> Set[Path]:
+def record_documents(ddir: Path, item_status: Dict[int, str],
+                     withdrawn: Collection[int] = ()) -> Set[Path]:
     """The documents under *ddir* that are records, not live (issue #338).
 
     An item spec whose item is ✅, ❌ or ⏸️ in progress.md, and a queue file
@@ -3584,32 +3602,44 @@ def record_documents(ddir: Path, item_status: Dict[int, str]) -> Set[Path]:
     an edit can never be cleared and returns on every run. A queue naming no
     item yet is live: it is being wired. An item progress.md does not know
     counts as planned, so with no progress.md nothing is a record.
+
+    A 📋 item in *withdrawn* (`withdrawn_stage_items`) is settled as a ⏸️
+    one is: its spec is a record, and it keeps no queue open — `claim` never
+    offers it (issue #393). Like ⏸️, the exemption is read on every run, so
+    the warnings return once the stage's summary row is off ❌.
     """
     out: Set[Path] = set()
     idir = ddir / "items"
     if idir.is_dir():
         for ipath in idir.glob("*.md"):
             n = item_spec_number(ipath)
-            if n is not None and item_status.get(n, "planned") in _RECORD_ITEM_STATUSES:
+            if n is None:
+                continue
+            st = item_status.get(n, "planned")
+            if st in _RECORD_ITEM_STATUSES or (st == "planned"
+                                               and n in withdrawn):
                 out.add(ipath)
     for qpath in iter_queue_paths(ddir / "queue"):
         try:
             qtext = qpath.read_text(encoding=_ENCODING)
         except (OSError, UnicodeDecodeError):
             continue
-        if queue_item_numbers(qtext) and not queue_is_open(qtext, item_status):
+        if queue_item_numbers(qtext) and not queue_is_open(
+                qtext, item_status, withdrawn):
             out.add(qpath)
     return out
 
 
-def _docs_item_status(ddir: Path) -> Dict[int, str]:
-    """Item statuses from ``ddir/progress.md``, or ``{}`` when it is unreadable."""
+def _docs_records(ddir: Path) -> Set[Path]:
+    """`record_documents` over ``ddir/progress.md``, read once for the item
+    statuses and the withdrawn stages; unreadable, nothing is a record."""
     path = ddir / "progress.md"
     try:
         lines = path.read_text(encoding=_ENCODING).splitlines()
     except (OSError, UnicodeDecodeError):
-        return {}
-    return _parse_item_status(lines)[2]
+        lines = []
+    return record_documents(ddir, _parse_item_status(lines)[2],
+                            withdrawn_stage_items(lines))
 
 
 def tidy_queue_text(text: str, superseded_by: int, date: str) -> str:
@@ -4243,7 +4273,7 @@ def insight_reference_findings(repo_root: Path,
     docs, tests = _citation_files(repo_root, config, ddir)
     if not docs and not tests:
         return errors, warnings
-    records = record_documents(ddir, _docs_item_status(ddir))
+    records = _docs_records(ddir)
     # Read lazily and once: most files cite nothing, and a repo whose tests
     # cite no insight never opens the inbox or an archive for this check.
     cache: Dict[str, object] = {}
@@ -4565,7 +4595,8 @@ def gate_reference_findings(repo_root: Path,
     # and in a table with no row "gate 2" names nothing it could mean.
     has_rows = bool(gates) or unreadable
     ids = gate_ids(gates)
-    records = record_documents(ddir, _parse_item_status(lines)[2])
+    records = record_documents(ddir, _parse_item_status(lines)[2],
+                               withdrawn_stage_items(lines))
     for path in docs:
         try:
             text = path.read_text(encoding=_ENCODING)
@@ -6752,19 +6783,23 @@ def _stages_under_way(ddir: Path, plines: List[str]) -> Set[str]:
     deliverables rolling up to 🚧, or a 📋 item listed in an open queue.
 
     The open queues are `queue_is_open`'s, read from the queue files under
-    *ddir*; an item belongs to the stages whose bullets name it
-    (`stage_item_numbers`). A queued item with bullets in two stages makes
-    both under way — an accepted false positive, since this feeds a warning.
+    *ddir*, and a withdrawn stage's 📋 item is neither open nor queued work,
+    as `claim` reads it (issue #393); an item belongs to the stages whose
+    bullets name it (`stage_item_numbers`). A queued item with bullets in two
+    stages makes both under way — an accepted false positive, since this
+    feeds a warning.
     """
     out = {str(int(n)) for n, st in stage_rollups(plines).items()
            if n.isdigit() and st == "in-progress"}
     item_status = _parse_item_status(plines)[2]
+    withdrawn = withdrawn_stage_items(plines)
     queued: Set[int] = set()
     for path in iter_queue_paths(ddir / "queue"):
         text = path.read_text(encoding=_ENCODING)
-        if queue_is_open(text, item_status):
+        if queue_is_open(text, item_status, withdrawn):
             queued.update(n for n in queue_item_numbers(text)
-                          if item_status.get(n, "planned") == "planned")
+                          if item_status.get(n, "planned") == "planned"
+                          and n not in withdrawn)
     if queued:
         for _start, _end, num in stage_sections(plines):
             if num.isdigit() and queued & set(stage_item_numbers(plines, num)):
@@ -7046,7 +7081,8 @@ def installed_template_versions() -> Dict[str, int]:
 
 
 def template_drift_warnings(ddir: Path, item_status: Dict[int, str],
-                            installed: Optional[Dict[str, int]] = None) -> List[str]:
+                            installed: Optional[Dict[str, int]] = None,
+                            withdrawn: Collection[int] = ()) -> List[str]:
     """Documents whose template marker disagrees with the installed template.
 
     Rung 4 of the copies rule (``ADAPTER-SPEC.md``, *Copies of engine text*):
@@ -7064,7 +7100,10 @@ def template_drift_warnings(ddir: Path, item_status: Dict[int, str],
     * A queue while it is open, and an item spec while its item is not ✅ or
       ❌ — the same measure ``--queue`` uses for "spent". A finished item's
       spec is a record, and a warning on every one of them each time a template
-      moves is permanent noise over files nobody should edit.
+      moves is permanent noise over files nobody should edit. Open is
+      `queue_is_open`'s with *withdrawn* (`withdrawn_stage_items`), as `claim`
+      reads it (issue #393); a withdrawn stage's 📋 item keeps its spec here,
+      as a ⏸️ one does, since a summary row taken off ❌ revives it.
 
     Only the marker above the title counts (``_above_title``). A document
     **without** one is silent. Every document written before
@@ -7082,7 +7121,8 @@ def template_drift_warnings(ddir: Path, item_status: Dict[int, str],
     qdir = ddir / "queue"
     if qdir.is_dir():
         for qpath in iter_queue_paths(qdir):
-            if queue_is_open(qpath.read_text(encoding=_ENCODING), item_status):
+            if queue_is_open(qpath.read_text(encoding=_ENCODING), item_status,
+                             withdrawn):
                 targets.append(qpath)
     idir = ddir / "items"
     if idir.is_dir():
@@ -7300,7 +7340,7 @@ def item_spec_warnings(ddir: Path, ddir_rel: str = "docs/aide",
     out: List[str] = []
     missing_assumptions: List[str] = []
     stale_pins: List[str] = []
-    records = record_documents(ddir, _docs_item_status(ddir)) if engine else set()
+    records = _docs_records(ddir) if engine else set()
     for path in sorted(idir.glob("*.md")):
         num = item_spec_number(path)
         if num is None:
@@ -7790,7 +7830,8 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(identical_deliverable_warnings(lines))
     warnings.extend(unattributed_reference_warnings(lines))
     warnings.extend(acceptance_drift_warnings(ddir, lines))
-    warnings.extend(template_drift_warnings(ddir, _parse_item_status(lines)[2]))
+    warnings.extend(template_drift_warnings(ddir, _parse_item_status(lines)[2],
+                                            withdrawn=withdrawn_stage_items(lines)))
 
     # Mandatory sections. Rows are taken by shape from anywhere in the file,
     # with the one test `unreadable_row_errors` reports the failures of.
@@ -7856,19 +7897,27 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
 
     # Queues: state is DERIVED from progress.md (open = any 📋/🚧 item); a
     # declared "> **Status:**" line is decorative — warn only when it lies.
+    # Open as `claim` reads it: a withdrawn stage's 📋 item keeps no queue
+    # open (`queue_is_open`), so a queue left with only such items, stamped
+    # completed, is not warned as still open (issue #393).
     qdir = ddir / "queue"
     seen: Dict[int, str] = {}
     if qdir.is_dir():
         _, _, istat = _parse_item_status(lines)
+        q_withdrawn = withdrawn_stage_items(lines)
         for qpath in iter_queue_paths(qdir):
             qtext = qpath.read_text(encoding=_ENCODING)
-            derived_open = queue_is_open(qtext, istat)
+            derived_open = queue_is_open(qtext, istat, q_withdrawn)
             declared = queue_status(qtext)
             if declared:
                 declared_live = declares_live(declared)
                 if declared_live and not derived_open:
+                    idle = any(n in q_withdrawn
+                               and istat.get(n, "planned") == "planned"
+                               for n in queue_item_numbers(qtext))
                     warnings.append(
-                        f"{qpath.name}: declares 'Live' but every item is finished — "
+                        f"{qpath.name}: declares 'Live' but every item is finished"
+                        f"{' or 📋 in a withdrawn stage' if idle else ''} — "
                         f"state is derived from progress.md; run 'aide queue tidy' "
                         f"or drop the decorative Status line")
                 elif not declared_live and derived_open:
@@ -8383,10 +8432,18 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     # where one is real — so spent items are discounted below, on both sides
     # of every comparison. Deferred (⏸️) items are NOT spent: their claims are
     # dormant, not dead, and a conflict with one is worth surfacing while
-    # re-planning is still cheap.
-    item_status = _progress_item_status(repo_root, config)
+    # re-planning is still cheap. A 📋 item of a withdrawn stage is spent as
+    # an excluded one is (issue #393): `claim` never offers it, and its
+    # owner's way back is the drop, so a conflict with it is never built.
+    ppath = ddir / "progress.md"
+    plines = (ppath.read_text(encoding=_ENCODING).splitlines()
+              if ppath.is_file() else [])
+    item_status = _parse_item_status(plines)[2]
+    withdrawn = withdrawn_stage_items(plines)
     spent = {n for n in numbers
-             if item_status.get(n, "planned") in ("complete", "excluded")}
+             if item_status.get(n, "planned") in ("complete", "excluded")
+             or (item_status.get(n, "planned") == "planned"
+                 and n in withdrawn)}
 
     for num in numbers:
         specs = item_spec_paths(idir, num)
@@ -8419,13 +8476,13 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     # An item is built after everything it declares a dependency on, and after
     # what those declare in turn — but only along edges that still ORDER the
     # two items. A dependency `aide claim` no longer waits for does not hold
-    # its dependent back: a ⏸️ deferred blocker is skipped by `_pick_item`, so
-    # the dependent is claimable today and would pin a tree the deferred item
-    # has not touched yet. Filtering the edges rather than the pairs also
+    # its dependent back: a ⏸️ deferred blocker — or a ❌ or withdrawn-stage 📋
+    # one (`still_blocks`) — is skipped by `_pick_item`, so the dependent is
+    # claimable today and would pin a tree the blocker has not touched yet. Filtering the edges rather than the pairs also
     # settles the transitive case, where the link that fails to hold is an
     # intermediate: `b → c (⏸️) → a` leaves b free to build before a.
     ordering_edges = {num: [d for d in deps
-                            if item_status.get(d, "planned") in BLOCKING_STATUSES]
+                            if still_blocks(d, item_status, withdrawn)]
                       for num, deps in deps_by_item.items()}
     built_after = _built_after(ordering_edges)
 
@@ -8492,15 +8549,16 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     # Row 5 — the dependency graph. A cycle deadlocks `aide claim`: every item
     # in it is blocked by another in it, so the queue silently stops producing
     # work rather than failing. The graph holds only items that can still
-    # block a claim — the same status set `_pick_item` treats as blocking: a
-    # complete, excluded or deferred dependency does not block, and such an
-    # item is never offered, so no cycle through one can deadlock (a cycle
-    # whose members all merged has PROVED its order was satisfiable). The typo
+    # block a claim — the same reading `_pick_item` gives (`still_blocks`): a
+    # complete, excluded or deferred dependency does not block, nor a 📋 one
+    # of a withdrawn stage, and such an item is never offered, so no cycle
+    # through one can deadlock (a cycle whose members all merged has PROVED
+    # its order was satisfiable). The typo
     # pass below shares the filter: a mistyped dependency in a spent or
     # deferred item's spec blocks nothing today, and the warning about it
     # would be unclearable.
     graph = {num: deps for num, deps in deps_by_item.items()
-             if item_status.get(num, "planned") in BLOCKING_STATUSES}
+             if still_blocks(num, item_status, withdrawn)}
     for cycle in _dependency_cycles(graph):
         chain = " → ".join(f"{n:03d}" for n in cycle + [cycle[0]])
         findings.append(SpecFinding(
@@ -8600,9 +8658,7 @@ def queue_end_holds(repo_root: Path, config, queue_text: str,
             if queue_end_stages(queue_item_title(repo_root, config, titles, n))
             is not None]
     rest = [n for n in order if n not in ends
-            and item_status.get(n, "planned") in BLOCKING_STATUSES
-            and not (n in withdrawn
-                     and item_status.get(n, "planned") == "planned")]
+            and still_blocks(n, item_status, withdrawn)]
     deps = {n: set(_item_dependencies(repo_root, config, n)) for n in rest}
     holds: Dict[int, List[int]] = {}
     for end in ends:
@@ -8688,10 +8744,16 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     order = queue_item_numbers(qtext)
     lines = ppath.read_text(encoding=_ENCODING).splitlines()
     item_status = _parse_item_status(lines)[2]
+    withdrawn = withdrawn_stage_items(lines)
+
     # ⏸️ is settled here as ✅ and ❌ are: `queue_is_open` does not count a
     # deferred item as open, and nobody plans or drops one until it resumes.
-    spent = ("complete", "excluded", "deferred")
-    if all(item_status.get(n, "planned") in spent for n in order):
+    # Nor a 📋 item of a withdrawn stage, which `claim` never offers (issue
+    # #393): spent is exactly not open (`still_blocks`).
+    def spent(n: int) -> bool:
+        return not still_blocks(n, item_status, withdrawn)
+
+    if all(spent(n) for n in order):
         return []
 
     titles = _queue_titles(qtext)
@@ -8712,7 +8774,7 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
             break
         met.update(end_stages[n])
     for n in order:
-        if end_stages[n] and item_status.get(n, "planned") not in spent:
+        if end_stages[n] and not spent(n):
             met.update(end_stages[n])
 
     annotated: Set[Tuple[int, int]] = set()
@@ -8745,7 +8807,7 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
         if unannotated:
             waiting = [n for n in order
                        if n not in specced and end_stages[n] is None
-                       and item_status.get(n, "planned") not in spent]
+                       and not spent(n)]
             reasons.append(
                 f"acceptance criteri{'on' if len(unannotated) == 1 else 'a'} "
                 f"{', '.join(map(str, unannotated))} of stage {s}, which no item "
@@ -8790,8 +8852,7 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     back = {r.item for r in reopened_items(lines) if r.status in _OPEN_STATUSES}
     for n in order:
         named = end_stages[n]
-        if (named is None or item_status.get(n, "planned") in spent
-                or n in back):
+        if named is None or spent(n) or n in back:
             continue
         if not named:
             findings.append(SpecFinding(
@@ -8819,10 +8880,9 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     # way, so it still runs last; the warning keeps the file saying so. A
     # settled record either side (✅, ❌, ⏸️) is history, not a plan (#338),
     # and an item whose dependencies lead back to it belongs after it.
-    holds = queue_end_holds(repo_root, config, qtext, item_status,
-                            withdrawn_stage_items(lines))
+    holds = queue_end_holds(repo_root, config, qtext, item_status, withdrawn)
     for i, n in enumerate(order):
-        if end_stages[n] is None or item_status.get(n, "planned") in spent:
+        if end_stages[n] is None or spent(n):
             continue
         after = [m for m in order[i + 1:] if m in holds.get(n, ())]
         if after:
@@ -13535,7 +13595,9 @@ def _pick_item(repo_root: Path, config, queue_text: str,
         # from a tree missing the very thing the dependency provides. Under
         # `auto-merge` this window is milliseconds; under `pr` it is however
         # long the human takes, which is exactly when it matters.
-        if any(item_status.get(d, "planned") in BLOCKING_STATUSES for d in deps):
+        # A ❌, ⏸️ or withdrawn-stage 📋 dependency has left the way
+        # (`still_blocks`, issue #393).
+        if any(still_blocks(d, item_status, withdrawn) for d in deps):
             continue
         return num, titles.get(num, f"item {num}")
     return None
@@ -13718,7 +13780,8 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
         gated |= _reached(g)
     early = _early_ready(repo_root, config, live_ordered,
                          [(n, g) for n, g, _ in relevant], gated,
-                         claimed, item_status, scan_order, holds)
+                         claimed, item_status, scan_order, holds,
+                         all_withdrawn)
 
     def _withdrawn_reason(num: int) -> str:
         stages = withdrawn[num]
@@ -13813,7 +13876,7 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
             print(f"{head} claimed by {br}, already in flight")
         else:
             blockers = [d for d in _item_dependencies(repo_root, config, num)
-                        if item_status.get(d, "planned") in BLOCKING_STATUSES]
+                        if still_blocks(d, item_status, all_withdrawn)]
             held_by = holds.get(num, [])
             blockers += [d for d in held_by if d not in blockers]
             if blockers:
@@ -13837,7 +13900,8 @@ def _early_ready(repo_root: Path, config, open_ordered: List[int],
                  gates: List[Tuple[int, "HumanGate"]], gated: set,
                  claimed: Dict[int, str], item_status: Dict[int, str],
                  scan_order: List[int],
-                 holds: Optional[Dict[int, List[int]]] = None) -> str:
+                 holds: Optional[Dict[int, List[int]]] = None,
+                 withdrawn: Collection[int] = ()) -> str:
     """The ``early ready:`` line ending a ``none left — …`` report that exits 0.
 
     ``yes`` when every gate holding the queue is still ⏳ awaiting its
@@ -13867,7 +13931,7 @@ def _early_ready(repo_root: Path, config, open_ordered: List[int],
     # waits on a declared dependency.
     holds = holds or {}
     deps = {n: [d for d in _item_dependencies(repo_root, config, n)
-                if item_status.get(d, "planned") in BLOCKING_STATUSES]
+                if still_blocks(d, item_status, withdrawn)]
             for n in open_ordered}
     for n in open_ordered:
         deps[n] += [d for d in holds.get(n, []) if d not in deps[n]]
@@ -14016,7 +14080,8 @@ def interface_pins(spec_text: str, deps: List[int],
     are skipped here exactly as §5 lists them: an engine-marked audit entry
     (`assumption_engine_pin`), a bullet already carrying a re-check, and —
     reported rather than skipped — a dependency that left the queue as ❌/⏸️,
-    which has no code to check against.
+    or as 📋 in a withdrawn stage, which has no code to check against
+    (`_interface_pin_report` decides which, issue #393).
     """
     out: List[Tuple[int, str, int, str]] = []
     for index, bullet in enumerate(_assumption_bullets(spec_text), 1):
@@ -14044,13 +14109,21 @@ def _interface_pin_report(repo_root: Path, config, number: int) -> Optional[str]
     deps = _item_dependencies(repo_root, config, number)
     if not deps:
         return None
+    ppath = docs_dir(repo_root, config) / "progress.md"
+    plines = (ppath.read_text(encoding=_ENCODING).splitlines()
+              if ppath.is_file() else [])
+    item_status = _parse_item_status(plines)[2]
     pins = interface_pins(specs[0].read_text(encoding=_ENCODING), deps,
-                          _progress_item_status(repo_root, config))
+                          item_status)
     if not pins:
         return None
-    absent = {"excluded", "deferred"}
+    # Left the way without landing — ❌, ⏸️, or 📋 in a withdrawn stage
+    # (`still_blocks`, issue #393) — so there is no code to check against.
+    withdrawn = withdrawn_stage_items(plines)
     parts = [f"{label} (item {dep:03d}"
-             + (", no code to check against" if st in absent else "") + ")"
+             + (", no code to check against" if st != "complete"
+                and not still_blocks(dep, item_status, withdrawn) else "")
+             + ")"
              for _, label, dep, st in pins]
     distinct = len({index for index, _, _, _ in pins})
     return (f"aide claim: {distinct} assumption(s) pin a dependency's interface "
@@ -17721,16 +17794,27 @@ def cmd_status(args: argparse.Namespace) -> int:
     dirty = git(["status", "--porcelain"], repo_root, check=False).stdout.strip()
     print(f"  tree: {'dirty (' + str(len(dirty.splitlines())) + ' path(s))' if dirty else 'clean'}")
 
-    item_status = _progress_item_status(repo_root, config)
+    ppath = docs_dir(repo_root, config) / "progress.md"
+    plines = (ppath.read_text(encoding=_ENCODING).splitlines()
+              if ppath.is_file() else [])
+    item_status = _parse_item_status(plines)[2]
+    # Open as `claim` reads it (`queue_is_open`, issue #393): a 📋 item of a
+    # withdrawn stage is never offered, so it neither keeps a queue open nor
+    # moves the live marker, and is named on its queue's line instead.
+    withdrawn = withdrawn_stage_items(plines)
     qdir = docs_dir(repo_root, config) / "queue"
     live_seen = False
     live_work: List[int] = []
     if iter_queue_paths(qdir):
         for path in iter_queue_paths(qdir):
             nums = queue_item_numbers(path.read_text(encoding=_ENCODING))
-            open_nums = [n for n in nums
-                         if item_status.get(n, "planned")
+            idle = [n for n in nums if n in withdrawn
+                    and item_status.get(n, "planned") == "planned"]
+            open_nums = [n for n in nums if n not in idle
+                         and item_status.get(n, "planned")
                          in ("planned", "in-progress", "in-review")]
+            aside = (("not offered, 📋 in a withdrawn stage: "
+                      + ", ".join(f"{n:03d}" for n in idle)) if idle else "")
             if open_nums:
                 tag = " (live)" if not live_seen else ""
                 if not live_seen:
@@ -17740,9 +17824,10 @@ def cmd_status(args: argparse.Namespace) -> int:
                                  in ("planned", "in-progress")]
                 live_seen = True
                 listed = ", ".join(f"{n:03d}" for n in open_nums)
-                print(f"  {path.name}: open{tag} — {len(open_nums)}/{len(nums)} items open ({listed})")
+                print(f"  {path.name}: open{tag} — {len(open_nums)}/{len(nums)} items open ({listed})"
+                      + (f"; {aside}" if aside else ""))
             else:
-                print(f"  {path.name}: done")
+                print(f"  {path.name}: done" + (f" — {aside}" if aside else ""))
     else:
         print("  queues: none")
 
@@ -18463,8 +18548,10 @@ def build_parser() -> argparse.ArgumentParser:
             "zero-padded: 037 is an item number.\n"
             "\n"
             "A record is the spec of an item progress.md shows \u2705, "
-            "\u274c or \u23f8\ufe0f, or a queue naming items none of which "
-            "is still open; an ID naming nothing is an ERROR there too."))
+            "\u274c or \u23f8\ufe0f, or \U0001f4cb with every bullet in a "
+            "stage whose summary row is \u274c, or a queue naming items none "
+            "of which is still open; an ID naming nothing is an ERROR there "
+            "too."))
     p_check.add_argument("--queue", type=int, default=None,
                          help="also check this queue's specs against each other "
                               "(scope overlaps, pinned state, dependency graph)")
@@ -19109,8 +19196,9 @@ def register_git_subcommands(sub) -> None:
         description=(
             "Picks the first 📋 item the queue lists \u2014 its own "
             "order, not the item numbers \u2014 whose dependencies have all "
-            "left the way (\u2705, \u274c or "
-            "\u23f8\ufe0f) and that no unresolved human gate reaches. An "
+            "left the way (\u2705, \u274c, \u23f8\ufe0f, or a "
+            "\U0001f4cb item of a withdrawn stage) and that no unresolved "
+            "human gate reaches. An "
             "item every deliverable bullet of which sits in a stage whose "
             "Stage summary row is \u274c \u2014 withdrawn whole \u2014 "
             "is not offered either, and the report names the stage; an item "
@@ -19154,8 +19242,8 @@ def register_git_subcommands(sub) -> None:
             "dependency's interface, to be re-checked before tests are "
             "written; an engine-marked assumption and one already carrying a "
             "re-check are not named, and a dependency that left the queue as "
-            "\u274c or \u23f8\ufe0f is named as having no code to check "
-            "against."))
+            "\u274c, \u23f8\ufe0f or a \U0001f4cb item of a withdrawn stage "
+            "is named as having no code to check against."))
     p_claim.add_argument("--queue", type=int, default=None,
                          help="queue number (default: the lowest-numbered open queue)")
     p_claim.add_argument("--base", default=None,

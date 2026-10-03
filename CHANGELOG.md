@@ -136,6 +136,45 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.35.2] — 2026-10-03
+
+### Fixed
+
+- **`aide status`, `aide check` and the record readers read a queue's open
+  state as `claim` does (issue #393).** 2.35.1 stopped a 📋 item every
+  bullet of which sits in a stage whose Stage summary row is ❌ keeping a
+  queue open for `claim`, but three readers kept their own reading of the
+  bullets, so the commands disagreed about the same tree. `aide status` no
+  longer counts such an item open, so the `(live)` marker and the runnable
+  work it feeds move on to the queue `claim` would take, and the item is
+  named on its queue's line instead (`done — not offered, 📋 in a withdrawn
+  stage: NNN`). `aide check`'s declared-status comparison no longer warns
+  `marked completed but still has open items` on a queue left with only such
+  items — the one `aide queue tidy` stamps completed — and a queue declared
+  `Live` over the same tree is warned with `every item is finished or 📋 in
+  a withdrawn stage`. Such an item's spec, and a queue left with only such
+  items, are records, as a ⏸️ item's are: the sweeps that ask an author to
+  edit a document skip them, read afresh on every run, and a template-drift
+  warning no longer names that queue. A 🚧 or 🔍 item of a withdrawn stage
+  is unchanged everywhere — live work until its owner drops it. `aide check
+  -h` states the record half.
+- **A dependency on a withdrawn stage's 📋 item has left the queue's way, as
+  a ❌ one has (issue #393).** It read as 📋, a blocking status, so its
+  dependents were held for good — `claim` reported them `waiting on NNN
+  (planned)` on work it would never offer. One reading, `still_blocks`, now
+  decides what holds a dependent back in `claim`'s pick, its `none left`
+  report, the `early ready:` line, `queue_is_open`, the queue-end hold and
+  `aide check --queue`'s ordering and cycle graph, so they cannot disagree.
+  `aide check --queue` also counts such an item spent, as an excluded one:
+  no scope conflict with it is reported, and a queue whose items are all
+  spent or withdrawn gets no queue-end findings, and `claim`'s interface-pin
+  line names such a dependency as having no code to check against, as §5
+  does for a ❌ or ⏸️ one. A 🚧 or 🔍 dependency in a withdrawn stage still
+  blocks. §1 → `items.md` states it (the
+  `## Dependencies` sentence and the record sentence, with the why in its
+  Rationale) and §5 the interface-pin case, the `aide-item-specs` section
+  skill carries and pins both, and `aide claim -h` names the case.
+
 ## [2.35.1] — 2026-10-03
 
 ### Fixed
