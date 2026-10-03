@@ -2446,6 +2446,13 @@ def test_each_bootstrap_reading_builds_its_argv(tmp_path: Path):
         "pip3 install .": (["pip3", "install", "."], True),
         "py -3.12 -m pip install .": (["py", "-3.12", "-m", "pip", "install", "."], True),
     }
+    # An existing file outside the repository is a program to run, by an
+    # absolute path or one leading out of it.
+    outside = tmp_path / "uv"
+    outside.write_text("", encoding="utf-8")
+    if " " not in str(outside):  # the value is split on whitespace
+        cases[f"{outside} sync"] = ([str(outside), "sync"], True)
+    cases["../uv sync"] = (["../uv", "sync"], True)
     for value, expected in cases.items():
         assert aide.bootstrap_argv(value.split(), vpy, repo) == expected, value
 

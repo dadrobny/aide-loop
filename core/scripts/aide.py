@@ -13479,9 +13479,11 @@ def bootstrap_argv(tokens: List[str], vpy: Path,
     3. A leading `python` or `python3` is replaced by the venv's Python.
     4. A first word naming an existing file under *repo_root* (`manage
        install`, `tools/bootstrap`, `app.pyz install`), or a directory
-       holding a `__main__.py`, is arguments to the venv's Python, as
+       there holding a `__main__.py`, is arguments to the venv's Python, as
        before — so a repository shell script is written
-       `sh tools/bootstrap.sh`.
+       `sh tools/bootstrap.sh`, and a repository that is itself the tool
+       (a root `invoke/__main__.py`) runs its own tree. An absolute path, or
+       one leading out of the repository, is a command.
     5. Anything else (`uv sync`, `make dev`) is a command.
     """
     first = tokens[0] if tokens else ""
@@ -13491,10 +13493,23 @@ def bootstrap_argv(tokens: List[str], vpy: Path,
         return [str(vpy), "-m", *tokens], False
     if first in _BOOTSTRAP_PYTHONS:
         return [str(vpy), *tokens[1:]], False
-    named = Path(repo_root) / first
-    if named.is_file() or (named / "__main__.py").is_file():
+    if _repo_python_target(first, Path(repo_root)):
         return [str(vpy), *tokens], False
     return list(tokens), True
+
+
+def _repo_python_target(first: str, repo_root: Path) -> bool:
+    """Whether *first* names a file inside *repo_root*, or a directory there
+    holding a `__main__.py` — what `<vpy> <first>` could run before issue
+    #378. An absolute path, or one leading out of the repository, is not:
+    `repo_root / "/opt/uv/bin/uv"` is `/opt/uv/bin/uv`, a program to run."""
+    root = repo_root.resolve()
+    named = (root / first).resolve()
+    try:
+        named.relative_to(root)
+    except ValueError:
+        return False
+    return named.is_file() or (named / "__main__.py").is_file()
 
 
 def bootstrap_command_env(venv: Path, scripts: Path) -> Dict[str, str]:
