@@ -769,13 +769,17 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "number",
          ("test_aide_gates::test_a_zero_padded_number_is_not_a_gate_position",
           "test_aide_insights::test_a_zero_padded_number_is_not_an_insight_position")),
-        # `record_documents`: `_RECORD_ITEM_STATUSES`, and a queue with items
-        # none of which `queue_is_open` counts; the ID loops never consult it.
+        # `record_documents`: `_RECORD_ITEM_STATUSES`, a 📋 item of
+        # `withdrawn_stage_items` (issue #393), and a queue with items none of
+        # which `queue_is_open` counts; the ID loops never consult it.
         ("A record is the spec of an item progress.md shows \u2705, \u274c or "
-         "\u23f8\ufe0f, or a queue naming items none of which is still open; "
-         "an ID naming nothing is an ERROR there too",
+         "\u23f8\ufe0f, or \U0001f4cb with every bullet in a stage whose "
+         "summary row is \u274c, or a queue naming items none of which is "
+         "still open; an ID naming nothing is an ERROR there too",
          ("test_aide_insights::test_a_record_is_still_held_to_ids_that_resolve",
-          "test_aide_gates::test_a_record_is_still_held_to_gate_ids_that_resolve")),
+          "test_aide_gates::test_a_record_is_still_held_to_gate_ids_that_resolve",
+          "test_aide_git::"
+          "test_record_documents_settles_a_withdrawn_stages_planned_item")),
         # `ledger_warnings` over `ledger_rows`: the cell count, the Item cell
         # and each of `LEDGER_INTEGER_COLUMNS`, appended to `warnings` and
         # never to `errors`.
@@ -1467,11 +1471,14 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("Picks the first \U0001f4cb item the queue lists — its own order, "
          "not the item numbers",
          "test_aide_git::test_claim_offers_the_first_planned_item_the_queue_lists"),
-        # `if any(item_status.get(d) in BLOCKING_STATUSES for d in deps)` —
-        # the complement of BLOCKING_STATUSES is exactly {✅, ❌, ⏸️}.
-        ("whose dependencies have all left the way (✅, ❌ or "
-         "⏸️)",
-         "test_aide_git::test_pick_item_waits_only_for_a_dependency_that_still_blocks"),
+        # `if any(still_blocks(d, item_status, withdrawn) for d in deps)` —
+        # the complement of BLOCKING_STATUSES is exactly {✅, ❌, ⏸️}, and
+        # `still_blocks` lets a 📋 item of `withdrawn_stage_items` by too
+        # (issue #393).
+        ("whose dependencies have all left the way (✅, ❌, ⏸️, or a "
+         "\U0001f4cb item of a withdrawn stage)",
+         ("test_aide_git::test_pick_item_waits_only_for_a_dependency_that_still_blocks",
+          "test_aide_git::test_a_withdrawn_planned_dependency_has_left_the_way")),
         # `gate_blocked_items` -> `if num in gate_blocked: continue`.
         ("that no unresolved human gate reaches",
          "test_aide_gates::test_claim_skips_a_gated_item_and_offers_the_next"),
@@ -1578,11 +1585,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("the claim names that assumption as pinning a dependency's interface",
          "test_aide_traceability::test_claim_names_the_assumptions_that_pin_a_dependency"),
         # The three exclusions of `interface_pins`, in the order §5 lists them.
+        # The withdrawn-stage 📋 case is `still_blocks` in
+        # `_interface_pin_report` (issue #393).
         ("an engine-marked assumption and one already carrying a re-check are "
-         "not named, and a dependency that left the queue as ❌ or ⏸️ is named "
-         "as having no code to check against",
+         "not named, and a dependency that left the queue as ❌, ⏸️ or a "
+         "\U0001f4cb item of a withdrawn stage is named as having no code to "
+         "check against",
          ("test_aide_traceability::test_interface_pins_skip_the_three_shapes_that_are_not_the_signal",
-          "test_aide_traceability::test_claim_names_the_assumptions_that_pin_a_dependency")),
+          "test_aide_traceability::test_claim_names_the_assumptions_that_pin_a_dependency",
+          "test_aide_traceability::test_claim_names_a_withdrawn_planned_dependency_as_absent")),
     ],
 
     # ------------------------------------------------------------------- gc --

@@ -3168,6 +3168,52 @@ def test_merge_refuses_a_withdrawn_stages_unstarted_item(
         consumer / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
 
 
+def test_a_queue_of_withdrawn_items_reads_done_to_status_tidy_and_check(
+        aide, consumer: Path, capsys):
+    """Issue #393: with 001 ✅ and 002 📋 in withdrawn stage 2, `status`
+    reads queue 001 as done as `claim` does, and once `queue tidy` stamps it
+    completed `check` no longer warns that it still has open items."""
+    _withdraw_stage_2_with_002(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "done"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "status"]) == 0
+    out = capsys.readouterr().out
+    assert "queue-001.md: done — not offered" in out
+    assert "(live)" not in out
+    assert aide.main(["--repo", str(consumer), "queue", "tidy", "1"]) == 0
+    _commit(consumer, "docs: tidy queue 001")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    captured = capsys.readouterr()
+    assert "still has open items" not in captured.out + captured.err
+
+
+def test_a_dependency_on_a_withdrawn_stages_item_has_left_the_way(
+        aide, consumer: Path):
+    """Issue #393: 003 depends on 002, 📋 in withdrawn stage 2. §1 →
+    items.md reads it as left the queue's way, as a ❌ item, so `claim`
+    takes 003 rather than holding it for good."""
+    _withdraw_stage_2_with_002(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "done"]) == 0
+    ddir = consumer / "docs" / "aide"
+    progress = ddir / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "- ✅ The greeter. *(Item 001)*\n",
+        "- ✅ The greeter. *(Item 001)*\n- 📋 The wave. *(Item 003)*\n"),
+        encoding="utf-8")
+    queue = ddir / "queue" / "queue-001.md"
+    queue.write_text(queue.read_text(encoding="utf-8")
+                     + "\n### Item 003: The wave\nA wave.\n", encoding="utf-8")
+    (ddir / "items" / "003-the-wave.md").write_text(
+        "# Item 003 — The wave\n\n## Dependencies\n- Item 002.\n",
+        encoding="utf-8")
+    _commit(consumer, "docs: 003 depends on 002")
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "aide/003-the-wave"
+
+
 @pytest.mark.parametrize("icon", ["⏸️", "❌"])
 def test_check_warns_on_a_stage_under_way_over_an_unmet_dependency(
         aide, consumer: Path, capsys, icon: str):
