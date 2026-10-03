@@ -11777,10 +11777,12 @@ def _ledger_report_command(repo_root: Path, config,
 #: Which of `queue`'s shared options each action reads; any other one given
 #: is a usage error, never silently ignored — `ready --dry-run` must not push
 #: and flip (issue #330). The older actions are checked only against the
-#: options `pr` and `ready` brought, which they never read.
+#: options `pr` and `ready` brought, which they never read. `discard` reads
+#: none, so `discard --dry-run` is refused rather than run (issue #383).
 _QUEUE_OPTIONS = {
     "pr": {"body", "body_file"},
     "ready": {"undo"},
+    "discard": set(),
 }
 _QUEUE_OPTION_DEFAULTS = {"through": None, "no_commit": False, "specs": False,
                           "base": None, "dry_run": False, "date": None,
@@ -11819,8 +11821,10 @@ def cmd_queue(args: argparse.Namespace) -> int:
         return _queue_start(args)
     if args.action == "gate":
         return _queue_gate(args)
+    if args.action == "discard":
+        return _queue_discard(args)
     if args.action != "tidy":
-        print("usage: aide queue {start|tidy|gate} NNN | aide queue restack "
+        print("usage: aide queue {start|tidy|gate|discard} NNN | aide queue restack "
               "[NNN --base REF] | aide queue {pr|ready} [NNN]", file=sys.stderr)
         return 2
     import datetime as _dt
@@ -11953,19 +11957,123 @@ def _queue_start(args: argparse.Namespace) -> int:
     # `/aide-run-roadmap` (queue-planner) and `/aide-spec-queue` (spec-author,
     # spec-reviewer) start here and reach a role before any `check` runs, so
     # the inbox is guaranteed at the same point `claim` guarantees it.
-    ensure_insights_inbox(repo_root, config, verb="queue start")
+    created = ensure_insights_inbox(repo_root, config, verb="queue start")
     if mode != "local":
         failure = _push_new_branch(repo_root, branch)
         if failure is not None:
+            # One command per step (§3). `queue discard` takes a queue branch
+            # with no commit beyond its base, so not a specs-queue branch and
+            # not one carrying the inbox this start just committed (#383).
+            over = (f"'aide queue discard {args.number:03d}'"
+                    if created is None and not args.specs else
+                    f"'git switch {base}', then 'git branch -D {branch}'")
             print(f"aide queue start: {failure}\n"
                   f"{branch} exists locally, branched from {base}, and is "
                   f"checked out — nothing is lost. Publish it with "
                   f"'git push -u origin {branch}' once the remote is "
-                  f"reachable, or start over with 'git switch {base} && "
-                  f"git branch -D {branch}'.", file=sys.stderr)
+                  f"reachable, or start over with {over}.", file=sys.stderr)
             return 1
     note = "" if base == str(config["git"].get("main_branch", "main")) else f" (base {base})"
     print(f"started {branch}{note}")
+    return 0
+
+
+def _queue_discard(args: argparse.Namespace) -> int:
+    """Delete a queue branch that carries nothing beyond its base; see -h.
+
+    The undo of `queue start` for a queue nobody planned (issue #383): a
+    planner that hands back writes no queue, and the branch `queue start`
+    made and pushed is left open and empty, counting against
+    `max_open_queues`. The precondition is the whole safety — no commit on
+    the branch, nor on origin's copy as last fetched, beyond the recorded
+    base — so there is nothing to lose, and no `--yes` or dry run to ask
+    for: `gc` previews because its ground is a judgement about landed work,
+    and here there is no work. Origin's copy is deleted with a lease on the
+    commit that was counted, so a push made since is never deleted.
+
+    Off `local` mode with no remote named origin it still runs, and deletes
+    the local branch only: nothing on origin can be reached, and the local
+    branch is still the one counted against the cap.
+    """
+    tag = "aide queue discard"
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    if not _require_repository("queue discard", repo_root):
+        return 1
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    mode = str(config["git"].get("mode", "auto-merge"))
+    branch = queue_branch_name(prefix, args.number)
+    tracking = f"origin/{branch}"
+    on_origin = (mode != "local" and _has_origin(repo_root)
+                 and _ref_exists(repo_root, f"refs/remotes/{tracking}"))
+    if not _local_branch_exists(repo_root, branch):
+        if on_origin:
+            print(f"{tag}: {branch} is on origin only — this checkout did not "
+                  f"start it, so its base is unknown here; discard it where "
+                  f"it was started", file=sys.stderr)
+        else:
+            print(f"{tag}: {branch} is not a branch in this checkout or on "
+                  f"origin — there is nothing to discard", file=sys.stderr)
+        return 1
+    base = _recorded_branch_base(repo_root, branch)
+    if base is None:
+        print(f"{tag}: {branch} has no recorded base, so whether it carries "
+              f"work beyond one cannot be told — if it is empty, delete it by "
+              f"hand ('git branch -D {branch}')", file=sys.stderr)
+        return 1
+    for ref in [branch] + ([tracking] if on_origin else []):
+        counted = git(["rev-list", "--count", f"{base}..{ref}"],
+                      repo_root, check=False)
+        ahead = counted.stdout.strip()
+        if counted.returncode != 0 or not ahead.isdigit():
+            print(f"{tag}: git could not count {ref}'s commits beyond its "
+                  f"base {base} ({counted.stderr.strip() or 'no answer'}); "
+                  f"nothing was discarded", file=sys.stderr)
+            return 1
+        if ahead != "0":
+            print(f"{tag}: {ref} carries "
+                  f"{_plural(int(ahead), 'commit', 'commits')} beyond {base}, "
+                  f"which no plan review covers — landing or deleting "
+                  f"{'it' if ahead == '1' else 'them'} is a person's call; "
+                  f"nothing was discarded", file=sys.stderr)
+            return 1
+    current = _current_branch(repo_root)
+    if branch != current and branch in _checked_out_branches(repo_root):
+        print(f"{tag}: {branch} is checked out in another worktree, and git "
+              f"deletes no branch a checkout is sitting on — switch that "
+              f"worktree off it first; nothing was discarded", file=sys.stderr)
+        return 1
+    if branch == current:
+        unsafe = _unsafe_tree_state(repo_root)
+        if unsafe:
+            print(f"{tag}: refusing — {unsafe}. {branch} is checked out and "
+                  f"discarding it switches to {base}; commit, stash or finish "
+                  f"that state first. Nothing was discarded.", file=sys.stderr)
+            return 1
+        switched = git(["switch", base], repo_root, check=False)
+        if switched.returncode != 0:
+            print(f"{tag}: git would not switch to {base} "
+                  f"({switched.stderr.strip() or 'no answer'}); nothing was "
+                  f"discarded", file=sys.stderr)
+            return 1
+    if on_origin:
+        lease = f"--force-with-lease=refs/heads/{branch}:{_rev(repo_root, tracking)}"
+        pushed = git(["push", lease, "origin", "--delete", branch],
+                     repo_root, check=False)
+        if pushed.returncode != 0:
+            print(f"{tag}: origin did not delete {branch} "
+                  f"({pushed.stderr.strip() or 'no answer'}) — origin may "
+                  f"hold a commit pushed since the last fetch; nothing was "
+                  f"discarded", file=sys.stderr)
+            return 1
+    deleted = git(["branch", "-D", branch], repo_root, check=False)
+    if deleted.returncode != 0:
+        print(f"{tag}: git would not delete {branch} "
+              f"({deleted.stderr.strip() or 'no answer'})"
+              + ("; its copy on origin is already deleted" if on_origin
+                 else ""), file=sys.stderr)
+        return 1
+    print(f"discarded {branch} (base {base})")
     return 0
 
 
@@ -12065,9 +12173,10 @@ def _queue_pr_branch(repo_root: Path, config: Dict[str, Dict[str, object]],
     ``(branch, number)``, or ``(None, None)`` after printing why: *number*'s
     ``<prefix>queue-NNN``, which must be a local branch, else the current
     branch, which must be one. A specs-queue branch is not: its work lands on
-    its queue branch, which carries the PR. Then the forge must be reachable
-    at all — `[git] forge = "none"`, `local` mode and a checkout with no
-    origin open no PR.
+    its queue branch, which carries the PR. The branch must carry its own
+    queue file, committed — whatever the mode. Then the forge must be
+    reachable at all — `[git] forge = "none"`, `local` mode and a checkout
+    with no origin open no PR.
     """
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
@@ -12085,6 +12194,16 @@ def _queue_pr_branch(repo_root: Path, config: Dict[str, Dict[str, object]],
                   f"queue number", file=sys.stderr)
             return None, None
         number = int(branch[len(prefix) + len(_QUEUE_TOKEN):])
+    # Before the mode and the forge (issue #383): the branch `queue start`
+    # made for a planner that then handed back holds no plan, and a caller
+    # reading a no-forge refusal as "carry on without a PR" must not carry on
+    # from there.
+    if not _branch_carries_queue_file(repo_root, config, branch, number):
+        print(f"{tag}: {branch} carries no {queue_name(number)} file under "
+              f"{_docs_rel(config)}/queue, so there is no plan for a pull "
+              f"request to carry — commit the queue file first; nothing was "
+              f"pushed or asked of the forge", file=sys.stderr)
+        return None, None
     if declared_forge(config) == "none":
         print(f'{tag}: no forge is declared (git.forge = "none")',
               file=sys.stderr)
@@ -12098,6 +12217,24 @@ def _queue_pr_branch(repo_root: Path, config: Dict[str, Dict[str, object]],
               f"no forge to ask", file=sys.stderr)
         return None, None
     return branch, number
+
+
+def _branch_carries_queue_file(repo_root: Path,
+                               config: Dict[str, Dict[str, object]],
+                               branch: str, number: int) -> bool:
+    """Does *branch*'s tip hold a queue file for *number*?
+
+    Read at the branch, not in the working tree: a PR carries what is
+    committed. A listing git cannot give reads as no file, and the caller
+    refuses, which changes nothing.
+    """
+    listed = git(["ls-tree", "--name-only", branch,
+                  f"{_docs_rel(config)}/queue/"], repo_root, check=False)
+    if listed.returncode != 0:
+        return False
+    return any(queue_number(Path(p.strip())) == number
+               for p in listed.stdout.splitlines()
+               if p.strip().endswith(".md"))
 
 
 def _push_if_ahead(repo_root: Path, tag: str, branch: str) -> bool:
@@ -18359,8 +18496,8 @@ def cmd_gc(args: argparse.Namespace) -> int:
     """Delete claim branches whose work has landed (item ✅ in progress.md —
     or ❌, dropped or withdrawn with its stage — or ``--merged`` branches
     already merged into main). Dry-run by default; pass
-    ``--yes`` to delete. The one destructive verb in the CLI, so it is never
-    implicit."""
+    ``--yes`` to delete. The one verb that deletes work, so it is never
+    implicit: `queue discard` deletes a branch only where it carries none."""
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
     if not _require_repository("gc", repo_root):
@@ -18436,8 +18573,8 @@ def cmd_gc(args: argparse.Namespace) -> int:
                                  f"{main}; re-check it, or pass --abandon to "
                                  f"delete it anyway")
                 else:
-                    # Not the same statement, and this is the one destructive
-                    # verb: say the measurement failed, not that the branch
+                    # Not the same statement, and this is the one verb that
+                    # deletes work: say the measurement failed, not that the branch
                     # carries work it may not carry.
                     skips[br] = (f"{reason}, but whether its work is in {main} "
                                  f"could not be determined (ref "
@@ -18456,8 +18593,8 @@ def cmd_gc(args: argparse.Namespace) -> int:
         # "Nothing to clean" is a claim about the ground and the scope this run
         # actually checked, not about the repository — say which. The default
         # invocation checks only the item ground, and every invocation ignores
-        # branches outside `prefix` (deliberately: gc is the one destructive
-        # verb and must not delete branches it does not own). Left unqualified,
+        # branches outside `prefix` (deliberately: gc is the one verb that
+        # deletes work and must not delete branches it does not own). Left unqualified,
         # the message reads as "no cleanup is available here" and the next
         # reach is the raw `git branch -d` the CLI exists to replace.
         print("aide gc: nothing to clean")
@@ -18468,7 +18605,7 @@ def cmd_gc(args: argparse.Namespace) -> int:
     # Every skip is decided BEFORE anything is printed, so the preview is the
     # set `--yes` acts on rather than a promise it then quietly narrows. A dry
     # run that overstates trains the reader to skim it, and this is the one
-    # destructive verb — the list a human is asked to approve must be exact.
+    # verb that deletes work — the list a human is asked to approve must be exact.
     for br in [b for b in targets if b in protected]:
         del targets[br]
         skips[br] = ("checked out (here or in another worktree) — git refuses to "
@@ -19018,7 +19155,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_queue = sub.add_parser(
         "queue", help="queue branch creation / maintenance, a planned "
         "queue's plan-review gate, keeping a stack of queue branches "
-        "merged forward (restack), and the queue's own PR (pr, ready)",
+        "merged forward (restack), the queue's own PR (pr, ready), and "
+        "discarding a queue branch nothing was committed on (discard)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "start NNN creates <prefix>queue-NNN from --base (default "
@@ -19177,17 +19315,39 @@ def build_parser() -> argparse.ArgumentParser:
             "or no origin, a branch with no PR (`queue pr` opens it), a PR "
             "closed or merged, a forge that could not be asked, and a failed "
             "push or change. Under [git] forge = \"none\" both refuse, exit "
-            "1, before the forge is asked anything: no forge is declared.\n"
+            "1, before the forge is asked anything: no forge is declared. "
+            "Before the mode or the forge is considered, both refuse, exit "
+            "1, a queue branch whose tip carries no queue file of its own "
+            "number: nothing is planned on it, so a pull request would have "
+            "no plan to carry.\n"
             "\n"
             "An option the action does not read is refused, exit 2, before "
             "anything is done: pr and ready take no --dry-run, --base, "
             "--through, --date, --specs or --no-commit, pr no --undo and ready "
-            "no --body or --body-file; and start, tidy, gate and restack take "
-            "no --body, --body-file or --undo."))
+            "no --body or --body-file; start, tidy, gate and restack take "
+            "no --body, --body-file or --undo; and discard takes none of "
+            "them.\n"
+            "\n"
+            "discard NNN discards a queue branch `queue start` made that "
+            "carries no commits beyond its recorded base, locally and on "
+            "origin; it refuses one that does. Origin's copy, as last "
+            "fetched, is counted too, and deleted only while origin still "
+            "holds the commit counted. With nothing on the branch to lose "
+            "there is no preview and no confirmation. A checked-out branch "
+            "is left for its base first, and uncommitted changes to tracked "
+            "files are refused. local mode never touches origin, and off "
+            "local mode with no remote named origin only the local branch "
+            "is deleted. The branch's recorded base and start go with it. "
+            "Exit 0: discarded. 1: refused, nothing discarded — no such "
+            "branch here or on origin, one on origin only, no recorded "
+            "base, a commit beyond the base, the branch checked out in "
+            "another worktree, uncommitted changes, or a switch or push git "
+            "refused; and a local delete git refused, where origin's copy, "
+            "if any, is already gone and the message says so. 2: usage."))
     p_queue.add_argument("action", choices=["start", "tidy", "restack", "gate",
-                                            "pr", "ready"])
+                                            "pr", "ready", "discard"])
     p_queue.add_argument("number", type=int, nargs="?", default=None,
-                         help="queue number (start, tidy, gate; restack only "
+                         help="queue number (start, tidy, gate, discard; restack only "
                               "with --base; pr, ready: default the current "
                               "queue branch)")
     p_queue.add_argument("--through", type=int, default=None, metavar="MMM",

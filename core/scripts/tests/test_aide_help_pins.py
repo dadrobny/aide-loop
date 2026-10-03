@@ -65,7 +65,9 @@ that moved everything.
   this machine can verify now"* (`status`), *"that would be recommending the deletion of an open PR's
   head branch"*, *"Because in `pr` mode nothing inside the loop observes the
   merge"*, *"so none of them lives only in one commit's diff"*, *"since what it
-  blocks is unknown"* — same: the reason a pinned behaviour is what it is.
+  blocks is unknown"*, *"nothing is planned on it, so a pull request would
+  have no plan to carry"* (`queue`) — same: the reason a pinned behaviour is
+  what it is.
 * *"It reads git and never a pull request: a PR closed without merging looks
   exactly like one still open, so a caller checks for a closed PR before it
   restacks"* (`queue`) — what the verb does not read, which a test cannot
@@ -2547,6 +2549,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("Under [git] forge = \"none\" both refuse, exit 1, before the forge "
          "is asked anything",
          "test_aide_queue_pr::test_no_forge_refuses_pr_and_ready_and_asks_nothing"),
+        # `_queue_pr_branch`: `_branch_carries_queue_file` (an `ls-tree` of
+        # the branch tip) ahead of `declared_forge` and the mode (#383).
+        ("Before the mode or the forge is considered, both refuse, exit 1, a "
+         "queue branch whose tip carries no queue file of its own number",
+         ("test_aide_queue_pr::test_a_queue_branch_with_no_queue_file_is_refused_and_nothing_pushed",
+          "test_aide_queue_pr::test_the_missing_queue_file_is_refused_before_the_mode_or_the_forge",
+          "test_aide_queue_pr::test_only_a_committed_queue_file_of_the_branchs_own_number_counts")),
         # `_queue_stray_options`, first thing in `cmd_queue`.
         ("An option the action does not read is refused, exit 2, before "
          "anything is done",
@@ -2561,6 +2570,46 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_queue_pr::test_ready_refuses_a_branch_with_no_pr_to_mark",
           "test_aide_queue_pr::test_ready_refuses_where_the_forge_cannot_be_asked",
           "test_aide_queue_pr::test_ready_that_the_forge_refuses_exits_1")),
+        # `_queue_discard` (#383): `rev-list --count <base>..<ref>` over the
+        # branch and `origin/<branch>`, then `push --delete` and `branch -D`.
+        ("discard NNN discards a queue branch `queue start` made that "
+         "carries no commits beyond its recorded base, locally and on "
+         "origin; it refuses one that does",
+         ("test_aide_queue_pr::test_discard_deletes_an_empty_queue_branch_here_and_on_origin",
+          "test_aide_queue_pr::test_discard_on_a_stack_returns_to_the_queue_below_and_leaves_it",
+          "test_aide_queue_pr::test_discard_refuses_a_branch_carrying_a_commit_and_changes_nothing")),
+        # The second count, and the `--force-with-lease` on the counted tip.
+        ("Origin's copy, as last fetched, is counted too, and deleted only "
+         "while origin still holds the commit counted",
+         "test_aide_queue_pr::test_discard_refuses_where_origins_copy_carries_a_commit"),
+        # `_unsafe_tree_state` only when the branch is the current one; then
+        # `git switch <base>`.
+        ("A checked-out branch is left for its base first, and uncommitted "
+         "changes to tracked files are refused",
+         ("test_aide_queue_pr::test_discard_deletes_an_empty_queue_branch_here_and_on_origin",
+          "test_aide_queue_pr::test_discard_refuses_uncommitted_changes_on_the_checked_out_branch")),
+        # `on_origin` needs a mode other than local and `_has_origin`.
+        ("local mode never touches origin, and off local mode with no remote "
+         "named origin only the local branch is deleted",
+         ("test_aide_queue_pr::test_discard_in_local_mode_never_touches_origin",
+          "test_aide_queue_pr::test_discard_with_no_origin_off_local_mode_deletes_the_local_branch")),
+        # `git branch -D` drops the branch's config section, aide-base and
+        # aide-start with it.
+        ("The branch's recorded base and start go with it",
+         ("test_aide_queue_pr::test_discard_deletes_an_empty_queue_branch_here_and_on_origin",
+          "test_aide_queue_pr::test_discard_with_no_origin_off_local_mode_deletes_the_local_branch")),
+        ("1: refused, nothing discarded — no such branch here or on origin, "
+         "one on origin only, no recorded base, a commit beyond the base, the "
+         "branch checked out in another worktree, uncommitted changes, or a "
+         "switch or push git refused",
+         ("test_aide_queue_pr::test_discard_refuses_a_branch_it_cannot_judge",
+          "test_aide_queue_pr::test_discard_refuses_a_branch_carrying_a_commit_and_changes_nothing",
+          "test_aide_queue_pr::test_discard_refuses_a_branch_checked_out_in_another_worktree",
+          "test_aide_queue_pr::test_discard_refuses_uncommitted_changes_on_the_checked_out_branch",
+          "test_aide_queue_pr::test_discard_refuses_where_origins_copy_carries_a_commit")),
+        # `_QUEUE_OPTIONS["discard"]` is empty, so every shared option is stray.
+        ("discard takes none of them",
+         "test_aide_queue_pr::test_discard_usage_is_exit_2_and_discards_nothing"),
         # `_queue_restack` reads `_recorded_branch_base` for every
         # `_is_stack_branch`, which matches `queue-NNN` and not `specs-queue-`.
         ("The stack is read from the base each queue branch recorded at "

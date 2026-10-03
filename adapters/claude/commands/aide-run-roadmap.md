@@ -124,12 +124,13 @@ parallel* below if you need isolation).
 | **A queue branch's PR was closed without merging** — a line reads `pr=#N/closed` or `orphaned=yes` (`runnable: no` says so too) | **Stop.** Say the PR was closed unmerged and ask the human whether the queue is abandoned (delete the branch and re-plan, via `/aide-feedback-loop` if the roadmap needs it) or the PR should be reopened. Name every `orphaned=yes` branch — built on a batch that was rejected; never restack, build on, approve for, or reopen any of them yourself. |
 | **`queue restack` stopped** (exit 1) | **Stop.** Report its message: a conflict names both branches and leaves everything as it was, and a lower branch git cannot judge names both remedies. |
 | **A lower queue branch has 📋 items again** — a person added an item to its PR in review, and `restack` carried it up the stack | Build it **on that branch**, not the top: switch to it and go to **Run a queue**. Its PR stays ready. When it is exhausted, push (not in `local` mode or with no origin), run `queue restack` to carry the result up, and re-read the state. |
+| **An open queue branch carries no queue file of its own number** — `queue start` made it and no plan was committed on it: a session that ended mid-plan, or a planner hand-back that left a commit behind | `python .aide/scripts/aide.py queue discard NNN`. Exit 0 → re-read the state; the next queue is generated afresh. Exit 1 → **stop** and relay its sentence: a branch carrying commits no plan review covers is a person's to land or delete. |
 | **The open queue branch being built is built out** — its queue has no 📋/🚧 item left | Go to **Queue end**. |
 | **The open queue branch being built has 📋 items held by its plan gate**, still ⏳ Awaiting (or ❌ Declined) | **Stop.** Tell the human to review the draft PR, and to approve the gate on that branch (see **Generate the next queue**); a declined one is re-planned, not approved. If the branch has no PR yet, open it as that section says first. |
 | **The open queue branch being built has 📋 items and no gate holds them** — its plan gate approved, or none raised under `plan_review` | Run the queue on its branch → go to **Run a queue**. |
 | **A queue already on `main` still has 📋 items** — planned under the old flow, no queue branch | Run it from `main` as before → go to **Run a queue**, staying on `main`. |
 | **`runnable: no`, and no row above holds** — the stack is at the cap with nothing left to build | For each stack line whose `pr=` reads `#N/draft`, its PR was never marked ready: switch to that branch and run **Queue end** on it — unless it reads `#N/draft(fixing)` (match `/draft` as a prefix, then look for `(fixing)`): that PR was turned back for a CI fix round whose reopened items are still open, so switch to that branch and resume the round with **Run a queue**, which claims them and runs its Queue end again. With every such line handled, **stop**: report the batches in `awaiting review:`, bottom first; the next queue waits for a merge. |
-| **Nothing open, and the roadmap has more stages** — or no queue exists yet | Generate the next queue off `main` → go to **Generate the next queue**. |
+| **Nothing open, and the roadmap has more stages** — or no queue exists yet | Generate the next queue off `main` → go to **Generate the next queue**. A stage that waits on a ⏸️ or withdrawn one still counts here: the planner hands it back, and that is this run's stop (**Generate the next queue**), on every run until its owner decides. |
 
 A queue branch that carries a maintenance queue and the stage queue after it is
 one row: it is built out only when both are, and one gate holds both.
@@ -177,9 +178,37 @@ end**, below the cap. Call the base `<base>` below — `main`, or
 - **Spawn `queue-planner`**: "Generate queue NNN on branch `aide/queue-NNN`;
   tidy the previous queue; consider the triaged insight candidates, splitting
   off a maintenance queue ahead of the stage queue if they warrant one; commit;
-  then raise the plan-review gate with `aide queue gate`; do not push or PR."
+  then raise the plan-review gate with `aide queue gate`; do not push or PR.
+  If there is nothing you may queue, hand back without writing or committing
+  anything."
   Wait for its summary, which names each gate ID the verb printed, or that it
   raised none.
+- **Check that it wrote a queue before anything else.** A planner that finds
+  nothing it may queue — the next stage waits on a ⏸️ or withdrawn one, or
+  queueing it needs a framework-file edit, or the roadmap is ambiguous — hands
+  back and writes none. Ask git rather than its summary:
+  `git ls-files docs/aide/queue/queue-NNN.md` (the lower number, for a pair)
+  prints the path once it is committed on the branch. When it prints nothing:
+  1. Run nothing below — no `queue pr`, no gate handling. `aide queue pr`
+     refuses a queue branch carrying no queue file of its own number, so a
+     misread hand-back still opens no PR.
+  2. Discard the branch `queue start` made, so the next run does not read
+     an empty queue branch as open, counting against `max_open_queues`:
+     ```
+     python .aide/scripts/aide.py queue discard NNN
+     ```
+     It switches back to `<base>` and deletes the branch here and on origin,
+     and refuses, exit 1, one carrying a commit beyond its base — a
+     hand-back commits nothing, so that is work no plan review covers.
+     Exit 0 → go on to the stop below; exit 1 → relay its sentence beside
+     the hand-back, and stop all the same.
+  3. **Stop** and relay the planner's hand-back verbatim — it names what it
+     could not queue, why, and whose decision unblocks it: for a stage
+     waiting on a ⏸️ one, resuming or dropping that one's deferred work; for
+     one waiting on a withdrawn stage, re-planning it through
+     `/aide-feedback-loop`. On a stack, report the batches awaiting review
+     too. Say that a re-run before that decision plans the same stage and
+     stops on the same question.
 - Open the queue's **draft PR** with the engine, which pushes the planner's
   commits first and opens the PR against the base `queue start` recorded,
   titled `aide: work queue NNN` (or `work queues NNN-MMM` for a pair). Write
@@ -316,6 +345,10 @@ in the next queue rather than rewriting history.
 
 ## When to stop and ask the user
 
+- **The queue-planner handed back and wrote no queue** — the empty queue
+  branch discarded, its hand-back relayed (**Generate the next queue**). The
+  decision is the stage owner's, and the next run asks the same question
+  until it is made.
 - **After opening a queue's draft PR, when `queue gate` raised a gate** — it
   holds the build until a person approves it, and that pause is the whole
   point.

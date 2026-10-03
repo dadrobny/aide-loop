@@ -2231,6 +2231,69 @@ def test_queue_pr_and_ready_refuse_without_a_forge_and_change_nothing(
     assert _sha(consumer, "HEAD") == head and _branch(consumer) == Q1
 
 
+@pytest.mark.parametrize("mode", ["pr", "local"])
+def test_a_queue_branch_the_planner_wrote_no_queue_on_opens_no_pr(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys, mode):
+    """Issue #383: `queue start 2` ran, the planner handed back with a
+    capture committed and no queue-002.md. Neither verb pushes or asks the
+    forge, and in `local` mode the refusal is this one, not the no-forge
+    sentence a runner reads as "carry on without a PR"."""
+    if mode == "pr":
+        _to_pr_mode_with_origin(consumer, tmp_path)
+    assert _start(aide, consumer, 2) == 0
+    (consumer / "docs" / "aide" / "note.md").write_text("capture\n",
+                                                         encoding="utf-8")
+    _commit(consumer, "docs(aide): a capture, and no plan")
+    head = _sha(consumer, "HEAD")
+    asked: list = []
+    monkeypatch.setattr(aide, "_gh", lambda repo_root, args: (
+        asked.append(args), (None, "must not be asked"))[1])
+    for argv in (["pr", "--body", "Plan."], ["ready"]):
+        capsys.readouterr()
+        assert aide.main(["--repo", str(consumer), "queue", *argv]) == 1
+        err = capsys.readouterr().err
+        assert f"{Q2} carries no queue-002 file under docs/aide/queue" in err
+    assert asked == []
+    assert _sha(consumer, "HEAD") == head and _branch(consumer) == Q2
+    if mode == "pr":
+        assert _sha(consumer, f"origin/{Q2}") != head    # nothing pushed
+
+
+def test_queue_discard_removes_an_unplanned_queue_branch_and_refuses_work(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    """Issue #383: the branch a hand-back leaves is discarded — here, on
+    origin, and its recorded base and start with it — and a branch carrying
+    a commit is refused and left exactly as it was."""
+    _to_pr_mode_with_origin(consumer, tmp_path)
+
+    def keys(branch: str) -> str:
+        return _git(["config", "--get-regexp", f"branch\\.{branch}\\."],
+                    consumer, check=False).stdout
+
+    def discard(number: int) -> int:
+        return aide.main(["--repo", str(consumer), "queue", "discard",
+                          str(number)])
+
+    assert _start(aide, consumer, 2) == 0
+    assert keys(Q2) and _remote_has(consumer, Q2)
+    capsys.readouterr()
+    assert discard(2) == 0
+    assert capsys.readouterr().out.strip() == f"discarded {Q2} (base main)"
+    assert _branch(consumer) == "main" and keys(Q2) == ""
+    assert Q2 not in _git(["branch", "--list", Q2], consumer).stdout
+    assert not _remote_has(consumer, Q2)
+
+    assert _start(aide, consumer, 2) == 0
+    (consumer / "docs" / "aide" / "note.md").write_text("capture\n",
+                                                         encoding="utf-8")
+    _commit(consumer, "docs(aide): a capture")
+    head = _sha(consumer, "HEAD")
+    assert discard(2) == 1
+    assert "carries 1 commit beyond main" in capsys.readouterr().err
+    assert _branch(consumer) == Q2 and _sha(consumer, Q2) == head
+    assert keys(Q2) and _remote_has(consumer, Q2)
+
+
 # --------------------------------------------------------------------------- #
 # [git] forge = "none" / ci = "none" — declared, never inferred (#355)
 # --------------------------------------------------------------------------- #

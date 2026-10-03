@@ -136,6 +136,76 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.37.0] — 2026-10-03
+
+### Added
+
+- **`aide queue discard NNN` deletes a queue branch `queue start` made that
+  carries no commits beyond its recorded base, locally and on origin, and
+  refuses one that does (issue #383).** The undo of `queue start` for a
+  queue nobody planned. It counts the branch, and origin's copy as last
+  fetched, against the base, and deletes origin's copy with a lease on the
+  commit it counted, so a push made since the fetch is never deleted. A
+  checked-out branch is left for its base first; uncommitted changes to
+  tracked files, a branch checked out in another worktree, no recorded base
+  (the message names `git branch -D` as the person's route), a branch only
+  on origin and no such branch are each refused, exit 1, with one sentence
+  and nothing discarded. `local` mode never touches origin, and off `local`
+  mode with no remote named origin only the local branch is deleted — the
+  one counted against `max_open_queues`. `git branch -D` takes the branch's
+  recorded base and start with it. With nothing on the branch to lose there
+  is no preview and no `--yes`, and every shared `queue` option is refused,
+  exit 2, so `discard --dry-run` never runs. `aide queue -h` states it,
+  pinned to the code. §3's first rule names it beside `aide gc` ("discarding
+  an empty queue branch is `aide queue discard NNN`"), with a Rationale
+  bullet saying why it is not `gc`, and `AGENT-CONTEXT.md`'s verb list
+  carries it: the always-on floor moves from 9508 to 9584 content bytes.
+  `queue start`'s push-failure message now names `aide queue discard NNN`
+  as the way to start over instead of a `git switch … && git branch -D …`
+  chain §3's one-command rule forbids; where the start committed the
+  insights inbox the repository lacked, or for a specs-queue branch, it
+  names the two git commands as separate steps, since discard refuses a
+  branch carrying a commit. `gc`'s docstring and comments stop calling it
+  the one destructive verb: it is the one that deletes work.
+
+### Fixed
+
+- **`/aide-run-roadmap` stops on a queue-planner hand-back that wrote no
+  queue, and discards the empty queue branch, instead of going on to `queue
+  pr` (issue #383).** The runner's *Generate the next queue* step ran `aide
+  queue start`, which creates and pushes the queue branch, spawned the
+  planner and went straight on to `queue pr` and the plan gate. A planner
+  that hands back — a framework-file edit needed, an ambiguous roadmap, and
+  since 2.32.0 the likely case, a next stage waiting on a ⏸️ or withdrawn
+  one — writes no queue file, so the run opened a PR for a branch holding no
+  plan, or failed on the missing file, rather than stopping with the
+  planner's question. The runner now asks git whether
+  `docs/aide/queue/queue-NNN.md` is committed on the branch before anything
+  else. When it is not, it runs `aide queue discard NNN`, so the next run
+  does not read an open, empty queue branch counting against
+  `max_open_queues`, then stops and relays the hand-back verbatim; a
+  discard refusal is relayed too. Until the stage's owner decides, each run
+  plans the same stage and stops on the same question; the state table and
+  the stop list say so, and a new state row covers a queue branch found
+  with no queue file: discarded and re-planned, or a stop on the verb's
+  refusal. The queue-planner spec now says a hand-back writes nothing — no
+  tidy, no `progress.md` edit, no commit, not even an insight capture,
+  which it names in the hand-back instead — and is decided before step 3's
+  tidy, so the branch is left as `queue start` made it.
+
+### Changed
+
+- **`aide queue pr` and `aide queue ready` refuse a queue branch whose tip
+  carries no queue file of its own number (issue #383).** Exit 1, one
+  sentence, nothing pushed and the forge asked nothing — the engine's half
+  of the fix above, so a runner that misreads a hand-back still opens no PR.
+  The refusal comes before the mode and the forge are considered: a `local`
+  mode or `forge = "none"` refusal is one a runner reads as "carry on
+  without a PR", and it must not carry on from an unplanned branch. Only a
+  committed file counts, and only the branch's own number: a stacked branch
+  listing the queue file below it is refused. `aide queue -h` states it,
+  pinned to the code.
+
 ## [2.36.0] — 2026-10-03
 
 ### Changed

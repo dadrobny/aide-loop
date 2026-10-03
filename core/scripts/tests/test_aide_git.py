@@ -1803,6 +1803,24 @@ def test_queue_start_push_failure_is_a_sentence(tmp_path: Path, capsys):
     assert "pushing aide/queue-004 to origin FAILED" in err
     assert "exists locally, branched from main" in err
     assert _current_branch(root) == "aide/queue-004"
+    # This start committed the insights inbox the repo lacked, so the branch
+    # carries a commit and the remedy is two commands, one per call (§3).
+    assert "start over with 'git switch main', then 'git branch -D aide/queue-004'" in err
+
+
+def test_queue_start_push_failure_names_discard_where_it_applies(
+        tmp_path: Path, capsys):
+    """Nothing committed on the branch: the remedy is `queue discard`, and it
+    works — origin never got the branch, so there is no copy there to delete
+    (issue #383)."""
+    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    # `check` creates and commits the inbox, as a scaffold-time check does.
+    assert aide.main(["--repo", str(root), "check"]) in (0, 1)
+    root = _dead_origin(root, tmp_path)
+    assert aide.main(["--repo", str(root), "queue", "start", "4"]) == 1
+    assert "start over with 'aide queue discard 004'" in capsys.readouterr().err
+    assert aide.main(["--repo", str(root), "queue", "discard", "4"]) == 0
+    assert _current_branch(root) == "main"
 
 
 def test_merge_pr_mode_push_failure_leaves_the_item_unticked(tmp_path: Path, capsys):
