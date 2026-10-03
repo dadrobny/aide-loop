@@ -62,15 +62,17 @@ exit non-zero.
 
 One person (or one loop) owns an item at a time. Abandoning an item means
 deleting its remote branch so the item returns to the pool; `aide check` flags a
-claim branch whose item is already ✅ (stale claim), and `aide gc` deletes such
-branches — local and remote — deterministically (dry-run by default, `--yes` to
+claim branch whose item is already ✅ or ❌ (stale claim, the ❌ ground below),
+and `aide gc` deletes such branches — local and remote — deterministically (dry-run by default, `--yes` to
 act; `--merged` also collects branches already merged into main).
 
 **A ❌ item's claim is spent as a ✅ one is.** An item dropped by its own
-bullets, or one whose every bullet sits in a withdrawn stage, will never be
-merged, so its claim branch is stale on the same ground: `check` and `status`
-name it, and `gc` collects it. A 🔍 item's branch is never stale, however its
-stage is marked — it is an open PR's head.
+bullets, or a 📋 one whose every bullet sits in a withdrawn stage, will never
+be merged, so its claim branch is stale on the same ground: `check` and
+`status` name it, and `gc` collects it. A 🚧 or ⏸️ item in a withdrawn stage is
+live or owner-held work, not stale until its owner drops it (`aide progress set
+NNN dropped`). A 🔍 item's branch is never stale, however its stage is marked —
+it is an open PR's head.
 
 **`gc` asks git, not the document.** A ✅ or ❌ item whose branch still carries
 unlanded content is **skipped** with the base named; `--abandon` deletes it

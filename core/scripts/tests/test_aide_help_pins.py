@@ -824,11 +824,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # in a `withdrawn_stages` section (`withdrawn_stage_items`), bar ✅
         # and 🔍 (issue #387).
         ("A claim branch is reported stale when its item is \u2705, or "
-         "\u274c \u2014 dropped by its own bullets, or every bullet in a "
+         "\u274c by its own bullets, or \U0001f4cb with every bullet in a "
          "stage whose summary row is \u274c",
          ("test_aide_core::test_check_warns_stale_claim_branch",
           "test_aide_git::test_check_and_status_name_a_withdrawn_items_branch_stale",
           "test_aide_git::test_withdrawn_stage_items_reads_only_items_wholly_inside_one")),
+        ("a \U0001f6a7 or \u23f8\ufe0f item in such a stage is not, until "
+         "it is dropped",
+         ("test_aide_git::test_spent_by_withdrawal_takes_only_a_planned_item_of_a_withdrawn_stage",
+          "test_aide_git::test_a_started_item_of_a_withdrawn_stage_is_not_stale_nor_collected")),
     ],
 
     # ------------------------------------------------------------- progress --
@@ -1571,13 +1575,14 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_aide_git::test_gc_yes_deletes_local_and_remote"),
         # `or num in withdrawn_items` beside the ✅ test, through the same
         # oracle and the same `--abandon` (issue #387).
-        ("An item that is \u274c \u2014 dropped by its own bullets, or every "
-         "bullet in a stage whose summary row is \u274c \u2014 is on the "
-         "\u2705 ground too, bar a \U0001f50d one",
-         ("test_aide_git::test_gc_collects_a_dropped_items_landed_branch",
+        ("An item \u274c by its own bullets, or \U0001f4cb with every "
+         "bullet in a stage whose summary row is \u274c, is on the \u2705 "
+         "ground too",
+         ("test_aide_git::test_a_started_item_of_a_withdrawn_stage_is_not_stale_nor_collected",
+          "test_aide_git::test_gc_collects_a_dropped_items_landed_branch",
           "test_aide_git::test_gc_keeps_a_withdrawn_items_branch_carrying_work",
           "test_aide_git::test_gc_leaves_a_live_item_of_the_shared_stage_alone",
-          "test_aide_git::test_spent_by_withdrawal_leaves_a_review_and_a_landed_item_out")),
+          "test_aide_git::test_spent_by_withdrawal_takes_only_a_planned_item_of_a_withdrawn_stage")),
         # `_merged_prefixed_branches(repo_root, main, prefix)`.
         ("with --merged also branches already merged into the base",
          "test_aide_git::test_gc_merged_deletes_merged_branch"),

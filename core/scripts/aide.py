@@ -2239,14 +2239,16 @@ def spent_by_withdrawal(lines: List[str],
     sits in a withdrawn stage.
 
     The ❌ half of §2's stale-claim ground, which `aide check`, `aide status`
-    and `aide gc` read beside the ✅ half. A ✅ item is the other half and
-    is left out; so is a 🔍 one, whose branch is an open PR's head however
-    its stage is marked.
+    and `aide gc` read beside the ✅ half. The withdrawn-stage route takes a
+    📋 item only (a ❌ one is ``dropped`` already): a 🚧 or ⏸️ item there is
+    live or owner-held work, a ✅ one is the other half, and a 🔍 one's
+    branch is an open PR's head — none is stale until its owner drops it
+    (`aide progress set NNN dropped`), which puts it on the dropped ground.
     """
     out: Dict[int, str] = {n: "dropped" for n, st in item_status.items()
                            if st == "excluded"}
     for n, stages in withdrawn_stage_items(lines).items():
-        if n not in out and item_status.get(n) not in ("complete", "in-review"):
+        if n not in out and item_status.get(n, "planned") == "planned":
             out[n] = (f"withdrawn with stage{'' if len(stages) == 1 else 's'} "
                       + ", ".join(stages))
     return out
@@ -6737,7 +6739,8 @@ def _stages_under_way(ddir: Path, plines: List[str]) -> Set[str]:
 
     The open queues are `queue_is_open`'s, read from the queue files under
     *ddir*; an item belongs to the stages whose bullets name it
-    (`stage_item_numbers`).
+    (`stage_item_numbers`). A queued item with bullets in two stages makes
+    both under way — an accepted false positive, since this feeds a warning.
     """
     out = {str(int(n)) for n, st in stage_rollups(plines).items()
            if n.isdigit() and st == "in-progress"}
@@ -18287,8 +18290,10 @@ def build_parser() -> argparse.ArgumentParser:
             "item spec "
             "until its item is \u2705 or \u274c, and never on a document with "
             "no such line. A claim branch is reported stale when its item "
-            "is \u2705, or \u274c \u2014 dropped by its own bullets, or "
-            "every bullet in a stage whose summary row is \u274c. A "
+            "is \u2705, or \u274c by its own bullets, or \U0001f4cb with "
+            "every bullet in a stage whose summary row is \u274c; a "
+            "\U0001f6a7 or \u23f8\ufe0f item in such a stage is not, until "
+            "it is dropped. A "
             "\U0001f50d item's claim branch is not reported stale.\n"
             "\n"
             "Over insight citations in docs/aide and tests_dir, the inbox and "
@@ -19217,10 +19222,10 @@ def register_git_subcommands(sub) -> None:
         description=(
             "Deletes claim branches, local and remote, whose item is \u2705 in "
             "progress.md, and with --merged also branches already merged into "
-            "the base. An item that is \u274c \u2014 dropped by its own "
-            "bullets, or every bullet in a stage whose summary row is "
-            "\u274c \u2014 is on the \u2705 ground too, bar a "
-            "\U0001f50d one. On the \u2705 ground a branch goes only when "
+            "the base. An item \u274c by its own bullets, or \U0001f4cb "
+            "with every bullet in a stage whose summary row is \u274c, is "
+            "on the \u2705 ground too. On the \u2705 ground a branch goes "
+            "only when "
             "`git merge-tree --write-tree` says merging it into the base would "
             "change nothing; a branch that still carries unlanded content is "
             "skipped with the base named, unless --abandon. merge-tree "

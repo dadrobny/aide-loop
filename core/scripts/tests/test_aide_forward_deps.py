@@ -196,7 +196,9 @@ UNDER_WAY_ROADMAP = """\
 
 def _two_stage_progress(dep_header: str, dep_summary: str,
                         dependent_bullet: str,
-                        dependent_summary: str = "📋") -> str:
+                        dependent_summary: str = "📋",
+                        dependent_header: str = "",
+                        dep_bullet: str = "") -> str:
     return (
         "# P\n\n"
         "| Stage | Title | Objectives | Status |\n"
@@ -205,8 +207,8 @@ def _two_stage_progress(dep_header: str, dep_summary: str,
         f"| 2 | Build | G1 | {dependent_summary} |\n\n"
         f"## Stage 1 — Base — {dep_header}\n\n"
         "**Deliverables.**\n"
-        f"- {dep_header} The base. *(Item 001)*\n\n"
-        "## Stage 2 — Build\n\n"
+        f"- {dep_bullet or dep_header} The base. *(Item 001)*\n\n"
+        f"## Stage 2 — Build{' — ' + dependent_header if dependent_header else ''}\n\n"
         "**Deliverables.**\n"
         f"- {dependent_bullet} The build. *(Item 002)*\n"
         "- 📋 The rest. *(Item 003)*\n")
@@ -222,13 +224,15 @@ def _queue(tmp_path: Path, *items: int) -> None:
 
 @pytest.mark.parametrize("dep_header, dep_summary, word", [
     ("⏸️", "⏸️", "⏸️ deferred"),
-    ("📋", "⏸️", "⏸️ deferred"),
+    ("⏸️", "📋", "⏸️ deferred"),   # the header alone says ⏸️
+    ("📋", "⏸️", "⏸️ deferred"),   # the summary row alone says ⏸️
     ("📋", "❌", "withdrawn"),
 ])
 def test_a_started_stage_over_a_deferred_or_withdrawn_dependency_warns(
         tmp_path: Path, dep_header: str, dep_summary: str, word: str):
     out = _warnings(tmp_path, roadmap=UNDER_WAY_ROADMAP,
-                    progress=_two_stage_progress(dep_header, dep_summary, "🚧"))
+                    progress=_two_stage_progress(dep_header, dep_summary, "🚧",
+                                                 dep_bullet="📋"))
     assert len(out) == 1
     assert "stage 2 is under way while stage 1" in out[0] and word in out[0]
 
@@ -255,6 +259,24 @@ def test_a_stage_not_under_way_is_silent(tmp_path: Path, dependent_bullet: str,
         progress = progress.replace("- 📋 The rest.", "- ✅ The rest.")
     if dependent_bullet == "⏸️":
         progress = progress.replace("- 📋 The rest.", "- ⏸️ The rest.")
+    assert _warnings(tmp_path, roadmap=UNDER_WAY_ROADMAP,
+                     progress=progress) == []
+
+
+@pytest.mark.parametrize("dependent_summary, dependent_header, queued", [
+    ("⏸️", "", False),    # ⏸️ summary row over a 🚧 bullet
+    ("📋", "⏸️", False),  # ⏸️ header over a 🚧 bullet
+    ("⏸️", "", True),     # ⏸️ summary row, a 📋 item of it queued
+])
+def test_a_deferred_dependent_is_never_under_way(
+        tmp_path: Path, dependent_summary: str, dependent_header: str,
+        queued: bool):
+    """The ⏸️ exemption reads the dependent's header and summary row, not
+    only what its bullets roll up to."""
+    if queued:
+        _queue(tmp_path, 3)
+    progress = _two_stage_progress("⏸️", "⏸️", "📋" if queued else "🚧",
+                                   dependent_summary, dependent_header)
     assert _warnings(tmp_path, roadmap=UNDER_WAY_ROADMAP,
                      progress=progress) == []
 

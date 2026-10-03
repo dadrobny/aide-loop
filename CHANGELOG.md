@@ -159,8 +159,10 @@ instead — that is the bump policy above, and it is enforced by
   summary row is ❌: it skips it, and a `none left — …` report names the
   withdrawn stage as the item's reason, an ordinary hold that exits 0. A
   dropped item was already never offered, being ❌ rather than 📋. A ❌
-  item's claim branch — dropped, or withdrawn with its stage — is now stale
-  on the same ground as a ✅ one: `aide check` warns `stale claim branch …:
+  item's claim branch — dropped, or a 📋 item withdrawn with its stage — is
+  now stale on the same ground as a ✅ one (a 🚧 or ⏸️ item in a withdrawn
+  stage is not, until its owner drops it with `aide progress set NNN
+  dropped`): `aide check` warns `stale claim branch …:
   item NNN is ❌ (dropped)` (or `(withdrawn with stage N)`), `aide status`
   marks it STALE, and `aide gc` takes it as a candidate. `gc`'s safety is
   unchanged: it still asks git, so a ❌ item's branch carrying work not in

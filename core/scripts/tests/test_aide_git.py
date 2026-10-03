@@ -2704,10 +2704,11 @@ def test_withdrawn_stage_items_reads_only_items_wholly_inside_one():
         27: "dropped", 29: "withdrawn with stage 2"}
 
 
-def test_spent_by_withdrawal_leaves_a_review_and_a_landed_item_out():
-    """A 🔍 item's branch is an open PR's head, and a ✅ one is stale on the
-    ✅ ground already."""
-    for icon in ("🔍", "✅"):
+def test_spent_by_withdrawal_takes_only_a_planned_item_of_a_withdrawn_stage():
+    """A 🔍 item's branch is an open PR's head, a ✅ one is stale on the ✅
+    ground already, and a 🚧 or ⏸️ one is live or owner-held work — stale
+    only once its owner drops it."""
+    for icon in ("🔍", "✅", "🚧", "⏸️"):
         lines = WITHDRAWN_PROGRESS.replace("- 📋 Extras.",
                                            f"- {icon} Extras.").splitlines()
         status = aide._parse_item_status(lines)[2]
@@ -2802,3 +2803,22 @@ def test_gc_leaves_a_live_item_of_the_shared_stage_alone(tmp_path: Path):
     _run(["git", "branch", "aide/030-shared"], root)
     assert aide.main(["--repo", str(root), "gc", "--abandon", "--yes"]) == 0
     assert "aide/030-shared" in _run(["git", "branch"], root).stdout
+
+
+def test_a_started_item_of_a_withdrawn_stage_is_not_stale_nor_collected(
+        tmp_path: Path, capsys):
+    """A 🚧 item in a withdrawn stage is not ❌: check says nothing stale
+    about its branch, and gc leaves it even with --abandon."""
+    root = _withdrawn_repo(tmp_path)
+    d = root / "docs" / "aide"
+    text = (d / "progress.md").read_text(encoding="utf-8")
+    (d / "progress.md").write_text(text.replace("- 📋 Extras.", "- 🚧 Extras."),
+                                   encoding="utf-8")
+    _run(["git", "commit", "-am", "029 started"], root)
+    _run(["git", "branch", "aide/029-extras"], root)
+    aide._record_branch_base(root, "aide/029-extras", "main")
+    cfg = aide.load_config(root)
+    _, warnings = aide.run_checks(root, cfg, branches=["aide/029-extras"])
+    assert not any(w.startswith("stale claim branch") for w in warnings)
+    assert aide.main(["--repo", str(root), "gc", "--abandon", "--yes"]) == 0
+    assert "aide/029-extras" in _run(["git", "branch"], root).stdout
