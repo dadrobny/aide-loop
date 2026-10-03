@@ -136,6 +136,67 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.34.0] — 2026-10-02
+
+### Added
+
+- **`aide progress set NNN dropped --reason TEXT` writes ❌ on an item, and
+  `set NNN restored --reason TEXT` takes a ❌ item back to 📋, as `set
+  --stage N --deliverable K restored --reason TEXT` does for a bullet no item
+  marker names (issue #381).** 2.32.0 let an owner drop an un-itemised
+  bullet; nothing wrote ❌ on an item, so an item abandoned at the
+  validation-round cap stayed 🚧, a carried one was hand-typed ❌, and one
+  the owner decided against was a hand edit. `dropped` flips each 📋, 🚧, 🔍
+  or ⏸️ bullet naming the item to ❌ under a dated `dropped: <reason>` trail
+  line and rolls the stage up, a stage moving down where its bullets now say
+  less; it refuses, writing nothing, a ✅ item (reopen it first) and a drop
+  that would leave every deliverable bullet of a stage ❌ (withdraw the stage
+  by its summary row instead), as the positional form does — neither form
+  refuses that in a stage whose summary row is already ❌, where the refusal
+  had pointed at a row that already said it. `restored` flips
+  each ❌ bullet back to 📋 under a dated `restored: <reason>` line beside
+  the drop's, and rolls the stage back down; it refuses a 🚧, 🔍, ✅ or ⏸️
+  item or bullet (a ⏸️ one is resumed, and the refusal says so). Both need a
+  reason; an item already ❌, or already 📋, is no change; neither captures
+  an insight. §1 → `progress.md` and `status-icons.md` state both routes,
+  and the `aide-progress-file` section skill carries and pins them.
+
+### Changed
+
+- **`aide progress set NNN in-progress|in-review|done` and `aide merge`
+  refuse an item whose bullets are all ❌ or 📋, writing nothing, and name
+  `set NNN restored` (issue #381).** ❌ ranks lowest, so a forward set — or a
+  merge's tick — cleared a drop silently, with no reason and no trail line,
+  while `set NNN deferred` refused the same item. Exit 1. `merge` reads
+  progress.md in the working tree and on the base, before anything is
+  merged or pushed, in every `git.mode`. A ❌ bullet beside started or
+  settled work, which only a hand edit makes, is one `restored` refuses, so
+  the forward set stays its way out there; a ⏸️ item is still merged and
+  ticked.
+- **A stage whose Stage summary row is ❌ is left out of every Objective
+  row's rollup, and a row naming withdrawn stages alone reads ❌ (issue
+  #382).** An objective was derived from its stages' bullets, not their
+  summary rows, so stage 1 ✅ beside a withdrawn stage 2 whose bullets still
+  read 📋 held the objective at 🚧 for good, and a ✅ typed there was an
+  error. `aide progress` now writes the row from the stages still in scope —
+  ❌ from any status where none is — and `aide check` compares it the same
+  way: a ✅ row over withdrawn stages alone is an error, any other a warning.
+  `aide progress -h`, `aide check -h` and §1 → `progress.md` state it.
+- **§1 → `roadmap.md`: a blocking dependency on a withdrawn stage is never
+  met, so the dependent stage is re-planned, not queued (issue #382)** — its
+  Dependencies reworded while it is 📋, or it is withdrawn too, through the
+  create-roadmap entry point. The `queue-planner` agent does not queue such a
+  stage and hands back, naming both; its spec quotes and pins the rule.
+- **The planner's carried-item step, `/aide-create-queue`'s tidy step and
+  `/aide-run-item`'s abandoned-item step name `aide progress set NNN dropped
+  --reason …` for an item its owner decides against (issue #381)**, never a
+  ❌ typed over the bullet. `aide ledger abandon`'s closing line and `-h`
+  name it too.
+- **A positional `set --stage N --deliverable K` over an itemised bullet
+  names its item form for every status** — a drop by position over one now
+  says "drop it by item with `aide progress set NNN dropped --reason …`" —
+  and `set NNN dropped` is the item form rather than a usage error.
+
 ## [2.33.0] — 2026-10-02
 
 ### Added

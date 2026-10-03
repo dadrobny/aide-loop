@@ -15,6 +15,8 @@ Subcommands::
     python .aide/scripts/aide.py progress set --stage N --deliverable K deferred --reason TEXT  # ⏸️ on a bullet with no item marker
     python .aide/scripts/aide.py progress set --stage N --deliverable K dropped --reason TEXT  # ❌ on one the stage does not need
     python .aide/scripts/aide.py progress set NNN resumed --reason TEXT  # ⏸️ back to 📋 (--stage N --deliverable K for an unmarked bullet)
+    python .aide/scripts/aide.py progress set NNN dropped --reason TEXT  # ❌ on an item the stage does not need
+    python .aide/scripts/aide.py progress set NNN restored --reason TEXT  # ❌ back to 📋 (--stage N --deliverable K for an unmarked bullet)
     python .aide/scripts/aide.py gate list|approve|decline [N|ID]  # human gates in progress.md
     python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
@@ -2188,7 +2190,24 @@ def _objective_row_stages(delivered_by: str) -> List[str]:
     return re.findall(r"\d+", delivered_by)
 
 
-def objective_rollup(nums: List[str], stage_status: Dict[str, str]) -> Optional[str]:
+def withdrawn_stages(lines: List[str]) -> Set[str]:
+    """The stage numbers whose Stage summary row reads ❌ — withdrawn whole.
+
+    A ❌ summary row is what excludes a stage (§1 → `progress.md`), and no
+    rollup writes or overwrites one. Read by `objective_rollup`'s callers,
+    so an objective is derived from the stages still in scope (issue #382).
+    """
+    out: Set[str] = set()
+    for line in lines:
+        cells = _split_row(line) if line.strip().startswith("|") else []
+        if (cells and _reads(_STAGE_SUMMARY, cells)
+                and _icon_status(cells[3]) == "excluded"):
+            out.add(cells[0])
+    return out
+
+
+def objective_rollup(nums: List[str], stage_status: Dict[str, str],
+                     withdrawn: Set[str] = frozenset()) -> Optional[str]:
     """What an Objective row derives to from the stages it names — in full.
 
     The stage rule over the stages' own rollups (a stage never rolls up to
@@ -2200,8 +2219,17 @@ def objective_rollup(nums: List[str], stage_status: Dict[str, str]) -> Optional[
     nothing; None when none does. No never-downgrade and no hand-held cell:
     those are the writer's (`_apply_objective_rollup`), and `aide check`
     compares a row with this (`derived_cell_findings`).
+
+    A stage in *withdrawn* — its summary row ❌ (`withdrawn_stages`) — is left
+    out, since its bullets no longer speak for it, and a row every named
+    stage of which is withdrawn derives to ❌ (issue #382). Read from the
+    bullets alone, a stage withdrawn with 📋 bullets held an objective it
+    shared with a ✅ stage at 🚧 for good, and a ✅ typed there was an error.
     """
-    return rollup_status([stage_status[n] for n in nums if n in stage_status])
+    live = [n for n in nums if n not in withdrawn]
+    if nums and not live:
+        return "excluded"
+    return rollup_status([stage_status[n] for n in live if n in stage_status])
 
 
 def _blocked_objectives(lines: List[str]) -> Set[str]:
@@ -2224,10 +2252,17 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
     is work deferred — and except a row naming a stage that rolls up to ⏸️,
     which `_recompute_rollups` writes down from any status, so the row
     follows it. A ⏸️ row is left alone unless it names a stage in either set
-    (`_held_by_hand`)."""
+    (`_held_by_hand`).
+
+    A stage whose summary row is ❌ is withdrawn and speaks for no row
+    (issue #382): it is left out of the derivation and of the downgrade
+    test, and a row every stage of which is withdrawn is written ❌ from any
+    status, the one ❌ the writer puts on a row — what the summary rows
+    already decided, so `aide check` finds nothing to report there."""
     # An objective linked to an outcome target that is not ✅ Met can never
     # roll up to ✅: its stages shipping is necessary but not sufficient.
     blocked = _blocked_objectives(lines)
+    withdrawn = withdrawn_stages(lines)
     for i, line in enumerate(lines):
         if not line.strip().startswith("|"):
             continue
@@ -2250,15 +2285,16 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
             # self-heals from 🚧 to ⏸️ leaves its objective 🚧 over stages that
             # say ⏸️ and 📋 (issue #281, PR #284 review).
             allow_downgrade = by_verb or any(
-                stage_status.get(n) == "deferred" for n in nums)
-            derived = objective_rollup(nums, stage_status)
+                stage_status.get(n) == "deferred"
+                for n in nums if n not in withdrawn)
+            derived = objective_rollup(nums, stage_status, withdrawn)
             if derived is None or (derived == "planned" and not allow_downgrade):
                 # 📋 only on a way down — a reopen or a deferral, or a row over
                 # a stage that rolls up to ⏸️; otherwise the row stays as set.
                 derived = current
             if derived == "complete" and gm.group(0) in blocked:
                 derived = "in-progress"
-            if (allow_downgrade or derived == "deferred"
+            if (allow_downgrade or derived in ("deferred", "excluded")
                     or RANK[derived] >= RANK[current]):
                 lines[i] = _sub_status_cell(line, derived)
 
@@ -2689,6 +2725,162 @@ def resume_item(text: str, num: int, reason: str, date: str,
             f"item {num:03d}: resumed — {reason}")
 
 
+#: The trail prefix a restoration writes under a deliverable bullet (issue
+#: #381): why work decided against is wanted after all, beside the drop's why.
+_RESTORED_PREFIX = "restored: "
+
+
+def held_from_forward(lines: List[str], num: int) -> Optional[str]:
+    """``"deferred"`` or ``"excluded"`` when a forward `set` must refuse item
+    *num*, else None (issues #380, #381).
+
+    An item is held only where the verb that takes it back to 📋 can: one
+    whose bullets are all ⏸️ or 📋, at least one ⏸️, is ``resumed``'s, and
+    one whose bullets are all ❌ or 📋, at least one ❌, is ``restored``'s. A
+    ⏸️ or ❌ bullet beside started or settled work — only a hand edit makes
+    one — is an item both verbs refuse, so the forward set stays its way out.
+    `aide merge` reads the ❌ half; a ⏸️ item it still ticks.
+    """
+    bullets = set(_item_bullet_statuses(lines, num))
+    for status in ("deferred", "excluded"):
+        if status in bullets and bullets <= {status, "planned"}:
+            return status
+    return None
+
+
+def _stages_left_all_dropped(lines: List[str], stages: Set[str]) -> List[str]:
+    """Those of *stages* whose every deliverable bullet reads ❌ — the stage a
+    drop must not leave behind, which the rollup reads as 📋 (issue #362).
+
+    A stage already withdrawn — its summary row ❌ — is not one: the refusal
+    exists to send the owner to that row, and its bullets no longer speak for
+    the stage (issue #381, PR #386 review)."""
+    out: List[str] = []
+    withdrawn = withdrawn_stages(lines)
+    for start, end, stage_num in stage_sections(lines):
+        statuses = stage_deliverable_statuses(lines, start, end)
+        if (stage_num in stages and stage_num not in withdrawn and statuses
+                and all(st == "excluded" for st in statuses)):
+            out.append(stage_num)
+    return out
+
+
+def drop_item(text: str, num: int, reason: str, date: str,
+              splits: Optional[List[BulletSplit]] = None) -> Tuple[str, str]:
+    """Drop item NNN as not needed — its open bullets to ❌, append-only;
+    ``(updated text, message)`` (issue #381).
+
+    The item form of `drop_deliverable`. No verb wrote ❌ on an item, so an
+    abandoned item stayed 🚧, a carried one was hand-typed ❌, and one its
+    owner decided against was a hand edit. Every 📋, 🚧, 🔍 or ⏸️ bullet
+    whose trailing marker names *num* flips to ❌ and gains a dated
+    ``dropped: <reason>`` trail line, and the stages holding them roll up
+    with a downgrade allowed, as a deferral's do; ❌ counts toward ✅.
+
+    Refuses an item no bullet names; one with a ✅ bullet, which shipped
+    (`reopen` first); and a drop that would leave every deliverable bullet of
+    a stage ❌, which the rollup reads as 📋 — that stage is withdrawn whole,
+    by its ❌ summary row. An item already ❌ throughout is no change. A
+    shared marker is desugared first, so no sibling is dropped with it.
+    """
+    lines = text.splitlines()
+    statuses = _item_bullet_statuses(lines, num)
+    if not statuses:
+        raise ValueError(
+            f"no deliverable bullet's trailing *(Item {num:03d})* marker names "
+            f"item {num:03d}, so there is nothing to drop")
+    if "complete" in statuses:
+        raise ValueError(
+            f"item {num:03d} is ✅ complete; it shipped, so there is nothing "
+            f"to drop — send it back with `aide progress reopen` first")
+    if all(st == "excluded" for st in statuses):
+        return text, f"item {num:03d}: no change (already dropped)"
+    lines = _split_multi_item_bullets(lines, num, "excluded", splits,
+                                      downgrade=True)
+    stages: Set[str] = set()
+    # Bottom-up, so an inserted trail line never shifts a span still to visit.
+    for start, last in reversed(_deliverable_bullet_spans(lines)):
+        if num not in _bullet_marker_item_numbers(lines[last]):
+            continue
+        if ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")] == "excluded":
+            continue
+        lines[start] = _replace_first_icon(lines[start], "excluded")
+        _insert_trail_line(lines, start, last,
+                           deliverable_bullet_trail(lines, last),
+                           date, _DROPPED_PREFIX + reason)
+        stage = _stage_of_line(lines, start)
+        if stage is not None:
+            stages.add(stage)
+    emptied = _stages_left_all_dropped(lines, stages)
+    if emptied:
+        shown = ", ".join(emptied)
+        raise ValueError(
+            f"dropping item {num:03d} would leave every deliverable of stage "
+            f"{shown} ❌, and a stage whose every deliverable is dropped has "
+            f"nothing left to deliver — withdraw the stage whole instead, by "
+            f"marking its row in the Stage summary table ❌, which takes its "
+            f"header with it, and any Objective row only this stage delivers")
+    _recompute_rollups(lines, stages)
+    return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""),
+            f"item {num:03d}: dropped — {reason}")
+
+
+def restore_item(text: str, num: int, reason: str, date: str,
+                 splits: Optional[List[BulletSplit]] = None) -> Tuple[str, str]:
+    """Restore a dropped item — its ❌ bullets back to 📋, append-only;
+    ``(updated text, message)`` (issue #381).
+
+    The one way out of ❌ through `set`: `RANK` puts ❌ lowest, so a forward
+    status over a ❌ item used to flip it silently, with no reason and no
+    trail line, and `aide merge` ticked it ✅ the same way. Both refuse a
+    dropped item now and name this verb. Every ❌ bullet whose trailing
+    marker names *num* flips to 📋 — what `claim` hands out — and gains a
+    dated ``restored: <reason>`` trail line beside the drop's, and the stages
+    holding them roll up with a downgrade allowed: a stage the ❌ let close
+    is open work again.
+
+    Refuses when any such bullet is 🚧, 🔍, ✅ or ⏸️, naming the status
+    found: only work decided against is restored, and a ⏸️ one is resumed.
+    An item already 📋 throughout is no change. A shared marker is desugared
+    first, so no sibling is restored with it.
+    """
+    lines = text.splitlines()
+    statuses = _item_bullet_statuses(lines, num)
+    if not statuses:
+        raise ValueError(
+            f"no deliverable bullet's trailing *(Item {num:03d})* marker names "
+            f"item {num:03d}, so there is nothing to restore")
+    other = [st for st in statuses if st not in ("excluded", "planned")]
+    if other:
+        shown = ", ".join(sorted({f"{STATUS_TO_ICON[st]} {st}" for st in other}))
+        hint = (f" — a ⏸️ item is resumed with `aide progress set {num:03d} "
+                f"resumed --reason …`" if set(other) == {"deferred"}
+                else "")
+        raise ValueError(
+            f"item {num:03d} is {shown}; only a ❌ dropped item can be "
+            f"restored{hint}")
+    if "excluded" not in statuses:
+        return text, f"item {num:03d}: no change (already 📋 planned)"
+    lines = _split_multi_item_bullets(lines, num, "planned", splits, downgrade=True)
+    stages: Set[str] = set()
+    # Bottom-up, so an inserted trail line never shifts a span still to visit.
+    for start, last in reversed(_deliverable_bullet_spans(lines)):
+        if num not in _bullet_marker_item_numbers(lines[last]):
+            continue
+        if ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")] != "excluded":
+            continue
+        lines[start] = _replace_first_icon(lines[start], "planned")
+        _insert_trail_line(lines, start, last,
+                           deliverable_bullet_trail(lines, last),
+                           date, _RESTORED_PREFIX + reason)
+        stage = _stage_of_line(lines, start)
+        if stage is not None:
+            stages.add(stage)
+    _recompute_rollups(lines, stages)
+    return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""),
+            f"item {num:03d}: restored — {reason}")
+
+
 def stage_deliverable_spans(lines: List[str], stage: str
                             ) -> Optional[List[Tuple[int, int]]]:
     """``(first, last)`` of each deliverable bullet in stage *stage*, in file
@@ -2732,12 +2924,12 @@ def _unmarked_deliverable_at(lines: List[str], stage: int, position: int,
     """``(first, last, where, status)`` of stage *stage*'s *position*-th
     deliverable bullet, refusing one the positional forms cannot address.
 
-    The lookup `defer_deliverable`, `drop_deliverable` and
-    `resume_deliverable` share: an unknown
+    The lookup `defer_deliverable`, `drop_deliverable`, `resume_deliverable`
+    and `restore_deliverable` share: an unknown
     stage, a position outside the stage's bullets (naming how many it has) and
     a bullet that carries an item marker are refused, each with a ValueError
     whose message *verb* words — an itemised bullet's status is its item's, so
-    no positional form moves it.
+    no positional form moves it, and the message names the item form.
     """
     spans = stage_deliverable_spans(lines, str(stage))
     if spans is None:
@@ -2751,20 +2943,21 @@ def _unmarked_deliverable_at(lines: List[str], stage: int, position: int,
     start, last = spans[position - 1]
     marked = _bullet_marker_item_numbers(lines[last])
     if marked:
+        # Every positional status has its item form since issue #381, so the
+        # refusal names it rather than only saying what the bullet is not.
         named = ", ".join(f"item {n:03d}" for n in marked)
-        if verb in ("deferred", "resumed"):
-            forms = " / ".join(f"`aide progress set {n:03d} {verb} --reason …`"
-                               for n in marked)
-            raise ValueError(
-                f"{where} is itemised — its trailing marker names {named}, so "
-                f"{'defer' if verb == 'deferred' else 'resume'} it by item "
-                f"with {forms}")
+        forms = " / ".join(f"`aide progress set {n:03d} {verb} --reason …`"
+                           for n in marked)
         raise ValueError(
-            f"{where} is itemised — its trailing marker names {named}, so its "
-            f"status is its item's and it is not {verb} by position; only a "
-            f"bullet no item marker names is")
+            f"{where} is itemised — its trailing marker names {named}, so "
+            f"{_POSITIONAL_VERB[verb]} it by item with {forms}")
     current = ICON_TO_STATUS[_BULLET_RE.match(lines[start]).group("icon")]
     return start, last, where, current
+
+
+#: The imperative each positional status's refusal words its item form with.
+_POSITIONAL_VERB = {"deferred": "defer", "dropped": "drop",
+                    "resumed": "resume", "restored": "restore"}
 
 
 def _write_unmarked_deliverable(text: str, lines: List[str], start: int,
@@ -2855,7 +3048,10 @@ def drop_deliverable(text: str, stage: int, position: int, reason: str,
     others = [ICON_TO_STATUS[_BULLET_RE.match(lines[first]).group("icon")]
               for first, _ in stage_deliverable_spans(lines, str(stage)) or []
               if first != start]
-    if all(st == "excluded" for st in others):
+    # A stage already withdrawn by its ❌ summary row is not refused: the
+    # refusal points at that row, which already says it (PR #386 review).
+    if (all(st == "excluded" for st in others)
+            and str(stage) not in withdrawn_stages(lines)):
         raise ValueError(
             f"{where} is the last deliverable of stage {stage} not ❌, and a "
             f"stage whose every deliverable is dropped has nothing left to "
@@ -2895,6 +3091,35 @@ def resume_deliverable(text: str, stage: int, position: int, reason: str,
     return (_write_unmarked_deliverable(text, lines, start, last, "planned",
                                         date, _RESUMED_PREFIX + reason),
             f"{where}: resumed — {reason}")
+
+
+def restore_deliverable(text: str, stage: int, position: int, reason: str,
+                        date: str) -> Tuple[str, str]:
+    """Restore stage *stage*'s *position*-th deliverable bullet, one with no
+    item marker, from ❌ back to 📋; ``(updated text, message)`` (issue #381).
+
+    The positional mirror of `restore_item`, and the way back from
+    `drop_deliverable`: a drop was the one decision about such a bullet that
+    had no undo but typing 📋 over it. The bullet gains a dated ``restored:
+    <reason>`` trail line beside the drop's, and its stage rolls up with a
+    downgrade allowed — a stage the drop let close is open work again.
+
+    Refuses an unknown stage, a position outside the stage's bullets, a bullet
+    that carries a marker, and a bullet that is not ❌ — a ⏸️ one is resumed.
+    A bullet already 📋 is no change.
+    """
+    lines = text.splitlines()
+    start, last, where, current = _unmarked_deliverable_at(
+        lines, stage, position, "restored")
+    if current == "planned":
+        return text, f"{where}: no change (already 📋 planned)"
+    if current != "excluded":
+        raise ValueError(
+            f"{where} is {STATUS_TO_ICON[current]} {current}; only a ❌ "
+            f"dropped deliverable can be restored")
+    return (_write_unmarked_deliverable(text, lines, start, last, "planned",
+                                        date, _RESTORED_PREFIX + reason),
+            f"{where}: restored — {reason}")
 
 
 def reword_deliverable(text: str, num: int, new_text: str
@@ -7202,7 +7427,10 @@ def derived_cell_findings(lines: List[str]
     Objective row whose stages roll up to ✅ under a target that is not ✅ Met
     is the target comparisons' to report, which already do, so a ✅ row
     there is not reported twice; and the third value, the G-codes this named,
-    is what `run_checks` leaves out of those target comparisons in turn.
+    is what `run_checks` leaves out of those target comparisons in turn. A
+    stage whose summary row is ❌ is left out of an Objective row's
+    derivation too (issue #382), and a row naming withdrawn stages alone is
+    compared with ❌ — an error where it reads ✅, a warning otherwise.
     """
     errors: List[str] = []
     warnings: List[str] = []
@@ -7253,6 +7481,7 @@ def derived_cell_findings(lines: List[str]
     stage_status = stage_rollups(lines)
     section_nums = {num for _, _, num in stage_sections(lines)}
     blocked = _blocked_objectives(lines)
+    withdrawn = {n for n, st in summary_status.items() if st == "excluded"}
     for line in lines:
         cells = _split_row(line) if line.strip().startswith("|") else []
         if not (cells and _reads(_OBJECTIVE_COVERAGE, cells)):
@@ -7268,8 +7497,18 @@ def derived_cell_findings(lines: List[str]
             continue
         if current == "excluded":
             continue
-        derived = objective_rollup(nums, stage_status)
+        derived = objective_rollup(nums, stage_status, withdrawn)
         if derived is None:
+            continue
+        if derived == "excluded":
+            # Every stage the row names is withdrawn (issue #382): nothing is
+            # left to deliver it, and a ✅ claims delivery by none of them.
+            named.add(g)
+            shown = ", ".join(nums)
+            (errors if current == "complete" else warnings).append(
+                f"objective {g}: {STATUS_TO_ICON[current]} {current} but "
+                f"every stage it names (stage {shown}) is withdrawn — ❌ in "
+                f"the Stage summary table — so set it to ❌")
             continue
         held = derived == "complete" and g in blocked
         if held:
@@ -7279,8 +7518,10 @@ def derived_cell_findings(lines: List[str]
         if current == derived:
             continue
         named.add(g)
-        stages = ", ".join(f"{n} {STATUS_TO_ICON[stage_status[n]]}"
-                           for n in nums if n in stage_status)
+        stages = ", ".join(
+            f"{n} ❌ withdrawn" if n in withdrawn
+            else f"{n} {STATUS_TO_ICON[stage_status[n]]}"
+            for n in nums if n in stage_status or n in withdrawn)
         why = (" (held below ✅ by an Outcome target not ✅ Met)"
                if held else "")
         if current == "complete":
@@ -7294,7 +7535,8 @@ def derived_cell_findings(lines: List[str]
             fix = "every stage it names is ✅ or ⏸️, so set it to ⏸️"
         elif current == "deferred":
             named_sections = [(start, end, n) for start, end, n in
-                              stage_sections(lines) if n in nums]
+                              stage_sections(lines)
+                              if n in nums and n not in withdrawn]
             unmarked = [(n, _unmarked_open_positions(lines, n))
                         for _, _, n in named_sections]
             unmarked = [(n, ks) for n, ks in unmarked if ks]
@@ -8840,27 +9082,21 @@ def cmd_progress(args: argparse.Namespace) -> int:
         return _cmd_progress_reopen(args)
     if args.action != "set":
         print("usage: aide progress set NNN <in-progress|in-review|done> | "
-              "set NNN <deferred|resumed> --reason TEXT | "
+              "set NNN <deferred|resumed|dropped|restored> --reason TEXT | "
               "reopen NNN --reason TEXT | accept|amend|retract|reword STAGE "
               "(see aide progress -h)", file=sys.stderr)
         return 2
     if args.status is None:
         print("usage: aide progress set NNN <in-progress|in-review|done> | "
-              "set NNN <deferred|resumed> --reason TEXT", file=sys.stderr)
+              "set NNN <deferred|resumed|dropped|restored> --reason TEXT",
+              file=sys.stderr)
         return 2
     if args.status in _ITEM_SET:
         return _cmd_progress_defer(args)
-    if args.status == "dropped":
-        # Dropping is a decision about a deliverable no item marker names
-        # (issue #362); an item's bullet carries its item's status.
-        print("aide progress set NNN dropped: `dropped` is set by position "
-              "alone — `aide progress set --stage N --deliverable K dropped "
-              "--reason …`, for a bullet no item marker names",
-              file=sys.stderr)
-        return 2
     if args.status not in _SET_STATUS_MAP:
         print("status must be 'in-progress', 'in-review', 'done', "
-              "'deferred' or 'resumed'", file=sys.stderr)
+              "'deferred', 'resumed', 'dropped' or 'restored'",
+              file=sys.stderr)
         return 2
     status_map = _SET_STATUS_MAP
     repo_root = find_repo_root(args.repo)
@@ -8875,19 +9111,21 @@ def cmd_progress(args: argparse.Namespace) -> int:
     # status over it used to resume it, and `in-progress` on one never
     # claimed left it 🚧 with no branch: `claim` offered nothing, `status`
     # counted it as work to build and `sync --item` asked for a claim.
-    # Only an item `resumed` can take is held: one whose bullets are all ⏸️
-    # or 📋. A ⏸️ beside a 🚧/🔍/✅/❌ bullet (only a hand edit makes one)
-    # is one `resumed` refuses, so the forward set stays its
+    # A ❌ item leaves ❌ by `set NNN restored` alone (issue #381): ❌ ranks
+    # lowest, so a forward status cleared a drop silently, with no reason
+    # and no trail line. Only an item the way back can take is held
+    # (`held_from_forward`); one it refuses — a ⏸️ or ❌ beside a 🚧/🔍/✅
+    # bullet, which only a hand edit makes — keeps the forward set as its
     # way out.
-    bullets = _item_bullet_statuses(text.splitlines(), args.number)
-    held = ("deferred" in bullets
-            and all(st in ("deferred", "planned") for st in bullets))
-    if held:
-        print(f"error: item {args.number:03d} is ⏸️ deferred, and a deferred "
-              f"item is not set forward — resume it with `aide progress set "
-              f"{args.number:03d} resumed --reason …`, which sends it back to "
-              f"📋 for `aide claim` to offer; progress.md NOT changed",
-              file=sys.stderr)
+    held = held_from_forward(text.splitlines(), args.number)
+    if held is not None:
+        word, verb = (("deferred", "resumed") if held == "deferred"
+                      else ("dropped", "restored"))
+        print(f"error: item {args.number:03d} is {STATUS_TO_ICON[held]} "
+              f"{word}, and a {word} item is not set forward — {verb[:-1]} it "
+              f"with `aide progress set {args.number:03d} {verb} --reason …`, "
+              f"which sends it back to 📋 for `aide claim` to offer; "
+              f"progress.md NOT changed", file=sys.stderr)
         return 1
     # An item is only trackable if some deliverable bullet's trailing marker
     # names it — the ownership rule set_item_status flips by — otherwise the
@@ -9265,20 +9503,24 @@ def _ci_round_scope(repo_root: Path, config: Dict[str, Dict[str, object]],
 #: The statuses `set NNN` writes with a reason, each with the function that
 #: writes it and the noun its commit and messages use (issues #281, #380).
 _ITEM_SET = {"deferred": (defer_item, "the deferral"),
-             "resumed": (resume_item, "the resumption")}
+             "resumed": (resume_item, "the resumption"),
+             "dropped": (drop_item, "the drop"),
+             "restored": (restore_item, "the restoration")}
 
 
 def _cmd_progress_defer(args: argparse.Namespace) -> int:
-    """``aide progress set NNN <deferred|resumed> --reason TEXT`` — postpone
-    an item, or take a postponed one back up.
+    """``aide progress set NNN <deferred|resumed|dropped|restored> --reason
+    TEXT`` — postpone an item or drop it, or take either back up.
 
     The one way to write ⏸️ on a deliverable (issue #281): it used to be a hand
     edit, with no record of why, and a whole stage deferred that way read as
     one nobody had started. The reason goes on a trail line under each flipped
     bullet, as `reopen`'s does. `resumed` is the way back to 📋 (issue #380),
-    with its own reason beside the deferral's. No insight is captured by
-    either: a deferral and a resumption are decisions about order, not
-    findings about the work.
+    with its own reason beside the deferral's. `dropped` writes ❌ on an item
+    the stage does not need, and `restored` takes it back to 📋 (issue #381).
+    No insight is captured by any of them: a deferral and a resumption are
+    decisions about order, a drop and a restoration decisions about scope,
+    not findings about the work.
     """
     status = args.status
     usage = (f"usage: aide progress set NNN {status} --reason TEXT "
@@ -9330,28 +9572,31 @@ def _cmd_progress_defer(args: argparse.Namespace) -> int:
 #: function that writes it and the noun its commit and messages use.
 _POSITIONAL_SET = {"deferred": (defer_deliverable, "the deferral"),
                    "dropped": (drop_deliverable, "the drop"),
-                   "resumed": (resume_deliverable, "the resumption")}
+                   "resumed": (resume_deliverable, "the resumption"),
+                   "restored": (restore_deliverable, "the restoration")}
 
 
 def _cmd_progress_defer_deliverable(args: argparse.Namespace) -> int:
     """``aide progress set --stage N --deliverable K
-    <deferred|dropped|resumed> --reason TEXT``.
+    <deferred|dropped|resumed|restored> --reason TEXT``.
 
     The deferral of a deliverable bullet no item marker names (issue #336),
     addressed by its position in the stage, its drop as not needed (issue
-    #362), and its resumption from ⏸️ back to 📋 so it can be itemised (issue
-    #380). Otherwise `_cmd_progress_defer` exactly: the reason is required and
-    on one line, and the edit is committed or put back. No insight is captured
-    by any of them: a deferral and a resumption are decisions about order, a
-    drop one about scope.
+    #362), its resumption from ⏸️ back to 📋 so it can be itemised (issue
+    #380), and its restoration from ❌ back to 📋 (issue #381). Otherwise
+    `_cmd_progress_defer` exactly: the reason is required and on one line,
+    and the edit is committed or put back. No insight is captured by any of
+    them: a deferral and a resumption are decisions about order, a drop and a
+    restoration ones about scope.
     """
     usage = ("usage: aide progress set --stage N --deliverable K "
-             "<deferred|dropped|resumed> --reason TEXT [--date YYYY-MM-DD]")
+             "<deferred|dropped|resumed|restored> --reason TEXT "
+             "[--date YYYY-MM-DD]")
     tag = "aide progress set --stage/--deliverable"
     if args.action != "set":
         print(f"{usage}\naide progress {args.action}: --stage and "
-              f"--deliverable belong to `set … deferred`, `set … dropped` "
-              f"and `set … resumed` alone", file=sys.stderr)
+              f"--deliverable belong to `set … deferred`, `set … dropped`, "
+              f"`set … resumed` and `set … restored` alone", file=sys.stderr)
         return 2
     if args.stage is None or args.deliverable is None:
         print(f"{usage}\n{tag}: --stage and --deliverable go together — the "
@@ -9362,25 +9607,19 @@ def _cmd_progress_defer_deliverable(args: argparse.Namespace) -> int:
     if isinstance(args.number, str) and status is None:
         status = args.number
     elif args.number is not None:
-        if status == "dropped":
-            print(f"{usage}\n{tag}: takes no item number — an itemised "
-                  f"bullet's status is its item's, so it is not dropped by "
-                  f"position", file=sys.stderr)
-        elif status == "resumed":
-            print(f"{usage}\n{tag}: takes no item number — an itemised bullet "
-                  f"is resumed with `aide progress set NNN resumed --reason "
-                  f"…`", file=sys.stderr)
-        else:
-            print(f"{usage}\n{tag}: takes no item number — an itemised bullet "
-                  f"is deferred with `aide progress set NNN deferred --reason "
-                  f"…`", file=sys.stderr)
+        # Every positional status has its item form (issues #380, #381).
+        named = status if status in _POSITIONAL_SET else "deferred"
+        print(f"{usage}\n{tag}: takes no item number — an itemised bullet "
+              f"is {named} with `aide progress set NNN {named} --reason …`",
+              file=sys.stderr)
         return 2
     if status not in _POSITIONAL_SET:
         shown = f"'{status}'" if status else "no status"
-        print(f"{usage}\n{tag}: only `deferred`, `dropped` or `resumed` is "
-              f"set by position, not {shown} — a deliverable with no item "
-              f"marker moves forward once it is itemised, after which `aide "
-              f"progress set NNN <status>` moves it", file=sys.stderr)
+        print(f"{usage}\n{tag}: only `deferred`, `dropped`, `resumed` or "
+              f"`restored` is set by position, not {shown} — a deliverable "
+              f"with no item marker moves forward once it is itemised, after "
+              f"which `aide progress set NNN <status>` moves it",
+              file=sys.stderr)
         return 2
     if args.criterion is not None or args.all_criteria:
         print(f"{usage}\n{tag}: a deliverable is {status} whole — it takes no "
@@ -11076,7 +11315,8 @@ def cmd_ledger(args: argparse.Namespace) -> int:
             return 1
     print(f"aide ledger {args.action}: progress.md is untouched — this verb "
           f"records what the run cost and decides nothing about the item's "
-          f"status")
+          f"status; if its owner decides against the work, `aide progress "
+          f"set {args.number:03d} dropped --reason …` records that")
     return 0
 
 
@@ -14814,6 +15054,35 @@ def cmd_test(args: argparse.Namespace) -> int:
     return code if code >= 0 else 128 - code
 
 
+def _merge_dropped_item(repo_root: Path, config, number: int,
+                        base: str) -> str:
+    """Where item *number* reads ❌ dropped — ``"the working tree"``, ``"on
+    <base>"`` or both, joined — or ``""`` where neither does (issue #381).
+
+    Both are read because a drop is recorded where its owner stood: on the
+    queue branch the item lands on, or on the checkout the merge runs from.
+    `held_from_forward` decides, so a ❌ beside started work — a hand edit,
+    which `restored` refuses — does not hold the merge. The item branch is
+    deliberately not read: a drop is the owner's, made on the queue branch
+    or the checkout, never from inside the item being built.
+    """
+    rel = _progress_rel(config)
+    places: List[str] = []
+    path = repo_root / rel
+    if path.is_file():
+        try:
+            text = path.read_text(encoding=_ENCODING)
+        except (OSError, UnicodeDecodeError):
+            text = ""
+        if held_from_forward(text.splitlines(), number) == "excluded":
+            places.append("the working tree")
+    shown = git(["show", f"{base}:./{rel}"], repo_root, check=False)
+    if (shown.returncode == 0
+            and held_from_forward(shown.stdout.splitlines(), number) == "excluded"):
+        places.append(f"on {base}")
+    return " and ".join(places)
+
+
 def cmd_merge(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
@@ -14880,6 +15149,20 @@ def cmd_merge(args: argparse.Namespace) -> int:
                   if _ref_exists(repo_root, main) else "no such local branch")
         print(f"aide merge: base '{main}' cannot be merged into: {detail}. "
               f"Pass a local branch as --base.", file=sys.stderr)
+        return 1
+
+    dropped_in = _merge_dropped_item(repo_root, config, args.number, main)
+    if dropped_in:
+        # Refused before anything moves (issue #381): ❌ ranks lowest, so the
+        # tick used to flip a dropped item ✅ with no reason on the record —
+        # the owner's decision against the work, undone by a merge. A ⏸️
+        # item is still ticked: a merge records work that landed.
+        print(f"aide merge: item {args.number:03d} is ❌ dropped in "
+              f"progress.md ({dropped_in}), and a dropped item is not "
+              f"merged — nothing was merged, pushed or written. If the work "
+              f"is wanted after all, restore it with `aide progress set "
+              f"{args.number:03d} restored --reason …`, then re-run "
+              f"'aide merge {args.number:03d}'.", file=sys.stderr)
         return 1
 
     if mode == "pr":
@@ -17743,7 +18026,8 @@ def build_parser() -> argparse.ArgumentParser:
             "stage header or Objective row so marked over a rollup that is "
             "not \u2705 \u2014 an Objective row's rollup being the same "
             "rule over the rollups of the stages its Delivered by cell "
-            "names; an "
+            "names, less any whose summary row is \u274c, and \u274c where "
+            "every stage it names has such a row; an "
             "objective marked \u2705 over an "
             "Outcome target that is \u274c Not met \u2014 the goal-level "
             "mirror of that over-claim; and a row of the stage summary, "
@@ -17900,7 +18184,12 @@ def build_parser() -> argparse.ArgumentParser:
             "`set NNN resumed --reason TEXT` takes a \u23f8\ufe0f item back "
             "to \U0001f4cb with a dated `resumed: <reason>` line, and "
             "`set --stage N --deliverable K resumed --reason TEXT` does the "
-            "same to such a bullet\n"
+            "same to such a bullet. `set NNN dropped --reason TEXT` flips an "
+            "item's bullets to \u274c with a dated `dropped: <reason>` line, "
+            "and `set NNN restored --reason TEXT` takes a \u274c item back "
+            "to \U0001f4cb with a dated `restored: <reason>` line, as `set "
+            "--stage N --deliverable K restored --reason TEXT` does for such "
+            "a bullet\n"
             "accept:  tick one acceptance criterion (--criterion N) or every "
             "one in the stage (--all), with --evidence\n"
             "amend:   append a dated correction under a ticked box; the tick "
@@ -17936,12 +18225,17 @@ def build_parser() -> argparse.ArgumentParser:
             "follow, as does an Objective row whose stages are all \u2705 "
             "or \u23f8\ufe0f, which reads \u23f8\ufe0f; an objective "
             "linked to an Outcome target that is not "
-            "\u2705 Met never rolls up. A header, summary row or Objective "
+            "\u2705 Met never rolls up. A stage whose summary row is "
+            "\u274c is withdrawn and left out of every Objective row that "
+            "names it, and a row naming withdrawn stages alone reads "
+            "\u274c. A header, summary row or Objective "
             "row marked \u23f8\ufe0f by hand stays as it reads until a verb "
-            "moves a bullet of its stage. Apart from deferring, dropping and "
-            "resuming, set never downgrades a status; an item whose bullets "
-            "are all \u23f8\ufe0f or \U0001f4cb leaves \u23f8\ufe0f by "
-            "resuming alone, back to \U0001f4cb, "
+            "moves a bullet of its stage. Apart from deferring, dropping, "
+            "resuming and restoring, set never downgrades a status; an item "
+            "whose bullets are all \u23f8\ufe0f or \U0001f4cb leaves "
+            "\u23f8\ufe0f by resuming alone, back to \U0001f4cb, one whose "
+            "bullets are all \u274c or \U0001f4cb leaves \u274c by "
+            "restoring alone, back to \U0001f4cb, "
             "and only reopen moves a \u2705 item back. No rollup ever "
             "ticks an acceptance box.\n"
             "\n"
@@ -18010,10 +18304,33 @@ def build_parser() -> argparse.ArgumentParser:
             "in-review and done each refuse a \u23f8\ufe0f item, writing "
             "nothing, and name the resume.\n"
             "\n"
+            "set NNN dropped flips each \U0001f4cb, \U0001f6a7, \U0001f50d "
+            "or \u23f8\ufe0f bullet whose trailing marker names the item to "
+            "\u274c, writes the reason on a dated trail line under it, and "
+            "rolls its stage up again, moving down where its bullets now say "
+            "less; an item already \u274c throughout is no change. It "
+            "refuses, writing nothing, without a stated reason, when a "
+            "bullet naming the item is \u2705 \u2014 reopen it first "
+            "\u2014 or when the drop would leave every deliverable bullet of "
+            "a stage \u274c, unless that stage's summary row is already "
+            "\u274c.\n"
+            "\n"
+            "set NNN restored flips each \u274c bullet whose trailing marker "
+            "names the item back to \U0001f4cb, writes the reason on a dated "
+            "trail line under it, and rolls its stage up again, moving down "
+            "where its bullets now say less; an item already \U0001f4cb "
+            "throughout is no change. It refuses, writing nothing, without a "
+            "stated reason, or when a bullet naming the item is \U0001f6a7, "
+            "\U0001f50d, \u2705 or \u23f8\ufe0f \u2014 only dropped work "
+            "is restored. set NNN in-progress, in-review and done each "
+            "refuse an item whose bullets are all \u274c or \U0001f4cb, "
+            "writing nothing, and name the restore; `aide merge` refuses "
+            "it too.\n"
+            "\n"
             "set --stage N --deliverable K counts the stage's deliverable "
             "bullets from 1 in file order, a wrapped line belonging to its "
-            "bullet, and takes no NNN and no status but deferred, dropped or "
-            "resumed. Each form refuses, writing nothing, without a stated reason, "
+            "bullet, and takes no NNN and no status but deferred, dropped, "
+            "resumed or restored. Each form refuses, writing nothing, without a stated reason, "
             "when stage N has no Kth bullet, or when that bullet carries an item "
             "marker \u2014 its status is its item's.\n"
             "\n"
@@ -18028,6 +18345,10 @@ def build_parser() -> argparse.ArgumentParser:
             "before it is itemised: an item born on a \u23f8\ufe0f bullet "
             "is \u23f8\ufe0f from the start.\n"
             "\n"
+            "set --stage N --deliverable K restored writes what set NNN "
+            "restored writes, to a \u274c bullet; it refuses any other but "
+            "\U0001f4cb, which is no change.\n"
+            "\n"
             "set --stage N --deliverable K dropped flips a \U0001f4cb, "
             "\U0001f6a7, \U0001f50d or \u23f8\ufe0f bullet to \u274c, "
             "writes the reason on a dated trail line under it, and rolls its "
@@ -18039,6 +18360,8 @@ def build_parser() -> argparse.ArgumentParser:
             "stage \u274c, which the rollup reads as \U0001f4cb: a stage "
             "with nothing left to deliver is withdrawn whole, by a \u274c "
             "on its summary row and on any Objective row only it delivers. "
+            "A stage whose summary row is already \u274c is withdrawn, so "
+            "neither drop form refuses there. "
             "No insight is captured: "
             "dropping a deliverable is a decision about scope, not a "
             "finding."))
@@ -18050,10 +18373,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "(every other action; none for reword --item)")
     p_prog.add_argument("status", nargs="?", default=None,
                         help="set: in-progress | in-review | done | deferred "
-                             "| dropped | resumed (in-review = pushed, "
-                             "awaiting a human's merge; deferred, dropped and "
-                             "resumed need --reason; dropped takes --stage "
-                             "and --deliverable in place of NNN)")
+                             "| dropped | resumed | restored (in-review = "
+                             "pushed, awaiting a human's merge; the last four "
+                             "need --reason and take --stage and "
+                             "--deliverable in place of NNN for a bullet no "
+                             "item marker names)")
     #: A criterion or a deliverable bullet, never both in one call: the two
     #: `reword` forms address different lines by different keys (issue #320).
     p_target = p_prog.add_mutually_exclusive_group()
@@ -18064,11 +18388,13 @@ def build_parser() -> argparse.ArgumentParser:
                                "prose --text replaces, in place of STAGE and "
                                "--criterion")
     p_prog.add_argument("--stage", type=int, default=None, metavar="N",
-                        help="set deferred|dropped|resumed: the stage whose "
+                        help="set deferred|dropped|resumed|restored: the "
+                             "stage whose "
                              "deliverable bullet --deliverable names, in "
                              "place of NNN")
     p_prog.add_argument("--deliverable", type=int, default=None, metavar="K",
-                        help="set deferred|dropped|resumed: the 1-based position "
+                        help="set deferred|dropped|resumed|restored: the "
+                             "1-based position "
                              "of a deliverable bullet with no item marker "
                              "among the stage's deliverable bullets")
     p_prog.add_argument("--all", action="store_true", dest="all_criteria",
@@ -18082,14 +18408,16 @@ def build_parser() -> argparse.ArgumentParser:
                              "reopen: why the item is not done after all; "
                              "set deferred: why the item waits; "
                              "set dropped: why the stage does not need the "
-                             "deliverable; set resumed: why the deferred work "
-                             "is wanted now (required for all five)")
+                             "deliverable or item; set resumed: why the "
+                             "deferred work is wanted now; set restored: why "
+                             "the dropped work is wanted after all (required "
+                             "for all six)")
     p_prog.add_argument("--text", default=None,
                         help="reword: the criterion's new wording, or with "
                              "--item the bullet's new prose (required)")
     p_prog.add_argument("--date", default=None,
                         help="amend/retract/reopen/set "
-                             "deferred|dropped|resumed: "
+                             "deferred|dropped|resumed|restored: "
                              "ISO date for the trail line (default: today)")
     p_prog.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
     p_prog.set_defaults(func=cmd_progress, progress_parser=p_prog)
@@ -18409,7 +18737,9 @@ def build_parser() -> argparse.ArgumentParser:
             "\n"
             "It writes the ledger and nothing else: progress.md keeps "
             "whatever status the run left it, since what becomes of an "
-            "abandoned item is a decision, not a record. The file is created "
+            "abandoned item is a decision, not a record: its owner's, and "
+            "`aide progress set NNN dropped --reason TEXT` records one "
+            "against the work. The file is created "
             "from .aide/templates/ledger.md when this is the first row, and "
             "committed on the branch the run is standing on, with no pull.\n"
             "\n"
@@ -18564,6 +18894,13 @@ def register_git_subcommands(sub) -> None:
             "stopped at the "
             "validation-round cap never reaches this verb, and "
             "`aide ledger abandon` writes its row instead.\n"
+            "\n"
+            "An item progress.md shows \u274c dropped \u2014 every bullet "
+            "naming it \u274c or \U0001f4cb, in the working tree or on the "
+            "base \u2014 is refused before anything is merged, pushed or "
+            "written, exit 1, and the refusal names `aide progress set NNN "
+            "restored`. A \u23f8\ufe0f item is merged and ticked: a merge "
+            "records work that landed.\n"
             "\n"
             "The finding cells read [loop] review, from aide.toml. Where it "
             "is off no reviewer ran, so the three of them are written as `-` "

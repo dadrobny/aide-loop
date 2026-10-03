@@ -92,7 +92,8 @@ as the reason.
    - A stage needing more than the cap spans multiple queues.
    The cap is a **context budget, not a target**. Prioritise by roadmap order and
    unblocked dependencies; whether an earlier stage's icon meets a blocking
-   dependency on it — a ⏸️ one included — is §1 → `roadmap.md`'s to say.
+   dependency on it — a ⏸️ one included, or one withdrawn by a ❌ summary
+   row — is §1 → `roadmap.md`'s to say.
 
    **"Run alongside" in a roadmap means independence, not concurrency.** One
    queue is live at a time, by design — the queue boundary is the human
@@ -194,8 +195,9 @@ python .aide/scripts/aide.py queue tidy <NNN-1>
 Write nothing else into that file: a queue entry carries no icon, and an
 item's status lives in `progress.md` alone (§1 → `progress.md`). An item
 carried to the next queue is deferred there with `aide progress set NNN
-deferred --reason …`, so the why is on record. Skip if this is the first
-queue.
+deferred --reason …`, and one its owner decided against is dropped with `aide
+progress set NNN dropped --reason …`, so the why is on record either way —
+never a ⏸️ or ❌ typed over the bullet. Skip if this is the first queue.
 
 ### Output
 

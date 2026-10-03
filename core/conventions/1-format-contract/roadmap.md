@@ -63,6 +63,15 @@ stage closes ✅. The ⏸️ that excuses a
 *forward* dependency above excuses the dependent stage, never the stage it
 waits on.
 
+**A blocking dependency on a withdrawn stage is never met** — a stage whose
+`progress.md` summary row is ❌ never becomes ✅ — **so the dependent stage is
+re-planned, not queued.** While it is 📋 Planned, its Dependencies are
+reworded here to drop the withdrawn stage, or name what replaces it; started,
+it is frozen, so it is withdrawn too, or what it still needs enters as a new
+stage. Either is the owner's decision, made through the create-roadmap entry
+point (§5); the queue planner hands back rather than queue the dependent
+stage.
+
 #### Rationale
 
 - **Why a started stage is frozen.** Queues were cut from it, items were
@@ -109,6 +118,15 @@ waits on.
   decision rather than a queue, which is why it needs the owner. The owner's
   remedy for a deliverable never needed is the drop route, which closes the
   stage ✅.
+- **Why a dependency on a withdrawn stage re-plans its dependent.** Issue
+  #382: the ✅-only rule above left a stage whose dependency had been
+  withdrawn blocked for good, and no rule said so — a ❌ stage has nothing
+  left to land, so neither waiting for a queue nor an owner's resume can
+  meet it. The dependency was written against work that will not exist, so
+  only the plan can answer what the dependent stage needs instead; a 📋 stage
+  is the one the roadmap lets be edited, which is why rewording is offered
+  there and withdrawal or a new stage past it. The planner hands back
+  because the answer changes `roadmap.md`, which it never edits.
 - **Why an item reads a ⏸️ dependency the other way.** An item's
   `## Dependencies` are met by a ⏸️ item, which "leaves the queue's way"
   (§1 → `items.md`), while a stage's are not met by a ⏸️ stage. The two act

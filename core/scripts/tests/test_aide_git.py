@@ -1603,6 +1603,89 @@ def test_a_resumed_item_is_claimed_again_or_held_on_its_branch(
     assert "027 Bounds rules — claimed by aide/027-bounds-rules, already in flight" in out
 
 
+def test_merge_refuses_a_dropped_item_until_it_is_restored(
+        tmp_path: Path, capsys):
+    """Issue #381. ❌ ranks lowest, so the tick flipped a dropped item ✅ with
+    nothing on the record. A drop committed on the base holds the merge even
+    run from the claim branch, whose own progress.md never saw it; refused
+    before anything moves, it names `restored`, after which the merge lands."""
+    root = _init_repo(tmp_path / "r", mode="local")
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    # A hand-edited ❌ beside a 📋 bullet of the same item is held too: it is
+    # an item `restored` can take (`held_from_forward`).
+    ppath = root / "docs" / "aide" / "progress.md"
+    ppath.write_text(ppath.read_text(encoding="utf-8").replace(
+        "- 📋 Bounds. *(Item 027)*\n",
+        "- 📋 Bounds. *(Item 027)*\n- ❌ Bounds docs. *(Item 027)*\n"),
+        encoding="utf-8")
+    _run(["git", "commit", "-am", "hand edit"], root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 1
+    assert "item 027 is ❌ dropped" in capsys.readouterr().err
+    assert not (root / "feature.txt").is_file()
+    assert aide.main(["--repo", str(root), "progress", "set", "27", "restored",
+                      "--reason", "docs wanted"]) == 0
+
+    assert aide.main(["--repo", str(root), "progress", "set", "27", "dropped",
+                      "--reason", "not needed"]) == 0
+    head = _run(["git", "rev-parse", "main"], root).stdout
+    _run(["git", "switch", "aide/027-bounds-rules"], root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 1
+    err = capsys.readouterr().err
+    assert "item 027 is ❌ dropped in progress.md (on main)" in err
+    assert "`aide progress set 027 restored --reason …`" in err
+    assert _current_branch(root) == "aide/027-bounds-rules"
+    assert _run(["git", "rev-parse", "main"], root).stdout == head
+
+    _run(["git", "switch", "main"], root)
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 1
+    assert ("(the working tree and on main)" in capsys.readouterr().err)
+    assert not (root / "feature.txt").is_file()
+
+    assert aide.main(["--repo", str(root), "progress", "set", "27", "restored",
+                      "--reason", "wanted after all"]) == 0
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 0
+    assert (root / "feature.txt").is_file()
+    progress = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    assert aide._parse_item_status(progress.splitlines())[2][27] == "complete"
+
+    # A ⏸️ item is not held: a merge records work that landed.
+    _make_item_branch(root, "aide/028-coverage-rules", "coverage.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "28", "deferred",
+                      "--reason", "later"]) == 0
+    assert aide.main(["--repo", str(root), "merge", "28", "--no-test"]) == 0
+    progress = (root / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+    assert aide._parse_item_status(progress.splitlines())[2][28] == "complete"
+
+
+def test_pr_mode_merge_refuses_a_dropped_item_and_pushes_nothing(
+        tmp_path: Path, capsys):
+    """Issue #381 under `pr` mode, where the merge only pushes: the refusal
+    comes before the push, so origin never sees the claim branch and its
+    main does not move."""
+    remote = _mkbare(tmp_path / "remote.git")
+    root = _init_repo(tmp_path / "r", mode="pr")
+    _run(["git", "remote", "add", "origin", str(remote)], root)
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    assert aide.main(["--repo", str(root), "progress", "set", "27", "dropped",
+                      "--reason", "not needed", "--no-commit"]) == 0
+    _run(["git", "commit", "-am", "drop 027"], root)
+    _run(["git", "push", "-u", "origin", "main"], root)
+    before = _run(["git", "ls-remote", str(remote)], root).stdout
+    head = _run(["git", "rev-parse", "HEAD"], root).stdout
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "merge", "27",
+                      "aide/027-bounds-rules", "--no-test"]) == 1
+    err = capsys.readouterr().err
+    assert "item 027 is ❌ dropped" in err
+    assert "`aide progress set 027 restored --reason …`" in err
+    assert _run(["git", "ls-remote", str(remote)], root).stdout == before
+    assert "aide/027-bounds-rules" not in before
+    assert _run(["git", "rev-parse", "HEAD"], root).stdout == head
+    assert _run(["git", "status", "--porcelain"], root).stdout == ""
+
+
 def test_local_mode_never_calls_a_claim_branch_unpublished(tmp_path: Path, capsys):
     """`local` mode is the one place an unpushed claim branch is the design."""
     root = _init_repo(tmp_path / "r", mode="local")
