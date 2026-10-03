@@ -136,6 +136,33 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.35.1] — 2026-10-03
+
+### Fixed
+
+- **The queue's other readers honour a withdrawn stage as `claim` does
+  (issue #389).** 2.35.0 stopped `aide claim` offering a 📋 item every
+  bullet of which sits in a stage whose Stage summary row is ❌, but four
+  readers still took it for live work. Now such an item keeps no queue open,
+  so the default queue is the lowest-numbered one with other work open — a
+  queue left with only such items is passed over silently while a later one
+  has work — and where no queue is open `claim`'s `no open queue found`
+  refusal names each one still listed. A bare `aide claim` facing such a
+  queue therefore exits 1 where it printed `none left` and exited 0; `aide
+  claim --queue NNN`, the runner's form, still exits 0 with the per-item
+  report. It no longer holds a `Validate stage
+  N` queue-end item, which had waited on an item nothing would offer and
+  stalled an unattended run — `aide check --queue`'s `queue-end-not-last`
+  reads it the same way; the gate-held `none left — …` report names it
+  beside the gates, where it had been left out; and `aide merge` refuses it
+  before anything is merged, pushed or written, exit 1, naming `aide
+  progress set NNN dropped` or taking the summary row off ❌. A 🚧 or 🔍
+  item of a withdrawn stage is unchanged everywhere — live work until its
+  owner drops it, the line 2.35.0 drew for the stale ground — and `merge`
+  reads the claim branch's `progress.md` for it, since the builder records
+  🚧 there. §2, §1 → `queue-NNN.md`, `aide claim -h` and `aide merge -h`
+  state it.
+
 ## [2.35.0] — 2026-10-03
 
 ### Added

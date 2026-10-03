@@ -2743,7 +2743,9 @@ def test_claim_names_a_withdrawn_stage_as_the_reason(tmp_path: Path, capsys):
         text.replace("- 📋 Coverage.", "- ✅ Coverage.")
             .replace("- 📋 Shared, first half.", "- ✅ Shared, first half."),
         encoding="utf-8")
-    rc = aide.main(["--repo", str(root), "claim", "--dry-run"])
+    # Named explicitly, as the runner does: with 029 alone open the queue is
+    # no longer the default one (issue #389).
+    rc = aide.main(["--repo", str(root), "claim", "--queue", "3", "--dry-run"])
     out = capsys.readouterr().out
     assert rc == 0
     assert "none left — 1 item(s) still open" in out
@@ -2822,3 +2824,167 @@ def test_a_started_item_of_a_withdrawn_stage_is_not_stale_nor_collected(
     assert not any(w.startswith("stale claim branch") for w in warnings)
     assert aide.main(["--repo", str(root), "gc", "--abandon", "--yes"]) == 0
     assert "aide/029-extras" in _run(["git", "branch"], root).stdout
+
+
+# --------------------------------------------------------------------------- #
+# Withdrawn work and the queue's other readers — issue #389
+# --------------------------------------------------------------------------- #
+# 2.35.0 taught `claim` to skip a 📋 item of a withdrawn stage; the readers
+# beside it — the queue's open state, the queue-end hold, the gate-held
+# report and `merge` — still read it as live work. A 🚧 item of a withdrawn
+# stage stays live in every one of them, the line #388 drew for the stale
+# ground.
+def test_queue_is_open_counts_no_planned_item_of_a_withdrawn_stage():
+    lines = WITHDRAWN_PROGRESS.splitlines()
+    status = aide._parse_item_status(lines)[2]
+    withdrawn = aide.withdrawn_stage_items(lines)
+    queue = "### Item 026: Core\n\n### Item 029: Extras\n"
+    assert not aide.queue_is_open(queue, status, withdrawn)
+    # Without the set the bullets alone are read, as before.
+    assert aide.queue_is_open(queue, status)
+    # 030 has a bullet in a stage still in scope, so it keeps the queue open.
+    assert aide.queue_is_open(queue + "\n### Item 030: Shared\n", status,
+                              withdrawn)
+    for icon in ("🚧", "🔍"):
+        lines = WITHDRAWN_PROGRESS.replace("- 📋 Extras.",
+                                           f"- {icon} Extras.").splitlines()
+        assert aide.queue_is_open(queue, aide._parse_item_status(lines)[2],
+                                  aide.withdrawn_stage_items(lines)), icon
+
+
+def _only_withdrawn_left(root: Path) -> None:
+    """Queue 003 left with 029 alone open: 026 ✅, 027 ❌, 028 ✅."""
+    ppath = root / "docs" / "aide" / "progress.md"
+    ppath.write_text(ppath.read_text(encoding="utf-8").replace(
+        "- 📋 Coverage.", "- ✅ Coverage."), encoding="utf-8")
+    _run(["git", "commit", "-am", "028 landed"], root)
+
+
+def test_claim_moves_past_a_queue_left_with_only_withdrawn_items(
+        tmp_path: Path, capsys):
+    root = _withdrawn_repo(tmp_path)
+    _only_withdrawn_left(root)
+    d = root / "docs" / "aide"
+    (d / "progress.md").write_text(
+        (d / "progress.md").read_text(encoding="utf-8").replace(
+            "- 📋 Shared, first half. *(Item 030)*\n",
+            "- 📋 Shared, first half. *(Item 030)*\n- 📋 Next. *(Item 031)*\n"),
+        encoding="utf-8")
+    (d / "queue" / "queue-004.md").write_text(
+        "# Demo — Work Queue 004\n\n### Item 031: Next\nNext.\n",
+        encoding="utf-8")
+    _run(["git", "add", "-A"], root)
+    _run(["git", "commit", "-m", "queue 004"], root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "claim", "--dry-run"]) == 0
+    assert capsys.readouterr().out.startswith("would claim item 031")
+
+
+def test_claim_names_withdrawn_items_when_no_queue_is_open(tmp_path: Path,
+                                                           capsys):
+    """The queue is not open, so `claim` exits 1 as on an exhausted one —
+    and names the undropped item, which no other report would."""
+    root = _withdrawn_repo(tmp_path)
+    _only_withdrawn_left(root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "claim", "--dry-run"]) == 1
+    err = capsys.readouterr().err
+    assert "no open queue" in err
+    assert "029 Extras — in withdrawn stage 2" in err
+    assert "'aide progress set 029 dropped --reason …'" in err
+    # Its own queue named explicitly is still reported item by item, exit 0.
+    assert aide.main(["--repo", str(root), "claim", "--queue", "3",
+                      "--dry-run"]) == 0
+    assert "029 Extras — in withdrawn stage 2" in capsys.readouterr().out
+
+
+#: 028 is the queue's `Validate stage 1`; 029 sits in withdrawn stage 2.
+QUEUE_END_WITHDRAWN = """\
+# Demo — Work Queue 003
+
+### Item 026: Rule engine core
+Core.
+
+### Item 029: Extras
+Extras.
+
+### Item 028: Validate stage 1: Rules
+Validates the stage.
+"""
+
+
+def test_a_withdrawn_planned_queue_mate_does_not_hold_the_queue_end_item(
+        tmp_path: Path):
+    root = _withdrawn_repo(tmp_path)
+    (root / "docs" / "aide" / "queue" / "queue-003.md").write_text(
+        QUEUE_END_WITHDRAWN, encoding="utf-8")
+    cfg = aide.load_config(root)
+    lines = WITHDRAWN_PROGRESS.splitlines()
+    status = aide._parse_item_status(lines)[2]
+    withdrawn = aide.withdrawn_stage_items(lines)
+    assert aide.queue_end_holds(root, cfg, QUEUE_END_WITHDRAWN, status,
+                                withdrawn) == {28: []}
+    assert aide.queue_end_holds(root, cfg, QUEUE_END_WITHDRAWN,
+                                status) == {28: [29]}
+    assert aide._pick_item(root, cfg, QUEUE_END_WITHDRAWN,
+                           claim_branches=[])[0] == 28
+    # A 🚧 item of the withdrawn stage is live work, and still holds it.
+    ppath = root / "docs" / "aide" / "progress.md"
+    ppath.write_text(WITHDRAWN_PROGRESS.replace("- 📋 Extras.", "- 🚧 Extras."),
+                     encoding="utf-8")
+    assert aide._pick_item(root, cfg, QUEUE_END_WITHDRAWN,
+                           claim_branches=[]) is None
+
+
+def test_gate_held_none_left_names_the_withdrawn_items(tmp_path: Path, capsys):
+    """No gate reaches a withdrawn stage's 📋 item, so the gate-held report
+    named the gate and left the item out."""
+    root = _withdrawn_repo(tmp_path)
+    ppath = root / "docs" / "aide" / "progress.md"
+    ppath.write_text(ppath.read_text(encoding="utf-8").replace(
+        "## Stage 1 — Rules",
+        "## Human gates\n\n"
+        "| Gate | Blocks | Status | Decision / evidence |\n"
+        "|------|--------|--------|---------------------|\n"
+        "| Coverage approved | 028 | ⏳ Awaiting | — |\n\n"
+        "## Stage 1 — Rules"), encoding="utf-8")
+    _run(["git", "commit", "-am", "gate 028"], root)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "claim", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "none left — held by an unresolved human gate" in out
+    assert "holding 028" in out
+    assert "029 Extras — in withdrawn stage 2" in out
+
+
+def test_merge_refuses_a_planned_item_of_a_withdrawn_stage(tmp_path: Path,
+                                                           capsys):
+    """An item the claim branch never started, in a stage withdrawn on the
+    base, is refused before anything moves; once the branch records it 🚧 —
+    the builder's step — it is live work and merges (§2)."""
+    root = _withdrawn_repo(tmp_path)
+    _make_item_branch(root, "aide/029-extras", "extras.txt")
+    head = _run(["git", "rev-parse", "main"], root).stdout
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "merge", "29", "--no-test"]) == 1
+    err = capsys.readouterr().err
+    assert "item 029 is 📋 in withdrawn stage 2" in err
+    assert "(❌ summary row, the working tree and on main)" in err
+    assert "'aide progress set 029 dropped --reason …'" in err
+    assert not (root / "extras.txt").is_file()
+    assert _run(["git", "rev-parse", "main"], root).stdout == head
+    status = aide._parse_item_status(
+        (root / "docs" / "aide" / "progress.md").read_text(
+            encoding="utf-8").splitlines())[2]
+    assert status[29] == "planned"
+
+    _run(["git", "switch", "aide/029-extras"], root)
+    assert aide.main(["--repo", str(root), "progress", "set", "29",
+                      "in-progress"]) == 0
+    _run(["git", "switch", "main"], root)
+    assert aide.main(["--repo", str(root), "merge", "29", "--no-test"]) == 0
+    assert (root / "extras.txt").is_file()
+    status = aide._parse_item_status(
+        (root / "docs" / "aide" / "progress.md").read_text(
+            encoding="utf-8").splitlines())[2]
+    assert status[29] == "complete"

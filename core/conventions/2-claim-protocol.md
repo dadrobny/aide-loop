@@ -68,11 +68,12 @@ act; `--merged` also collects branches already merged into main).
 
 **A ❌ item's claim is spent as a ✅ one is.** An item dropped by its own
 bullets, or a 📋 one whose every bullet sits in a withdrawn stage, will never
-be merged, so its claim branch is stale on the same ground: `check` and
-`status` name it, and `gc` collects it. A 🚧 or ⏸️ item in a withdrawn stage is
-live or owner-held work, not stale until its owner drops it (`aide progress set
-NNN dropped`). A 🔍 item's branch is never stale, however its stage is marked —
-it is an open PR's head.
+be merged — `aide merge` refuses both — so its claim branch is stale on the
+same ground: `check` and `status` name it, and `gc` collects it. A 🚧 or ⏸️
+item in a withdrawn stage is live or owner-held work, not stale until its
+owner drops it (`aide progress set NNN dropped`), and `merge` takes it. A 🔍
+item's branch is never stale, however its stage is marked — it is an open
+PR's head.
 
 **`gc` asks git, not the document.** A ✅ or ❌ item whose branch still carries
 unlanded content is **skipped** with the base named; `--abandon` deletes it
@@ -131,6 +132,15 @@ acts on** (`gc -h` says what it asks git, and what it refuses).
   its item 📋 there, so `check` names its branch stale; that is accepted,
   because `gc` asks git first and takes the branch only once its work has
   landed.
+- **Why `merge` refuses only the 📋 item of a withdrawn stage.** Issue #389:
+  `merge` read no summary row, so an item `claim` would no longer offer
+  could still be ticked ✅, undoing the withdrawal. The refusal takes the
+  stale ground's line, not the stage's: a 🚧 item there is work someone is
+  doing, and refusing it would discard a build its owner has not dropped.
+  The builder records 🚧 on its claim branch and the base never sees it
+  until the merge, so `merge` reads the branch's copy for the item's status
+  beside the working tree's and the base's, and refuses only when none of
+  them shows it started.
 - **Why the preview is exact.** A dry run a human is asked to approve must not
   overstate, so every skip — checked out, unlanded, git too old — is decided
   before anything is printed and shown on both paths.
