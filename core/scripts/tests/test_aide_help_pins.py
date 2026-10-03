@@ -2600,11 +2600,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_queue_pr::test_discard_with_no_origin_off_local_mode_deletes_the_local_branch")),
         ("1: refused, nothing discarded — no such branch here or on origin, "
          "one on origin only, no recorded base, a commit beyond the base or "
-         "commits git could not count, a queue file of the number written "
-         "and not committed, the branch checked out in another worktree, "
-         "uncommitted changes or an unfinished merge or rebase, or a switch "
-         "or push git refused (after a switch, the message says the checkout "
-         "is now on the base)",
+         "commits git could not count, a queue file of the number or the one "
+         "after it written and not committed, the branch checked out in "
+         "another worktree, uncommitted changes or an unfinished merge or "
+         "rebase while it is checked out, or a switch or push git refused "
+         "(after a switch, the message says the checkout is now on the base)",
          ("test_aide_queue_pr::test_discard_refuses_a_branch_it_cannot_judge",
           "test_aide_queue_pr::test_discard_refuses_a_branch_carrying_a_commit_and_changes_nothing",
           "test_aide_queue_pr::test_discard_refuses_a_queue_file_written_and_not_committed",
@@ -2612,7 +2612,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_queue_pr::test_discard_from_a_detached_head_is_not_another_worktree",
           "test_aide_queue_pr::test_discard_refuses_uncommitted_changes_on_the_checked_out_branch",
           "test_aide_queue_pr::test_discard_refuses_an_unfinished_merge_on_the_checked_out_branch",
-          "test_aide_queue_pr::test_discard_refuses_where_origins_copy_carries_a_commit")),
+          "test_aide_queue_pr::test_discard_refuses_where_origins_copy_carries_a_commit",
+          "test_aide_queue_pr::test_a_remote_that_cannot_answer_keeps_the_branch_and_its_tracking_ref")),
         # `ls-remote` after a refused delete: empty means gone; the stale
         # tracking ref is dropped and the local delete goes on.
         ("origin's copy found already gone there counts as deleted",

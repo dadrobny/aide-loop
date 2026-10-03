@@ -1208,27 +1208,30 @@ def test_discard_usage_is_exit_2_and_discards_nothing(tmp_path: Path, argv):
 
 
 @pytest.mark.parametrize("staged", [False, True], ids=["untracked", "staged"])
+@pytest.mark.parametrize("name", ["queue-001-stage-2.md", "queue-002.md"],
+                         ids=["own-slugged", "pair-second"])
 def test_discard_refuses_a_queue_file_written_and_not_committed(
-        tmp_path: Path, capsys, staged):
+        tmp_path: Path, capsys, staged, name):
     """A planner that wrote its plan and handed back anyway: the switch to
     the base would carry the file there, stranded, so nothing is discarded.
-    Another number's file is no obstacle."""
+    The branch could own its number and the one after (a maintenance queue
+    and its stage queue); any other number's file is no obstacle."""
     repo = _init(tmp_path)
     _start(repo, 1)
     qdir = repo / "docs" / "aide" / "queue"
     (qdir / "queue-007.md").write_text("# other\n", encoding="utf-8")
-    (qdir / "queue-001-stage-2.md").write_text("# plan\n", encoding="utf-8")
+    (qdir / name).write_text("# plan\n", encoding="utf-8")
     if staged:
-        _git(["add", "docs/aide/queue/queue-001-stage-2.md"], repo)
+        _git(["add", f"docs/aide/queue/{name}"], repo)
     capsys.readouterr()
     assert _discard(repo, "1") == 1
     err = capsys.readouterr().err
-    assert "docs/aide/queue/queue-001-stage-2.md is written and not committed" in err
+    assert f"docs/aide/queue/{name} is written and not committed" in err
     assert "queue-007" not in err
     assert _current(repo) == Q1 and _on_origin(repo, Q1) is not None
-    (qdir / "queue-001-stage-2.md").unlink()
+    (qdir / name).unlink()
     if staged:
-        _git(["rm", "--cached", "-q", "docs/aide/queue/queue-001-stage-2.md"], repo)
+        _git(["rm", "--cached", "-q", f"docs/aide/queue/{name}"], repo)
     assert _discard(repo, "1") == 0
 
 
@@ -1269,3 +1272,18 @@ def test_discard_refuses_an_unfinished_merge_on_the_checked_out_branch(
     assert _discard(repo, "1") == 1
     assert "refusing" in capsys.readouterr().err
     assert _current(repo) == Q1 and _local(repo, Q1)
+
+
+def test_a_remote_that_cannot_answer_keeps_the_branch_and_its_tracking_ref(
+        tmp_path: Path, capsys):
+    """The delete fails and so does the question whether origin still has
+    the branch: that is no evidence it is gone, so nothing is deleted."""
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _git(["remote", "set-url", "origin", str(tmp_path / "no-such.git")], repo)
+    capsys.readouterr()
+    assert _discard(repo, "1") == 1
+    assert "origin did not delete" in capsys.readouterr().err
+    assert _local(repo, Q1) and _keys(repo, Q1)
+    assert _git(["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{Q1}"],
+                repo, check=False).returncode == 0

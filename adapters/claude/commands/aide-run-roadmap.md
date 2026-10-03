@@ -111,12 +111,15 @@ series of improvised git/gh probes:
    to it and `git pull` (not in `local` mode or with no origin), and run
    `status` **again there**: its queue file, its items' states and its plan
    gate live on that branch only, so a `status` on `main` cannot see them.
-   `python .aide/scripts/aide.py gate list` prints each gate's ID. Before
-   reading its items, ask git whether the branch's own queue file is
-   committed there — `status` does not say:
+   `python .aide/scripts/aide.py gate list` prints each gate's ID. On a
+   queue branch (`<prefix>queue-NNN`; a legacy queue on `main` has no
+   such check), before reading its items, ask git whether the branch's own
+   queue file is committed there — `status` does not say:
    `git cat-file -e HEAD:docs/aide/queue/queue-NNN.md`, NNN from the
-   branch's name. A non-zero exit is the table's *no queue file* row, which
-   is read before *built out*: a branch with no queue has no items either.
+   branch's name. A legacy slugged name (`queue-NNN-<slug>.md`) counts too:
+   on a non-zero exit, `git show HEAD:docs/aide/queue/` lists the committed
+   files. With neither, it is the table's *no queue file* row, which is
+   read before *built out*: a branch with no queue has no items either.
 
 Read `docs/aide/roadmap.md`, `docs/aide/progress.md` and the queue files as
 needed. The loop runs **in-place in the primary checkout** (see *Working in

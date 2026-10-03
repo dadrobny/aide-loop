@@ -11995,7 +11995,8 @@ def _queue_discard(args: argparse.Namespace) -> int:
     the local branch only: nothing on origin can be reached, and the local
     branch is still the one counted against the cap.
 
-    A queue file for the number written and not committed is refused too: a
+    A queue file for the number, or the one after it (a maintenance queue's
+    stage queue), written and not committed is refused too: a
     planner that broke "a hand-back writes nothing" would otherwise have its
     plan carried onto the base by the switch, stranded there. Origin's copy
     already gone (a stale remote-tracking ref) is asked of origin itself,
@@ -12054,13 +12055,16 @@ def _queue_discard(args: argparse.Namespace) -> int:
         if record[0] in "RC" and fields:
             fields.pop(0)                  # a rename's source is its own field
         written.add(record[3:])
+    # The numbers the branch could own: its own, and NNN+1, the stage queue
+    # a maintenance queue NNN is written with on the same branch.
     loose = sorted(p for p in written if p.endswith(".md")
-                   and queue_number(Path(p)) == args.number)
+                   and queue_number(Path(p)) in (args.number, args.number + 1))
     if loose:
-        print(f"{tag}: {', '.join(loose)} is written and not committed — a "
-              f"plan for this queue, which discarding the branch would leave "
-              f"stranded on {base}; commit it on {branch} or remove it, then "
-              f"re-run. Nothing was discarded.", file=sys.stderr)
+        print(f"{tag}: {', '.join(loose)} "
+              f"{'is' if len(loose) == 1 else 'are'} written and not "
+              f"committed — a plan for this branch, which discarding it would "
+              f"leave stranded on {base}; commit it on {branch} or remove it, "
+              f"then re-run. Nothing was discarded.", file=sys.stderr)
         return 1
     current = _current_branch(repo_root)
     # `worktree list` names the branch each attached worktree sits on. Not
@@ -19384,9 +19388,10 @@ def build_parser() -> argparse.ArgumentParser:
             "counts as deleted. 1: refused, nothing discarded — no such "
             "branch here or on origin, one on origin only, no recorded "
             "base, a commit beyond the base or commits git could not count, "
-            "a queue file of the number written and not committed, the "
-            "branch checked out in another worktree, uncommitted changes or "
-            "an unfinished merge or rebase, or a switch or push git refused "
+            "a queue file of the number or the one after it written and not "
+            "committed, the branch checked out in another worktree, "
+            "uncommitted changes or an unfinished merge or rebase while it "
+            "is checked out, or a switch or push git refused "
             "(after a switch, the message says the checkout is now on the "
             "base); and a local delete git refused, where origin's copy, if "
             "any, is already gone and the message says so. 2: usage."))

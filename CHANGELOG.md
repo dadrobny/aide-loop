@@ -149,15 +149,18 @@ instead — that is the bump policy above, and it is enforced by
   copy origin no longer has (a stale remote-tracking ref, asked of origin
   rather than read from git's message) counts as deleted. A checked-out
   branch is left for its base first, and a refusal after that switch says
-  the checkout is now on the base. A queue file of the number written and
-  not committed — which the switch would carry onto the base, stranded —
-  uncommitted changes to tracked files or an unfinished merge or rebase, a
-  branch checked out in another worktree, no recorded base
-  (the message names `git branch -D` as the person's route), a branch only
-  on origin and no such branch are each refused, exit 1, with one sentence
-  and nothing discarded. `local` mode never touches origin, and off `local`
-  mode with no remote named origin only the local branch is deleted — the
-  one counted against `max_open_queues`. `git branch -D` takes the branch's
+  the checkout is now on the base. A queue file of the number, or of the
+  one after it (a maintenance queue's stage queue), written and not
+  committed — which the switch would carry onto the base, stranded —
+  uncommitted changes to tracked files or an unfinished merge or rebase
+  while the branch is checked out, a branch checked out in another
+  worktree, no recorded base (the message names `git branch -D` as the
+  person's route), a branch only on origin and no such branch are each
+  refused, exit 1, with one sentence and nothing discarded; so is a
+  refused delete on origin that origin cannot then be asked about. `local`
+  mode never touches origin, and off `local` mode with no remote named
+  origin only the local branch is deleted — the one counted against
+  `max_open_queues`. `git branch -D` takes the branch's
   recorded base and start with it. With nothing on the branch to lose there
   is no preview and no `--yes`, and every shared `queue` option is refused,
   exit 2, so `discard --dry-run` never runs. `aide queue -h` states it,
@@ -187,19 +190,21 @@ instead — that is the bump policy above, and it is enforced by
   planner's question. The runner now asks git whether
   `docs/aide/queue/queue-NNN.md` is committed on the branch (`git cat-file
   -e HEAD:…`, the commit and not the index, as `queue pr` reads it) before
-  anything else. When it is not, it runs `aide queue discard NNN`, so the next run
-  does not read an open, empty queue branch counting against
+  anything else. When it is not, it runs `aide queue discard NNN`, so the
+  next run does not read an open, empty queue branch counting against
   `max_open_queues`, then stops and relays the hand-back verbatim; a
   discard refusal is relayed too. Until the stage's owner decides, each run
   plans the same stage and stops on the same question; the state table and
   the stop list say so, and a new state row covers a queue branch found
-  with no queue file — the same check, made in the state reading before the
-  *built out* row, since `aide status` gives no queue-file signal — so a
-  session that ended mid-plan reaches a discard and a fresh plan, or a stop
-  on the verb's refusal, rather than **Queue end**. The queue-planner spec now says a hand-back writes nothing — no
-  tidy, no `progress.md` edit, no commit, not even an insight capture,
-  which it names in the hand-back instead — and is decided before step 3's
-  tidy, so the branch is left as `queue start` made it.
+  with no queue file — the same check, made in the state reading on a
+  queue branch before the *built out* row, since `aide status` gives no
+  queue-file signal, with a legacy slugged queue file counting — so a
+  session that ended mid-plan reaches a discard and a fresh plan, or a
+  stop on the verb's refusal, rather than **Queue end**. The queue-planner
+  spec now says a hand-back writes nothing — no tidy, no `progress.md`
+  edit, no commit, not even an insight capture, which it names in the
+  hand-back instead — and is decided before step 3's tidy, so the branch
+  is left as `queue start` made it.
 
 ### Changed
 
