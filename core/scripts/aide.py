@@ -11852,6 +11852,8 @@ def _queue_start(args: argparse.Namespace) -> int:
         return 1
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
+    if not _require_origin("queue start", repo_root, mode):
+        return 1
     branch = (specs_queue_branch_name(prefix, args.number) if args.specs
               else queue_branch_name(prefix, args.number))
 
@@ -11891,15 +11893,16 @@ def _queue_start(args: argparse.Namespace) -> int:
             unsure = sorted(b for b, v in unmerged.items() if v is None)
             # Where a queue lands decides the remedy: through a PR into
             # origin's main_branch, which a pull brings here — or, in local
-            # mode or with no origin, by a person merging it into this
-            # checkout's main_branch, where there is nothing to pull.
-            if mode != "local" and _has_origin(repo_root):
+            # mode, by a person merging it into this checkout's main_branch,
+            # where there is nothing to pull. Off local mode origin is there:
+            # `_require_origin` refused above without one (issue #377).
+            if mode != "local":
                 remedy = (f"once a PR merges, update {main} from origin "
                           f"('git switch {main}', then 'git pull')")
             else:
-                remedy = (f"with no origin to pull from, a queue lands when "
-                          f"it is merged into {main} here ('git switch "
-                          f"{main}', then 'git merge <its branch>')")
+                remedy = (f"in local mode nothing is pulled, so a queue "
+                          f"lands when it is merged into {main} here ('git "
+                          f"switch {main}', then 'git merge <its branch>')")
             print(f"aide queue start: "
                   f"{_plural(len(unmerged), 'queue branch is', 'queue branches are')} "
                   f"unmerged ({', '.join(sorted(unmerged))}) and [loop] "
@@ -12517,6 +12520,8 @@ def _queue_restack(args: argparse.Namespace) -> int:
         return 1
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
+    if not _require_origin("queue restack", repo_root, mode):
+        return 1
     main = str(config["git"].get("main_branch", "main"))
     dry = bool(args.dry_run)
     say = "would " if dry else ""
@@ -13189,9 +13194,7 @@ def dependency_report(repo_root: Path, config: Dict[str, Dict[str, object]],
         url = origin_url(repo_root)
         refusal = None
         if url is None and pushes:
-            refusal = (f'{setting} in aide.toml needs a remote named origin — '
-                       f"add one ('git remote add origin <url>'), or set "
-                       f'[git] mode = "local"')
+            refusal = missing_origin(mode)
         lines.append(Requirement("origin", (url or "none") + unneeded,
                                  setting, refusal, True))
 
@@ -13981,6 +13984,8 @@ def cmd_claim(args: argparse.Namespace) -> int:
         return 1
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     mode = str(config["git"].get("mode", "auto-merge"))
+    if not _require_origin("claim", repo_root, mode):
+        return 1
     scope = str(config["loop"].get("claim_scope", "live-queue"))
     if mode != "local":
         git(["fetch", "--all", "--prune"], repo_root, check=False)
@@ -15436,6 +15441,10 @@ def cmd_merge(args: argparse.Namespace) -> int:
         return 2
     if not _require_repository("merge", repo_root):
         return 1
+    # Before anything is run, merged or written (issue #377): the push is
+    # the last thing an `auto-merge` merge does, after the suite and the ✅.
+    if not _require_origin("merge", repo_root, mode):
+        return 1
     branch = args.branch or _find_claim_branch(repo_root, prefix, args.number)
     if not branch:
         print(f"aide merge: no claim branch found for item {args.number:03d}", file=sys.stderr)
@@ -16187,6 +16196,33 @@ def _is_queue_branch(branch: str, prefix: str) -> bool:
 def _has_origin(repo_root: Path) -> bool:
     out = git(["remote"], repo_root, check=False).stdout
     return "origin" in out.split()
+
+
+def missing_origin(mode: str) -> str:
+    """The one sentence a mode that pushes is refused with where there is no
+    remote named origin: `aide env`'s origin line, plain `aide check`'s
+    `this machine:` error and `_require_origin` all say it (issues #354,
+    #377)."""
+    return (f'[git] mode = "{mode}" in aide.toml needs a remote named origin '
+            f"— add one ('git remote add origin <url>'), or set [git] mode = "
+            f'"local"')
+
+
+def _require_origin(verb: str, repo_root: Path, mode: str) -> bool:
+    """Print `missing_origin` and return False when *mode* pushes and this
+    checkout has no remote named origin; True otherwise.
+
+    Asked before the verb changes anything (issue #377). `claim`, `queue
+    start`, `queue restack` and `merge` each push last, so a missing origin
+    used to be found after their local half was done: `merge` under
+    `auto-merge` ran the suite, merged, ticked ✅ and committed, then failed
+    at the push — and every re-run paid the suite again to fail at the same
+    place. §4: a requirement the machine cannot meet is refused up front.
+    """
+    if mode == "local" or _has_origin(repo_root):
+        return True
+    print(f"aide {verb}: {missing_origin(mode)}", file=sys.stderr)
+    return False
 
 
 # --------------------------------------------------------------------------- #
@@ -18838,7 +18874,9 @@ def build_parser() -> argparse.ArgumentParser:
             "main_branch), records that base and the commit it started from, "
             "and off local mode pushes it; --specs creates "
             "<prefix>specs-queue-NNN instead, which is never counted or "
-            "stacked. A queue branch is unmerged until its own work has "
+            "stacked. Off local mode a checkout with no remote named origin "
+            "is refused, exit 1, before any other check, --dry-run "
+            "included. A queue branch is unmerged until its own work has "
             "landed in main_branch, judged exactly as restack judges it "
             "(below), against this checkout's main_branch — and, off local "
             "mode, over origin's queue branches as last fetched too; one git "
@@ -18847,8 +18885,8 @@ def build_parser() -> argparse.ArgumentParser:
             "unmerged, naming them and the key. A branch whose PR merged "
             "counts until this checkout's main_branch holds its work, so "
             "updating main_branch is what clears it: a pull from origin "
-            "where there is one, and in local mode or with no origin, "
-            "merging the queue branch into main_branch; one git "
+            "off local mode, and in local mode merging the queue branch "
+            "into main_branch; one git "
             "cannot judge is cleared by `aide gc --merged --yes` if it "
             "landed, or by `aide queue restack NNN --base main_branch`, which "
             "records its start, if it is open. Below the cap, while any "
@@ -18944,7 +18982,8 @@ def build_parser() -> argparse.ArgumentParser:
             "branch origin is ahead on, refuses a branch that has diverged "
             "from origin, and once every merge has succeeded pushes, without "
             "force, each stack branch it merged into or that is ahead of "
-            "origin. local mode never fetches or pushes.\n"
+            "origin; with no remote named origin it refuses, exit 1, before "
+            "anything changes. local mode never fetches or pushes.\n"
             "\n"
             "It needs a clean tree, and refuses a stack branch checked out "
             "in another worktree. A conflict aborts that merge, leaves the "
@@ -19234,7 +19273,9 @@ def register_git_subcommands(sub) -> None:
             "a gate holds the rest. A claim branch origin had and has since "
             "deleted exits 1 the same way, named as already in its base or "
             "as work that could not be found there, and is never advised a "
-            "push. "
+            "push. Off local mode a checkout with no remote named origin is "
+            "refused, exit 1, before anything is picked, created or fetched, "
+            "--dry-run included. "
             "A human-gates row it "
             "cannot read holds every item, since what it blocks is unknown: "
             "the report names the row and exits 1. A missing insights.md "
@@ -19261,7 +19302,9 @@ def register_git_subcommands(sub) -> None:
         description=(
             "Lands the item's claim branch on its base per git.mode, re-runs "
             "the suite and `aide check`, writes the \u2705 and appends one "
-            "ledger row.\n"
+            "ledger row. Off local mode a checkout with no remote named "
+            "origin is refused, exit 1, before anything is run, merged, "
+            "pushed or written.\n"
             "\n"
             "The row is one per item, in docs/aide/ledger.md \u2014 created "
             "from .aide/templates/ledger.md the first time there is a row to "

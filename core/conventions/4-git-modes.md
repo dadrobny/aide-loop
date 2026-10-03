@@ -42,7 +42,9 @@ unless `[git] forge = "none"` declares no forge. A
 requirement the configuration needs and the machine lacks is a refusal that
 names the setting needing it and the two ways out: meet it, or change the
 setting. No verb and no role lowers the mode or rewrites `test_command` to
-fit the machine; a refusal goes to a person. `aide env` reports every
+fit the machine; a refusal goes to a person. A verb that would push refuses
+a missing `origin` before it creates, runs or writes anything, so the refusal
+leaves nothing to clean up. `aide env` reports every
 requirement. A plain `aide check` errors on the part decided offline, each
 error marked `this machine:`; `aide check --queue` judges documents only.
 `aide env -h` and `aide check -h` state each line.
@@ -216,9 +218,14 @@ checks" just after a push as the answer: CI may not have started yet.
   then failed at the push on every retry. The installer scaffolded
   `auto-merge` into a target with no remote, or one that was no repository at
   all (issue #354); it now reports the offline part after it writes, and its
-  interactive prompt offers `local` on a target with no `origin`. Lowering the
-  mode to `local` instead would silently keep every item on one machine for
-  an owner who chose to publish — the failure an unknown mode already had.
+  interactive prompt offers `local` on a target with no `origin`. `merge`
+  itself still found out last until the verbs that push asked first (issue
+  #377): each pushes as its last step, so `claim` and `queue start` left a
+  branch with its base recorded, `queue restack` its merges, and `merge`
+  under `auto-merge` a ✅ origin never received, after a full suite run per
+  retry. Lowering the mode to `local` instead would silently keep every item
+  on one machine for an owner who chose to publish — the failure an unknown
+  mode already had.
 - **Why the check judges only part of the machine, and only when plain.** The
   offline part is git, the repository, `origin` and the test command. `gh`'s
   login is left out because asking needs the network, and the check runs

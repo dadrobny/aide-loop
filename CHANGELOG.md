@@ -136,6 +136,32 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.35.3] — 2026-10-03
+
+### Fixed
+
+- **A verb that pushes refuses a missing `origin` before it does anything
+  (issue #377).** Under `[git] mode = "auto-merge"` or `"pr"` in a checkout
+  with no remote named `origin`, each verb that pushes found out at its push,
+  its last step. `aide merge` under `auto-merge` ran the suite, merged the
+  claim branch, ticked ✅, wrote the ledger row and committed, then failed
+  the push — and every re-run paid a full suite run to fail at the same
+  place. `aide claim` and `aide queue start` left the branch on this
+  machine with its base recorded, and `aide queue restack` left its merges
+  made and unpushed. All four now ask first, straight after the repository
+  check and before anything is created, run or written, `--dry-run`
+  included, and refuse with exit 1 and the sentence `aide env` already
+  prints for the same machine: the setting, and the two ways out (add a
+  remote named `origin`, or set `[git] mode = "local"`). One helper,
+  `_require_origin`, holds the check. `local` mode is unchanged, and so is
+  an `origin` that is there but unreachable: that still fails at the push
+  and says what survives. `aide queue pr` and `aide queue ready` already
+  refused with no origin and are unchanged. §4 states the rule (core) and
+  its history (Rationale); §2 says a claim with no origin creates nothing;
+  `aide claim -h`, `aide merge -h` and `aide queue -h` state it per verb,
+  and `queue start`'s cap remedy reads `in local mode` where it read `in
+  local mode or with no origin`, a case that now never reaches it.
+
 ## [2.35.2] — 2026-10-03
 
 ### Fixed
