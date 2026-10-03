@@ -25,11 +25,12 @@ from __future__ import annotations
 import codecs
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Tuple
+from typing import Dict, Tuple
 
 import pytest
 
@@ -5420,6 +5421,66 @@ def test_an_interpreter_this_machine_lacks_stops_the_bootstrap_before_the_venv(
     _set_python_keys(consumer, venv=".venv", interpreter="no-such-python-aide-fixture")
     assert aide.main(["--repo", str(consumer), "env", "--bootstrap"]) == 1
     assert not (consumer / ".venv").exists()
+
+
+# `[python] bootstrap` read by its first word (issue #378): one real build
+# per reading, and one for a program found nowhere — each costs a venv with
+# pip in it, so there are four.
+def _bootstrap_with(aide, consumer: Path, bootstrap: str) -> int:
+    _set_python_keys(consumer, venv=".venv", bootstrap=bootstrap)
+    _set_test_command(consumer, "git --version")   # no runner to install
+    return aide.main(["--repo", str(consumer), "env", "--bootstrap"])
+
+
+def _built_venv(consumer: Path) -> Tuple[Path, Dict[str, object]]:
+    venv = consumer / ".venv"
+    scripts = venv / ("Scripts" if os.name == "nt" else "bin")
+    record = json.loads((venv / "aide-bootstrap.json").read_text(encoding="utf-8"))
+    return scripts, record
+
+
+def test_a_pip_bootstrap_runs_the_venvs_pip(aide, consumer: Path):
+    assert _bootstrap_with(aide, consumer, "pip --version") == 0
+    scripts, record = _built_venv(consumer)
+    assert record["exit"] == 0
+    assert Path(record["command"][0]).parent == scripts
+    assert record["command"][1:] == ["-m", "pip", "--version"]
+    assert aide.main(["--repo", str(consumer), "env", "--bootstrap"]) == 0
+
+
+def test_a_python_argv_bootstrap_runs_in_the_venvs_python(aide, consumer: Path):
+    """`-m …` worked before #378 and must not need an `aide.toml` edit."""
+    (consumer / "probe_aide_378.py").write_text(
+        "import pathlib, sys\n"
+        "pathlib.Path('prefix_aide_378.txt').write_text(sys.prefix, encoding='utf-8')\n",
+        encoding="utf-8")
+    assert _bootstrap_with(aide, consumer, "-m probe_aide_378") == 0
+    prefix = (consumer / "prefix_aide_378.txt").read_text(encoding="utf-8")
+    assert Path(prefix).resolve() == (consumer / ".venv").resolve()
+
+
+def test_a_bare_command_bootstrap_runs_from_the_venv(aide, consumer: Path):
+    """`uv sync` ran as `<venv python> uv sync` and could never succeed. A
+    bare program now resolves in the venv's script directory before PATH:
+    `pip3` is in every venv pip is, and is no `pip` the first rule takes."""
+    assert _bootstrap_with(aide, consumer, "pip3 --version") == 0
+    scripts, record = _built_venv(consumer)
+    assert record["exit"] == 0 and "unrun" not in record
+    assert Path(record["command"][0]).parent == scripts
+    assert record["command"][1:] == ["--version"]
+
+
+def test_a_bootstrap_command_this_machine_lacks_fails_and_stays_stale(
+        aide, consumer: Path, capsys):
+    """The venv is built, the program is looked for and not found, nothing
+    runs, and `env` keeps refusing the venv until a bootstrap completes."""
+    capsys.readouterr()
+    assert _bootstrap_with(aide, consumer, "no-such-tool-aide-378 sync") == 1
+    assert "Traceback" not in capsys.readouterr().err
+    _, record = _built_venv(consumer)
+    assert record["exit"] != 0 and record["unrun"]
+    status, _ = aide.env_report(consumer, aide.load_config(consumer))
+    assert status == "stale"
 
 
 # --------------------------------------------------------------------------- #

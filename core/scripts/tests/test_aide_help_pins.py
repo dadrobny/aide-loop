@@ -214,6 +214,19 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "else the report would refuse",
          ("test_aide_env_report::test_bootstrap_answers_for_the_venv_alone",
           "test_aide_git::test_bootstrap_with_an_interpreter_this_machine_lacks_is_a_sentence")),
+        # `bootstrap_argv` reads the first word; `bootstrap_command_env` and
+        # `resolve_tool(..., path=)` give a command the venv (issue #378).
+        ("pip runs as the venv's `python -m pip`; python or python3 is "
+         "replaced by the venv's Python; an option (-m, -c) or a .py file "
+         "is passed to the venv's Python; anything else is a command",
+         ("test_aide_git::test_each_bootstrap_reading_builds_its_argv",
+          "test_aide_git::test_a_bootstrap_python_reading_runs_with_the_environment_unchanged")),
+        ("found in the venv's script directory first and then on PATH, and "
+         "run with VIRTUAL_ENV set to the venv and that directory first on "
+         "PATH. A command found in neither is a failed bootstrap that names "
+         "it",
+         ("test_aide_git::test_a_bootstrap_command_runs_with_the_venv_active",
+          "test_aide_git::test_a_bootstrap_command_found_nowhere_is_a_failed_bootstrap_that_names_it")),
         ("Exits 0 when every requirement the configuration needs is met",
          ("test_aide_env_report::test_every_requirement_met_under_pr_exits_zero",
           "test_aide_git::test_a_stdlib_runner_in_a_bare_venv_is_ok")),

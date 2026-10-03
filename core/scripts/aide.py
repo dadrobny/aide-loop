@@ -273,7 +273,8 @@ DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
     # means the Python running the CLI, which is whatever launched it: a
     # consumer whose dependency closure only resolves on 3.12 got a 3.14 venv
     # from an ambient conda, a source build that failed on cmake, and an
-    # `env` that still said OK (issue #166).
+    # `env` that still said OK (issue #166). `bootstrap` is what the build
+    # installs with, read by its first word in `bootstrap_argv` (issue #378).
     "python": {"venv": ".venv", "bootstrap": "pip install -e .[dev]",
                "test_command": "python -m pytest", "import_check": "",
                "interpreter": ""},
@@ -527,7 +528,8 @@ def _pathext_file(path: str) -> Optional[str]:
     return None
 
 
-def resolve_tool(name: str, repo_root: Path) -> Optional[str]:
+def resolve_tool(name: str, repo_root: Path,
+                 path: Optional[str] = None) -> Optional[str]:
     """Where the program *name* is, for the engine to run: the one resolver
     every program the engine starts goes through (issue #353).
 
@@ -540,6 +542,9 @@ def resolve_tool(name: str, repo_root: Path) -> Optional[str]:
     means for it. Any other *name* — a test command's program — is only
     looked up, from *repo_root* when it carries a directory. `shutil.which`
     applies PATHEXT on Windows, so `gh` finds the `gh.exe` installed there.
+    *path*, when given, is the search path a bare name is looked up on in
+    place of this process's PATH — the one the program will run with, as
+    `env --bootstrap`'s command does with the venv first (issue #378).
     """
     configured = _local_tools(repo_root).get(name) if name in RUN_TOOLS else None
     if configured is None or configured == "":
@@ -559,7 +564,8 @@ def resolve_tool(name: str, repo_root: Path) -> Optional[str]:
             found = _pathext_file(str(where))
     else:
         where = None
-        found = shutil.which(command)
+        found = (shutil.which(command) if path is None
+                 else shutil.which(command, path=path))
     if found is not None or configured in (None, ""):
         return found
     if where is None:
@@ -13030,6 +13036,10 @@ def env_report(repo_root: Path, config: Dict[str, Dict[str, object]]) -> Tuple[s
     if not vpy.exists():
         return "missing", f"no venv at {venv}"
     record = _read_bootstrap_record(venv)
+    if record is not None and record.get("unrun"):
+        return "stale", (f"the last `env --bootstrap` could not start its "
+                         f"command, so nothing was installed — "
+                         f"{record.get('unrun')}")
     if record is not None and record.get("exit") not in (0, None):
         return "stale", (f"the last `env --bootstrap` exited "
                          f"{record.get('exit')}, so its install did not finish")
@@ -13441,9 +13451,72 @@ def _print_dependency_report(repo_root: Path,
     return 0
 
 
+#: The first tokens of `[python] bootstrap` that name Python itself, and are
+#: replaced by the venv's interpreter (issue #378). The set is the one
+#: `resolve_test_command` binds, plus the `python3` a POSIX host may be
+#: written for. Not `py`: the Windows launcher's own arguments (`py -3.12`)
+#: choose an interpreter, and inside a venv that already has one that would
+#: be a different Python, or an argument the venv's Python refuses.
+_BOOTSTRAP_PYTHONS = ("python", "python3")
+
+
+def bootstrap_argv(tokens: List[str], vpy: Path) -> Tuple[List[str], bool]:
+    """How `env --bootstrap` runs `[python] bootstrap` (split on whitespace,
+    as *tokens*) in the venv whose interpreter is *vpy*: the argv, and
+    whether it is a command to look up (True) rather than *vpy* run with
+    arguments (False).
+
+    A leading `pip` is the venv's `python -m pip`. A leading `python` or
+    `python3` is the venv's Python. A leading option (`-m poetry install`)
+    or `.py` file (`setup.py develop`) is arguments to it — the reading every
+    bootstrap but `pip` had before issue #378, kept so no `aide.toml` that
+    worked has to change. Anything else (`uv sync`, `make dev`) is a command, which
+    used to run as `<venv python> uv sync` and could never succeed.
+    """
+    first = tokens[0] if tokens else ""
+    if not tokens or first.startswith("-") or first.lower().endswith(".py"):
+        return [str(vpy), *tokens], False
+    if first == "pip":
+        return [str(vpy), "-m", *tokens], False
+    if first in _BOOTSTRAP_PYTHONS:
+        return [str(vpy), *tokens[1:]], False
+    return list(tokens), True
+
+
+def bootstrap_command_env(venv: Path, scripts: Path) -> Dict[str, str]:
+    """The environment a bootstrap *command* runs in: this process's, with
+    `VIRTUAL_ENV` naming the venv and its script directory *scripts* first
+    on PATH — what activating the venv sets, so a tool that installs into
+    the active environment (`uv sync`, `poetry install`) installs into this
+    one. `PYTHONHOME` is dropped, as activation drops it."""
+    env = dict(os.environ)
+    env.pop("PYTHONHOME", None)
+    env["VIRTUAL_ENV"] = str(venv)
+    env["PATH"] = os.pathsep.join(
+        p for p in (str(scripts), env.get("PATH", "")) if p)
+    return env
+
+
+def _bootstrap_unfound(program: str, repo_root: Path, scripts: Path) -> str:
+    """Why the bootstrap command's *program* cannot be found, in the words
+    `RunnerMissing` uses for the test command's (issue #352)."""
+    if _has_directory(program):
+        at = Path(program)
+        if not at.is_absolute():
+            at = repo_root / at
+        where = "is not an executable file" if at.is_file() else "does not exist"
+    else:
+        where = f"is neither in {scripts} nor on PATH"
+    return (f"the [python] bootstrap program '{program}' {where} — install "
+            f"it, or fix [python] bootstrap in aide.toml")
+
+
 def _bootstrap_venv(repo_root: Path, config: Dict[str, Dict[str, object]]) -> int:
     """Build and populate the venv from `[python] interpreter`; 0 when built."""
     venv = _venv_dir(repo_root, config)
+    # Whitespace, as `test_command` is split: shlex would re-read a value
+    # that works today — a Windows path's backslashes, a quote pip was
+    # handed literally — and nothing in the issue needed quoting.
     bootstrap = str(config["python"].get("bootstrap", "pip install -e .[dev]")).split()
     interpreter = _configured_interpreter(config)
     # A stale venv is rebuilt from nothing: `-m venv` over an existing tree
@@ -13463,19 +13536,48 @@ def _bootstrap_venv(repo_root: Path, config: Dict[str, Dict[str, object]]) -> in
               f"{made.returncode} — nothing was built.", file=sys.stderr)
         return 1
     vpy = venv_python(repo_root, config)
-    cmd = [str(vpy), "-m", *bootstrap] if bootstrap and bootstrap[0] == "pip" else [str(vpy), *bootstrap]
-    installed = subprocess.run(cmd, cwd=str(repo_root), check=False)
+    cmd, is_command = bootstrap_argv(bootstrap, vpy)
+    env: Optional[Dict[str, str]] = None
+    unrun: Optional[str] = None
+    if is_command:
+        # Looked up here, on the PATH it will run with: on Windows a list
+        # argv is not searched for on the child's PATH, and `uv` is `uv.exe`.
+        # The record then names the program that ran, venv or not.
+        env = bootstrap_command_env(venv, vpy.parent)
+        found = resolve_tool(cmd[0], repo_root, path=env["PATH"])
+        if found is None:
+            unrun = _bootstrap_unfound(cmd[0], repo_root, vpy.parent)
+        else:
+            cmd = [found, *cmd[1:]]
+    # The shell's statuses for a command that did not start: 127 not found,
+    # 126 found and not executable.
+    returncode = 127
+    if unrun is None:
+        try:
+            returncode = subprocess.run(cmd, cwd=str(repo_root), env=env,
+                                        check=False).returncode
+        except OSError as exc:
+            returncode = 126
+            unrun = f"'{cmd[0]}' cannot be run ({exc})"
     # The record is what lets a later `env` tell a finished install from one
     # that aborted after the editable project landed (issue #166). Written
-    # on both outcomes, so a completed rebuild clears an earlier failure.
-    (venv / _BOOTSTRAP_RECORD).write_text(json.dumps({
-        "exit": installed.returncode, "command": cmd,
+    # on every outcome, so a completed rebuild clears an earlier failure.
+    record: Dict[str, object] = {
+        "exit": returncode, "command": cmd,
         "interpreter": interpreter,
-        "python": _python_version([str(vpy)], repo_root)}, indent=2) + "\n",
-        encoding="utf-8")
-    if installed.returncode != 0:
+        "python": _python_version([str(vpy)], repo_root)}
+    if unrun is not None:
+        record["unrun"] = unrun
+    (venv / _BOOTSTRAP_RECORD).write_text(json.dumps(record, indent=2) + "\n",
+                                          encoding="utf-8")
+    if unrun is not None:
+        print(f"aide env: bootstrap FAILED — {unrun}. The venv exists but "
+              f"nothing was installed in it, and `env` reports it stale "
+              f"until a bootstrap completes.", file=sys.stderr)
+        return 1
+    if returncode != 0:
         print(f"aide env: bootstrap FAILED — '{' '.join(cmd)}' exited "
-              f"{installed.returncode}. The venv exists but its install did "
+              f"{returncode}. The venv exists but its install did "
               f"not finish, and `env` reports it stale until a bootstrap "
               f"completes.", file=sys.stderr)
         return 1
@@ -19494,7 +19596,15 @@ def register_git_subcommands(sub) -> None:
             "\n"
             "--bootstrap builds the venv where it is missing or stale and "
             "reports on the venv alone: exit 0 when the venv is OK, whatever "
-            "else the report would refuse."))
+            "else the report would refuse. It installs with [python] "
+            "bootstrap, split on whitespace and read by its first word: pip "
+            "runs as the venv's `python -m pip`; python or python3 is "
+            "replaced by the venv's Python; an option (-m, -c) or a .py file "
+            "is passed to the venv's Python; anything else is a command, "
+            "found in the venv's script directory first and then on PATH, "
+            "and run with VIRTUAL_ENV set to the venv and that directory "
+            "first on PATH. A command found in neither is a failed "
+            "bootstrap that names it."))
     p_env.add_argument("--bootstrap", action="store_true",
                        help="create + populate the venv if missing/stale, from "
                             "[python] interpreter when set; reports on the "

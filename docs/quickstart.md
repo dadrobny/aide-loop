@@ -56,7 +56,9 @@ login, the interpreter the engine prints in its suggestions, and the venv.
 A project that keeps no venv sets `venv = ""` under `[python]` in `aide.toml`
 and `env` leaves that line out; otherwise `interpreter = "python3.12"` there
 pins what `--bootstrap` builds the venv from, when the dependency closure
-resolves on a narrower Python range than the project declares.
+resolves on a narrower Python range than the project declares, and
+`bootstrap` is what it installs with — `pip install -e .[dev]` unless set, or
+a command such as `uv sync`, run with the venv active (`aide env -h`).
 
 ## 3. Author the plan (one-time)
 

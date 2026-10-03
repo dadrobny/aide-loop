@@ -136,6 +136,35 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.36.0] — 2026-10-03
+
+### Changed
+
+- **`[python] bootstrap` is read by its first word, and a bootstrap that is
+  not Python's own argv runs as a command with the venv active (issue
+  #378).** `aide env --bootstrap` ran every bootstrap but a leading `pip` as
+  the venv's Python with the value for arguments, so `bootstrap = "uv sync"`
+  became `<venv python> uv sync`, which looks for a script file named `uv`;
+  `poetry install`, `pdm install` and `make dev` failed the same way, were
+  reported as a failed bootstrap and left the venv stale, and nothing on
+  that path could succeed. Now a leading `pip` still runs as the venv's
+  `python -m pip`; a leading `python` or `python3` is replaced by the venv's
+  Python; a leading option (`-m poetry install`, `-c …`) or `.py` file
+  (`setup.py develop`) is passed to the venv's Python, as before — so no
+  `aide.toml` that worked needs an edit; and anything else is a command,
+  looked up in the venv's script directory (`bin`, or `Scripts` on Windows)
+  and then on PATH, and run with `VIRTUAL_ENV` set to the venv and that
+  directory first on PATH, which is what `uv sync` and `poetry install`
+  install into. A program found in neither place is a failed bootstrap
+  whose one sentence names it and the directory looked in; nothing runs,
+  the record says why, and `aide env` reports the venv stale naming the
+  program until a bootstrap completes. The record's `command` is the argv
+  that ran, with a command's program as the path it was found at. The value
+  is still split on whitespace. `aide env -h` states the reading, pinned to
+  the code, and the `aide.toml` scaffold now carries a commented
+  `# bootstrap = "pip install -e .[dev]"` line naming the readings — the key
+  was documented only in the engine's defaults.
+
 ## [2.35.3] — 2026-10-03
 
 ### Fixed

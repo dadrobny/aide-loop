@@ -2410,6 +2410,143 @@ def test_an_interpreter_path_with_a_space_is_one_command(tmp_path: Path):
     assert aide._configured_interpreter({"python": {"interpreter": ""}}) == [sys.executable]
 
 
+# --------------------------------------------------------------------------- #
+# [python] bootstrap, read by its first word (issue #378)
+# --------------------------------------------------------------------------- #
+def test_each_bootstrap_reading_builds_its_argv(tmp_path: Path):
+    """`uv sync` ran as `<venv python> uv sync`, which looks for a script
+    file named `uv`. pip and the Python-argv forms keep what they ran."""
+    vpy = tmp_path / ".venv" / "bin" / "python"
+    v = str(vpy)
+    cases = {
+        "pip install -e .[dev]": ([v, "-m", "pip", "install", "-e", ".[dev]"], False),
+        "python -m pip install .": ([v, "-m", "pip", "install", "."], False),
+        "python3 setup.py develop": ([v, "setup.py", "develop"], False),
+        "-m poetry install": ([v, "-m", "poetry", "install"], False),
+        "-c pass": ([v, "-c", "pass"], False),
+        "setup.py develop": ([v, "setup.py", "develop"], False),
+        "tools/Setup.PY": ([v, "tools/Setup.PY"], False),
+        "uv sync": (["uv", "sync"], True),
+        "make dev": (["make", "dev"], True),
+        "pip3 install .": (["pip3", "install", "."], True),
+        "py -3.12 -m pip install .": (["py", "-3.12", "-m", "pip", "install", "."], True),
+    }
+    for value, expected in cases.items():
+        assert aide.bootstrap_argv(value.split(), vpy) == expected, value
+
+
+def _scripts_dir(venv: Path) -> Path:
+    return venv / ("Scripts" if os.name == "nt" else "bin")
+
+
+def _fake_program(directory: Path, name: str) -> Path:
+    """A file `shutil.which` finds as *name* in *directory*, on either OS."""
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / (f"{name}.exe" if os.name == "nt" else name)
+    path.write_text("", encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def _stub_bootstrap_runs(monkeypatch, venv: Path, program: Optional[str]):
+    """Stand in for every launch `_bootstrap_venv` makes: the venv build
+    leaves an interpreter (and *program*) in the venv's script directory,
+    a version probe answers, and the bootstrap's own run is recorded and
+    exits 0. The bootstrap runs are returned, each as ``(argv, env)``; the
+    venv report is a stub, since the interpreter left is an empty file."""
+    calls = []
+
+    def run(argv, cwd=None, env=None, **_kw):
+        argv = list(argv)
+        if argv[1:3] == ["-m", "venv"]:
+            _fake_program(_scripts_dir(venv), "python")
+            if program:
+                _fake_program(_scripts_dir(venv), program)
+            return subprocess.CompletedProcess(argv, 0)
+        if "-c" in argv and "sys.version_info" in argv[-1]:
+            return subprocess.CompletedProcess(argv, 0, stdout="3.12\n", stderr="")
+        calls.append((argv, env))
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(aide.subprocess, "run", run)
+    # Missing until the build, so `env --bootstrap` builds; OK after it.
+    monkeypatch.setattr(aide, "env_report", lambda root, config: (
+        ("ok", "stub") if venv.exists() else ("missing", "stub")))
+    return calls
+
+
+def test_a_bootstrap_command_runs_with_the_venv_active(tmp_path: Path, monkeypatch):
+    """A bare command is looked up with the venv's script directory first —
+    ahead of a same-named program already on PATH — and runs with that PATH
+    and VIRTUAL_ENV, so `uv sync` installs into this venv. The record names
+    the program that ran."""
+    (tmp_path / "aide.toml").write_text(
+        '[python]\nvenv = ".venv"\nbootstrap = "faketool378 sync --frozen"\n',
+        encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    _fake_program(elsewhere, "faketool378")
+    monkeypatch.setenv("PATH", str(elsewhere))
+    venv = tmp_path / ".venv"
+    calls = _stub_bootstrap_runs(monkeypatch, venv, "faketool378")
+
+    assert aide.main(["--repo", str(tmp_path), "env", "--bootstrap"]) == 0
+    ((argv, env),) = calls
+    scripts = _scripts_dir(venv)
+    assert Path(argv[0]).parent == scripts
+    assert Path(argv[0]).name.lower().startswith("faketool378")
+    assert argv[1:] == ["sync", "--frozen"]
+    assert env["VIRTUAL_ENV"] == str(venv)
+    assert env["PATH"].split(os.pathsep) == [str(scripts), str(elsewhere)]
+    record = aide._read_bootstrap_record(venv)
+    assert record["exit"] == 0 and record["command"] == argv
+    assert "unrun" not in record
+
+
+def test_a_bootstrap_python_reading_runs_with_the_environment_unchanged(
+        tmp_path: Path, monkeypatch):
+    (tmp_path / "aide.toml").write_text(
+        '[python]\nvenv = ".venv"\nbootstrap = "python -m pip install ."\n',
+        encoding="utf-8")
+    venv = tmp_path / ".venv"
+    calls = _stub_bootstrap_runs(monkeypatch, venv, None)
+    assert aide.main(["--repo", str(tmp_path), "env", "--bootstrap"]) == 0
+    ((argv, env),) = calls
+    vpy = _scripts_dir(venv) / ("python.exe" if os.name == "nt" else "python")
+    assert argv == [str(vpy), "-m", "pip", "install", "."]
+    assert env is None
+
+
+def test_a_bootstrap_command_found_nowhere_is_a_failed_bootstrap_that_names_it(
+        tmp_path: Path, monkeypatch, capsys):
+    (tmp_path / "aide.toml").write_text(
+        '[python]\nvenv = ".venv"\nbootstrap = "no-such-tool-378 sync"\n',
+        encoding="utf-8")
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    venv = tmp_path / ".venv"
+    calls = _stub_bootstrap_runs(monkeypatch, venv, None)
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(tmp_path), "env", "--bootstrap"]) == 1
+    assert calls == []                                  # nothing was started
+    err = capsys.readouterr().err
+    assert "'no-such-tool-378'" in err and str(_scripts_dir(venv)) in err
+    assert "Traceback" not in err
+    record = aide._read_bootstrap_record(venv)
+    assert record["exit"] == 127 and "no-such-tool-378" in record["unrun"]
+
+
+def test_an_unrun_bootstrap_record_makes_the_venv_stale(bare_venv: Path):
+    (bare_venv / "aide.toml").write_text(_env_toml("python -m unittest"), encoding="utf-8")
+    record = bare_venv / ".venv" / aide._BOOTSTRAP_RECORD
+    record.write_text('{"exit": 127, "unrun": "the [python] bootstrap program '
+                      '\'uv\' is neither in X nor on PATH"}', encoding="utf-8")
+    try:
+        status, detail = aide.env_report(bare_venv, aide.load_config(bare_venv))
+    finally:
+        record.unlink()
+    assert status == "stale" and "'uv'" in detail
+
+
 def test_a_merge_killed_mid_suite_puts_the_branch_and_its_base_back(
         tmp_path: Path, monkeypatch, capsys):
     """Issue #174, half 1 — the exit #167 could not see.
