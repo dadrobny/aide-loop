@@ -54,7 +54,7 @@ import tempfile
 import time
 import unicodedata
 from pathlib import Path, PurePosixPath, PurePath
-from typing import Callable, Dict, Iterator, List, NamedTuple, Optional, Sequence, Set, Tuple
+from typing import Callable, Collection, Dict, Iterator, List, NamedTuple, Optional, Sequence, Set, Tuple
 
 # --------------------------------------------------------------------------- #
 # Status icons (the format contract — see .aide/conventions.md)
@@ -3528,7 +3528,8 @@ def queue_item_numbers(text: str) -> List[int]:
     return [int(m.group(1)) for m in _QUEUE_ITEM_RE.finditer(text)]
 
 
-def queue_is_open(text: str, item_status: Dict[int, str]) -> bool:
+def queue_is_open(text: str, item_status: Dict[int, str],
+                  withdrawn: Collection[int] = ()) -> bool:
     """Derived queue state: open iff any item is 📋/🚧/🔍 per progress.md.
 
     🔍 counts as open: an item whose PR is still awaiting review is not work the
@@ -3539,9 +3540,21 @@ def queue_is_open(text: str, item_status: Dict[int, str]) -> bool:
     queue file is decorative (kept for human readers), and the "live" queue is
     simply the lowest-numbered open one. An item progress.md doesn't know yet
     counts as planned, so a freshly wired queue is open.
+
+    A 📋 item in *withdrawn* — every bullet of it in a stage whose summary
+    row is ❌ (`withdrawn_stage_items`) — does not count, since `claim` will
+    never offer it: a queue left with only such items stayed the live queue
+    and `claim` reported them held rather than moving on (issue #389). A 🚧
+    or 🔍 item there still counts — live work until its owner drops it, as
+    §2 reads it for the stale ground. Callers that do not pass the set read
+    the bullets alone, as before.
     """
-    return any(item_status.get(n, "planned") in ("planned", "in-progress", "in-review")
-               for n in queue_item_numbers(text))
+    for n in queue_item_numbers(text):
+        st = item_status.get(n, "planned")
+        if st in ("in-progress", "in-review") or (
+                st == "planned" and n not in withdrawn):
+            return True
+    return False
 
 
 def _progress_item_status(repo_root: Path, config) -> Dict[int, str]:
@@ -8562,7 +8575,8 @@ def queue_item_title(repo_root: Path, config, titles: Dict[int, str],
 
 
 def queue_end_holds(repo_root: Path, config, queue_text: str,
-                    item_status: Dict[int, str]) -> Dict[int, List[int]]:
+                    item_status: Dict[int, str],
+                    withdrawn: Collection[int] = ()) -> Dict[int, List[int]]:
     """Each queue-end item the queue lists, with the queue-mates holding it.
 
     A queue-end item runs after the rest of its queue whatever order the file
@@ -8574,6 +8588,11 @@ def queue_end_holds(repo_root: Path, config, queue_text: str,
     an item whose spec depends on the queue-end item — directly or through
     other queue-mates' `## Dependencies` — never holds it, since each would
     then wait on the other for ever.
+
+    Nor does a 📋 item in *withdrawn* (`withdrawn_stage_items`) hold it: claim
+    never offers one, so a queue-end item waiting on it waited for ever and an
+    unattended run stalled (issue #389). A 🚧 or 🔍 item of a withdrawn stage
+    still holds it — live work until its owner drops it (§2).
     """
     titles = _queue_titles(queue_text)
     order = queue_item_numbers(queue_text)
@@ -8581,7 +8600,9 @@ def queue_end_holds(repo_root: Path, config, queue_text: str,
             if queue_end_stages(queue_item_title(repo_root, config, titles, n))
             is not None]
     rest = [n for n in order if n not in ends
-            and item_status.get(n, "planned") in BLOCKING_STATUSES]
+            and item_status.get(n, "planned") in BLOCKING_STATUSES
+            and not (n in withdrawn
+                     and item_status.get(n, "planned") == "planned")]
     deps = {n: set(_item_dependencies(repo_root, config, n)) for n in rest}
     holds: Dict[int, List[int]] = {}
     for end in ends:
@@ -8798,7 +8819,8 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     # way, so it still runs last; the warning keeps the file saying so. A
     # settled record either side (✅, ❌, ⏸️) is history, not a plan (#338),
     # and an item whose dependencies lead back to it belongs after it.
-    holds = queue_end_holds(repo_root, config, qtext, item_status)
+    holds = queue_end_holds(repo_root, config, qtext, item_status,
+                            withdrawn_stage_items(lines))
     for i, n in enumerate(order):
         if end_stages[n] is None or item_status.get(n, "planned") in spent:
             continue
@@ -13488,8 +13510,9 @@ def _pick_item(repo_root: Path, config, queue_text: str,
     claimed_nums = {n for n in (_branch_item_number(br, prefix) for br in claim_branches)
                     if n is not None}
     titles = _queue_titles(queue_text)
-    holds = queue_end_holds(repo_root, config, queue_text, item_status)
     withdrawn = withdrawn_stage_items(plines)
+    holds = queue_end_holds(repo_root, config, queue_text, item_status,
+                            withdrawn)
     for num in queue_item_numbers(queue_text):
         if item_status.get(num, "planned") != "planned":
             continue
@@ -13519,16 +13542,54 @@ def _pick_item(repo_root: Path, config, queue_text: str,
 
 
 def _open_queue_texts(repo_root: Path, config) -> List[str]:
-    """Texts of the open queues, lowest-numbered first (derived state)."""
+    """Texts of the open queues, lowest-numbered first (derived state).
+
+    Open as `claim` reads it: a 📋 item of a withdrawn stage, which it never
+    offers, keeps no queue open (`queue_is_open`, issue #389).
+    """
     qdir = docs_dir(repo_root, config) / "queue"
     if not qdir.is_dir():
         return []
-    item_status = _progress_item_status(repo_root, config)
+    ppath = docs_dir(repo_root, config) / "progress.md"
+    plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
+    item_status = _parse_item_status(plines)[2]
+    withdrawn = withdrawn_stage_items(plines)
     out: List[str] = []
     for path in iter_queue_paths(qdir):
         text = path.read_text(encoding=_ENCODING)
-        if queue_is_open(text, item_status):
+        if queue_is_open(text, item_status, withdrawn):
             out.append(text)
+    return out
+
+
+def _withdrawn_queued_lines(repo_root: Path, config) -> List[str]:
+    """One line per 📋 item a queue lists every bullet of which sits in a
+    withdrawn stage — what `claim` names when no queue is open but such
+    items are still undropped (issue #389), with the remedy its ``none
+    left`` report gives."""
+    qdir = docs_dir(repo_root, config) / "queue"
+    ppath = docs_dir(repo_root, config) / "progress.md"
+    if not qdir.is_dir() or not ppath.is_file():
+        return []
+    plines = ppath.read_text(encoding=_ENCODING).splitlines()
+    withdrawn = withdrawn_stage_items(plines)
+    if not withdrawn:
+        return []
+    item_status = _parse_item_status(plines)[2]
+    out: List[str] = []
+    for path in iter_queue_paths(qdir):
+        text = path.read_text(encoding=_ENCODING)
+        titles = _queue_titles(text)
+        for n in queue_item_numbers(text):
+            if n in withdrawn and item_status.get(n, "planned") == "planned":
+                stages = withdrawn[n]
+                out.append(
+                    f"  {n:03d} {titles.get(n, 'item ' + str(n))} — in "
+                    f"withdrawn stage{'' if len(stages) == 1 else 's'} "
+                    f"{', '.join(stages)} (❌ summary row), still 📋 in "
+                    f"{path.name} — drop it ('aide progress set {n:03d} "
+                    f"dropped --reason …'), or take the stage's summary row "
+                    f"off ❌")
     return out
 
 
@@ -13601,9 +13662,11 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     seen = set()
     titles: Dict[int, str] = {}
     holds: Dict[int, List[int]] = {}
+    all_withdrawn = withdrawn_stage_items(plines)
     for qt in candidates:
         titles.update(_queue_titles(qt))
-        holds.update(queue_end_holds(repo_root, config, qt, item_status))
+        holds.update(queue_end_holds(repo_root, config, qt, item_status,
+                                     all_withdrawn))
         for n in queue_item_numbers(qt):
             if n not in seen:
                 seen.add(n)
@@ -13614,7 +13677,7 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     # 📋 items of a withdrawn stage (issue #387) are named, never offered,
     # and wait on nothing a gate or a claim could release: every reading
     # below of what holds the queue takes the rest.
-    withdrawn = {n: st for n, st in withdrawn_stage_items(plines).items()
+    withdrawn = {n: st for n, st in all_withdrawn.items()
                  if n in open_items}
     live_items = open_items - set(withdrawn)
     live_ordered = [n for n in open_ordered if n not in withdrawn]
@@ -13656,6 +13719,13 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     early = _early_ready(repo_root, config, live_ordered,
                          [(n, g) for n, g, _ in relevant], gated,
                          claimed, item_status, scan_order, holds)
+
+    def _withdrawn_reason(num: int) -> str:
+        stages = withdrawn[num]
+        return (f"in withdrawn stage{'' if len(stages) == 1 else 's'} "
+                f"{', '.join(stages)} (❌ summary row), so not offered — drop "
+                f"it ('aide progress set {num:03d} dropped --reason …'), or "
+                f"take the stage's summary row off ❌")
 
     def _stranded_reason(num: int) -> str:
         br, why = stranded[num]
@@ -13712,6 +13782,12 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
             print(f"  gate {n}: {g.text}{f' ({gid})' if gid else ''} — blocks {where}")
         print("  A person decides these, never an agent. Once decided: "
               "aide gate approve <n|ID> --evidence \"…\" (or gate decline <n|ID>).")
+        # No gate reaches a withdrawn stage's 📋 item (`_reached` takes the
+        # live ones), so it is named here or nowhere (issue #389).
+        for num in open_ordered:
+            if num in withdrawn:
+                print(f"  {num:03d} {titles.get(num, 'item ' + str(num))} — "
+                      f"{_withdrawn_reason(num)}")
         # A broken state is not hidden behind a gate: an unpublished or
         # deleted claim exits 1 on this path exactly as on the per-item one.
         if stranded:
@@ -13730,12 +13806,7 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
         head = f"  {num:03d} {titles.get(num, 'item ' + str(num))} —"
         br = claimed.get(num)
         if num in withdrawn:
-            stages = withdrawn[num]
-            print(f"{head} in withdrawn stage"
-                  f"{'' if len(stages) == 1 else 's'} {', '.join(stages)} "
-                  f"(❌ summary row), so not offered — drop it ('aide "
-                  f"progress set {num:03d} dropped --reason …'), or take the "
-                  f"stage's summary row off ❌")
+            print(f"{head} {_withdrawn_reason(num)}")
         elif num in stranded:
             print(f"{head} {_stranded_reason(num)}")
         elif br is not None:
@@ -13855,6 +13926,11 @@ def cmd_claim(args: argparse.Namespace) -> int:
         candidates = [queue_text] if queue_text is not None else []
     if not candidates:
         print("aide claim: no open queue found", file=sys.stderr)
+        if args.queue is None:
+            # A queue left with only a withdrawn stage's 📋 items is not open
+            # (issue #389), and this is the last place they could be named.
+            for line in _withdrawn_queued_lines(repo_root, config):
+                print(line, file=sys.stderr)
         return 1
     branches = _list_claim_branches(repo_root, prefix)
     pick = None
@@ -15224,6 +15300,52 @@ def _merge_dropped_item(repo_root: Path, config, number: int,
     return " and ".join(places)
 
 
+def _merge_withdrawn_item(repo_root: Path, config, number: int, base: str,
+                          branch: str) -> Tuple[str, List[str]]:
+    """Where item *number* reads 📋 with every bullet in a withdrawn stage —
+    ``("the working tree" | "on <base>" | both joined, stages)`` — or
+    ``("", [])`` (issue #389).
+
+    Read where a drop is (`_merge_dropped_item`): the working tree and the
+    base, the owner's places. A 🚧 item of a withdrawn stage is NOT refused
+    — §2 reads it as live work until its owner drops it, the line #388 drew
+    for the stale ground, and the owner's own drop is the signal. The 🚧 is
+    recorded on the item branch (`progress set NNN in-progress`, the
+    builder's step), never on the base, so the claim branch is read for the
+    item's status too: any copy reading it other than 📋 lets the merge on.
+    An item the claim branch never started, in a stage withdrawn on the
+    base, is the one `claim` would no longer offer, and is refused.
+    """
+    rel = _progress_rel(config)
+    copies: List[Tuple[str, List[str]]] = []
+    path = repo_root / rel
+    if path.is_file():
+        try:
+            copies.append(("the working tree",
+                           path.read_text(encoding=_ENCODING).splitlines()))
+        except (OSError, UnicodeDecodeError):
+            pass
+    shown = git(["show", f"{base}:./{rel}"], repo_root, check=False)
+    if shown.returncode == 0:
+        copies.append((f"on {base}", shown.stdout.splitlines()))
+    on_branch = git(["show", f"{branch}:./{rel}"], repo_root, check=False)
+    statuses = [_parse_item_status(lines)[2].get(number, "planned")
+                for _, lines in copies]
+    if on_branch.returncode == 0:
+        statuses.append(_parse_item_status(
+            on_branch.stdout.splitlines())[2].get(number, "planned"))
+    if any(st != "planned" for st in statuses):
+        return "", []
+    places: List[str] = []
+    stages: List[str] = []
+    for where, lines in copies:
+        found = withdrawn_stage_items(lines).get(number)
+        if found:
+            places.append(where)
+            stages += [st for st in found if st not in stages]
+    return " and ".join(places), stages
+
+
 def cmd_merge(args: argparse.Namespace) -> int:
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
@@ -15304,6 +15426,23 @@ def cmd_merge(args: argparse.Namespace) -> int:
               f"is wanted after all, restore it with `aide progress set "
               f"{args.number:03d} restored --reason …`, then re-run "
               f"'aide merge {args.number:03d}'.", file=sys.stderr)
+        return 1
+    withdrawn_in, stages = _merge_withdrawn_item(repo_root, config,
+                                                 args.number, main, branch)
+    if withdrawn_in:
+        # The withdrawn-stage half of the refusal above (issue #389): a 📋
+        # item every bullet of which sits in a stage whose summary row is ❌
+        # is work `claim` no longer offers, and ticking it ✅ would undo the
+        # withdrawal. A 🚧 one is NOT refused — live work until its owner
+        # drops it (§2, the line #388 drew), so `_merge_withdrawn_item`
+        # reads the claim branch, where the builder records the 🚧.
+        print(f"aide merge: item {args.number:03d} is 📋 in withdrawn "
+              f"stage{'' if len(stages) == 1 else 's'} {', '.join(stages)} "
+              f"(❌ summary row, {withdrawn_in}), and a withdrawn stage's "
+              f"unstarted item is not merged — nothing was merged, pushed or "
+              f"written. Drop it ('aide progress set {args.number:03d} "
+              f"dropped --reason …'), or take the stage's summary row off ❌ "
+              f"and re-run 'aide merge {args.number:03d}'.", file=sys.stderr)
         return 1
 
     if mode == "pr":
@@ -18975,13 +19114,20 @@ def register_git_subcommands(sub) -> None:
             "item every deliverable bullet of which sits in a stage whose "
             "Stage summary row is \u274c \u2014 withdrawn whole \u2014 "
             "is not offered either, and the report names the stage; an item "
-            "dropped by its own bullets is \u274c, not \U0001f4cb. A "
+            "dropped by its own bullets is \u274c, not \U0001f4cb. Such a "
+            "\U0001f4cb item keeps no queue open, so the default queue is "
+            "the lowest-numbered one with other work open, and where no queue "
+            "is open the refusal names each one still listed; a \U0001f6a7 "
+            "or \U0001f50d item of a withdrawn stage still keeps its queue "
+            "open. A "
             "queue-end item, one titled `Validate stage N`, waits besides on "
             "every other item its queue lists that is not one, as on a "
             "dependency, with or without a spec and wherever the queue lists "
-            "it, bar an item whose dependencies lead back to it. It "
+            "it, bar an item whose dependencies lead back to it and a "
+            "\U0001f4cb item of a withdrawn stage. It "
             "will not offer a blocked item: where a gate holds the pick, the "
             "report names that gate, what it blocks and who may resolve it, "
+            "and each item of a withdrawn stage besides, "
             "rather than an unexplained \"none left\". Every \"none left "
             "\u2014 \u2026\" report that exits 0 ends with an `early ready:` "
             "line, yes or no before an em dash: yes when every gate holding "
@@ -19071,7 +19217,12 @@ def register_git_subcommands(sub) -> None:
             "base \u2014 is refused before anything is merged, pushed or "
             "written, exit 1, and the refusal names `aide progress set NNN "
             "restored`. A \u23f8\ufe0f item is merged and ticked: a merge "
-            "records work that landed.\n"
+            "records work that landed. An item \U0001f4cb with every "
+            "bullet in a stage whose summary row is \u274c, in the working "
+            "tree or on the base, is refused the same way, and the refusal "
+            "names `aide progress set NNN dropped`; one the claim branch, "
+            "the working tree or the base reads \U0001f6a7 is merged, since "
+            "started work is live until its owner drops it.\n"
             "\n"
             "The finding cells read [loop] review, from aide.toml. Where it "
             "is off no reviewer ran, so the three of them are written as `-` "

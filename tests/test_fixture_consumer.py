@@ -3039,17 +3039,133 @@ def test_a_dropped_items_claim_branch_is_stale_and_gc_asks_git(
 def test_claim_never_offers_a_withdrawn_stages_item(aide, consumer: Path,
                                                     capsys):
     """Issue #387: a ❌ Stage summary row withdraws the stage's 📋 items, so
-    `claim` names them and creates no branch — exit 0, an ordinary hold."""
+    `claim --queue` names them and creates no branch — exit 0, an ordinary
+    hold. Since issue #389 they keep no queue open, so a bare `claim` finds
+    none and exits 1 — naming them still."""
     progress = consumer / "docs" / "aide" / "progress.md"
     progress.write_text(progress.read_text(encoding="utf-8").replace(
         "| 1 | Foundations | G1 | 📋 |", "| 1 | Foundations | G1 | ❌ |"),
         encoding="utf-8")
     _commit(consumer, "docs: withdraw stage 1")
     capsys.readouterr()
-    assert _claim(aide, consumer) == 0
+    assert _claim(aide, consumer, "--queue", "1") == 0
     assert "in withdrawn stage 1" in capsys.readouterr().out
+    assert _claim(aide, consumer) == 1
+    err = capsys.readouterr().err
+    assert "no open queue" in err and "in withdrawn stage 1" in err
     assert _branch(consumer) == "main"
     assert not [b for b in _branches(consumer) if b.startswith("aide/0")]
+
+
+def _withdraw_stage_2_with_002(consumer: Path) -> None:
+    """Item 002 moved into a stage 2 whose summary row is ❌; 001 stays."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    text = progress.read_text(encoding="utf-8")
+    row = next(l for l in text.splitlines()
+               if l.startswith("| 1 | Foundations | G1 |"))
+    assert "- 📋 The farewell. *(Item 002)*\n" in text
+    progress.write_text(text
+        .replace(row, row + "\n| 2 | Later | G1 | ❌ |")
+        .replace("- 📋 The farewell. *(Item 002)*\n", "")
+        + _stage_block(2, "Later", "- 📋 The farewell. *(Item 002)*\n"),
+        encoding="utf-8")
+    _commit(consumer, "docs: withdraw stage 2")
+
+
+def test_a_queue_left_with_only_withdrawn_items_is_not_the_live_one(
+        aide, consumer: Path, capsys):
+    """Issue #389: with 001 ✅ and 002 withdrawn, queue 001 is not open, so
+    `claim` takes queue 002's item instead of reporting 002 held."""
+    _withdraw_stage_2_with_002(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "done"]) == 0
+    ddir = consumer / "docs" / "aide"
+    progress = ddir / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "- ✅ The greeter. *(Item 001)*\n",
+        "- ✅ The greeter. *(Item 001)*\n- 📋 The wave. *(Item 003)*\n"),
+        encoding="utf-8")
+    (ddir / "queue" / "queue-002.md").write_text(
+        "# Fixture — Work Queue 002\n\n### Item 003: The wave\nA wave.\n",
+        encoding="utf-8")
+    _commit(consumer, "docs: queue 002")
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "aide/003-the-wave"
+    assert not [b for b in _branches(consumer) if b.startswith("aide/002")]
+
+
+def test_a_withdrawn_queue_mate_does_not_hold_the_queue_end_item(
+        aide, consumer: Path):
+    """Issue #389: 003 is the queue's `Validate stage 1`, and 002 — 📋 in a
+    withdrawn stage, never offered — no longer holds it."""
+    _withdraw_stage_2_with_002(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "done"]) == 0
+    ddir = consumer / "docs" / "aide"
+    progress = ddir / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "- ✅ The greeter. *(Item 001)*\n",
+        "- ✅ The greeter. *(Item 001)*\n"
+        "- 📋 Stage validation. *(Item 003)*\n"), encoding="utf-8")
+    queue = ddir / "queue" / "queue-001.md"
+    queue.write_text(queue.read_text(encoding="utf-8")
+                     + "\n### Item 003: Validate stage 1: Foundations\n"
+                       "Validates the stage.\n", encoding="utf-8")
+    _commit(consumer, "docs: queue-end item")
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer).startswith("aide/003-")
+
+
+def test_the_gate_held_report_names_a_withdrawn_item(aide, consumer: Path,
+                                                     capsys):
+    """Issue #389: a gate holds 001 and 002 is withdrawn; no gate reaches
+    002, so the gate-held `none left` named only the gate."""
+    _withdraw_stage_2_with_002(consumer)
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8") + (
+        "\n## Human gates\n\n"
+        "| Gate | Blocks | Status | Decision / evidence |\n"
+        "|------|--------|--------|---------------------|\n"
+        "| Greeting approved | 001 | ⏳ Awaiting | — |\n"), encoding="utf-8")
+    _commit(consumer, "docs: gate 001")
+    capsys.readouterr()
+    assert _claim(aide, consumer, "--queue", "1") == 0
+    out = capsys.readouterr().out
+    assert "held by an unresolved human gate" in out
+    assert "002 The farewell — in withdrawn stage 2" in out
+    assert _branch(consumer) == "main"
+
+
+def test_merge_refuses_a_withdrawn_stages_unstarted_item(
+        aide, consumer: Path, capsys):
+    """Issue #389: 002 is claimed, then its stage withdrawn on main. No copy
+    of progress.md reads it 🚧, so `merge` refuses it before anything moves;
+    once one does it is live work (§2), and it merges."""
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "done"]) == 0
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "aide/002-the-farewell"
+    (consumer / "farewell.txt").write_text("bye\n", encoding="utf-8")
+    _commit(consumer, "feat: farewell")
+    _git(["switch", "main"], consumer)
+    _withdraw_stage_2_with_002(consumer)
+    head = _git(["rev-parse", "main"], consumer).stdout
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "merge", "2", "--no-test"]) == 1
+    assert "item 002 is 📋 in withdrawn stage 2" in capsys.readouterr().err
+    assert _git(["rev-parse", "main"], consumer).stdout == head
+    assert not (consumer / "farewell.txt").is_file()
+    assert "- 📋 The farewell. *(Item 002)*" in (
+        consumer / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+
+    # Recorded on main, whose ❌ summary row no rollup overwrites; the
+    # claim-branch reading is `test_aide_git`'s.
+    assert aide.main(["--repo", str(consumer), "progress", "set", "2",
+                      "in-progress"]) == 0
+    assert aide.main(["--repo", str(consumer), "merge", "2", "--no-test"]) == 0
+    assert (consumer / "farewell.txt").is_file()
+    assert "- ✅ The farewell. *(Item 002)*" in (
+        consumer / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("icon", ["⏸️", "❌"])
