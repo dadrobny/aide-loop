@@ -55,8 +55,8 @@ take it for the header's status; other documents are not scanned.
 - **Why ✅ is mode-independent.** It used to mean two different things depending
   on the mode — merged under `auto-merge`, *pushed and awaiting review* under
   `pr` — while everything downstream read it as "done", including `aide gc`,
-  whose default ground is "the item is ✅" and whose action is `git branch -D`
-  plus a remote delete. The exhaustion sweep therefore offered to delete the
+  whose default ground was then "the item is ✅" (❌ joined it in 2.35.0, §2)
+  and whose action is `git branch -D` plus a remote delete. The exhaustion sweep therefore offered to delete the
   head branch of an open PR, and the line a human was asked to approve read
   like confirmation. A run must be stable under either mode, so 🔍 was added
   and ✅ narrowed to the merge itself.

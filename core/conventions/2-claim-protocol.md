@@ -127,7 +127,10 @@ acts on** (`gc -h` says what it asks git, and what it refuses).
   stage spends only its 📋 items: a 🚧 or ⏸️ one there is work someone is
   doing or holding, and reading the stage's ❌ as their drop would let `gc`
   take a fresh claim branch from under its builder — the owner's own drop is
-  the signal.
+  the signal. A builder mid-run whose stage is withdrawn on `main` still sees
+  its item 📋 there, so `check` names its branch stale; that is accepted,
+  because `gc` asks git first and takes the branch only once its work has
+  landed.
 - **Why the preview is exact.** A dry run a human is asked to approve must not
   overstate, so every skip — checked out, unlanded, git too old — is decided
   before anything is printed and shown on both paths.
