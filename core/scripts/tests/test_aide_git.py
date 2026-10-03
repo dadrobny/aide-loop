@@ -3048,6 +3048,35 @@ def test_template_drift_skips_a_queue_left_with_only_withdrawn_items(
                        withdrawn=aide.withdrawn_stage_items(lines)))
 
 
+def test_check_passes_the_withdrawn_set_to_template_drift(tmp_path: Path,
+                                                          monkeypatch):
+    """`run_checks`' own call: queue 003, left with 029 alone, is not open, so
+    its stale marker is not reported."""
+    root = _withdrawn_repo(tmp_path)
+    _only_withdrawn_left(root)
+    q = root / "docs" / "aide" / "queue" / "queue-003.md"
+    q.write_text("<!-- aide-template: queue 1 -->\n"
+                 + q.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(aide, "installed_template_versions",
+                        lambda: {"queue": 2, "item": 1})
+    _, warnings = aide.run_checks(root, aide.load_config(root), branches=[])
+    assert not [w for w in warnings if w.startswith("queue/queue-003.md")]
+
+
+def test_stages_under_way_takes_no_stage_from_withdrawn_items(tmp_path: Path):
+    """A queue open only through 029, 📋 in withdrawn stage 2, puts no stage
+    under way; a 📋 item still in scope does."""
+    ddir = _withdrawn_docs(tmp_path, "# Q\n\n### Item 029: C\n")
+    lines = WITHDRAWN_PROGRESS.replace("- 📋 Coverage.",
+                                       "- ✅ Coverage.").replace(
+        "- 📋 Shared, first half.", "- ✅ Shared, first half.").splitlines()
+    assert aide._stages_under_way(ddir, lines) == set()
+    (ddir / "queue" / "queue-003.md").write_text(
+        "# Q\n\n### Item 029: C\n\n### Item 028: D\n", encoding="utf-8")
+    assert aide._stages_under_way(ddir, WITHDRAWN_PROGRESS.splitlines()) == {
+        "1"}
+
+
 def _completed_queue_of_withdrawn_items(tmp_path: Path) -> Path:
     """Queue 003 stamped completed with 026 ✅, 027 ❌, 028 ✅ and 029 📋 in
     withdrawn stage 2 — done as `claim` reads it."""
@@ -3144,6 +3173,23 @@ def test_a_started_dependency_of_a_withdrawn_stage_still_blocks(
     out = capsys.readouterr().out
     assert "none left" in out
     assert "028 Coverage rules — waiting on 029 (in-progress)" in out
+
+
+def test_the_none_left_report_names_no_withdrawn_planned_blocker(
+        tmp_path: Path, capsys):
+    """028 waits on 029 (📋, withdrawn stage 2) and 030 (🚧): the report
+    names 030 alone, the dependency `_pick_item` is actually waiting on."""
+    root = _withdrawn_repo(tmp_path)
+    _028_depends_on(root, 29, 30)
+    (root / "docs" / "aide" / "progress.md").write_text(
+        WITHDRAWN_PROGRESS.replace("- 📋 Shared, first half.",
+                                   "- 🚧 Shared, first half."),
+        encoding="utf-8")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "claim", "--queue", "3",
+                      "--dry-run"]) == 0
+    assert ("028 Coverage rules — waiting on 030 (in-progress)\n"
+            in capsys.readouterr().out)
 
 
 def test_early_ready_does_not_wait_on_a_withdrawn_planned_dependency(

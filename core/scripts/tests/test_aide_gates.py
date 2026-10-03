@@ -1099,13 +1099,18 @@ def _cite_in_queue(repo: Path, text: str) -> None:
     (repo / "docs/aide/queue/queue-003.md").write_text(QUEUE + text, encoding="utf-8")
 
 
-@pytest.mark.parametrize("icon", ["✅", "❌", "⏸️"])
+@pytest.mark.parametrize("icon", ["✅", "❌", "⏸️", "withdrawn"])
 def test_a_record_spec_and_a_done_queue_are_not_warned_about_positions(
         tmp_path: Path, icon: str):
     """§1 never rewrites a merged spec or a finished queue, so the warning
-    could never clear (issue #338)."""
+    could never clear (issue #338). `withdrawn` leaves both items 📋 under a
+    ❌ Stage summary row: never offered, so records too (issue #393)."""
     repo = _repo(tmp_path, f"{AWAITING}\n{ALL}")
-    _settle(repo, icon)
+    if icon == "withdrawn":
+        (repo / "docs/aide/progress.md").write_text(
+            _progress(f"{AWAITING}\n{ALL}", "❌"), encoding="utf-8")
+    else:
+        _settle(repo, icon)
     _cite(repo, "Waits on human gate 2.\n")
     _cite_in_queue(repo, "Waits on gate 1.\n")
     _, warnings = aide.run_checks(repo, aide.load_config(repo))
