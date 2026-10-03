@@ -5476,6 +5476,62 @@ def test_check_errors_on_auto_merge_with_no_origin(aide, consumer: Path, capsys)
     assert "this machine:" not in capsys.readouterr().out
 
 
+def _aide_config(consumer: Path) -> str:
+    """Every `aide-*` key git config holds for a branch: what `claim` and
+    `queue start` record beside the branch they create."""
+    return _git(["config", "--get-regexp", r"^branch\..*\.aide-"], consumer,
+                check=False).stdout
+
+
+@pytest.mark.parametrize("mode", ["auto-merge", "pr"])
+def test_merge_with_no_origin_is_refused_before_it_tests_merges_or_ticks(
+        aide, consumer: Path, mode: str):
+    """Issue #377: under a mode that pushes, `merge` ran the suite, merged,
+    ticked ✅, wrote the ledger row and committed before the push found no
+    origin — and every re-run did all of it again. Refused first now: main,
+    the claim branch and its base are as they were, the item is not ✅ and no
+    row is written. Under `local` the same claim lands."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    branch = "aide/001-the-greeter"
+    _git(["switch", "main"], consumer)
+    _met_but_the_mode(consumer, mode)
+    main, tip = _sha(consumer, "main"), _sha(consumer, branch)
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 1
+    assert _sha(consumer, "main") == main
+    assert _sha(consumer, branch) == tip
+    assert _recorded_base(aide, consumer, branch) == "main"
+    assert _item_status(aide, consumer, 1) != "complete"
+    assert not (consumer / "docs" / "aide" / "ledger.md").exists()
+    assert _git(["status", "--porcelain"], consumer).stdout == ""
+
+    _set_mode(consumer, mode, "local")
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 0
+    assert _item_status(aide, consumer, 1) == "complete"
+
+
+@pytest.mark.parametrize("argv", [
+    ["claim"], ["claim", "--dry-run"],
+    ["queue", "start", "1"], ["queue", "start", "1", "--dry-run"],
+    ["queue", "start", "1", "--specs"],
+], ids=lambda argv: "-".join(a.lstrip("-") for a in argv))
+def test_claim_and_queue_start_with_no_origin_create_nothing(
+        aide, consumer: Path, argv: list):
+    """Issue #377: both pushed last, so with no origin each left a branch on
+    this machine, its base recorded, and exited 1. Refused first now, a dry
+    run included: no branch, no record, HEAD where it was."""
+    _met_but_the_mode(consumer, "auto-merge")
+    branches, config = _branches(consumer), _aide_config(consumer)
+    head = _sha(consumer, "HEAD")
+
+    assert aide.main(["--repo", str(consumer), *argv]) == 1
+    assert _branches(consumer) == branches
+    assert _aide_config(consumer) == config
+    assert _branch(consumer) == "main" and _sha(consumer, "HEAD") == head
+    assert _git(["status", "--porcelain"], consumer).stdout == ""
+
+
 def test_sync_is_not_stalled_by_the_claude_runtimes_scratch_worktrees(aide, consumer: Path):
     """#165: `/code-review` leaves a scratch checkout under `.claude/worktrees/`;
     an unattended run stalled on `sync`'s unclean-tree refusal over it. The

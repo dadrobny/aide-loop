@@ -38,7 +38,8 @@ branch, the remote and git's own words, never a traceback — and leaves the loc
 branch for you to push or delete. Off `local` mode a claim branch origin has
 never seen is reported as an **unpublished claim** by `claim`, `status` and
 `check`, never counted as work in flight. `queue start` and `merge`'s `pr`-mode
-push fail the same way.
+push fail the same way. With no remote named `origin` at all there is nothing
+to publish to, and each of them refuses before it changes anything (§4).
 
 **A branch origin deleted is not one origin never saw.** A branch whose
 upstream `origin/<branch>` is gone was published, and is never advised a push
