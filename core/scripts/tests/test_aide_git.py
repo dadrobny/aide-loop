@@ -374,6 +374,59 @@ def test_merge_missing_branch_errors(tmp_path: Path):
     assert rc == 1
 
 
+@pytest.mark.parametrize("mode", ["auto-merge", "pr"])
+def test_merge_with_no_origin_is_refused_before_anything_moves(
+        tmp_path: Path, monkeypatch, capsys, mode: str):
+    """Issue #377: the push is the last thing an `auto-merge` merge does, so a
+    missing origin was found after the suite, the merge and the ✅. Now it is
+    refused first — the suite never runs, main and the claim branch are where
+    they were, no row is written — and `local` mode, which pushes nothing,
+    merges as before."""
+    root = _init_repo(tmp_path / "r", mode=mode)
+    _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
+    tip = _run(["git", "rev-parse", "aide/027-bounds-rules"], root).stdout
+    head = _run(["git", "rev-parse", "main"], root).stdout
+    marker = tmp_path / "suite-ran"
+    monkeypatch.setattr(aide, "resolve_test_command", lambda root, cfg: [
+        sys.executable, "-c", f"open({str(marker)!r}, 'w').close()"])
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), "merge", "27"]) == 1
+    err = capsys.readouterr().err
+    assert (f'aide merge: [git] mode = "{mode}" in aide.toml needs a remote '
+            f'named origin') in err
+    assert not marker.exists()
+    assert _run(["git", "rev-parse", "main"], root).stdout == head
+    assert _run(["git", "rev-parse", "aide/027-bounds-rules"],
+                root).stdout == tip
+    assert _current_branch(root) == "main"
+    assert not (root / "docs" / "aide" / "ledger.md").exists()
+
+    (root / "aide.toml").write_text(AIDE_TOML.format(mode="local"),
+                                    encoding="utf-8")
+    _run(["git", "commit", "-qam", "local mode"], root)
+    assert aide.main(["--repo", str(root), "merge", "27", "--no-test"]) == 0
+    assert (root / "feature.txt").is_file()
+
+
+@pytest.mark.parametrize("argv", [["claim"], ["claim", "--dry-run"]])
+def test_claim_with_no_origin_is_refused_before_a_branch_exists(
+        tmp_path: Path, capsys, argv):
+    """Issue #377: `claim` pushes last, so with no origin it used to leave a
+    claim branch on this machine only and exit 1. Off local mode it is now
+    refused before anything is picked or created, a dry run included."""
+    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    before = _run(["git", "branch", "--format=%(refname:short)"], root).stdout
+    capsys.readouterr()
+    assert aide.main(["--repo", str(root), *argv]) == 1
+    out, err = capsys.readouterr()
+    assert ('aide claim: [git] mode = "auto-merge" in aide.toml needs a '
+            'remote named origin') in err
+    assert "would claim" not in out
+    assert _run(["git", "branch", "--format=%(refname:short)"],
+                root).stdout == before
+    assert _current_branch(root) == "main"
+
+
 # --------------------------------------------------------------------------- #
 # claim scope (WI-2: derived queue state, opt-in cross-queue claiming)
 # --------------------------------------------------------------------------- #
@@ -1506,13 +1559,24 @@ def test_queue_start_refuses_a_name_that_exists_only_on_origin(tmp_path: Path, c
 # --------------------------------------------------------------------------- #
 # a failed push — issue #137: a sentence, and never a silent half-claim
 # --------------------------------------------------------------------------- #
+def _dead_origin(root: Path, tmp_path: Path) -> Path:
+    """An origin that resolves to nothing, so every push to it fails.
+
+    No origin at all no longer reaches the push: off local mode the verbs
+    refuse it before they change anything (issue #377)."""
+    _run(["git", "remote", "add", "origin", str(tmp_path / "no-such.git")],
+         root)
+    return root
+
+
 def test_claim_push_failure_is_a_sentence_not_a_traceback(tmp_path: Path, capsys):
-    """`auto-merge` with no remote: the push cannot succeed, and used to raise.
+    """`auto-merge` with an unreachable origin: the push cannot succeed, and
+    used to raise.
 
     `git(..., check=True)` let every cause of a failed push out of `main()` as
     a `CalledProcessError` — a raw traceback in a flow meant to be unattended.
     """
-    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    root = _dead_origin(_init_repo(tmp_path / "r", mode="auto-merge"), tmp_path)
     rc = aide.main(["--repo", str(root), "claim"])
     assert rc == 1
     err = capsys.readouterr().err
@@ -1529,7 +1593,7 @@ def test_a_failed_claim_does_not_come_back_as_none_left(tmp_path: Path, capsys):
     failure reported an exhausted queue and exited 0 — the loop's own "is
     there work left?" answering no, successfully, with nothing built.
     """
-    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    root = _dead_origin(_init_repo(tmp_path / "r", mode="auto-merge"), tmp_path)
     assert aide.main(["--repo", str(root), "claim"]) == 1        # 027, push fails
     assert aide.main(["--repo", str(root), "claim"]) == 1        # 028, push fails
     capsys.readouterr()
@@ -1544,7 +1608,7 @@ def test_a_failed_claim_does_not_come_back_as_none_left(tmp_path: Path, capsys):
 
 
 def test_status_names_an_unpublished_claim(tmp_path: Path, capsys):
-    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    root = _dead_origin(_init_repo(tmp_path / "r", mode="auto-merge"), tmp_path)
     assert aide.main(["--repo", str(root), "claim"]) == 1
     capsys.readouterr()
     assert aide.main(["--repo", str(root), "status", "--no-fetch"]) == 0
@@ -1732,7 +1796,7 @@ def test_an_empty_queue_still_says_only_none_left(tmp_path: Path, capsys):
 
 
 def test_queue_start_push_failure_is_a_sentence(tmp_path: Path, capsys):
-    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    root = _dead_origin(_init_repo(tmp_path / "r", mode="auto-merge"), tmp_path)
     rc = aide.main(["--repo", str(root), "queue", "start", "4"])
     assert rc == 1
     err = capsys.readouterr().err
@@ -1742,7 +1806,7 @@ def test_queue_start_push_failure_is_a_sentence(tmp_path: Path, capsys):
 
 
 def test_merge_pr_mode_push_failure_leaves_the_item_unticked(tmp_path: Path, capsys):
-    root = _init_repo(tmp_path / "r", mode="pr")
+    root = _dead_origin(_init_repo(tmp_path / "r", mode="pr"), tmp_path)
     _make_item_branch(root, "aide/027-bounds-rules", "feature.txt")
     rc = aide.main(["--repo", str(root), "merge", "27", "aide/027-bounds-rules",
                     "--no-test"])
@@ -1762,7 +1826,7 @@ def test_check_warns_about_an_unpublished_branch(tmp_path: Path, capsys):
     origin has never seen is the same kind of disagreement: the document set
     says an item is taken, and no other checkout can see the claim.
     """
-    root = _init_repo(tmp_path / "r", mode="auto-merge")
+    root = _dead_origin(_init_repo(tmp_path / "r", mode="auto-merge"), tmp_path)
     assert aide.main(["--repo", str(root), "claim"]) == 1
     capsys.readouterr()
     aide.main(["--repo", str(root), "check"])

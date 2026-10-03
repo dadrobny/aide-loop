@@ -1466,6 +1466,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
 
     # ---------------------------------------------------------------- claim --
     "claim": [
+        # `_require_origin` straight after `_require_repository`, before the
+        # fetch, the pick and the `--dry-run` return (issue #377).
+        ("Off local mode a checkout with no remote named origin is refused, "
+         "exit 1, before anything is picked, created or fetched, --dry-run "
+         "included",
+         "test_aide_git::test_claim_with_no_origin_is_refused_before_a_branch_exists"),
         # `_pick_item` walks `queue_item_numbers(queue_text)`, which is
         # document order — the help said "lowest-numbered" until 1.49.4.
         ("Picks the first \U0001f4cb item the queue lists — its own order, "
@@ -1956,6 +1962,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
     # #275); everything else `merge` does is stated in its option help, which
     # this register does not read.
     "merge": [
+        # `_require_origin` straight after `_require_repository`, before the
+        # claim branch is looked up, the pr-mode push and the suite.
+        ("Off local mode a checkout with no remote named origin is refused, "
+         "exit 1, before anything is run, merged, pushed or written",
+         "test_aide_git::test_merge_with_no_origin_is_refused_before_anything_moves"),
         # `_merge_dropped_item` over the working tree and `git show
         # <base>:progress.md`, read by `held_from_forward` before the pr-mode
         # push and before `git switch` (issue #381); its ⏸️ arm is not read.
@@ -2389,6 +2400,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "queue branches are already unmerged, naming them and the key",
          ("test_aide_queue_stack::test_the_default_cap_refuses_a_second_queue_while_the_first_is_unmerged",
           "test_aide_queue_stack::test_below_the_cap_a_queue_stacks_on_the_top_and_records_it")),
+        # `_require_origin` straight after `_require_repository`, before the
+        # base, the cap and the `--dry-run` return (issue #377).
+        ("Off local mode a checkout with no remote named origin is refused, "
+         "exit 1, before any other check, --dry-run included",
+         "test_aide_queue_stack::test_a_start_with_no_origin_is_refused_before_any_branch_exists"),
         # `if not args.specs:` around the whole block; `_is_stack_branch`
         # never matches `specs-queue-`.
         ("--specs creates <prefix>specs-queue-NNN instead, which is never "
@@ -2410,13 +2426,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # The cap refusal's remedies, each followed by a test until the
         # refusal clears (PR #308 review: `restack` was printed as one, and
         # has no stack to read when only main is behind).
-        # `remedy` branches on `mode != "local" and _has_origin`.
+        # `remedy` branches on `mode != "local"`; off it, `_require_origin`
+        # has already refused a checkout with no origin (issue #377).
         ("A branch whose PR merged counts until this checkout's main_branch "
          "holds its work, so updating main_branch is what clears it: a pull "
-         "from origin where there is one",
+         "from origin off local mode",
          "test_aide_queue_stack::test_a_pr_merged_on_origin_clears_once_main_is_updated_from_origin"),
-        ("and in local mode or with no origin, merging the queue branch into "
-         "main_branch",
+        ("and in local mode merging the queue branch into main_branch",
          "test_aide_queue_stack::test_the_cap_refusal_in_local_mode_names_a_local_merge_and_it_clears"),
         ("one git cannot judge is cleared by `aide gc --merged --yes` if it "
          "landed, or by `aide queue restack NNN --base main_branch`, which "
@@ -2638,6 +2654,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "branch it merged into or that is ahead of origin",
          ("test_aide_restack::test_review_edits_on_origin_are_fetched_merged_forward_and_pushed",
           "test_aide_restack::test_a_stack_branch_ahead_of_origin_is_pushed_by_a_re_run")),
+        # `_require_origin` before the fetch, the plan and the dry run.
+        ("with no remote named origin it refuses, exit 1, before anything "
+         "changes",
+         "test_aide_restack::test_no_origin_off_local_mode_is_refused_before_anything_changes"),
         ("local mode never fetches or pushes",
          "test_aide_restack::test_local_mode_never_fetches_or_pushes"),
         # `_unsafe_tree_state` -> `return 1`.
