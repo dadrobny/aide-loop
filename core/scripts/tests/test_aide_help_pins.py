@@ -2404,7 +2404,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # base, the cap and the `--dry-run` return (issue #377).
         ("Off local mode a checkout with no remote named origin is refused, "
          "exit 1, before the base, the cap or --dry-run is considered",
-         "test_aide_queue_stack::test_a_start_with_no_origin_is_refused_before_any_branch_exists"),
+         ("test_aide_queue_stack::test_a_start_with_no_origin_is_refused_before_any_branch_exists",
+          "test_aide_queue_stack::test_no_origin_is_refused_ahead_of_the_cap_and_the_base")),
         # `if not args.specs:` around the whole block; `_is_stack_branch`
         # never matches `specs-queue-`.
         ("--specs creates <prefix>specs-queue-NNN instead, which is never "
