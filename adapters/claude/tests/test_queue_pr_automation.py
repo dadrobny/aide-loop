@@ -9,8 +9,10 @@ both verbs in the shapes a runner types are pre-approved and asked by
 nothing, the raw `gh` forms still ask, and the hygiene hook passes the verbs
 through. Coverage is read with the reviewer's own ``is_covered``, so the test
 asks the question a permission review asks. Since issue #331 §3 forbids the
-raw forms, and no agent, command, skill or rule names one. Stdlib + pytest
-only.
+raw forms, and no agent, command, skill or rule names one. Since issue
+#383 the roadmap runner checks for the queue file before `queue pr`, and the
+empty branch a planner hand-back leaves is discarded by `aide queue
+discard`, which runs unattended. Stdlib + pytest only.
 """
 from __future__ import annotations
 
@@ -92,3 +94,66 @@ def test_no_control_file_instructs_a_raw_pr_command(path: Path):
         f"{path.relative_to(ADAPTER)} names a raw PR command §3 forbids — "
         f"`aide queue pr` / `aide queue ready` for a queue's own PR, and any "
         f"other PR is the user's to open")
+
+
+# --------------------------------------------------------------------------- #
+# a planner hand-back is never followed by `queue pr` (issue #383)
+# --------------------------------------------------------------------------- #
+_ROADMAP = ADAPTER / "commands" / "aide-run-roadmap.md"
+_QUEUE_CHECK = "git cat-file -e HEAD:docs/aide/queue/queue-NNN.md"
+_DISCARD = "python .aide/scripts/aide.py queue discard NNN"
+
+
+def _generate_section() -> str:
+    text = _ROADMAP.read_text(encoding="utf-8")
+    return text.split("## Generate the next queue", 1)[1].split("\n## ", 1)[0]
+
+
+def test_the_roadmap_runner_checks_for_the_queue_file_before_queue_pr():
+    """The engine refuses `queue pr` on a branch with no queue file; the
+    runner must not reach it at all, and must discard the branch and stop on
+    the hand-back."""
+    section = _generate_section()
+    spawn = section.index("**Spawn `queue-planner`**")
+    check = section.index(_QUEUE_CHECK)
+    pr = section.index("aide.py queue pr --body-file")
+    assert spawn < check < pr
+    handback = section[check:pr]
+    for phrase in ("Run nothing below", "no `queue pr`", _DISCARD,
+                   "**Stop**", "hand-back verbatim"):
+        assert phrase in handback, phrase
+
+
+def test_the_state_reading_checks_the_queue_file_before_built_out():
+    """`status` gives no queue-file signal, so the state reading asks git,
+    and the row that check selects is read before the *built out* row a
+    queue with no file would otherwise match."""
+    text = _ROADMAP.read_text(encoding="utf-8")
+    table = text.split("| State | Action |", 1)[1].split("\n\n", 1)[0]
+    assert "git cat-file -e HEAD:docs/aide/queue/queue-NNN.md" in (
+        text.split("| State | Action |", 1)[0])
+    assert (table.index("carries no queue file of its own number")
+            < table.index("being built is built out"))
+    assert "ls-files" not in text
+
+
+def test_the_runner_discards_through_the_verb_and_never_the_raw_git():
+    """The no-commit precondition lives in the verb, not in prose copies of
+    it: both places the runner discards a queue branch call it, and nothing
+    in the runner types the deletion by hand."""
+    text = _ROADMAP.read_text(encoding="utf-8")
+    assert text.count("aide.py queue discard NNN") >= 2
+    for raw in ("git branch -D", "git push origin --delete", "rev-list --count"):
+        assert raw not in text, raw
+
+
+@pytest.mark.parametrize("command", [
+    "git cat-file -e HEAD:docs/aide/queue/queue-012.md",
+    "python .aide/scripts/aide.py queue discard 012",
+])
+def test_the_hand_back_steps_run_unattended(command):
+    """Each step is pre-approved, asked by nothing and passed by the hook, so
+    an unattended run discards the branch rather than stalling on a prompt."""
+    assert rp.is_covered("Bash", command, _PERMS["allow"])
+    assert not rp.is_covered("Bash", command, _PERMS["ask"])
+    assert guard.violations(command) == []

@@ -65,7 +65,9 @@ that moved everything.
   this machine can verify now"* (`status`), *"that would be recommending the deletion of an open PR's
   head branch"*, *"Because in `pr` mode nothing inside the loop observes the
   merge"*, *"so none of them lives only in one commit's diff"*, *"since what it
-  blocks is unknown"* — same: the reason a pinned behaviour is what it is.
+  blocks is unknown"*, *"nothing is planned on it, so a pull request would
+  have no plan to carry"* (`queue`) — same: the reason a pinned behaviour is
+  what it is.
 * *"It reads git and never a pull request: a PR closed without merging looks
   exactly like one still open, so a caller checks for a closed PR before it
   restacks"* (`queue`) — what the verb does not read, which a test cannot
@@ -214,6 +216,23 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "else the report would refuse",
          ("test_aide_env_report::test_bootstrap_answers_for_the_venv_alone",
           "test_aide_git::test_bootstrap_with_an_interpreter_this_machine_lacks_is_a_sentence")),
+        # `bootstrap_argv` reads the first word; `bootstrap_command_env` and
+        # `resolve_tool(..., path=)` give a command the venv (issue #378).
+        ("pip runs as the venv's `python -m pip`; python or python3 is "
+         "replaced by the venv's Python; an option (-m, -c), a .py file or "
+         "another file in the repository is passed to the venv's Python, as "
+         "every bootstrap but pip was before; anything else is a command",
+         ("test_aide_git::test_each_bootstrap_reading_builds_its_argv",
+          "test_aide_git::test_a_bootstrap_python_reading_runs_with_the_environment_unchanged")),
+        ("found in the venv's script directory first and then on PATH, and "
+         "run with that directory first on PATH and VIRTUAL_ENV and "
+         "UV_PROJECT_ENVIRONMENT set to the venv. A command found in "
+         "neither is a failed bootstrap that names it",
+         ("test_aide_git::test_a_bootstrap_command_runs_with_the_venv_active",
+          "test_aide_git::test_a_bootstrap_command_found_nowhere_is_a_failed_bootstrap_that_names_it")),
+        # `_bootstrap_venv` skips `bootstrap_argv` for an empty value.
+        ("An empty bootstrap builds the venv and installs nothing",
+         "test_aide_git::test_an_empty_bootstrap_builds_the_venv_and_installs_nothing"),
         ("Exits 0 when every requirement the configuration needs is met",
          ("test_aide_env_report::test_every_requirement_met_under_pr_exits_zero",
           "test_aide_git::test_a_stdlib_runner_in_a_bare_venv_is_ok")),
@@ -769,13 +788,17 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "number",
          ("test_aide_gates::test_a_zero_padded_number_is_not_a_gate_position",
           "test_aide_insights::test_a_zero_padded_number_is_not_an_insight_position")),
-        # `record_documents`: `_RECORD_ITEM_STATUSES`, and a queue with items
-        # none of which `queue_is_open` counts; the ID loops never consult it.
+        # `record_documents`: `_RECORD_ITEM_STATUSES`, a 📋 item of
+        # `withdrawn_stage_items` (issue #393), and a queue with items none of
+        # which `queue_is_open` counts; the ID loops never consult it.
         ("A record is the spec of an item progress.md shows \u2705, \u274c or "
-         "\u23f8\ufe0f, or a queue naming items none of which is still open; "
-         "an ID naming nothing is an ERROR there too",
+         "\u23f8\ufe0f, or \U0001f4cb with every bullet in a stage whose "
+         "summary row is \u274c, or a queue naming items none of which is "
+         "still open; an ID naming nothing is an ERROR there too",
          ("test_aide_insights::test_a_record_is_still_held_to_ids_that_resolve",
-          "test_aide_gates::test_a_record_is_still_held_to_gate_ids_that_resolve")),
+          "test_aide_gates::test_a_record_is_still_held_to_gate_ids_that_resolve",
+          "test_aide_git::"
+          "test_record_documents_settles_a_withdrawn_stages_planned_item")),
         # `ledger_warnings` over `ledger_rows`: the cell count, the Item cell
         # and each of `LEDGER_INTEGER_COLUMNS`, appended to `warnings` and
         # never to `errors`.
@@ -1462,16 +1485,25 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
 
     # ---------------------------------------------------------------- claim --
     "claim": [
+        # `_require_origin` straight after `_require_repository`, before the
+        # fetch, the pick and the `--dry-run` return (issue #377).
+        ("Off local mode a checkout with no remote named origin is refused, "
+         "exit 1, before anything is picked, created or fetched, --dry-run "
+         "included",
+         "test_aide_git::test_claim_with_no_origin_is_refused_before_a_branch_exists"),
         # `_pick_item` walks `queue_item_numbers(queue_text)`, which is
         # document order — the help said "lowest-numbered" until 1.49.4.
         ("Picks the first \U0001f4cb item the queue lists — its own order, "
          "not the item numbers",
          "test_aide_git::test_claim_offers_the_first_planned_item_the_queue_lists"),
-        # `if any(item_status.get(d) in BLOCKING_STATUSES for d in deps)` —
-        # the complement of BLOCKING_STATUSES is exactly {✅, ❌, ⏸️}.
-        ("whose dependencies have all left the way (✅, ❌ or "
-         "⏸️)",
-         "test_aide_git::test_pick_item_waits_only_for_a_dependency_that_still_blocks"),
+        # `if any(still_blocks(d, item_status, withdrawn) for d in deps)` —
+        # the complement of BLOCKING_STATUSES is exactly {✅, ❌, ⏸️}, and
+        # `still_blocks` lets a 📋 item of `withdrawn_stage_items` by too
+        # (issue #393).
+        ("whose dependencies have all left the way (✅, ❌, ⏸️, or a "
+         "\U0001f4cb item of a withdrawn stage)",
+         ("test_aide_git::test_pick_item_waits_only_for_a_dependency_that_still_blocks",
+          "test_aide_git::test_a_withdrawn_planned_dependency_has_left_the_way")),
         # `gate_blocked_items` -> `if num in gate_blocked: continue`.
         ("that no unresolved human gate reaches",
          "test_aide_gates::test_claim_skips_a_gated_item_and_offers_the_next"),
@@ -1578,11 +1610,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("the claim names that assumption as pinning a dependency's interface",
          "test_aide_traceability::test_claim_names_the_assumptions_that_pin_a_dependency"),
         # The three exclusions of `interface_pins`, in the order §5 lists them.
+        # The withdrawn-stage 📋 case is `still_blocks` in
+        # `_interface_pin_report` (issue #393).
         ("an engine-marked assumption and one already carrying a re-check are "
-         "not named, and a dependency that left the queue as ❌ or ⏸️ is named "
-         "as having no code to check against",
+         "not named, and a dependency that left the queue as ❌, ⏸️ or a "
+         "\U0001f4cb item of a withdrawn stage is named as having no code to "
+         "check against",
          ("test_aide_traceability::test_interface_pins_skip_the_three_shapes_that_are_not_the_signal",
-          "test_aide_traceability::test_claim_names_the_assumptions_that_pin_a_dependency")),
+          "test_aide_traceability::test_claim_names_the_assumptions_that_pin_a_dependency",
+          "test_aide_traceability::test_claim_names_a_withdrawn_planned_dependency_as_absent")),
     ],
 
     # ------------------------------------------------------------------- gc --
@@ -1945,6 +1981,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
     # #275); everything else `merge` does is stated in its option help, which
     # this register does not read.
     "merge": [
+        # `_require_origin` straight after `_require_repository`, before the
+        # claim branch is looked up, the pr-mode push and the suite.
+        ("Off local mode a checkout with no remote named origin is refused, "
+         "exit 1, before anything is run, merged, pushed or written",
+         "test_aide_git::test_merge_with_no_origin_is_refused_before_anything_moves"),
         # `_merge_dropped_item` over the working tree and `git show
         # <base>:progress.md`, read by `held_from_forward` before the pr-mode
         # push and before `git switch` (issue #381); its ⏸️ arm is not read.
@@ -2378,6 +2419,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "queue branches are already unmerged, naming them and the key",
          ("test_aide_queue_stack::test_the_default_cap_refuses_a_second_queue_while_the_first_is_unmerged",
           "test_aide_queue_stack::test_below_the_cap_a_queue_stacks_on_the_top_and_records_it")),
+        # `_require_origin` straight after `_require_repository`, before the
+        # base, the cap and the `--dry-run` return (issue #377).
+        ("Off local mode a checkout with no remote named origin is refused, "
+         "exit 1, before the base, the cap or --dry-run is considered",
+         ("test_aide_queue_stack::test_a_start_with_no_origin_is_refused_before_any_branch_exists",
+          "test_aide_queue_stack::test_no_origin_is_refused_ahead_of_the_cap_and_the_base")),
         # `if not args.specs:` around the whole block; `_is_stack_branch`
         # never matches `specs-queue-`.
         ("--specs creates <prefix>specs-queue-NNN instead, which is never "
@@ -2399,13 +2446,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # The cap refusal's remedies, each followed by a test until the
         # refusal clears (PR #308 review: `restack` was printed as one, and
         # has no stack to read when only main is behind).
-        # `remedy` branches on `mode != "local" and _has_origin`.
+        # `remedy` branches on `mode != "local"`; off it, `_require_origin`
+        # has already refused a checkout with no origin (issue #377).
         ("A branch whose PR merged counts until this checkout's main_branch "
          "holds its work, so updating main_branch is what clears it: a pull "
-         "from origin where there is one",
+         "from origin off local mode",
          "test_aide_queue_stack::test_a_pr_merged_on_origin_clears_once_main_is_updated_from_origin"),
-        ("and in local mode or with no origin, merging the queue branch into "
-         "main_branch",
+        ("and in local mode merging the queue branch into main_branch",
          "test_aide_queue_stack::test_the_cap_refusal_in_local_mode_names_a_local_merge_and_it_clears"),
         ("one git cannot judge is cleared by `aide gc --merged --yes` if it "
          "landed, or by `aide queue restack NNN --base main_branch`, which "
@@ -2502,6 +2549,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("Under [git] forge = \"none\" both refuse, exit 1, before the forge "
          "is asked anything",
          "test_aide_queue_pr::test_no_forge_refuses_pr_and_ready_and_asks_nothing"),
+        # `_queue_pr_branch`: `_branch_carries_queue_file` (an `ls-tree` of
+        # the branch tip) ahead of `declared_forge` and the mode (#383).
+        ("Before the mode or the forge is considered, both refuse, exit 1, a "
+         "queue branch whose tip carries no queue file of its own number",
+         ("test_aide_queue_pr::test_a_queue_branch_with_no_queue_file_is_refused_and_nothing_pushed",
+          "test_aide_queue_pr::test_the_missing_queue_file_is_refused_before_the_mode_or_the_forge",
+          "test_aide_queue_pr::test_only_a_committed_queue_file_of_the_branchs_own_number_counts")),
         # `_queue_stray_options`, first thing in `cmd_queue`.
         ("An option the action does not read is refused, exit 2, before "
          "anything is done",
@@ -2516,6 +2570,62 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_queue_pr::test_ready_refuses_a_branch_with_no_pr_to_mark",
           "test_aide_queue_pr::test_ready_refuses_where_the_forge_cannot_be_asked",
           "test_aide_queue_pr::test_ready_that_the_forge_refuses_exits_1")),
+        # `_queue_discard` (#383): `rev-list --count <base>..<ref>` over the
+        # branch and `origin/<branch>`, then `push --delete` and `branch -D`.
+        ("discard NNN discards a queue branch `queue start` made that "
+         "carries no commits beyond its recorded base, locally and on "
+         "origin; it refuses one that does",
+         ("test_aide_queue_pr::test_discard_deletes_an_empty_queue_branch_here_and_on_origin",
+          "test_aide_queue_pr::test_discard_on_a_stack_returns_to_the_queue_below_and_leaves_it",
+          "test_aide_queue_pr::test_discard_refuses_a_branch_carrying_a_commit_and_changes_nothing")),
+        # The second count, and the `--force-with-lease` on the counted tip.
+        ("Origin's copy, as last fetched, is counted too, and deleted only "
+         "while origin still holds the commit counted",
+         "test_aide_queue_pr::test_discard_refuses_where_origins_copy_carries_a_commit"),
+        # `_unsafe_tree_state` only when the branch is the current one; then
+        # `git switch <base>`.
+        ("A checked-out branch is left for its base first, and uncommitted "
+         "changes to tracked files are refused",
+         ("test_aide_queue_pr::test_discard_deletes_an_empty_queue_branch_here_and_on_origin",
+          "test_aide_queue_pr::test_discard_refuses_uncommitted_changes_on_the_checked_out_branch")),
+        # `on_origin` needs a mode other than local and `_has_origin`.
+        ("local mode never touches origin, and off local mode with no remote "
+         "named origin only the local branch is deleted",
+         ("test_aide_queue_pr::test_discard_in_local_mode_never_touches_origin",
+          "test_aide_queue_pr::test_discard_with_no_origin_off_local_mode_deletes_the_local_branch")),
+        # `git branch -D` drops the branch's config section, aide-base and
+        # aide-start with it.
+        ("The branch's recorded base and start go with it",
+         ("test_aide_queue_pr::test_discard_deletes_an_empty_queue_branch_here_and_on_origin",
+          "test_aide_queue_pr::test_discard_with_no_origin_off_local_mode_deletes_the_local_branch")),
+        ("1: refused, nothing discarded — no such branch here or on origin, "
+         "one on origin only, no recorded base, a commit beyond the base or "
+         "commits git could not count, a queue file of the number or the one "
+         "after it written and not committed, the branch checked out in "
+         "another worktree, uncommitted changes or an unfinished merge or "
+         "rebase while it is checked out, or a switch or push git refused "
+         "(after a switch, the message says the checkout is now on the base)",
+         ("test_aide_queue_pr::test_discard_refuses_a_branch_it_cannot_judge",
+          "test_aide_queue_pr::test_discard_refuses_a_branch_carrying_a_commit_and_changes_nothing",
+          "test_aide_queue_pr::test_discard_refuses_a_queue_file_written_and_not_committed",
+          "test_aide_queue_pr::test_discard_refuses_a_branch_checked_out_in_another_worktree",
+          "test_aide_queue_pr::test_discard_from_a_detached_head_is_not_another_worktree",
+          "test_aide_queue_pr::test_discard_refuses_uncommitted_changes_on_the_checked_out_branch",
+          "test_aide_queue_pr::test_discard_refuses_an_unfinished_merge_on_the_checked_out_branch",
+          "test_aide_queue_pr::test_discard_refuses_where_origins_copy_carries_a_commit",
+          "test_aide_queue_pr::test_a_remote_that_cannot_answer_keeps_the_branch_and_its_tracking_ref")),
+        # `ls-remote` after a refused delete: empty means gone; the stale
+        # tracking ref is dropped and the local delete goes on.
+        ("origin's copy found already gone there counts as deleted",
+         "test_aide_queue_pr::test_discard_counts_origins_copy_already_gone_as_deleted"),
+        # No `--yes`, and `--dry-run` is a stray option: nothing to preview.
+        ("With nothing on the branch to lose there is no preview and no "
+         "confirmation",
+         ("test_aide_queue_pr::test_discard_deletes_an_empty_queue_branch_here_and_on_origin",
+          "test_aide_queue_pr::test_discard_usage_is_exit_2_and_discards_nothing")),
+        # `_QUEUE_OPTIONS["discard"]` is empty, so every shared option is stray.
+        ("discard takes none of them",
+         "test_aide_queue_pr::test_discard_usage_is_exit_2_and_discards_nothing"),
         # `_queue_restack` reads `_recorded_branch_base` for every
         # `_is_stack_branch`, which matches `queue-NNN` and not `specs-queue-`.
         ("The stack is read from the base each queue branch recorded at "
@@ -2627,6 +2737,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "branch it merged into or that is ahead of origin",
          ("test_aide_restack::test_review_edits_on_origin_are_fetched_merged_forward_and_pushed",
           "test_aide_restack::test_a_stack_branch_ahead_of_origin_is_pushed_by_a_re_run")),
+        # `_require_origin` before the fetch, the plan and the dry run.
+        ("with no remote named origin it refuses, exit 1, before anything "
+         "changes, --dry-run included",
+         "test_aide_restack::test_no_origin_off_local_mode_is_refused_before_anything_changes"),
         ("local mode never fetches or pushes",
          "test_aide_restack::test_local_mode_never_fetches_or_pushes"),
         # `_unsafe_tree_state` -> `return 1`.

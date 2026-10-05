@@ -280,6 +280,13 @@ test_command = "{test_command}"
 # range than `requires-python` declares; `aide env` reports a venv built from
 # a different version as stale.
 # interpreter = "python3.12"
+# What `env --bootstrap` installs into the new venv with, read by its first
+# word: "pip …" runs as the venv's `python -m pip`; "python …", "-m …",
+# "setup.py …" or another file in the repository runs the venv's Python, as
+# before; anything else ("uv sync", "make dev") runs as a command with the
+# venv active, so a repository shell script is "sh <script>"; "" builds the
+# venv and installs nothing (`aide env -h`).
+# bootstrap = "pip install -e .[dev]"
 
 [git]
 mode = "{git_mode}"

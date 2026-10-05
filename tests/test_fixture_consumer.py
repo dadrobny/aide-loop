@@ -25,11 +25,12 @@ from __future__ import annotations
 import codecs
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Tuple
+from typing import Dict, Tuple
 
 import pytest
 
@@ -2230,6 +2231,69 @@ def test_queue_pr_and_ready_refuse_without_a_forge_and_change_nothing(
     assert _sha(consumer, "HEAD") == head and _branch(consumer) == Q1
 
 
+@pytest.mark.parametrize("mode", ["pr", "local"])
+def test_a_queue_branch_the_planner_wrote_no_queue_on_opens_no_pr(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys, mode):
+    """Issue #383: `queue start 2` ran, the planner handed back with a
+    capture committed and no queue-002.md. Neither verb pushes or asks the
+    forge, and in `local` mode the refusal is this one, not the no-forge
+    sentence a runner reads as "carry on without a PR"."""
+    if mode == "pr":
+        _to_pr_mode_with_origin(consumer, tmp_path)
+    assert _start(aide, consumer, 2) == 0
+    (consumer / "docs" / "aide" / "note.md").write_text("capture\n",
+                                                         encoding="utf-8")
+    _commit(consumer, "docs(aide): a capture, and no plan")
+    head = _sha(consumer, "HEAD")
+    asked: list = []
+    monkeypatch.setattr(aide, "_gh", lambda repo_root, args: (
+        asked.append(args), (None, "must not be asked"))[1])
+    for argv in (["pr", "--body", "Plan."], ["ready"]):
+        capsys.readouterr()
+        assert aide.main(["--repo", str(consumer), "queue", *argv]) == 1
+        err = capsys.readouterr().err
+        assert f"{Q2} carries no queue-002 file under docs/aide/queue" in err
+    assert asked == []
+    assert _sha(consumer, "HEAD") == head and _branch(consumer) == Q2
+    if mode == "pr":
+        assert _sha(consumer, f"origin/{Q2}") != head    # nothing pushed
+
+
+def test_queue_discard_removes_an_unplanned_queue_branch_and_refuses_work(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    """Issue #383: the branch a hand-back leaves is discarded — here, on
+    origin, and its recorded base and start with it — and a branch carrying
+    a commit is refused and left exactly as it was."""
+    _to_pr_mode_with_origin(consumer, tmp_path)
+
+    def keys(branch: str) -> str:
+        return _git(["config", "--get-regexp", f"branch\\.{branch}\\."],
+                    consumer, check=False).stdout
+
+    def discard(number: int) -> int:
+        return aide.main(["--repo", str(consumer), "queue", "discard",
+                          str(number)])
+
+    assert _start(aide, consumer, 2) == 0
+    assert keys(Q2) and _remote_has(consumer, Q2)
+    capsys.readouterr()
+    assert discard(2) == 0
+    assert capsys.readouterr().out.strip() == f"discarded {Q2} (base main)"
+    assert _branch(consumer) == "main" and keys(Q2) == ""
+    assert Q2 not in _git(["branch", "--list", Q2], consumer).stdout
+    assert not _remote_has(consumer, Q2)
+
+    assert _start(aide, consumer, 2) == 0
+    (consumer / "docs" / "aide" / "note.md").write_text("capture\n",
+                                                         encoding="utf-8")
+    _commit(consumer, "docs(aide): a capture")
+    head = _sha(consumer, "HEAD")
+    assert discard(2) == 1
+    assert "carries 1 commit beyond main" in capsys.readouterr().err
+    assert _branch(consumer) == Q2 and _sha(consumer, Q2) == head
+    assert keys(Q2) and _remote_has(consumer, Q2)
+
+
 # --------------------------------------------------------------------------- #
 # [git] forge = "none" / ci = "none" — declared, never inferred (#355)
 # --------------------------------------------------------------------------- #
@@ -3166,6 +3230,52 @@ def test_merge_refuses_a_withdrawn_stages_unstarted_item(
     assert (consumer / "farewell.txt").is_file()
     assert "- ✅ The farewell. *(Item 002)*" in (
         consumer / "docs" / "aide" / "progress.md").read_text(encoding="utf-8")
+
+
+def test_a_queue_of_withdrawn_items_reads_done_to_status_tidy_and_check(
+        aide, consumer: Path, capsys):
+    """Issue #393: with 001 ✅ and 002 📋 in withdrawn stage 2, `status`
+    reads queue 001 as done as `claim` does, and once `queue tidy` stamps it
+    completed `check` no longer warns that it still has open items."""
+    _withdraw_stage_2_with_002(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "done"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "status"]) == 0
+    out = capsys.readouterr().out
+    assert "queue-001.md: done — not offered" in out
+    assert "(live)" not in out
+    assert aide.main(["--repo", str(consumer), "queue", "tidy", "1"]) == 0
+    _commit(consumer, "docs: tidy queue 001")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    captured = capsys.readouterr()
+    assert "still has open items" not in captured.out + captured.err
+
+
+def test_a_dependency_on_a_withdrawn_stages_item_has_left_the_way(
+        aide, consumer: Path):
+    """Issue #393: 003 depends on 002, 📋 in withdrawn stage 2. §1 →
+    items.md reads it as left the queue's way, as a ❌ item, so `claim`
+    takes 003 rather than holding it for good."""
+    _withdraw_stage_2_with_002(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "done"]) == 0
+    ddir = consumer / "docs" / "aide"
+    progress = ddir / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "- ✅ The greeter. *(Item 001)*\n",
+        "- ✅ The greeter. *(Item 001)*\n- 📋 The wave. *(Item 003)*\n"),
+        encoding="utf-8")
+    queue = ddir / "queue" / "queue-001.md"
+    queue.write_text(queue.read_text(encoding="utf-8")
+                     + "\n### Item 003: The wave\nA wave.\n", encoding="utf-8")
+    (ddir / "items" / "003-the-wave.md").write_text(
+        "# Item 003 — The wave\n\n## Dependencies\n- Item 002.\n",
+        encoding="utf-8")
+    _commit(consumer, "docs: 003 depends on 002")
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "aide/003-the-wave"
 
 
 @pytest.mark.parametrize("icon", ["⏸️", "❌"])
@@ -5376,6 +5486,53 @@ def test_an_interpreter_this_machine_lacks_stops_the_bootstrap_before_the_venv(
     assert not (consumer / ".venv").exists()
 
 
+# `[python] bootstrap` read by its first word (issue #378): one real build
+# per reading — each costs a venv with pip in it, so there are three, and a
+# program found nowhere is left to test_aide_git's stubbed launches.
+def _bootstrap_with(aide, consumer: Path, bootstrap: str) -> int:
+    _set_python_keys(consumer, venv=".venv", bootstrap=bootstrap)
+    _set_test_command(consumer, "git --version")   # no runner to install
+    return aide.main(["--repo", str(consumer), "env", "--bootstrap"])
+
+
+def _built_venv(consumer: Path) -> Tuple[Path, Dict[str, object]]:
+    venv = consumer / ".venv"
+    scripts = venv / ("Scripts" if os.name == "nt" else "bin")
+    record = json.loads((venv / "aide-bootstrap.json").read_text(encoding="utf-8"))
+    return scripts, record
+
+
+def test_a_pip_bootstrap_runs_the_venvs_pip(aide, consumer: Path):
+    assert _bootstrap_with(aide, consumer, "pip --version") == 0
+    scripts, record = _built_venv(consumer)
+    assert record["exit"] == 0
+    assert Path(record["command"][0]).parent == scripts
+    assert record["command"][1:] == ["-m", "pip", "--version"]
+    assert aide.main(["--repo", str(consumer), "env", "--bootstrap"]) == 0
+
+
+def test_a_python_argv_bootstrap_runs_in_the_venvs_python(aide, consumer: Path):
+    """`-m …` worked before #378 and must not need an `aide.toml` edit."""
+    (consumer / "probe_aide_378.py").write_text(
+        "import pathlib, sys\n"
+        "pathlib.Path('prefix_aide_378.txt').write_text(sys.prefix, encoding='utf-8')\n",
+        encoding="utf-8")
+    assert _bootstrap_with(aide, consumer, "-m probe_aide_378") == 0
+    prefix = (consumer / "prefix_aide_378.txt").read_text(encoding="utf-8")
+    assert Path(prefix).resolve() == (consumer / ".venv").resolve()
+
+
+def test_a_bare_command_bootstrap_runs_from_the_venv(aide, consumer: Path):
+    """`uv sync` ran as `<venv python> uv sync` and could never succeed. A
+    bare program now resolves in the venv's script directory before PATH:
+    `pip3` is in every venv pip is, and is no `pip` the first rule takes."""
+    assert _bootstrap_with(aide, consumer, "pip3 --version") == 0
+    scripts, record = _built_venv(consumer)
+    assert record["exit"] == 0 and "unrun" not in record
+    assert Path(record["command"][0]).parent == scripts
+    assert record["command"][1:] == ["--version"]
+
+
 # --------------------------------------------------------------------------- #
 # the dependency report: a mode this machine cannot meet is refused, never
 # adapted (issue #354)
@@ -5428,6 +5585,62 @@ def test_check_errors_on_auto_merge_with_no_origin(aide, consumer: Path, capsys)
     # judged exactly as under `local`.
     assert aide.main(["--repo", str(consumer), "check", "--queue", "1"]) == 0
     assert "this machine:" not in capsys.readouterr().out
+
+
+def _aide_config(consumer: Path) -> str:
+    """Every `aide-*` key git config holds for a branch: what `claim` and
+    `queue start` record beside the branch they create."""
+    return _git(["config", "--get-regexp", r"^branch\..*\.aide-"], consumer,
+                check=False).stdout
+
+
+@pytest.mark.parametrize("mode", ["auto-merge", "pr"])
+def test_merge_with_no_origin_is_refused_before_it_tests_merges_or_ticks(
+        aide, consumer: Path, mode: str):
+    """Issue #377: under a mode that pushes, `merge` ran the suite, merged,
+    ticked ✅, wrote the ledger row and committed before the push found no
+    origin — and every re-run did all of it again. Refused first now: main,
+    the claim branch and its base are as they were, the item is not ✅ and no
+    row is written. Under `local` the same claim lands."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    branch = "aide/001-the-greeter"
+    _git(["switch", "main"], consumer)
+    _met_but_the_mode(consumer, mode)
+    main, tip = _sha(consumer, "main"), _sha(consumer, branch)
+
+    assert aide.main(["--repo", str(consumer), "merge", "1"]) == 1
+    assert _sha(consumer, "main") == main
+    assert _sha(consumer, branch) == tip
+    assert _recorded_base(aide, consumer, branch) == "main"
+    assert _item_status(aide, consumer, 1) != "complete"
+    assert not (consumer / "docs" / "aide" / "ledger.md").exists()
+    assert _git(["status", "--porcelain"], consumer).stdout == ""
+
+    _set_mode(consumer, mode, "local")
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 0
+    assert _item_status(aide, consumer, 1) == "complete"
+
+
+@pytest.mark.parametrize("argv", [
+    ["claim"], ["claim", "--dry-run"],
+    ["queue", "start", "1"], ["queue", "start", "1", "--dry-run"],
+    ["queue", "start", "1", "--specs"],
+], ids=lambda argv: "-".join(a.lstrip("-") for a in argv))
+def test_claim_and_queue_start_with_no_origin_create_nothing(
+        aide, consumer: Path, argv: list):
+    """Issue #377: both pushed last, so with no origin each left a branch on
+    this machine, its base recorded, and exited 1. Refused first now, a dry
+    run included: no branch, no record, HEAD where it was."""
+    _met_but_the_mode(consumer, "auto-merge")
+    branches, config = _branches(consumer), _aide_config(consumer)
+    head = _sha(consumer, "HEAD")
+
+    assert aide.main(["--repo", str(consumer), *argv]) == 1
+    assert _branches(consumer) == branches
+    assert _aide_config(consumer) == config
+    assert _branch(consumer) == "main" and _sha(consumer, "HEAD") == head
+    assert _git(["status", "--porcelain"], consumer).stdout == ""
 
 
 def test_sync_is_not_stalled_by_the_claude_runtimes_scratch_worktrees(aide, consumer: Path):

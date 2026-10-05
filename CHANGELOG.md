@@ -136,6 +136,210 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.37.0] — 2026-10-03
+
+### Added
+
+- **`aide queue discard NNN` deletes a queue branch `queue start` made that
+  carries no commits beyond its recorded base, locally and on origin, and
+  refuses one that does (issue #383).** The undo of `queue start` for a
+  queue nobody planned. It counts the branch, and origin's copy as last
+  fetched, against the base, and deletes origin's copy with a lease on the
+  commit it counted, so a push made since the fetch is never deleted; a
+  copy origin no longer has (a stale remote-tracking ref, asked of origin
+  rather than read from git's message) counts as deleted. A checked-out
+  branch is left for its base first, and a refusal after that switch says
+  the checkout is now on the base. A queue file of the number, or of the
+  one after it (a maintenance queue's stage queue), written and not
+  committed — which the switch would carry onto the base, stranded —
+  uncommitted changes to tracked files or an unfinished merge or rebase
+  while the branch is checked out, a branch checked out in another
+  worktree, no recorded base (the message names `git branch -D` as the
+  person's route), a branch only on origin and no such branch are each
+  refused, exit 1, with one sentence and nothing discarded; so is a
+  refused delete on origin that origin cannot then be asked about. `local`
+  mode never touches origin, and off `local` mode with no remote named
+  origin only the local branch is deleted — the one counted against
+  `max_open_queues`. `git branch -D` takes the branch's
+  recorded base and start with it. With nothing on the branch to lose there
+  is no preview and no `--yes`, and every shared `queue` option is refused,
+  exit 2, so `discard --dry-run` never runs. `aide queue -h` states it,
+  pinned to the code. §3's first rule names it beside `aide gc` ("discarding
+  an empty queue branch is `aide queue discard NNN`"), with a Rationale
+  bullet saying why it is not `gc`, and `AGENT-CONTEXT.md`'s verb list
+  carries it: the always-on floor moves from 9508 to 9584 content bytes.
+  `queue start`'s push-failure message now names `aide queue discard NNN`
+  as the way to start over instead of a `git switch … && git branch -D …`
+  chain §3's one-command rule forbids; where the start committed the
+  insights inbox the repository lacked, or for a specs-queue branch, it
+  names the two git commands as separate steps, since discard refuses a
+  branch carrying a commit. `gc`'s docstring and comments stop calling it
+  the one destructive verb: it is the one that deletes work.
+
+### Fixed
+
+- **`/aide-run-roadmap` stops on a queue-planner hand-back that wrote no
+  queue, and discards the empty queue branch, instead of going on to `queue
+  pr` (issue #383).** The runner's *Generate the next queue* step ran `aide
+  queue start`, which creates and pushes the queue branch, spawned the
+  planner and went straight on to `queue pr` and the plan gate. A planner
+  that hands back — a framework-file edit needed, an ambiguous roadmap, and
+  since 2.32.0 the likely case, a next stage waiting on a ⏸️ or withdrawn
+  one — writes no queue file, so the run opened a PR for a branch holding no
+  plan, or failed on the missing file, rather than stopping with the
+  planner's question. The runner now asks git whether
+  `docs/aide/queue/queue-NNN.md` is committed on the branch (`git cat-file
+  -e HEAD:…`, the commit and not the index, as `queue pr` reads it) before
+  anything else. When it is not, it runs `aide queue discard NNN`, so the
+  next run does not read an open, empty queue branch counting against
+  `max_open_queues`, then stops and relays the hand-back verbatim; a
+  discard refusal is relayed too. Until the stage's owner decides, each run
+  plans the same stage and stops on the same question; the state table and
+  the stop list say so, and a new state row covers a queue branch found
+  with no queue file — the same check, made in the state reading on a
+  queue branch before the *built out* row, since `aide status` gives no
+  queue-file signal, with a legacy slugged queue file counting — so a
+  session that ended mid-plan reaches a discard and a fresh plan, or a
+  stop on the verb's refusal, rather than **Queue end**. The queue-planner
+  spec now says a hand-back writes nothing — no tidy, no `progress.md`
+  edit, no commit, not even an insight capture, which it names in the
+  hand-back instead — and is decided before step 3's tidy, so the branch
+  is left as `queue start` made it.
+
+### Changed
+
+- **`aide queue pr` and `aide queue ready` refuse a queue branch whose tip
+  carries no queue file of its own number (issue #383).** Exit 1, one
+  sentence, nothing pushed and the forge asked nothing — the engine's half
+  of the fix above, so a runner that misreads a hand-back still opens no PR.
+  The refusal comes before the mode and the forge are considered: a `local`
+  mode or `forge = "none"` refusal is one a runner reads as "carry on
+  without a PR", and it must not carry on from an unplanned branch. Only a
+  committed file counts, and only the branch's own number: a stacked branch
+  listing the queue file below it is refused. `aide queue -h` states it,
+  pinned to the code.
+- **The `Subcommands::` block at the top of `aide -h` lists `queue pr`,
+  `queue ready` and `queue discard`.** The first two shipped in 2.21.0
+  without a line there.
+
+## [2.36.0] — 2026-10-03
+
+### Changed
+
+- **`[python] bootstrap` is read by its first word, and a bootstrap that is
+  not Python's own argv runs as a command with the venv active (issue
+  #378).** `aide env --bootstrap` ran every bootstrap but a leading `pip` as
+  the venv's Python with the value for arguments, so `bootstrap = "uv sync"`
+  became `<venv python> uv sync`, which looks for a script file named `uv`;
+  `poetry install`, `pdm install` and `make dev` failed the same way, were
+  reported as a failed bootstrap and left the venv stale, and nothing on
+  that path could succeed. The command reading applies only to a first word
+  the old reading could never have run, so every bootstrap that worked runs
+  the same way: a leading `pip` still runs as the venv's `python -m pip`; a
+  leading `python` or `python3` is replaced by the venv's Python; a leading
+  option (`-m poetry install`, `-c …`), a `.py` file (`setup.py develop`)
+  or any other file in the repository (`manage install`, `tools/bootstrap`,
+  `app.pyz install`, or a directory holding a `__main__.py`) is passed to
+  the venv's Python, as before — so no
+  `aide.toml` that worked needs an edit, and a shell script in the
+  repository is written `sh <script>`. Anything else is a command, looked
+  up in the venv's script directory (`bin`, or `Scripts` on Windows) and
+  then on PATH, and run with that directory first on PATH, `VIRTUAL_ENV`
+  set to the venv — what `poetry install` and `pdm install` install into —
+  and `UV_PROJECT_ENVIRONMENT` set to it too, since `uv sync` ignores
+  `VIRTUAL_ENV` without `--active` and would otherwise fill the project's
+  `.venv` rather than a venv configured elsewhere. A program found in
+  neither place is a failed bootstrap whose one sentence names it and the
+  directory looked in; nothing runs, the record says why, and `aide env`
+  reports the venv stale naming the program until a bootstrap completes. A
+  bootstrap that cannot start at all is the same failure, where it used to
+  be a traceback. The record's `command` is the argv that ran, with a
+  command's program as the path it was found at. The value is still split
+  on whitespace. `aide env -h` states the reading, pinned to the code, and
+  the `aide.toml` scaffold now carries a commented `# bootstrap = "pip
+  install -e .[dev]"` line naming the readings — the key was documented
+  only in the engine's defaults.
+- **`bootstrap = ""` builds the venv and installs nothing.** It ran a bare
+  venv Python, an interactive interpreter that waited on stdin; it now runs
+  nothing after the build and records a finished bootstrap.
+
+## [2.35.3] — 2026-10-03
+
+### Fixed
+
+- **A verb that pushes refuses a missing `origin` before it does anything
+  (issue #377).** Under `[git] mode = "auto-merge"` or `"pr"` in a checkout
+  with no remote named `origin`, each verb that pushes found out at its push,
+  its last step. `aide merge` under `auto-merge` ran the suite, merged the
+  claim branch, ticked ✅, wrote the ledger row and committed, then failed
+  the push — and every re-run paid a full suite run to fail at the same
+  place. `aide claim` and `aide queue start` left the branch on this
+  machine with its base recorded, and `aide queue restack` left its merges
+  made and unpushed. All four now ask first, straight after the repository
+  check and before anything is created, run or written, `--dry-run`
+  included, and refuse with exit 1 and the sentence `aide env` already
+  prints for the same machine: the setting, and the two ways out (add a
+  remote named `origin`, or set `[git] mode = "local"`). One helper,
+  `_require_origin`, holds the check. `local` mode is unchanged, and so is
+  an `origin` that is there but unreachable: that still fails at the push
+  and says what survives. `aide queue pr` and `aide queue ready` already
+  refused with no origin and are unchanged. Two restack runs that used to
+  succeed there now exit 1 as well: off local mode with no origin, a `queue
+  restack` with nothing to merge (`every stack is consistent`) and the
+  record-only form of `queue restack NNN --base REF` exited 0, having had
+  nothing to push, and are now refused like every other restack there. §4
+  states the rule (core) and its history (Rationale); §2 says a claim with
+  no origin creates nothing; `aide claim -h`, `aide merge -h` and `aide
+  queue -h` state it per verb.
+  `queue start`'s cap refusal printed "with no origin to pull from, a queue
+  lands when…" for every checkout that was in local mode or had no origin,
+  local mode with an origin included; with no origin now refused off local
+  mode, it is printed in local mode only and reads "in local mode nothing
+  is pulled, so a queue lands when…", and `aide queue -h` says "in local
+  mode" where it said "in local mode or with no origin".
+
+## [2.35.2] — 2026-10-03
+
+### Fixed
+
+- **`aide status`, `aide check` and the record readers read a queue's open
+  state as `claim` does (issue #393).** 2.35.1 stopped a 📋 item every
+  bullet of which sits in a stage whose Stage summary row is ❌ keeping a
+  queue open for `claim`, but three readers kept their own reading of the
+  bullets, so the commands disagreed about the same tree. `aide status` no
+  longer counts such an item open, so the `(live)` marker and the runnable
+  work it feeds move on to the queue `claim` would take, and the item is
+  named on its queue's line instead (`done — not offered, 📋 in a withdrawn
+  stage: NNN`). `aide check`'s declared-status comparison no longer warns
+  `marked completed but still has open items` on a queue left with only such
+  items — the one `aide queue tidy` stamps completed — and a queue declared
+  `Live` over the same tree is warned with `every item is finished or 📋 in
+  a withdrawn stage`. Such an item's spec, and a queue left with only such
+  items, are records, as a ⏸️ item's are, read afresh on every run: the
+  insight and gate citation-by-position warnings and the stale
+  engine-marker assumption warning skip them. The template-drift warning no
+  longer names such a queue, and keeps such a spec in scope, as it does a ⏸️
+  one, since a summary row taken off ❌ revives it. A 🚧 or 🔍 item of a
+  withdrawn stage is unchanged everywhere — live work until its owner drops
+  it. §1 → `insights.md` and `items.md` and `aide check -h` state the record
+  half.
+- **A dependency on a withdrawn stage's 📋 item has left the queue's way, as
+  a ❌ one has (issue #393).** It read as 📋, a blocking status, so its
+  dependents were held for good — `claim` reported them `waiting on NNN
+  (planned)` on work it would never offer. One reading, `still_blocks`, now
+  decides what holds a dependent back in `claim`'s pick, its `none left`
+  report, the `early ready:` line, `queue_is_open`, the queue-end hold and
+  `aide check --queue`'s ordering and cycle graph, so they cannot disagree.
+  `aide check --queue` also counts such an item spent, as an excluded one:
+  no scope conflict with it is reported, and a queue whose items are all
+  spent or withdrawn gets no queue-end findings. `claim`'s interface-pin
+  line names such a dependency as having no code to check against, as §5
+  does for a ❌ or ⏸️ one. A 🚧 or 🔍 dependency in a withdrawn stage still
+  blocks. §1 → `items.md` states it (the `## Dependencies` sentence, with
+  the why in its Rationale) and §5 the interface-pin case; the
+  `aide-item-specs` section skill carries and pins both, and `aide claim -h`
+  names the case.
+
 ## [2.35.1] — 2026-10-03
 
 ### Fixed
