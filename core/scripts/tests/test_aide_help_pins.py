@@ -49,7 +49,8 @@ that moved everything.
   *"dropping a deliverable is a decision about scope, not a finding"*,
   *"only deferred work is resumed"*, *"only dropped work is restored"* and
   *"Resume such a bullet before it is itemised"* (`progress`), *"a merge
-  records work that landed"* (`merge`), *"the stage is dropped, so its bullets no longer speak for
+  records work that landed"* and *"since started work is live until its
+  owner drops it"* (`merge`), *"the stage is dropped, so its bullets no longer speak for
   it"* (`check`), *"roadmap.md's deliverables carry no item marker, so there
   is no bullet of the item to mirror"* (`progress`) — rationale for a rule
   pinned beside them, not a second rule.
@@ -1496,6 +1497,24 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_git::test_withdrawn_stage_items_reads_only_items_wholly_inside_one")),
         ("an item dropped by its own bullets is \u274c, not \U0001f4cb",
          "test_aide_git::test_claim_skips_an_item_of_a_withdrawn_stage"),
+        # `queue_is_open(..., withdrawn)` from `_open_queue_texts`, and
+        # `_withdrawn_queued_lines` on the "no open queue" refusal (#389).
+        ("Such a \U0001f4cb item keeps no queue open, so the default queue "
+         "is the lowest-numbered one with other work open, and where no "
+         "queue is open the refusal names each one still listed",
+         ("test_aide_git::test_claim_moves_past_a_queue_left_with_only_withdrawn_items",
+          "test_aide_git::test_claim_names_withdrawn_items_when_no_queue_is_open",
+          "test_aide_git::test_queue_is_open_counts_no_planned_item_of_a_withdrawn_stage")),
+        ("a \U0001f6a7 or \U0001f50d item of a withdrawn stage still keeps "
+         "its queue open",
+         "test_aide_git::test_queue_is_open_counts_no_planned_item_of_a_withdrawn_stage"),
+        # `queue_end_holds(..., withdrawn)`: a 📋 one leaves `rest` (#389).
+        ("bar an item whose dependencies lead back to it and a \U0001f4cb "
+         "item of a withdrawn stage",
+         "test_aide_git::test_a_withdrawn_planned_queue_mate_does_not_hold_the_queue_end_item"),
+        # The withdrawn loop inside `if relevant:` (#389).
+        ("and each item of a withdrawn stage besides",
+         "test_aide_git::test_gate_held_none_left_names_the_withdrawn_items"),
         # The "none left" report is built from the gates that actually apply.
         ("It will not offer a blocked item",
          "test_aide_gates::test_none_left_names_only_the_gates_that_apply"),
@@ -1938,6 +1957,16 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_git::test_pr_mode_merge_refuses_a_dropped_item_and_pushes_nothing")),
         ("A \u23f8\ufe0f item is merged and ticked",
          "test_aide_git::test_merge_refuses_a_dropped_item_until_it_is_restored"),
+        # `_merge_withdrawn_item` — working tree and base for the stage, the
+        # claim branch too for the item's status — right after the ❌ refusal
+        # (issue #389).
+        ("An item \U0001f4cb with every bullet in a stage whose summary row "
+         "is \u274c, in the working tree or on the base, is refused the same "
+         "way, and the refusal names `aide progress set NNN dropped`",
+         "test_aide_git::test_merge_refuses_a_planned_item_of_a_withdrawn_stage"),
+        ("one the claim branch, the working tree or the base reads "
+         "\U0001f6a7 is merged",
+         "test_aide_git::test_merge_refuses_a_planned_item_of_a_withdrawn_stage"),
         # `pending_row` -> `append_ledger_row`, one row, `ledger_path(ddir)`.
         ("The row is one per item, in docs/aide/ledger.md",
          "test_aide_ledger::"
