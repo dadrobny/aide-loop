@@ -68,7 +68,7 @@ entirely — a runtime that does not express one simply has no cell here:
 
 | Optional definition | Tier | Claude | Does |
 |---|---|---|---|
-| reviewer | **T2** | `claude-sonnet-5-5, high` | reads one item's diff adversarially, concurrent with the validator; produces findings, merges nothing |
+| reviewer | **T2** | `claude-sonnet-5-5, high` | reads one item's diff adversarially, once, concurrent with the first validation; produces findings, merges nothing |
 | spec-reviewer | **T3** | `claude-opus-5-5, high` | reads all of a queue's specs for the cross-item conflicts `aide check --queue` cannot decide |
 
 Recon/claim is **not a role** — it is deterministic (`aide claim`), so no agent and
@@ -117,17 +117,18 @@ two (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), so a helper cannot spawn one of
 its own. The user's own session is untouched by all three.
 
 **Optional definition — the item reviewer.** An adapter **may** express a
-**reviewer** at **T2**, dispatched over one item's diff concurrently with the
-`validator` and gated by a `loop.review` key in `aide.toml` (`"off"` by
-default). The two are different reads and neither covers for the other
-(`conventions.md` §9): the validator is spec-relative and gates the merge, the
+**reviewer** at **T2**, dispatched once over one item's diff concurrently
+with the first `validator` and gated by a `loop.review` key in `aide.toml`
+(`"off"` by default). The two are different reads and neither covers for the
+other (`conventions.md` §9): the validator is spec-relative and gates the merge, the
 reviewer is adversarial and produces findings. Where an adapter expresses it,
 **the merge must wait for both** — findings collected after the item lands gate
 nothing — and the role writes no code, modifies no tests, does not merge and
 does not touch `progress.md`; its findings triage in scope (a fix dispatched
-back) or out of scope (one `insights.md` line). The engine's default is
-off, so an adapter that omits the role is conformant and its consumers are
-unaffected.
+back) or out of scope (one `insights.md` line). Its findings are triaged at
+the first validation's verdict, a FAIL included, and ride that round's fix;
+no fix round is reviewed again (§9). The engine's default is off, so an
+adapter that omits the role is conformant and its consumers are unaffected.
 
 **Optional definition — the queue-boundary reviewer.** Where an adapter
 supports batch spec-authoring (spec §1's spec-queue entry-point), it should also

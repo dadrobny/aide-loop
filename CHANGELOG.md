@@ -136,6 +136,33 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.38.0] — 2026-10-05
+
+### Changed
+
+- **Under `loop.review = "background"` the item reviewer runs once, its
+  findings ride the first fix round, and the scope check is the validator's
+  alone (issue #357).** The reviewer ran beside the validator and the merge
+  waited for both, but `/aide-run-item` triaged review findings only at a
+  held PASS: a first validation that FAILed left them unaddressed, so a
+  finding either waited for a later PASS and paid a round of its own or was
+  read again over a diff the fix had changed. §9 now states who owns what —
+  validation the suite, AC coverage, `aide scope`, the Assumptions, the
+  spec's Validation section and vision fit; review the correctness of the
+  diff and its fit to the codebase — and when each runs: one review per
+  item, of the diff as first built. What a consumer running
+  `review = "background"` sees differ: on a first FAIL the orchestrator
+  waits for the reviewer and sends its in-scope findings in the same fix
+  round as the validator's failures (one round, counted as before); every
+  later round is checked by a fresh validator and no second reviewer; a
+  finding about code a fix removed or rewrote is dropped and left out of the
+  ledger's finding counts; an edit outside the authorised paths is the
+  validator's FAIL and no longer also a blocking review finding — a reviewer
+  that notices one names it, unranked; an item a CI fix round reopened is
+  not reviewed again; and an abandoned item's ledger row carries the finding
+  counts kept so far. No config key or verb changes, and
+  under `review = "off"` nothing changes.
+
 ## [2.37.5] — 2026-10-05
 
 ### Fixed

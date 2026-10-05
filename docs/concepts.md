@@ -74,11 +74,11 @@ tiers still hold. Exact model IDs and effort levels per role are pinned in
 [`ADAPTER-SPEC.md`](../adapters/ADAPTER-SPEC.md) §2.
 
 Two further roles are **optional**, and an adapter may omit them: a
-**reviewer** (T2), an adversarial read of an item's diff concurrent with the
-validator, which produces findings and merges nothing — off unless `aide.toml`
-sets `loop.review`; and a **spec-reviewer** (T3), which reads a whole queue's
-specs at once, when they are written up front, and reports the conflicts
-between them for a human to arbitrate.
+**reviewer** (T2), an adversarial read of an item's diff concurrent with its
+first validation, which produces findings and merges nothing — off unless
+`aide.toml` sets `loop.review`; and a **spec-reviewer** (T3), which reads a
+whole queue's specs at once, when they are written up front, and reports the
+conflicts between them for a human to arbitrate.
 
 ## Orchestrators (item ⊂ queue ⊂ roadmap)
 
