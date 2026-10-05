@@ -149,12 +149,13 @@ instead — that is the bump policy above, and it is enforced by
   is a new gate, `aide gate` only approves and declines, and approving a
   "no" would falsify the record. The warning is now silent when the reach
   holds nothing `claim` would still offer: a Blocks cell left empty (`—`,
-  `-` or blank), items that are all ✅ or ❌, or a `stage N` / `stage N–M`
+  `–`, `-` or blank), items that are all ✅ or ❌, or a `stage N` / `stage N–M`
   whose every stage is written with deliverable bullets all ✅ or ❌, or is
   withdrawn (❌ summary row), and whose items are all spent — a 📋 item
   every bullet of which sits in a withdrawn stage counting as ❌, a 🚧 or ⏸️
   one not. `all`, `stage N+`, an item with no bullet yet, an item a
-  withdrawn stage shares with a stage still in scope, and a stage not yet
+  withdrawn stage shares with a stage still in scope while that bullet is
+  open, and a stage not yet
   written or with nothing queued still warn, unchanged, since the refused
   work could still land there. A non-empty Blocks cell that names no reach
   (`stage 3a`, `TBD`) is not "nothing": a declined gate over one now says
