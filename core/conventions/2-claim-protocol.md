@@ -45,7 +45,8 @@ to publish to, and each of them refuses before it changes anything (§4).
 upstream `origin/<branch>` is gone was published, and is never advised a push
 — that would recreate a branch deleted on purpose. The same three verbs name it
 as **stale** when everything on it is already in its base or `main_branch`
-(`aide gc --merged` deletes it), and otherwise as work **not found** there.
+(`aide gc --merged` deletes it, a queue branch only against `main_branch`),
+and otherwise as work **not found** there.
 Not found is what was measured, not that the work never landed: a squash
 merge the base has since changed over the same lines, or any squash merge
 under git older than 2.38, reads the same way. So check whether its work merged

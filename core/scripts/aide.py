@@ -18553,7 +18553,7 @@ def _gc_merged_ground_skip(branch: str, base: str, main_branch: str,
     landed where it was meant to land, and the queue branch's PR carries its
     work, so it stays a target.
     """
-    if branch == base:
+    if base in (branch, f"origin/{branch}"):
         return "it is the base"
     if (_is_queue_branch(branch, prefix)
             and base not in (main_branch, f"origin/{main_branch}")):
@@ -18676,7 +18676,7 @@ def cmd_gc(args: argparse.Namespace) -> int:
             why = _gc_merged_ground_skip(br, main, main_branch, prefix)
             if why is None:
                 targets[br] = ground
-            elif br != main:
+            elif main not in (br, f"origin/{br}"):
                 skips[br] = why
 
     if not targets and not skips:
