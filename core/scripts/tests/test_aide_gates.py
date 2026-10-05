@@ -368,6 +368,28 @@ def test_breadth_of_an_all_merged_stage_falls_back_to_the_bare_reach():
     assert "stage 1" in w and "holding" not in w
 
 
+@pytest.mark.parametrize("status", ["⏳ Awaiting", "❌ Declined (2026-10-05)"])
+def test_breadth_leaves_out_a_planned_item_only_a_withdrawn_stage_holds(status):
+    """Issue #409: 040 is 📋 only in stage 2, which its ❌ summary row
+    withdraws, so `claim` never offers it — the breadth reads "held" as the
+    declined gate's silence does (`spent_by_withdrawal`), on both warnings."""
+    lines = _withdraw_stage_2(_lines_with_stages(
+        f"| G | stage 1–2 | {status} | — |", "2:X. *(Item 040)*"))
+    (w,) = aide.gate_warnings(lines)
+    assert "stage 1–2 — holding 2 item(s): 027, 028" in w and "040" not in w
+
+
+def test_breadth_still_counts_live_work_in_a_withdrawn_stage():
+    """Withdrawal spends a 📋 item only: a 🚧 one there is held until its
+    owner drops it."""
+    lines = _withdraw_stage_2(_lines_with_stages(
+        "| G | stage 1–2 | ⏳ Awaiting | — |", "2:X. *(Item 040)*"))
+    lines = "\n".join(lines).replace("- 📋 X. *(Item 040)*",
+                                      "- 🚧 X. *(Item 040)*").splitlines()
+    (w,) = aide.gate_warnings(lines)
+    assert "holding 3 item(s): 027, 028, 040" in w
+
+
 # --------------------------------------------------------------------------- #
 # set_gate_status
 # --------------------------------------------------------------------------- #

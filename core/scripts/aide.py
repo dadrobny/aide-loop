@@ -5229,7 +5229,11 @@ def _reach_with_breadth(lines: List[str], g: HumanGate) -> str:
 
     The count covers the items the gate still sits in front of: a ✅ item has
     merged and a ❌ one is out, so "holding" either would overstate the reach
-    against the very enforcement this message mirrors. (``claim``'s stall
+    against the very enforcement this message mirrors. "Out" is read as
+    ``_declined_reach_spent`` reads it (issue #409): ❌ by the item's own
+    bullets, or 📋 with every bullet in a withdrawn stage
+    (``spent_by_withdrawal``) — ``claim`` offers neither, so a warning that
+    goes quiet on that reading must not count them while it still fires. (``claim``'s stall
     report narrows further, to the claimable subset of one queue — that is
     the runtime view; this is the authoring-time view of the same fact, and a
     stage whose every item merged falls back to the bare reach.)
@@ -5237,8 +5241,9 @@ def _reach_with_breadth(lines: List[str], g: HumanGate) -> str:
     if g.stage is None:
         return g.reach
     _, _, item_status = _parse_item_status(lines)
+    left = spent_by_withdrawal(lines, item_status)
     items = [i for i in gate_stage_items(lines, g)
-             if item_status.get(i, "planned") not in ("complete", "excluded")]
+             if item_status.get(i) != "complete" and i not in left]
     if not items:
         return g.reach
     return (f"{g.reach} — holding {len(items)} item(s): "
