@@ -235,6 +235,23 @@ def test_reword_consumes_every_line_of_a_wrapped_roadmap_bullet():
     ]
 
 
+@pytest.mark.parametrize("after, boxes", [
+    ("  - an indented sub-bullet", 3),    # the counter reads it as a bullet too
+    ("  _authoring guidance_", 2),
+    ("\n  indented prose after a blank", 2),
+], ids=["sub-bullet", "guidance", "blank"])
+def test_a_wrapped_roadmap_bullet_ends_where_the_counter_says(after, boxes):
+    """The continuation stops at anything that is not part of the sentence."""
+    wrapped = ROADMAP.replace(
+        "- The benchmark runs end to end.",
+        "- The benchmark runs\n  end to end.\n" + after)
+    out, err = aide.reword_roadmap_bullet(wrapped, "1", 1, "It runs.", boxes)
+    assert err is None
+    lines = out.splitlines()
+    assert lines[lines.index("- It runs.") + 1:][:len(after.splitlines())] == (
+        after.splitlines())
+
+
 def test_a_roadmap_that_cannot_be_lined_up_writes_nothing_and_says_why():
     out, err = aide.reword_roadmap_bullet(ROADMAP, "1", 2, "x", 5)
     assert out is None
