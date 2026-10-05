@@ -127,7 +127,9 @@ nothing — and the role writes no code, modifies no tests, does not merge and
 does not touch `progress.md`; its findings triage in scope (a fix dispatched
 back) or out of scope (one `insights.md` line). Its findings are triaged at
 the first validation's verdict, a FAIL included, and ride that round's fix;
-no fix round is reviewed again (§9). The engine's default is off, so an
+no fix round is reviewed again (§9) — the validation after it checks
+instead that each blocking finding it fixed left a traced test or a stated
+reason for none, without judging the fix. The engine's default is off, so an
 adapter that omits the role is conformant and its consumers are unaffected.
 
 **Optional definition — the queue-boundary reviewer.** Where an adapter

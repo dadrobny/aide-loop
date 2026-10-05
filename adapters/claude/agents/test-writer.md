@@ -54,7 +54,9 @@ fixture conventions only.
    dispatch hands you a finding rather than the spec's cases, add its bullet
    under the spec's `## Review findings` (creating the section after the
    Testing Strategy if it is absent) and name the test with its label —
-   `aide-test-hygiene` in your context says what the bullet holds.
+   `aide-test-hygiene` in your context says what the bullet holds. For a
+   **blocking** finding the test is owed, not optional: the next validator
+   looks for a test carrying that label (§9).
 5. **Reconcile the stale tests the spec lists.** When the Testing Strategy
    names "existing tests to reconcile", update those assertions to the NEW
    specified behaviour in this same pass — leaving them fails validation on a
