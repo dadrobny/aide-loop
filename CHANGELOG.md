@@ -136,6 +136,21 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.37.3] — 2026-10-05
+
+### Fixed
+
+- **`aide progress reword N --criterion K` now replaces a wrapped roadmap
+  bullet whole (issue #391).** The `progress.md` side already rewrote every
+  line of a wrapped box (#237), but the `roadmap.md` mirror replaced only the
+  bullet's first line, so the old wording's indented continuation lines stayed
+  under the new text and the criterion read twice. The mirror now consumes the
+  bullet's first line plus every indented non-bullet line under it — the shape
+  `progress.md` reads — and leaves the bullets either side, `Target:` included,
+  untouched. `aide check`'s acceptance drift warning stays a count comparison,
+  as before: wording is what `reword` exists to change, so comparing it would
+  fire on every honest rewording, and a stale continuation line is not a bullet.
+
 ## [2.37.2] — 2026-10-05
 
 ### Fixed

@@ -5305,6 +5305,22 @@ def test_reword_rewrites_an_untouched_criterion_and_mirrors_the_roadmap(
         "docs/aide/progress.md", "docs/aide/roadmap.md"]
 
 
+def test_reword_replaces_a_wrapped_roadmap_bullet_whole(aide, consumer: Path):
+    """#391: the mirror consumed only the first line, so the old wording's
+    tail stayed under the new text and the criterion read twice."""
+    (consumer / "docs" / "aide" / "roadmap.md").write_text(
+        _ROADMAP.replace("- Both items land.",
+                         "- Both items land, a criterion\n  long enough to wrap\n"
+                         "  over three lines."), encoding="utf-8")
+    _commit(consumer, "a roadmap with a wrapped criterion")
+    assert aide.main(["--repo", str(consumer), "progress", "reword", "1",
+                      "--criterion", "1", "--text", "Both items merge to main."]) == 0
+    roadmap = (consumer / "docs" / "aide" / "roadmap.md").read_text(encoding="utf-8")
+    assert roadmap.splitlines()[-2:] == [
+        "- Both items merge to main.",
+        "- Target: the greeter answers in under a millisecond."]
+
+
 def test_reword_refuses_once_the_criterion_has_been_attested(aide, consumer: Path):
     _accept_one(aide, consumer, "checked")
     before = (consumer / "docs" / "aide" / "progress.md").read_bytes()
