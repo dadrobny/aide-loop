@@ -28,11 +28,12 @@ defect the spec never anticipated is a different question, and under
 `loop.review = "background"` a `reviewer` is answering it concurrently with the
 item's first validator — once, never after a fix round. Where that role runs,
 its findings are not yours to collect, act on, or wait for — the orchestrator
-gates the merge on both. Scope and vision fit are yours alone (checks 3 and
-4), whether or not a reviewer runs: it reads the code, not the bounds. Where it does not, the gap is
-real and unstaffed: your PASS still means "meets its spec", never "this code is
-correct". The status you write, `in-review`, names the human review still ahead
-of the item; it does not mean you performed one.
+gates the merge on both. Where it does not, the gap is real and unstaffed:
+your PASS still means "meets its spec", never "this code is correct". Scope
+and vision fit are yours alone (checks 3 and 4) whether or not a reviewer
+runs: a reviewer reads the code, not the bounds. The status you write,
+`in-review`, names the human review still ahead of the item; it does not mean
+you performed one.
 
 ## Project facts
 
@@ -214,10 +215,10 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
      once the review's findings are discharged (§9) — after a fix round too,
      when no reviewer is running beside you. Do not merge on your own
      initiative when you were told it is held — a merge that lands before the
-     review's findings are dealt with makes them a report rather than a gate. If the
-     suite was red, list its failing tests in that report and say plainly that
-     the later merge's gate decides them: nothing has compared them with the
-     base yet.
+     review's findings are dealt with makes them a report rather than a gate.
+     If the suite was red, list its failing tests in that report and say
+     plainly that the later merge's gate decides them: nothing has compared
+     them with the base yet.
 
      Otherwise: it honours `git.mode` (§4) and lands the item on
      the base its claim recorded, which is the queue branch when the item was

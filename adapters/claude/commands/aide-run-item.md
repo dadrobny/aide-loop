@@ -61,7 +61,7 @@ and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
 `/aide-run-queue` → *CI fix round* reopens an item whose change broke the
 queue PR's CI, and claims it like any other. You can tell one: `aide status`
 prints `reopened: item NNN (…) — CI …` for it, not completed again. Its spec
-and tests are already merged, so the steps run with three differences:
+and tests are already merged, so the steps run with four differences:
 
 - **Step 1** returns the existing spec, as for any item whose spec exists.
 - **Step 2 is skipped** unless a finding is in a test. Then brief a fresh
@@ -77,7 +77,12 @@ and tests are already merged, so the steps run with three differences:
   They come from the orchestrator's triage, or, in a fresh session, from the
   item's `reopened:` reason.
 
-Steps 4–6 run as for any item, and their rounds count against this item's
+- **No `reviewer` is spawned**, whatever `loop.review` says: the item was
+  reviewed when it was first built, and a CI fix is a fix round (§9). Under
+  `"background"` the merge is still held and yours to run, with every
+  `--findings` count 0 — no review finding was triaged in this pass.
+
+Steps 5–6 run as for any item, and their rounds count against this item's
 own `loop.validation_rounds`, apart from the CI round the queue counts.
 
 ## Steps
@@ -218,14 +223,14 @@ own `loop.validation_rounds`, apart from the CI round the queue counts.
    from `aide.toml` (5 when unset): it is the ceiling on rounds per item. Read
    the verdict:
    - **Any FAIL of the first validator, `loop.review = "background"`** →
-     before dispatching the fix, wait for the reviewer if it has not returned
-     and triage and rank its findings exactly as *PASS (merge held)* below
+     before dispatching the fix, wait for the reviewer you spawned in step 4
+     if it has not returned and triage and rank its findings exactly as *PASS (merge held)* below
      says, keeping the same running totals. Send the in-scope blocking
      findings, the minor ones you choose to fix and any nits **in the same
      fix round** as the validator's failures, by owner of the file — builder
-     for production code, `test-writer` for tests: one fix pass for both
-     reads, one round. Then a fresh `validator`, merge still held, and no
-     `reviewer`. The bullets below say which builder and which failure goes
+     for production code, `test-writer` for tests, one after the other on
+     the one branch, never both at once: one fix pass for both reads, one
+     round. Then a fresh `validator`, merge still held, and no `reviewer`. The bullets below say which builder and which failure goes
      where.
    - **FAIL — suite red (code bug)** → fresh builder on the same branch with the
      reproduce steps; then a fresh `validator`. Under `auto-merge` or `local`
@@ -265,7 +270,9 @@ own `loop.validation_rounds`, apart from the CI round the queue counts.
      or died** → not a FAIL and not a round: nothing failed for a builder to
      fix. Do not re-dispatch a validator into the same wait — report the
      command, elapsed time and log tail to the user and stop, like a blocked
-     item. The validator has already stopped the run; what hung is for a
+     item. Under `loop.review = "background"`, wait for the reviewer first
+     and put its findings in that report: they are the item's one review,
+     still untriaged, and whoever resumes the item triages them. The validator has already stopped the run; what hung is for a
      person to look at. For a merge, pass on the log tail, which holds
      `aide merge`'s own word on the base, the claim branch and what to
      re-run — and if the validator reports the merge **still running**
@@ -275,10 +282,14 @@ own `loop.validation_rounds`, apart from the CI round the queue counts.
      merge has already put them in `insights.md`.
    - **PASS (merge held)**, `loop.review = "background"` → on the first
      validator, wait for the reviewer if it has not returned, then triage its
-     findings (§9). After a fix round there is no new review: the findings
-     were triaged at the first verdict, so drop any about code that round
-     removed or rewrote — and take it off your totals — and go on with what is
-     left, usually nothing. If the validator
+     findings (§9). A path the reviewer named apart from its findings, as
+     one the spec never authorised, is not a finding: the validator's
+     `aide scope` has passed, so it is answered — never rank or count it.
+     After a fix round there is no new review: the findings were triaged at
+     the first verdict, so drop any the round did not fix whose code it
+     removed or rewrote anyway — and take it off your totals — and go on with
+     what is left, usually nothing. A finding the round fixed stays counted.
+     If the validator
      listed failing tests, the merge you run below decides them: a refusal
      naming failures the item caused is a FAIL, handled like the first bullet
      above, and counts as a round. Rank every one of

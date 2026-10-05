@@ -119,8 +119,8 @@ its own. The user's own session is untouched by all three.
 **Optional definition — the item reviewer.** An adapter **may** express a
 **reviewer** at **T2**, dispatched once over one item's diff concurrently
 with the first `validator` and gated by a `loop.review` key in `aide.toml`
-(`"off"` by default). The two are different reads and neither covers for the other
-(`conventions.md` §9): the validator is spec-relative and gates the merge, the
+(`"off"` by default). The two are different reads and neither covers for the
+other (`conventions.md` §9): the validator is spec-relative and gates the merge, the
 reviewer is adversarial and produces findings. Where an adapter expresses it,
 **the merge must wait for both** — findings collected after the item lands gate
 nothing — and the role writes no code, modifies no tests, does not merge and

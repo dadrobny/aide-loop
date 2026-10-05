@@ -83,9 +83,9 @@ spawns a sub-agent per leaf task and gates approvals.
   survives a round or is serious from the first FAIL. Under
   `loop.review = "background"` a reviewer runs once, concurrently with the
   first validation, and the merge waits for both; its findings join the first
-  fix round, and every round after is checked by a fresh validator alone. A builder that
-  finds the spec and the tests in contradiction hands the item back to
-  spec-author rather than picking a side (§5).
+  fix round, and every round after is checked by a fresh validator alone. A
+  builder that finds the spec and the tests in contradiction hands the item
+  back to spec-author rather than picking a side (§5).
 - **`/aide-run-queue [NNN]`** — claims each item (`aide claim`) then runs it via
   `/aide-run-item`, until the queue empties. Does **not** create the next queue.
 - **`/aide-run-roadmap`** — loops over queues: generate a queue → run it → generate

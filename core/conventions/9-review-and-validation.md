@@ -155,7 +155,8 @@ output in place of a verdict.
   validation's question; review's is what no document anticipated. The
   separation pays without a second provider: in one consumer's ledger of 52
   items, with builder, validator and reviewer all on the same model, 31
-  carried an in-scope review finding (8 blocking, 23 minor, 37 nits).
+  carried at least one in-scope review finding — 68 findings in all: 8
+  blocking, 23 minor, 37 nits (issue #357).
 - **Why concurrent review costs nothing and still gates.** A full suite run is
   the long pole — about three to seven minutes in the recorded runs — and a
   read of the diff fits inside it. Only the first validation has a review

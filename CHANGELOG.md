@@ -158,8 +158,9 @@ instead — that is the bump policy above, and it is enforced by
   finding about code a fix removed or rewrote is dropped and left out of the
   ledger's finding counts; an edit outside the authorised paths is the
   validator's FAIL and no longer also a blocking review finding — a reviewer
-  that notices one names it, unranked; and an abandoned item's ledger row
-  carries the finding counts kept so far. No config key or verb changes, and
+  that notices one names it, unranked; an item a CI fix round reopened is
+  not reviewed again; and an abandoned item's ledger row carries the finding
+  counts kept so far. No config key or verb changes, and
   under `review = "off"` nothing changes.
 
 ## [2.37.5] — 2026-10-05
