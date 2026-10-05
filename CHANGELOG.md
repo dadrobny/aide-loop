@@ -136,6 +136,31 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.37.2] — 2026-10-05
+
+### Fixed
+
+- **`aide check` no longer warns forever on a declined human gate whose
+  reach holds nothing open (issue #396).** Every ❌ declined gate drew
+  `… was DECLINED and still blocks <reach> — … drop those items or change
+  what the gate asks`, including one whose Blocks cell is `—`: the record a
+  re-drawn scope leaves when the question is re-asked as a new row and
+  approved. Nothing could clear it — no items to drop, a reworded Gate cell
+  is a new gate, `aide gate` only approves and declines, and approving a
+  "no" would falsify the record. The warning is now silent when the reach
+  names nothing, names only items whose bullets read ✅ or ❌, or names
+  `stage N` / `stage N–M` whose every stage is withdrawn (❌ summary row) or
+  has deliverable bullets all ✅ or ❌ over items all ✅ or ❌. `all`, `stage
+  N+`, an item with no bullet yet, and a stage not yet written or with
+  nothing queued still warn, unchanged, since the refused work could still
+  land there. Enforcement is untouched: `claim`, `gate list` and `status`
+  still count the gate as blocking. §1 → human gates states that such a
+  gate is re-planned and stays as the record, with a Rationale bullet;
+  `aide check -h` states the exception, pinned to the code; the
+  `aide-human-gates` skill carries the sentence. No new verb and no
+  "superseded by" phrase: the reach already says whether the refusal
+  guards anything.
+
 ## [2.37.1] — 2026-10-05
 
 ### Fixed

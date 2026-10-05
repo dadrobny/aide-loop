@@ -507,6 +507,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("every human gate still blocking",
          ("test_aide_gates::test_awaiting_gate_warns_with_its_reach",
           "test_aide_help_pins::test_a_warning_alone_still_exits_zero")),
+        # `_declined_reach_spent` in `gate_warnings`' declined branch (issue
+        # #396): `all` and `stage N+` return False before anything is read.
+        ("save a ❌ declined gate whose reach holds nothing open: no "
+         "item, or items and stages all ✅ or ❌, never `all` or "
+         "`stage N+`",
+         ("test_aide_gates::test_a_declined_gate_whose_reach_is_spent_is_silent",
+          "test_aide_gates::test_a_declined_gate_that_could_still_hold_work_warns")),
         # `withdrawn` from the summary rows, passed to `objective_rollup` in
         # `derived_cell_findings`, and its `derived == "excluded"` branch
         # (issue #382).

@@ -5232,6 +5232,60 @@ def _reach_with_breadth(lines: List[str], g: HumanGate) -> str:
             + ", ".join(f"{i:03d}" for i in items))
 
 
+def _declined_reach_spent(lines: List[str], g: HumanGate) -> bool:
+    """True when declined gate *g* holds nothing open, now or later (issue #396).
+
+    Such a gate has already been re-planned: its items have merged or left,
+    or it names nothing (an em dash Blocks cell kept as the record after the
+    question was re-asked). The check's "still blocks … drop those items or
+    change what the gate asks" then names a remedy with nothing to apply it
+    to, on every run, and no verb can close it. Enforcement is not touched —
+    ``blocking_gates`` still lists the gate — only the warning goes quiet.
+
+    "Open" is ``_reach_with_breadth``'s reading: an item is spent when its
+    deliverable bullets read ✅ or ❌, and anything else — an item with no
+    bullet at all included — is open. Everything that could still hold work
+    later reads open too, erring toward the warning:
+
+    - ``all`` holds every item, including ones not written yet;
+    - ``stage N+`` arms every stage numbered from N on, written or not;
+    - a ``stage N`` / ``stage N–M`` stage is spent only when its Stage
+      summary row reads ❌ (``withdrawn_stages``), or it exists, has at least
+      one deliverable bullet, every bullet reads ✅ or ❌, and every item it
+      references is spent. A stage not written yet, or one with nothing
+      queued, may still receive the work the decline refused.
+    """
+    if g.blocks_all or g.stage_open:
+        return False
+    _, _, item_status = _parse_item_status(lines)
+
+    def spent(n: int) -> bool:
+        return item_status.get(n, "planned") in ("complete", "excluded")
+
+    if g.stage is None:
+        return all(spent(n) for n in g.blocks)
+    first, last = g.stage_range
+    withdrawn = {int(n) for n in withdrawn_stages(lines) if n.strip().isdigit()}
+    sections: Dict[int, Tuple[int, int, str]] = {}
+    for sec in stage_sections(lines):
+        if sec[2].isdigit():
+            sections.setdefault(int(sec[2]), sec)
+    if last - first + 1 > len(sections) + len(withdrawn):
+        return False   # some stage in the range is not written yet
+    for n in range(first, last + 1):
+        if n in withdrawn:
+            continue
+        if n not in sections:
+            return False
+        start, end, num = sections[n]
+        statuses = stage_deliverable_statuses(lines, start, end)
+        if not statuses or any(s not in ("complete", "excluded") for s in statuses):
+            return False
+        if not all(spent(i) for i in stage_item_numbers(lines, num)):
+            return False
+    return True
+
+
 def gate_warnings(lines: List[str]) -> List[str]:
     """One warning per unresolved human gate.
 
@@ -5264,6 +5318,10 @@ def gate_warnings(lines: List[str]) -> List[str]:
                 f"this gate holds NOTHING; write it as stage {rng[1]}–{rng[0]}")
             continue
         if g.kind == "declined":
+            if _declined_reach_spent(lines, g):
+                # Re-planned already: nothing left to drop, so the remedy the
+                # warning names cannot be followed (issue #396).
+                continue
             out.append(
                 f"progress.md:{g.lineno}: {name} was DECLINED "
                 f"and still blocks {_reach_with_breadth(lines, g)} — a refusal does not release the "
@@ -18851,7 +18909,10 @@ def build_parser() -> argparse.ArgumentParser:
             "section, an objective marked \u2705 over a target not yet \u2705 "
             "Met, an Outcome target or human gate whose Status is not one of "
             "its table's marks, and every human gate still blocking \u2014 a "
-            "normal state rather than a defect. A summary row marked "
+            "normal state rather than a defect \u2014 save a \u274c declined "
+            "gate whose reach holds nothing open: no item, or items and "
+            "stages all \u2705 or \u274c, never `all` or `stage N+`. A "
+            "summary row marked "
             "\u274c is left out of every stage comparison "
             "above, deliverables and header alike: the stage is "
             "dropped, so its bullets no longer speak for it; a header or "

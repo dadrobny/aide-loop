@@ -52,6 +52,8 @@ paths:
      - A declined gate keeps blocking
      - The remedy is to re-plan: drop the blocked items, or change what the
        gate asks
+     - A declined gate whose reach holds nothing open is re-planned
+     - The row stays as the record of the decision
      - Resolving is a CLI operation, never a hand edit
      - Cite a gate by its ID, never by its position
      - The Gate cell is the gate's identity
@@ -100,6 +102,9 @@ Validation or Assumptions block, implying `Blocks: NNN`; `progress.md` holds
 the **authoritative row**, always — a gate that exists only as prose in a
 roadmap or a spec blocks nothing. **A declined gate keeps blocking.** The
 remedy is to re-plan: drop the blocked items, or change what the gate asks.
+**A declined gate whose reach holds nothing open is re-planned** — its Blocks
+cell names nothing (`—`), or only items and stages that are already ✅ or ❌.
+The row stays as the record of the decision.
 
 **Cite a gate by its ID, never by its position** — the `gate-<hex>` that
 `aide gate list` prints, in an item spec, a queue file, a roadmap stage or

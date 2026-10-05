@@ -91,12 +91,18 @@ decision was "no". The remedy is to re-plan: drop the blocked items, or change
 what the gate asks. Only `✅ Approved` opens a gate; an unrecognised status
 blocks too.
 
+**A declined gate whose reach holds nothing open is re-planned.** Its Blocks
+cell names nothing (`—`), or only items and stages that are already ✅ or ❌,
+so there is nothing left to drop. The row stays as the record of the decision,
+and `aide check` is silent about it. `all` and `stage N+` reach work not yet
+written, so a declined one is never re-planned this way.
+
 Semantics *(aide claim, check, status, gate)*:
 
 - **`aide claim` will not offer a blocked item**, and names the gate as the
   reason.
 - **`aide check` warns** on every gate still blocking — a normal state, not a
-  defect.
+  defect — except a re-planned declined gate.
 - **Resolving is a CLI operation**, never a hand edit:
   ```
   aide gate (list | approve <n|ID> | decline <n|ID>) [--evidence "…"]
@@ -203,6 +209,18 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
 - **Why the check reads `docs_dir` only.** Gates are cited by the documents
   that plan work. `gate-` and hex is ordinary vocabulary in a test suite,
   where an error would block a merge over a word that was never a citation.
+- **Why a re-planned decline goes quiet.** A gate declined because scope was
+  re-drawn was re-asked as a new row and approved; the declined row stayed as
+  the record with Blocks `—`, and `check` told it on every run to drop items it
+  did not hold or change a question already replaced (#396). Nothing could
+  close it: rewording the Gate cell makes a new gate, `aide gate` only approves
+  and declines, and approving a "no" would falsify the record. A warning no
+  one can act on teaches the reader to skip the list it sits in. A "superseded
+  by" phrase or a verb to close the row was rejected: the reach already says
+  whether the refusal still guards anything, and "open" is the reading
+  `check` already gives a reach's breadth — so a stage not yet written, or
+  written with nothing queued, still warns, since the refused work could land
+  there.
 - **Why `check` warns and `status` prints.** A gate that is still blocking is
   visible on every run instead of buried in a spec's prose; `aide status -h`
   names open gates among what it reports.
