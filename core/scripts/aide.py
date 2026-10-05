@@ -5233,10 +5233,11 @@ def _reach_with_breadth(lines: List[str], g: HumanGate) -> str:
     ``_declined_reach_spent`` reads it (issue #409): ❌ by the item's own
     bullets, or 📋 with every bullet in a withdrawn stage
     (``spent_by_withdrawal``) — ``claim`` offers neither, so a warning that
-    goes quiet on that reading must not count them while it still fires. (``claim``'s stall
-    report narrows further, to the claimable subset of one queue — that is
-    the runtime view; this is the authoring-time view of the same fact, and a
-    stage whose every item merged falls back to the bare reach.)
+    goes quiet on that reading must not count them while it still fires.
+    (``claim``'s stall report narrows further, to the claimable subset of one
+    queue — that is the runtime view; this is the authoring-time view of the
+    same fact, and a stage whose every item merged falls back to the bare
+    reach.)
     """
     if g.stage is None:
         return g.reach
