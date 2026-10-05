@@ -136,6 +136,42 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.37.2] — 2026-10-05
+
+### Fixed
+
+- **`aide check` no longer warns forever on a declined human gate whose
+  reach holds nothing open (issue #396).** Every ❌ declined gate drew
+  `… was DECLINED and still blocks <reach> — … drop those items or change
+  what the gate asks`, including one whose Blocks cell is `—`: the record a
+  re-drawn scope leaves when the question is re-asked as a new row and
+  approved. Nothing could clear it — no items to drop, a reworded Gate cell
+  is a new gate, `aide gate` only approves and declines, and approving a
+  "no" would falsify the record. The warning is now silent when the reach
+  holds nothing `claim` would still offer: a Blocks cell left empty (`—`,
+  `–`, `-` or blank), items that are all ✅ or ❌, or a `stage N` / `stage N–M`
+  whose every stage is written with deliverable bullets all ✅ or ❌, or is
+  withdrawn (❌ summary row), and whose items are all spent — a 📋 item
+  every bullet of which sits in a withdrawn stage counting as ❌, a 🚧 or ⏸️
+  one not. `all`, `stage N+`, an item with no bullet yet, an item a
+  withdrawn stage shares with a stage still in scope while that bullet is
+  open, and a stage not yet
+  written or with nothing queued still warn, unchanged, since the refused
+  work could still land there. A non-empty Blocks cell that names no reach
+  (`stage 3a`, `TBD`) is not "nothing": a declined gate over one now says
+  the cell names no item, no stage and not `all`, and to write `—` or the
+  reach meant. Enforcement is untouched: `claim`, `gate list` and `status`
+  still count the gate as blocking. §1 → human gates states that such a
+  gate is re-planned and stays as the record, with a Rationale bullet;
+  `aide check -h` states the exception, pinned to the code; the
+  `aide-human-gates` skill carries the sentences. No new verb and no
+  "superseded by" phrase: the reach already says whether the refusal
+  guards anything.
+- **An awaiting gate's "nothing named" warning quotes a Blocks cell that is
+  not empty** (`… the Blocks cell 'stage 3a' names no item …`), as the
+  declined gate's typo warning now does, so the typo is on the line that
+  reports it.
+
 ## [2.37.1] — 2026-10-05
 
 ### Fixed

@@ -1093,6 +1093,51 @@ def test_a_gate_is_cited_and_resolved_by_its_id_across_a_renumbering(
     assert f"{gid} names no human gate" in capsys.readouterr().out
 
 
+def test_check_is_silent_on_a_declined_gate_whose_reach_holds_nothing_open(
+        aide, consumer: Path, capsys):
+    """Issue #396: a gate declined because scope was re-drawn, re-asked as a
+    new row that was approved, stays as the record with Blocks `—`. Its
+    "still blocks" warning named a remedy nothing could follow, on every run.
+    Silent while it holds nothing open; warning again the moment its Blocks
+    cell names an open item."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    base = progress.read_text(encoding="utf-8")
+    header = ("\n## Human gates\n\n"
+              "| Gate | Blocks | Status | Decision / evidence |\n"
+              "|------|--------|--------|---------------------|\n")
+    progress.write_text(base + header
+                        + "| Scope A approved | — | ⏳ Awaiting | — |\n"
+                        + "| Scope B approved | — | ⏳ Awaiting | — |\n",
+                        encoding="utf-8")
+    _commit(consumer, "raise both gates")
+    _, b_id = aide.gate_ids(aide.human_gates(
+        progress.read_text(encoding="utf-8").splitlines()))
+    assert aide.main(["--repo", str(consumer), "gate", "decline", "1",
+                      "--evidence", f"scope re-drawn, re-asked as {b_id}"]) == 0
+    assert aide.main(["--repo", str(consumer), "gate", "approve", "2",
+                      "--evidence", "ok"]) == 0        # each verb commits its row
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "OK (0 warning(s))" in capsys.readouterr().out
+
+    text = progress.read_text(encoding="utf-8")
+    assert "| Scope A approved | — | ❌ Declined (" in text
+    progress.write_text(text.replace("| Scope A approved | — |",
+                                     "| Scope A approved | 002 |"),
+                        encoding="utf-8")
+    _commit(consumer, "the declined gate names an open item")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "OK (1 warning(s))" in capsys.readouterr().out
+    # Enforcement is unchanged: with 001 landed, the declined gate still
+    # holds 002, so claim takes nothing and the checkout stays on main.
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1", "done"]) == 0
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "main"
+    assert not [b for b in _branches(consumer) if "002" in b]
+
+
 # --------------------------------------------------------------------------- #
 # a gate over a run of stages — `stage N+` and `stage N–M` (issue #304)
 # --------------------------------------------------------------------------- #
