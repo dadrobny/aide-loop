@@ -130,6 +130,39 @@ def test_a_nit_only_fix_skips_both_gates_and_costs_no_round():
     assert "validator" in blocking and "no validator" not in blocking, blocking
 
 
+def test_a_first_fail_takes_the_review_findings_into_its_own_fix_round():
+    """Issue #357: the runner triaged findings only at a held PASS, so a first
+    validation that failed left them waiting for a later PASS — a round of
+    their own — or re-read over a changed diff. The FAIL path has to say all
+    three things: wait for the review, send its findings with the validator's
+    failures in one round, and put no second reviewer behind that round."""
+    text = _RUN_ITEM.read_text(encoding="utf-8")
+    bullet = _bullet(text, "- **Any FAIL of the first validator")
+    assert "wait for the reviewer" in bullet, bullet
+    assert "same fix round" in bullet and "one round" in bullet, bullet
+    assert "no reviewer" in bullet, bullet
+    # And the definition of a round says why: the item is reviewed once.
+    rounds = " ".join(text[text.index("A **round** is"):].split()[:30])
+    assert "never a fresh `reviewer`" in rounds, rounds
+
+
+def test_an_unauthorised_path_is_the_validators_check_not_a_review_finding():
+    """Issue #357: both reads reported an overstep — the validator as an
+    `aide scope` FAIL, the reviewer as a blocking finding — so one defect cost
+    two dispatches and two counts. §9 gives it to validation; the reviewer
+    still names one it notices, unranked, so nothing is lost when it runs."""
+    text = _REVIEWER.read_text(encoding="utf-8")
+    in_scope = _bullet(text, "- **In scope for this item**")
+    assert "never authorised" not in in_scope, in_scope
+    overstep = _bullet(text, "- **An edit to a path the spec never authorised**")
+    assert "aide scope" in overstep and "unranked" in overstep, overstep
+    core = _SECTION.read_text(encoding="utf-8").split("### Rationale")[0]
+    flat = " ".join(core.split())
+    assert "is itself such a finding" not in flat, (
+        "§9's core still makes an unauthorised path a blocking review finding")
+    assert "unranked and uncounted" in flat, flat[:400]
+
+
 def test_the_counts_passed_to_the_merge_are_in_scope_findings_only():
     """An out-of-scope finding is carried by its `insights.md` line (§9). A
     brief that does not say so invites the one row that cannot be read back:
