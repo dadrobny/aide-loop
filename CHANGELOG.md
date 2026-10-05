@@ -136,6 +136,23 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.37.4] — 2026-10-05
+
+### Fixed
+
+- **§4 now says which verbs need a local branch as their base (issue #407).**
+  It read "a base is always a local branch … a remote-tracking ref
+  (`origin/main`) is refused", for every verb, while only the four that write
+  to the base refuse one: `claim`, `merge`, `queue start` and `queue restack`.
+  `scope` and `status` only measure and take any commit-ish as `--base` —
+  which is what a PR-context CI job on a detached checkout passes, `--base
+  origin/<base>` — and `gc --merged`, which measures and then deletes, reads a
+  non-local base fail-safe, as 2.37.1 left it. The code is unchanged; the
+  convention now states it, and tests hold `scope` and `status` to a
+  remote-tracking or raw-commit base and `claim` to refusing `origin/main`.
+  Refusing a non-local base everywhere was rejected: it would turn every item
+  PR red in a consumer whose CI runs `aide scope` that way.
+
 ## [2.37.3] — 2026-10-05
 
 ### Fixed
