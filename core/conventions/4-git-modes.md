@@ -139,13 +139,13 @@ those four refuse a tag, a raw commit or a remote-tracking ref (`origin/main`).
 A claim's starting point and its recorded base are the same commit by
 construction, so an item can never merge back somewhere it did not come from.
 A verb that only *measures* — `scope` (the diff) and `status` (where a 🔍
-claim's work has landed) — takes any commit-ish as `--base`, and
-a remote-tracking ref is often the right one there: a PR-context CI job on a
-detached checkout has no local base branch and passes `--base
-origin/<base>`. `gc --merged` measures and then deletes, so it reads a
-non-local base fail-safe: `origin/<main_branch>` counts as `main_branch`, a
-base named `origin/<branch>` is still that branch and never a target, and
-under any other base a queue branch is not collected.
+claim's work has landed) — takes any commit-ish as `--base`, and a
+remote-tracking ref is often the right one there: a PR-context CI job on a
+detached checkout has no local base branch and passes `--base origin/<base>`.
+`gc --merged` measures and then deletes, so it fails safe on a non-local base:
+`origin/<main_branch>` counts as `main_branch`, a base named `origin/<branch>`
+is still that branch and never a target, and under any other base a queue
+branch is not collected.
 
 **At most `[loop] max_open_queues` queue branches are unmerged at once, and
 they form one stack.** At the default of 1 a queue starts only once the one
