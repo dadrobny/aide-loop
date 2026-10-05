@@ -373,6 +373,63 @@ def test_gc_merged_is_measured_against_the_base(tmp_path: Path, capsys):
     assert "aide/027-bounds-rules" not in capsys.readouterr().out
 
 
+def _queue_stack(repo: Path) -> None:
+    """main -> aide/queue-001 -> aide/queue-002, each with a commit of its own,
+    and main checked out: queue 001 is an ancestor of queue 002 and not of main."""
+    _run(["git", "switch", "-c", "aide/queue-001"], repo)
+    _commit(repo, "q1.txt", "1\n", "queue 1 work")
+    _run(["git", "switch", "-c", "aide/queue-002"], repo)
+    _commit(repo, "q2.txt", "2\n", "queue 2 work")
+    _run(["git", "switch", "main"], repo)
+
+
+def _local_branches(repo: Path) -> list:
+    out = subprocess.run(["git", "branch", "--format=%(refname:short)"], cwd=repo,
+                         capture_output=True, text=True, check=True).stdout
+    return out.split()
+
+
+def test_gc_merged_keeps_a_queue_branch_below_a_queue_base(tmp_path: Path, capsys):
+    """Issue #403: under a queue base, the queue branch below it on the stack
+    is merged into its successor, not into main, and its PR is its route
+    there — skipped and said so, and neither it nor the base is deleted. A
+    claim merged into that base is still collected."""
+    repo = _init_repo(tmp_path / "repo")
+    _queue_stack(repo)
+    _run(["git", "switch", "-c", "aide/027-bounds-rules", "aide/queue-002"], repo)
+    _commit(repo, "src/demo/bounds.py", "x = 2\n", "work")
+    _run(["git", "switch", "aide/queue-002"], repo)
+    _run(["git", "merge", "--no-edit", "aide/027-bounds-rules"], repo)
+    _run(["git", "switch", "main"], repo)
+
+    assert aide.main(["--repo", str(repo), "gc", "--merged",
+                      "--base", "aide/queue-002"]) == 0
+    out = capsys.readouterr().out
+    assert "skipping aide/queue-001 (local)" in out
+    assert "would delete aide/queue-001" not in out
+    assert "aide/queue-002 (" not in out
+    assert "would delete aide/027-bounds-rules" in out
+
+    assert aide.main(["--repo", str(repo), "gc", "--merged", "--yes",
+                      "--base", "aide/queue-002"]) == 0
+    branches = _local_branches(repo)
+    assert "aide/queue-001" in branches and "aide/queue-002" in branches
+    assert "aide/027-bounds-rules" not in branches
+
+
+def test_gc_merged_takes_a_queue_branch_merged_into_main(tmp_path: Path, capsys):
+    """The main-base ground is unchanged: once main holds queue 001, it goes."""
+    repo = _init_repo(tmp_path / "repo")
+    _queue_stack(repo)
+    _run(["git", "merge", "--ff-only", "aide/queue-001"], repo)
+
+    assert aide.main(["--repo", str(repo), "gc", "--merged", "--yes",
+                      "--base", "main"]) == 0
+    branches = _local_branches(repo)
+    assert "aide/queue-001" not in branches
+    assert "aide/queue-002" in branches
+
+
 def test_status_accepts_a_base_and_still_reports(tmp_path: Path, capsys):
     repo = _init_repo(tmp_path / "repo")
     assert aide.main(["--repo", str(repo), "status", "--base", "main",

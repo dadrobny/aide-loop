@@ -1641,6 +1641,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `_merged_prefixed_branches(repo_root, main, prefix)`.
         ("with --merged also branches already merged into the base",
          "test_aide_git::test_gc_merged_deletes_merged_branch"),
+        # `_gc_merged_ground_skip`: `_is_queue_branch` and a base other than
+        # main_branch -> `skips[br]`, never `targets` (issue #403).
+        ("A queue branch is taken on that ground only when the base is "
+         "main_branch: one merged into any other base is skipped",
+         ("test_aide_base::test_gc_merged_keeps_a_queue_branch_below_a_queue_base",
+          "test_aide_base::test_gc_merged_takes_a_queue_branch_merged_into_main")),
         # `_branch_content_landed` is `merge-tree --write-tree` + a tree
         # comparison, so a squash merge reads as landed where ancestry does not.
         ("On the ✅ ground a branch goes only when `git merge-tree "
