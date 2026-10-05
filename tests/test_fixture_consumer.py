@@ -1110,9 +1110,8 @@ def test_check_is_silent_on_a_declined_gate_whose_reach_holds_nothing_open(
                         + "| Scope B approved | — | ⏳ Awaiting | — |\n",
                         encoding="utf-8")
     _commit(consumer, "raise both gates")
-    capsys.readouterr()
-    assert aide.main(["--repo", str(consumer), "gate", "list"]) == 0
-    _, b_id = [w for w in capsys.readouterr().out.split() if w.startswith("gate-")]
+    _, b_id = aide.gate_ids(aide.human_gates(
+        progress.read_text(encoding="utf-8").splitlines()))
     assert aide.main(["--repo", str(consumer), "gate", "decline", "1",
                       "--evidence", f"scope re-drawn, re-asked as {b_id}"]) == 0
     assert aide.main(["--repo", str(consumer), "gate", "approve", "2",
@@ -1131,10 +1130,12 @@ def test_check_is_silent_on_a_declined_gate_whose_reach_holds_nothing_open(
     capsys.readouterr()
     assert aide.main(["--repo", str(consumer), "check"]) == 0
     assert "OK (1 warning(s))" in capsys.readouterr().out
-    # Enforcement is unchanged either way: the declined gate is still listed
-    # as blocking.
-    assert aide.main(["--repo", str(consumer), "gate", "list"]) == 0
-    assert "2 gate(s), 1 still blocking" in capsys.readouterr().out
+    # Enforcement is unchanged: with 001 landed, the declined gate still
+    # holds 002, so claim takes nothing and the checkout stays on main.
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1", "done"]) == 0
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer) == "main"
+    assert not [b for b in _branches(consumer) if "002" in b]
 
 
 # --------------------------------------------------------------------------- #

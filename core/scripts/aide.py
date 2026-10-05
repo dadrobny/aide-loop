@@ -1051,6 +1051,9 @@ class HumanGate(NamedTuple):
     stage_last: Optional[int] = None
     #: True for ``stage N+`` — stage N and every later-numbered stage.
     stage_open: bool = False
+    #: The Blocks cell as written, stripped. Read where "names nothing" must
+    #: be told apart from "names something no reader parses" (issue #396).
+    blocks_cell: str = ""
 
     @property
     def stage_range(self) -> Optional[Tuple[int, Optional[int]]]:
@@ -1417,7 +1420,7 @@ def human_gates(lines: List[str]) -> List[HumanGate]:
         stage_open = bool(sm and sm.group("open"))
         blocks = [] if (blocks_all or stage) else _blocked_item_numbers(blocks_cell)
         out.append(HumanGate(i + 1, cells[0], blocks, stage, blocks_all, kind,
-                             stage_last, stage_open))
+                             stage_last, stage_open, blocks_cell))
     return out
 
 
@@ -5236,33 +5239,40 @@ def _declined_reach_spent(lines: List[str], g: HumanGate) -> bool:
     """True when declined gate *g* holds nothing open, now or later (issue #396).
 
     Such a gate has already been re-planned: its items have merged or left,
-    or it names nothing (an em dash Blocks cell kept as the record after the
-    question was re-asked). The check's "still blocks … drop those items or
-    change what the gate asks" then names a remedy with nothing to apply it
-    to, on every run, and no verb can close it. Enforcement is not touched —
-    ``blocking_gates`` still lists the gate — only the warning goes quiet.
+    or its Blocks cell is deliberately empty (``—``), kept as the record after
+    the question was re-asked. The check's "still blocks … drop those items
+    or change what the gate asks" then names a remedy with nothing to apply
+    it to, on every run, and no verb can close it. Enforcement is not touched
+    — ``blocking_gates`` still lists the gate — only the warning goes quiet.
 
-    "Open" is ``_reach_with_breadth``'s reading: an item is spent when its
-    deliverable bullets read ✅ or ❌, and anything else — an item with no
+    "Open" is what ``claim`` would still offer were the gate gone: an item is
+    spent when it is ✅, or ❌ by its own bullets or by every one of them
+    sitting in a withdrawn stage while it is 📋 (``spent_by_withdrawal``,
+    which ``claim`` never offers either). Anything else — an item with no
     bullet at all included — is open. Everything that could still hold work
     later reads open too, erring toward the warning:
 
+    - a Blocks cell that is not empty yet names no reach (``stage 3a``,
+      ``TBD``) is a typo, not a decision to hold nothing;
     - ``all`` holds every item, including ones not written yet;
     - ``stage N+`` arms every stage numbered from N on, written or not;
-    - a ``stage N`` / ``stage N–M`` stage is spent only when its Stage
-      summary row reads ❌ (``withdrawn_stages``), or it exists, has at least
-      one deliverable bullet, every bullet reads ✅ or ❌, and every item it
-      references is spent. A stage not written yet, or one with nothing
-      queued, may still receive the work the decline refused.
+    - each stage of a ``stage N`` / ``stage N–M`` reach must be written, and
+      every item its bullets reference spent; a stage still in scope must
+      also have at least one bullet, every one ✅ or ❌ — one not written
+      yet, or with nothing queued, may still receive the refused work.
+      A withdrawn stage (❌ summary row) needs no bullet of its own.
     """
     if g.blocks_all or g.stage_open:
         return False
-    _, _, item_status = _parse_item_status(lines)
+    item_status = _parse_item_status(lines)[2]
+    left = spent_by_withdrawal(lines, item_status)
 
     def spent(n: int) -> bool:
-        return item_status.get(n, "planned") in ("complete", "excluded")
+        return item_status.get(n) == "complete" or n in left
 
     if g.stage is None:
+        if not g.blocks:
+            return g.blocks_cell.strip() in _EMPTY_CELL
         return all(spent(n) for n in g.blocks)
     first, last = g.stage_range
     withdrawn = {int(n) for n in withdrawn_stages(lines) if n.strip().isdigit()}
@@ -5273,14 +5283,16 @@ def _declined_reach_spent(lines: List[str], g: HumanGate) -> bool:
     if last - first + 1 > len(sections) + len(withdrawn):
         return False   # some stage in the range is not written yet
     for n in range(first, last + 1):
-        if n in withdrawn:
-            continue
         if n not in sections:
+            if n in withdrawn:
+                continue   # withdrawn, and no section to hold an item
             return False
         start, end, num = sections[n]
-        statuses = stage_deliverable_statuses(lines, start, end)
-        if not statuses or any(s not in ("complete", "excluded") for s in statuses):
-            return False
+        if n not in withdrawn:
+            statuses = stage_deliverable_statuses(lines, start, end)
+            if not statuses or any(s not in ("complete", "excluded")
+                                   for s in statuses):
+                return False
         if not all(spent(i) for i in stage_item_numbers(lines, num)):
             return False
     return True
@@ -5321,6 +5333,16 @@ def gate_warnings(lines: List[str]) -> List[str]:
             if _declined_reach_spent(lines, g):
                 # Re-planned already: nothing left to drop, so the remedy the
                 # warning names cannot be followed (issue #396).
+                continue
+            if not (g.blocks or g.stage or g.blocks_all):
+                # A cell that is not empty and names no reach: a typo, which
+                # the silence above must not swallow.
+                out.append(
+                    f"progress.md:{g.lineno}: {name} was DECLINED and its "
+                    f"Blocks cell '{g.blocks_cell}' names no item, no "
+                    f"'stage N' (or 'stage N+', 'stage N–M'), and is not "
+                    f"'all' — write '—' if the gate is meant to hold "
+                    f"nothing, or the reach it was meant to hold")
                 continue
             out.append(
                 f"progress.md:{g.lineno}: {name} was DECLINED "
@@ -18910,8 +18932,10 @@ def build_parser() -> argparse.ArgumentParser:
             "Met, an Outcome target or human gate whose Status is not one of "
             "its table's marks, and every human gate still blocking \u2014 a "
             "normal state rather than a defect \u2014 save a \u274c declined "
-            "gate whose reach holds nothing open: no item, or items and "
-            "stages all \u2705 or \u274c, never `all` or `stage N+`. A "
+            "gate whose reach holds nothing open: a Blocks cell left empty "
+            "(\u2014), or items and stages all \u2705 or \u274c, a "
+            "\U0001f4cb item every bullet of which sits in a withdrawn "
+            "stage counting as \u274c; never `all` or `stage N+`. A "
             "summary row marked "
             "\u274c is left out of every stage comparison "
             "above, deliverables and header alike: the stage is "

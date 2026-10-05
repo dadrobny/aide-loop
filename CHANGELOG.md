@@ -148,16 +148,22 @@ instead — that is the bump policy above, and it is enforced by
   approved. Nothing could clear it — no items to drop, a reworded Gate cell
   is a new gate, `aide gate` only approves and declines, and approving a
   "no" would falsify the record. The warning is now silent when the reach
-  names nothing, names only items whose bullets read ✅ or ❌, or names
-  `stage N` / `stage N–M` whose every stage is withdrawn (❌ summary row) or
-  has deliverable bullets all ✅ or ❌ over items all ✅ or ❌. `all`, `stage
-  N+`, an item with no bullet yet, and a stage not yet written or with
-  nothing queued still warn, unchanged, since the refused work could still
-  land there. Enforcement is untouched: `claim`, `gate list` and `status`
+  holds nothing `claim` would still offer: a Blocks cell left empty (`—`,
+  `-` or blank), items that are all ✅ or ❌, or a `stage N` / `stage N–M`
+  whose every stage is written with deliverable bullets all ✅ or ❌, or is
+  withdrawn (❌ summary row), and whose items are all spent — a 📋 item
+  every bullet of which sits in a withdrawn stage counting as ❌, a 🚧 or ⏸️
+  one not. `all`, `stage N+`, an item with no bullet yet, an item a
+  withdrawn stage shares with a stage still in scope, and a stage not yet
+  written or with nothing queued still warn, unchanged, since the refused
+  work could still land there. A non-empty Blocks cell that names no reach
+  (`stage 3a`, `TBD`) is not "nothing": a declined gate over one now says
+  the cell names no item, no stage and not `all`, and to write `—` or the
+  reach meant. Enforcement is untouched: `claim`, `gate list` and `status`
   still count the gate as blocking. §1 → human gates states that such a
   gate is re-planned and stays as the record, with a Rationale bullet;
   `aide check -h` states the exception, pinned to the code; the
-  `aide-human-gates` skill carries the sentence. No new verb and no
+  `aide-human-gates` skill carries the sentences. No new verb and no
   "superseded by" phrase: the reach already says whether the refusal
   guards anything.
 

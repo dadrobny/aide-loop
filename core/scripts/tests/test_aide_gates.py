@@ -162,6 +162,8 @@ def _stage_one_spent(rows: str, extra=()):
 
 @pytest.mark.parametrize("blocks, extra", [
     ("—", ()),                                   # the issue's repro: names nothing
+    ("-", ()),
+    ("", ()),
     ("027, 028", ()),                            # items all ✅ or ❌
     ("stage 1", ()),                             # every bullet ✅ or ❌
     ("stage 1–2", ("2:X. *(Item 040)*",)),       # stage 2 withdrawn by its ❌ row
@@ -173,9 +175,7 @@ def test_a_declined_gate_whose_reach_is_spent_is_silent(blocks, extra):
     Enforcement is untouched: the gate is still a blocking gate."""
     lines = _stage_one_spent(_declined(blocks), extra)
     if extra:
-        lines = "\n".join(lines).replace(
-            "| 1 | Rules | G1 | 🚧 |",
-            "| 1 | Rules | G1 | 🚧 |\n| 2 | S2 | G1 | ❌ |").splitlines()
+        lines = _withdraw_stage_2(lines)
     assert aide.gate_warnings(lines) == []
     assert len(aide.blocking_gates(lines)) == 1
 
@@ -186,13 +186,50 @@ def test_a_declined_gate_whose_reach_is_spent_is_silent(blocks, extra):
     ("stage 1–3", ()),                           # stages 2 and 3 not written yet
     ("stage 1+", ()),                            # arms every later stage
     ("all", ()),                                 # holds everything
+    ("stage 1–2", ("2:X. *(Item 040)*", "3:Y. *(Item 040)*")),  # 040 still in scope
 ])
 def test_a_declined_gate_that_could_still_hold_work_warns(blocks, extra):
     """Err toward the warning wherever the reach could still hold work: an
     item with no bullet yet, a stage written but unqueued or not written at
     all, and the two forms that cover work nobody has written yet."""
-    (w,) = aide.gate_warnings(_stage_one_spent(_declined(blocks), extra))
+    lines = _stage_one_spent(_declined(blocks), extra)
+    if blocks == "stage 1–2" and len(extra) == 2:
+        lines = _withdraw_stage_2(lines)
+    (w,) = aide.gate_warnings(lines)
     assert "DECLINED" in w and "still blocks" in w
+
+
+def _withdraw_stage_2(lines):
+    return "\n".join(lines).replace(
+        "| 1 | Rules | G1 | 🚧 |",
+        "| 1 | Rules | G1 | 🚧 |\n| 2 | S2 | G1 | ❌ |").splitlines()
+
+
+def test_a_declined_range_over_a_withdrawn_stage_with_no_section_is_silent():
+    """A stage withdrawn by its ❌ summary row before anyone wrote its section
+    holds nothing, and no item can be queued into a withdrawn stage."""
+    lines = _withdraw_stage_2(_stage_one_spent(_declined("stage 1–2")))
+    assert aide.gate_warnings(lines) == []
+
+
+def test_a_declined_gate_over_a_withdrawn_stage_holding_live_work_warns():
+    """Withdrawal spends a 📋 item only (`spent_by_withdrawal`): a 🚧 one there
+    is live work its owner has not dropped, which the gate still holds."""
+    lines = _withdraw_stage_2(_stage_one_spent(
+        _declined("stage 1–2"), ("2:X. *(Item 040)*",)))
+    lines = "\n".join(lines).replace("- 📋 X. *(Item 040)*",
+                                      "- 🚧 X. *(Item 040)*").splitlines()
+    (w,) = aide.gate_warnings(lines)
+    assert "still blocks stage 1–2" in w
+
+
+@pytest.mark.parametrize("cell", ["stage 3a", "TBD", "stage 1, 2", "everything"])
+def test_a_declined_gate_whose_blocks_cell_reads_as_nothing_is_a_typo(cell):
+    """Only a deliberately empty cell is a gate holding nothing: a cell with
+    words in it that no reader parses must not lose the one signal that it is
+    a typo by going silent with the decline."""
+    (w,) = aide.gate_warnings(_stage_one_spent(_declined(cell)))
+    assert "DECLINED" in w and f"Blocks cell '{cell}' names no item" in w
 
 
 def test_a_declined_range_with_a_gap_in_it_still_warns():

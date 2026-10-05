@@ -94,8 +94,12 @@ blocks too.
 **A declined gate whose reach holds nothing open is re-planned.** Its Blocks
 cell names nothing (`—`), or only items and stages that are already ✅ or ❌,
 so there is nothing left to drop. The row stays as the record of the decision,
-and `aide check` is silent about it. `all` and `stage N+` reach work not yet
-written, so a declined one is never re-planned this way.
+and `aide check` is silent about it. Open is what `aide claim` would still
+offer: a 📋 item every bullet of which sits in a withdrawn stage is not open,
+a 🚧 or ⏸️ one is. `all` and `stage N+` reach work not yet written, so a
+declined one is never re-planned this way. A stage not yet written, or with
+nothing queued, is not spent, and a Blocks cell that names no reach without
+being empty is a typo, not a gate holding nothing.
 
 Semantics *(aide claim, check, status, gate)*:
 
@@ -217,10 +221,12 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   and declines, and approving a "no" would falsify the record. A warning no
   one can act on teaches the reader to skip the list it sits in. A "superseded
   by" phrase or a verb to close the row was rejected: the reach already says
-  whether the refusal still guards anything, and "open" is the reading
-  `check` already gives a reach's breadth — so a stage not yet written, or
-  written with nothing queued, still warns, since the refused work could land
-  there.
+  whether the refusal still guards anything. "Open" is `claim`'s reading
+  rather than a new one, so the warning goes quiet exactly when enforcement
+  has nothing left to hold; a stage not yet written, or written with nothing
+  queued, still warns, since the refused work could land there. Only an
+  empty cell counts as naming nothing: `stage 3a` or `TBD` parses to no
+  reach as well, and silence there would hide the typo with the decline.
 - **Why `check` warns and `status` prints.** A gate that is still blocking is
   visible on every run instead of buried in a spec's prose; `aide status -h`
   names open gates among what it reports.
