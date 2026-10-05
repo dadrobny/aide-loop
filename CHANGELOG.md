@@ -160,9 +160,9 @@ instead — that is the bump policy above, and it is enforced by
   resumed session reads them from the spec), and routes a check-7 FAIL back to
   the role that owes the trace. Minor findings, nits and CI findings carry no
   new requirement; a CI finding already names its failing check, which the
-  next CI run re-runs. The item template's Review findings guidance names the
-  no-test bullet (template number unchanged: an existing spec has nothing to
-  edit). No config key or verb changes, and under `review = "off"` nothing
+  next CI run re-runs. The item template's Review findings guidance and
+  shape name the no-test bullet (template number unchanged: an existing spec
+  has nothing to edit). No config key or verb changes, and under `review = "off"` nothing
   changes.
 - **A fix round's validation still runs the whole suite, and §9 says why
   (issue #417).** A new Rationale bullet records the arithmetic: the merge

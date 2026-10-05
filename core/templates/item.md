@@ -124,6 +124,7 @@ conventions.md §6 says who writes it, when, and how a bullet with no test
 ends. Leave the section out while there is none._
 
 - {{label}}: {{the finding}} — {{rank}}; {{fix commit}}
+- {{label}}: {{the finding}} — blocking; {{fix commit}}; no test: {{why}}
 
 ## Validation  <!-- OPTIONAL: how to OBSERVE this working, beyond the tests -->
 
