@@ -228,6 +228,9 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "neither is a failed bootstrap that names it",
          ("test_aide_git::test_a_bootstrap_command_runs_with_the_venv_active",
           "test_aide_git::test_a_bootstrap_command_found_nowhere_is_a_failed_bootstrap_that_names_it")),
+        # `_bootstrap_venv` skips `bootstrap_argv` for an empty value.
+        ("An empty bootstrap builds the venv and installs nothing",
+         "test_aide_git::test_an_empty_bootstrap_builds_the_venv_and_installs_nothing"),
         ("Exits 0 when every requirement the configuration needs is met",
          ("test_aide_env_report::test_every_requirement_met_under_pr_exits_zero",
           "test_aide_git::test_a_stdlib_runner_in_a_bare_venv_is_ok")),

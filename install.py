@@ -284,7 +284,8 @@ test_command = "{test_command}"
 # word: "pip …" runs as the venv's `python -m pip`; "python …", "-m …",
 # "setup.py …" or another file in the repository runs the venv's Python, as
 # before; anything else ("uv sync", "make dev") runs as a command with the
-# venv active, so a repository shell script is "sh <script>" (`aide env -h`).
+# venv active, so a repository shell script is "sh <script>"; "" builds the
+# venv and installs nothing (`aide env -h`).
 # bootstrap = "pip install -e .[dev]"
 
 [git]

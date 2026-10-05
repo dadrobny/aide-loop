@@ -173,6 +173,9 @@ instead — that is the bump policy above, and it is enforced by
   the `aide.toml` scaffold now carries a commented `# bootstrap = "pip
   install -e .[dev]"` line naming the readings — the key was documented
   only in the engine's defaults.
+- **`bootstrap = ""` builds the venv and installs nothing.** It ran a bare
+  venv Python, an interactive interpreter that waited on stdin; it now runs
+  nothing after the build and records a finished bootstrap.
 
 ## [2.35.3] — 2026-10-03
 

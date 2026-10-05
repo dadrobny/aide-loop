@@ -2559,6 +2559,22 @@ def test_a_bootstrap_python_reading_runs_with_the_environment_unchanged(
     assert env is None
 
 
+def test_an_empty_bootstrap_builds_the_venv_and_installs_nothing(
+        tmp_path: Path, monkeypatch):
+    """`bootstrap = ""` ran a bare `<venv python>`, an interactive Python
+    waiting on stdin. It builds the venv, runs nothing, and records a
+    finished bootstrap."""
+    (tmp_path / "aide.toml").write_text(
+        '[python]\nvenv = ".venv"\nbootstrap = ""\n', encoding="utf-8")
+    venv = tmp_path / ".venv"
+    calls = _stub_bootstrap_runs(monkeypatch, venv, None)
+    assert aide.main(["--repo", str(tmp_path), "env", "--bootstrap"]) == 0
+    assert calls == []
+    record = aide._read_bootstrap_record(venv)
+    assert record["exit"] == 0 and record["command"] == []
+    assert "unrun" not in record
+
+
 def test_a_bootstrap_command_found_nowhere_is_a_failed_bootstrap_that_names_it(
         tmp_path: Path, monkeypatch, capsys):
     (tmp_path / "aide.toml").write_text(

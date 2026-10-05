@@ -290,9 +290,10 @@ collide:
   and keep **your** primary checkout on your own branch (git forbids `main` in two
   worktrees — that mutual exclusion is what prevents collisions).
 - Give the worktree its **own venv** (`python .aide/scripts/aide.py env
-  --bootstrap`, or a manual `python -m venv` + the `python.bootstrap` command from
-  `aide.toml`) — an editable install otherwise resolves the project package to the
-  primary `source_dir`, silently testing the wrong tree.
+  --bootstrap`, or a manual `python -m venv` + the `python.bootstrap` value from
+  `aide.toml`, read as `aide env -h` says) — an editable install otherwise
+  resolves the project package to the primary `source_dir`, silently testing the
+  wrong tree.
 - Run the loop from the worktree. **Caveat:** the Bash tool resets cwd to the repo
   root between calls in this environment, so you cannot rely on a one-time `cd`;
   launch the loop *from* the worktree directory, or use `git -C <worktree>` /

@@ -13485,9 +13485,13 @@ def bootstrap_argv(tokens: List[str], vpy: Path,
        (a root `invoke/__main__.py`) runs its own tree. An absolute path, or
        one leading out of the repository, is a command.
     5. Anything else (`uv sync`, `make dev`) is a command.
+
+    An empty bootstrap installs nothing and never reaches here:
+    `_bootstrap_venv` builds the venv alone, since a bare `<vpy>` would wait
+    on stdin.
     """
-    first = tokens[0] if tokens else ""
-    if not tokens or first.startswith("-") or first.lower().endswith(".py"):
+    first = tokens[0]
+    if first.startswith("-") or first.lower().endswith(".py"):
         return [str(vpy), *tokens], False
     if first == "pip":
         return [str(vpy), "-m", *tokens], False
@@ -13570,7 +13574,10 @@ def _bootstrap_venv(repo_root: Path, config: Dict[str, Dict[str, object]]) -> in
               f"{made.returncode} — nothing was built.", file=sys.stderr)
         return 1
     vpy = venv_python(repo_root, config)
-    cmd, is_command = bootstrap_argv(bootstrap, vpy, repo_root)
+    # `bootstrap = ""` builds the venv and installs nothing: run as before,
+    # it was a bare `<vpy>`, an interactive Python waiting on stdin.
+    cmd, is_command = (bootstrap_argv(bootstrap, vpy, repo_root)
+                       if bootstrap else ([], False))
     env: Optional[Dict[str, str]] = None
     unrun: Optional[str] = None
     if is_command:
@@ -13585,8 +13592,8 @@ def _bootstrap_venv(repo_root: Path, config: Dict[str, Dict[str, object]]) -> in
             cmd = [found, *cmd[1:]]
     # The shell's statuses for a command that did not start: 127 not found,
     # 126 found and not executable.
-    returncode = 127
-    if unrun is None:
+    returncode = 127 if cmd else 0
+    if unrun is None and cmd:
         try:
             returncode = subprocess.run(cmd, cwd=str(repo_root), env=env,
                                         check=False).returncode
@@ -19642,7 +19649,8 @@ def register_git_subcommands(sub) -> None:
             "command found in neither is a failed bootstrap that names it. "
             "Only a first word the old reading could never have run is a "
             "command, so a bootstrap that worked runs the same way, and a "
-            "shell script in the repository is written `sh <script>`."))
+            "shell script in the repository is written `sh <script>`. An "
+            "empty bootstrap builds the venv and installs nothing."))
     p_env.add_argument("--bootstrap", action="store_true",
                        help="create + populate the venv if missing/stale, from "
                             "[python] interpreter when set; reports on the "
