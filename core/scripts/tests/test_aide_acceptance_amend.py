@@ -219,6 +219,22 @@ def test_reword_mirrors_into_the_matching_roadmap_bullet():
     assert "- Target: throughput above 100 rps." in out.splitlines()
 
 
+def test_reword_consumes_every_line_of_a_wrapped_roadmap_bullet():
+    """Issue #391: the old wording's continuation lines went with it, not
+    under the new text — and the bullets either side are untouched."""
+    wrapped = ROADMAP.replace(
+        "- The CLI reports a non-zero exit on failure.",
+        "- The CLI reports a non-zero exit\n  on failure, wrapped over\n"
+        "  three lines.")
+    out, err = aide.reword_roadmap_bullet(wrapped, "1", 2, "The CLI exits non-zero.", 2)
+    assert err is None
+    assert out.splitlines()[-3:] == [
+        "- The benchmark runs end to end.",
+        "- The CLI exits non-zero.",
+        "- Target: throughput above 100 rps.",
+    ]
+
+
 def test_a_roadmap_that_cannot_be_lined_up_writes_nothing_and_says_why():
     out, err = aide.reword_roadmap_bullet(ROADMAP, "1", 2, "x", 5)
     assert out is None

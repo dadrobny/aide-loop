@@ -2147,6 +2147,16 @@ def reword_roadmap_bullet(text: str, stage: str, n: int, new_text: str,
     i = bullets[n - 1]
     m = re.match(r"^(?P<pre>\s*[-*]\s+)(?P<body>.*)$", lines[i])
     lines[i] = m.group("pre") + new_text.strip()
+    # A wrapped bullet is its first line plus every indented non-bullet line
+    # under it, the shape `acceptance_box_last` reads on the progress side —
+    # replace them all, or the old wording's tail stays under the new text
+    # (issue #391).
+    last = i
+    while (last + 1 < len(lines)
+           and _BOX_CONTINUATION_RE.match(lines[last + 1])
+           and not _GUIDANCE_RE.match(lines[last + 1])):
+        last += 1
+    del lines[i + 1:last + 1]
     return "\n".join(lines) + ("\n" if text.endswith("\n") else ""), None
 
 
