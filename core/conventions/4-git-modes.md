@@ -131,6 +131,8 @@ measured against), `status` (what ahead/behind is reported from) and `scope`
 (what the diff is taken against). Resolution is always **`--base` > recorded >
 `main_branch`**. The record is local git config, not a committed file, so a
 different machine falls back to `main_branch` and passes `--base` explicitly.
+`queue start` and `queue restack` take `--base` too, naming the branch a queue
+is stacked on (below).
 
 **A base the loop writes to is always a local branch.** `claim` records it and
 *branches from* it, `merge` merges into it and pushes it, and `queue start` and

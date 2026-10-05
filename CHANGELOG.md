@@ -151,7 +151,8 @@ instead — that is the bump policy above, and it is enforced by
   convention now states it, and tests hold `scope` and `status` to a
   remote-tracking or raw-commit base and `claim` to refusing `origin/main`.
   Refusing a non-local base everywhere was rejected: it would turn every item
-  PR red in a consumer whose CI runs `aide scope` that way.
+  PR red in a consumer whose CI runs `aide scope` that way. §4's list of the
+  verbs that take `--base` now names `queue start` and `queue restack` too.
 
 ## [2.37.3] — 2026-10-05
 
