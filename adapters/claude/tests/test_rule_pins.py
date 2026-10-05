@@ -453,8 +453,8 @@ def test_a_markdown_table_row_is_de_piped_but_a_prose_operator_is_not():
 #: would miss the one restatement a workflow skill has actually shipped before
 #: — the `## Hand-off` tail copying `core/README.md`'s loop sequence (#161).
 #: Measured on this tree the two kinds do not overlap: every hand-written
-#: delivered file shares at least **53** runs (`aide-human-gates`) and every
-#: file that pins nothing shares at most **3** (`reviewer.md`), so a
+#: delivered file shares at least **110** runs (`aide-human-gates`) and every
+#: file that pins nothing shares at most **7** (`aide-run-item.md`), so a
 #: floor of twenty is a gap, not a tuned value — and the gap is asserted from
 #: both sides below, so the numbers here are re-measured by the suite rather
 #: than quoted. A file that crosses the floor has become a copy, and a copy is
