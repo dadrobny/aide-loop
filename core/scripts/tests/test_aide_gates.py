@@ -324,6 +324,14 @@ def test_gate_naming_nothing_is_called_out():
     assert "nothing named" in aide.gate_warnings(_lines(rows))[0]
 
 
+def test_an_awaiting_gate_quotes_a_blocks_cell_that_names_no_reach():
+    """A typo'd cell is quoted, as a declined gate's is; an empty one is not."""
+    typo = aide.gate_warnings(_lines("| G | stage 3a | ⏳ Awaiting | — |"))[0]
+    empty = aide.gate_warnings(_lines("| G | — | ⏳ Awaiting | — |"))[0]
+    assert "Blocks cell 'stage 3a' names no item" in typo
+    assert "Blocks cell names no item" in empty
+
+
 def test_stage_warning_resolves_how_much_the_gate_holds():
     """The reach is computed at check time either way; throwing it away made a
     mis-scoped `stage N` gate invisible until a runner stalled on it — the

@@ -167,6 +167,10 @@ instead — that is the bump policy above, and it is enforced by
   `aide-human-gates` skill carries the sentences. No new verb and no
   "superseded by" phrase: the reach already says whether the refusal
   guards anything.
+- **An awaiting gate's "nothing named" warning quotes a Blocks cell that is
+  not empty** (`… the Blocks cell 'stage 3a' names no item …`), as the
+  declined gate's typo warning now does, so the typo is on the line that
+  reports it.
 
 ## [2.37.1] — 2026-10-05
 

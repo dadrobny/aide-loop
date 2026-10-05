@@ -5390,8 +5390,12 @@ def gate_warnings(lines: List[str]) -> List[str]:
         elif g.blocks or g.stage or g.blocks_all:
             reach = _reach_with_breadth(lines, g)
         else:
-            reach = ("nothing named — the Blocks cell names no item, no "
-                     "'stage N' (or 'stage N+', 'stage N–M'), and is not "
+            # Quote a non-empty cell, as the declined branch does: the typo
+            # is then on the line that reports it.
+            cell = ("" if g.blocks_cell.strip() in _EMPTY_CELL
+                    else f" '{g.blocks_cell}'")
+            reach = (f"nothing named — the Blocks cell{cell} names no item, "
+                     "no 'stage N' (or 'stage N+', 'stage N–M'), and is not "
                      "'all', so this gate holds nothing")
         out.append(f"progress.md:{g.lineno}: {name} is "
                    f"awaiting a decision — blocks {reach}")

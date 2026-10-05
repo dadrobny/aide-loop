@@ -227,6 +227,9 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   queued, still warns, since the refused work could land there. Only an
   empty cell counts as naming nothing: `stage 3a` or `TBD` parses to no
   reach as well, and silence there would hide the typo with the decline.
+  `aide gate list` still counts such a gate as blocking, and rightly: it is
+  the enforcement view, and a declined gate opens nothing; only the warning,
+  whose remedy has nothing left to act on, goes quiet.
 - **Why `check` warns and `status` prints.** A gate that is still blocking is
   visible on every run instead of buried in a spec's prose; `aide status -h`
   names open gates among what it reports.
