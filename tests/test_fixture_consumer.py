@@ -4391,9 +4391,8 @@ def test_check_warns_on_a_test_that_reads_the_live_inbox_or_cites_a_position(
 
 def test_archive_lists_the_positions_it_renumbers_and_still_moves(
         aide, consumer: Path, capsys):
-    """The archive run is the last point a position means what its author
-    wrote, so it prints the ID each cited position holds before the move —
-    and proceeds (#295)."""
+    """The archive run lists each citation whose number it renumbers, with
+    the ID that citation meant — and proceeds (#295, #419)."""
     spec = consumer / "docs" / "aide" / "items" / "001-the-greeter.md"
     spec.write_text(spec.read_text(encoding="utf-8") + "\nFixes insight 3.\n",
                     encoding="utf-8")

@@ -241,8 +241,8 @@ whichever of them the entry is heading for.
   record written before an archive, the warning's hint then named whatever
   moved into that number since, which is a wrong answer offered as a fix. The
   archive listing still names a record's positions: it is printed once, by
-  the run that changes what the number reads as. A dangling ID stays an error there, because
-  no reader can follow it whoever wrote it.
+  the run that changes what the number reads as. A dangling ID stays an error
+  there, because no reader can follow it whoever wrote it.
 - **Why tests are read for positions too.** A test comment or assertion
   message naming "insight 28" goes stale on the next archive or merge exactly
   as a spec does, and it is the test, not the spec, that the next author

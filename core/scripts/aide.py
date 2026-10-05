@@ -10974,9 +10974,10 @@ def _archive_citation_line(c: PositionCitation, r: CitationMeaning,
     if r.how == CitationMeaning.CLAIM_GONE:
         return (f"{head} meant insight {r.iid} {r.when}, a claim no longer in "
                 f"the inbox or its archives")
-    if r.index is None:
-        fate = "no entry holds that position today"
-    elif pool[r.index][0] != "insights.md":
+    # Every listed position is renumbered, so today's inbox holds it: index
+    # is set for each resolution that reaches here.
+    assert r.index is not None
+    if pool[r.index][0] != "insights.md":
         fate = "already archived"
     else:
         # The live inbox comes first in the pool, so its index is its position.

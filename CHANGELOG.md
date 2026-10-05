@@ -155,7 +155,8 @@ instead — that is the bump policy above, and it is enforced by
   unavailable`), and what this move does to *that* entry: `entry N after the
   move`, `archived by this move`, `still entry N after the move`, or `already
   archived`. Which citations are listed (those whose number the move
-  changes), the exit code, and the order of output are unchanged; check's
+  changes), the exit code, and the order of output are unchanged; the line
+  above the listing now says to rewrite each as the ID named below; check's
   hint text is byte-identical. `aide insights -h` and conventions.md §1 →
   insights.md state it. Nothing for a consumer to edit.
 
