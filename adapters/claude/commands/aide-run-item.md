@@ -80,7 +80,10 @@ and tests are already merged, so the steps run with four differences:
 - **No `reviewer` is spawned**, whatever `loop.review` says: the item was
   reviewed when it was first built, and a CI fix is a fix round (§9). Under
   `"background"` the merge is still held and yours to run, with every
-  `--findings` count 0 — no review finding was triaged in this pass.
+  `--findings` count 0 — no review finding was triaged in this pass. Step
+  5's brief keeps its merge-held paragraph and drops the sentence about a
+  reviewer reading the diff, and wherever step 6 says to wait for the
+  reviewer there is none to wait for.
 
 Steps 5–6 run as for any item, and their rounds count against this item's
 own `loop.validation_rounds`, apart from the CI round the queue counts.
@@ -270,8 +273,8 @@ own `loop.validation_rounds`, apart from the CI round the queue counts.
      or died** → not a FAIL and not a round: nothing failed for a builder to
      fix. Do not re-dispatch a validator into the same wait — report the
      command, elapsed time and log tail to the user and stop, like a blocked
-     item. Under `loop.review = "background"`, wait for the reviewer first
-     and put its findings in that report: they are the item's one review,
+     item. Under `loop.review = "background"`, wait for the reviewer first,
+     if step 4 spawned one, and put its findings in that report: they are the item's one review,
      still untriaged, and whoever resumes the item triages them. The validator has already stopped the run; what hung is for a
      person to look at. For a merge, pass on the log tail, which holds
      `aide merge`'s own word on the base, the claim branch and what to
@@ -281,7 +284,8 @@ own `loop.validation_rounds`, apart from the CI round the queue counts.
      merged. Done. A PASS may name inherited failures the merge admitted; the
      merge has already put them in `insights.md`.
    - **PASS (merge held)**, `loop.review = "background"` → on the first
-     validator, wait for the reviewer if it has not returned, then triage its
+     validator, wait for the reviewer, if step 4 spawned one and it has not
+     returned, then triage its
      findings (§9). A path the reviewer named apart from its findings, as
      one the spec never authorised, is not a finding: the validator's
      `aide scope` has passed, so it is answered — never rank or count it.
