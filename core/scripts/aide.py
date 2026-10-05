@@ -17327,25 +17327,21 @@ def _traces_to(name: str, ac_numbers: List[int], labels: List[str],
     """*name* carries one of *ac_numbers* (`ac3`) or one of *labels*, or one
     of its parametrize *ids* does (issue #314).
 
-    The name matches a label anywhere in it, as it always has. An id is
-    compared normalised the same way (lower case, `-` read as `_`), and a
-    label or `acN` must stand in it as a whole token — bounded by anything
-    but a letter or digit — since an id is often a free-text value rather
-    than a name built from its case: label `call` matches id `bool-call`,
-    and does not match `recall`.
+    The name and each id are compared normalised alike (lower case, `-` read
+    as `_`), and a label or `acN` must stand in either as a whole token —
+    bounded by anything but a letter or digit: label `docs` matches
+    `test_update_docs_index` and not `test_docstring_parsed`, label `call`
+    matches id `bool-call` and not `recall`. Until issue #423 the name
+    matched a label anywhere in it, so a short label (`docs`, `io`, `run`)
+    vouched for every test whose name merely contained it.
     """
     wanted = set(ac_numbers)
     norm = [lbl.lower().replace("-", "_") for lbl in labels]
-    low = name.lower()
-    if any(int(n) in wanted for n in _AC_TOKEN_RE.findall(low)):
-        return True
-    if any(lbl in low for lbl in norm):
-        return True
-    for raw in ids:
-        ident = raw.lower().replace("-", "_")
-        if any(int(n) in wanted for n in _AC_TOKEN_RE.findall(ident)):
+    for raw in (name, *ids):
+        text = raw.lower().replace("-", "_")
+        if any(int(n) in wanted for n in _AC_TOKEN_RE.findall(text)):
             return True
-        if any(re.search(rf"(?<![a-z0-9]){re.escape(lbl)}(?![a-z0-9])", ident)
+        if any(re.search(rf"(?<![a-z0-9]){re.escape(lbl)}(?![a-z0-9])", text)
                for lbl in norm):
             return True
     return False
@@ -20188,7 +20184,9 @@ def register_git_subcommands(sub) -> None:
             "## Testing Strategy or its optional ## Review findings names (the "
             "first word of a bullet, closed by a colon, or by a full stop when "
             "the word is in bold or backticks and text follows: `empty-input: "
-            "...`, `**empty-input.** ...`); a test "
+            "...`, `**empty-input.** ...`), the label standing as a whole "
+            "word of the test's name, with - read as _ (docs traces "
+            "test_update_docs_index, not test_docstring_parsed); a test "
             "naming none is reported as one the spec did not ask for. A "
             "parametrised test also traces through its literal "
             "pytest.mark.parametrize ids — a string argvalue, the strings of a "

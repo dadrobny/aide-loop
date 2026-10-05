@@ -3045,6 +3045,32 @@ def test_scope_traces_parametrize_ids_full_stop_labels_and_review_findings(
     assert out.count("warning:") == 1
 
 
+def test_scope_reads_a_label_as_a_whole_word_of_a_test_name(
+        aide, consumer: Path, capsys):
+    """Issue #423 on the installed verb: a `- docs: …` Review findings
+    bullet traces `test_update_docs_index` and no longer excuses
+    `test_docstring_parsed`, whose name merely contains it."""
+    spec = consumer / "docs" / "aide" / "items" / "001-the-greeter.md"
+    spec.write_text(SPEC_001 + (
+        "\n## Review findings\n\n"
+        "- docs: the docstring named the wrong argument — minor; fixed in "
+        "abc123, no test: it is about no behaviour\n"), encoding="utf-8")
+    _commit(consumer, "docs: a finding")
+    assert _claim(aide, consumer) == 0
+    (consumer / "src" / "greeter.py").write_text(
+        "def greet(name):\n    return name\n", encoding="utf-8")
+    (consumer / "tests" / "test_greeter.py").write_text(
+        "def test_ac1_greet():\n    assert True\n\n"
+        "def test_update_docs_index():\n    assert True\n\n"
+        "def test_docstring_parsed():\n    assert True\n", encoding="utf-8")
+    _commit(consumer, "feat: greeter")
+    assert aide.main(["--repo", str(consumer), "scope"]) == 0
+    out = capsys.readouterr().out
+    assert ("warning: tests/test_greeter.py::test_docstring_parsed names no "
+            "AC number") in out, out
+    assert out.count("warning:") == 1, out
+
+
 def test_scope_reports_a_test_reconciled_in_another_items_file(
         aide, consumer: Path, capsys):
     """Issue #262 on the installed verb: item 001 renames a test in item

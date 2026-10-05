@@ -136,6 +136,25 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.39.1] — 2026-10-05
+
+### Fixed
+
+- **`aide scope` reads a case label as a whole word of a test's name, not a
+  substring of it (issue #423).** A Testing Strategy or Review findings label
+  traced any added test whose name merely contained it, so a short label
+  vouched for unrelated tests: a `- docs: …` finding bullet — the no-test
+  shape 2.39.0 asks for on a finding about a document — silenced the
+  traceability warning on `test_docstring_parsed`, and a label like `io` or
+  `run` on every name holding those letters. The name now matches the way a
+  parametrize id has since 2.18.0: the label, `-` read as `_`, bounded by
+  anything but a letter or digit, so `docs` still traces
+  `test_update_docs_index` and `stale-marker` traces `test_stale_marker_warns`.
+  What a consumer sees: a test whose name carried its label only inside a
+  longer word (`test_parses_x` for label `parse`, `test_stale_markers` for
+  `stale-marker`) now draws the warning — a warning, never a FAIL; rename the
+  test or the label. `aide scope -h` states the match.
+
 ## [2.39.0] — 2026-10-05
 
 ### Changed
