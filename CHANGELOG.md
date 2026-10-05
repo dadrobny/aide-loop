@@ -163,6 +163,11 @@ instead — that is the bump policy above, and it is enforced by
   bullet (template number unchanged: an existing spec has nothing to
   edit). No config key or verb changes, and under `review = "off"` nothing
   changes.
+- **A fix round's validation still runs the whole suite, and §9 says why
+  (issue #417).** A new Rationale bullet records the arithmetic: the merge
+  reuses only a whole-suite run of the same tree, so narrowing a later
+  round's run saves nothing until a third round, which four of 39 measured
+  items reached. No behaviour change.
 
 ## [2.38.1] — 2026-10-05
 

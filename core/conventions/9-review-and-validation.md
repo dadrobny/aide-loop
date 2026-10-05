@@ -207,6 +207,18 @@ output in place of a verdict.
   instead of the branch, and a nit changes no behaviour by definition. CI
   findings stay out because each already names its check, and the round
   that fixes them ends with CI running it again.
+- **Why every round runs the whole suite.** A round after the first could run
+  only the tests that failed and the ones its fix touched, but the merge
+  takes a recorded run only when it covered the whole tree, so a narrowed
+  round hands the full run to the merge instead of saving it: an item that
+  takes two rounds runs the suite twice either way, and only a third round
+  saves one run. In two consumers' ledgers (39 items with a suite time, 3–8
+  minutes a run) four items reached a third round, a saving of under half
+  an hour in all, against a second kind of run the merge would have to tell
+  apart. Under `pr`, the narrowed last round would leave nothing in the loop
+  running the whole suite before the pull request (issue #417). A suite many
+  times slower, or items that routinely take three rounds or more, would
+  reopen the question; `aide ledger report` shows both.
 - **Why a rank at all, and why three.** The ledger records findings by rank
   (§1 → ledger.md) and the contract had no scale to record them on: this
   section asked only whether a finding was in scope, and a project's own review
