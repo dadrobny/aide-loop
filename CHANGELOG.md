@@ -136,6 +136,39 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.37.5] — 2026-10-05
+
+### Fixed
+
+- **`aide check`'s gate breadth no longer counts a 📋 item that only a
+  withdrawn stage holds (issue #409).** A `stage N` / `stage N–M` / `stage N+`
+  gate's warning resolves its reach to "holding K item(s): …", leaving out ✅
+  and ❌ items. A 📋 item every bullet of which sits in a stage withdrawn by its
+  ❌ summary row stayed in that count, though `aide claim` never offers it
+  (#387) — and since 2.37.2 the declined-gate warning goes quiet on exactly
+  that reading, so a warning still firing could name an item its own silence
+  rule treats as gone. The breadth now leaves out what `claim` leaves out, on
+  the awaiting and the declined warning alike. A 🚧, ⏸️ or 🔍 item in a
+  withdrawn stage is still counted: it is held until its owner drops it.
+
+## [2.37.4] — 2026-10-05
+
+### Fixed
+
+- **§4 now says which verbs need a local branch as their base (issue #407).**
+  It read "a base is always a local branch … a remote-tracking ref
+  (`origin/main`) is refused", for every verb, while only the four that write
+  to the base refuse one: `claim`, `merge`, `queue start` and `queue restack`.
+  `scope` and `status` only measure and take any commit-ish as `--base` —
+  which is what a PR-context CI job on a detached checkout passes, `--base
+  origin/<base>` — and `gc --merged`, which measures and then deletes, reads a
+  non-local base fail-safe, as 2.37.1 left it. The code is unchanged; the
+  convention now states it, and tests hold `scope` and `status` to a
+  remote-tracking or raw-commit base and `claim` to refusing `origin/main`.
+  Refusing a non-local base everywhere was rejected: it would turn every item
+  PR red in a consumer whose CI runs `aide scope` that way. §4's list of the
+  verbs that take `--base` now names `queue start` and `queue restack` too.
+
 ## [2.37.3] — 2026-10-05
 
 ### Fixed

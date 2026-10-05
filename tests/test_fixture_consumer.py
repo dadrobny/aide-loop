@@ -2926,6 +2926,36 @@ def test_scope_fails_for_one_file_outside_them(aide, consumer: Path, capsys):
     assert "README.md" in capsys.readouterr().out
 
 
+def test_scope_measures_against_a_remote_tracking_base_a_ci_job_passes(
+        aide, consumer: Path, capsys):
+    """Issue #407, §4: a verb that only measures takes any commit-ish as its
+    base. A PR-context CI job checks out the PR detached, with no local base
+    branch, and passes `--base origin/<base>` — scope must diff against it,
+    in both directions, while `claim`, which writes to its base, still
+    refuses the same ref."""
+    assert _claim(aide, consumer) == 0
+    _do_the_work(consumer)
+    head = _sha(consumer, "HEAD")
+    # The checkout a pull_request job gets: origin/main, HEAD detached at the
+    # PR head, and no local main at all.
+    _git(["update-ref", "refs/remotes/origin/main", "main"], consumer)
+    _git(["switch", "--detach", head], consumer)
+    _git(["branch", "-D", "main"], consumer)
+
+    assert aide.main(["--repo", str(consumer), "scope", "1",
+                      "--base", "origin/main"]) == 0
+    assert "vs origin/main" in capsys.readouterr().out
+
+    (consumer / "README.md").write_text("stray\n", encoding="utf-8")
+    _commit(consumer, "chore: stray")
+    assert aide.main(["--repo", str(consumer), "scope", "1",
+                      "--base", "origin/main"]) == 1
+    assert "README.md" in capsys.readouterr().out
+
+    assert _claim(aide, consumer, "--base", "origin/main") == 1
+    assert "not a local branch" in capsys.readouterr().err
+
+
 def test_scope_grants_nothing_to_bold_opening_a_continuation_line(
         aide, consumer: Path, capsys):
     """Issue #270: a wrapped reason whose continuation line opened on

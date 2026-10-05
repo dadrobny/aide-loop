@@ -277,10 +277,15 @@ def test_claim_branches_from_the_base_not_from_head(tmp_path: Path):
         "claim recorded main as the base, so it must branch from main")
 
 
-def test_claim_refuses_a_base_that_is_not_a_local_branch(tmp_path: Path, capsys):
+@pytest.mark.parametrize("base", ["v1", "origin/main"])
+def test_claim_refuses_a_base_that_is_not_a_local_branch(tmp_path: Path, capsys,
+                                                         base: str):
+    """A tag and a remote-tracking ref alike: claim writes to its base (§4,
+    issue #407), and only a local branch moves forward."""
     repo = _init_repo(tmp_path / "repo")
     _run(["git", "tag", "v1"], repo)
-    rc = aide.main(["--repo", str(repo), "claim", "--base", "v1"])
+    _run(["git", "update-ref", "refs/remotes/origin/main", "main"], repo)
+    rc = aide.main(["--repo", str(repo), "claim", "--base", base])
     assert rc == 1
     assert "not a local branch" in capsys.readouterr().err
     assert "aide/027-bounds-rules" not in _branches(repo)
@@ -295,6 +300,30 @@ def test_scope_uses_an_explicit_base_verbatim(tmp_path: Path, capsys):
 
     assert aide.main(["--repo", str(repo), "scope", "--base", "main"]) == 0
     assert "vs main" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("form", ["origin", "commit"])
+def test_a_measuring_verb_takes_a_base_that_is_not_a_local_branch(
+        tmp_path: Path, capsys, form: str):
+    """§4, issue #407: scope and status only measure, so a remote-tracking ref
+    or a raw commit is a base they take — the one a PR-context CI job on a
+    detached checkout has to pass. Neither refuses it the way claim does."""
+    repo = _init_repo(tmp_path / "repo")
+    _run(["git", "update-ref", "refs/remotes/origin/main", "main"], repo)
+    base = ("origin/main" if form == "origin" else
+            _run(["git", "rev-parse", "main"], repo).stdout.strip())
+    _run(["git", "switch", "-c", "aide/027-bounds-rules"], repo)
+    _commit(repo, "src/demo/bounds.py", "x = 2\n", "work")
+
+    assert aide.main(["--repo", str(repo), "scope", "--base", base]) == 0
+    assert f"vs {base}" in capsys.readouterr().out
+    _commit(repo, "stray.md", "x\n", "stray")
+    assert aide.main(["--repo", str(repo), "scope", "--base", base]) == 1
+    assert "stray.md" in capsys.readouterr().out
+
+    assert aide.main(["--repo", str(repo), "status", "--no-fetch",
+                      "--base", base]) == 0
+    assert "not a local branch" not in capsys.readouterr().err
 
 
 def test_a_derived_base_prefers_its_origin_counterpart(tmp_path: Path):
