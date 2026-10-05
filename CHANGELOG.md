@@ -136,6 +136,33 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.37.1] — 2026-10-05
+
+### Fixed
+
+- **`aide gc --merged` under a queue base no longer collects the queue
+  branches below it on the stack (issue #403).** On a stack of queue
+  branches each one below the base is an ancestor of it, so `git branch
+  --merged` and the merge-tree oracle both call it merged — into its
+  successor, not into `main_branch` — and `gc --merged --base <queue
+  branch> --yes` deleted it locally and on origin, which closes its PR
+  unreviewed. The dry run listed it as `would delete … (merged into
+  <base>)`. The same happened with no `--base` from a checkout whose
+  recorded base is a queue branch. A queue or specs-queue branch is now a
+  target on the `--merged` ground only when the base is `main_branch`
+  (or `origin/<main_branch>`); under any other base it is reported as
+  `skipping <branch> (…): a queue branch merged into <base>, not into
+  <main_branch> — …`, on the dry run and with `--yes` alike. The base
+  itself, which git calls merged into itself, is never a target on that
+  ground. A claim branch merged into a queue base is still collected: it
+  landed where it was meant to, and the queue branch's PR carries its
+  work. The rule needs no forge, so it holds in `local` mode and under
+  `forge = "none"`; an open-PR check was the rejected alternative. `aide
+  gc -h` states it, pinned to the code, and §2's `gc` sentence says the
+  ground is the base, a queue branch only when that base is `main_branch`,
+  with a Rationale bullet. The empty-result note that `--merged` would take
+  merged branches counts the same set.
+
 ## [2.37.0] — 2026-10-03
 
 ### Added

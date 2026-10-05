@@ -3650,6 +3650,31 @@ def test_gc_previews_exactly_the_set_it_deletes(aide, consumer: Path, capsys):
     assert "aide/001-the-greeter" in _branches(consumer)
 
 
+def test_gc_merged_under_a_queue_base_keeps_the_queue_below_it(
+        aide, consumer: Path, tmp_path: Path):
+    """Issue #403: on a stack, queue 001 is an ancestor of queue 002, so git
+    calls it merged into 002 — and deleting it on origin closes its PR,
+    unreviewed. Under a queue base it survives, locally and on origin; once
+    main holds it, the main-base ground still takes it."""
+    _to_pr_mode_with_origin(consumer, tmp_path)
+    _queue_stack(aide, consumer)
+    _git(["push", "origin", Q1, Q2], consumer)
+    _git(["switch", "main"], consumer)
+
+    for extra in ([], ["--yes"]):
+        assert aide.main(["--repo", str(consumer), "gc", "--merged",
+                          "--base", Q2, *extra]) == 0
+    assert Q1 in _branches(consumer) and Q2 in _branches(consumer)
+    assert _remote_has(consumer, Q1) and _remote_has(consumer, Q2)
+
+    _git(["merge", "--ff-only", Q1], consumer)
+    _git(["push", "origin", "main"], consumer)
+    assert aide.main(["--repo", str(consumer), "gc", "--merged", "--yes",
+                      "--base", "main"]) == 0
+    assert Q1 not in _branches(consumer) and not _remote_has(consumer, Q1)
+    assert Q2 in _branches(consumer) and _remote_has(consumer, Q2)
+
+
 def test_gc_yes_deletes_the_branch_of_a_landed_item(aide, consumer: Path):
     assert _claim(aide, consumer) == 0
     _do_the_work(consumer)

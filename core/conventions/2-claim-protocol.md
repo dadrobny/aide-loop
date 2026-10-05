@@ -45,7 +45,8 @@ to publish to, and each of them refuses before it changes anything (§4).
 upstream `origin/<branch>` is gone was published, and is never advised a push
 — that would recreate a branch deleted on purpose. The same three verbs name it
 as **stale** when everything on it is already in its base or `main_branch`
-(`aide gc --merged` deletes it), and otherwise as work **not found** there.
+(`aide gc --merged` deletes it, a queue branch only against `main_branch`),
+and otherwise as work **not found** there.
 Not found is what was measured, not that the work never landed: a squash
 merge the base has since changed over the same lines, or any squash merge
 under git older than 2.38, reads the same way. So check whether its work merged
@@ -65,7 +66,8 @@ One person (or one loop) owns an item at a time. Abandoning an item means
 deleting its remote branch so the item returns to the pool; `aide check` flags a
 claim branch whose item is already ✅ or ❌ (stale claim, the ❌ ground below),
 and `aide gc` deletes such branches — local and remote — deterministically (dry-run by default, `--yes` to
-act; `--merged` also collects branches already merged into main).
+act; `--merged` also collects branches already merged into the base, and a
+queue branch only when that base is `main_branch`).
 
 **A ❌ item's claim is spent as a ✅ one is.** An item dropped by its own
 bullets, or a 📋 one whose every bullet sits in a withdrawn stage, will never
@@ -117,6 +119,15 @@ acts on** (`gc -h` says what it asks git, and what it refuses).
   and which also strengthens `--merged`. `merge-tree --write-tree` needs
   git ≥ 2.38, and on older git the ✅ ground refuses rather than falling back
   to a weaker test — old git is always *more* conservative, never less.
+- **Why a queue branch needs `main_branch` as the base.** On a stack of
+  queue branches each one below the base is an ancestor of it, so git calls
+  every one merged into it — into its successor, not into `main_branch`.
+  Collected on that answer, `gc --merged --base <queue branch> --yes` deleted
+  them on origin, and deleting a PR's head branch closes the PR, unreviewed
+  (issue #403). A claim branch merged into a queue base is not that shape: it
+  landed where it was meant to, and the queue branch's PR carries its work. An
+  open-PR check was the rejected alternative: it needs a forge, and `local`
+  mode and `forge = "none"` have none.
 - **Why ❌ is a stale ground, and not only ✅.** 2.34.0 gave ❌ two routes —
   `aide progress set NNN dropped` for an item, a ❌ summary row for a stage —
   and `merge` began refusing a ❌ item, but the stale ground stayed ✅ alone:

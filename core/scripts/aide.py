@@ -18520,7 +18520,9 @@ def _gc_empty_notes(repo_root: Path, prefix: str, main: str,
     """
     notes: List[str] = []
     if not merged_flag and (local or remote):
-        extra = _merged_prefixed_branches(repo_root, main, prefix)
+        main_branch = str(load_config(repo_root)["git"].get("main_branch", "main"))
+        extra = [b for b in _merged_prefixed_branches(repo_root, main, prefix)
+                 if _gc_merged_ground_skip(b, main, main_branch, prefix) is None]
         if extra:
             notes.append(
                 f"{_plural(len(extra), 'branch', 'branches')} under '{prefix}' "
@@ -18536,6 +18538,31 @@ def _gc_empty_notes(repo_root: Path, prefix: str, main: str,
     return notes
 
 
+def _gc_merged_ground_skip(branch: str, base: str, main_branch: str,
+                           prefix: str) -> Optional[str]:
+    """Why *branch* is not a target on the ``--merged`` ground under *base*,
+    or None when it may be one (issue #403).
+
+    Two branches are never collected there, however git answers. The base
+    itself, which every ancestry and content test calls merged into itself.
+    And a queue branch under a base other than `main_branch`: on a stack of
+    queue branches each one below the base is an ancestor of it, so it reads
+    as merged — into its successor, not into `main_branch` — while its own PR,
+    still unreviewed, is its route there. Deleting it on origin closes that
+    PR. A claim branch merged into a queue base is a different shape: it
+    landed where it was meant to land, and the queue branch's PR carries its
+    work, so it stays a target.
+    """
+    if base in (branch, f"origin/{branch}"):
+        return "it is the base"
+    if (_is_queue_branch(branch, prefix)
+            and base not in (main_branch, f"origin/{main_branch}")):
+        return (f"a queue branch merged into {base}, not into {main_branch} "
+                f"— its own PR is still its route to {main_branch}; gc "
+                f"takes it once {main_branch} holds its work")
+    return None
+
+
 def _gc_ref(branch: str, local: List[str]) -> str:
     """The ref to measure *branch* by: the local branch, else its remote copy."""
     return branch if branch in local else f"origin/{branch}"
@@ -18544,7 +18571,8 @@ def _gc_ref(branch: str, local: List[str]) -> str:
 def cmd_gc(args: argparse.Namespace) -> int:
     """Delete claim branches whose work has landed (item ✅ in progress.md —
     or ❌, dropped or withdrawn with its stage — or ``--merged`` branches
-    already merged into main). Dry-run by default; pass
+    already merged into the base, a queue branch only when that base is
+    main_branch). Dry-run by default; pass
     ``--yes`` to delete. The one verb that deletes work, so it is never
     implicit: `queue discard` deletes a branch only where it carries none."""
     repo_root = find_repo_root(args.repo)
@@ -18557,6 +18585,7 @@ def cmd_gc(args: argparse.Namespace) -> int:
     # like everything else: on stacked work the branches that have landed have
     # landed into the queue branch, and asking about `main` finds none of them.
     main = resolve_base(repo_root, config, args.base)
+    main_branch = str(config["git"].get("main_branch", "main"))
 
     if mode != "local" and _has_origin(repo_root):
         git(["fetch", "--all", "--prune"], repo_root, check=False)
@@ -18588,8 +18617,9 @@ def cmd_gc(args: argparse.Namespace) -> int:
         # ✅" ground. A queue branch shares the number namespace but not the
         # lifecycle: it aggregates many items and lands as one reviewed PR, so
         # deleting it because some same-numbered item finished would discard
-        # unreviewed work. It stays eligible under --merged, where the ground
-        # is "already merged into main" and is checked against git itself.
+        # unreviewed work. It stays eligible under --merged only while the
+        # base is main_branch: under a queue base, every queue branch below it
+        # on the stack reads as merged into it, and is not in main (#403).
         num = _branch_item_number(br, prefix)
         # A ❌ item's branch — dropped, or withdrawn with its stage — is on
         # the item ground too (issue #387): `merge` refuses it, so nothing
@@ -18629,14 +18659,25 @@ def cmd_gc(args: argparse.Namespace) -> int:
                                  f"could not be determined (ref "
                                  f"'{_gc_ref(br, local)}' unreadable); not "
                                  f"deleting — pass --abandon to delete anyway")
-        elif br in merged_local:
-            targets[br] = f"merged into {main}"
-        elif (args.merged and can_measure
-              and _branch_content_landed(repo_root, main, _gc_ref(br, local)) is True):
-            # `--merged` is built on `git branch --merged`, which is ancestry-
-            # based and so misses every squash merge — the very shape `-D` was
-            # reached for. The same oracle that guards the ✅ ground closes that.
-            targets[br] = f"content already in {main}"
+        elif args.merged:
+            if br in merged_local:
+                ground = f"merged into {main}"
+            elif (can_measure and _branch_content_landed(
+                    repo_root, main, _gc_ref(br, local)) is True):
+                # `--merged` is built on `git branch --merged`, which is
+                # ancestry-based and so misses every squash merge — the very
+                # shape `-D` was reached for. The same oracle that guards the
+                # ✅ ground closes that.
+                ground = f"content already in {main}"
+            else:
+                continue
+            # Asked only once git has said the branch is merged, so a branch
+            # the ground would not take anyway is never reported as skipped.
+            why = _gc_merged_ground_skip(br, main, main_branch, prefix)
+            if why is None:
+                targets[br] = ground
+            elif main not in (br, f"origin/{br}"):
+                skips[br] = why
 
     if not targets and not skips:
         # "Nothing to clean" is a claim about the ground and the scope this run
@@ -19886,7 +19927,10 @@ def register_git_subcommands(sub) -> None:
         description=(
             "Deletes claim branches, local and remote, whose item is \u2705 in "
             "progress.md, and with --merged also branches already merged into "
-            "the base. An item \u274c by its own bullets, or \U0001f4cb "
+            "the base. A queue branch is taken on that ground only when the "
+            "base is main_branch: one merged into any other base is skipped, "
+            "since it has landed in the queue stacked on it and its own PR is "
+            "still its route to main_branch. An item \u274c by its own bullets, or \U0001f4cb "
             "with every bullet in a stage whose summary row is \u274c, is "
             "on the \u2705 ground too. On the \u2705 ground a branch goes "
             "only when "
