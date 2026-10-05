@@ -14,6 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 _MODULE_PATH = Path(__file__).resolve().parents[1] / "aide.py"
 _spec = importlib.util.spec_from_file_location("aide_cli_base", _MODULE_PATH)
 aide = importlib.util.module_from_spec(_spec)
@@ -425,6 +427,49 @@ def test_gc_merged_takes_a_queue_branch_merged_into_main(tmp_path: Path, capsys)
 
     assert aide.main(["--repo", str(repo), "gc", "--merged", "--yes",
                       "--base", "main"]) == 0
+    branches = _local_branches(repo)
+    assert "aide/queue-001" not in branches
+    assert "aide/queue-002" in branches
+
+
+@pytest.mark.parametrize("base_form", ["origin", "sha"])
+def test_gc_merged_queue_base_by_another_name(tmp_path: Path, capsys,
+                                              base_form):
+    """The queue base given as its remote-tracking ref or as a raw commit:
+    the queue and specs-queue branches below it are still skipped, and the
+    base named as ``origin/<branch>`` is still the base — neither a target
+    nor a skip line."""
+    repo = _init_repo(tmp_path / "repo")
+    _run(["git", "switch", "-c", "aide/specs-queue-001"], repo)
+    _commit(repo, "s1.txt", "s\n", "specs work")
+    _queue_stack(repo)
+    _run(["git", "update-ref", "refs/remotes/origin/aide/queue-002",
+          "aide/queue-002"], repo)
+    base = ("origin/aide/queue-002" if base_form == "origin" else
+            _run(["git", "rev-parse", "aide/queue-002"], repo).stdout.strip())
+
+    assert aide.main(["--repo", str(repo), "gc", "--merged", "--yes",
+                      "--base", base]) == 0
+    out = capsys.readouterr().out
+    assert "skipping aide/queue-001 (local)" in out
+    assert "skipping aide/specs-queue-001 (local)" in out
+    if base_form == "origin":
+        assert "aide/queue-002 (" not in out
+    branches = _local_branches(repo)
+    assert {"aide/specs-queue-001", "aide/queue-001",
+            "aide/queue-002"} <= set(branches)
+
+
+def test_gc_merged_takes_a_queue_branch_under_origin_main(tmp_path: Path,
+                                                         capsys):
+    """``origin/<main_branch>`` is main_branch for the queue rule."""
+    repo = _init_repo(tmp_path / "repo")
+    _queue_stack(repo)
+    _run(["git", "merge", "--ff-only", "aide/queue-001"], repo)
+    _run(["git", "update-ref", "refs/remotes/origin/main", "main"], repo)
+
+    assert aide.main(["--repo", str(repo), "gc", "--merged", "--yes",
+                      "--base", "origin/main"]) == 0
     branches = _local_branches(repo)
     assert "aide/queue-001" not in branches
     assert "aide/queue-002" in branches
