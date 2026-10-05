@@ -136,6 +136,20 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.38.1] — 2026-10-05
+
+### Fixed
+
+- **`/aide-run-item` numbers its steps one way (issue #418).** The *Task →
+  sub-agent mapping* table numbered the roles 0, 1, 2, 2b, 3, while the
+  numbered *Steps* list, and every "step N" in the file — the table's own
+  rows included — counts 1 (spec) to 7 (report). Read against the table,
+  *An item a CI fix round reopened* sent the CI findings ("step 3's brief")
+  to the validator and gave the builder nothing to fix; `/aide-run-queue`'s
+  *CI fix round* already said the builder's brief. The table now numbers
+  1–5 as the list does, and the reopened section names each step's role
+  beside its number.
+
 ## [2.38.0] — 2026-10-05
 
 ### Changed
