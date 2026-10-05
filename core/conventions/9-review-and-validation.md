@@ -102,20 +102,20 @@ before it was fixed is dropped, and not counted: the code it describes no
 longer exists.
 
 **A blocking finding about behaviour is fixed together with a test traced to
-it, and the validation after that fix round checks the trace.** The
-validation is handed every blocking finding fixed on the branch so far, and
-fails the round where one has no bullet in the spec's `## Review findings`, or a bullet
-naming neither a test traced to it nor why it has none (§6) — a finding about
-a document or a name changes nothing a test could measure, and says so there.
-It checks an artifact, not the fix: that the bullet is there and that the
-test it names is in the suite the validation runs, which judges that test as
-it judges any other. Whether the code now answers the finding is review's
-question, and the validation does not ask it — it reads no diff for it,
-exactly as it re-asks nothing else review owns. A minor finding fixed on the
-branch and a nit carry no such requirement, though a test added for one still
-traces the way §6 says. A finding read from the queue's CI is not a review
-finding here: it names the failing test or step that is its check, and the
-next CI run re-runs that.
+it, and every validation after a fix round checks the trace.** The validation
+is handed every blocking finding fixed on the branch so far whose code a later
+round has not removed, and fails the round where one has no bullet in the
+spec's `## Review findings`, or a bullet naming neither a test traced to it
+nor why it has none (§6) — a finding about a document or a name changes
+nothing a test could measure, and says so there. It checks an artifact, not
+the fix: that the bullet is there and that the test it names is in the suite
+the validation runs, which judges that test as it judges any other. Whether
+the code now answers the finding is review's question, and the validation does
+not ask it — it reads no diff for it, exactly as it re-asks nothing else
+review owns. A minor finding fixed on the branch and a nit carry no such
+requirement, though a test added for one still traces the way §6 says. A
+finding read from the queue's CI is not a review finding here: it names the
+failing test or step that is its check, and the next CI run re-runs that.
 
 **Neither read signs off its own work.** The role that wrote the code performs
 neither, and the reviewer writes no code, modifies no tests, does not merge,
@@ -208,13 +208,13 @@ output in place of a verdict.
   findings stay out because each already names its check, and the round
   that fixes them ends with CI running it again.
 - **Why every round runs the whole suite.** A round after the first could run
-  only the tests that failed and the ones its fix touched, but the merge
-  takes a recorded run only when it covered the whole tree, so a narrowed
-  round hands the full run to the merge instead of saving it: an item that
-  takes two rounds runs the suite twice either way, and only a third round
-  saves one run. In two consumers' ledgers (39 items with a suite time,
-  about 2½ to 8½ minutes a run) four items reached a third round, a saving of under half
-  an hour in all, against a second kind of run the merge would have to tell
+  only the tests that failed and the ones its fix touched, but the merge takes
+  a recorded run only when it covered the whole tree, so a narrowed round
+  hands the full run to the merge instead of saving it: an item that takes two
+  rounds runs the suite twice either way, and only a third round saves one
+  run. In two consumers' ledgers (39 items with a suite time, about 2½ to 8½
+  minutes a run) four items reached a third round, a saving of under half an
+  hour in all, against a second kind of run the merge would have to tell
   apart. Under `pr`, the narrowed last round would leave nothing in the loop
   running the whole suite before the pull request (issue #417). A suite many
   times slower, or items that routinely take three rounds or more, would

@@ -80,9 +80,10 @@ and tests are already merged, so the steps run with four differences:
   They come from the orchestrator's triage, or, in a fresh session, from the
   item's `reopened:` reason. Carried like one, a CI finding is still not a
   review finding: it asks for no traced test and no `## Review findings`
-  bullet, and step 5's brief gets no blocking-findings paragraph for it —
-  the failing test or step it names is its check, and the next CI run
-  re-runs that (§9).
+  bullet, and adds nothing to step 5's blocking-findings paragraph, which
+  lists the item's earlier review findings as usual — the failing test or
+  step a CI finding names is its check, and the next CI run re-runs that
+  (§9).
 
 - **No `reviewer` is spawned**, whatever `loop.review` says: the item was
   reviewed when it was first built, and a CI fix is a fix round (§9). Under
@@ -229,8 +230,10 @@ own `loop.validation_rounds`, apart from the CI round the queue counts.
 
    **When a fix round on this branch has carried blocking review findings,
    add to that brief** — every one fixed so far, not only the last round's,
-   so a trace a red suite kept a validator from reaching is still checked.
-   A session that resumes mid-cycle takes them from the spec's
+   so a trace a red suite kept a validator from reaching is still checked —
+   less any whose code a later round removed or rewrote, together with the
+   test that measured it: that finding stays counted, and is checked no
+   more. A session that resumes mid-cycle takes them from the spec's
    `## Review findings` bullets ranked blocking; re-checking a trace costs a
    read:
    > This branch fixed blocking review findings: <each: its label in the

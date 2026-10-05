@@ -145,23 +145,23 @@ instead — that is the bump policy above, and it is enforced by
   the fresh validator after a fix round is the only check on a review
   finding's fix, and it measured that fix through the spec's tests alone,
   written before the finding existed. §9 now requires a blocking in-scope
-  finding about behaviour to be fixed together with a test traced to it
-  (§6's `## Review findings` bullet), and a blocking finding that changes no
-  behaviour — a document or a name — to get its bullet anyway, ending with
-  why it has no test. Every later validator is handed the blocking findings
-  fixed on the branch so far and FAILs where one has no bullet, or a bullet
-  naming neither a traced test nor a reason (validator check 7); it checks
-  the record and runs the test in the suite, and never judges whether the
-  fix is right — that stays review's question, not asked again. What a
-  consumer running `review = "background"` sees differs: `/aide-run-item`
-  sends a blocking behavioural finding to a `test-writer` as well as the
-  builder in the same round, briefs the builder to record a non-behavioural
-  one, names every blocking finding fixed on the branch in each later
-  validator's brief (a resumed session reads them from the spec), and
-  routes a check-7 FAIL back to the role that owes the trace. Minor findings, nits and CI findings carry no new requirement; a
-  CI finding already names its failing check, which the next CI run
-  re-runs. The item template's Review findings guidance names the no-test
-  bullet (template number unchanged: an existing spec has nothing to
+  finding about behaviour to be fixed together with a test traced to it (§6's
+  `## Review findings` bullet), and a blocking finding that changes no
+  behaviour — a document or a name — to get its bullet anyway, ending with why
+  it has no test. Every later validator is handed the blocking findings fixed
+  on the branch so far and FAILs where one has no bullet, or a bullet naming
+  neither a traced test nor a reason (validator check 7); it checks the record
+  and runs the test in the suite, and never judges whether the fix is right —
+  that stays review's question, not asked again. What a consumer running
+  `review = "background"` sees differs: `/aide-run-item` sends a blocking
+  behavioural finding to a `test-writer` as well as the builder in the same
+  round, briefs the builder to record a non-behavioural one, names every
+  blocking finding fixed on the branch in each later validator's brief (a
+  resumed session reads them from the spec), and routes a check-7 FAIL back to
+  the role that owes the trace. Minor findings, nits and CI findings carry no
+  new requirement; a CI finding already names its failing check, which the
+  next CI run re-runs. The item template's Review findings guidance names the
+  no-test bullet (template number unchanged: an existing spec has nothing to
   edit). No config key or verb changes, and under `review = "off"` nothing
   changes.
 - **A fix round's validation still runs the whole suite, and §9 says why
