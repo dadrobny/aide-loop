@@ -733,7 +733,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "entry 28 on a line that says insight or inbox \u2014 is a warning",
          ("test_aide_insights::test_a_positional_citation_is_a_warning_naming_the_id",
           "test_aide_insights::test_a_positional_citation_in_a_test_is_a_warning_too")),
-        # `_CitationHistory.hint` (issue #361): blame names the commit, `git
+        # `_CitationHistory.resolve`, formatted by `hint` (issues #361,
+        # #419): blame names the commit, `git
         # show` that commit's inbox, and the entry there is named by the ID
         # it has today in the inbox or its archives.
         ("naming the ID that position held when the citing line was last "

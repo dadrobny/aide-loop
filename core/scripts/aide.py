@@ -11003,6 +11003,10 @@ def _print_invalidated_citations(text: str, remaining: str, ddir: Path,
 
     Which citations: those of a position the move renumbers or archives
     (``archive_position_map``) — the number's reading changes under them.
+    A citation already stale from an earlier archive, at a number this move
+    leaves alone, is deliberately not listed: this move does not change what
+    it reads as, and `aide check` warns on it with the same history-resolved
+    ID, so nothing the listing would say is lost.
     What each meant: resolved through ``_CitationHistory`` exactly as `aide
     check`'s hint is (issue #419) — the entry the position held in the inbox
     of the commit that last wrote the citing line, named by its ID today;
