@@ -1943,6 +1943,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_traceability::test_a_label_closed_by_a_full_stop_is_a_label_too",
           "test_aide_traceability::"
           "test_a_full_stop_with_nothing_after_it_or_inside_a_word_is_prose")),
+        # `_traces_to`'s bounded match over the name (#423).
+        ("the label standing as a whole word of the test's name, with - read "
+         "as _ (docs traces test_update_docs_index, not "
+         "test_docstring_parsed)",
+         "test_aide_traceability::test_a_name_matches_a_label_as_a_whole_word_only"),
         # `_parametrize_ids` over the AST, `_traces_to`'s id branch (#314).
         ("A parametrised test also traces through its literal "
          "pytest.mark.parametrize ids — a string argvalue, the strings of a "
