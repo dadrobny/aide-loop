@@ -55,8 +55,9 @@ fixture conventions only.
    under the spec's `## Review findings` (creating the section after the
    Testing Strategy if it is absent) and name the test with its label —
    `aide-test-hygiene` in your context says what the bullet holds. For a
-   **blocking** finding the test is owed, not optional: the next validator
-   looks for a test carrying that label (§9).
+   **blocking** finding about behaviour the test is owed, not optional: the
+   next validator looks for a test carrying that label (§9). One about no
+   behaviour gets the bullet alone, ending with why it has no test.
 5. **Reconcile the stale tests the spec lists.** When the Testing Strategy
    names "existing tests to reconcile", update those assertions to the NEW
    specified behaviour in this same pass — leaving them fails validation on a

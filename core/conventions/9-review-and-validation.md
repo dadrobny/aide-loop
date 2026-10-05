@@ -103,8 +103,8 @@ longer exists.
 
 **A blocking finding about behaviour is fixed together with a test traced to
 it, and the validation after that fix round checks the trace.** The
-validation is handed the blocking findings the round carries, and fails the
-round where one has no bullet in the spec's `## Review findings`, or a bullet
+validation is handed every blocking finding fixed on the branch so far, and
+fails the round where one has no bullet in the spec's `## Review findings`, or a bullet
 naming neither a test traced to it nor why it has none (§6) — a finding about
 a document or a name changes nothing a test could measure, and says so there.
 It checks an artifact, not the fix: that the bullet is there and that the
@@ -212,8 +212,8 @@ output in place of a verdict.
   takes a recorded run only when it covered the whole tree, so a narrowed
   round hands the full run to the merge instead of saving it: an item that
   takes two rounds runs the suite twice either way, and only a third round
-  saves one run. In two consumers' ledgers (39 items with a suite time, 3–8
-  minutes a run) four items reached a third round, a saving of under half
+  saves one run. In two consumers' ledgers (39 items with a suite time,
+  about 2½ to 8½ minutes a run) four items reached a third round, a saving of under half
   an hour in all, against a second kind of run the merge would have to tell
   apart. Under `pr`, the narrowed last round would leave nothing in the loop
   running the whole suite before the pull request (issue #417). A suite many

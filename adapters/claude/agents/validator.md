@@ -135,8 +135,10 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
    `❓ Unverified` — this is NOT a FAIL), and never report the gated path as
    exercised when it wasn't.
 7. **Every blocking review finding your brief names left its trace.** Only
-   when the brief lists blocking findings a fix round carried (§9, preloaded
-   above); otherwise there is nothing to check. For each, the spec's
+   when the brief lists blocking findings fixed on the branch (§9, preloaded
+   above); otherwise there is nothing to check. It runs whatever step 1
+   found, a red suite under `pr` included, so the hand-back names every
+   failure at once. For each, the spec's
    `## Review findings` must hold its bullet, and the bullet must either
    label a test — one under `tests_dir` whose name or parametrize id carries
    that label, which then ran in your step 1 suite and is judged there like

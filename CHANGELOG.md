@@ -148,16 +148,17 @@ instead — that is the bump policy above, and it is enforced by
   finding about behaviour to be fixed together with a test traced to it
   (§6's `## Review findings` bullet), and a blocking finding that changes no
   behaviour — a document or a name — to get its bullet anyway, ending with
-  why it has no test. The validator after that round is handed the blocking
-  findings the round carried and FAILs where one has no bullet, or a bullet
+  why it has no test. Every later validator is handed the blocking findings
+  fixed on the branch so far and FAILs where one has no bullet, or a bullet
   naming neither a traced test nor a reason (validator check 7); it checks
   the record and runs the test in the suite, and never judges whether the
   fix is right — that stays review's question, not asked again. What a
   consumer running `review = "background"` sees differs: `/aide-run-item`
   sends a blocking behavioural finding to a `test-writer` as well as the
   builder in the same round, briefs the builder to record a non-behavioural
-  one, and names the round's blocking findings in the next validator's
-  brief. Minor findings, nits and CI findings carry no new requirement; a
+  one, names every blocking finding fixed on the branch in each later
+  validator's brief (a resumed session reads them from the spec), and
+  routes a check-7 FAIL back to the role that owes the trace. Minor findings, nits and CI findings carry no new requirement; a
   CI finding already names its failing check, which the next CI run
   re-runs. The item template's Review findings guidance names the no-test
   bullet (template number unchanged: an existing spec has nothing to

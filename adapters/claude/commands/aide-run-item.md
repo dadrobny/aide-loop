@@ -49,7 +49,7 @@ review whose findings arrive after the merge gates nothing. Under
 `aide merge NNN` yourself once its findings are triaged. The reviewer reads
 the diff as first built, once; its findings are triaged at the first
 verdict, PASS or FAIL, and a fix round is followed by a fresh validator
-alone, handed the blocking findings the round fixed to check each left a
+alone, handed the blocking findings fixed on the branch to check each left a
 traced test or said why not — never to judge the fix. Scope and vision fit
 are the validator's checks either way.
 
@@ -227,10 +227,13 @@ own `loop.validation_rounds`, apart from the CI round the queue counts.
    > report PASS (merge held)** — do NOT run `aide merge`. The orchestrator
    > merges once the review findings are discharged.
 
-   **When the fix round before this dispatch carried blocking review
-   findings, add to that brief** — the findings that round sent, nothing
-   older:
-   > This round fixed blocking review findings: <each: its label in the
+   **When a fix round on this branch has carried blocking review findings,
+   add to that brief** — every one fixed so far, not only the last round's,
+   so a trace a red suite kept a validator from reaching is still checked.
+   A session that resumes mid-cycle takes them from the spec's
+   `## Review findings` bullets ranked blocking; re-checking a trace costs a
+   read:
+   > This branch fixed blocking review findings: <each: its label in the
    > spec's `## Review findings`, and the finding in one line>. Check each
    > as your spec's check 7 says: its bullet is there, and names a test
    > traced to it or why it has none. Do not judge the fixes themselves.
@@ -257,6 +260,11 @@ own `loop.validation_rounds`, apart from the CI round the queue counts.
      this is the merge refusing failures the item caused (§9): brief the
      builder with those tests, not the inherited ones listed beside them.
    - **FAIL — missing AC coverage** → fresh `test-writer`; then a fresh `validator`.
+   - **FAIL — a blocking finding left no trace (check 7)** → the dispatch
+     *Blocking, in scope* below names for it, with the finding again: a fresh
+     `test-writer` for one about behaviour, the role that fixed it for one
+     about no behaviour, to add the bullet and its reason. Then a fresh
+     `validator`. It is a round like any other.
    - **FAIL — out-of-scope / vision conflict** → fresh builder to revert/fix;
      then a fresh `validator`.
    - **Which builder — escalation is a judgement, not a round number.** A quick
