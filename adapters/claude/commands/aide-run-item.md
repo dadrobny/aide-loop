@@ -28,11 +28,11 @@ first if you're on Opus.
 
 | Step | Task | Sub-agent | Notes |
 |---|---|---|---|
-| 0 | **Author the item spec** | `spec-author` | writes `docs/aide/items/NNN-*.md` (Description, atomic AC, steps, testing strategy, deps, decisions), commits. **No code, no tests.** Skip only if the spec file already exists and is complete — and its Assumptions pin no dependency's interface; if they do, it re-checks them (step 1). |
-| 1 | **Write tests** for the item | `test-writer` | reads spec + AC + existing test style, writes one test per AC plus the cases the Testing Strategy names, commits. **No production code, no pytest.** |
-| 2 | **Implement** production code | `builder` (`builder-escalation` once escalated, step 6) | checkout branch, implement `source_dir` per every AC, record decisions, set progress in-progress (`aide progress set NNN in-progress`), commit. **No tests, no pytest.** |
-| 2b | **Review** the diff | `reviewer` | **only when `aide.toml` sets `loop.review = "background"`** (default `"off"`). Dispatched **once per item**, in the background, the moment builder first returns, concurrent with the first step 3 over the same branch — never again after a fix round. Reads the diff adversarially and reports findings; writes nothing, merges nothing. |
-| 3 | **Validate** (+ merge, unless held) | `validator` | a **different** agent: runs pytest, checks AC coverage + scope + vision fit, then on PASS reconciles via the CLI (`aide progress set NNN in-review`) and merges (`aide merge NNN` — `merge` writes the ✅ itself once the merge lands). **Under `loop.review = "background"` the merge is held**: it stops after the reconcile, reports PASS (merge held), and *you* merge once the review is discharged. **No new tests.** |
+| 1 | **Author the item spec** | `spec-author` | writes `docs/aide/items/NNN-*.md` (Description, atomic AC, steps, testing strategy, deps, decisions), commits. **No code, no tests.** Skip only if the spec file already exists and is complete — and its Assumptions pin no dependency's interface; if they do, it re-checks them (step 1). |
+| 2 | **Write tests** for the item | `test-writer` | reads spec + AC + existing test style, writes one test per AC plus the cases the Testing Strategy names, commits. **No production code, no pytest.** |
+| 3 | **Implement** production code | `builder` (`builder-escalation` once escalated, step 6) | checkout branch, implement `source_dir` per every AC, record decisions, set progress in-progress (`aide progress set NNN in-progress`), commit. **No tests, no pytest.** |
+| 4 | **Review** the diff | `reviewer` | **only when `aide.toml` sets `loop.review = "background"`** (default `"off"`). Dispatched **once per item**, in the background, the moment builder first returns, concurrent with the first step 5 over the same branch — never again after a fix round. Reads the diff adversarially and reports findings; writes nothing, merges nothing. |
+| 5 | **Validate** (+ merge, unless held) | `validator` | a **different** agent: runs pytest, checks AC coverage + scope + vision fit, then on PASS reconciles via the CLI (`aide progress set NNN in-review`) and merges (`aide merge NNN` — `merge` writes the ✅ itself once the merge lands). **Under `loop.review = "background"` the merge is held**: it stops after the reconcile, reports PASS (merge held), and *you* merge once the review is discharged. **No new tests.** |
 
 **Spec authoring, testing, implementation, and validation are always separate
 agents.** No agent signs off its own work. Spawn a **new** instance of each per
@@ -63,13 +63,14 @@ queue PR's CI, and claims it like any other. You can tell one: `aide status`
 prints `reopened: item NNN (…) — CI …` for it, not completed again. Its spec
 and tests are already merged, so the steps run with four differences:
 
-- **Step 1** returns the existing spec, as for any item whose spec exists.
-- **Step 2 is skipped** unless a finding is in a test. Then brief a fresh
-  `test-writer` with that finding in place of step 2's brief — fix the
-  named test, add none — and the builder still follows for any finding in
-  production code.
-- **Step 3's brief carries the findings**, as a blocking review finding is
-  carried in step 6. Add to it:
+- **Step 1** (`spec-author`) returns the existing spec, as for any item
+  whose spec exists.
+- **Step 2** (`test-writer`) **is skipped** unless a finding is in a test.
+  Then brief a fresh `test-writer` with that finding in place of step 2's
+  brief — fix the named test, add none — and the builder still follows for
+  any finding in production code.
+- **Step 3's brief — the `builder`'s — carries the findings**, as a
+  blocking review finding is carried in step 6. Add to it:
   > CI findings from the queue's PR, traced to this item: <each: the check,
   > the failing test or step, the log lines that show it>. Fix them within
   > the spec's authorised paths.
