@@ -136,6 +136,29 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.39.2] — 2026-10-05
+
+### Fixed
+
+- **`aide insights archive` lists each positional citation by the ID it
+  meant when written, not the ID its position holds today (issue #419).** The
+  listing told the author to rewrite each citation as the ID its position
+  held before the move, read from today's inbox. A citation written before an
+  earlier archive, or on a branch that ordered the inbox differently, meant
+  whatever sat at that position when its line was committed, so the listing
+  named a different claim with nothing to flag it. It now resolves each
+  citation through the same lookup `aide check`'s positional hint has used
+  since 2.28.0 (#361) — the commit that last wrote the citing line, and the
+  inbox in that commit — so the two surfaces cannot name different IDs for
+  one citation. Each line says how the ID is known, with the hint's labels
+  (`when <sha> wrote this line`, `not committed`, `today's holder; history
+  unavailable`), and what this move does to *that* entry: `entry N after the
+  move`, `archived by this move`, `still entry N after the move`, or `already
+  archived`. Which citations are listed (those whose number the move
+  changes), the exit code, and the order of output are unchanged; check's
+  hint text is byte-identical. `aide insights -h` and conventions.md §1 →
+  insights.md state it. Nothing for a consumer to edit.
+
 ## [2.39.1] — 2026-10-05
 
 ### Fixed
