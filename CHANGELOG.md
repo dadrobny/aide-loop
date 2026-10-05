@@ -218,6 +218,9 @@ instead — that is the bump policy above, and it is enforced by
   committed file counts, and only the branch's own number: a stacked branch
   listing the queue file below it is refused. `aide queue -h` states it,
   pinned to the code.
+- **The `Subcommands::` block at the top of `aide -h` lists `queue pr`,
+  `queue ready` and `queue discard`.** The first two shipped in 2.21.0
+  without a line there.
 
 ## [2.36.0] — 2026-10-03
 

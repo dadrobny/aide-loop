@@ -22,6 +22,9 @@ Subcommands::
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
     python .aide/scripts/aide.py queue gate NNN        # raise a planned queue's plan-review gate
     python .aide/scripts/aide.py queue restack         # merge a stack of queue branches forward
+    python .aide/scripts/aide.py queue pr [NNN]        # open the queue branch's draft PR
+    python .aide/scripts/aide.py queue ready [NNN]     # mark the queue PR ready (--undo: back to draft)
+    python .aide/scripts/aide.py queue discard NNN     # delete an empty queue branch (no commits past its base)
     python .aide/scripts/aide.py insights add|list|tick|archive|resolve  # the insight inbox
     python .aide/scripts/aide.py ledger abandon NNN --rounds N  # the ledger row for an item that never merged
     python .aide/scripts/aide.py claim [--queue NNN]   # pick + claim the next 📋 item
