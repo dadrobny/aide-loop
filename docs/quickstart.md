@@ -96,11 +96,12 @@ human-reviewed PR:
 
 Each item is authored (spec-author) → tested (test-writer) → built (builder) →
 validated + merged (validator) by fresh, role-scoped sub-agents; `aide claim` picks
-the next item deterministically. Two further roles are optional: a reviewer reading each
-item's diff alongside the validator, off until `aide.toml` sets `loop.review`,
-and a spec-reviewer that `/aide-spec-queue` spawns when you write a whole
-queue's specs up front. Git commits are the durable checkpoint, so you can
-stop and re-enter cleanly at any point.
+the next item deterministically. A failure that survives a fix, or a serious
+one, goes back to the builder on a stronger model. Further roles are optional —
+among them a reviewer reading each item's diff alongside the validator, off
+until `aide.toml` sets `loop.review`; the full set and their tiers are in
+[`ADAPTER-SPEC.md`](../adapters/ADAPTER-SPEC.md) §2. Git commits are the durable
+checkpoint, so you can stop and re-enter cleanly at any point.
 
 ### `git.mode` matters here
 

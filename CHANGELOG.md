@@ -136,6 +136,30 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.41.1] — 2026-10-06
+
+### Fixed
+
+- **The engine README's role table lists every role ADAPTER-SPEC §2 defines,
+  and a test now holds it there (issue #437).** `core/README.md` — the page a
+  consumer gets as `.aide/README.md` — said "Five sub-agents split work by
+  role, plus one optional sixth" and listed `reviewer` alone among the
+  optional roles, while §2 had grown to three optional definitions:
+  `spec-reviewer` (T3) and `insights-triager` (T2) were missing. It drifted
+  once before, so the count is gone (an *optional* marker on a row says which
+  roles an adapter may leave out) and the two rows are added. The new guard in
+  `adapters/claude/tests/test_agent_definitions.py` reads role, tier and
+  optionality from §2's two tables — themselves held to `agents/*.md` — and
+  fails when the README's table disagrees in either direction.
+  `builder-escalation` stays folded into the `builder` row ("the builder on
+  T3, not a sixth role", §2), and the guard requires that row to keep naming
+  T3. The same drift is fixed where it was pointed rather than held: the
+  ADAPTER-SPEC conformance checklist points at §2's two tables instead of
+  counting five roles, the Claude adapter README's layout tree lists all nine
+  agent definitions and its stale "five"/"six" role counts are gone, and
+  `docs/quickstart.md` points at §2 for the full set. Nothing for a consumer
+  to edit.
+
 ## [2.41.0] — 2026-10-06
 
 ### Added

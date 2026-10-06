@@ -733,7 +733,9 @@ moment at which the ladder above is a question rather than an excavation.
 ## Conformance checklist
 
 - [ ] Seven workflow entry-points, each honouring the `conventions.md` document shapes.
-- [ ] Five roles bound to T3/T2 tiers (recon/claim left to `aide claim`).
+- [ ] Every role in §2's first table bound to its T3/T2 tier, and each
+      optional definition the adapter expresses bound to the tier §2's second
+      table gives it (recon/claim left to `aide claim`).
 - [ ] Three orchestrators (or a manual runbook calling the same `aide.py` steps in order).
 - [ ] *(if a role can spawn a helper)* the helper's model chosen at the spawn,
       never inherited from the role, and the spawning tool withheld from roles
