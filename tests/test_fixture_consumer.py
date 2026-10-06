@@ -4391,9 +4391,8 @@ def test_check_warns_on_a_test_that_reads_the_live_inbox_or_cites_a_position(
 
 def test_archive_lists_the_positions_it_renumbers_and_still_moves(
         aide, consumer: Path, capsys):
-    """The archive run is the last point a position means what its author
-    wrote, so it prints the ID each cited position holds before the move —
-    and proceeds (#295)."""
+    """The archive run lists each citation whose number it renumbers, with
+    the ID that citation meant — and proceeds (#295, #419)."""
     spec = consumer / "docs" / "aide" / "items" / "001-the-greeter.md"
     spec.write_text(spec.read_text(encoding="utf-8") + "\nFixes insight 3.\n",
                     encoding="utf-8")
@@ -4407,6 +4406,37 @@ def test_archive_lists_the_positions_it_renumbers_and_still_moves(
             if ln.strip().startswith("docs/aide/items/001-the-greeter.md:") and iid in ln]
     assert (consumer / "docs" / "aide" / "insights" / "archive-2026-Q1.md").is_file()
     assert _git(["status", "--porcelain"], consumer).stdout.strip() == ""
+
+
+def test_a_second_archive_lists_what_a_citation_meant_at_its_commit(
+        aide, consumer: Path, capsys):
+    """A citation committed before an earlier archive is listed by the ID its
+    position held when the line was written, not today's holder (#419)."""
+    inbox = consumer / "docs" / "aide" / "insights.md"
+    inbox.write_text(
+        "# Insight Inbox\n\n"
+        "- [x] gap — claim A *(2026-01-01)* → a\n"
+        "- [x] gap — claim B *(2026-01-02)* → a\n"
+        "- [ ] gap — claim C *(2026-01-03)*\n"
+        "- [ ] gap — claim D *(2026-01-04)*\n", encoding="utf-8")
+    spec = consumer / "docs" / "aide" / "items" / "001-the-greeter.md"
+    spec.write_text(spec.read_text(encoding="utf-8") + "\nFixes insight 3.\n",
+                    encoding="utf-8")
+    _commit(consumer, "cite claim C by position")
+    sha = _git(["rev-parse", "HEAD"], consumer).stdout.strip()[:7]
+    # The first archive takes claim A: claim C is entry 2, claim D entry 3.
+    assert aide.main(["--repo", str(consumer), "insights", "archive",
+                      "--before", "2026-01-02", "--yes"]) == 0
+    meant = _insight_id(aide, consumer, "claim C")
+    today = _insight_id(aide, consumer, "claim D")
+    capsys.readouterr()
+    # The second takes claim B; position 3 is renumbered, and claim C with it.
+    assert aide.main(["--repo", str(consumer), "insights", "archive",
+                      "--before", "2026-01-03"]) == 0
+    (line,) = [ln for ln in capsys.readouterr().out.splitlines()
+               if ln.strip().startswith("docs/aide/items/001-the-greeter.md:")]
+    assert f"meant insight {meant} when {sha} wrote this line" in line
+    assert line.endswith("entry 1 after the move") and today not in line
 
 
 def test_scope_authorises_the_archive_the_verb_just_wrote(aide, consumer: Path):

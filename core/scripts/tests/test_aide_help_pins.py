@@ -733,7 +733,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "entry 28 on a line that says insight or inbox \u2014 is a warning",
          ("test_aide_insights::test_a_positional_citation_is_a_warning_naming_the_id",
           "test_aide_insights::test_a_positional_citation_in_a_test_is_a_warning_too")),
-        # `_CitationHistory.hint` (issue #361): blame names the commit, `git
+        # `_CitationHistory.resolve`, formatted by `hint` (issues #361,
+        # #419): blame names the commit, `git
         # show` that commit's inbox, and the entry there is named by the ID
         # it has today in the inbox or its archives.
         ("naming the ID that position held when the citing line was last "
@@ -1447,16 +1448,27 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_aide_insights::test_archive_says_the_numbers_have_shifted"),
         # `_print_invalidated_citations` (issue #295): `insight_position_citations`
         # filtered to the positions `archive_position_map` says change, printed
-        # before the dry-run return and before any write; exit stays 0.
+        # before the dry-run return and before any write; exit stays 0. Each
+        # resolved by `_CitationHistory.resolve`, the one `hint` formats too
+        # (issue #419), and the fate is the meant entry's.
         ("Every citation by position in docs/aide or tests_dir whose number "
          "the move changes is listed before anything moves, dry run or not, "
-         "with the ID that position holds before the move and whether it is "
+         "with the ID it meant \u2014 read from history exactly as check's hint "
+         "is, and labelled where there is none \u2014 and whether that entry is "
          "archived or renumbered; the archive still proceeds",
          ("test_aide_insights::"
           "test_a_dry_run_archive_lists_each_positional_citation_with_its_id_before",
           "test_aide_insights::test_an_archive_that_moves_lists_them_and_still_proceeds",
           "test_aide_insights::test_an_archive_lists_no_citation_whose_number_it_leaves_alone",
-          "test_aide_insights::test_the_position_map_names_what_moves_and_what_shifts")),
+          "test_aide_insights::test_the_position_map_names_what_moves_and_what_shifts",
+          "test_aide_insights::"
+          "test_the_archive_listing_names_what_a_citation_meant_at_its_commit",
+          "test_aide_insights::test_the_archive_listing_and_check_name_one_id",
+          "test_aide_insights::test_the_archive_listing_says_a_meant_entry_is_already_archived",
+          "test_aide_insights::"
+          "test_an_uncommitted_citation_in_the_archive_listing_is_todays_holder",
+          "test_aide_insights::"
+          "test_without_history_the_archive_listing_labels_todays_holder")),
         # `resolve_insights_text`: shared prefix, then each side's tail.
         ("write the union of a conflicted inbox — the shared history, then "
          "each side's new entries in capture order",

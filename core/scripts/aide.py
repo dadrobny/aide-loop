@@ -4224,36 +4224,52 @@ def _positional_citations(line: str, pool_size: Callable[[], int]) -> List["re.M
     return out
 
 
+class PositionCitation(NamedTuple):
+    """One citation of an insight by position, and where git counts its line."""
+    where: str       # the file, as `_rel_display` shows it
+    lineno: int      # `str.splitlines`' line number, the one printed
+    cited: str       # the citation's text
+    n: int           # the position it cites
+    path: Path       # the file itself, for `_CitationHistory`
+    gitline: int     # the line git blames by (``_git_line_numbers``)
+
+
 def insight_position_citations(repo_root: Path,
                                config: Dict[str, Dict[str, object]],
                                ddir: Path,
-                               pool_size: int) -> List[Tuple[str, int, str, int]]:
+                               pool_size: int) -> List[PositionCitation]:
     """Every citation of an insight by position in docs_dir and tests_dir.
 
-    ``(where, lineno, cited text, position)``, in file then line order, over
-    the files ``insight_reference_findings`` reads (``_citation_files`` — the
-    inbox and its archives excepted). What `insights archive` lists before it
-    renumbers the inbox (issue #295): the run is the last point at which a
-    position still means what its author wrote.
+    In file then line order, over the files ``insight_reference_findings``
+    reads (``_citation_files`` — the inbox and its archives excepted). What
+    `insights archive` lists before it renumbers the inbox (issue #295).
+    Each carries its file and git line number, because the listing resolves
+    a citation through ``_CitationHistory`` exactly as `aide check` does
+    (issue #419): what a position meant is what it held in the inbox of the
+    commit that wrote the citing line, not what it holds today. The files are
+    read with ``newline=""`` for the same reason as the check's.
 
     Records are listed too, unlike `aide check`'s positional warning (issue
     #338): the listing is printed once, by the run that moves the entries,
-    and its ID is the one the position held before this move — the mapping
-    that preserves what a record's citation meant. The check recovers it
-    from git history since issue #361 (``_CitationHistory``), but only where
-    the history is there to read; this listing needs none.
+    and it is the last run at which today's holder of a renumbered position
+    can still be named by that number — the fallback where history is
+    unavailable.
     """
-    out: List[Tuple[str, int, str, int]] = []
+    out: List[PositionCitation] = []
     docs, tests = _citation_files(repo_root, config, ddir)
     for path in docs + tests:
         try:
-            text = path.read_text(encoding=_ENCODING)
+            with open(path, encoding=_ENCODING, newline="") as fh:
+                text = fh.read()
         except (OSError, UnicodeDecodeError):
             continue
         where = _rel_display(path, repo_root)
+        gitline = _git_line_numbers(text)
         for lineno, line in enumerate(text.splitlines(), start=1):
             for m in _positional_citations(line, lambda: pool_size):
-                out.append((where, lineno, m.group(0).strip(), int(m.group("n"))))
+                out.append(PositionCitation(where, lineno, m.group(0).strip(),
+                                            int(m.group("n")), path,
+                                            gitline[lineno - 1]))
     return out
 
 
@@ -4393,6 +4409,9 @@ class _CitationHistory:
     shallow clone's boundary commit — blame stops there, so the commit it
     names is where history ends, not where the line was written. "Named no
     entry" is said only when that commit's inbox was read and is shorter.
+
+    ``resolve`` is the lookup; ``hint`` formats it for `aide check`, and
+    `insights archive`'s listing formats the same answer (issue #419).
     """
 
     _ZERO = re.compile(r"^0+$")
@@ -4500,55 +4519,115 @@ class _CitationHistory:
             self._shown[sha] = entries
         return self._shown[sha]
 
-    @staticmethod
-    def _fallback(n: int, today: Optional[str]) -> str:
-        if today is None:
-            return f"; history unavailable, and today's inbox has no entry {n}"
-        return (f"; entry {n} of the inbox is insight {today} today "
-                f"(today's holder; history unavailable) — cite that if it is "
-                f"the one meant")
+    def resolve(self, path: Path, gitline: int, n: int,
+                pool: List[Tuple[str, InsightEntry]],
+                ids: List[Optional[str]]) -> "CitationMeaning":
+        """What entry *n* meant on *path*'s git line *gitline*, and how known.
+
+        The one resolution both surfaces format: `aide check`'s warning
+        (``hint``) and `insights archive`'s listing (issue #419), so the two
+        cannot name different IDs for one citation. *pool* and *ids* are
+        today's (``load_insight_pool``, ``insight_ids``), live inbox first.
+        """
+        live = [i for i, (rel, _) in enumerate(pool) if rel == "insights.md"]
+        held = live[n - 1] if 1 <= n <= len(live) else None
+        today = ids[held] if held is not None else None
+
+        def known(how: str, sha: str = "", iid: Optional[str] = None,
+                  index: Optional[int] = None) -> CitationMeaning:
+            return CitationMeaning(how, n, iid, index, sha, today, held)
+
+        commits = self._commits(path)
+        if commits is None or gitline not in commits:
+            return known(CitationMeaning.UNAVAILABLE, iid=today, index=held)
+        sha = commits[gitline]
+        if sha is None:
+            return known(CitationMeaning.UNCOMMITTED, iid=today, index=held)
+        then = self._inbox_at(sha) if sha else None
+        if then is None:
+            return known(CitationMeaning.UNAVAILABLE, iid=today, index=held)
+        if n > len(then):
+            return known(CitationMeaning.NO_ENTRY_THEN, sha)
+        entry = then[n - 1]
+        claim = insight_claim_hash(entry)
+        if claim is None:
+            return known(CitationMeaning.MALFORMED, sha)
+        found = [i for i, (_, e) in enumerate(pool)
+                 if e.date == entry.date and insight_claim_hash(e) == claim]
+        if not found:
+            return known(CitationMeaning.CLAIM_GONE, sha, insight_ids(then)[n - 1])
+        return known(CitationMeaning.COMMITTED, sha, ids[found[0]], found[0])
 
     def hint(self, path: Path, gitline: int, n: int,
              pool: List[Tuple[str, InsightEntry]],
              ids: List[Optional[str]]) -> str:
         """The warning's second half: the ID entry *n* meant, and how known."""
-        live_ids = [i for (rel, _), i in zip(pool, ids) if rel == "insights.md"]
-        today = live_ids[n - 1] if 1 <= n <= len(live_ids) else None
-        commits = self._commits(path)
-        if commits is None or gitline not in commits:
-            return self._fallback(n, today)
-        sha = commits[gitline]
-        if sha is None:
+        r = self.resolve(path, gitline, n, pool, ids)
+        today = r.today
+        if r.how == CitationMeaning.UNAVAILABLE:
+            if today is None:
+                return f"; history unavailable, and today's inbox has no entry {n}"
+            return (f"; entry {n} of the inbox is insight {today} today "
+                    f"(today's holder; history unavailable) — cite that if it is "
+                    f"the one meant")
+        if r.how == CitationMeaning.UNCOMMITTED:
             if today is None:
                 return (f"; this line is not committed, and today's inbox has "
                         f"no entry {n}")
             return (f"; this line is not committed, so it was written against "
                     f"today's inbox, where entry {n} is insight {today} — cite "
                     f"that")
-        then = self._inbox_at(sha) if sha else None
-        if then is None:
-            return self._fallback(n, today)
-        when = f"when {sha[:7]} wrote this line"
-        if n > len(then):
+        when = r.when
+        if r.how == CitationMeaning.NO_ENTRY_THEN:
             return (f"; the inbox held no entry {n} {when}, so the citation "
                     f"named no entry — find the claim meant with `aide "
                     f"insights list`")
-        entry = then[n - 1]
-        claim = insight_claim_hash(entry)
-        if claim is None:
+        if r.how == CitationMeaning.MALFORMED:
             return (f"; entry {n} {when} was a malformed line with no ID — "
                     f"find the claim meant with `aide insights list`")
-        found = [i for i, (_, e) in enumerate(pool)
-                 if e.date == entry.date and insight_claim_hash(e) == claim]
-        if not found:
-            meant = insight_ids(then)[n - 1]
-            return (f"; entry {n} was insight {meant} {when}, a claim no longer "
+        if r.how == CitationMeaning.CLAIM_GONE:
+            return (f"; entry {n} was insight {r.iid} {when}, a claim no longer "
                     f"in the inbox or its archives")
-        meant = ids[found[0]]
-        if meant == today:
-            return f"; entry {n} was insight {meant} {when}, and still is — cite that"
-        return (f"; entry {n} was insight {meant} {when} — cite that; an "
+        if r.iid == today:
+            return f"; entry {n} was insight {r.iid} {when}, and still is — cite that"
+        return (f"; entry {n} was insight {r.iid} {when} — cite that; an "
                 f"archive or a merge has moved it since")
+
+
+class CitationMeaning(NamedTuple):
+    """``_CitationHistory.resolve``'s answer for one positional citation.
+
+    *how* is one of the constants below. *iid* is the ID to cite — the meant
+    entry's ID today (COMMITTED), today's holder of position *n* (UNCOMMITTED,
+    UNAVAILABLE), or the ID the entry had then (CLAIM_GONE) — and None where
+    there is none to name. *index* is the meant entry's place in the pool it
+    was resolved against, so a caller can tell a live entry from an archived
+    one; *held* is the pool index of today's holder of *n*.
+    """
+    how: str
+    n: int
+    iid: Optional[str]
+    index: Optional[int]
+    sha: str
+    today: Optional[str]
+    held: Optional[int]
+
+    #: Named by the inbox in the commit that last wrote the citing line.
+    COMMITTED = "committed"
+    #: The line is not committed: written against today's inbox.
+    UNCOMMITTED = "uncommitted"
+    #: No history to read; today's holder, labelled.
+    UNAVAILABLE = "unavailable"
+    #: That commit's inbox held fewer than *n* entries.
+    NO_ENTRY_THEN = "no-entry-then"
+    #: That commit's entry *n* was a line with no ID.
+    MALFORMED = "malformed"
+    #: That commit's entry *n* is in neither the inbox nor its archives now.
+    CLAIM_GONE = "claim-gone"
+
+    @property
+    def when(self) -> str:
+        return f"when {self.sha[:7]} wrote this line"
 
 
 def _git_line_numbers(text: str) -> List[int]:
@@ -10880,37 +10959,85 @@ def archive_position_map(text: str, remaining: str) -> Dict[int, Optional[int]]:
     return out
 
 
+def _archive_citation_line(c: PositionCitation, r: CitationMeaning,
+                           pool: List[Tuple[str, InsightEntry]],
+                           shifted: Dict[int, Optional[int]]) -> str:
+    """One line of the archive listing: the ID *c* meant, how that is known
+    (``CitationMeaning`` — the labels `aide check`'s hint uses), and what this
+    move does to that entry."""
+    head = f"  {c.where}:{c.lineno}: `{c.cited}`"
+    find = "find the claim meant with `aide insights list`"
+    if r.how == CitationMeaning.NO_ENTRY_THEN:
+        return f"{head} named no entry {r.when} (the inbox held fewer) — {find}"
+    if r.how == CitationMeaning.MALFORMED:
+        return f"{head} was a malformed line with no ID {r.when} — {find}"
+    if r.how == CitationMeaning.CLAIM_GONE:
+        return (f"{head} meant insight {r.iid} {r.when}, a claim no longer in "
+                f"the inbox or its archives")
+    # Every listed position is renumbered, so today's inbox holds it: index
+    # is set for each resolution that reaches here.
+    assert r.index is not None
+    if pool[r.index][0] != "insights.md":
+        fate = "already archived"
+    else:
+        # The live inbox comes first in the pool, so its index is its position.
+        pos = r.index + 1
+        if pos not in shifted:
+            fate = f"still entry {pos} after the move"
+        elif shifted[pos] is None:
+            fate = "archived by this move"
+        else:
+            fate = f"entry {shifted[pos]} after the move"
+    iid = r.iid or "(no ID — the entry does not parse)"
+    if r.how == CitationMeaning.COMMITTED:
+        return f"{head} meant insight {iid} {r.when} — {fate}"
+    if r.how == CitationMeaning.UNCOMMITTED:
+        return (f"{head} is insight {iid} (not committed, so written against "
+                f"today's inbox) — {fate}")
+    return f"{head} is insight {iid} (today's holder; history unavailable) — {fate}"
+
+
 def _print_invalidated_citations(text: str, remaining: str, ddir: Path,
                                  repo_root: Path, config, dry_run: bool) -> None:
-    """List every positional citation this archive changes the meaning of.
+    """List every positional citation whose number this archive changes.
 
-    Each with the ID its position holds *before* the move, which is the
-    mapping an author needs to rewrite it and the one thing the archive run is
-    the last to know (issue #295). A warning, not a refusal: the listing
-    itself preserves the mapping, and the move already waits on --yes.
+    Which citations: those of a position the move renumbers or archives
+    (``archive_position_map``) — the number's reading changes under them.
+    A citation already stale from an earlier archive, at a number this move
+    leaves alone, is deliberately not listed: this move does not change what
+    it reads as, and `aide check` warns on it with the same history-resolved
+    ID, so nothing the listing would say is lost.
+    What each meant: resolved through ``_CitationHistory`` exactly as `aide
+    check`'s hint is (issue #419) — the entry the position held in the inbox
+    of the commit that last wrote the citing line, named by its ID today;
+    today's holder only for an uncommitted line, or labelled where there is
+    no history. Each line then says what this move does to *that* entry.
+    Printing today's holder alone (issue #295) named a different claim for a
+    citation written before an earlier archive, with nothing to flag it.
+
+    A warning, not a refusal: the listing itself preserves the mapping, and
+    the move already waits on --yes.
     """
     shifted = archive_position_map(text, remaining)
     if not shifted:
         return
     pool = load_insight_pool(ddir)
     ids = insight_ids([e for _, e in pool])
-    live_ids = [i for (rel, _), i in zip(pool, ids) if rel == "insights.md"]
     hits = [c for c in insight_position_citations(repo_root, config, ddir, len(pool))
-            if c[3] in shifted]
+            if c.n in shifted]
     if not hits:
         return
+    history = _CitationHistory(repo_root, ddir)
+    for c in hits:
+        history.want(c.path, c.gitline)
     verb = "would renumber" if dry_run else "renumbers"
     print(f"aide insights archive: this archive {verb} {len(hits)} citation"
           f"{'' if len(hits) == 1 else 's'} by position — rewrite each as the "
-          f"ID its position holds before the move (conventions.md §1 → "
-          f"insights.md):")
-    for where, lineno, cited, n in hits:
-        iid = live_ids[n - 1] if n <= len(live_ids) else None
-        dest = shifted[n]
-        fate = "archived" if dest is None else f"entry {dest} after it"
-        print(f"  {where}:{lineno}: `{cited}` is insight "
-              f"{iid or '(no ID — the entry does not parse)'} before the move "
-              f"({fate})")
+          f"ID named below, the entry its position held when the citing line "
+          f"was written (conventions.md §1 → insights.md):")
+    for c in hits:
+        r = history.resolve(c.path, c.gitline, c.n, pool, ids)
+        print(_archive_citation_line(c, r, pool, shifted))
 
 
 def _cmd_insights_archive(path: Path, text: str, ddir: Path, ddir_rel: str,
@@ -19604,9 +19731,10 @@ def build_parser() -> argparse.ArgumentParser:
             "frozen and no longer shape-checked; what remains is renumbered, "
             "so re-run list. Every citation by position in docs/aide or "
             "tests_dir whose number the move changes is listed before "
-            "anything moves, dry run or not, with the ID that position holds before the move and "
-            "whether it is archived or renumbered; the archive still "
-            "proceeds\n"
+            "anything moves, dry run or not, with the ID it meant — read "
+            "from history exactly as check's hint is, and labelled where "
+            "there is none — and whether that entry is archived or "
+            "renumbered; the archive still proceeds\n"
             "resolve: write the union of a conflicted inbox — the shared "
             "history, then each side's new entries in capture order; a tick "
             "on either side stands and keeps its pointer, trail lines merge "
