@@ -14525,7 +14525,9 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     holding an item on evidence no other checkout can see, so it exits 1 and
     says how to finish or release it. Nor is an
     **unreadable gate row**, which holds every item on a gate nobody can read:
-    exit 1, naming the row.
+    exit 1, naming the row. Nor is an **evidence annotation no approval can
+    clear** on a 🔍 item (`EVIDENCE_DEFECTS`, issue #432): exit 1, naming the
+    item and the criterion whose annotation to correct.
 
     Every report that exits 0 with items still open ends on an ``early
     ready:`` fact (issue #331), which is what the queue-end step keys on to
@@ -14599,6 +14601,27 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     # the queue-end step runs on — is never printed over it.
     waits = evidence_waits(repo_root, config, scan_order, item_status,
                            claim_branches)
+    # An annotation no approval can clear — not one gate ID, naming no gate
+    # row, or matching more than one (`EVIDENCE_DEFECTS`) — is not a wait a
+    # person will end, so it is a defect like the unreadable row above: exit
+    # 1 naming what to repair, never the exit 0 the queue-end step reads as
+    # "a person is deciding" (issue #432).
+    broken = {n: [phrase for state, phrase in unmet
+                  if state in EVIDENCE_DEFECTS]
+              for n, (_, unmet) in waits.items()}
+    if any(broken.values()):
+        print("none left — an item's evidence annotation names no single "
+              "gate, so no approval can let it merge:")
+        for num in scan_order:
+            if broken.get(num):
+                branch = waits[num][0]
+                print(f"  {num:03d} {titles.get(num, 'item ' + str(num))} — "
+                      f"🔍{f' on {branch}' if branch else ''}, its spec's "
+                      + "; ".join(broken[num]))
+        print("  Correct each annotation in the item's spec to the one "
+              "gate-<hex> ID 'aide gate list' prints, and claim again; "
+              "'aide merge' refuses the item until then.")
+        return 1
     if not relevant and not open_items and not waits:
         print("none left")
         return 0
@@ -14898,9 +14921,32 @@ def cmd_claim(args: argparse.Namespace) -> int:
     # was fixed. Inferring the base from a *recognised queue branch* (never from
     # an arbitrary branch, which would silently retarget a merge) closes that
     # half without asking every caller to pass a flag it cannot know.
+    #
+    # A *claim branch* stands for the base it recorded (issue #433): a
+    # validator ending PASS (awaiting gate-…) leaves its item 🔍 there with
+    # HEAD still on it, and a person approves the gate there, so the next
+    # claim is routinely run from one. Its recorded base is where the queue's
+    # work belongs; `main_branch` would put the next item off its queue. A
+    # claim branch with NO recorded base is refused rather than read as
+    # `main_branch`: that guess is exactly the misroute, and a wrong base is
+    # silent until merge lands the item somewhere else, while a refusal costs
+    # one `--base`.
     current = _current_branch(repo_root)
-    base = args.base or (current if _is_queue_branch(current, prefix)
-                         else str(config["git"].get("main_branch", "main")))
+    if args.base:
+        base = args.base
+    elif _is_queue_branch(current, prefix):
+        base = current
+    elif _branch_item_number(current, prefix) is not None:
+        recorded = _recorded_branch_base(repo_root, current)
+        if recorded is None:
+            print(f"aide claim: {current} is a claim branch with no recorded "
+                  f"base, so where the next item belongs is unknown — nothing "
+                  f"was claimed. Switch to the branch the queue's work belongs "
+                  f"on, or pass --base <branch>.", file=sys.stderr)
+            return 1
+        base = recorded
+    else:
+        base = str(config["git"].get("main_branch", "main"))
 
     if not _local_branch_exists(repo_root, base):
         print(f"aide claim: base '{base}' is not a local branch — an item is "
@@ -16257,6 +16303,13 @@ def _merge_dropped_item(repo_root: Path, config, number: int,
     return " and ".join(places)
 
 
+#: The `_merge_unmet_evidence` states that are defects in the annotation, not
+#: a decision pending: no approval clears one, only an edit to the spec does.
+#: `merge` gives them their own remedy and `claim` exits 1 on them (issue
+#: #432), where an ⏳ awaiting or ❌ declined gate is a wait and exits 0.
+EVIDENCE_DEFECTS = frozenset({"malformed", "no-row", "ambiguous"})
+
+
 def _merge_unmet_evidence(repo_root: Path, config, number: int, base: str,
                           branch: str) -> List[Tuple[str, str]]:
     """``(state, phrase)`` per criterion of item *number* whose evidence is
@@ -16564,7 +16617,7 @@ def cmd_merge(args: argparse.Namespace) -> int:
                 "for a declined gate, its criterion has failed: rebuild it, "
                 "re-ask the check as a new Gate cell (a new ID) and re-point "
                 "the annotation at it — never approve a declined gate")
-        if states & {"no-row", "ambiguous", "malformed"}:
+        if states & EVIDENCE_DEFECTS:
             remedies.append(
                 "for an annotation naming no single gate, correct it to the "
                 "one gate-<hex> ID `aide gate list` prints")
@@ -20411,7 +20464,11 @@ def register_git_subcommands(sub) -> None:
             "\u274c declined gate makes it no. So does an item \U0001f50d "
             "and unmerged until a person approves the human gate that is its "
             "evidence, which the report names with its criterion and gate: "
-            "a bare \"none left\" is never printed over it. An `all` gate "
+            "a bare \"none left\" is never printed over it. An evidence "
+            "annotation no approval can clear \u2014 not one gate ID, naming "
+            "no gate row, or matching more than one \u2014 is not such a "
+            "wait: the report names the item and its criterion and exits 1. "
+            "An `all` gate "
             "over a queue "
             "with nothing left open is read the same way, a yes in words of "
             "its own. A bare "
@@ -20435,13 +20492,19 @@ def register_git_subcommands(sub) -> None:
             "written; an engine-marked assumption and one already carrying a "
             "re-check are not named, and a dependency that left the queue as "
             "\u274c, \u23f8\ufe0f or a \U0001f4cb item of a withdrawn stage "
-            "is named as having no code to check against."))
+            "is named as having no code to check against.\n"
+            "\n"
+            "Without --base the item's base is the current branch when that "
+            "is a queue branch, the base a current claim branch recorded "
+            "when it is one \u2014 a claim branch with none recorded is "
+            "refused, exit 1, before anything is created \u2014 and "
+            "main_branch otherwise. The item is branched from that base, "
+            "whatever is checked out."))
     p_claim.add_argument("--queue", type=int, default=None,
                          help="queue number (default: the lowest-numbered open queue)")
     p_claim.add_argument("--base", default=None,
                          help="branch this claim off, and merge it back into "
-                              "(default: the current branch when it is a queue "
-                              "branch, else main_branch)")
+                              "(default: below)")
     p_claim.add_argument("--dry-run", action="store_true", help="print the pick, do not create/push a branch")
     p_claim.set_defaults(func=cmd_claim)
 

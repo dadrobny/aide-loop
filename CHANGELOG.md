@@ -136,6 +136,36 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.40.2] — 2026-10-06
+
+### Fixed
+
+- **A claim run from a claim branch takes that branch's recorded base, not
+  `main_branch` (issue #433).** A validator ending PASS (awaiting gate-…)
+  leaves its item 🔍 on its claim branch with HEAD still there, a person
+  approves that gate there, and `/aide-run-queue` carries on to the next
+  claim — so the next `aide claim` routinely runs from a claim branch. It
+  inferred a base only from a queue branch, so it fell back to `main_branch`:
+  the next item of a queue was branched off `main` and merged back into it,
+  outside the queue's PR. A current claim branch now stands for the base it
+  recorded, and the new branch is still created from that base, so none of
+  the left item's work comes along. A claim branch with no recorded base is
+  refused, exit 1, before anything is created, rather than read as
+  `main_branch` — the guess that misrouted it; `--base` decides. `claim -h`
+  and §4 state the inference; `/aide-run-queue` says an item's claim branch
+  left checked out stands for its base.
+- **`aide claim` exits 1 over an evidence annotation no approval can clear
+  (issue #432).** Since 2.40.1 a 🔍 item unmerged because a criterion's
+  evidence is unmet is named in a `none left — …` report, exit 0 — right
+  for a gate ⏳ awaiting or ❌ declined, a decision a person will make. An
+  annotation that is not one gate ID, names no gate row or matches more than
+  one took the same path, though no approval clears it: the queue-end step
+  read it as a person deciding. It now exits 1, naming the item and the
+  criterion whose annotation to correct, the way an unreadable gate row
+  does, and an item with such a criterion exits 1 even where another of its
+  criteria awaits a gate. `claim -h` states it; `/aide-run-queue` step 2
+  lists it among the non-zero exits it surfaces and stops on.
+
 ## [2.40.1] — 2026-10-06
 
 ### Fixed

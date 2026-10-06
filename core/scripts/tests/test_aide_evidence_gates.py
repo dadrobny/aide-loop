@@ -9,6 +9,7 @@ until every such gate is approved.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import subprocess
 import sys
@@ -637,6 +638,74 @@ def test_a_declined_evidence_gate_holds_the_queue_end_too(tmp_path: Path, capsys
     assert f"AC2: {gid} is ❌ Declined" in out
     assert out.splitlines()[-1].startswith("early ready: no — 027 awaits")
 
+
+@pytest.mark.parametrize("annotation, phrase", [
+    ("gate-a1b2, gate-c3d4", "is not one gate ID"),
+    ("gate-ffff", "AC2: gate-ffff names no gate row"),
+])
+def test_an_annotation_no_approval_can_clear_exits_1_naming_it(
+        tmp_path: Path, capsys, annotation: str, phrase: str):
+    """Issue #432: a malformed annotation, or one naming no gate row, is not
+    a wait a person will end, so it is not the exit 0 the queue-end step
+    reads as "a person is deciding": exit 1, naming the item and criterion."""
+    repo, gid = _repo_awaiting_evidence(tmp_path)
+    _run(["git", "switch", "aide/027-dialog"], repo)
+    spec = repo / "docs" / "aide" / "items" / "027-dialog.md"
+    spec.write_text(_spec(f"Layout kept. *(evidence: {annotation})*"),
+                    encoding="utf-8")
+    _run(["git", "commit", "-am", "a broken annotation"], repo)
+    code, out = _claim_report(repo, capsys)
+    assert code == 1
+    lines = out.splitlines()
+    assert lines[0] == ("none left — an item's evidence annotation names no "
+                        "single gate, so no approval can let it merge:")
+    assert lines[1].startswith("  027 Dialog — 🔍 on aide/027-dialog, its "
+                               "spec's AC2: ")
+    assert phrase in lines[1]
+    assert "Correct each annotation" in out
+    assert "early ready:" not in out
+
+
+def test_an_annotation_matching_two_gates_exits_1_too(tmp_path: Path, capsys):
+    """The third defect: an ID short enough to match two different Gate
+    cells — written before a second question sharing its prefix was asked."""
+    seen: dict = {}
+    for i in range(100000):
+        q = f"Question {i} reads well"
+        h = hashlib.sha256(q.encode("utf-8")).hexdigest()[:aide.GATE_ID_MIN_HEX]
+        if h in seen:
+            pair, prefix = (seen[h], q), h
+            break
+        seen[h] = q
+    repo, gid = _repo_awaiting_evidence(tmp_path)
+    _run(["git", "switch", "aide/027-dialog"], repo)
+    ppath = repo / "docs" / "aide" / "progress.md"
+    ppath.write_text(aide.add_gate_rows(ppath.read_text(encoding="utf-8"),
+                                        [(pair[0], "—"), (pair[1], "—")]),
+                     encoding="utf-8")
+    spec = repo / "docs" / "aide" / "items" / "027-dialog.md"
+    spec.write_text(_spec(f"Layout kept. *(evidence: gate-{prefix})*"),
+                    encoding="utf-8")
+    _run(["git", "commit", "-am", "an ID two gates share"], repo)
+    code, out = _claim_report(repo, capsys)
+    assert code == 1
+    assert f"AC2: gate-{prefix} matches more than one gate" in out
+
+def test_an_awaiting_gate_beside_a_broken_annotation_still_exits_1(
+        tmp_path: Path, capsys):
+    """One criterion awaiting its gate does not make the item a wait when
+    another's annotation no approval can clear: the defect decides."""
+    repo, gid = _repo_awaiting_evidence(tmp_path)
+    _run(["git", "switch", "aide/027-dialog"], repo)
+    spec = repo / "docs" / "aide" / "items" / "027-dialog.md"
+    spec.write_text(_spec(f"Layout kept. *(evidence: {gid})*").replace(
+        "values are written.", "values are written. *(evidence: gate-ffff)*"),
+        encoding="utf-8")
+    _run(["git", "commit", "-am", "AC1 names no gate"], repo)
+    code, out = _claim_report(repo, capsys)
+    assert code == 1
+    assert "AC1: gate-ffff names no gate row" in out
+    assert f"{gid} is ⏳ Awaiting" not in out
 
 def test_a_review_item_with_no_evidence_annotation_is_not_a_wait(
         tmp_path: Path, capsys):

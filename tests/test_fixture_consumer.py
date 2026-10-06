@@ -1228,6 +1228,32 @@ def test_claim_never_reports_exhaustion_over_an_item_awaiting_its_evidence_gate(
     assert capsys.readouterr().out.splitlines() == ["none left"]
 
 
+def test_claim_exits_1_over_an_evidence_annotation_no_approval_can_clear(
+        aide, consumer: Path, capsys):
+    """Issue #432: an annotation naming no gate row is not a wait a person
+    will end, so `claim` exits 1 — never the exit 0 the queue-end step reads
+    as a gate being decided — and creates nothing."""
+    assert _claim(aide, consumer) == 0
+    spec = consumer / "docs" / "aide" / "items" / "001-the-greeter.md"
+    spec.write_text(spec.read_text(encoding="utf-8")
+                    + "- [ ] AC2: the kiosk banner reads well. "
+                      "*(evidence: gate-ffff)*\n", encoding="utf-8")
+    _commit(consumer, "docs(001): an evidence annotation naming no gate")
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "in-review"]) == 0
+    assert aide.main(["--repo", str(consumer), "progress", "set", "2",
+                      "deferred", "--reason", "next release"]) == 0
+    branches = _branches(consumer)
+    capsys.readouterr()
+
+    assert _claim(aide, consumer) == 1
+    out = capsys.readouterr().out
+    assert "AC2: gate-ffff names no gate row" in out
+    assert "early ready:" not in out
+    assert _branches(consumer) == branches
+
+
 # --------------------------------------------------------------------------- #
 # a gate over a run of stages — `stage N+` and `stage N–M` (issue #304)
 # --------------------------------------------------------------------------- #
@@ -1813,6 +1839,67 @@ def test_a_claim_off_a_started_queue_branch_merges_back_into_it(aide, consumer: 
                      f"branch.{_branch(consumer)}.{aide._BASE_CONFIG_KEY}"],
                     consumer).stdout.strip()
     assert recorded == "aide/queue-001"
+
+
+def test_a_claim_from_a_claim_branch_takes_that_branchs_recorded_base(
+        aide, consumer: Path, capsys):
+    """Issue #433: a validator that ends PASS (awaiting gate-…) leaves its item
+    🔍 on its claim branch with HEAD still there. The next claim from there
+    must branch off the queue branch the left claim recorded, never fall back
+    to `main_branch` — and FROM it, so none of the left item's work comes
+    along."""
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    queue_tip = _git(["rev-parse", "aide/queue-001"], consumer).stdout.strip()
+    assert _claim(aide, consumer) == 0
+    left = "aide/001-the-greeter"
+    assert _branch(consumer) == left
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "in-review"]) == 0
+    capsys.readouterr()
+
+    assert _claim(aide, consumer, "--dry-run") == 0
+    assert capsys.readouterr().out.splitlines()[0].endswith(
+        "; base aide/queue-001")
+    assert _branch(consumer) == left
+
+    assert _claim(aide, consumer) == 0
+    new = "aide/002-the-farewell"
+    assert _branch(consumer) == new
+    recorded = _git(["config", "--get",
+                     f"branch.{new}.{aide._BASE_CONFIG_KEY}"],
+                    consumer).stdout.strip()
+    assert recorded == "aide/queue-001"
+    assert _git(["merge-base", "--is-ancestor", queue_tip, new],
+                consumer).returncode == 0
+    assert _git(["merge-base", "--is-ancestor", left, new], consumer,
+                check=False).returncode == 1
+    assert not (consumer / "src" / "greeter.py").exists()
+
+
+def test_a_claim_from_a_claim_branch_with_no_recorded_base_is_refused(
+        aide, consumer: Path, capsys):
+    """Issue #433: a claim branch this checkout never recorded a base for —
+    fetched from elsewhere, or its config lost — says nothing about where the
+    next item belongs, and `main_branch` is the guess that put the next item
+    off its queue. Refused, nothing created; `--base` still decides."""
+    assert aide.main(["--repo", str(consumer), "queue", "start", "1"]) == 0
+    assert _claim(aide, consumer) == 0
+    left = "aide/001-the-greeter"
+    _git(["config", "--unset", f"branch.{left}.{aide._BASE_CONFIG_KEY}"],
+         consumer)
+    branches = _branches(consumer)
+    capsys.readouterr()
+
+    assert _claim(aide, consumer) == 1
+    assert "--base" in capsys.readouterr().err
+    assert _branch(consumer) == left
+    assert _branches(consumer) == branches
+
+    assert _claim(aide, consumer, "--base", "aide/queue-001") == 0
+    assert _git(["config", "--get",
+                 f"branch.{_branch(consumer)}.{aide._BASE_CONFIG_KEY}"],
+                consumer).stdout.strip() == "aide/queue-001"
 
 
 def test_queue_start_creates_a_missing_inbox_on_the_queue_branch(aide, consumer: Path):
