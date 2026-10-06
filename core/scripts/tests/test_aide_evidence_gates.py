@@ -691,6 +691,32 @@ def test_an_annotation_matching_two_gates_exits_1_too(tmp_path: Path, capsys):
     assert code == 1
     assert f"AC2: gate-{prefix} matches more than one gate" in out
 
+def test_a_broken_annotation_and_a_stranded_claim_are_named_together(
+        tmp_path: Path, capsys):
+    """Both exit 1, so neither waits a claim for the other: 027's annotation
+    names no gate row and 028's claim never reached origin, and one report
+    names both."""
+    repo, gid = _repo_awaiting_evidence(tmp_path, mode="auto-merge",
+                                        other="📋")
+    remote = tmp_path / "origin.git"
+    _run(["git", "init", "--bare", "-b", "main", str(remote)], tmp_path)
+    _run(["git", "remote", "add", "origin", str(remote)], repo)
+    _run(["git", "push", "-u", "origin", "main"], repo)
+    _run(["git", "switch", "aide/027-dialog"], repo)
+    spec = repo / "docs" / "aide" / "items" / "027-dialog.md"
+    spec.write_text(_spec("Layout kept. *(evidence: gate-ffff)*"),
+                    encoding="utf-8")
+    _run(["git", "commit", "-am", "a broken annotation"], repo)
+    _run(["git", "push", "-u", "origin", "aide/027-dialog"], repo)
+    _run(["git", "branch", "aide/028-other", "main"], repo)   # never pushed
+    code, out = _claim_report(repo, capsys)
+    assert code == 1
+    assert "AC2: gate-ffff names no gate row" in out
+    assert "028 Other — claimed by aide/028-other, WHICH ORIGIN HAS NEVER SEEN" in out
+    assert "git push -u origin <branch>" in out
+    assert "early ready:" not in out
+
+
 def test_an_awaiting_gate_beside_a_broken_annotation_still_exits_1(
         tmp_path: Path, capsys):
     """One criterion awaiting its gate does not make the item a wait when

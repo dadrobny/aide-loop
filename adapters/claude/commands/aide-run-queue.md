@@ -139,7 +139,10 @@ Repeat until `aide claim` reports no remaining unclaimed 📋 item **in this que
      row `aide` cannot read, which holds every item, or an evidence
      annotation no approval can clear — so surface it verbatim
      and stop: publishing or releasing that branch, or repairing that row or
-     annotation, is the human's call.
+     annotation, is the human's call. A claim run from a claim branch that
+     recorded no base is refused the same way, before anything is created:
+     switch to the queue branch, or pass `--base <queue branch>`, and claim
+     again.
    - **Any other non-zero exit** → surface the sentence and stop.
 
 3. **Run the item** — load `/aide-run-item NNN aide/NNN-short-name` inline as a

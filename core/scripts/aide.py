@@ -14601,27 +14601,6 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     # the queue-end step runs on — is never printed over it.
     waits = evidence_waits(repo_root, config, scan_order, item_status,
                            claim_branches)
-    # An annotation no approval can clear — not one gate ID, naming no gate
-    # row, or matching more than one (`EVIDENCE_DEFECTS`) — is not a wait a
-    # person will end, so it is a defect like the unreadable row above: exit
-    # 1 naming what to repair, never the exit 0 the queue-end step reads as
-    # "a person is deciding" (issue #432).
-    broken = {n: [phrase for state, phrase in unmet
-                  if state in EVIDENCE_DEFECTS]
-              for n, (_, unmet) in waits.items()}
-    if any(broken.values()):
-        print("none left — an item's evidence annotation names no single "
-              "gate, so no approval can let it merge:")
-        for num in scan_order:
-            if broken.get(num):
-                branch = waits[num][0]
-                print(f"  {num:03d} {titles.get(num, 'item ' + str(num))} — "
-                      f"🔍{f' on {branch}' if branch else ''}, its spec's "
-                      + "; ".join(broken[num]))
-        print("  Correct each annotation in the item's spec to the one "
-              "gate-<hex> ID 'aide gate list' prints, and claim again; "
-              "'aide merge' refuses the item until then.")
-        return 1
     if not relevant and not open_items and not waits:
         print("none left")
         return 0
@@ -14716,6 +14695,33 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
                   "it did, record the item ('aide progress set <NNN> done') "
                   "and delete the branch ('git branch -D <branch>'); if not, "
                   "land its work or release the item.")
+
+    # An annotation no approval can clear — not one gate ID, naming no gate
+    # row, or matching more than one (`EVIDENCE_DEFECTS`) — is not a wait a
+    # person will end, so it is a defect like the unreadable row: exit
+    # 1 naming what to repair, never the exit 0 the queue-end step reads as
+    # "a person is deciding" (issue #432).
+    broken = {n: [phrase for state, phrase in unmet
+                  if state in EVIDENCE_DEFECTS]
+              for n, (_, unmet) in waits.items()}
+    if any(broken.values()):
+        print("none left — an item's evidence annotation names no single "
+              "gate, so no approval can let it merge:")
+        for num in scan_order:
+            if broken.get(num):
+                branch = waits[num][0]
+                print(f"  {num:03d} {titles.get(num, 'item ' + str(num))} — "
+                      f"🔍{f' on {branch}' if branch else ''}, its spec's "
+                      + "; ".join(broken[num]))
+        print("  Correct each annotation in the item's spec to the one "
+              "gate-<hex> ID 'aide gate list' prints, and claim again; "
+              "'aide merge' refuses the item until then.")
+        # A stranded claim exits 1 too and is named with it, not one claim
+        # later: two defects, one report.
+        if stranded:
+            _stranded_lines()
+            _stranded_notice()
+        return 1
 
     if relevant:
         print("none left — held by an unresolved human gate:")

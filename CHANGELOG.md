@@ -163,8 +163,10 @@ instead — that is the bump policy above, and it is enforced by
   read it as a person deciding. It now exits 1, naming the item and the
   criterion whose annotation to correct, the way an unreadable gate row
   does, and an item with such a criterion exits 1 even where another of its
-  criteria awaits a gate. `claim -h` states it; `/aide-run-queue` step 2
-  lists it among the non-zero exits it surfaces and stops on.
+  criteria awaits a gate. A stranded claim exits 1 too and is named in the
+  same report, not one claim later. `claim -h` states it; `/aide-run-queue`
+  step 2 lists it among the non-zero exits it surfaces and stops on, beside
+  #433's refusal of a claim branch with no recorded base.
 
 ## [2.40.1] — 2026-10-06
 
