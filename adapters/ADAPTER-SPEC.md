@@ -47,7 +47,7 @@ redefine them.
 
 ## 2. Five role definitions, bound to capability *tiers*
 
-The work is split across five fresh, role-scoped sub-agents (plus the two
+The work is split across five fresh, role-scoped sub-agents (plus the three
 optional definitions below); `builder-escalation` is the builder on T3, not a
 sixth role. The contract names **capability tiers**, not
 models — each adapter binds a tier to one of its own runtime's models (as high
@@ -63,13 +63,14 @@ own work; a fresh instance per item.
 | builder-escalation | **T3** | `claude-opus-5-5, medium` | the builder's definition on T3, dispatched in its place once a failure survives a fix aimed at it or the first FAIL shows a serious defect |
 | validator | **T2** | `claude-sonnet-5-5, medium` | gates the merge against the acceptance criteria; reconciles and merges |
 
-And the two optional definitions described below, which an adapter may omit
+And the three optional definitions described below, which an adapter may omit
 entirely — a runtime that does not express one simply has no cell here:
 
 | Optional definition | Tier | Claude | Does |
 |---|---|---|---|
 | reviewer | **T2** | `claude-sonnet-5-5, high` | reads one item's diff adversarially, once, concurrent with the first validation; produces findings, merges nothing |
 | spec-reviewer | **T3** | `claude-opus-5-5, high` | reads all of a queue's specs for the cross-item conflicts `aide check --queue` cannot decide |
+| insights-triager | **T2** | `claude-sonnet-5-5, high` | reads the open insight inbox and judges each entry's route, duplicate, decayed premise or wrong type; returns a plan, writes nothing |
 
 Recon/claim is **not a role** — it is deterministic (`aide claim`), so no agent and
 no tier. The **Claude** column is the reference binding — **T3→Opus, T2→Sonnet**
@@ -111,7 +112,7 @@ a `PreToolUse` hook on the spawning tool, refuses a spawn made from inside a
 sub-agent that passes no model to a type that pins none — the built-in types
 never do — and its refusal names the model to pass instead; `disallowedTools:
 Agent` removes the spawning tool from `builder`, `builder-escalation`,
-`test-writer`, `validator` and `reviewer`, leaving it to `spec-author`,
+`test-writer`, `validator`, `reviewer` and `insights-triager`, leaving it to `spec-author`,
 `spec-reviewer` and `queue-planner`; and `settings.json` caps spawn depth at
 two (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), so a helper cannot spawn one of
 its own. The user's own session is untouched by all three.
@@ -144,6 +145,16 @@ one item's lifecycle, it reviews rather than edits, and every finding is
 arbitrated by the human. The deterministic half stays in the engine
 (`aide check --queue`, whose `--report` JSON is this role's worklist), so an
 adapter that omits the reviewer still gets everything a script can decide.
+
+**Optional definition — the inbox triager.** An adapter **may** express an
+**insights-triager** at **T2** for the judgement half of the inbox triage
+(`conventions.md` §1 → `insights-triage.md`): one pass over every open entry,
+reporting each one's route and any duplicate, decayed premise or wrong type,
+the fold a `knowledge` entry needs and the body a `framework` hand-over would
+carry. It writes nothing — the ticks, trail lines and folds stay with the
+entry-point that dispatched it, which applies them through `aide insights` and
+holds the human gate on the hand-over. Without it, that entry-point does the
+judging itself, on whatever model its session holds; the routing is the same.
 
 ## 3. Three orchestrators (item ⊂ queue ⊂ roadmap)
 

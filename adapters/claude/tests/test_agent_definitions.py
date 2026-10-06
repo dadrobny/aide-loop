@@ -371,7 +371,7 @@ def test_no_agent_spec_argues_for_its_own_model(path: Path):
 #: the model of whatever the roles below do spawn.
 _MAY_SPAWN = {"spec-author", "spec-reviewer", "queue-planner"}
 _MAY_NOT_SPAWN = {"builder", "builder-escalation", "test-writer", "validator",
-                  "reviewer"}
+                  "reviewer", "insights-triager"}
 
 
 def _disallowed_tools(path: Path) -> set:
