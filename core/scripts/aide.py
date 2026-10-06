@@ -14739,6 +14739,9 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
         if num in withdrawn:
             print(f"{head} {_withdrawn_reason(num)}")
         elif num in stranded:
+            # Before the evidence wait, deliberately: a stranded claim is a
+            # broken state that exits 1 (#364) and is repaired first; the
+            # wait is named on the next claim once it is.
             print(f"{head} {_stranded_reason(num)}")
         elif num in waits:
             print(_wait_line(num))

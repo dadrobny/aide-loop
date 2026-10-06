@@ -115,8 +115,10 @@ Repeat until `aide claim` reports no remaining unclaimed 📋 item **in this que
    ```
    It syncs, checks `aide/*` branches, picks the first unclaimed 📋 item with no
    blocking dependency still 📋/🚧, creates + pushes `aide/NNN-short-name`, and
-   prints the item number, branch name, and title. Prints `none left` when the
-   queue is exhausted.
+   prints the item number, branch name, and title. Prints a bare `none left`
+   when the queue is exhausted, and a `none left — …` report when something
+   still holds it — a human gate, or an item awaiting the gate that is its
+   evidence (step 2).
 
 2. **Decide (orchestrator).**
    - **Item claimed** → go to step 3.
