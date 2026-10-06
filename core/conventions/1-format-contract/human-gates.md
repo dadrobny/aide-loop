@@ -272,7 +272,11 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   it. A declined one stays loud while a spec
   points at it because, unlike a re-planned decline, its remedy — rebuild,
   then re-ask — is still open; it goes quiet when the annotation moves to
-  the re-asked gate or the item settles.
+  the re-asked gate or the item settles. Re-pointing the annotation edits a
+  criterion line in place, and that is not the rewrite of a record that §1
+  forbids: the item has not merged, so its spec is still the live statement
+  of what it must meet, and the declined gate's row stays in `progress.md`
+  as the record of the check that failed.
 - **Why `check` warns and `status` prints.** A gate that is still blocking is
   visible on every run instead of buried in a spec's prose; `aide status -h`
   names open gates among what it reports.

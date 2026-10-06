@@ -176,6 +176,10 @@ job ([`vision.md`](vision.md) → *Not a scheduler*); the engine's side of that
 bargain is that relaunching is cheap, because state lives in git commits and the
 living documents and a fresh session re-reads them, so a cutoff never loses
 in-flight work. The minimum scheduler is a shell loop around the launch command.
+One more pause is per item, and rare: an acceptance criterion only a person can
+check — a GUI, or code in a sibling repository whose owners allow no loop-run
+test — names a human gate as its evidence, and the item waits unmerged until
+someone approves it (`conventions.md` §1 → items.md).
 
 What a scheduler has to get right is the **launch contract** — which surface the
 run is launched on, how permissions resolve there, and what a non-interactive
