@@ -136,6 +136,31 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.40.1] — 2026-10-06
+
+### Fixed
+
+- **The queue end no longer runs while an item awaits the human gate that is
+  its evidence (issue #428).** Since 2.40.0 an item whose acceptance
+  criterion names a gate as its evidence is validated and left 🔍, unmerged,
+  until a person approves it, and `aide merge` refuses it until then. Nothing
+  in the engine held the queue's end for it: `aide claim` never offers a 🔍
+  item, so once the rest had merged it printed a bare `none left` —
+  exhaustion, the queue-end step's trigger — and only `/aide-run-queue`'s
+  own text kept the step from marking the queue's PR ready over an item
+  still awaiting its check. Both verbs now read the unmet evidence `merge`
+  refuses on, with the 🔍 read on the item's claim branch as well as in
+  progress.md (the base still shows it 📋 while the branch waits). `aide
+  claim` names each such item with its criterion and gate in a `none left —
+  …` report, exit 0, whose `early ready:` line says no before any other
+  clause — also under a gate's report and beside open items, where a claimed
+  item used to read as merely in flight. `aide queue ready` refuses, exit 1,
+  before the forge is asked anything, naming each item and gate and the
+  remedy; `--undo` is never held. A 🔍 item whose evidence is met — under
+  `pr` mode, one awaiting its own PR's merge — is unchanged. `claim -h` and
+  `queue -h` state it; §1 → human gates, `.aide/README.md`'s queue-end step
+  and `/aide-run-queue` say the engine holds it.
+
 ## [2.40.0] — 2026-10-06
 
 ### Added

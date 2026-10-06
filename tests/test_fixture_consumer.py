@@ -1184,6 +1184,50 @@ def test_a_criterion_evidenced_by_a_gate_holds_the_merge_until_a_person_approves
     assert (consumer / "src" / "greeter.py").is_file()
 
 
+def test_claim_never_reports_exhaustion_over_an_item_awaiting_its_evidence_gate(
+        aide, consumer: Path, capsys):
+    """Issue #428: item 001 is 🔍 and unmerged on its claim branch until a person approves the gate that is its evidence. Nothing is
+    open, yet `claim` must not print the bare `none left` the queue-end step
+    runs on: exit 0, nothing created, and the `early ready:` fact says no.
+    Once the gate is approved the wait is over and exhaustion reads again."""
+    assert _claim(aide, consumer) == 0
+    branch = "aide/001-the-greeter"
+    ddir = consumer / "docs" / "aide"
+    progress = ddir / "progress.md"
+    question = "The greeter's banner reads well on the kiosk screen"
+    progress.write_text(aide.add_gate_rows(progress.read_text(encoding="utf-8"),
+                                           [(question, "—")]), encoding="utf-8")
+    [gid] = aide.gate_ids(aide.human_gates(
+        progress.read_text(encoding="utf-8").splitlines()))
+    spec = ddir / "items" / "001-the-greeter.md"
+    spec.write_text(spec.read_text(encoding="utf-8")
+                    + f"- [ ] AC2: the kiosk banner reads well. "
+                      f"*(evidence: {gid})*\n", encoding="utf-8")
+    _commit(consumer, "docs(001): evidence gate for the kiosk banner")
+    _do_the_work(consumer)
+    assert aide.main(["--repo", str(consumer), "progress", "set", "1",
+                      "in-review"]) == 0
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    # 002 out of the way, so 001's wait is all that stands before the end.
+    assert aide.main(["--repo", str(consumer), "progress", "set", "2",
+                      "deferred", "--reason", "next release"]) == 0
+    branches = _branches(consumer)
+    capsys.readouterr()
+
+    assert _claim(aide, consumer) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out != ["none left"]
+    assert out[-1].startswith("early ready: no — ")
+    assert _branch(consumer) == branch
+    assert _branches(consumer) == branches
+
+    assert aide.main(["--repo", str(consumer), "gate", "approve", gid,
+                      "--evidence", "read it on the kiosk"]) == 0
+    capsys.readouterr()
+    assert _claim(aide, consumer) == 0
+    assert capsys.readouterr().out.splitlines() == ["none left"]
+
+
 # --------------------------------------------------------------------------- #
 # a gate over a run of stages — `stage N+` and `stage N–M` (issue #304)
 # --------------------------------------------------------------------------- #
