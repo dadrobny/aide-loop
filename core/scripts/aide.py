@@ -12837,8 +12837,9 @@ def _queue_branch_evidence_waits(repo_root: Path,
     The queue file and progress.md are both read as committed on the queue
     branch, which is what its PR carries: an item merged there is ✅ in that
     copy and not read. A copy git cannot show reads as no items, so nothing
-    is refused on a reading that failed — unlike `_merge_unmet_evidence`,
-    no working-tree copy stands in, since the PR carries the branch's.
+    is refused on a reading that failed. The queue file and the item
+    statuses are read from the branch alone; the evidence reading itself is
+    `_merge_unmet_evidence`'s, with its own copies.
     """
     ddir_rel = _docs_rel(config)
     listed = git(["ls-tree", "--name-only", branch, f"{ddir_rel}/queue/"],
