@@ -125,14 +125,18 @@ ready straight to stopping for the merge, and reports "CI: none declared".
    `none left` means no 📋 item is left, not that every item is ✅: an item
    still 🚧 or 🔍 that no planned item waits on can remain, and the PR is
    marked ready without it. The runner resumes a 🚧 claim before claiming,
-   and a 🔍 item under `pr` mode lands when its own PR merges.
+   and a 🔍 item under `pr` mode lands when its own PR merges. A 🔍 item
+   unmerged until a person approves the human gate that is its evidence is
+   the exception: the queue has not ended while it waits, so `claim` names
+   it in a `none left — …` report ending `early ready: no`, and `aide queue
+   ready` refuses.
 2. **Clean up.** `aide gc` previews the claim branches it would delete;
    `aide gc --yes` deletes them once the list is right.
 3. **Mark the PR ready.** `aide queue ready` pushes the branch where origin
    lacks its commits and marks the queue's PR ready for review. A refusal
    ends the step with its sentence reported: no PR (`aide queue pr` opens
-   the draft), a closed or merged one, `local` mode, no forge declared, or
-   no remote.
+   the draft), a closed or merged one, `local` mode, no forge declared, no
+   remote, or an item still awaiting the human gate that is its evidence.
 4. **Wait for CI.** Read the branch's `checks=` from `aide status`, in
    bounded waits that each fit inside one tool call of the runtime; the
    orchestrator waits in its own session rather than handing the wait to a

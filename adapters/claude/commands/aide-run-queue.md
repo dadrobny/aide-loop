@@ -115,8 +115,10 @@ Repeat until `aide claim` reports no remaining unclaimed 📋 item **in this que
    ```
    It syncs, checks `aide/*` branches, picks the first unclaimed 📋 item with no
    blocking dependency still 📋/🚧, creates + pushes `aide/NNN-short-name`, and
-   prints the item number, branch name, and title. Prints `none left` when the
-   queue is exhausted.
+   prints the item number, branch name, and title. Prints a bare `none left`
+   when the queue is exhausted, and a `none left — …` report when something
+   still holds it — a human gate, or an item awaiting the gate that is its
+   evidence (step 2).
 
 2. **Decide (orchestrator).**
    - **Item claimed** → go to step 3.
@@ -128,7 +130,8 @@ Repeat until `aide claim` reports no remaining unclaimed 📋 item **in this que
      the gate is a person's, and its result is informational.
    - **`none left — …` followed by per-item reasons** → the queue is still open
      and nothing in it is offerable. This is **not** exhaustion. On exit 0 (a
-     gate, a claim already in flight, a dependency not landed — the last line
+     gate, a claim already in flight, a dependency not landed, an item
+     awaiting the human gate that is its evidence — the last line
      reads `early ready: no — …`) relay the reasons
      verbatim and stop. On a **non-zero** exit something is broken — an
      *unpublished claim* (an `aide claim` whose push failed), a claim branch
@@ -146,8 +149,11 @@ Repeat until `aide claim` reports no remaining unclaimed 📋 item **in this que
    merged/failed, key facts). An item that ended **PASS (awaiting
    gate-<hex>)** is not merged: relay the gate, the AC and the claim branch
    for the person to check, and carry on — its dependents wait on its ✅ by
-   themselves. Do not run **Queue end** while one is still waiting: report
-   the queue as held on that gate and stop instead. If the item reported a **PR / force-push /
+   themselves. The engine holds the queue end for it: while one is still
+   waiting, `aide claim` names it in a `none left — …` report ending
+   `early ready: no`, never a bare `none left`, and `aide queue ready`
+   refuses — so step 2 relays that report and stops, with the queue held on
+   that gate. If the item reported a **PR / force-push /
    structural** stop, **pause and ask the user**. Otherwise continue to step 1.
 
 ## Queue end
@@ -166,7 +172,8 @@ This is the queue-end step `.aide/README.md` → *The queue-end step* defines
 3. **Mark it ready.** `python .aide/scripts/aide.py queue ready`. On exit 1
    relay its sentence and go to the report: `local` mode, no forge declared
    (`[git] forge = "none"`) or no origin (no forge exists — the merge gate
-   already ran the suite), no PR, or a closed or merged one.
+   already ran the suite), no PR, a closed or merged one, or an item still
+   awaiting the human gate that is its evidence.
 4. **Wait for CI, in this session.** Start the poll, then wait on its label
    until it answers:
    ```

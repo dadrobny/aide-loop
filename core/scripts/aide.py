@@ -12828,6 +12828,42 @@ def _queue_pr(args: argparse.Namespace) -> int:
     return 0
 
 
+def _queue_branch_evidence_waits(repo_root: Path,
+                                 config: Dict[str, Dict[str, object]],
+                                 branch: str, number: int
+                                 ) -> Dict[int, Tuple[str, List[Tuple[str, str]]]]:
+    """`evidence_waits` over queue *number*'s items, read at *branch*'s tip.
+
+    The queue file and progress.md are both read as committed on the queue
+    branch, which is what its PR carries: an item merged there is ✅ in that
+    copy and not read. A copy git cannot show reads as no items, so nothing
+    is refused on a reading that failed. The queue file and the item
+    statuses are read from the branch alone; the evidence reading itself is
+    `_merge_unmet_evidence`'s, with its own copies.
+    """
+    ddir_rel = _docs_rel(config)
+    listed = git(["ls-tree", "--name-only", branch, f"{ddir_rel}/queue/"],
+                 repo_root, check=False)
+    qtext = None
+    if listed.returncode == 0:
+        for p in (l.strip() for l in listed.stdout.splitlines()):
+            if p.endswith(".md") and queue_number(Path(p)) == number:
+                shown = git(["show", f"{branch}:./{p}"], repo_root, check=False)
+                if shown.returncode == 0:
+                    qtext = shown.stdout
+                break
+    if qtext is None:
+        return {}
+    shown = git(["show", f"{branch}:./{_progress_rel(config)}"], repo_root,
+                check=False)
+    item_status = (_parse_item_status(shown.stdout.splitlines())[2]
+                   if shown.returncode == 0 else {})
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    return evidence_waits(repo_root, config, queue_item_numbers(qtext),
+                          item_status, _list_claim_branches(repo_root, prefix),
+                          fallback=branch)
+
+
 def _queue_ready(args: argparse.Namespace) -> int:
     """Mark the queue branch's PR ready, or back to draft; see -h."""
     tag = "aide queue ready" + (" --undo" if args.undo else "")
@@ -12838,6 +12874,24 @@ def _queue_ready(args: argparse.Namespace) -> int:
     branch, number = _queue_pr_branch(repo_root, config, tag, args.number)
     if branch is None or number is None:
         return 1
+    if not args.undo:
+        waits = _queue_branch_evidence_waits(repo_root, config, branch, number)
+        if waits:
+            # Issue #428: an item `merge` refuses until a person approves the
+            # gate that is its evidence has not landed on the queue branch, so
+            # marking the PR ready would ship the queue without it. Before
+            # the forge is asked anything: the refusal reads git alone.
+            named = "; ".join(f"{n:03d} ({'; '.join(p for _, p in unmet)})"
+                              for n, (_, unmet) in waits.items())
+            print(f"{tag}: queue {number:03d} has item(s) not merged, each "
+                  f"awaiting the human gate that is its evidence — {named} — "
+                  f"so the queue has not ended and nothing was pushed or "
+                  f"changed on the forge. A person checks each built item on "
+                  f"its claim branch and runs `aide gate approve <ID>` there, "
+                  f"then 'aide merge <NNN>' lands it; or declines the gate, "
+                  f"and the criterion is rebuilt and re-asked as a new gate. "
+                  f"Then re-run 'aide queue ready'.", file=sys.stderr)
+            return 1
     pr, why = _branch_pr_facts(repo_root, branch)
     if why is not None:
         print(f"{tag}: could not ask the forge about {branch} ({why}); "
@@ -14477,7 +14531,9 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     ready:`` fact (issue #331), which is what the queue-end step keys on to
     mark the queue's PR ready while a person decides a gate: see
     `_early_ready`. A bare ``none left`` carries none — that is exhaustion,
-    the step's own trigger.
+    the step's own trigger — so it is never printed while an item is 🔍 and
+    unmerged awaiting the human gate that is its evidence (issue #428): that
+    item is named, exit 0, and the ``early ready:`` line says no.
     """
     ppath = docs_dir(repo_root, config) / "progress.md"
     plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
@@ -14537,7 +14593,13 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     relevant = [(n, g, gid) for n, (g, gid)
                 in enumerate(zip(all_gates, gate_ids(all_gates)), start=1)
                 if g.kind != "approved" and (g.blocks_all or _reached(g))]
-    if not relevant and not open_items:
+    # A 🔍 item unmerged until a person approves the gate that is its
+    # evidence (issue #428) is not open, yet the queue has not ended: it is
+    # named on every path below, and a bare "none left" — exhaustion, which
+    # the queue-end step runs on — is never printed over it.
+    waits = evidence_waits(repo_root, config, scan_order, item_status,
+                           claim_branches)
+    if not relevant and not open_items and not waits:
         print("none left")
         return 0
 
@@ -14558,7 +14620,26 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     early = _early_ready(repo_root, config, live_ordered,
                          [(n, g) for n, g, _ in relevant], gated,
                          claimed, item_status, scan_order, holds,
-                         all_withdrawn)
+                         all_withdrawn,
+                         [n for n in scan_order if n in waits])
+
+    def _wait_line(num: int) -> str:
+        branch, unmet = waits[num]
+        return (f"  {num:03d} {titles.get(num, 'item ' + str(num))} — "
+                f"{evidence_wait_phrase(branch, unmet)}")
+
+    def _waits_report(named: Collection[int] = ()) -> None:
+        # *named*: the open ones the per-item list already gave a line.
+        for num in scan_order:
+            if num in waits and num not in named:
+                print(_wait_line(num))
+        if waits:
+            print("  A person checks each built item on its claim branch and "
+                  "decides its gate there, never an agent: aide gate approve "
+                  "<ID> --evidence \"…\" lets 'aide merge <NNN>' land it, and "
+                  "a declined gate fails its criterion, rebuilt and re-asked "
+                  "as a new gate. Until then 'aide queue ready' refuses the "
+                  "queue.")
 
     def _withdrawn_reason(num: int) -> str:
         stages = withdrawn[num]
@@ -14628,12 +14709,22 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
             if num in withdrawn:
                 print(f"  {num:03d} {titles.get(num, 'item ' + str(num))} — "
                       f"{_withdrawn_reason(num)}")
+        _waits_report()
         # A broken state is not hidden behind a gate: an unpublished or
         # deleted claim exits 1 on this path exactly as on the per-item one.
         if stranded:
             _stranded_lines()
             _stranded_notice()
             return 1
+        print(early)
+        return 0
+
+    if not open_ordered:
+        # Nothing open and no gate: only an evidence wait keeps the queue
+        # from its end (issue #428).
+        print(f"none left — {len(waits)} item(s) not merged, each awaiting "
+              f"the human gate that is its evidence:")
+        _waits_report()
         print(early)
         return 0
 
@@ -14648,7 +14739,12 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
         if num in withdrawn:
             print(f"{head} {_withdrawn_reason(num)}")
         elif num in stranded:
+            # Before the evidence wait, deliberately: a stranded claim is a
+            # broken state that exits 1 (#364) and is repaired first; the
+            # wait is named on the next claim once it is.
             print(f"{head} {_stranded_reason(num)}")
+        elif num in waits:
+            print(_wait_line(num))
         elif br is not None:
             print(f"{head} claimed by {br}, already in flight")
         else:
@@ -14666,6 +14762,7 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
                 print(f"{head} open and unblocked, yet not offered — please "
                       f"report this")
 
+    _waits_report(open_items)
     if stranded:
         _stranded_notice()
         return 1
@@ -14678,7 +14775,8 @@ def _early_ready(repo_root: Path, config, open_ordered: List[int],
                  claimed: Dict[int, str], item_status: Dict[int, str],
                  scan_order: List[int],
                  holds: Optional[Dict[int, List[int]]] = None,
-                 withdrawn: Collection[int] = ()) -> str:
+                 withdrawn: Collection[int] = (),
+                 evidence: Sequence[int] = ()) -> str:
     """The ``early ready:`` line ending a ``none left — …`` report that exits 0.
 
     ``yes`` when every gate holding the queue is still ⏳ awaiting its
@@ -14690,7 +14788,11 @@ def _early_ready(repo_root: Path, config, open_ordered: List[int],
     trigger (issue #331). ``no`` otherwise, with the first reason found, in
     the order the clauses are listed.
 
-    A ❌ declined gate is not a decision pending but one made against the
+    An item in *evidence* — 🔍 and unmerged until the human gate that is
+    its evidence is approved (`evidence_waits`, issue #428) — says ``no``
+    before any other clause: its work has not landed in the queue, and
+    `queue ready` refuses while it waits. A ❌ declined gate is not a
+    decision pending but one made against the
     plan, which is re-planned rather than shipped, so it says ``no``. The ✅
     clause is what keeps a queue held whole by its own plan gate, nothing
     built, from reading as ready. An ``all`` gate over a queue with nothing
@@ -14725,7 +14827,10 @@ def _early_ready(repo_root: Path, config, open_ordered: List[int],
     loose = [n for n in open_ordered if n not in held]
     busy = [n for n in loose if n in claimed]
     settled = [(n, g) for n, g in gates if g.kind != "awaiting"]
-    if not gates:
+    if evidence:
+        why = (f"{evidence[0]:03d} awaits the human gate that is its "
+               f"evidence, so its work has not landed")
+    elif not gates:
         why = "no gate holds an open item"
     elif settled:
         n, g = settled[0]
@@ -16237,6 +16342,61 @@ def _merge_unmet_evidence(repo_root: Path, config, number: int, base: str,
         if state != "approved":
             out.append((state, f"{which(ac)}: {ref} {words[state]}"))
     return out
+
+
+def evidence_waits(repo_root: Path, config, numbers: Sequence[int],
+                   item_status: Dict[int, str], branches: Sequence[str],
+                   fallback: Optional[str] = None
+                   ) -> Dict[int, Tuple[str, List[Tuple[str, str]]]]:
+    """Item -> ``(claim branch, unmet)`` for each of *numbers* that is 🔍 and
+    unmerged because a criterion's evidence gate is not ✅ Approved — exactly
+    what `_merge_unmet_evidence` refuses `aide merge` on (issue #428).
+
+    Such an item has not landed and cannot until a person decides its gate,
+    so the queue's end must not run over it: `claim` names it rather than
+    reporting a bare ``none left``, and `queue ready` refuses. The 🔍 is read
+    where the validator writes it — on the item's claim branch, whose base
+    still shows the item 📋 — or in *item_status*, the caller's progress.md,
+    whichever is further on. An item ✅, ❌ or ⏸️ there has left the queue
+    and is not read. A 🔍 item whose evidence is met is not a wait: under
+    `pr` mode it is one whose PR awaits its merge, which `merge` already let
+    through. An item with no claim branch reads its spec at *fallback*
+    (`queue ready`: the queue branch it reads progress.md at), else at
+    ``main_branch``.
+    """
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    main = fallback or str(config["git"].get("main_branch", "main"))
+    rel = _progress_rel(config)
+    out: Dict[int, Tuple[str, List[Tuple[str, str]]]] = {}
+    for n in numbers:
+        status = item_status.get(n, "planned")
+        if status in ("complete", "excluded", "deferred"):
+            continue
+        branch = next((b for b in branches
+                       if _branch_item_number(b, prefix) == n), None)
+        ref: Optional[str] = None
+        if branch is not None:
+            ref = (branch if _local_branch_exists(repo_root, branch)
+                   else f"origin/{branch}")
+            shown = git(["show", f"{ref}:./{rel}"], repo_root, check=False)
+            if shown.returncode == 0:
+                there = _parse_item_status(shown.stdout.splitlines())[2].get(n)
+                if there is not None and RANK[there] > RANK[status]:
+                    status = there
+        if status != "in-review":
+            continue
+        base = (_recorded_branch_base(repo_root, branch) if branch else None) or main
+        unmet = _merge_unmet_evidence(repo_root, config, n, base, ref or base)
+        if unmet:
+            out[n] = (branch or "", unmet)
+    return out
+
+
+def evidence_wait_phrase(branch: str, unmet: List[Tuple[str, str]]) -> str:
+    """``🔍 on aide/027-x, awaiting …: AC2: gate-3fa1 is ⏳ Awaiting``."""
+    where = f" on {branch}" if branch else ""
+    return (f"🔍{where}, unmerged until the human gate that is its evidence "
+            f"is ✅ Approved: " + "; ".join(phrase for _, phrase in unmet))
 
 
 def _merge_withdrawn_item(repo_root: Path, config, number: int, base: str,
@@ -19979,7 +20139,13 @@ def build_parser() -> argparse.ArgumentParser:
             "Before the mode or the forge is considered, both refuse, exit "
             "1, a queue branch whose tip carries no queue file of its own "
             "number: nothing is planned on it, so a pull request would have "
-            "no plan to carry.\n"
+            "no plan to carry. ready without --undo refuses, exit 1, before "
+            "the forge is asked anything, while an item of the queue is "
+            "\U0001f50d and unmerged until a person approves the human gate "
+            "that is its evidence \u2014 the queue's items and their status "
+            "read as committed on the queue branch, a \U0001f50d on an "
+            "item's claim branch too; the refusal names each item and its "
+            "gate.\n"
             "\n"
             "An option the action does not read is refused, exit 2, before "
             "anything is done: pr and ready take no --dry-run, --base, "
@@ -20242,10 +20408,15 @@ def register_git_subcommands(sub) -> None:
             "waits on one \u2014 one reaches it, or it waits only on items "
             "that do \u2014 no open item is claimed, and at least one item of "
             "the queues checked is \u2705; no otherwise, with the reason. A "
-            "\u274c declined gate makes it no. An `all` gate over a queue "
+            "\u274c declined gate makes it no. So does an item \U0001f50d "
+            "and unmerged until a person approves the human gate that is its "
+            "evidence, which the report names with its criterion and gate: "
+            "a bare \"none left\" is never printed over it. An `all` gate "
+            "over a queue "
             "with nothing left open is read the same way, a yes in words of "
             "its own. A bare "
-            "\"none left\" (nothing open, no gate) carries no such line. An "
+            "\"none left\" (nothing open, no gate, no item awaiting its "
+            "evidence gate) carries no such line. An "
             "unpublished claim \u2014 a claim branch origin has never seen "
             "\u2014 exits 1 with how to publish or release it, whether or not "
             "a gate holds the rest. A claim branch origin had and has since "

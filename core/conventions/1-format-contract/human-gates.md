@@ -111,7 +111,9 @@ dialog keeps its layout at 200% zoom" — and its Blocks cell is `—`.
 - **It must not block its own item.** `aide claim` would never offer the item,
   and nothing would be built to check. Its dependents need no reach either: a
   dependency is met only once ✅, and `aide merge` refuses the item until the
-  gate is ✅ Approved.
+  gate is ✅ Approved. Nor does the queue end run over the item while it
+  waits: `aide claim` names it rather than reporting the queue exhausted, and
+  `aide queue ready` refuses.
 - **The spec-author writes the row by hand** — no verb adds one — beside the
   spec it writes, and cites the row's ID on the criterion. A person checks the
   built item on its claim branch, and approves or declines the gate there,
@@ -264,7 +266,12 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   that breaks it: the item is never claimed, so there is never a built item
   to check. The hold the gate has to exert is on the merge, not the claim,
   and the merge already reads the spec that names it; dependents wait on the
-  ✅ the merge withholds. Approving on the claim branch puts the decision in
+  ✅ the merge withholds. The queue's end is held the same way (#428):
+  `claim` never offers a 🔍 item, so with the rest merged it reported the
+  queue exhausted and only the runner's own text kept the queue-end step
+  from marking the PR ready over an item still awaiting its check — a rule
+  the engine did not enforce. `claim` and `queue ready` now read the unmet
+  evidence `merge` refuses on. Approving on the claim branch puts the decision in
   the history of the work it judged, and that copy decides: counting an
   approval in any copy of `progress.md` would let a stale ✅ on the base
   outvote the ❌ a person had just written beside the work (#420). One copy

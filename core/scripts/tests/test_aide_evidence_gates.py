@@ -543,3 +543,146 @@ def test_merge_reads_an_annotation_check_on_the_base_does_not_see(
     capsys.readouterr()
     assert aide.main(["--repo", str(repo), "merge", "27", "--no-test"]) == 1
     assert f"AC2: {gid} is ⏳ Awaiting" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# the queue's end — held while an item awaits its evidence gate (issue #428)
+# --------------------------------------------------------------------------- #
+def _repo_awaiting_evidence(tmp_path: Path, mode: str = "local",
+                            other: str = "✅") -> Tuple[Path, str]:
+    """main with 028 *other* and 027 📋; 027's claim branch carries the gate
+    row, the spec citing it, the work and 027 🔍 — a validator's PASS
+    (awaiting gate-<hex>), left unmerged."""
+    progress = PROGRESS.replace("- 📋 Other. *(Item 028)*",
+                                f"- {other} Other. *(Item 028)*")
+    repo = _docs(tmp_path, progress, _spec("Layout kept."), mode)
+    _run(["git", "init", "-b", "main"], repo)
+    _run(["git", "config", "user.email", "t@e.com"], repo)
+    _run(["git", "config", "user.name", "T"], repo)
+    _run(["git", "add", "-A"], repo)
+    _run(["git", "commit", "-m", "init"], repo)
+    branch = "aide/027-dialog"
+    _run(["git", "switch", "-c", branch], repo)
+    ppath = repo / "docs" / "aide" / "progress.md"
+    text = _with_gate(progress)
+    gid = _gate_id(text)
+    ppath.write_text(text.replace("- 📋 Dialog. *(Item 027)*",
+                                  "- 🔍 Dialog. *(Item 027)*"), encoding="utf-8")
+    (repo / "docs" / "aide" / "items" / "027-dialog.md").write_text(
+        _spec(f"Layout kept. *(evidence: {gid})*"), encoding="utf-8")
+    (repo / "dialog.txt").write_text("work\n", encoding="utf-8")
+    _run(["git", "add", "-A"], repo)
+    _run(["git", "commit", "-m", "spec, gate, work; 027 in review"], repo)
+    _run(["git", "switch", "main"], repo)
+    aide._record_branch_base(repo, branch, "main")
+    return repo, gid
+
+
+def _claim_report(repo: Path, capsys) -> Tuple[int, str]:
+    capsys.readouterr()
+    code = aide.main(["--repo", str(repo), "claim", "--queue", "3",
+                      "--dry-run"])
+    return code, capsys.readouterr().out
+
+
+def test_claim_names_an_item_awaiting_its_evidence_gate_never_a_bare_none_left(
+        tmp_path: Path, capsys):
+    """On the claim branch the item reads 🔍 and 028 is ✅: nothing is open,
+    which used to print a bare "none left" — exhaustion, the queue end's
+    trigger."""
+    repo, gid = _repo_awaiting_evidence(tmp_path)
+    _run(["git", "switch", "aide/027-dialog"], repo)
+    code, out = _claim_report(repo, capsys)
+    assert code == 0
+    lines = out.splitlines()
+    assert lines[0] == ("none left — 1 item(s) not merged, each awaiting the "
+                        "human gate that is its evidence:")
+    assert (f"  027 Dialog — 🔍 on aide/027-dialog, unmerged until the human "
+            f"gate that is its evidence is ✅ Approved: AC2: {gid} is ⏳ "
+            f"Awaiting") in lines
+    assert "'aide queue ready' refuses" in out
+    assert lines[-1] == ("early ready: no — 027 awaits the human gate that is "
+                         "its evidence, so its work has not landed")
+
+    # Approved, the item is no longer waiting on the gate: the next step is
+    # its merge, and with nothing open the report is exhaustion again.
+    assert aide.main(["--repo", str(repo), "gate", "approve", gid,
+                      "--evidence", "walked it at 200%"]) == 0
+    code, out = _claim_report(repo, capsys)
+    assert (code, out) == (0, "none left\n")
+
+
+def test_claim_from_the_base_names_the_wait_not_a_claim_in_flight(
+        tmp_path: Path, capsys):
+    """On the base the item still reads 📋 and claimed; its claim branch says
+    🔍, and that is where the wait is read."""
+    repo, gid = _repo_awaiting_evidence(tmp_path)
+    code, out = _claim_report(repo, capsys)
+    assert code == 0
+    assert "already in flight" not in out
+    assert (f"  027 Dialog — 🔍 on aide/027-dialog, unmerged until the human "
+            f"gate that is its evidence is ✅ Approved: AC2: {gid} is ⏳ "
+            f"Awaiting") in out.splitlines()
+    assert out.splitlines()[-1].startswith(
+        "early ready: no — 027 awaits the human gate that is its evidence")
+
+
+def test_a_declined_evidence_gate_holds_the_queue_end_too(tmp_path: Path, capsys):
+    repo, gid = _repo_awaiting_evidence(tmp_path)
+    _run(["git", "switch", "aide/027-dialog"], repo)
+    assert aide.main(["--repo", str(repo), "gate", "decline", gid,
+                      "--evidence", "layout breaks"]) == 0
+    code, out = _claim_report(repo, capsys)
+    assert code == 0
+    assert f"AC2: {gid} is ❌ Declined" in out
+    assert out.splitlines()[-1].startswith("early ready: no — 027 awaits")
+
+
+def test_a_review_item_with_no_evidence_annotation_is_not_a_wait(
+        tmp_path: Path, capsys):
+    """A 🔍 item with no gate as its evidence — a `pr`-mode item awaiting
+    its PR — keeps the report it always had."""
+    repo, gid = _repo_awaiting_evidence(tmp_path)
+    _run(["git", "switch", "aide/027-dialog"], repo)
+    spec = repo / "docs" / "aide" / "items" / "027-dialog.md"
+    spec.write_text(_spec("Layout kept."), encoding="utf-8")
+    _run(["git", "commit", "-am", "no evidence gate"], repo)
+    code, out = _claim_report(repo, capsys)
+    assert (code, out) == (0, "none left\n")
+
+
+def test_an_evidence_wait_says_no_before_a_gate_would_say_yes(
+        tmp_path: Path, capsys):
+    """028 is 📋 behind an awaiting gate and 029 has landed, so the gate
+    alone would read early ready: yes; the 🔍 item waiting on its evidence
+    gate keeps it no, and is named under the gate's report."""
+    repo, gid = _repo_awaiting_evidence(tmp_path, other="📋")
+    _run(["git", "switch", "aide/027-dialog"], repo)
+    ppath = repo / "docs" / "aide" / "progress.md"
+    text = ppath.read_text(encoding="utf-8").replace(
+        "- 📋 Other. *(Item 028)*\n",
+        "- 📋 Other. *(Item 028)*\n- ✅ Done. *(Item 029)*\n")
+    ppath.write_text(aide.add_gate_rows(text, [("Ship the other one?", "028")]),
+                     encoding="utf-8")
+    qpath = repo / "docs" / "aide" / "queue" / "queue-003.md"
+    qpath.write_text(QUEUE + "\n### Item 029: Done\nC.\n", encoding="utf-8")
+    _run(["git", "commit", "-am", "a gate over 028; 029 landed"], repo)
+    code, out = _claim_report(repo, capsys)
+    assert code == 0
+    assert "held by an unresolved human gate" in out
+    assert f"AC2: {gid} is ⏳ Awaiting" in out
+    assert out.splitlines()[-1].startswith("early ready: no — 027 awaits")
+
+
+def test_evidence_waits_reads_the_claim_branch_and_skips_a_landed_item(
+        tmp_path: Path):
+    repo, gid = _repo_awaiting_evidence(tmp_path)
+    config = aide.load_config(repo)
+    branches = aide._list_claim_branches(repo, "aide/")
+    waits = aide.evidence_waits(repo, config, [27, 28], {27: "planned",
+                                                        28: "complete"},
+                                branches)
+    assert waits == {27: ("aide/027-dialog",
+                          [("awaiting", f"AC2: {gid} is ⏳ Awaiting")])}
+    assert aide.evidence_waits(repo, config, [27], {27: "complete"},
+                               branches) == {}

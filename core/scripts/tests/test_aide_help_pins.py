@@ -1627,6 +1627,16 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `settled` in `_early_ready`: any relevant gate not "awaiting".
         ("A \u274c declined gate makes it no",
          "test_aide_gates::test_a_declined_gate_is_no_early_ready"),
+        # `evidence_waits` in `_report_nothing_claimable` — the 🔍 read on
+        # the claim branch too — and `_early_ready`'s first clause (#428).
+        ("So does an item \U0001f50d and unmerged until a person approves "
+         "the human gate that is its evidence, which the report names with "
+         "its criterion and gate: a bare \"none left\" is never printed "
+         "over it",
+         ("test_aide_evidence_gates::test_claim_names_an_item_awaiting_its_evidence_gate_never_a_bare_none_left",
+          "test_aide_evidence_gates::test_claim_from_the_base_names_the_wait_not_a_claim_in_flight",
+          "test_aide_evidence_gates::test_a_declined_evidence_gate_holds_the_queue_end_too",
+          "test_aide_evidence_gates::test_an_evidence_wait_says_no_before_a_gate_would_say_yes")),
         # `elif not open_ordered:` — its own wording.
         ("An `all` gate over a queue with nothing left open is read the same "
          "way, a yes in words of its own",
@@ -1643,10 +1653,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "found there, and is never advised a push",
          ("test_aide_git::test_claim_names_a_landed_claim_branch_deleted_on_origin",
           "test_aide_git::test_claim_names_an_unfound_claim_branch_deleted_on_origin")),
-        # `if not relevant and not open_items: print("none left")` returns
-        # before `_early_ready` is printed.
-        ("A bare \"none left\" (nothing open, no gate) carries no such line",
-         "test_aide_git::test_an_empty_queue_still_says_only_none_left"),
+        # `if not relevant and not open_items and not waits: print("none
+        # left")` returns before `_early_ready` is printed (issue #428).
+        ("A bare \"none left\" (nothing open, no gate, no item awaiting its "
+         "evidence gate) carries no such line",
+         ("test_aide_git::test_an_empty_queue_still_says_only_none_left",
+          "test_aide_evidence_gates::test_claim_names_an_item_awaiting_its_evidence_gate_never_a_bare_none_left")),
         # `if block_everything or unreadable_gate_rows(plines): return None`,
         # and `cmd_claim` exits 1 naming the row.
         ("A human-gates row it cannot read holds every item",
@@ -2658,6 +2670,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_queue_pr::test_a_queue_branch_with_no_queue_file_is_refused_and_nothing_pushed",
           "test_aide_queue_pr::test_the_missing_queue_file_is_refused_before_the_mode_or_the_forge",
           "test_aide_queue_pr::test_only_a_committed_queue_file_of_the_branchs_own_number_counts")),
+        # `_queue_ready`: `_queue_branch_evidence_waits` -> `evidence_waits`,
+        # after `_queue_pr_branch` and before `_branch_pr_facts`, skipped
+        # under `args.undo` (issue #428).
+        ("ready without --undo refuses, exit 1, before the forge is asked "
+         "anything, while an item of the queue is \U0001f50d and unmerged "
+         "until a person approves the human gate that is its evidence",
+         "test_aide_queue_pr::test_ready_refuses_while_an_item_awaits_its_evidence_gate"),
         # `_queue_stray_options`, first thing in `cmd_queue`.
         ("An option the action does not read is refused, exit 2, before "
          "anything is done",
