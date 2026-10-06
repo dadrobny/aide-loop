@@ -94,6 +94,22 @@ shapes fail that:
   mapping under either, and a criterion whose check the evidence cannot name
   is one nobody has yet closed.
 
+**A criterion that no loop-run test can measure names a human gate as its
+evidence, and a person's check stands in for its test.** *(spec-author,
+spec-reviewer, test-writer, validator, aide check, merge)* The criterion line
+ends with *(evidence: gate-<hex>)*, the ID of a gate row asking the by-hand
+question (§1 → human gates), and the spec says why no test can measure it — in
+its Assumptions, or beside the criterion. The judgement is strict, and the
+default is always a test: the route is legitimate only where nothing the loop
+runs can observe the criterion. The code lives in a declared sibling
+repository whose own instructions rule out loop-run tests (§8: the repository
+that owns the file wins), or the behaviour is a GUI or visual one that only a
+person walking the application can see — examples, not a list. A criterion
+that is hard, slow or fiddly to test never qualifies. **One gate per
+criterion**: a gate is the evidence for exactly one AC, so a declined check
+fails exactly one criterion. §9 says how validation reads each status, and
+`aide merge -h` what it refuses.
+
 **An acceptance criterion is written only when something fails without it:
 the item's own deliverable, or a declared consumer in the batch that reads what
 it pins.** *(spec-author, spec-reviewer)* One test per criterion is the floor
@@ -163,6 +179,19 @@ forgotten. The queue is bounded the same way, by the posture table's
   basis into `progress.md` permanently, so a reader can tell the two apart,
   and it is a sentence nobody writes by accident on a spec that could have
   carried the annotation.
+- **Why a gate may stand in for a test, and why so rarely.** An item's code
+  lived in a declared sibling repository whose owners check its GUI by hand
+  and allow no loop-run test of it, so the test-writer could write nothing,
+  the validator had to FAIL, and no role spec said a person's check could
+  count: the consumer routed each by-hand criterion through a gate and wrote
+  the arrangement into the item spec itself (issue #420). The route is the
+  exception to the suite keeping every criterion: a test is re-run on every
+  later change, and a gate is one person's check, once, before the merge — so
+  a criterion that a test could have measured loses its re-check by taking
+  one, which is why difficulty never qualifies. The spec states why no test
+  can, where the spec-reviewer reads it. One gate per criterion because a
+  decline must say which criterion failed; a gate over three criteria fails
+  all three on one "no" and leaves the builder to guess which.
 - **Why a criterion needs a reason.** Every gate in the item loop pushes
   toward more and none toward less: the validator FAILs an uncovered
   criterion, and a superfluous one — an AC the deliverable never needed, a

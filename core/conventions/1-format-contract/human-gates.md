@@ -56,7 +56,8 @@ raised wherever it is noticed, recorded in one place.
   prerequisite says so in its own section. This is the usual home for a gate
   known at planning time, and it naturally implies `Blocks: stage N`.
 - **`items/NNN-*.md`** — a gate discovered while specifying one item is noted
-  in its Validation or Assumptions block, implying `Blocks: NNN`.
+  in its Validation or Assumptions block, implying `Blocks: NNN` — an evidence
+  gate excepted (below), which blocks nothing.
 - **`progress.md`** — the **authoritative row**, always. It is the single source
   of truth for status and the only place the CLI reads, so a gate that exists
   only as prose in a roadmap or a spec blocks nothing.
@@ -94,12 +95,34 @@ blocks too.
 **A declined gate whose reach holds nothing open is re-planned.** Its Blocks
 cell names nothing (`—`), or only items and stages that are already ✅ or ❌,
 so there is nothing left to drop. The row stays as the record of the decision,
-and `aide check` is silent about it. Open is what `aide claim` would still
+and `aide check` is silent about it — unless a live spec still cites it as a
+criterion's evidence (below). Open is what `aide claim` would still
 offer: a 📋 item every bullet of which sits in a withdrawn stage is not open,
 a 🚧 or ⏸️ one is. `all` and `stage N+` reach work not yet written, so a
 declined one is never re-planned this way. A stage not yet written, or with
 nothing queued, is not spent, and a Blocks cell that names no reach without
 being empty is a typo, not a gate holding nothing.
+
+**An evidence gate records a person's check of the built item, and blocks
+nothing.** It is the gate an acceptance criterion names as its evidence (§1 →
+items.md). Its Gate cell asks the by-hand question — "Item 042's settings
+dialog keeps its layout at 200% zoom" — and its Blocks cell is `—`.
+
+- **It must not block its own item.** `aide claim` would never offer the item,
+  and nothing would be built to check. Its dependents need no reach either: a
+  dependency is met only once ✅, and `aide merge` refuses the item until the
+  gate is ✅ Approved.
+- **The spec-author writes the row by hand** — no verb adds one — beside the
+  spec it writes, and cites the row's ID on the criterion. A person checks the
+  built item on its claim branch, and approves or declines the gate there.
+- **A declined evidence gate is not re-planned while a live spec still cites
+  it** — the criterion it failed is still waiting. A re-check is a new
+  question: re-ask it as a new Gate cell, so a new ID, and re-point the
+  annotation at it.
+- **`aide check` words it as the check it records**: awaiting, as awaiting a
+  person's check, with the criterion and the merge it holds; declined, as the
+  criterion it failed. It warns on one gate cited as the evidence for two
+  criteria, and on one whose reach holds its own item.
 
 Semantics *(aide claim, check, status, gate)*:
 
@@ -230,6 +253,17 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   `aide gate list` still counts such a gate as blocking, and rightly: it is
   the enforcement view, and a declined gate opens nothing; only the warning,
   whose remedy has nothing left to act on, goes quiet.
+- **Why an evidence gate blocks nothing.** A consumer that routed by-hand
+  criteria through gates had to work the arrangement out itself (issue
+  #420), and the shape every other gate takes — `Blocks: NNN` — is the one
+  that breaks it: the item is never claimed, so there is never a built item
+  to check. The hold the gate has to exert is on the merge, not the claim,
+  and the merge already reads the spec that names it; dependents wait on the
+  ✅ the merge withholds. Approving on the claim branch puts the decision in
+  the history of the work it judged. A declined one stays loud while a spec
+  points at it because, unlike a re-planned decline, its remedy — rebuild,
+  then re-ask — is still open; it goes quiet when the annotation moves to
+  the re-asked gate or the item settles.
 - **Why `check` warns and `status` prints.** A gate that is still blocking is
   visible on every run instead of buried in a spec's prose; `aide status -h`
   names open gates among what it reports.

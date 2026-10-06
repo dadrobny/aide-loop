@@ -72,6 +72,13 @@ paths:
      - a criterion that closes a stage acceptance criterion names which one
      - recomputes that fact from the primary source and compares
      - An AC that names none closes none
+     - A criterion that no loop-run test can measure names a human gate as
+       its evidence, and a person's check stands in for its test
+     - The judgement is strict, and the default is always a test
+     - A criterion that is hard, slow or fiddly to test never qualifies
+     - One gate per criterion
+     - a gate is the evidence for exactly one AC, so a declined check fails
+       exactly one criterion
      - An acceptance criterion is written only when something fails without
        it: the item's own deliverable, or a declared consumer in the batch that
        reads what it pins
@@ -247,6 +254,19 @@ means no stage criterion is closed. The one transitional exception declares
 itself — a merged spec predating the annotation is not rewritten to carry it,
 and its stage may still be attested on the criterion's own subject where the
 evidence names the check and says the mapping was made at attestation time.
+
+**A criterion that no loop-run test can measure names a human gate as its
+evidence, and a person's check stands in for its test.** The criterion line
+ends with *(evidence: gate-<hex>)*, and the spec says why no test can measure
+it, in its Assumptions or beside the criterion. **The judgement is strict, and
+the default is always a test**: the route is for a criterion nothing the loop
+runs can observe — code in a declared sibling repository whose own
+instructions rule out loop-run tests, a GUI or visual behaviour only a person
+walking the application can see — and **a criterion that is hard, slow or
+fiddly to test never qualifies**. **One gate per criterion**: a gate is the
+evidence for exactly one AC, so a declined check fails exactly one criterion.
+The row the ID names, and why it blocks nothing, is §1 → human gates, which
+reaches you too.
 
 **An acceptance criterion is written only when something fails without it: the
 item's own deliverable, or a declared consumer in the batch that reads what it
