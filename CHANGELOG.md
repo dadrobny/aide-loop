@@ -156,7 +156,7 @@ instead — that is the bump policy above, and it is enforced by
   T3. The same drift is fixed where it was pointed rather than held: the
   ADAPTER-SPEC conformance checklist points at §2's two tables instead of
   counting five roles, the Claude adapter README's layout tree lists all nine
-  agent definitions and its stale "five"/"six" role counts are gone, and
+  agent definitions and its stale role counts are corrected, and
   `docs/quickstart.md` points at §2 for the full set. Nothing for a consumer
   to edit.
 

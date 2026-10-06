@@ -60,12 +60,13 @@ contract obligations:
 
 ## Roles → **agents** (`agents/*.md`), tiers bound to Claude models
 
-Every role and optional definition in [spec §2](../ADAPTER-SPEC.md) is a
-Claude Code **sub-agent** — a fresh, role-scoped instance with
-`model:`/`effort:` frontmatter. The contract names capability *tiers*; this adapter binds **T3 → Opus, T2 → Sonnet**, and the
-per-role binding is **[spec §2's table](../ADAPTER-SPEC.md)**, whose *Claude*
-cell (`claude-opus-5-5, high`) is this adapter's `model:` + `effort:` pair and
-is held to every `agents/*.md` in both directions by
+Every role and optional definition in [spec §2](../ADAPTER-SPEC.md) is a Claude
+Code **sub-agent** — a fresh, role-scoped instance with `model:`/`effort:`
+frontmatter. The contract names capability *tiers*; this adapter binds **T3 →
+Opus, T2 → Sonnet**, and the per-role binding is **[spec §2's
+table](../ADAPTER-SPEC.md)**, whose *Claude* cell (`claude-opus-5-5, high`) is
+this adapter's `model:` + `effort:` pair and is held to every `agents/*.md` in
+both directions by
 [`tests/test_agent_definitions.py`](tests/test_agent_definitions.py). It is not
 restated here: a second copy is a copy that drifts.
 
@@ -91,10 +92,11 @@ escalate (its step 6).
 Recon/claim is **not** an agent — it is deterministic `aide claim`, so no `agents/`
 file and no tier. No role signs off its own work; each item gets a fresh instance.
 
-Two further agents sit **outside** the five item roles — `reviewer`, dispatched
-once over one item's diff alongside its first `validator` under
-`loop.review`, and `spec-reviewer`, at the queue boundary: once per queue, after `/aide-spec-queue`
-authors every spec and **before any is built**.
+Three further agents sit **outside** the five item roles — `reviewer`,
+dispatched once over one item's diff alongside its first `validator` under
+`loop.review`; `spec-reviewer`, at the queue boundary: once per queue, after
+`/aide-spec-queue` authors every spec and **before any is built**; and
+`insights-triager`, below.
 
 `spec-reviewer` is not a sixth role — it never touches one item's lifecycle. It
 reads the whole batch at once and reports the cross-item conflicts
