@@ -136,6 +136,56 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.41.0] — 2026-10-06
+
+### Added
+
+- **The insight triage's judging runs on a sub-agent of its own,
+  `insights-triager`, and `/aide-feedback-loop` says which of its passes run
+  where (issue #392).** The feedback loop ran every pass in the orchestrating
+  session, on whatever model it held — in the observed run the strongest
+  tier, spent reading eighteen inbox entries and a permission script's table —
+  while `/aide-run-item` sends each role to a sub-agent on the model its spec
+  pins. The triage's reading is reviewer-shaped, so it gets a definition:
+  `insights-triager`, T2 (`claude-sonnet-5-5, high`), an optional definition
+  in ADAPTER-SPEC §2 beside `reviewer` and `spec-reviewer`, with the spawning
+  tool and the editing tools withheld. A definition rather than a built-in
+  helper named at the spawn, because a role's model is an exact ID held to
+  its frontmatter (issue #250) and its effort cannot be set per spawn. It
+  judges and writes nothing: `/aide-review-insights` spawns it once, when the
+  open inbox is not empty — with none open, the session runs the
+  stale-pointer sweep itself — and applies the plan it returns with the
+  `aide insights` verbs, so every tick and fold is committed, and every
+  `framework` body printed at its `ask` gate, in the session the human is
+  watching — the same whether the pass runs alone, before a queue or from the
+  feedback loop. `/aide-feedback-loop` gains an *Orchestration model* table:
+  triage on the triager; the permission, instruction, ledger and status
+  passes here, reading their scripts' output; a measurement a finding needs
+  on a read-only `Explore` helper with the model named at the spawn, since
+  `spawn_model_guard` does not reach the user's session; the retrospective
+  itself here.
+- **`/aide-feedback-loop` applies the project-document amendments the user
+  agrees to, itself (issue #359).** Step 5 listed "updates to
+  vision/roadmap/progress", and applying one meant re-running
+  `/aide-create-vision`, `/aide-create-roadmap` or `/aide-create-progress` —
+  each authoring its document from scratch, with an existence check, an
+  overwrite confirmation and its full asking posture, for a one-paragraph
+  amendment, and without the retrospective's context. Step 5 now places each
+  recommendation on one side of a line: a project document
+  (`docs/aide/vision.md`, `roadmap.md`, `progress.md`), which a new step 6
+  proposes as the edit itself and applies once the user agrees; or the
+  framework surface (`.aide/`, `.claude/`, `aide.toml`), which stays a
+  recommendation landing through a reviewed PR or upstream. Step 6 reads the
+  document's §1 section and template before editing, uses `aide progress`
+  wherever a verb owns the edit, makes the smallest edit, ends on
+  `aide check`, and commits on the current branch — a branch of its own for
+  `vision.md` or `roadmap.md` when that is `main_branch`, since the merge
+  policy puts both behind a reviewed PR. The user's agreement neither ticks an
+  acceptance box nor resolves a human gate: a tick still takes a check the
+  session ran, and a gate is still resolved only by a person. A
+  `/aide-create-*` skill is named only for a document that needs rebuilding
+  rather than amending.
+
 ## [2.40.2] — 2026-10-06
 
 ### Fixed

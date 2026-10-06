@@ -73,12 +73,14 @@ sub-agents degrades gracefully to "a fresh chat per role" — the roles and thei
 tiers still hold. Exact model IDs and effort levels per role are pinned in
 [`ADAPTER-SPEC.md`](../adapters/ADAPTER-SPEC.md) §2.
 
-Two further roles are **optional**, and an adapter may omit them: a
+Three further roles are **optional**, and an adapter may omit them: a
 **reviewer** (T2), an adversarial read of an item's diff concurrent with its
 first validation, which produces findings and merges nothing — off unless
-`aide.toml` sets `loop.review`; and a **spec-reviewer** (T3), which reads a
+`aide.toml` sets `loop.review`; a **spec-reviewer** (T3), which reads a
 whole queue's specs at once, when they are written up front, and reports the
-conflicts between them for a human to arbitrate.
+conflicts between them for a human to arbitrate; and an **insights-triager**
+(T2), which judges the open insight inbox for the triage pass and leaves every
+write to the session that dispatched it.
 
 ## Orchestrators (item ⊂ queue ⊂ roadmap)
 
