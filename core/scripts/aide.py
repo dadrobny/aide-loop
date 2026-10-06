@@ -12837,7 +12837,8 @@ def _queue_branch_evidence_waits(repo_root: Path,
     The queue file and progress.md are both read as committed on the queue
     branch, which is what its PR carries: an item merged there is ✅ in that
     copy and not read. A copy git cannot show reads as no items, so nothing
-    is refused on a reading that failed.
+    is refused on a reading that failed — unlike `_merge_unmet_evidence`,
+    no working-tree copy stands in, since the PR carries the branch's.
     """
     ddir_rel = _docs_rel(config)
     listed = git(["ls-tree", "--name-only", branch, f"{ddir_rel}/queue/"],
@@ -12858,7 +12859,8 @@ def _queue_branch_evidence_waits(repo_root: Path,
                    if shown.returncode == 0 else {})
     prefix = str(config["git"].get("branch_prefix", "aide/"))
     return evidence_waits(repo_root, config, queue_item_numbers(qtext),
-                          item_status, _list_claim_branches(repo_root, prefix))
+                          item_status, _list_claim_branches(repo_root, prefix),
+                          fallback=branch)
 
 
 def _queue_ready(args: argparse.Namespace) -> int:
@@ -16339,7 +16341,8 @@ def _merge_unmet_evidence(repo_root: Path, config, number: int, base: str,
 
 
 def evidence_waits(repo_root: Path, config, numbers: Sequence[int],
-                   item_status: Dict[int, str], branches: Sequence[str]
+                   item_status: Dict[int, str], branches: Sequence[str],
+                   fallback: Optional[str] = None
                    ) -> Dict[int, Tuple[str, List[Tuple[str, str]]]]:
     """Item -> ``(claim branch, unmet)`` for each of *numbers* that is 🔍 and
     unmerged because a criterion's evidence gate is not ✅ Approved — exactly
@@ -16353,10 +16356,12 @@ def evidence_waits(repo_root: Path, config, numbers: Sequence[int],
     whichever is further on. An item ✅, ❌ or ⏸️ there has left the queue
     and is not read. A 🔍 item whose evidence is met is not a wait: under
     `pr` mode it is one whose PR awaits its merge, which `merge` already let
-    through.
+    through. An item with no claim branch reads its spec at *fallback*
+    (`queue ready`: the queue branch it reads progress.md at), else at
+    ``main_branch``.
     """
     prefix = str(config["git"].get("branch_prefix", "aide/"))
-    main = str(config["git"].get("main_branch", "main"))
+    main = fallback or str(config["git"].get("main_branch", "main"))
     rel = _progress_rel(config)
     out: Dict[int, Tuple[str, List[Tuple[str, str]]]] = {}
     for n in numbers:

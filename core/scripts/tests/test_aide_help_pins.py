@@ -1658,7 +1658,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("A bare \"none left\" (nothing open, no gate, no item awaiting its "
          "evidence gate) carries no such line",
          ("test_aide_git::test_an_empty_queue_still_says_only_none_left",
-          "test_aide_evidence_gates::test_a_review_item_with_no_evidence_annotation_is_not_a_wait")),
+          "test_aide_evidence_gates::test_claim_names_an_item_awaiting_its_evidence_gate_never_a_bare_none_left")),
         # `if block_everything or unreadable_gate_rows(plines): return None`,
         # and `cmd_claim` exits 1 naming the row.
         ("A human-gates row it cannot read holds every item",
