@@ -107,8 +107,10 @@ that owns the file wins), or the behaviour is a GUI or visual one that only a
 person walking the application can see — examples, not a list. A criterion
 that is hard, slow or fiddly to test never qualifies. **One gate per
 criterion**: a gate is the evidence for exactly one AC, so a declined check
-fails exactly one criterion. §9 says how validation reads each status, and
-`aide merge -h` what it refuses.
+fails exactly one criterion. **An annotation that is not exactly one
+well-formed gate ID is an error, never no annotation** — an upper-case or
+short hex, a missing hyphen, or two IDs in one. §9 says how validation reads
+each status, and `aide merge -h` what it refuses.
 
 **An acceptance criterion is written only when something fails without it:
 the item's own deliverable, or a declared consumer in the batch that reads what
@@ -191,7 +193,13 @@ forgotten. The queue is bounded the same way, by the posture table's
   one, which is why difficulty never qualifies. The spec states why no test
   can, where the spec-reviewer reads it. One gate per criterion because a
   decline must say which criterion failed; a gate over three criteria fails
-  all three on one "no" and leaves the builder to guess which.
+  all three on one "no" and leaves the builder to guess which. A malformed
+  annotation is an error rather than ignored because, read as no annotation,
+  it lifts the merge's hold on the one criterion its author meant a person to
+  check — under the first cut of this rule, `gate-3FA1` or two IDs in one
+  parenthesis would have merged the item unchecked (#420); and two IDs in
+  one annotation is one criterion with two gates, the same ambiguity as one
+  gate over two.
 - **Why a criterion needs a reason.** Every gate in the item loop pushes
   toward more and none toward less: the validator FAILs an uncovered
   criterion, and a superfluous one — an AC the deliverable never needed, a

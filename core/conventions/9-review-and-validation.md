@@ -50,8 +50,9 @@ that one criterion and nothing else:
   not merged. `aide merge` refuses it while the gate is not approved, so a
   hold cannot land by accident, and once a person has approved it a fresh
   validation runs and merges.
-- **An ID naming no gate row fails the criterion**, back to the spec's
-  author: there is no check to wait for.
+- **An annotation naming no single gate fails the criterion**, back to the
+  spec's author — an ID naming no row, or an annotation that is not one
+  well-formed ID: there is no check to wait for.
 
 Whether the criterion genuinely needed a person is the spec's judgement, and
 the spec-reviewer's to challenge; validation reads the annotation as written,

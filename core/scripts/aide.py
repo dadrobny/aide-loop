@@ -8029,6 +8029,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     # Before anything reads the tables: a row no reader can use is dropped by
     # every check below, including the ones that would have errored on it.
     errors.extend(unreadable_row_errors(lines))
+    errors.extend(evidence_annotation_errors(repo_root, ddir, lines))
     evidence = evidence_gate_citations(ddir, lines)
     warnings.extend(gate_warnings(lines, evidence))
     warnings.extend(evidence_gate_warnings(lines, evidence))
@@ -8841,24 +8842,33 @@ def spec_closed_criteria(text: str) -> Set[Tuple[int, int]]:
 
 #: An AC's *(evidence: gate-<hex>)* annotation (§1 → items.md, issue #420):
 #: the human gate whose approval stands in for that criterion's test. The
-#: word is any case and the emphasis optional, as for *(closes …)*; the ID is
-#: a gate ID as `aide gate list` prints it, lowercase hex.
-_EVIDENCE_GATE_RE = re.compile(
-    r"\(\s*(?i:evidence)\s*:\s*(?P<id>" + _GATE_ID_SHAPE + r")\s*\)")
+#: word is any case and the emphasis optional, as for *(closes …)*. Read
+#: loosely — the opener alone, then whatever stands before the closing
+#: parenthesis — so a body that is not exactly one gate ID, as `aide gate
+#: list` prints it, is reported as malformed rather than read as no
+#: annotation, which would silently lift the merge hold.
+_EVIDENCE_OPEN_RE = re.compile(r"\(\s*evidence\s*:(?P<body>[^)\n]*)\)?",
+                               re.IGNORECASE)
+_EVIDENCE_BODY_RE = re.compile(r"^\s*(?P<id>" + _GATE_ID_SHAPE + r")\s*$")
 #: A top-level bullet opening a criterion in `## Acceptance Criteria`; an
 #: indented or unmarked line continues the bullet above it.
 _AC_BULLET_START_RE = re.compile(r"^[-*+]\s")
 _AC_NUMBER_RE = re.compile(r"\bAC(\d+)\b")
 
 
-def spec_evidence_gates(text: str) -> List[Tuple[Optional[int], str]]:
-    """``(criterion number, gate ID)`` per *(evidence: gate-<hex>)* annotation
-    in the spec's Acceptance Criteria, in order (§1 → items.md, issue #420).
+def spec_evidence_annotations(text: str
+                              ) -> Tuple[List[Tuple[Optional[int], str]],
+                                         List[Tuple[Optional[int], str]]]:
+    """``(cited, malformed)`` for the spec's *(evidence: …)* annotations, each
+    a list of ``(criterion number, text)`` in order (§1 → items.md, #420).
 
-    The number is the first ``ACn`` of the bullet carrying the annotation, a
-    wrapped bullet included; None for a bullet that names no ``ACn``. Text
-    outside the section is not read: a gate ID there is a citation, not
-    evidence.
+    *cited* holds the gate ID of each annotation whose body is exactly one
+    gate ID; *malformed* the annotation as written for every other one — an
+    upper-case or short hex, a missing hyphen, two IDs, no closing
+    parenthesis. The number is the first ``ACn`` of the bullet carrying the
+    annotation, a wrapped bullet included; None for a bullet naming no
+    ``ACn``. Text outside the section is not read: a gate ID there is a
+    citation, not evidence.
     """
     bullets: List[str] = []
     for line in _section_text(text, _AC_HEADING_RE).splitlines():
@@ -8866,11 +8876,55 @@ def spec_evidence_gates(text: str) -> List[Tuple[Optional[int], str]]:
             bullets.append(line)
         else:
             bullets[-1] += "\n" + line
-    out: List[Tuple[Optional[int], str]] = []
+    cited: List[Tuple[Optional[int], str]] = []
+    malformed: List[Tuple[Optional[int], str]] = []
     for bullet in bullets:
-        number = _AC_NUMBER_RE.search(bullet)
-        for m in _EVIDENCE_GATE_RE.finditer(bullet):
-            out.append((int(number.group(1)) if number else None, m.group("id")))
+        m_ac = _AC_NUMBER_RE.search(bullet)
+        ac = int(m_ac.group(1)) if m_ac else None
+        for m in _EVIDENCE_OPEN_RE.finditer(bullet):
+            body = _EVIDENCE_BODY_RE.match(m.group("body"))
+            if body and m.group(0).endswith(")"):
+                cited.append((ac, body.group("id")))
+            else:
+                malformed.append((ac, m.group(0).strip()))
+    return cited, malformed
+
+
+def spec_evidence_gates(text: str) -> List[Tuple[Optional[int], str]]:
+    """``(criterion number, gate ID)`` per well-formed *(evidence: gate-<hex>)*
+    annotation in the spec's Acceptance Criteria (`spec_evidence_annotations`)."""
+    return spec_evidence_annotations(text)[0]
+
+
+def evidence_annotation_errors(repo_root: Path, ddir: Path,
+                               lines: List[str]) -> List[str]:
+    """An `aide check` error per malformed evidence annotation in a live item
+    spec (§1 → items.md, issue #420): read as no annotation, it would lift the
+    merge hold on a criterion its author meant a person to check. A record is
+    not read — the item is settled either way."""
+    idir = ddir / "items"
+    if not idir.is_dir():
+        return []
+    records = record_documents(ddir, _parse_item_status(lines)[2],
+                               withdrawn_stage_items(lines))
+    out: List[str] = []
+    for path in sorted(idir.glob("*.md")):
+        number = item_spec_number(path)
+        if number is None or path in records:
+            continue
+        try:
+            text = path.read_text(encoding=_ENCODING)
+        except (OSError, UnicodeDecodeError):
+            continue
+        for ac, written in spec_evidence_annotations(text)[1]:
+            which = f"AC{ac}" if ac is not None else "an acceptance criterion"
+            out.append(
+                f"{_rel_display(path, repo_root)}: {which}'s evidence "
+                f"annotation '{written}' does not name exactly one gate ID — "
+                f"write *(evidence: gate-<hex>)* with the one ID `aide gate "
+                f"list` prints, lowercase hex; one gate per criterion, and "
+                f"until it reads as one `aide merge {number:03d}` refuses "
+                f"(conventions.md §1 → items)")
     return out
 
 
@@ -16088,15 +16142,21 @@ def _merge_dropped_item(repo_root: Path, config, number: int,
 
 
 def _merge_unmet_evidence(repo_root: Path, config, number: int, base: str,
-                          branch: str) -> List[str]:
-    """One phrase per criterion of item *number* whose evidence gate is not
-    ✅ Approved — ``"AC3: gate-3fa1 is ⏳ Awaiting"`` — or ``[]`` (issue #420).
+                          branch: str) -> List[Tuple[str, str]]:
+    """``(state, phrase)`` per criterion of item *number* whose evidence is
+    not met — ``("awaiting", "AC3: gate-3fa1 is ⏳ Awaiting")`` — or ``[]``
+    (issue #420). *state* is ``awaiting``, ``unrecognised``, ``declined``,
+    ``no-row``, ``ambiguous`` or ``malformed``: the refusal's remedy differs.
 
     The spec is read at the claim branch, which is what lands, else in the
-    working tree. The gate is read in every copy of progress.md a person may
-    have approved it in — the claim branch, where the spec-author raised it
-    and the built item is checked, the working tree and the base — and one
-    approval in any of them meets the criterion: only a person writes ✅.
+    working tree. A malformed annotation is unmet whatever the gates say. The
+    gate is read in one copy of progress.md: the claim branch's where it
+    carries the row — the spec-author raised it there or on the queue branch
+    it came from, and the person checks the built item there — else the
+    working tree's, else the base's. The first copy that resolves the ID
+    decides and a later one never overrides it, so a stale ✅ elsewhere cannot
+    outvote the ❌ written beside the work. Two rows asking the same question
+    meet the criterion only when both are approved.
     """
     ddir_rel = _docs_rel(config)
     spec_text: Optional[str] = None
@@ -16115,46 +16175,56 @@ def _merge_unmet_evidence(repo_root: Path, config, number: int, base: str,
             spec_text = specs[0].read_text(encoding=_ENCODING) if specs else None
         except (OSError, UnicodeDecodeError):
             spec_text = None
-    cited = spec_evidence_gates(spec_text) if spec_text else []
-    if not cited:
+    if not spec_text:
         return []
+    cited, malformed = spec_evidence_annotations(spec_text)
+
+    def which(ac: Optional[int]) -> str:
+        return f"AC{ac}" if ac is not None else "a criterion"
+
+    out: List[Tuple[str, str]] = [
+        ("malformed", f"{which(ac)}: '{written}' is not one gate ID")
+        for ac, written in malformed]
+    if not cited:
+        return out
     rel = _progress_rel(config)
     copies: List[List[HumanGate]] = []
+    shown = git(["show", f"{branch}:./{rel}"], repo_root, check=False)
+    if shown.returncode == 0:
+        copies.append(human_gates(shown.stdout.splitlines()))
     path = repo_root / rel
     if path.is_file():
         try:
             copies.append(human_gates(path.read_text(encoding=_ENCODING).splitlines()))
         except (OSError, UnicodeDecodeError):
             pass
-    for ref in (branch, base):
-        shown = git(["show", f"{ref}:./{rel}"], repo_root, check=False)
-        if shown.returncode == 0:
-            copies.append(human_gates(shown.stdout.splitlines()))
-    out: List[str] = []
+    shown = git(["show", f"{base}:./{rel}"], repo_root, check=False)
+    if shown.returncode == 0:
+        copies.append(human_gates(shown.stdout.splitlines()))
+    words = {"awaiting": "is ⏳ Awaiting", "declined": "is ❌ Declined",
+             "unrecognised": "has an unrecognised status",
+             "ambiguous": "matches more than one gate",
+             "no-row": "names no gate row"}
     for ac, ref in cited:
-        seen: Set[Optional[str]] = set()
-        met = False
+        state = "no-row"
         for gates in copies:
             hits = resolve_gate_ref(ref, gates)
             if not hits:
                 continue
-            if len({gate_hash(gates[i]) for i in hits}) > 1:
-                seen.add("ambiguous")
-                continue
             kinds = {gates[i].kind for i in hits}
-            if "approved" in kinds:
-                met = True
-                break
-            seen |= kinds
-        if met:
-            continue
-        state = ("is ❌ Declined" if "declined" in seen
-                 else "is ⏳ Awaiting" if "awaiting" in seen
-                 else "has an unrecognised status" if None in seen
-                 else "matches more than one gate" if "ambiguous" in seen
-                 else "names no gate row")
-        out.append(f"{'AC' + str(ac) if ac is not None else 'a criterion'}: "
-                   f"{ref} {state}")
+            if len({gate_hash(gates[i]) for i in hits}) > 1:
+                state = "ambiguous"
+            elif kinds == {"approved"}:
+                state = "approved"
+            elif "declined" in kinds:
+                state = "declined"
+            elif "awaiting" in kinds:
+                state = "awaiting"
+            else:
+                state = "unrecognised"
+            break
+        if state != "approved":
+            out.append((state, f"{which(ac)}: {ref} {words[state]}"))
     return out
 
 
@@ -16312,12 +16382,29 @@ def cmd_merge(args: argparse.Namespace) -> int:
         # only once that person approved it, and a merge is the last point
         # anything can still hold the item for them. Before the push of `pr`
         # mode too: a PR opened over an unchecked item invites its merge.
-        print(f"aide merge: item {args.number:03d} names human gates as "
-              f"acceptance-criterion evidence that are not ✅ Approved — "
-              f"{'; '.join(unmet)} — and a criterion whose check no person "
-              f"has approved is not met, so nothing was merged, pushed or "
-              f"written. A person checks the built item on {branch} and runs "
-              f"`aide gate approve <ID>`; then re-run 'aide merge "
+        states = {state for state, _ in unmet}
+        remedies: List[str] = []
+        if states & {"awaiting", "unrecognised"}:
+            remedies.append(
+                f"for a gate awaiting its check, a person checks the built "
+                f"item on {branch} and runs `aide gate approve <ID>` there")
+        if "declined" in states:
+            remedies.append(
+                "for a declined gate, its criterion has failed: rebuild it, "
+                "re-ask the check as a new Gate cell (a new ID) and re-point "
+                "the annotation at it — never approve a declined gate")
+        if states & {"no-row", "ambiguous", "malformed"}:
+            remedies.append(
+                "for an annotation naming no single gate, correct it to the "
+                "one gate-<hex> ID `aide gate list` prints")
+        remedy = "; ".join(remedies)
+        remedy = remedy[:1].upper() + remedy[1:]
+        print(f"aide merge: item {args.number:03d} has acceptance criteria "
+              f"whose evidence is a human gate not ✅ Approved — "
+              f"{'; '.join(phrase for _, phrase in unmet)} — and a criterion "
+              f"whose check no person has approved is not met, so nothing "
+              f"was merged, pushed or written. "
+              f"{remedy}; then re-run 'aide merge "
               f"{args.number:03d}'.", file=sys.stderr)
         return 1
 
@@ -19423,6 +19510,9 @@ def build_parser() -> argparse.ArgumentParser:
             "Over the evidence annotations of the item specs that are not "
             "records \u2014 "
             "`(evidence: gate-<hex>)` on an Acceptance Criteria line \u2014 "
+            "an ERROR for one that is not exactly one well-formed gate ID "
+            "(an upper-case or short hex, a missing hyphen, two IDs), since "
+            "read as no annotation it would lift the merge's hold; and "
             "warnings: an awaiting gate so named with an empty Blocks cell is "
             "reported as awaiting a person's check, naming the criterion and "
             "the merge it holds, in place of the gate warning above; a "
@@ -20235,10 +20325,16 @@ def register_git_subcommands(sub) -> None:
             "An item whose spec names a human gate as an acceptance "
             "criterion's evidence — `(evidence: gate-<hex>)` on the "
             "criterion's line — is refused the same way, exit 1, while "
-            "any such gate is not ✅ Approved in the claim branch's, the "
-            "working tree's or the base's progress.md, or names no gate row "
-            "there; the refusal names each criterion and its gate, and comes "
-            "before the push under pr mode too.\n"
+            "any such gate is not ✅ Approved or names no gate row, and "
+            "while such an annotation is not exactly one well-formed gate "
+            "ID. The gate is read from the claim branch's progress.md where "
+            "it carries the row, else the working tree's, else the base's: "
+            "the first copy that resolves the ID decides, and a later one "
+            "never overrides it. The refusal names each criterion and its "
+            "gate, and what clears it — a person's approval for an awaiting "
+            "gate; a rebuild, a re-asked gate and a re-pointed annotation "
+            "for a declined one, which is never approved; a corrected ID "
+            "otherwise — and comes before the push under pr mode too.\n"
             "\n"
             "The finding cells read [loop] review, from aide.toml. Where it "
             "is off no reviewer ran, so the three of them are written as `-` "

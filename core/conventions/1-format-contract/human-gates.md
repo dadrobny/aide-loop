@@ -114,7 +114,9 @@ dialog keeps its layout at 200% zoom" — and its Blocks cell is `—`.
   gate is ✅ Approved.
 - **The spec-author writes the row by hand** — no verb adds one — beside the
   spec it writes, and cites the row's ID on the criterion. A person checks the
-  built item on its claim branch, and approves or declines the gate there.
+  built item on its claim branch, and approves or declines the gate there:
+  the claim branch's row is the one that decides wherever it carries one
+  (`aide merge -h` says which copy is read when it does not).
 - **A declined evidence gate is not re-planned while a live spec still cites
   it** — the criterion it failed is still waiting. A re-check is a new
   question: re-ask it as a new Gate cell, so a new ID, and re-point the
@@ -260,7 +262,11 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   to check. The hold the gate has to exert is on the merge, not the claim,
   and the merge already reads the spec that names it; dependents wait on the
   ✅ the merge withholds. Approving on the claim branch puts the decision in
-  the history of the work it judged. A declined one stays loud while a spec
+  the history of the work it judged, and that copy decides: the first cut
+  counted an approval in any copy of `progress.md`, so a stale ✅ on the base
+  outvoted the ❌ a person had just written beside the work (#420's review).
+  One copy decides, the first that carries the row, and a later one never
+  overrides it. A declined one stays loud while a spec
   points at it because, unlike a re-planned decline, its remedy — rebuild,
   then re-ask — is still open; it goes quiet when the annotation moves to
   the re-asked gate or the item settles.

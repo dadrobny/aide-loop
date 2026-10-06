@@ -338,7 +338,7 @@ verdict:
      gate to check, for which AC, on which claim branch — they check the
      built item there and run `python .aide/scripts/aide.py gate approve
      <ID>` (or `decline`) on that branch — and stop for this item. See *An
-     item awaiting its evidence gate* below for what follows.
+     item awaiting its evidence gate* above `## Steps` for what follows.
    - **PASS**, `loop.review = "off"` → the validator has reconciled progress and
      merged. Done. A PASS may name inherited failures the merge admitted; the
      merge has already put them in `insights.md`.

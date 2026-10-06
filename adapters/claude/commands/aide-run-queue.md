@@ -71,9 +71,13 @@ stranded otherwise.
    step 0's `sync` names it once it has landed, with the `aide progress set
    NNN done` that records it. The exception is a 🔍 item still on its claim
    branch because an AC's evidence gate awaited a person's check
-   (`/aide-run-item` → *An item awaiting its evidence gate*): once `aide gate
-   list` shows that gate decided, hand the item to `/aide-run-item` below;
-   while it is ⏳, skip it and name it in the step-4 checkpoint.
+   (`/aide-run-item` → *An item awaiting its evidence gate*). Tell it from a
+   🔍 item awaiting its PR's merge under `pr` by its spec: an Acceptance
+   Criteria line carries an `(evidence: gate-…)` annotation whose gate
+   `aide gate list` (run on the claim branch) does not show ✅ — or did not,
+   when the validator stopped. Once that gate is decided, hand the item to
+   `/aide-run-item` below; while it is ⏳, skip it and name it in the step-4
+   checkpoint.
 4. For each unfinished item (item-number order), hand it to **`/aide-run-item NNN
    aide/NNN-short-name`**. `/aide-run-item` is itself resumable — its spec-author
    step returns an existing spec, re-checking a pinned dependency's interface

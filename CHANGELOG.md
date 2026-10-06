@@ -157,9 +157,16 @@ instead — that is the bump policy above, and it is enforced by
   ❌ Declined fails it, anything else is a hold — the validator reports
   **PASS (awaiting gate-<hex>)**, leaves the item 🔍 and does not merge.
   `aide merge` refuses, exit 1, before anything is merged, pushed or written
-  (in `pr` mode too), while such a gate is not ✅ in the claim branch's, the
-  working tree's or the base's `progress.md` or names no row; `merge -h`
-  states it. `aide check` now reports an awaiting evidence gate with an
+  (in `pr` mode too), while such a gate is not ✅ or names no row, or the
+  annotation is not exactly one well-formed gate ID. One copy of
+  `progress.md` decides — the claim branch's where it carries the row, else
+  the working tree's, else the base's — so a stale ✅ elsewhere never
+  outvotes a ❌ beside the work, and the refusal names what clears each
+  criterion: a person's approval, a rebuild and a re-asked gate after a
+  decline (never an approval of it), or a corrected ID; `merge -h` states
+  it. `aide check` errors on a malformed annotation in a live spec — an
+  upper-case or short hex, a missing hyphen, two IDs — which read as none
+  would lift the hold. It also now reports an awaiting evidence gate with an
   empty Blocks cell as awaiting a person's check, naming the criterion and
   the merge it holds — before, it read as a gate that "holds nothing" — keeps
   warning on a declined one a live spec still cites (it is not re-planned),

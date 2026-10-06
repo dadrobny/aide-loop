@@ -523,6 +523,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "criterion's evidence",
          ("test_aide_evidence_gates::test_a_declined_evidence_gate_a_live_spec_cites_is_not_re_planned",
           "test_aide_evidence_gates::test_a_declined_evidence_gate_cited_only_by_a_record_is_silent")),
+        # `evidence_annotation_errors`, over `spec_evidence_annotations`'
+        # malformed list, live specs only.
+        ("an ERROR for one that is not exactly one well-formed gate ID (an "
+         "upper-case or short hex, a missing hyphen, two IDs)",
+         ("test_aide_evidence_gates::test_check_errors_on_a_malformed_annotation_in_a_live_spec",
+          "test_aide_evidence_gates::test_a_malformed_annotation_in_a_record_is_not_an_error")),
         # `gate_warnings`' evidence branch for an awaiting gate whose Blocks
         # cell is in `_EMPTY_CELL`; an uncited one keeps "holds nothing".
         ("an awaiting gate so named with an empty Blocks cell is reported as "
@@ -2062,15 +2068,31 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "\U0001f6a7 is merged",
          "test_aide_git::test_merge_refuses_a_planned_item_of_a_withdrawn_stage"),
         # `_merge_unmet_evidence` — the spec at the claim branch, the gate
-        # in each copy of progress.md — right after the withdrawn refusal and
-        # before the pr-mode push (issue #420).
+        # in the first copy of progress.md that resolves it — right after the
+        # withdrawn refusal and before the pr-mode push (issue #420).
         ("is refused the same way, exit 1, while any such gate is not "
-         "\u2705 Approved in the claim branch's, the working tree's or the "
-         "base's progress.md, or names no gate row there",
+         "\u2705 Approved or names no gate row",
          ("test_aide_evidence_gates::test_merge_refuses_an_item_whose_evidence_gate_is_not_approved",
           "test_aide_evidence_gates::test_merge_refuses_an_evidence_id_that_names_no_gate_row")),
-        ("the refusal names each criterion and its gate",
-         "test_aide_evidence_gates::test_merge_refuses_an_item_whose_evidence_gate_is_not_approved"),
+        # `spec_evidence_annotations`' malformed list, read first.
+        ("and while such an annotation is not exactly one well-formed gate ID",
+         "test_aide_evidence_gates::test_merge_refuses_a_malformed_annotation_before_anything_moves"),
+        # `copies` in order: claim branch, working tree, base; `break` on
+        # the first that resolves the ID.
+        ("The gate is read from the claim branch's progress.md where it "
+         "carries the row, else the working tree's, else the base's: the "
+         "first copy that resolves the ID decides, and a later one never "
+         "overrides it",
+         ("test_aide_evidence_gates::test_the_claim_branch_decides_over_a_stale_approval_on_the_base",
+          "test_aide_evidence_gates::test_a_row_only_the_working_tree_carries_decides_there",
+          "test_aide_evidence_gates::test_a_row_only_the_base_carries_decides_there")),
+        # `remedies` in `cmd_merge`, keyed by the states present.
+        ("The refusal names each criterion and its gate, and what clears it "
+         "\u2014 a person's approval for an awaiting gate; a rebuild, a "
+         "re-asked gate and a re-pointed annotation for a declined one, "
+         "which is never approved; a corrected ID otherwise",
+         ("test_aide_evidence_gates::test_merge_refuses_an_item_whose_evidence_gate_is_not_approved",
+          "test_aide_evidence_gates::test_merge_refuses_a_malformed_annotation_before_anything_moves")),
         ("and comes before the push under pr mode too",
          "test_aide_evidence_gates::test_pr_mode_merge_refuses_an_unapproved_evidence_gate_before_the_push"),
         # `pending_row` -> `append_ledger_row`, one row, `ledger_path(ddir)`.

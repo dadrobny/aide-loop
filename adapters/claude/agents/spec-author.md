@@ -104,9 +104,8 @@ the setting and follow it; nothing ever hangs waiting for input.
    one `progress.md` edit permitted to you.
 
    **An AC no loop-run test can measure is the one other reason for a row.**
-   §1 → items.md, preloaded above, sets the bar, and it is high: a test is
-   the default, and an AC you would merely find awkward, slow or brittle to
-   test gets a test. Where the bar is met — say, the code sits in a sibling
+   §1 → items.md (`aide-item-specs`, preloaded above) sets the bar, and it
+   is high: read it there rather than from this line. Where the bar is met — say, the code sits in a sibling
    repository whose own rules forbid the loop running tests of it — write in
    the Assumptions (or beside the AC) why no test can measure it, add a row
    whose Gate cell asks that one AC's by-hand question with `Blocks: —`

@@ -110,9 +110,12 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
 
    **An AC whose line carries an *(evidence: gate-<hex>)* annotation is
    covered by that gate instead of a test** (§9, preloaded above). Read its
-   row in `python .aide/scripts/aide.py gate list`, on the claim branch.
-   ✅ Approved covers it. ❌ Declined is a FAIL for that AC, for the builder.
-   An ID the list does not show is a FAIL for the `spec-author`. Anything
+   row in `python .aide/scripts/aide.py gate list`, on the claim branch —
+   the copy `aide merge` reads first, and the one that decides when it
+   carries the row. ✅ Approved covers it. ❌ Declined is a FAIL for that AC,
+   for the builder. An ID the list does not show, or an annotation that is
+   not one well-formed ID (`aide check` errors on it), is a FAIL for the
+   `spec-author`. Anything
    else — ⏳ Awaiting, usually — is a **hold**, not a FAIL: carry on through
    checks 3–7, and the Verdict below says what a hold does to the PASS path.
    Whether a test could have measured the AC is not yours to judge.
@@ -175,7 +178,7 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
   this item caused (below); an AC has no test, or has one its subject could
   pass while the AC's factual claim is false (check 2); changes are
   out-of-scope; the vision is contradicted; an Assumption diverged; an AC's
-  evidence gate is declined or names no row (check 2); or a
+  evidence gate is declined, names no row or is malformed (check 2); or a
   blocking review finding your brief names left no trace (check 7). Report
   precisely what failed
   and hand back so the orchestrator dispatches the right agent (builder for code,

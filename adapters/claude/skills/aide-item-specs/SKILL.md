@@ -79,6 +79,8 @@ paths:
      - One gate per criterion
      - a gate is the evidence for exactly one AC, so a declined check fails
        exactly one criterion
+     - An annotation that is not exactly one well-formed gate ID is an
+       error, never no annotation
      - An acceptance criterion is written only when something fails without
        it: the item's own deliverable, or a declared consumer in the batch that
        reads what it pins
@@ -265,6 +267,9 @@ instructions rule out loop-run tests, a GUI or visual behaviour only a person
 walking the application can see — and **a criterion that is hard, slow or
 fiddly to test never qualifies**. **One gate per criterion**: a gate is the
 evidence for exactly one AC, so a declined check fails exactly one criterion.
+**An annotation that is not exactly one well-formed gate ID is an error,
+never no annotation** — an upper-case or short hex, a missing hyphen, or two
+IDs in one.
 The row the ID names, and why it blocks nothing, is §1 → human gates, which
 reaches you too.
 
