@@ -82,7 +82,8 @@ action:
 
 A **wrong type** is not a row of its own: give the row its corrected type
 routes to — a fold for what is really `knowledge`, leave open for what is
-really a `defect` or `gap` — and add the `--trail` text saying the type was
+really a `defect`, `gap` or `automation`, a hand-over for what is really
+`framework` — and add the `--trail` text saying the type was
 wrong and what it is.
 
 Then the counts: folded, handed over, left open by type, judged. Say plainly

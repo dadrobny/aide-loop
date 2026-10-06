@@ -122,7 +122,8 @@ is.
   reaches.
 - **The user's agreement is not an attestation or a resolution.** Ticking an
   acceptance box takes a check this session actually ran, passed as its
-  evidence (§1 → `progress.md`); agreeing to the recommendation is not one.
+  evidence through `aide progress accept --evidence` (§1 → `progress.md`);
+  agreeing to the recommendation is not one.
   A human gate may be raised here, but only a person resolves one (§1 →
   human gates) — leave `aide gate approve`/`decline` to them.
 - **Make the smallest edit that carries the agreed change**, and leave the
@@ -134,7 +135,9 @@ is.
   reaches `main_branch` is the merge policy's (`.aide/README.md`), not this
   loop's — and that policy puts `vision.md` and `roadmap.md` behind a
   reviewed PR. So when the current branch *is* `main_branch`, an amendment to
-  either goes on a branch of its own for that PR, not onto `main_branch`.
+  either goes on a branch of its own, cut from `main_branch`, for that PR —
+  not onto `main_branch` — and tell the user which branch the session is now
+  on.
 
 ### Important notes
 
