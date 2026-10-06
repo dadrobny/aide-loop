@@ -136,6 +136,54 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.40.0] — 2026-10-06
+
+### Added
+
+- **An acceptance criterion no loop-run test can measure may name a human
+  gate as its evidence, and `aide merge` refuses the item until a person
+  has approved it (issue #420).** A consumer's item lived in a declared
+  sibling repository whose own rules allow no loop-run test of its GUI: the
+  test-writer could write nothing, the validator had to FAIL, and no role
+  spec said a person's check could count, so the consumer wrote the
+  arrangement into the item spec by hand. A criterion line may now end with
+  `*(evidence: gate-<hex>)*` (conventions.md §1 → items.md), under a strict
+  judgement — the default is always a test, the spec says why none can
+  measure it, and "hard, slow or fiddly to test" never qualifies — with one
+  gate per criterion. The gate (§1 → human gates) records the person's check
+  of the built item and blocks nothing: its Blocks cell is `—`, the
+  spec-author writes it by hand and cites its ID, and the person approves it
+  on the claim branch. §9 reads it per criterion: ✅ Approved covers the AC,
+  ❌ Declined fails it, anything else is a hold — the validator reports
+  **PASS (awaiting gate-<hex>)**, leaves the item 🔍 and does not merge.
+  `aide merge` refuses, exit 1, before anything is merged, pushed or written
+  (in `pr` mode too), while such a gate is not ✅ or names no row, or the
+  annotation is not exactly one well-formed gate ID. One copy of
+  `progress.md` decides — the claim branch's where it carries the row, else
+  the working tree's, else the base's — so a stale ✅ elsewhere never
+  outvotes a ❌ beside the work, and the refusal names what clears each
+  criterion: a person's approval, a rebuild and a re-asked gate after a
+  decline (never an approval of it), or a corrected ID; `merge -h` states
+  it; two rows asking the same question meet a criterion only when both
+  are ✅, and the claim branch's spec is read whatever the item's status.
+  An annotation opens at `(evidence: gate`, outside inline code — `(evidence:`
+  before anything else is prose, and the template's `gate-<hex>` placeholder
+  is neither a citation nor an error, so an existing spec needs nothing —
+  and `aide check` errors on a malformed one in a live spec — an upper-case
+  or short hex, a missing hyphen, two IDs — which read as none would lift
+  the hold. It also now reports an awaiting evidence gate with an
+  empty Blocks cell as awaiting a person's check, naming the criterion and
+  the merge it holds — before, it read as a gate that "holds nothing" — keeps
+  warning on a declined one a live spec still cites (it is not re-planned),
+  and warns on one gate cited by two criteria and on one whose reach holds
+  its own item; `check -h` states it. §8 points at the route. The
+  spec-author, spec-reviewer, test-writer and validator specs and
+  `/aide-run-item` / `/aide-run-queue` carry their halves, and the
+  `aide-item-specs` and `aide-human-gates` skills deliver the new rules. The
+  item template gains one guidance line (item template number unchanged: the
+  annotation is optional, and an existing spec needs nothing). Nothing for a
+  consumer to edit.
+
 ## [2.39.2] — 2026-10-05
 
 ### Fixed

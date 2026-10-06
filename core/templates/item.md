@@ -56,6 +56,10 @@ appending `*(closes Stage 20 criterion 3)*` to the criterion line. Most ACs
 close none, and one without the annotation closes nothing; when the
 annotation is earned is conventions.md §1 → items._
 
+_An AC only a person can check may end with `*(evidence: gate-<hex>)*`, the
+ID of the gate row recording that check, and gets no test. When that is
+allowed — rarely — and what the row holds is conventions.md §1 → items._
+
 - [ ] **AC1: {{short name}}.** {{observable statement}}
 
 ## Assumptions  <!-- MANDATORY: what was assumed when the queued one-liner was ambiguous -->

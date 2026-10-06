@@ -5,8 +5,9 @@ roles that perform either read rather than pointing at it.
 
 **Validation and review answer different questions.** Validation asks *does
 this branch meet the Acceptance Criteria of the spec it was built from* — the
-suite has no failure the item caused, every AC has a test that measures it,
-the diff is inside the authorised paths, the Assumptions still hold. Every term is measured against
+suite has no failure the item caused, every AC has a test that measures it (or
+the approved gate it names as evidence, below), the diff is inside the
+authorised paths, the Assumptions still hold. Every term is measured against
 the item spec, the verdict is PASS/FAIL — or none, when a run outlasts its
 limit (below) — and it **gates the merge**. Review
 asks *is this code correct, and does it fit the codebase* — it reads the diff
@@ -34,6 +35,28 @@ admission of inherited failures is a PASS that names them. Under `pr`, where
 the merge runs no gate, a red suite is a FAIL. A validation whose merge is
 held for review reports its PASS with the failing tests listed, and says that
 the later merge's gate decides them.
+
+**An acceptance criterion that names a human gate as its evidence is covered
+by that gate, not by a test** (§1 → items.md), and the gate's status decides
+that one criterion and nothing else:
+
+- **✅ Approved covers it.** No test is looked for.
+- **❌ Declined fails it**, back to the builder, as an uncovered criterion
+  fails. A re-check needs the gate re-asked — a reworded Gate cell, so a new
+  ID — and the annotation re-pointed at it: only a person checks it again.
+- **Any other status is a hold, not a FAIL.** ⏳ Awaiting, or a mark the table
+  does not recognise: every other check still runs, and a validation that
+  passes them is a PASS awaiting that gate — the item goes to review and is
+  not merged. `aide merge` refuses it while the gate is not approved, so a
+  hold cannot land by accident, and once a person has approved it a fresh
+  validation runs and merges.
+- **An annotation naming no single gate fails the criterion**, back to the
+  spec's author — an ID naming no row, or an annotation that is not one
+  well-formed ID: there is no check to wait for.
+
+Whether the criterion genuinely needed a person is the spec's judgement, and
+the spec-reviewer's to challenge; validation reads the annotation as written,
+as it reads every other line of the spec.
 
 **Validation runs the whole suite through `aide test`, never as the bare test
 command.** The verb runs the configured command as the merge runs it, exits
@@ -143,6 +166,18 @@ output in place of a verdict.
   base itself, and the merge already does, so the verdict on a red suite
   moves to the one step that can separate the two. Under `pr` nothing in the
   loop compares, so the old rule stands there.
+
+- **Why a gate's status is read per criterion, and awaiting is a hold.**
+  With no route, a criterion only a person could check — the item's code in a
+  sibling repository whose owners check it by hand — had no test the
+  validator could find, so the validator FAILed it, and a re-dispatched
+  builder could change nothing about that (issue #420). A FAIL is a message to
+  a builder, and an unanswered gate is not a defect a builder can fix, so it
+  holds instead, and the merge refusal makes the hold binding rather than a
+  validator's restraint. Re-judging whether a test could have measured the
+  criterion was left to the spec-reviewer, which reads the batch before
+  anything is built: at validation the item is built, and the only remedy left
+  is a spec change and a rebuild.
 
 - **Why the suite goes through a verb.** A bare run leaves nothing the engine
   can read, so the merge re-ran the whole suite over a tree validation had

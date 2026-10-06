@@ -41,6 +41,10 @@ fixture conventions only.
      a fact about live state, satisfy it the way §1 → items.md requires, and
      hand back rather than settling for a check the subject can pass while the
      claim is false.
+   - **No test for an AC whose line carries an *(evidence: gate-<hex>)*
+     annotation**: a person's check, recorded in that gate, covers it
+     (§1 → items.md), and a test the spec says cannot be written is not
+     yours to approximate.
    - Every adversarial case the **Testing Strategy names**, one test each,
      named with the case's label — and **no other**. One test per AC is the
      floor and the ceiling unless the spec names the case (`aide-test-hygiene`
@@ -72,6 +76,7 @@ fixture conventions only.
    Plain single-line message, no co-author trailer, no command substitution.
 7. **Return** a bullet list mapping each AC, each named case and each
    finding to the test that covers it, plus any pre-existing tests reconciled.
+   An AC covered by its gate is listed as `gate-covered: <the gate ID>`.
 
 ## Hard limits
 

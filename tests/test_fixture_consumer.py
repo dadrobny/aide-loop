@@ -1138,6 +1138,52 @@ def test_check_is_silent_on_a_declined_gate_whose_reach_holds_nothing_open(
     assert not [b for b in _branches(consumer) if "002" in b]
 
 
+def test_a_criterion_evidenced_by_a_gate_holds_the_merge_until_a_person_approves(
+        aide, consumer: Path, capsys):
+    """Issue #420: an AC only a person can check names a gate as its
+    evidence. The gate blocks nothing, so the item is claimed and built;
+    `check` reports the gate as awaiting that check, `merge` refuses while it
+    is ⏳ and writes nothing, and once the person approves it on the claim
+    branch the same merge lands and ticks the item."""
+    assert _claim(aide, consumer) == 0
+    branch = "aide/001-the-greeter"
+    assert _branch(consumer) == branch
+    ddir = consumer / "docs" / "aide"
+    progress = ddir / "progress.md"
+    question = "The greeter's banner reads well on the kiosk screen"
+    progress.write_text(aide.add_gate_rows(progress.read_text(encoding="utf-8"),
+                                           [(question, "—")]), encoding="utf-8")
+    [gid] = aide.gate_ids(aide.human_gates(
+        progress.read_text(encoding="utf-8").splitlines()))
+    spec = ddir / "items" / "001-the-greeter.md"
+    spec.write_text(spec.read_text(encoding="utf-8")
+                    + f"- [ ] AC2: the kiosk banner reads well. "
+                      f"*(evidence: {gid})*\n", encoding="utf-8")
+    _commit(consumer, "docs(001): evidence gate for the kiosk banner")
+    _do_the_work(consumer)
+    main_before = _sha(consumer, "main")
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert (f"is awaiting a person's check — the evidence for item 001 AC2; "
+            f"`aide merge 001` refuses until it is ✅ Approved") in out
+
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 1
+    assert f"AC2: {gid} is ⏳ Awaiting" in capsys.readouterr().err
+    assert _sha(consumer, "main") == main_before
+    assert _branch(consumer) == branch
+    assert _item_status(aide, consumer, 1) != "complete"
+    assert _clean(consumer)
+
+    assert aide.main(["--repo", str(consumer), "gate", "approve", gid,
+                      "--evidence", "read it on the kiosk"]) == 0
+    assert aide.main(["--repo", str(consumer), "merge", "1", "--no-test"]) == 0
+    assert _branch(consumer) == "main"
+    assert _item_status(aide, consumer, 1) == "complete"
+    assert (consumer / "src" / "greeter.py").is_file()
+
+
 # --------------------------------------------------------------------------- #
 # a gate over a run of stages — `stage N+` and `stage N–M` (issue #304)
 # --------------------------------------------------------------------------- #

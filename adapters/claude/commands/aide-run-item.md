@@ -96,6 +96,25 @@ and tests are already merged, so the steps run with four differences:
 Steps 5–6 run as for any item, and their rounds count against this item's
 own `loop.validation_rounds`, apart from the CI round the queue counts.
 
+## An item awaiting its evidence gate
+
+A 🔍 item whose last validator reported **PASS (awaiting gate-<hex>)** (step 6)
+resumes once `python .aide/scripts/aide.py gate list` shows that gate's
+verdict:
+
+- **✅ Approved** → skip steps 1–4 and dispatch a fresh `validator` (step 5)
+  with the round number its last PASS had: nothing was fixed, so the check is
+  not a round. It re-runs every check, finds the AC covered and merges —
+  under `loop.review = "background"` it stops at PASS (merge held) as usual,
+  and you merge with the totals you kept, or without `--findings` in a
+  session that no longer has them (the merge says so).
+- **❌ Declined** → a FAIL of that AC: a fresh builder with the person's
+  decision note, then a fresh `validator`, counted against the cap as any
+  round. The rebuilt item needs the check asked again, so brief a fresh
+  `spec-author` before that validator to re-ask it as a new Gate cell and
+  re-point the AC's annotation at the new ID (§1 → human gates).
+- **⏳ still** → nothing to do; report it and stop.
+
 ## Steps
 
 1. **Spec → spawn `spec-author`.** Brief:
@@ -133,7 +152,9 @@ own `loop.validation_rounds`, apart from the CI round the queue counts.
    > (`docs/aide/items/NNN-*.md`) is committed. Read it for all Acceptance
    > Criteria, the Testing Strategy's named cases, and Decisions; read `tests/`
    > for style. Write one test per AC (named for it) and one per named case
-   > (named for its label) — no others. Commit to the branch.
+   > (named for its label) — no others. An AC whose line carries an
+   > *(evidence: gate-…)* annotation gets no test: list it as gate-covered.
+   > Commit to the branch.
    > **Do NOT touch `src/` and do NOT run pytest.**
    > Return: bullet list of AC / case → test-name mappings.
 
@@ -308,6 +329,16 @@ own `loop.validation_rounds`, apart from the CI round the queue counts.
      `aide merge`'s own word on the base, the claim branch and what to
      re-run — and if the validator reports the merge **still running**
      (`stop` exited 93), say that first.
+   - **PASS (awaiting gate-<hex>)** → every check held, and an AC's evidence
+     is a person's check that has not been approved yet (§9). The item is 🔍
+     and unmerged — `aide merge` refuses it until the gate is ✅ — and that is
+     not a round. Under `loop.review = "background"` triage the first
+     validator's review as *PASS (merge held)* below says, and dispatch any
+     fix first: the person checks what will land. Then tell the user which
+     gate to check, for which AC, on which claim branch — they check the
+     built item there and run `python .aide/scripts/aide.py gate approve
+     <ID>` (or `decline`) on that branch — and stop for this item. See *An
+     item awaiting its evidence gate* above `## Steps` for what follows.
    - **PASS**, `loop.review = "off"` → the validator has reconciled progress and
      merged. Done. A PASS may name inherited failures the merge admitted; the
      merge has already put them in `insights.md`.
@@ -402,6 +433,8 @@ own `loop.validation_rounds`, apart from the CI round the queue counts.
 - The item needs a **major structural change** or an edit to a framework/process
   file (`CLAUDE.md`, `aide.toml`, `.aide/**`, `vision.md`, `roadmap.md`,
   `.claude/skills|commands|agents/**`) — needs a reviewed PR, never a direct merge.
+- A validator reports **PASS (awaiting gate-<hex>)** (step 6): an AC waits on
+  a person's check. Name the gate, the AC and the claim branch, and stop.
 - A validator hands back **INCOMPLETE** (step 6): a run hit its budget, hung,
   or died, and was stopped. Report the command, elapsed time and log tail; do
   not re-dispatch.

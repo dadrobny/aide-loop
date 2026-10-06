@@ -112,6 +112,11 @@ Set it in `aide.toml` before a long run. Framework/process changes always want a
 reviewed PR regardless (see `.aide/README.md` → Merge policy; in this repo,
 [`../core/README.md`](../core/README.md)).
 
+In every mode, an item whose acceptance criterion names a human gate as its
+evidence (something only a person can check, such as a GUI) waits unmerged: the
+runner names the gate and the claim branch, you check the built item there and
+run `aide gate approve <ID>`, and the item merges.
+
 ### CI on the queue PR
 
 When a queue is built out, the runner marks the queue's PR ready, waits for
