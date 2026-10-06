@@ -164,9 +164,14 @@ instead — that is the bump policy above, and it is enforced by
   outvotes a ❌ beside the work, and the refusal names what clears each
   criterion: a person's approval, a rebuild and a re-asked gate after a
   decline (never an approval of it), or a corrected ID; `merge -h` states
-  it. `aide check` errors on a malformed annotation in a live spec — an
-  upper-case or short hex, a missing hyphen, two IDs — which read as none
-  would lift the hold. It also now reports an awaiting evidence gate with an
+  it; two rows asking the same question meet a criterion only when both
+  are ✅, and the claim branch's spec is read whatever the item's status.
+  An annotation opens at `(evidence: gate`, outside inline code — `(evidence:`
+  before anything else is prose, and the template's `gate-<hex>` placeholder
+  is neither a citation nor an error, so an existing spec needs nothing —
+  and `aide check` errors on a malformed one in a live spec — an upper-case
+  or short hex, a missing hyphen, two IDs — which read as none would lift
+  the hold. It also now reports an awaiting evidence gate with an
   empty Blocks cell as awaiting a person's check, naming the criterion and
   the merge it holds — before, it read as a gate that "holds nothing" — keeps
   warning on a declined one a live spec still cites (it is not re-planned),

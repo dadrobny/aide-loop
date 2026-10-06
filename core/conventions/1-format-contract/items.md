@@ -107,9 +107,11 @@ that owns the file wins), or the behaviour is a GUI or visual one that only a
 person walking the application can see — examples, not a list. A criterion
 that is hard, slow or fiddly to test never qualifies. **One gate per
 criterion**: a gate is the evidence for exactly one AC, so a declined check
-fails exactly one criterion. **An annotation that is not exactly one
-well-formed gate ID is an error, never no annotation** — an upper-case or
-short hex, a missing hyphen, or two IDs in one. §9 says how validation reads
+fails exactly one criterion. An annotation opens at `(evidence: gate`, any
+case, outside inline code; `(evidence:` before anything else is prose, and
+the template's `gate-<hex>` is the syntax shown. **An annotation that is not
+exactly one well-formed gate ID is an error, never no annotation** — an
+upper-case or short hex, a missing hyphen, or two IDs in one. §9 says how validation reads
 each status, and `aide merge -h` what it refuses.
 
 **An acceptance criterion is written only when something fails without it:
@@ -196,10 +198,12 @@ forgotten. The queue is bounded the same way, by the posture table's
   all three on one "no" and leaves the builder to guess which. A malformed
   annotation is an error rather than ignored because, read as no annotation,
   it lifts the merge's hold on the one criterion its author meant a person to
-  check — under the first cut of this rule, `gate-3FA1` or two IDs in one
-  parenthesis would have merged the item unchecked (#420); and two IDs in
-  one annotation is one criterion with two gates, the same ambiguity as one
-  gate over two.
+  check — ignoring `gate-3FA1`, or two IDs in one parenthesis, would merge
+  the item unchecked (#420); and two IDs in one annotation is one criterion
+  with two gates, the same ambiguity as one gate over two. It opens only at
+  the word `gate` because `(evidence: tests/test_x.py)` and `(evidence: see
+  CI log)` are ordinary ways to write a criterion, and an error on them would
+  block a merge over a sentence that was never an annotation.
 - **Why a criterion needs a reason.** Every gate in the item loop pushes
   toward more and none toward less: the validator FAILs an uncovered
   criterion, and a superfluous one — an AC the deliverable never needed, a

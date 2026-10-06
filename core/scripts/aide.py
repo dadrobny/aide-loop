@@ -8841,15 +8841,21 @@ def spec_closed_criteria(text: str) -> Set[Tuple[int, int]]:
 
 
 #: An AC's *(evidence: gate-<hex>)* annotation (§1 → items.md, issue #420):
-#: the human gate whose approval stands in for that criterion's test. The
-#: word is any case and the emphasis optional, as for *(closes …)*. Read
-#: loosely — the opener alone, then whatever stands before the closing
-#: parenthesis — so a body that is not exactly one gate ID, as `aide gate
-#: list` prints it, is reported as malformed rather than read as no
-#: annotation, which would silently lift the merge hold.
-_EVIDENCE_OPEN_RE = re.compile(r"\(\s*evidence\s*:(?P<body>[^)\n]*)\)?",
-                               re.IGNORECASE)
+#: the human gate whose approval stands in for that criterion's test. It
+#: opens at `(evidence:` followed by the word `gate`, any case, emphasis
+#: optional as for *(closes …)*; the body runs to the closing parenthesis,
+#: across a wrapped line of the same bullet. Read loosely from there, so a
+#: body that is not exactly one gate ID as `aide gate list` prints it is
+#: reported as malformed rather than read as no annotation, which would
+#: silently lift the merge hold. `(evidence:` followed by anything else —
+#: a test name, "see CI log" — is prose.
+_EVIDENCE_OPEN_RE = re.compile(
+    r"\(\s*evidence\s*:\s*(?P<body>gate\b[^)]*)(?P<close>\))?", re.IGNORECASE)
 _EVIDENCE_BODY_RE = re.compile(r"^\s*(?P<id>" + _GATE_ID_SHAPE + r")\s*$")
+#: The template's placeholder, `gate-<hex>`: the syntax shown, not a gate.
+_EVIDENCE_PLACEHOLDER_RE = re.compile(r"^\s*gate-<hex>\s*$", re.IGNORECASE)
+#: An inline code span — the syntax quoted, never an annotation.
+_CODE_SPAN_RE = re.compile(r"`[^`]*`")
 #: A top-level bullet opening a criterion in `## Acceptance Criteria`; an
 #: indented or unmarked line continues the bullet above it.
 _AC_BULLET_START_RE = re.compile(r"^[-*+]\s")
@@ -8862,10 +8868,12 @@ def spec_evidence_annotations(text: str
     """``(cited, malformed)`` for the spec's *(evidence: …)* annotations, each
     a list of ``(criterion number, text)`` in order (§1 → items.md, #420).
 
-    *cited* holds the gate ID of each annotation whose body is exactly one
-    gate ID; *malformed* the annotation as written for every other one — an
-    upper-case or short hex, a missing hyphen, two IDs, no closing
-    parenthesis. The number is the first ``ACn`` of the bullet carrying the
+    An annotation opens at ``(evidence:`` followed by the word ``gate``
+    (`_EVIDENCE_OPEN_RE`), outside inline code, and is not the template's
+    ``gate-<hex>`` placeholder. *cited* holds the gate ID of each whose body
+    is exactly one gate ID; *malformed* the annotation as written for every
+    other one — an upper-case or short hex, a missing hyphen, two IDs, no
+    closing parenthesis. The number is the first ``ACn`` of the bullet carrying the
     annotation, a wrapped bullet included; None for a bullet naming no
     ``ACn``. Text outside the section is not read: a gate ID there is a
     citation, not evidence.
@@ -8881,12 +8889,15 @@ def spec_evidence_annotations(text: str
     for bullet in bullets:
         m_ac = _AC_NUMBER_RE.search(bullet)
         ac = int(m_ac.group(1)) if m_ac else None
-        for m in _EVIDENCE_OPEN_RE.finditer(bullet):
+        prose = _CODE_SPAN_RE.sub(lambda c: " " * len(c.group(0)), bullet)
+        for m in _EVIDENCE_OPEN_RE.finditer(prose):
+            if _EVIDENCE_PLACEHOLDER_RE.match(m.group("body")):
+                continue
             body = _EVIDENCE_BODY_RE.match(m.group("body"))
-            if body and m.group(0).endswith(")"):
+            if body and m.group("close"):
                 cited.append((ac, body.group("id")))
             else:
-                malformed.append((ac, m.group(0).strip()))
+                malformed.append((ac, " ".join(m.group(0).split())))
     return cited, malformed
 
 
@@ -19510,9 +19521,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Over the evidence annotations of the item specs that are not "
             "records \u2014 "
             "`(evidence: gate-<hex>)` on an Acceptance Criteria line \u2014 "
-            "an ERROR for one that is not exactly one well-formed gate ID "
-            "(an upper-case or short hex, a missing hyphen, two IDs), since "
-            "read as no annotation it would lift the merge's hold; and "
+            "one opening at `(evidence: gate` outside inline code, the "
+            "template's gate-<hex> placeholder aside: an ERROR for one that "
+            "is not exactly one well-formed gate ID (an upper-case or short "
+            "hex, a missing hyphen, two IDs), since read as no annotation it "
+            "would lift the merge's hold; and "
             "warnings: an awaiting gate so named with an empty Blocks cell is "
             "reported as awaiting a person's check, naming the criterion and "
             "the merge it holds, in place of the gate warning above; a "
@@ -20334,7 +20347,13 @@ def register_git_subcommands(sub) -> None:
             "gate, and what clears it — a person's approval for an awaiting "
             "gate; a rebuild, a re-asked gate and a re-pointed annotation "
             "for a declined one, which is never approved; a corrected ID "
-            "otherwise — and comes before the push under pr mode too.\n"
+            "otherwise — and comes before the push under pr mode too. Two "
+            "rows asking the same question meet a criterion only when both "
+            "are \u2705. The spec is read at the claim branch, else in the "
+            "working tree, whatever the item's status in progress.md, so an "
+            "annotation `aide check` does not read \u2014 one only the claim "
+            "branch carries, or one in a record's spec \u2014 still holds the "
+            "merge.\n"
             "\n"
             "The finding cells read [loop] review, from aide.toml. Where it "
             "is off no reviewer ran, so the three of them are written as `-` "

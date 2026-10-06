@@ -146,6 +146,44 @@ def test_an_annotation_that_is_not_one_gate_id_is_malformed(annotation):
     assert [ac for ac, _ in malformed] == [2]
 
 
+@pytest.mark.parametrize("prose", [
+    "(evidence: tests/test_a.py::test_y)",
+    "(evidence: see CI log)",
+    "(evidence: gateway logs)",
+    "`*(evidence: gate-3FA1)*` documents the syntax",
+    "`(evidence: gate-a1b2, gate-c3d4)`",
+    "*(evidence: gate-<hex>)*",
+])
+def test_prose_quoted_syntax_and_the_placeholder_neither_cite_nor_error(
+        tmp_path: Path, prose):
+    """Only `(evidence: gate…` outside inline code opens an annotation, and
+    the template's `gate-<hex>` is the syntax shown, not a gate."""
+    spec = _spec(f"Layout kept. {prose}")
+    assert aide.spec_evidence_annotations(spec) == ([], [])
+    errors, _ = _warnings(_docs(tmp_path, PROGRESS, spec))
+    assert not [e for e in errors if "evidence annotation" in e]
+
+
+def test_the_template_guidance_left_in_a_spec_neither_cites_nor_errors(
+        tmp_path: Path):
+    """A consumer that kept the item template's italic guidance under its
+    Acceptance Criteria heading must not meet an error for it."""
+    template = (_MODULE_PATH.parents[1] / "templates" / "item.md").read_text(
+        encoding="utf-8")
+    ac = template[template.index("## Acceptance Criteria"):
+                  template.index("## Assumptions")]
+    assert "evidence: gate-<hex>" in ac            # the line under test
+    spec = "# Item 027 — Dialog\n\n" + ac + "## Assumptions\n\n- None.\n"
+    assert aide.spec_evidence_annotations(spec) == ([], [])
+    errors, _ = _warnings(_docs(tmp_path, PROGRESS, spec))
+    assert not [e for e in errors if "evidence annotation" in e]
+
+
+def test_an_annotation_wrapped_across_a_line_of_its_bullet_cites():
+    spec = _spec("Layout kept, checked by hand *(evidence:\n  gate-abcd)*")
+    assert aide.spec_evidence_annotations(spec) == ([(2, "gate-abcd")], [])
+
+
 @pytest.mark.parametrize("annotation", MALFORMED)
 def test_check_errors_on_a_malformed_annotation_in_a_live_spec(
         tmp_path: Path, annotation):
@@ -472,3 +510,36 @@ def test_pr_mode_merge_refuses_an_unapproved_evidence_gate_before_the_push(
     assert "is ⏳ Awaiting" in capsys.readouterr().err
     assert _run(["git", "ls-remote", str(remote)], repo).stdout == before
     assert "aide/027-dialog" not in before
+
+
+def test_two_rows_asking_the_same_question_meet_a_criterion_only_when_both_are_approved(
+        tmp_path: Path, capsys):
+    repo = _repo_with_claim(
+        tmp_path, lambda gid: _spec(f"Layout kept. *(evidence: {gid})*"))
+    gid = _gate_id(_with_gate(PROGRESS))
+    _run(["git", "switch", "aide/027-dialog"], repo)
+    ppath = repo / "docs" / "aide" / "progress.md"
+    text = ppath.read_text(encoding="utf-8")
+    row = f"| {QUESTION} | — | ⏳ Awaiting | — |"
+    ppath.write_text(text.replace(
+        row, f"| {QUESTION} | — | ✅ Approved (2026-10-06) | ok |\n{row}"),
+        encoding="utf-8")
+    _run(["git", "commit", "-am", "the question asked twice"], repo)
+    _run(["git", "switch", "main"], repo)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "merge", "27", "--no-test"]) == 1
+    assert f"AC2: {gid} is ⏳ Awaiting" in capsys.readouterr().err
+
+
+def test_merge_reads_an_annotation_check_on_the_base_does_not_see(
+        tmp_path: Path, capsys):
+    """The annotation and its row are on the claim branch only; `aide check`
+    run on the base reads neither, and the merge still refuses."""
+    repo = _repo_with_claim(
+        tmp_path, lambda gid: _spec(f"Layout kept. *(evidence: {gid})*"))
+    gid = _gate_id(_with_gate(PROGRESS))
+    errors, warnings = _warnings(repo)
+    assert not [f for f in errors + warnings if gid in f]
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "merge", "27", "--no-test"]) == 1
+    assert f"AC2: {gid} is ⏳ Awaiting" in capsys.readouterr().err

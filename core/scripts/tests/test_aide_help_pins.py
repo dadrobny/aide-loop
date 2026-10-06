@@ -525,6 +525,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_evidence_gates::test_a_declined_evidence_gate_cited_only_by_a_record_is_silent")),
         # `evidence_annotation_errors`, over `spec_evidence_annotations`'
         # malformed list, live specs only.
+        ("one opening at `(evidence: gate` outside inline code, the "
+         "template's gate-<hex> placeholder aside",
+         ("test_aide_evidence_gates::test_prose_quoted_syntax_and_the_placeholder_neither_cite_nor_error",
+          "test_aide_evidence_gates::test_the_template_guidance_left_in_a_spec_neither_cites_nor_errors")),
         ("an ERROR for one that is not exactly one well-formed gate ID (an "
          "upper-case or short hex, a missing hyphen, two IDs)",
          ("test_aide_evidence_gates::test_check_errors_on_a_malformed_annotation_in_a_live_spec",
@@ -2095,6 +2099,17 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_evidence_gates::test_merge_refuses_a_malformed_annotation_before_anything_moves")),
         ("and comes before the push under pr mode too",
          "test_aide_evidence_gates::test_pr_mode_merge_refuses_an_unapproved_evidence_gate_before_the_push"),
+        # `_merge_unmet_evidence`: `kinds == {"approved"}` over every hit.
+        ("Two rows asking the same question meet a criterion only when both "
+         "are \u2705",
+         "test_aide_evidence_gates::test_two_rows_asking_the_same_question_meet_a_criterion_only_when_both_are_approved"),
+        # `_merge_unmet_evidence` reads `git show <branch>:<spec>` first and
+        # never `record_documents`.
+        ("The spec is read at the claim branch, else in the working tree, "
+         "whatever the item's status in progress.md, so an annotation `aide "
+         "check` does not read \u2014 one only the claim branch carries, or "
+         "one in a record's spec \u2014 still holds the merge",
+         "test_aide_evidence_gates::test_merge_reads_an_annotation_check_on_the_base_does_not_see"),
         # `pending_row` -> `append_ledger_row`, one row, `ledger_path(ddir)`.
         ("The row is one per item, in docs/aide/ledger.md",
          "test_aide_ledger::"

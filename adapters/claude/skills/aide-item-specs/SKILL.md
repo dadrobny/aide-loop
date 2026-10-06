@@ -81,6 +81,8 @@ paths:
        exactly one criterion
      - An annotation that is not exactly one well-formed gate ID is an
        error, never no annotation
+     - An annotation opens at `(evidence: gate`, any case, outside inline
+       code; `(evidence:` before anything else is prose
      - An acceptance criterion is written only when something fails without
        it: the item's own deliverable, or a declared consumer in the batch that
        reads what it pins
@@ -269,7 +271,8 @@ fiddly to test never qualifies**. **One gate per criterion**: a gate is the
 evidence for exactly one AC, so a declined check fails exactly one criterion.
 **An annotation that is not exactly one well-formed gate ID is an error,
 never no annotation** — an upper-case or short hex, a missing hyphen, or two
-IDs in one.
+IDs in one. An annotation opens at `(evidence: gate`, any case,
+outside inline code; `(evidence:` before anything else is prose.
 The row the ID names, and why it blocks nothing, is §1 → human gates, which
 reaches you too.
 
