@@ -1637,6 +1637,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_evidence_gates::test_claim_from_the_base_names_the_wait_not_a_claim_in_flight",
           "test_aide_evidence_gates::test_a_declined_evidence_gate_holds_the_queue_end_too",
           "test_aide_evidence_gates::test_an_evidence_wait_says_no_before_a_gate_would_say_yes")),
+        # `broken` over `EVIDENCE_DEFECTS` in `_report_nothing_claimable`,
+        # returning 1 before the bare "none left" (issue #432).
+        ("An evidence annotation no approval can clear \u2014 not one gate "
+         "ID, naming no gate row, or matching more than one \u2014 is not "
+         "such a wait: the report names the item and its criterion and "
+         "exits 1",
+         ("test_aide_evidence_gates::test_an_annotation_no_approval_can_clear_exits_1_naming_it",
+          "test_aide_evidence_gates::test_an_annotation_matching_two_gates_exits_1_too",
+          "test_aide_evidence_gates::test_an_awaiting_gate_beside_a_broken_annotation_still_exits_1")),
         # `elif not open_ordered:` — its own wording.
         ("An `all` gate over a queue with nothing left open is read the same "
          "way, a yes in words of its own",
@@ -1666,6 +1675,22 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # A defect rather than a normal hold, so not the "none left" exit.
         ("the report names the row and exits 1",
          "test_aide_gates::test_claim_holds_every_item_behind_an_unreadable_gate_row"),
+        # The `base =` chain in `cmd_claim` (issue #433).
+        ("Without --base the item's base is the current branch when that is "
+         "a queue branch, the base a current claim branch recorded when it "
+         "is one",
+         ("test_aide_base::test_claim_from_a_queue_branch_records_that_branch",
+          "test_aide_base::test_claim_from_a_claim_branch_takes_its_recorded_base")),
+        ("a claim branch with none recorded is refused, exit 1, before "
+         "anything is created",
+         "test_aide_base::test_claim_from_a_claim_branch_with_no_recorded_base_is_refused"),
+        ("and main_branch otherwise",
+         ("test_aide_base::test_claim_from_main_records_main",
+          "test_aide_base::test_claim_does_not_infer_a_base_from_an_arbitrary_branch")),
+        # `git switch -c branch base`, the start point named.
+        ("The item is branched from that base, whatever is checked out",
+         ("test_aide_base::test_claim_branches_from_the_base_not_from_head",
+          "test_aide_base::test_claim_from_a_claim_branch_takes_its_recorded_base")),
         # `ensure_insights_inbox(repo_root, config, verb="claim")` in `cmd_claim`.
         ("A missing insights.md is created from the template on the way through",
          "test_aide_git::test_claim_creates_the_missing_inbox_on_the_way_through"),

@@ -36,7 +36,7 @@ parallel*.
 
 | Concern | Owner | Notes |
 |---|---|---|
-| Claim the next 📋 item | `aide claim` (CLI) | `python .aide/scripts/aide.py claim [--queue NNN]` — syncs, checks `aide/*` branches, picks the first unclaimed unblocked 📋 item, creates + pushes `aide/NNN-*`; prints item number + branch + title, and the base when it is not `main`. Deterministic, no subagent. **Run it from the branch the queue's work belongs on**: claiming while a queue branch is checked out records that branch as each item's base, so `aide merge` returns the item to it and the whole queue still lands as one reviewed PR. |
+| Claim the next 📋 item | `aide claim` (CLI) | `python .aide/scripts/aide.py claim [--queue NNN]` — syncs, checks `aide/*` branches, picks the first unclaimed unblocked 📋 item, creates + pushes `aide/NNN-*`; prints item number + branch + title, and the base when it is not `main`. Deterministic, no subagent. **Run it from the branch the queue's work belongs on**: claiming while a queue branch is checked out records that branch as each item's base, so `aide merge` returns the item to it and the whole queue still lands as one reviewed PR. An item's claim branch left checked out stands for the base it recorded. |
 | Run one item end-to-end | **`/aide-run-item NNN`** | spec-author → test-writer → builder → validator+merge, incl. the build↔validate cycle (≤`loop.validation_rounds` rounds). Under `loop.review = "background"` a `reviewer` reads the diff once, concurrently with the first validator, and the merge waits for both. See that command for the per-item detail. |
 | Approval gates, looping | *orchestrator* | stays in the main thread |
 | Generating the **next** queue | **not here** | only `/aide-run-roadmap` (or a manual `/aide-create-queue`) does that |
@@ -135,10 +135,14 @@ Repeat until `aide claim` reports no remaining unclaimed 📋 item **in this que
      reads `early ready: no — …`) relay the reasons
      verbatim and stop. On a **non-zero** exit something is broken — an
      *unpublished claim* (an `aide claim` whose push failed), a claim branch
-     origin has deleted (never re-push it), or a human-gates
-     row `aide` cannot read, which holds every item — so surface it verbatim
-     and stop: publishing or releasing that branch, or repairing that row, is
-     the human's call.
+     origin has deleted (never re-push it), a human-gates
+     row `aide` cannot read, which holds every item, or an evidence
+     annotation no approval can clear — so surface it verbatim
+     and stop: publishing or releasing that branch, or repairing that row or
+     annotation, is the human's call. A claim run from a claim branch that
+     recorded no base is refused the same way, before anything is created:
+     switch to the queue branch, or pass `--base <queue branch>`, and claim
+     again.
    - **Any other non-zero exit** → surface the sentence and stop.
 
 3. **Run the item** — load `/aide-run-item NNN aide/NNN-short-name` inline as a
@@ -148,7 +152,8 @@ Repeat until `aide claim` reports no remaining unclaimed 📋 item **in this que
 4. **Checkpoint (orchestrator).** Relay a one- or two-line summary (item,
    merged/failed, key facts). An item that ended **PASS (awaiting
    gate-<hex>)** is not merged: relay the gate, the AC and the claim branch
-   for the person to check, and carry on — its dependents wait on its ✅ by
+   for the person to check, and carry on from its claim branch, whose
+   recorded base the next claim takes — its dependents wait on its ✅ by
    themselves. The engine holds the queue end for it: while one is still
    waiting, `aide claim` names it in a `none left — …` report ending
    `early ready: no`, never a bare `none left`, and `aide queue ready`
