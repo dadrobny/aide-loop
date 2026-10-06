@@ -153,7 +153,8 @@ instead — that is the bump policy above, and it is enforced by
   helper named at the spawn, because a role's model is an exact ID held to
   its frontmatter (issue #250) and its effort cannot be set per spawn. It
   judges and writes nothing: `/aide-review-insights` spawns it once, when the
-  open inbox is not empty, and applies the plan it returns with the
+  open inbox is not empty — with none open, the session runs the
+  stale-pointer sweep itself — and applies the plan it returns with the
   `aide insights` verbs, so every tick and fold is committed, and every
   `framework` body printed at its `ask` gate, in the session the human is
   watching — the same whether the pass runs alone, before a queue or from the
@@ -175,10 +176,15 @@ instead — that is the bump policy above, and it is enforced by
   proposes as the edit itself and applies once the user agrees; or the
   framework surface (`.aide/`, `.claude/`, `aide.toml`), which stays a
   recommendation landing through a reviewed PR or upstream. Step 6 reads the
-  document's §1 section and template before editing, uses `aide progress` and
-  `aide gate` wherever a verb owns the edit, makes the smallest edit, ends on
-  `aide check`, and commits on the current branch; a `/aide-create-*` skill is
-  named only for a document that needs rebuilding rather than amending.
+  document's §1 section and template before editing, uses `aide progress`
+  wherever a verb owns the edit, makes the smallest edit, ends on
+  `aide check`, and commits on the current branch — a branch of its own for
+  `vision.md` or `roadmap.md` when that is `main_branch`, since the merge
+  policy puts both behind a reviewed PR. The user's agreement neither ticks an
+  acceptance box nor resolves a human gate: a tick still takes a check the
+  session ran, and a gate is still resolved only by a person. A
+  `/aide-create-*` skill is named only for a document that needs rebuilding
+  rather than amending.
 
 ## [2.40.2] — 2026-10-06
 

@@ -24,10 +24,11 @@ session then applies the plan with the verbs (steps 2–6): a tick or a fold is
 made where it is committed, and a hand-over's body is printed whole at an
 `ask` gate the human is watching, which a sub-agent's is not. Check the plan
 against the steps rather than re-deriving it, and read the one entry yourself
-(`insights list <ID>`) where a row cannot be applied as given. The split is the same however this pass was reached —
-on its own, before a queue, or from `/aide-feedback-loop`. When step 1 prints
-no open entry there is nothing to judge, and nothing is spawned; the
-stale-pointer sweep in step 3 waits for the next pass with entries.
+(`insights list <ID>`) where a row cannot be applied as given. The split is
+the same however this pass was reached — on its own, before a queue, or from
+`/aide-feedback-loop`. When step 1 prints no open entry there is nothing to
+judge, and nothing is spawned; run step 3's stale-pointer sweep here, over
+the recently closed entries alone.
 
 ## Instructions
 

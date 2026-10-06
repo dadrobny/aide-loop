@@ -116,10 +116,15 @@ is.
   `vision.md`, `roadmap.md` or `progress.md` — and its template in
   `.aide/templates/`. The edit keeps every shape the scripts parse.
 - **Where a verb owns the edit, use the verb.** A status, a deferral, a drop,
-  an acceptance tick or its correction, a criterion's wording, a reopened
-  item: `aide progress` (`python .aide/scripts/aide.py progress -h` lists
-  them), and a human gate through `aide gate`. Never hand-edit what a verb
-  writes; hand-edit only the prose no verb reaches.
+  a criterion's wording, a correction to a ticked box, a reopened item:
+  `aide progress` (`python .aide/scripts/aide.py progress -h` lists them).
+  Never hand-edit what a verb writes; hand-edit only the prose no verb
+  reaches.
+- **The user's agreement is not an attestation or a resolution.** Ticking an
+  acceptance box takes a check this session actually ran, passed as its
+  evidence (§1 → `progress.md`); agreeing to the recommendation is not one.
+  A human gate may be raised here, but only a person resolves one (§1 →
+  human gates) — leave `aide gate approve`/`decline` to them.
 - **Make the smallest edit that carries the agreed change**, and leave the
   rest of the document as it reads.
 - **Finish with `python .aide/scripts/aide.py check`**, and clear any error
@@ -127,7 +132,9 @@ is.
 - **Commit on the current branch.** The verbs commit their own edits;
   commit a hand edit with the recommendation it applies. How that branch
   reaches `main_branch` is the merge policy's (`.aide/README.md`), not this
-  loop's.
+  loop's — and that policy puts `vision.md` and `roadmap.md` behind a
+  reviewed PR. So when the current branch *is* `main_branch`, an amendment to
+  either goes on a branch of its own for that PR, not onto `main_branch`.
 
 ### Important notes
 

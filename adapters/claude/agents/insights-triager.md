@@ -75,10 +75,15 @@ action:
 - **fold** — the target document, the edit, and the `--pointer` text;
 - **leave open** — the type, and the queue it is waiting for;
 - **tick, decayed premise** — the `--pointer` text naming what closed it;
-- **trail only** — a duplicate, a wrong type, or a stale pointer on a closed
-  entry, with the `--trail` text;
+- **trail only** — a duplicate, or a stale pointer on a closed entry, with
+  the `--trail` text;
 - **hand over** — the title and the full body, ready to print at the gate;
   or *pending*, with the reason.
+
+A **wrong type** is not a row of its own: give the row its corrected type
+routes to — a fold for what is really `knowledge`, leave open for what is
+really a `defect` or `gap` — and add the `--trail` text saying the type was
+wrong and what it is.
 
 Then the counts: folded, handed over, left open by type, judged. Say plainly
 when an entry needs nothing beyond its route, and when the inbox needs nothing
