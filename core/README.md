@@ -244,7 +244,8 @@ after each merge.
 
 ## Model routing by role (capability tiers)
 
-Five sub-agents split work by role, plus one optional sixth. The engine's
+Sub-agents split work by role; a role marked *optional* is one an adapter may
+leave out. The engine's
 contract names **capability tiers**, not model names — the adapter binds each
 tier to its own runtime's models (as high as necessary, as low as adequate). Deterministic recon/claim is
 **not** an agent — orchestrators call `aide claim`.
@@ -257,8 +258,11 @@ tier to its own runtime's models (as high as necessary, as low as adequate). Det
 | `builder` | **T2** | implements the source dir to satisfy every AC; re-dispatched on T3 when a failure survives a round or is serious |
 | `validator` | **T2** | quality gate: tests, AC coverage, scope, vision fit; reconciles + merges |
 | `reviewer` | **T2** | *optional, `loop.review`* — adversarial read of the item's diff as first built, concurrent with the first validation; produces findings, merges nothing |
+| `spec-reviewer` | **T3** | *optional* — reads all of a queue's specs at once, before any is built, for the cross-item conflicts `aide check --queue` cannot decide; findings go to the human |
+| `insights-triager` | **T2** | *optional* — judges every open inbox entry's route, duplicate, decayed premise or wrong type; returns a plan, writes nothing |
 
-No agent signs off its own work; every role gets a fresh instance per item.
+No agent signs off its own work; every role gets a fresh instance per item
+(per queue for `spec-reviewer`, per triage pass for `insights-triager`).
 
 **`validator` and `reviewer` are two different reads of one diff** (§9).
 Validation is spec-relative and gates the merge; review is adversarial and

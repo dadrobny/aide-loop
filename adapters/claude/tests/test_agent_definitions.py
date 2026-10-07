@@ -348,8 +348,8 @@ def test_no_agent_spec_argues_for_its_own_model(path: Path):
     Four specs carried a `**Model & effort.**` paragraph, and an agent spec
     body *is* the sub-agent's system prompt — so every spawn of those roles
     paid for an argument about a choice the agent cannot change. The reason now
-    has one home, `ADAPTER-SPEC.md` §2's role table, where it is beside the
-    other six roles' and cannot drift from the frontmatter. Guarded on the
+    has one home, `ADAPTER-SPEC.md` §2's role table, where it is beside
+    every other role's and cannot drift from the frontmatter. Guarded on the
     opener rather than the prose, the same shape as the command-hygiene block
     and the `## Hand-off` tail in `test_rules.py`: a reworded justification
     under the same lead-in would re-open the cost.
@@ -400,3 +400,100 @@ def test_only_the_roles_that_may_spawn_keep_the_agent_tool(path: Path):
         assert "Agent" not in disallowed, (
             f"{path.name}: this role may spawn a helper; drop `Agent` from "
             f"`disallowedTools`, or move it across the split deliberately")
+
+
+# --------------------------------------------------------------------------- #
+# the engine README's role table, held to §2's role set (#437)
+# --------------------------------------------------------------------------- #
+#: `core/README.md`'s *Model routing by role* table lists the roles a consumer
+#: reads about — the engine's own page, installed as `.aide/README.md`, which
+#: may not point at this spec (it is not installed). It drifted from the
+#: shipped set twice (#437: five roles and one optional, while §2 had grown to
+#: three optional definitions and an escalation row), so it is held here
+#: rather than pointed at: role, tier, and whether the role is optional, all
+#: read from §2's two tables — which the tests above hold to `agents/*.md` —
+#: so the README is held to the shipped agents transitively.
+_ENGINE_README = Path(__file__).resolve().parents[3] / "core" / "README.md"
+_README_SECTION = re.compile(r"^## Model routing by role\b.*$", re.M)
+
+#: §2 rows the README deliberately folds into another role's row, with the
+#: tier the folded row must still name. `builder-escalation` is "the builder
+#: on T3, not a sixth role" (§2), and a runtime whose override takes an exact
+#: ID expresses it as that override, not a definition — so the engine's page
+#: names the step-up in the builder row, never as a role of its own.
+_README_FOLDED = {"builder-escalation": ("builder", "T3")}
+
+
+def _section_2_roles() -> dict:
+    """`role -> (tier, optional)` for every row of §2's two role tables,
+    independent of any adapter column: the second table, headed `Optional
+    definition`, is the optional set."""
+    roles: dict = {}
+    optional = False
+    for line in _spec_section_2().splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 2 or set(cells[0]) <= set("-: "):
+            continue
+        if cells[1] == "Tier":
+            optional = cells[0].lower().startswith("optional")
+            continue
+        tier = _TIER.search(cells[1])
+        if tier:
+            roles[cells[0].strip("*` ")] = (f"T{tier.group(1)}", optional)
+    return roles
+
+
+def _readme_roles() -> dict:
+    """`role -> (tier, optional, does)` for every row of the README table; a
+    row is optional when its Does cell opens with `*optional`."""
+    text = _ENGINE_README.read_text(encoding="utf-8")
+    start = _README_SECTION.search(text)
+    assert start is not None, (
+        f"core/README.md: no `## Model routing by role` heading — the role "
+        f"table's section was renamed, and the guard below would compare "
+        f"nothing at all")
+    end = _NEXT_SECTION.search(text, start.end())
+    roles: dict = {}
+    for line in text[start.end():end.start() if end else len(text)].splitlines():
+        if not line.lstrip().startswith("| `"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        tier = _TIER.search(cells[1]) if len(cells) >= 3 else None
+        assert tier, f"core/README.md: role row with no tier cell: {line!r}"
+        role = cells[0].strip("*` ")
+        assert role not in roles, f"core/README.md: two rows for {role!r}"
+        does = "|".join(cells[2:])
+        roles[role] = (f"T{tier.group(1)}", does.startswith("*optional"), does)
+    return roles
+
+
+def test_the_engine_readme_lists_every_role_section_2_defines():
+    """Both directions, tier and optionality included: a role §2 gains and
+    the README never mentions, a README row for a role §2 dropped, a retiered
+    role and an optional one listed as always-on all fail."""
+    spec = _section_2_roles()
+    readme = _readme_roles()
+    assert len(spec) >= len(_AGENT_FILES) and readme, (
+        f"parsed {len(spec)} §2 roles and {len(readme)} README rows — a "
+        f"reshaped table would make the comparison below vacuous")
+    expected = {role: value for role, value in spec.items()
+                if role not in _README_FOLDED}
+    assert {r: v[:2] for r, v in readme.items()} == expected, (
+        "core/README.md's *Model routing by role* table disagrees with "
+        f"{_ADAPTER_SPEC.name} §2 on (tier, optional): edit both, in one "
+        f"commit")
+
+
+@pytest.mark.parametrize("folded, into", sorted(_README_FOLDED.items()))
+def test_a_folded_role_is_named_in_the_row_it_folds_into(folded, into):
+    """`builder-escalation` has no README row of its own, so the step-up's
+    tier must still be stated in the builder's — else the escalation reads
+    nowhere on the engine's page."""
+    host, tier = into
+    assert folded in _section_2_roles(), (
+        f"{folded!r} is no longer a §2 row; drop it from _README_FOLDED")
+    assert tier in _readme_roles()[host][2], (
+        f"core/README.md's `{host}` row no longer names {tier}, where "
+        f"{folded!r} is folded")

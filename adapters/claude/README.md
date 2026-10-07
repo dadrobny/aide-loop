@@ -60,12 +60,13 @@ contract obligations:
 
 ## Roles → **agents** (`agents/*.md`), tiers bound to Claude models
 
-The five roles ([spec §2](../ADAPTER-SPEC.md)) are Claude Code **sub-agents** —
-fresh, role-scoped instances with `model:`/`effort:` frontmatter. The contract names
-capability *tiers*; this adapter binds **T3 → Opus, T2 → Sonnet**, and the
-per-role binding is **[spec §2's table](../ADAPTER-SPEC.md)**, whose *Claude*
-cell (`claude-opus-5-5, high`) is this adapter's `model:` + `effort:` pair and
-is held to every `agents/*.md` in both directions by
+Every role and optional definition in [spec §2](../ADAPTER-SPEC.md) is a Claude
+Code **sub-agent** — a fresh, role-scoped instance with `model:`/`effort:`
+frontmatter. The contract names capability *tiers*; this adapter binds **T3 →
+Opus, T2 → Sonnet**, and the per-role binding is **[spec §2's
+table](../ADAPTER-SPEC.md)**, whose *Claude* cell (`claude-opus-5-5, high`) is
+this adapter's `model:` + `effort:` pair and is held to every `agents/*.md` in
+both directions by
 [`tests/test_agent_definitions.py`](tests/test_agent_definitions.py). It is not
 restated here: a second copy is a copy that drifts.
 
@@ -91,10 +92,11 @@ escalate (its step 6).
 Recon/claim is **not** an agent — it is deterministic `aide claim`, so no `agents/`
 file and no tier. No role signs off its own work; each item gets a fresh instance.
 
-Two further agents sit **outside** the five item roles — `reviewer`, dispatched
-once over one item's diff alongside its first `validator` under
-`loop.review`, and `spec-reviewer`, at the queue boundary: once per queue, after `/aide-spec-queue`
-authors every spec and **before any is built**.
+Three further agents sit **outside** the five item roles — `reviewer`,
+dispatched once over one item's diff alongside its first `validator` under
+`loop.review`; `spec-reviewer`, at the queue boundary: once per queue, after
+`/aide-spec-queue` authors every spec and **before any is built**; and
+`insights-triager`, below.
 
 `spec-reviewer` is not a sixth role — it never touches one item's lifecycle. It
 reads the whole batch at once and reports the cross-item conflicts
@@ -198,8 +200,8 @@ allow-list" framing** are adapter-local and documented here.
   type and its `model:` is not `inherit`; the built-ins (`Explore`,
   `general-purpose`, `Plan`) never do — so a role's helper runs on a model chosen at the spawn rather than
   on the role's own by inheritance; the refusal names the model to pass. The
-  user's own session is never touched. With it, `disallowedTools: Agent` on the
-  five roles that have nothing to delegate, and a spawn-depth cap of two in
+  user's own session is never touched. With it, `disallowedTools: Agent` on
+  every role that has nothing to delegate, and a spawn-depth cap of two in
   `settings.json`'s `env` (issue #311, ADAPTER-SPEC §2).
 - **`hooks/log_permission_event.py`** — `PreToolUse` + `PostToolUse` logging of
   prompt-eligible calls (`Bash`/`Edit`/`Write`/`Web…`) to
@@ -360,7 +362,7 @@ tests they never write. A `paths:` *skill* injects nothing on a read: its
 session receives unconditionally is the one-line description in the listing. A
 sub-agent's startup context has no skill listing at all — it has its prompt,
 the task, the `CLAUDE.md` hierarchy including project rules, git status, and its
-**preloaded skills** — so for the six roles `skills:` preload is the only skill
+**preloaded skills** — so for every role `skills:` preload is the only skill
 channel there is, and it is unconditional: the body is injected at spawn, with
 the frontmatter dropped and HTML comments stripped, whether or not the repo has
 a file to open. That closes the hole the rules shipped with — a `test-writer`
@@ -407,8 +409,8 @@ structurally, by `user-invocable: false` alone since 1.42.0, never by a name
 list and never by a `<!-- pins:` block, which a workflow skill may carry too —
 and adds the preload's own guards: every `skills:` entry names a
 skill that exists and does not set `disable-model-invocation`, every section
-skill is preloaded by at least one agent, and the six agent specs never
-re-inline the block this replaced.
+skill is preloaded by at least one agent, and no agent spec
+re-inlines the block this replaced.
 
 **Every delivered file declares its reach**, on one line, near the top of the
 body:
@@ -552,8 +554,10 @@ no drift detection to invent and no third ownership pattern.
 ```
 adapters/claude/
 ├── agents/        builder · queue-planner · spec-author · test-writer · validator
-│                  spec-reviewer (queue boundary, not an item role)
-│                  insights-triager (inbox triage, judges and writes nothing)
+│                  builder-escalation (the builder on T3, not a sixth role)
+│                  reviewer (optional, loop.review; findings, merges nothing)
+│                  spec-reviewer (optional; queue boundary, not an item role)
+│                  insights-triager (optional; inbox triage, writes nothing)
 ├── skills/        workflow: aide-{create-vision,-roadmap,-progress,-queue,-item} ·
 │                  aide-execute-item · aide-feedback-loop · aide-spec-queue ·
 │                  aide-review-insights · aide-review-ledger · aide-status-report
