@@ -118,8 +118,8 @@ two (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), so a helper cannot spawn one of
 its own. The user's own session is untouched by all three.
 
 **Optional definition — the item reviewer.** An adapter **may** express a
-**reviewer** at **T2**, dispatched once per run of an item over its diff, concurrently
-with that run's first `validator` and gated by a `loop.review` key in `aide.toml`
+**reviewer** at **T2**, dispatched once per run over the item's diff, concurrently
+with the run's first `validator` and gated by a `loop.review` key in `aide.toml`
 (`"off"` by default). The two are different reads and neither covers for the
 other (`conventions.md` §9): the validator is spec-relative and gates the merge, the
 reviewer is adversarial and produces findings. Where an adapter expresses it,

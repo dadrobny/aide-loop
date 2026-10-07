@@ -114,16 +114,15 @@ for both.
 **One review per run, of the diff the run first built.** A run is an item's
 work from its claim to its merge or `aide ledger abandon` — what one ledger row
 records (§1 → ledger.md) — and a reopened item, whoever reopened it, starts a
-new run. The reviewer is dispatched once per run, when the build first
-returns, concurrent with the run's first validation, and never again in that
-run. Its findings are triaged at that
-validation's verdict whichever way it goes: on a FAIL, the triaging role waits
-for the review and sends every in-scope finding it is fixing in the same fix
-round as the validation failures — one round for both reads. After any fix
-round, a fresh validation runs and no second review; a fix made for a finding
-is measured by that validation like any other fix — a blocking one through
-the test traced to it (below) — and counts against the round cap the same
-way. A finding about code a fix round removed or rewrote
+new run. The reviewer is dispatched once per run, when the build first returns,
+concurrent with the run's first validation, and never again in that run. Its
+findings are triaged at that validation's verdict whichever way it goes: on a
+FAIL, the triaging role waits for the review and sends every in-scope finding
+it is fixing in the same fix round as the validation failures — one round for
+both reads. After any fix round, a fresh validation runs and no second review;
+a fix made for a finding is measured by that validation like any other fix — a
+blocking one through the test traced to it (below) — and counts against the
+round cap the same way. A finding about code a fix round removed or rewrote
 before it was fixed is dropped, and not counted: the code it describes no
 longer exists.
 

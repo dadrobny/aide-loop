@@ -31,7 +31,7 @@ first if you're on Opus.
 | 1 | **Author the item spec** | `spec-author` | writes `docs/aide/items/NNN-*.md` (Description, atomic AC, steps, testing strategy, deps, decisions), commits. **No code, no tests.** Skip only if the spec file already exists and is complete — and its Assumptions pin no dependency's interface; if they do, it re-checks them (step 1). |
 | 2 | **Write tests** for the item | `test-writer` | reads spec + AC + existing test style, writes one test per AC plus the cases the Testing Strategy names, commits. **No production code, no pytest.** |
 | 3 | **Implement** production code | `builder` (`builder-escalation` once escalated, step 6) | checkout branch, implement `source_dir` per every AC, record decisions, set progress in-progress (`aide progress set NNN in-progress`), commit. **No tests, no pytest.** |
-| 4 | **Review** the diff | `reviewer` | **only when `aide.toml` sets `loop.review = "background"`** (default `"off"`). Dispatched **once per run** (§9: claim to merge or abandon; a reopened item is a new run), in the background, the moment builder first returns, concurrent with the first step 5 over the same branch — never again after a fix round. Reads the diff adversarially and reports findings; writes nothing, merges nothing. |
+| 4 | **Review** the diff | `reviewer` | **only when `aide.toml` sets `loop.review = "background"`** (default `"off"`). Dispatched **once per run** (§9), in the background, the moment builder first returns, concurrent with the first step 5 over the same branch — never again after a fix round. Reads the diff adversarially and reports findings; writes nothing, merges nothing. |
 | 5 | **Validate** (+ merge, unless held) | `validator` | a **different** agent: runs pytest, checks AC coverage + scope + vision fit, then on PASS reconciles via the CLI (`aide progress set NNN in-review`) and merges (`aide merge NNN` — `merge` writes the ✅ itself once the merge lands). **Under `loop.review = "background"` the merge is held**: it stops after the reconcile, reports PASS (merge held), and *you* merge once the review is discharged. **No new tests.** |
 
 **Spec authoring, testing, implementation, and validation are always separate
@@ -88,7 +88,8 @@ Steps 4–6 run as for any item: a reopened item is a new run (§9), so under
 `"background"` its `reviewer` reads the diff this run builds, beside its first
 validator, and its findings are triaged and counted like any run's. Its
 rounds count against this run's own `loop.validation_rounds`, apart from the
-CI round the queue counts.
+CI round the queue counts. An item its owner reopened, with any other
+reason, has none of these differences: it is a new run through every step.
 
 ## An item awaiting its evidence gate
 
@@ -249,8 +250,8 @@ verdict:
    less any whose code a later round removed or rewrote, together with the
    test that measured it: that finding stays counted, and is checked no
    more. A session that resumes mid-cycle takes them from the spec's
-   `## Review findings` bullets ranked blocking, an earlier run's included;
-   re-checking a trace costs a read:
+   `## Review findings` bullets ranked blocking; re-checking a trace costs a
+   read:
    > This branch fixed blocking review findings: <each: its label in the
    > spec's `## Review findings`, and the finding in one line>. Check each
    > as your spec's check 7 says: its bullet is there, and names a test
