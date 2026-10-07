@@ -136,6 +136,42 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.42.0] — 2026-10-07
+
+### Changed
+
+- **Under `loop.review = "background"` the reviewer runs once per run, not
+  once per item, so a reopened item is reviewed again (issue #416).** A run
+  is an item's work from its claim to its merge or `aide ledger abandon` —
+  exactly what one ledger row records — and a reopened item, from a CI fix
+  round or its owner, starts a new run (§9). Each run gets one review of the
+  diff it first built, beside its first validation; fix rounds inside a run
+  still get none. Before, §9 said one review per item while `/aide-run-item`
+  exempted only a CI reopening: an owner reopen spawned a reviewer against
+  the rule, and a CI-reopened item merged with `0` in its finding cells for
+  a review that never ran. That exemption is gone — a CI-reopened run spawns
+  its reviewer and merges with the counts it triaged, like any run. The
+  blocking findings a fix round's validator is handed are the ones this run
+  fixed. `reviewer.md`, `validator.md`, `aide-run-queue`, `core/README.md`,
+  `adapters/claude/README.md` and both ADAPTER-SPEC passages on the reviewer
+  say "once per run" to match, and `test_findings_ranks.py` holds §9's
+  definition and the runner's reopened-item section to it. No engine change:
+  `-` in a finding cell still means only that review is off. Nothing for a
+  consumer to edit; under `"background"`, a reopened item costs one more
+  reviewer spawn, concurrent with its first validation.
+- **`/aide-run-item`'s *An item a CI fix round reopened* is now *A reopened
+  item*, and covers an owner reopen too.** Its builder is briefed with the
+  reopening's findings — the owner's reason, or the CI failures triaged —
+  where an owner reopen used to run the plain steps with no word of why. §9
+  states the rule both share: a finding a reopening carries is not a review
+  finding, and the spec's own checks measure it; a reason asking for
+  behaviour the spec does not specify is new work, and the runner stops.
+- **The ledger says one row per run of an item** — §1 → ledger.md, its index
+  row, `aide merge -h`, `aide ledger -h`, the notice that creates the file and
+  the ledger template's header and guidance line (no template version
+  change: nothing in an existing ledger needs to follow). The rule is
+  unchanged; a reopened item's next merge already appended a second row.
+
 ## [2.41.2] — 2026-10-07
 
 ### Fixed

@@ -2148,7 +2148,7 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "one in a record's spec \u2014 still holds the merge",
          "test_aide_evidence_gates::test_merge_reads_an_annotation_check_on_the_base_does_not_see"),
         # `pending_row` -> `append_ledger_row`, one row, `ledger_path(ddir)`.
-        ("The row is one per item, in docs/aide/ledger.md",
+        ("The row is one per run of an item, in docs/aide/ledger.md",
          "test_aide_ledger::"
          "test_merge_writes_the_row_in_the_commit_that_ticks_the_item"),
         # `append_ledger_row`: `path.write_bytes(template.read_bytes())`.

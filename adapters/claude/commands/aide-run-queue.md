@@ -37,7 +37,7 @@ parallel*.
 | Concern | Owner | Notes |
 |---|---|---|
 | Claim the next 📋 item | `aide claim` (CLI) | `python .aide/scripts/aide.py claim [--queue NNN]` — syncs, checks `aide/*` branches, picks the first unclaimed unblocked 📋 item, creates + pushes `aide/NNN-*`; prints item number + branch + title, and the base when it is not `main`. Deterministic, no subagent. **Run it from the branch the queue's work belongs on**: claiming while a queue branch is checked out records that branch as each item's base, so `aide merge` returns the item to it and the whole queue still lands as one reviewed PR. An item's claim branch left checked out stands for the base it recorded. |
-| Run one item end-to-end | **`/aide-run-item NNN`** | spec-author → test-writer → builder → validator+merge, incl. the build↔validate cycle (≤`loop.validation_rounds` rounds). Under `loop.review = "background"` a `reviewer` reads the diff once, concurrently with the first validator, and the merge waits for both. See that command for the per-item detail. |
+| Run one item end-to-end | **`/aide-run-item NNN`** | spec-author → test-writer → builder → validator+merge, incl. the build↔validate cycle (≤`loop.validation_rounds` rounds). Under `loop.review = "background"` a `reviewer` reads the diff once per run, concurrently with its first validator, and the merge waits for both. See that command for the per-item detail. |
 | Approval gates, looping | *orchestrator* | stays in the main thread |
 | Generating the **next** queue | **not here** | only `/aide-run-roadmap` (or a manual `/aide-create-queue`) does that |
 
@@ -269,8 +269,8 @@ the item's own spec.
    findings on one item go in one reason, separated by `; `.
 6. **Fix.** Go back to **Loop**. `aide claim --queue NNN` offers each
    reopened item as it offers any 📋 one, and `/aide-run-item K` runs it
-   with the findings in its builder's brief (that command, *An item a CI fix
-   round reopened*). Pass them on from your triage; in a fresh session they
+   with the findings in its builder's brief (that command, *A reopened
+   item*). Pass them on from your triage; in a fresh session they
    are the item's `reopened:` reason in `aide status`. Its merge ticks the
    `gap` the reopening captured; nothing is left to close on green.
 7. When `aide claim` prints a bare `none left` again, **Queue end** runs

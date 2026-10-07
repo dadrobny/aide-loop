@@ -111,22 +111,24 @@ reconstructed afterwards.
 adapter runs the reviewer concurrently with validation, the merge still waits
 for both.
 
-**One review per item, of the diff as first built.** The reviewer is
-dispatched once, when the build first returns, concurrent with the first
-validation, and never again for the same item. Its findings are triaged at that
-validation's verdict whichever way it goes: on a FAIL, the triaging role waits
-for the review and sends every in-scope finding it is fixing in the same fix
-round as the validation failures — one round for both reads. After any fix
-round, a fresh validation runs and no second review; a fix made for a finding
-is measured by that validation like any other fix — a blocking one through
-the test traced to it (below) — and counts against the round cap the same
-way. A finding about code a fix round removed or rewrote
+**One review per run, of the diff the run first built.** A run is an item's
+work from its claim to its merge or `aide ledger abandon` — what one ledger row
+records (§1 → ledger.md) — and a reopened item, whoever reopened it, starts a
+new run. The reviewer is dispatched once per run, when the build first returns,
+concurrent with the run's first validation, and never again in that run. Its
+findings are triaged at that validation's verdict whichever way it goes: on a
+FAIL, the triaging role waits for the review and sends every in-scope finding
+it is fixing in the same fix round as the validation failures — one round for
+both reads. After any fix round, a fresh validation runs and no second review;
+a fix made for a finding is measured by that validation like any other fix — a
+blocking one through the test traced to it (below) — and counts against the
+round cap the same way. A finding about code a fix round removed or rewrote
 before it was fixed is dropped, and not counted: the code it describes no
 longer exists.
 
 **A blocking finding about behaviour is fixed together with a test traced to
 it, and every validation after a fix round checks the trace.** The validation
-is handed every blocking finding fixed on the branch so far whose code a later
+is handed every blocking finding this run has fixed so far whose code a later
 round has not removed, and fails the round where one has no bullet in the
 spec's `## Review findings`, or a bullet naming neither a test traced to it
 nor why it has none (§6) — a finding about a document or a name changes
@@ -137,8 +139,10 @@ the code now answers the finding is review's question, and the validation does
 not ask it — it reads no diff for it, exactly as it re-asks nothing else
 review owns. A minor finding fixed on the branch and a nit carry no such
 requirement, though a test added for one still traces the way §6 says. A
-finding read from the queue's CI is not a review finding here: it names the
-failing test or step that is its check, and the next CI run re-runs that.
+finding a reopening carries — its owner's reason, or one read from the queue's
+CI — is not a review finding here: the spec's own checks measure it, and a CI
+one names the failing test or step that is its check, which the next CI run
+re-runs.
 
 **Neither read signs off its own work.** The role that wrote the code performs
 neither, and the reviewer writes no code, modifies no tests, does not merge,
@@ -211,7 +215,7 @@ output in place of a verdict.
   blocking, 23 minor, 37 nits (issue #357).
 - **Why concurrent review costs nothing and still gates.** A full suite run is
   the long pole — about three to seven minutes in the recorded runs — and a
-  read of the diff fits inside it. Only the first validation has a review
+  read of the diff fits inside it. Only a run's first validation has a review
   beside it, and the first validation usually passes: at most 9 of those 52
   items took an extra round with no blocking or minor finding behind it, so a
   review is rarely read against a diff that then changes. Findings collected
@@ -228,8 +232,19 @@ output in place of a verdict.
   validation instead, as every other fix is. A finding about code that a fix
   has since removed describes nothing that will merge, so counting it would
   charge the item for code it no longer has.
+- **Why the unit is the run, not the item.** The bound #357 needed was
+  against a review per fix round inside one round cap; a reopened item runs
+  under a cap of its own, so a review per run stays bounded. A reopened run's
+  diff is new code no review has read, and whether it is substantial enough
+  to read would be a judgement, where the run boundary is mechanical and is
+  already the ledger's unit. The rule was once per item, with the one
+  exception written into the runner for a CI reopening: an owner reopen then
+  spawned a reviewer against the rule, and a CI reopening's row recorded `0`
+  findings for a review that never ran (issue #416). Reviewing no reopen at
+  all was rejected: it leaves the new diff unread, and the merge would need
+  to detect a reopen and write `-`, widening a cell that means review is off.
 - **Why a blocking finding's fix brings its own test.** With one review per
-  item, the fresh validation after a fix round is the only check on a
+  run, the fresh validation after a fix round is the only check on a
   finding's fix, and it measured that fix through the spec's tests alone —
   written before the finding existed, so a fix with no test traced to it
   passed on a suite that never exercised it (issue #417). Handing the

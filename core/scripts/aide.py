@@ -11426,7 +11426,7 @@ def _cmd_insights_resolve(path: Path, text: str, ddir_rel: str, repo_root: Path,
 
 
 # --------------------------------------------------------------------------- #
-# ledger — one row per item worked (§1 → ledger.md)
+# ledger — one row per run of an item (§1 → ledger.md)
 # --------------------------------------------------------------------------- #
 #: The row, in the order `.aide/templates/ledger.md` draws it. The template is
 #: the shape's executable statement (§1) and this tuple is what writes it, so
@@ -11761,7 +11761,7 @@ def append_ledger_row(repo_root: Path, config, cells: List[str],
             return None
         path.write_bytes(template.read_bytes())
         print(f"notice: created {rel} from .aide/templates/ledger.md — the run "
-              f"ledger, one row per item worked (conventions.md §1)")
+              f"ledger, one row per run of an item (conventions.md §1)")
     text = path.read_text(encoding=_ENCODING)
     if text and not text.endswith("\n"):
         text += "\n"
@@ -20355,7 +20355,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_ledger = sub.add_parser(
         "ledger", help="record what an item cost where no merge will, and "
-        "read the rows back (one row per item, docs/aide/ledger.md)",
+        "read the rows back (one row per run of an item, docs/aide/ledger.md)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "abandon: the row for an item that never merged \u2014 one "
@@ -20530,7 +20530,8 @@ def register_git_subcommands(sub) -> None:
             "origin is refused, exit 1, before anything is run, merged, "
             "pushed or written.\n"
             "\n"
-            "The row is one per item, in docs/aide/ledger.md \u2014 created "
+            "The row is one per run of an item, in docs/aide/ledger.md \u2014 "
+            "created "
             "from .aide/templates/ledger.md the first time there is a row to "
             "write, and committed together with the \u2705 so the two can "
             "never disagree. Every cell is derived here: the item, its queue, "
