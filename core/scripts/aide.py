@@ -8574,6 +8574,27 @@ def patterns_overlap(a: str, b: str) -> bool:
     return pattern_covers(a, b) or pattern_covers(b, a)
 
 
+def _retires_a_pin(changer: "AuthorisedPaths", pinner: "AuthorisedPaths",
+                   pinner_number: int) -> bool:
+    """True when *changer* lists, under May change, a test file *pinner* owns.
+
+    "Owns" is read twice, and both readings must hold: the entry is named for
+    the pinner by §6's `test_NNN_<topic>.py` convention (`owning_item`, the
+    reader `aide scope` uses to attribute a test file to its item), and it
+    overlaps something the pinner itself lists under May change — the file
+    the pinner writes. The name is what restricts this to TESTS: §1 → items
+    prescribes the later item listing the earlier item's *test file*, and an
+    overlap with any other May change entry of the pinner is a second writer
+    on a source file, which retires no pin (`may-change-overlap` already
+    reports it). A broad glob such as `tests/**` on the changer's side names no
+    owner, so it declares nothing about whose test it retires and earns
+    nothing here.
+    """
+    return any(owning_item(pa) == pinner_number
+               and any(patterns_overlap(pa, pb) for pb in pinner.may_change)
+               for pa in changer.may_change)
+
+
 def _built_after(graph: Dict[int, List[int]]) -> Dict[int, Set[int]]:
     """For each item, every item it is built *after* — its declared
     dependencies and theirs, transitively.
@@ -8769,6 +8790,23 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
                 # declared dependency keeps the error: an undeclared ordering
                 # is exactly what this check exists to find.
                 continue
+            if (b in built_after.get(a, ())
+                    and _retires_a_pin(declared[a], declared[b], b)):
+                # The other direction, and the shape §1 → items prescribes for
+                # a premise about a sibling's schedule (issue #445): the PINNER
+                # b is the earlier item, the changer a depends on it, and a's
+                # spec lists one of b's own test files under May change from
+                # the start — the pin is retired by the very item whose edit
+                # breaks it, and the spec says so. Silent rather than demoted
+                # to a warning: a check that complains about a shape the
+                # contract prescribes teaches the reader to skim the one that
+                # is real, and before this exemption the error stood with none
+                # of its remedies available until b merged. The dependency
+                # alone is not enough — a changer built after the pinner that
+                # lists none of its tests still breaks the pin undeclared
+                # (`test_the_dependency_exemption_is_directional`), so that
+                # pair keeps the error.
+                continue
             for pa in declared[a].may_change:
                 for pb in declared[b].asserts_against:
                     if patterns_overlap(pa, pb):
@@ -8781,7 +8819,12 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
                             f"or — if item {b:03d} is meant to be built after item "
                             f"{a:03d} and to pin what it produced — say so under "
                             f"item {b:03d}'s '## Dependencies', which both orders "
-                            f"the queue and retires this finding"))
+                            f"the queue and retires this finding; or — if item "
+                            f"{a:03d} is meant to be built after item {b:03d} and "
+                            f"to retire its pin — name item {b:03d} under item "
+                            f"{a:03d}'s '## Dependencies' and list item {b:03d}'s "
+                            f"test file (test_{b:03d}_…) under item {a:03d}'s May "
+                            f"change (conventions.md §1 → items)"))
 
     # Row 5 — the dependency graph. A cycle deadlocks `aide claim`: every item
     # in it is blocked by another in it, so the queue silently stops producing

@@ -136,6 +136,24 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.42.1] — 2026-10-07
+
+### Fixed
+
+- **`aide check --queue` no longer errors on the shape §1 → items prescribes
+  for a premise about a sibling's schedule (issue #445).** Where an earlier
+  item pins an artifact a later one changes, the later item lists the earlier
+  item's test file under **May change** from the start — and the
+  `changes-pinned-state` error fired on exactly that pair, because its
+  dependency exemption covered only a pinning item built *after* the
+  changing one. A pair is now also exempt when the changing item depends on
+  the pinning one and lists, under May change, a test file the pinning item
+  owns: named `test_NNN_…` for it and overlapping its own May change. The
+  dependency alone still keeps the error, and so does sharing a non-test
+  path. The error message names this fourth remedy, and §1 →
+  authorised-paths says the reverse ordering is discounted when the pin is
+  retired. Nothing for a consumer to edit.
+
 ## [2.42.0] — 2026-10-07
 
 ### Changed
