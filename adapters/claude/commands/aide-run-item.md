@@ -86,9 +86,9 @@ with three differences:
   it asks for no traced test and no `## Review findings` bullet, and adds
   nothing to step 5's blocking-findings paragraph. The spec's own checks
   measure it, and for a CI one, the failing test or step it names is its
-  check and the next CI run re-runs that (§9). A reason that asks for
-  behaviour the spec does not specify is new work, not a reopening: stop and
-  ask the user.
+  check and the next CI run re-runs that (§9). A reason that names nothing
+  to change — a check that was never run, say — or asks for behaviour the
+  spec does not specify is not a build: stop and ask the user.
 
 Steps 4–6 run as for any item: a reopened item is a new run (§9), so under
 `"background"` its `reviewer` reads the diff this run builds, beside its first

@@ -86,14 +86,14 @@ the reader's.
 
 #### Rationale
 
-- **Why a row per item and not an event per verdict.** A validator FAIL, a
+- **Why a row per run and not an event per verdict.** A validator FAIL, a
   re-dispatched builder and a triaged finding are all facts, and recording
   each as its own row was considered and dropped (2026-09-17): an item with
   two rounds and three findings becomes six rows, so the file grows per retry
   rather than per item and the reading a queue boundary wants — rounds per
   item, tests per criterion — has to be re-aggregated before it can be read.
-  One row per item is also the one shape a verb that already runs once per
-  item can write without any new bookkeeping.
+  One row per run is also the one shape a verb that already runs once per
+  run can write without any new bookkeeping.
 - **Why a reopened item takes a second row.** The first row records a merge
   that happened, with what it cost, and a row is never edited; the reopen
   exists because that merge was not the end of the item (issue #271), so the
