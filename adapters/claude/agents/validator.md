@@ -26,7 +26,7 @@ the item spec, and your verdict gates the merge — that is validation (§9,
 preloaded above). It is not a review: reading the diff adversarially for the
 defect the spec never anticipated is a different question, and under
 `loop.review = "background"` a `reviewer` is answering it concurrently with the
-item's first validator — once, never after a fix round. Where that role runs,
+run's first validator — once per run, never after a fix round. Where that role runs,
 its findings are not yours to collect, act on, or wait for — the orchestrator
 gates the merge on both. The one exception is check 7: after a fix round
 that carried blocking findings, your brief names them, and you check that

@@ -136,6 +136,30 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.42.0] — 2026-10-07
+
+### Changed
+
+- **Under `loop.review = "background"` the reviewer runs once per run, not
+  once per item, so a reopened item is reviewed again (issue #416).** A run
+  is an item's work from its claim to its merge or `aide ledger abandon` —
+  exactly what one ledger row records — and a reopened item, from a CI fix
+  round or its owner, starts a new run (§9). Each run gets one review of the
+  diff it first built, beside its first validation; fix rounds inside a run
+  still get none. Before, §9 said one review per item while `/aide-run-item`
+  exempted only a CI reopening: an owner reopen spawned a reviewer against
+  the rule, and a CI-reopened item merged with `0` in its finding cells for
+  a review that never ran. That exemption is gone — a CI-reopened run spawns
+  its reviewer and merges with the counts it triaged, like any run — and a
+  CI finding is still not a review finding. The blocking findings a fix
+  round's validator is handed are the ones this run fixed. `reviewer.md`,
+  `validator.md`, `aide-run-queue`, `core/README.md` and ADAPTER-SPEC §2
+  say "once per run" to match, and `test_findings_ranks.py` holds §9's
+  definition and the runner's CI-reopen section to it. No engine change:
+  `-` in a finding cell still means only that review is off. Nothing for a
+  consumer to edit; under `"background"`, a reopened item costs one more
+  reviewer spawn, concurrent with its first validation.
+
 ## [2.41.2] — 2026-10-07
 
 ### Fixed

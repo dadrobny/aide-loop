@@ -68,7 +68,7 @@ entirely — a runtime that does not express one simply has no cell here:
 
 | Optional definition | Tier | Claude | Does |
 |---|---|---|---|
-| reviewer | **T2** | `claude-sonnet-5-5, high` | reads one item's diff adversarially, once, concurrent with the first validation; produces findings, merges nothing |
+| reviewer | **T2** | `claude-sonnet-5-5, high` | reads one item's diff adversarially, once per run, concurrent with that run's first validation; produces findings, merges nothing |
 | spec-reviewer | **T3** | `claude-opus-5-5, high` | reads all of a queue's specs for the cross-item conflicts `aide check --queue` cannot decide |
 | insights-triager | **T2** | `claude-sonnet-5-5, high` | reads the open insight inbox and judges each entry's route, duplicate, decayed premise or wrong type; returns a plan, writes nothing |
 
@@ -118,8 +118,8 @@ two (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`), so a helper cannot spawn one of
 its own. The user's own session is untouched by all three.
 
 **Optional definition — the item reviewer.** An adapter **may** express a
-**reviewer** at **T2**, dispatched once over one item's diff concurrently
-with the first `validator` and gated by a `loop.review` key in `aide.toml`
+**reviewer** at **T2**, dispatched once per run of an item over its diff, concurrently
+with that run's first `validator` and gated by a `loop.review` key in `aide.toml`
 (`"off"` by default). The two are different reads and neither covers for the
 other (`conventions.md` §9): the validator is spec-relative and gates the merge, the
 reviewer is adversarial and produces findings. Where an adapter expresses it,
@@ -127,7 +127,7 @@ reviewer is adversarial and produces findings. Where an adapter expresses it,
 nothing — and the role writes no code, modifies no tests, does not merge and
 does not touch `progress.md`; its findings triage in scope (a fix dispatched
 back) or out of scope (one `insights.md` line). Its findings are triaged at
-the first validation's verdict, a FAIL included, and ride that round's fix;
+the run's first validation's verdict, a FAIL included, and ride that round's fix;
 no fix round is reviewed again (§9) — the validation after it checks
 instead that each blocking finding it fixed left a traced test or a stated
 reason for none, without judging the fix. The engine's default is off, so an

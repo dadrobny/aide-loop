@@ -81,8 +81,9 @@ spawns a sub-agent per leaf task and gates approvals.
   test-writer → builder → validator+merge, with a bounded build↔validate cycle
   (`loop.validation_rounds`) in which the builder steps up a tier when a failure
   survives a round or is serious from the first FAIL. Under
-  `loop.review = "background"` a reviewer runs once, concurrently with the
-  first validation, and the merge waits for both; its findings join the first
+  `loop.review = "background"` a reviewer runs once per run (claim to merge;
+  a reopen starts a new one), concurrently with that run's first
+  validation, and the merge waits for both; its findings join the first
   fix round, and every round after is checked by a fresh validator alone,
   which finds a test traced to each blocking finding fixed, or a stated
   reason there is none (§9). A
@@ -257,7 +258,7 @@ tier to its own runtime's models (as high as necessary, as low as adequate). Det
 | `test-writer` | **T2** | writes one test per acceptance criterion, plus the cases the spec names |
 | `builder` | **T2** | implements the source dir to satisfy every AC; re-dispatched on T3 when a failure survives a round or is serious |
 | `validator` | **T2** | quality gate: tests, AC coverage, scope, vision fit; reconciles + merges |
-| `reviewer` | **T2** | *optional, `loop.review`* — adversarial read of the item's diff as first built, concurrent with the first validation; produces findings, merges nothing |
+| `reviewer` | **T2** | *optional, `loop.review`* — adversarial read of the item's diff as each run first built it, concurrent with that run's first validation; produces findings, merges nothing |
 | `spec-reviewer` | **T3** | *optional* — reads all of a queue's specs at once, before any is built, for the cross-item conflicts `aide check --queue` cannot decide; findings go to the human |
 | `insights-triager` | **T2** | *optional* — judges every open inbox entry's route, duplicate, decayed premise or wrong type; returns a plan, writes nothing |
 

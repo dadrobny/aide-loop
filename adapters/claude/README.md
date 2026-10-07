@@ -93,7 +93,7 @@ Recon/claim is **not** an agent — it is deterministic `aide claim`, so no `age
 file and no tier. No role signs off its own work; each item gets a fresh instance.
 
 Three further agents sit **outside** the five item roles — `reviewer`,
-dispatched once over one item's diff alongside its first `validator` under
+dispatched once per run over one item's diff alongside that run's first `validator` under
 `loop.review`; `spec-reviewer`, at the queue boundary: once per queue, after
 `/aide-spec-queue` authors every spec and **before any is built**; and
 `insights-triager`, below.
