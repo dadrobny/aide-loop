@@ -8823,8 +8823,9 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
                             f"{a:03d} is meant to be built after item {b:03d} and "
                             f"to retire its pin — name item {b:03d} under item "
                             f"{a:03d}'s '## Dependencies' and list item {b:03d}'s "
-                            f"test file (test_{b:03d}_…) under item {a:03d}'s May "
-                            f"change (conventions.md §1 → items)"))
+                            f"test file (test_{b:03d}_…, one item {b:03d}'s own May "
+                            f"change lists) under item {a:03d}'s May change "
+                            f"(conventions.md §1 → items)"))
 
     # Row 5 — the dependency graph. A cycle deadlocks `aide claim`: every item
     # in it is blocked by another in it, so the queue silently stops producing
