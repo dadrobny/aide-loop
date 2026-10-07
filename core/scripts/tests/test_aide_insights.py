@@ -1782,6 +1782,26 @@ def test_a_zero_padded_number_is_not_an_insight_position(tmp_path: Path):
     assert [w.split(":")[1] for w in warnings] == ["2"]
 
 
+def test_a_template_marker_is_not_an_insight_position(tmp_path: Path):
+    """``aide-template: insights 2`` is the inbox template's version, so a
+    spec or a test quoting the marker cites nothing (issue #439)."""
+    repo = _repo(tmp_path)
+    _cite(repo, "docs/aide/items/007-x.md",
+          "The inbox opens `<!-- aide-template: insights 2 -->`.\n"
+          "<!-- AIDE-TEMPLATE:insights 2 --> and insight 2 on one line.\n")
+    _cite(repo, "tests/test_x.py",
+          'assert "<!-- aide-template: insights 2 -->" in text\n')
+    _, warnings = _findings(repo)
+    assert [w.split(":")[:2] for w in warnings] == [["docs/aide/items/007-x.md", "2"]]
+    assert "insight 2" in warnings[0]
+
+
+def test_the_archive_listing_skips_a_template_marker_too():
+    """One detector serves `check` and `insights archive` (issue #439)."""
+    line = "<!-- aide-template: insights 2 --> fixes insight 3"
+    assert [m.group("n") for m in aide._positional_citations(line, lambda: 10)] == ["3"]
+
+
 # --------------------------------------------------------------------------- #
 # insights archive — the citations it renumbers, listed before it moves
 # (issue #295)
