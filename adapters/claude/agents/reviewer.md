@@ -5,8 +5,8 @@ description: >-
   the background alongside that run's first validator, over the same branch,
   once builder and test-writer have committed. Reads the diff for defects the
   spec never anticipated, and against the repo's own review contract when it
-  has one. Produces findings — writes no code, modifies no tests, does not merge, does not touch
-  progress.md.
+  has one. Produces findings — writes no code, modifies no tests, does not
+  merge, does not touch progress.md.
 model: claude-sonnet-5-5
 effort: high
 disallowedTools: Agent

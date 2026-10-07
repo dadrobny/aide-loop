@@ -89,7 +89,7 @@ Steps 4–6 run as for any item: a reopened item is a new run (§9), so under
 validator, and its findings are triaged and counted like any run's. Its
 rounds count against this run's own `loop.validation_rounds`, apart from the
 CI round the queue counts. An item its owner reopened, with any other
-reason, has none of these differences: it is a new run through every step.
+reason, runs as any item does, as a new run (§9).
 
 ## An item awaiting its evidence gate
 
