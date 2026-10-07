@@ -4174,6 +4174,9 @@ _INSIGHT_POSITION_RE = re.compile(
 _ENTRY_POSITION_RE = re.compile(
     r"(?i:\b(?:entry|entries))\s+#?(?P<n>[1-9]\d{0,3})(?![\w-]|\.\d)")
 _INSIGHT_CONTEXT_RE = re.compile(r"(?i)\b(?:insights?|inbox)")
+#: What precedes a template marker's name: ``<!-- aide-template: insights 2
+#: -->`` names the inbox template's version, never an entry (issue #439).
+_TEMPLATE_MARKER_LEAD_RE = re.compile(r"(?i)aide-template:\s*$")
 
 
 def _citation_files(repo_root: Path, config: Dict[str, Dict[str, object]],
@@ -4201,7 +4204,8 @@ def _positional_citations(line: str, pool_size: Callable[[], int]) -> List["re.M
 
     ``insight 28``, ``insights.md entry 28`` and ``inbox entry #28`` anywhere;
     a bare ``entry 28`` only on a line that also says *insight* or *inbox*,
-    since a ledger row or a table entry is an "entry" too. *pool_size* is
+    since a ledger row or a table entry is an "entry" too — and never the
+    name and version of an ``aide-template:`` marker. *pool_size* is
     called only when a match looks like a year: "insights 2026" is a year, not
     entry 2026, so a bare number that reads as one counts only after "entry"
     or "#", or when the inbox and its archives really hold that many entries.
@@ -4216,6 +4220,8 @@ def _positional_citations(line: str, pool_size: Callable[[], int]) -> List["re.M
                       if m.span("n") not in covered]
     out = []
     for m in positions:
+        if _TEMPLATE_MARKER_LEAD_RE.search(line, 0, m.start()):
+            continue
         n = int(m.group("n"))
         if (1900 <= n <= 2099 and not re.search(r"(?i)entr|#", m.group(0))
                 and n > pool_size()):

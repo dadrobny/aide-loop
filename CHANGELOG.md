@@ -136,6 +136,21 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.41.2] — 2026-10-07
+
+### Fixed
+
+- **`aide check` no longer reads a template marker as an insight cited by
+  position (issue #439).** The positional-citation detector matched
+  `<!-- aide-template: insights 2 -->` as `insights 2`, so a spec, queue
+  file or test that quoted or asserted against the inbox template's marker
+  drew a "cites an insight by position" warning. The inbox itself was
+  never swept. A match that directly follows `aide-template:` is now
+  skipped, since the template version is never an entry position. The same
+  detector backs `aide insights archive`'s list of citations it is about
+  to renumber, so that list skips the marker too. Nothing for a consumer
+  to edit.
+
 ## [2.41.1] — 2026-10-06
 
 ### Fixed
