@@ -139,8 +139,10 @@ the code now answers the finding is review's question, and the validation does
 not ask it — it reads no diff for it, exactly as it re-asks nothing else
 review owns. A minor finding fixed on the branch and a nit carry no such
 requirement, though a test added for one still traces the way §6 says. A
-finding read from the queue's CI is not a review finding here: it names the
-failing test or step that is its check, and the next CI run re-runs that.
+finding a reopening carries — its owner's reason, or one read from the queue's
+CI — is not a review finding here: the spec's own checks measure it, and a CI
+one names the failing test or step that is its check, which the next CI run
+re-runs.
 
 **Neither read signs off its own work.** The role that wrote the code performs
 neither, and the reviewer writes no code, modifies no tests, does not merge,

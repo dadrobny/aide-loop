@@ -269,8 +269,8 @@ the item's own spec.
    findings on one item go in one reason, separated by `; `.
 6. **Fix.** Go back to **Loop**. `aide claim --queue NNN` offers each
    reopened item as it offers any 📋 one, and `/aide-run-item K` runs it
-   with the findings in its builder's brief (that command, *An item a CI fix
-   round reopened*). Pass them on from your triage; in a fresh session they
+   with the findings in its builder's brief (that command, *A reopened
+   item*). Pass them on from your triage; in a fresh session they
    are the item's `reopened:` reason in `aide status`. Its merge ticks the
    `gap` the reopening captured; nothing is left to close on green.
 7. When `aide claim` prints a bare `none left` again, **Queue end** runs

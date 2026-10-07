@@ -151,14 +151,14 @@ def test_a_reopened_item_is_a_new_run_with_its_own_review():
     CI reopening, so an owner reopen spawned a reviewer against the rule and a
     CI reopening merged with `0` findings for a review that never ran. The
     unit is the run — claim to merge, one ledger row — so §9 has to define it,
-    and the CI-reopen section must neither skip the reviewer nor zero the
+    and the reopened-item section must neither skip the reviewer nor zero the
     counts."""
     core = " ".join(
         _SECTION.read_text(encoding="utf-8").split("### Rationale")[0].split())
     assert "one review per run" in core.lower(), core[:400]
     assert "starts a new run" in core, core[:400]
     text = _RUN_ITEM.read_text(encoding="utf-8")
-    start = text.index("## An item a CI fix round reopened")
+    start = text.index("## A reopened item")
     section = " ".join(text[start:text.index("\n## ", start + 1)].split())
     assert "No `reviewer` is spawned" not in section, section
     assert "count 0" not in section, section

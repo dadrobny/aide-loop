@@ -9,14 +9,14 @@ project's own ratios and their trend. **The rows are read back through
 `aide ledger report`**, which draws no conclusion: what the readings mean is
 the reader's.
 
-- **One row per item, appended where the ✅ is.** `aide merge` adds the row in
-  the commit that ticks the item, so a row exists exactly for an item the
-  engine landed; an item stopped at the validation-round cap never reaches a
-  merge and takes its row from `aide ledger abandon` instead. One item, one
-  row, whatever it took to get there — a re-dispatched builder, a second
-  validator and a third round all land in the same row. An item `aide progress
-  reopen` sends back is worked again, and its next merge appends a second
-  row. *(aide merge, ledger abandon)*
+- **One row per run of an item, appended where the ✅ is.** `aide merge` adds
+  the row in the commit that ticks the item, so a row exists exactly for an
+  item the engine landed; an item stopped at the validation-round cap never
+  reaches a merge and takes its row from `aide ledger abandon` instead. One
+  run, one row, whatever it took to get there — a re-dispatched builder, a
+  second validator and a third round all land in the same row. An item `aide
+  progress reopen` sends back starts a new run (§9), and its next merge
+  appends a second row. *(aide merge, ledger abandon)*
 - **The engine puts the file there, from `.aide/templates/ledger.md`.** The
   first row to be written creates the document as a byte-exact copy of that
   template; an existing file is only ever appended to, and `aide check` never

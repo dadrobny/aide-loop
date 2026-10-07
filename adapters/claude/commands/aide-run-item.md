@@ -58,12 +58,16 @@ allow-list-friendly shape delivered by `.claude/rules/aide-command-hygiene.md`
 and stated canonically in `.aide/conventions.md` §3. A `PreToolUse` hook
 (`.claude/hooks/command_hygiene_guard.py`) enforces the mechanical ones.
 
-## An item a CI fix round reopened
+## A reopened item
 
-`/aide-run-queue` → *CI fix round* reopens an item whose change broke the
-queue PR's CI, and claims it like any other. You can tell one: `aide status`
-prints `reopened: item NNN (…) — CI …` for it, not completed again. Its spec
-and tests are already merged, so the steps run with three differences:
+`aide progress reopen` sends a ✅ item back to 📋 with a reason, and the queue
+offers it like any other; `aide status` prints `reopened: item NNN (…) — <the
+reason>` for it. Its owner reopens one when a gap turns up after the merge;
+`/aide-run-queue` → *CI fix round* reopens one whose change broke the queue
+PR's CI, with a reason starting `CI `. Either way its spec and tests are
+already merged, and its **findings** are what the reopening found: the
+owner's reason, or the CI failures the orchestrator triaged. So the steps run
+with three differences:
 
 - **Step 1** (`spec-author`) returns the existing spec, as for any item
   whose spec exists.
@@ -73,23 +77,24 @@ and tests are already merged, so the steps run with three differences:
   any finding in production code.
 - **Step 3's brief — the `builder`'s — carries the findings**, as a
   blocking review finding is carried in step 6. Add to it:
-  > CI findings from the queue's PR, traced to this item: <each: the check,
-  > the failing test or step, the log lines that show it>. Fix them within
-  > the spec's authorised paths.
+  > This item was reopened, and these findings are why: <each: what was
+  > found, and for a CI one the check, the failing test or step and the log
+  > lines that show it>. Fix them within the spec's authorised paths.
 
   They come from the orchestrator's triage, or, in a fresh session, from the
-  item's `reopened:` reason. Carried like one, a CI finding is still not a
-  review finding: it asks for no traced test and no `## Review findings`
-  bullet, and adds nothing to step 5's blocking-findings paragraph — the
-  failing test or step a CI finding names is its check, and the next CI run
-  re-runs that (§9).
+  item's `reopened:` reason. A reopening's finding is not a review finding:
+  it asks for no traced test and no `## Review findings` bullet, and adds
+  nothing to step 5's blocking-findings paragraph. The spec's own checks
+  measure it, and for a CI one, the failing test or step it names is its
+  check and the next CI run re-runs that (§9). A reason that asks for
+  behaviour the spec does not specify is new work, not a reopening: stop and
+  ask the user.
 
 Steps 4–6 run as for any item: a reopened item is a new run (§9), so under
 `"background"` its `reviewer` reads the diff this run builds, beside its first
 validator, and its findings are triaged and counted like any run's. Its
 rounds count against this run's own `loop.validation_rounds`, apart from the
-CI round the queue counts. An item its owner reopened, with any other
-reason, runs as any item does, as a new run (§9).
+CI round the queue counts for a CI reopening.
 
 ## An item awaiting its evidence gate
 
