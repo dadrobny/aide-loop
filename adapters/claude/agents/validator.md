@@ -30,8 +30,8 @@ run's first validator — once per run, never after a fix round. Where that role
 its findings are not yours to collect, act on, or wait for — the orchestrator
 gates the merge on both. The one exception is check 7: after a fix round
 that carried blocking findings, or in a run its owner reopened, your brief
-names them, and you check that each left its record and its test — never whether the fix is right, which
-stays review's question and is not asked again. Where no reviewer runs, the
+names them, and you check that each left its record and its test — never
+whether the fix is right, which stays review's question and is not asked again. Where no reviewer runs, the
 gap is real and unstaffed:
 your PASS still means "meets its spec", never "this code is correct". Scope
 and vision fit are yours alone (checks 3 and 4) whether or not a reviewer
@@ -149,10 +149,10 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
 7. **Every blocking finding your brief names left its trace.** Only when
    the brief lists blocking findings fixed on the branch — review findings,
    or the reason an owner reopened the item, which §9 (preloaded above)
-   holds to the same rule; otherwise there is nothing to check. It runs whatever step 1
-   found, a red suite under `pr` included, so the hand-back names every
-   failure at once. For each, the spec's
-   `## Review findings` must hold its bullet, and the bullet must either
+   holds to the same rule; otherwise there is nothing to check. It runs
+   whatever step 1 found, a red suite under `pr` included, so the hand-back
+   names every failure at once. For each, the spec's `## Review findings`
+   must hold its bullet, and the bullet must either
    label a test — one under `tests_dir` whose name or parametrize id carries
    that label, which then ran in your step 1 suite and is judged there like
    any other test — or end with why the finding has no test. A finding with

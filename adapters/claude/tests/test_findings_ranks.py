@@ -171,8 +171,9 @@ def test_an_owner_reopen_reason_leaves_a_traced_test_or_says_why_not():
     the gap was there — so a behaviour fix could merge with no test exercising
     it. The rule #417 gave a blocking review finding now holds the owner's
     reason too, while a CI one keeps its failing test as its check. Each copy
-    has to say its half: §9 the rule, the runner the dispatch and the brief,
-    the validator that check 7 reads it."""
+    has to say its half: §9 the rule and §6 the record, the runner the
+    dispatch and the brief, the validator that check 7 reads it. The role
+    specs' one-clause mentions are not held here."""
     core = " ".join(
         _SECTION.read_text(encoding="utf-8").split("### Rationale")[0].split())
     assert "the spec's own checks measure it" not in core, core
@@ -189,7 +190,8 @@ def test_an_owner_reopen_reason_leaves_a_traced_test_or_says_why_not():
     owner = _bullet(text, "- **An owner's reason leaves a test traced to it")
     assert "test-writer" in owner and "follows the builder" in owner, owner
     assert "do not re-rank" in owner, owner
-    assert "no test" in owner and "review findings bullet" in owner, owner
+    assert "ending with why there is no test" in owner, owner
+    assert "review findings bullet" in owner, owner
     assert "no --findings total counts it" in owner, owner
     step2 = _bullet(text, "- **Step 2** (`test-writer`) **is skipped**")
     assert "owner's reason about behaviour" in step2, step2
@@ -201,7 +203,14 @@ def test_an_owner_reopen_reason_leaves_a_traced_test_or_says_why_not():
     validator = " ".join(
         (_ADAPTER / "agents" / "validator.md").read_text(encoding="utf-8").split())
     check7 = validator[validator.index("7. **Every blocking"):]
-    assert "owner reopened the item" in check7[:400], check7[:400]
+    check7 = check7[:check7.index("## Hard limits")]
+    assert "owner reopened the item" in check7, check7
+    assert "or in a run its owner reopened" in validator, validator
+
+    hygiene = " ".join(
+        (_REPO / "core" / "conventions" / "6-test-hygiene.md")
+        .read_text(encoding="utf-8").split("### Rationale")[0].split())
+    assert "owner's reopen reason" in hygiene, hygiene
 
 
 def test_an_unauthorised_path_is_the_validators_check_not_a_review_finding():

@@ -51,8 +51,8 @@ the reader's.
   review ran.** A finding outside the running item is carried by its
   `insights.md` line rather than by this row (§9), so it is never counted
   here, and nor is a finding a reopening carries, which is no review
-  finding even where it is held to the traced-test rule (§9). And where the writing verb runs under `loop.review = "off"` and the
-  caller passed no counts, it writes `-` in the Blocking, Minor and Nit cells
+  finding even where it is held to the traced-test rule (§9). And where
+  the writing verb runs under `loop.review = "off"` and the caller passed no counts, it writes `-` in the Blocking, Minor and Nit cells
   instead of leaving them empty — the engine reads that setting from
   `aide.toml`, so no caller supplies it — which leaves a blank in those three
   meaning one thing only: a count that should have been passed and was not.
