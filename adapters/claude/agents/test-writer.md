@@ -61,7 +61,9 @@ fixture conventions only.
    `aide-test-hygiene` in your context says what the bullet holds. For a
    **blocking** finding about behaviour the test is owed, not optional: the
    next validator looks for a test carrying that label (§9). One about no
-   behaviour gets the bullet alone, ending with why it has no test.
+   behaviour gets the bullet alone, ending with why it has no test. The
+   reason an owner reopened the item, when you are sent it, is such a
+   blocking finding (§9): its bullet's finding quotes that reason.
 5. **Reconcile the stale tests the spec lists.** When the Testing Strategy
    names "existing tests to reconcile", update those assertions to the NEW
    specified behaviour in this same pass — leaving them fails validation on a

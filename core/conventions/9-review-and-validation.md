@@ -140,9 +140,13 @@ not ask it — it reads no diff for it, exactly as it re-asks nothing else
 review owns. A minor finding fixed on the branch and a nit carry no such
 requirement, though a test added for one still traces the way §6 says. A
 finding a reopening carries — its owner's reason, or one read from the queue's
-CI — is not a review finding here: the spec's own checks measure it, and a CI
-one names the failing test or step that is its check, which the next CI run
-re-runs.
+CI — is not a review finding, and no ledger count includes it. A CI one names
+the failing test or step that is its check, which the next CI run re-runs. An
+owner's reason has no such check, since the spec's checks passed while the gap
+was there, so it is held to this rule as a blocking finding: the reopening
+ranked it, and no role re-ranks it. Its fix leaves a test traced to it, or a
+bullet saying why it has none, and every validation in that run, the first
+included, is handed it and checks the trace.
 
 **Neither read signs off its own work.** The role that wrote the code performs
 neither, and the reviewer writes no code, modifies no tests, does not merge,
@@ -257,6 +261,20 @@ output in place of a verdict.
   instead of the branch, and a nit changes no behaviour by definition. CI
   findings stay out because each already names its check, and the round
   that fixes them ends with CI running it again.
+- **Why an owner's reopen reason is held to the same rule.** An owner
+  reopens an item because the spec's checks passed while something was
+  missing, so the old wording — the spec's own checks measure it — left a
+  behaviour fix able to merge with no test exercising it, measured again
+  only by the tests that had already missed the gap (issue #446). That is
+  the hole #417 closed for a blocking review finding, so the remedy is the
+  same one and reuses its record: a bullet in `## Review findings`, which
+  validation and `aide scope` already read. A heading of its own was
+  rejected as a second reader for one artifact. Every such reason is
+  blocking because the owner's reopen is its triage; letting the
+  orchestrator re-rank it would let a minor rank send the owner's gap to
+  the inbox it came out of. It stays out of the ledger's finding counts,
+  which measure what review found: counting a reopening there would read
+  as review yield for a read that never ran on it.
 - **Why every round runs the whole suite.** A round after the first could run
   only the tests that failed and the ones its fix touched, but the merge takes
   a recorded run only when it covered the whole tree, so a narrowed round

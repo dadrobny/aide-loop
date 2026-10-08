@@ -165,6 +165,54 @@ def test_a_reopened_item_is_a_new_run_with_its_own_review():
     assert "a reopened item is a new run" in section, section
 
 
+def test_an_owner_reopen_reason_leaves_a_traced_test_or_says_why_not():
+    """Issue #446: §9 said a reopening's finding is measured by the spec's own
+    checks, but an owner reopens precisely because those checks passed while
+    the gap was there — so a behaviour fix could merge with no test exercising
+    it. The rule #417 gave a blocking review finding now holds the owner's
+    reason too, while a CI one keeps its failing test as its check. Each copy
+    has to say its half: §9 the rule and §6 the record, the runner the
+    dispatch and the brief, the validator that check 7 reads it. The role
+    specs' one-clause mentions are not held here."""
+    core = " ".join(
+        _SECTION.read_text(encoding="utf-8").split("### Rationale")[0].split())
+    assert "the spec's own checks measure it" not in core, core
+    assert "held to this rule as a blocking finding" in core, core
+    assert "no role re-ranks it" in core, core
+    assert "no ledger count includes it" in core, core
+    assert "which the next CI run re-runs" in core, core
+    assert "the first included" in core, core
+
+    text = _RUN_ITEM.read_text(encoding="utf-8")
+    start = text.index("## A reopened item")
+    section = " ".join(text[start:text.index("\n## ", start + 1)].split())
+    assert "asks for no traced test" not in section, section
+    owner = _bullet(text, "- **An owner's reason leaves a test traced to it")
+    assert "test-writer" in owner and "follows the builder" in owner, owner
+    assert "do not re-rank" in owner, owner
+    assert "ending with why there is no test" in owner, owner
+    assert "review findings bullet" in owner, owner
+    assert "no --findings total counts it" in owner, owner
+    step2 = _bullet(text, "- **Step 2** (`test-writer`) **is skipped**")
+    assert "owner's reason about behaviour" in step2, step2
+
+    brief = text[text.index("**When a fix round in this run has carried"):]
+    brief = " ".join(brief[:brief.index("\n6. ")].split())
+    assert "owner's reopen" in brief and "first dispatch" in brief, brief
+
+    validator = " ".join(
+        (_ADAPTER / "agents" / "validator.md").read_text(encoding="utf-8").split())
+    check7 = validator[validator.index("7. **Every blocking"):]
+    check7 = check7[:check7.index("## Hard limits")]
+    assert "owner reopened the item" in check7, check7
+    assert "or in a run its owner reopened" in validator, validator
+
+    hygiene = " ".join(
+        (_REPO / "core" / "conventions" / "6-test-hygiene.md")
+        .read_text(encoding="utf-8").split("### Rationale")[0].split())
+    assert "owner's reopen reason" in hygiene, hygiene
+
+
 def test_an_unauthorised_path_is_the_validators_check_not_a_review_finding():
     """Issue #357: both reads reported an overstep — the validator as an
     `aide scope` FAIL, the reviewer as a blocking finding — so one defect cost
@@ -188,8 +236,12 @@ def test_the_counts_passed_to_the_merge_are_in_scope_findings_only():
     counts that include findings the item never paid for."""
     text = _RUN_ITEM.read_text(encoding="utf-8").lower()
     call = text.index("--findings blocking=")
-    tail = text[call:call + 1200]
-    assert "in-scope findings only" in tail, tail[:400]
+    tail = text[call:call + 1600]
+    flat = " ".join(tail.split())
+    assert "in-scope review findings only" in flat, flat[:400]
+    # Issue #446: an owner's reopen reason is held to the traced-test rule as
+    # a blocking finding, but it is no review finding and no cell counts it.
+    assert "no review finding" in flat, flat[:400]
 
 
 def test_the_unreviewed_row_is_described_as_marked_and_not_as_blank():

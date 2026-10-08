@@ -136,6 +136,29 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.43.0] — 2026-10-08
+
+### Changed
+
+- **An owner's reopen reason now leaves a test traced to it, or says why it
+  has none, as a blocking review finding does (issue #446).** §9 said a
+  finding a reopening carries is measured by the spec's own checks — true
+  for a CI one, which names the failing test or step the next CI run
+  re-runs, but an owner reopens precisely because those checks passed while
+  the gap was there, so a behaviour fix could merge with no test exercising
+  it. The owner's reason is now held to the #417 rule as a blocking finding
+  the reopening has already ranked: its fix brings a test traced to it in
+  the spec's `## Review findings`, or a bullet there ending with why it has
+  none, and every validation in the run — the first included — checks that
+  record (`validator` check 7). `/aide-run-item` → *A reopened item*
+  dispatches a `test-writer` after the builder for a reason about
+  behaviour, and names the reason in step 5's blocking-findings brief from
+  the first validator on. It is still no review finding: the ledger's
+  `--findings` counts stay review findings only (§1 → ledger.md). §6, the
+  `test-writer`, `builder` and `builder-escalation` specs and the item
+  template's guidance say where the bullet goes; a CI reopening is
+  unchanged. Nothing for a consumer to edit.
+
 ## [2.42.1] — 2026-10-07
 
 ### Fixed

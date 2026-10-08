@@ -67,14 +67,15 @@ reason>` for it. Its owner reopens one when a gap turns up after the merge;
 PR's CI, with a reason starting `CI `. Either way its spec and tests are
 already merged, and its **findings** are what the reopening found: the
 owner's reason, or the CI failures the orchestrator triaged. So the steps run
-with three differences:
+with four differences:
 
 - **Step 1** (`spec-author`) returns the existing spec, as for any item
   whose spec exists.
-- **Step 2** (`test-writer`) **is skipped** unless a finding is in a test.
-  Then brief a fresh `test-writer` with that finding in place of step 2's
-  brief — fix the named test, add none — and the builder still follows for
-  any finding in production code.
+- **Step 2** (`test-writer`) **is skipped** unless a finding is in a test or
+  is an owner's reason about behaviour. For a CI finding in a test, brief a
+  fresh `test-writer` with that finding in place of step 2's brief — fix the
+  named test, add none — and the builder still follows for any finding in
+  production code. An owner's reason is dispatched as the last bullet says.
 - **Step 3's brief — the `builder`'s — carries the findings**, as a
   blocking review finding is carried in step 6. Add to it:
   > This item was reopened, and these findings are why: <each: what was
@@ -82,13 +83,27 @@ with three differences:
   > lines that show it>. Fix them within the spec's authorised paths.
 
   They come from the orchestrator's triage, or, in a fresh session, from the
-  item's `reopened:` reason. A reopening's finding is not a review finding:
-  it asks for no traced test and no `## Review findings` bullet, and adds
-  nothing to step 5's blocking-findings paragraph. The spec's own checks
-  measure it, and for a CI one, the failing test or step it names is its
-  check and the next CI run re-runs that (§9). A reason that names nothing
-  to change — a check that was never run, say — or asks for behaviour the
-  spec does not specify is not a build: stop and ask the user.
+  item's `reopened:` reason. A reason that names nothing to change — a
+  check that was never run, say — or asks for behaviour the spec does not
+  specify is not a build: stop and ask the user.
+- **An owner's reason leaves a test traced to it, or says why it has none**
+  (§9), as a blocking review finding does: the spec's checks passed while
+  its gap was there, so they cannot be what measures the fix. It is
+  blocking because its owner reopened the item for it — do not re-rank it —
+  and you decide only whether it is about behaviour, as *Blocking, in
+  scope* (step 6) decides. If it is, a fresh `test-writer` follows the
+  builder before step 5, briefed with the reason to write the test that
+  answers it and record its `## Review findings` bullet, the finding
+  quoting the reason; for a reason about a test, that `test-writer` is the
+  whole test-side dispatch, and the test it fixes or adds is the one traced to it —
+  the builder still follows for any part of it in production code. If
+  it is not — a document or a name — add to the builder's brief that it
+  records the bullet, ending with why there is no test, in the commit with
+  the fix. Collect the label from the return: step 5's blocking-findings
+  paragraph names it from the run's first validator on. It is still not a
+  review finding, so no `--findings` total counts it. A CI finding needs
+  none of this: the failing test or step it names is its check, and the
+  next CI run re-runs that (§9).
 
 Steps 4–6 run as for any item: a reopened item is a new run (§9), so under
 `"background"` its `reviewer` reads the diff this run builds, beside its first
@@ -249,18 +264,20 @@ verdict:
    > report PASS (merge held)** — do NOT run `aide merge`. The orchestrator
    > merges once the review findings are discharged.
 
-   **When a fix round in this run has carried blocking review findings,
-   add to that brief** — every one fixed so far, not only the last round's,
-   so a trace a red suite kept a validator from reaching is still checked —
-   less any whose code a later round removed or rewrote, together with the
-   test that measured it: that finding stays counted, and is checked no
-   more. A session that resumes mid-cycle takes them from the spec's
-   `## Review findings` bullets ranked blocking; re-checking a trace costs a
-   read:
-   > This branch fixed blocking review findings: <each: its label in the
-   > spec's `## Review findings`, and the finding in one line>. Check each
-   > as your spec's check 7 says: its bullet is there, and names a test
-   > traced to it or why it has none. Do not judge the fixes themselves.
+   **When a fix round in this run has carried blocking review findings, or
+   the run is an owner's reopen (*A reopened item*), add to that brief** —
+   the owner's reason from the first dispatch on, and every review finding
+   fixed so far, not only the last round's, so a trace a red suite kept a
+   validator from reaching is still checked — less any whose code a later
+   round removed or rewrote, together with the test that measured it: that
+   finding stays counted, and is checked no more. A session that resumes
+   mid-cycle takes them from the spec's `## Review findings` bullets ranked
+   blocking; re-checking a trace costs a read:
+   > This branch fixed blocking findings — review findings, or the reason
+   > its owner reopened it: <each: its label in the spec's
+   > `## Review findings`, and the finding in one line>. Check each as your
+   > spec's check 7 says: its bullet is there, and names a test traced to it
+   > or why it has none. Do not judge the fixes themselves.
 
 6. **Build/test ↔ validate cycle (orchestrator).** A **round** is one build
    or test fix followed by a fresh `validator` — never a fresh `reviewer`: a
@@ -407,8 +424,9 @@ verdict:
        `stop` that exits 93 means the merge is still running. It honours `git.mode` and writes the ✅ itself; `--rounds` is the
        count you kept for the cap and `--findings` the totals you kept while
        triaging, and the two are what put those cells in the ledger row
-       (`merge -h`). A, B and C are in-scope findings only: one you sent to
-       `insights.md` is carried by that line and by no cell here. Substitute
+       (`merge -h`). A, B and C are in-scope review findings only: one you
+       sent to `insights.md` is carried by that line and by no cell here,
+       and an owner's reopen reason is no review finding (§9). Substitute
        them with your counts — a command left with its placeholders in it is
        not a command. **A non-zero exit means
        nothing was pushed** — under `auto-merge` it re-runs the full suite and
