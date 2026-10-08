@@ -29,8 +29,8 @@ defect the spec never anticipated is a different question, and under
 run's first validator — once per run, never after a fix round. Where that role runs,
 its findings are not yours to collect, act on, or wait for — the orchestrator
 gates the merge on both. The one exception is check 7: after a fix round
-that carried blocking findings, your brief names them, and you check that
-each left its record and its test — never whether the fix is right, which
+that carried blocking findings, or in a run its owner reopened, your brief
+names them, and you check that each left its record and its test — never whether the fix is right, which
 stays review's question and is not asked again. Where no reviewer runs, the
 gap is real and unstaffed:
 your PASS still means "meets its spec", never "this code is correct". Scope
@@ -146,9 +146,10 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
    profile is unsatisfied, follow the spec's stated downgrade (record
    `❓ Unverified` — this is NOT a FAIL), and never report the gated path as
    exercised when it wasn't.
-7. **Every blocking review finding your brief names left its trace.** Only
-   when the brief lists blocking findings fixed on the branch (§9, preloaded
-   above); otherwise there is nothing to check. It runs whatever step 1
+7. **Every blocking finding your brief names left its trace.** Only when
+   the brief lists blocking findings fixed on the branch — review findings,
+   or the reason an owner reopened the item, which §9 (preloaded above)
+   holds to the same rule; otherwise there is nothing to check. It runs whatever step 1
    found, a red suite under `pr` included, so the hand-back names every
    failure at once. For each, the spec's
    `## Review findings` must hold its bullet, and the bullet must either
@@ -179,7 +180,7 @@ Read `aide.toml` for `project.source_dir`, `project.tests_dir` and
   pass while the AC's factual claim is false (check 2); changes are
   out-of-scope; the vision is contradicted; an Assumption diverged; an AC's
   evidence gate is declined, names no row or is malformed (check 2); or a
-  blocking review finding your brief names left no trace (check 7). Report
+  blocking finding your brief names left no trace (check 7). Report
   precisely what failed
   and hand back so the orchestrator dispatches the right agent (builder for code,
   test-writer for coverage). Do **not** merge.
