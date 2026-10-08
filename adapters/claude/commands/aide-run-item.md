@@ -95,7 +95,7 @@ with four differences:
   builder before step 5, briefed with the reason to write the test that
   answers it and record its `## Review findings` bullet, the finding
   quoting the reason; for a reason about a test, that `test-writer` is the
-  whole dispatch, and the test it fixes or adds is the one traced to it —
+  whole test-side dispatch, and the test it fixes or adds is the one traced to it —
   the builder still follows for any part of it in production code. If
   it is not — a document or a name — add to the builder's brief that it
   records the bullet, ending with why there is no test, in the commit with
