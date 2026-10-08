@@ -31,8 +31,8 @@ its findings are not yours to collect, act on, or wait for — the orchestrator
 gates the merge on both. The one exception is check 7: after a fix round
 that carried blocking findings, or in a run its owner reopened, your brief
 names them, and you check that each left its record and its test — never
-whether the fix is right, which stays review's question and is not asked again. Where no reviewer runs, the
-gap is real and unstaffed:
+whether the fix is right, which stays review's question and is not asked
+again. Where no reviewer runs, the gap is real and unstaffed:
 your PASS still means "meets its spec", never "this code is correct". Scope
 and vision fit are yours alone (checks 3 and 4) whether or not a reviewer
 runs: a reviewer reads the code, not the bounds. The status you write,
