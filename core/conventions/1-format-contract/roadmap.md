@@ -96,8 +96,8 @@ heading reads `## Stage N — Maintenance`, the template's, here and in
 `progress.md` — and no other stage takes that title. Nothing else marks it:
 a stage that holds repairs under any other title is a feature stage.
 **A started stage already run as a standing maintenance stage becomes the
-maintenance stage by one retitle to `Maintenance`**, made by either of the
-file's two writers, in its heading here and in its `progress.md` header and
+maintenance stage by one retitle to `Maintenance`**, the owner's, made by
+either of the file's two writers, in its heading here and in its `progress.md` header and
 Stage summary row; it is the one edit the freeze allows a started stage's
 heading, and it changes nothing else in the stage.
 
