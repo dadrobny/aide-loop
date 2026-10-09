@@ -15697,6 +15697,9 @@ def _run_suite_argv(argv: List[str], repo_root: Path) -> subprocess.CompletedPro
         except (FileNotFoundError, PermissionError):
             # PermissionError: a path that names a file with no execute bit.
             raise RunnerMissing(argv[0], repo_root) from None
+    # A `.cmd` or `.bat` runs through cmd.exe, which re-reads its arguments
+    # (`%`, `&`, `^`): they are the project's own `test_command`, split on
+    # whitespace, and the JUnit arguments go only to pytest, never a shim.
     try:
         return subprocess.run([found, *argv[1:]], cwd=str(repo_root))
     except OSError as exc:

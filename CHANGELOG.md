@@ -146,7 +146,10 @@ instead — that is the bump policy above, and it is enforced by
   `test_command = "npm test"` ended in a `FileNotFoundError` traceback before
   any test ran — while `aide env` reported the same program found, since its
   lookup applies `PATHEXT`. The suite now spawns the path that lookup
-  returned, so the report and the run agree. A program found and still not
+  returned, so the report and the run agree — which also means a test
+  command starting with `git` or `gh` now runs the one `[tools]` in
+  `.aide/local.toml` names, and a misconfigured key there refuses before the
+  suite starts, as `aide env` already did. A program found and still not
   startable (on POSIX, an executable file the kernel cannot run) is refused
   in one sentence naming where it was found, where it was a traceback. A
   command not found at all is refused as before. Nothing for a consumer to
