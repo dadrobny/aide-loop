@@ -136,6 +136,62 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.47.0] — 2026-10-09
+
+### Added
+
+- **`aide progress rollup [--stage N]` — a stage's cells from its bullets,
+  and the hand-written 🚧 retired (issue #459, follows #454).** A bullet
+  added under a stage moves no cell until a verb rolls the stage up, so a
+  maintenance batch that reopened a ✅ maintenance stage left its section
+  header and Stage summary row ✅ over the new 📋 bullet, and `aide check`
+  errored on both — inside the window the planner's own `check --queue`
+  runs in. 2.44.0 had the batch type the computed 🚧 itself, the one stage
+  cell §1 → `progress.md` let a role write. The new verb writes what the
+  rollup computes into stage N's header, its summary row and every
+  Objective row naming it — or every stage's, with no `--stage` — up or
+  down, prints each cell it writes, and commits `progress.md` as `set`
+  does (`--no-commit` too, and a failed commit puts the file back, exit 1);
+  with every cell at its rollup it is a no-op, exit 0. It moves no bullet,
+  leaves a withdrawn stage (❌ summary row) and a ❌ cell as they read, and
+  writes over a ⏸️ set by hand: once a bullet is added a computed ⏸️ and a
+  typed one read the same, and a maintenance stage that rolled up to ⏸️
+  over a deferred repair must reach 🚧 when the next batch reopens it. §1 →
+  `insights-maintenance-queue.md` now has every maintenance batch run
+  `progress rollup --stage N --no-commit` after wiring its bullets and
+  commit the result with them; §1 → `progress.md` loses its exception and
+  says a hand-set ⏸️ stands until a verb moves a bullet of its stage or
+  `rollup` rolls the stage up. `aide check`'s error for a ✅ stage cell over
+  bullets that do not roll up to ✅ names the verb. `aide-create-queue`
+  requirement 8, `aide-queue-and-inbox` and `queue-planner` step 5 (and its
+  edit scope) carry the change under pin; `core/AGENT-CONTEXT.md`'s verb
+  list names `rollup`, so the always-on floor moves from 9584 to 9591
+  content bytes. Rejected: `check` reading a ✅ over a new 📋 bullet
+  as derivable, which leaves the file claiming ✅ over open work, and a verb
+  for wiring a bullet. The settings allow-list already covers every `aide`
+  sub-verb.
+- **`aide check` recognises the maintenance stage (issue #459).** The stage
+  titled exactly `Maintenance` (2.44.0) is now checked against §1 →
+  `roadmap.md`'s rules for it, each a warning naming the section: a second
+  stage of that title, in `roadmap.md` or in `progress.md`; a roadmap
+  coverage row or a `progress.md` Objective row naming it; another stage's
+  blocking Dependencies slot naming it, or its own naming any stage — the
+  slot the #282 forward-dependency warning reads, so an ordering sentence
+  after `None.` is not named; and Validation / acceptance bullets on it
+  while `progress.md` shows it at nothing but 📋. A started maintenance
+  stage is never named for its criteria: one retitled to `Maintenance` keeps
+  the criteria it was written with, and nothing in the file tells it from a
+  stage given criteria by mistake. The §1 → `roadmap.md` rationale's "left
+  until drift is seen" is replaced by why the engine now recognises the
+  stage. New `-h` sentences of `progress` and `check` are pinned in
+  `test_aide_help_pins.py`, guarded by the new
+  `test_aide_maintenance_stage.py`; `tests/test_fixture_consumer.py` drives
+  the reopen through the verb and its failed commit against an install.
+
+  **What a consumer edits:** nothing. A roadmap that breaks one of the
+  maintenance-stage rules now reads a warning, which never moves the exit
+  code.
+
 ## [2.46.0] — 2026-10-09
 
 ### Added

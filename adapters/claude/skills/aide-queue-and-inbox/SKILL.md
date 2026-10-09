@@ -111,9 +111,9 @@ paths:
      - Nothing else triggers it: a boundary with no entry that warrants a
        maintenance queue writes its stage queue as before
      - the owner adds the stage once, through the create-roadmap entry point
-     - A batch that reopens a ✅ maintenance stage writes the stage's 🚧
-       itself
-     - Write that icon into the two cells in the same commit as the bullets
+     - A maintenance batch rolls the maintenance stage up with its verb,
+       after wiring its bullets
+     - Commit what it writes in the same commit as the bullets
      - A pass-over may carry a proposal for the owner, never a decision
      - An entry open across three or more queues is already the owner's
        decision
@@ -259,8 +259,9 @@ stage queue never takes the maintenance stage as its next stage** — it has no
 roadmap deliverable to queue; a stage appended after it is an ordinary
 stage (§1 → `roadmap.md`).
 
-**A batch that reopens a ✅ maintenance stage writes the stage's 🚧 itself.**
-No verb moves a stage when a bullet is added, so its section header and Stage
-summary row still read ✅ over the new 📋 bullets, and `aide check` errors on
-both. Write that icon into the two cells in the same commit as the bullets —
-the value the rollup computes, so it is not drift.
+**A maintenance batch rolls the maintenance stage up with its verb, after
+wiring its bullets.** No verb runs when a bullet is added, so a ✅ stage the
+new 📋 bullets reopen still reads ✅ on its section header and Stage summary
+row, and `aide check` errors on both. Run `python .aide/scripts/aide.py
+progress rollup --stage N --no-commit`, N the maintenance stage, and **commit
+what it writes in the same commit as the bullets** — never type the icon.

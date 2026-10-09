@@ -65,13 +65,20 @@ through the create-roadmap entry point (§5). Nothing else triggers it: a
 boundary with no entry that warrants a maintenance queue writes its stage
 queue as before, whether or not the roadmap has the stage.
 
-**A batch that reopens a ✅ maintenance stage writes the stage's 🚧 itself.**
-No verb moves a stage when a bullet is added, so its section header and its
-Stage summary row still read ✅ over the new 📋 bullets, and `aide check`
-errors on both until they read the 🚧 the rollup now computes. Write that icon
-into the two cells in the same commit as the bullets: it is the derived value,
-not an icon typed over one (§1 → `progress.md`), and the next `aide progress
-set` on the stage writes the same.
+**A maintenance batch rolls the maintenance stage up with its verb, after
+wiring its bullets.** No verb runs when a bullet is added, so a ✅ stage
+reopened by the new 📋 bullets still reads ✅ on its section header and its
+Stage summary row, and `aide check` errors on both. Once the bullets are
+under the stage, N being its number:
+
+```
+python .aide/scripts/aide.py progress rollup --stage N --no-commit
+```
+
+**Commit what it writes in the same commit as the bullets.** It writes the
+rollup into both cells — the 🚧 a reopened ✅ stage now computes — and
+nothing where they already read it (`aide progress -h`). No stage cell is
+written by hand (§1 → `progress.md`).
 
 #### Rationale
 
@@ -110,8 +117,15 @@ set` on the stage writes the same.
   never edits `roadmap.md`, and the maintenance stage is authored once, so
   the hand-back is paid once per roadmap rather than once per batch — the
   cost that made a stage per batch the rejected alternative.
-- **Why the reopen writes the icon by hand.** Issue #454 needed no engine
-  change, and the rollup is recomputed only by the verbs that move a bullet's
-  status; a bullet added under a ✅ stage is the one write no verb makes. The
-  icon written is the one the rollup computes, so nothing about the stage's
-  status is asserted by hand, and `aide check` holds the pair to it.
+- **Why a verb, and not the icon by hand.** Issue #454 needed no engine
+  change, so the batch wrote the computed 🚧 into the two cells itself: a
+  bullet added under a ✅ stage is the one write no other verb rolls up. That
+  made a rule every planner run had to keep, and a planner that missed it
+  stalled on `aide check` — its own `check --queue` ran inside the window
+  (issue #459). The verb writes the same value with nothing to work out, and
+  running it always, rather than only over a ✅ stage, leaves nothing to
+  judge either.
+- **Why `--no-commit`.** The bullets and their rollup land in one commit, so
+  no committed state has a ✅ over an open bullet; and a committing verb
+  replays its commit onto the upstream, which the batch's other uncommitted
+  edits would stop.

@@ -136,12 +136,15 @@ Follow the `aide-create-queue` skill in full. In brief:
 
    **A maintenance item's deliverable bullet goes under the maintenance
    stage**, **never under the feature stage whose module it touches**, and
-   the roadmap lists no deliverable there, so each is a new bullet. **A batch
-   that reopens a ✅ maintenance stage writes the stage's 🚧 itself**: no verb
-   moves a stage when a bullet is added, and `aide check` errors until it
-   reads 🚧, so **write that icon into the two cells in the same commit as the
-   bullets** — its section header and Stage summary row (§1 →
-   `insights-maintenance-queue.md`, preloaded above).
+   the roadmap lists no deliverable there, so each is a new bullet. **A
+   maintenance batch rolls the maintenance stage up with its verb, after
+   wiring its bullets**: no verb moves a stage when a bullet is added, and
+   `aide check` errors while a reopened ✅ stage's section header and Stage
+   summary row still read ✅, so run
+   `python .aide/scripts/aide.py progress rollup --stage N --no-commit`, N the
+   maintenance stage, and **commit what it writes in the same commit as the
+   bullets** — step 6's (§1 → `insights-maintenance-queue.md`, preloaded
+   above).
 
    **Wire a marker onto a 📋 bullet only.** An item born on a ⏸️ or ❌
    bullet is settled from the start, and its queue reads done the moment it
@@ -271,9 +274,10 @@ and resolving it destroys the only thing the gate protects.
 - **Do NOT run `pytest`.**
 - Edit only `docs/aide/queue/*.md` and `docs/aide/progress.md` — and in
   `progress.md` only the item-reference back-fill (step 5), the deferral of
-  a carried item or the drop of one its owner decided against (step 3) and
-  the resume of a deferred bullet its owner decided to queue (step 5), each
-  by its verb, the 🚧 a reopened maintenance stage rolls up to (step 5), and
+  a carried item or the drop of one its owner decided against (step 3), the
+  resume of a deferred bullet its owner decided to queue (step 5) and the
+  roll-up of the maintenance stage after a maintenance batch's bullets
+  (step 5), each by its verb, and
   **adding a row to `## Human gates`** (above), never a deliverable's status
   icon by hand and never new stages/acceptance. Adding a gate row
   is permitted because raising a blocker is safe; **resolving** one is not
@@ -361,9 +365,9 @@ only writes allowed outside your edit scope.
      - the owner adds the stage once, through the create-roadmap entry point
      - Nothing else triggers it: a boundary with no entry that warrants a
        maintenance queue writes its stage queue as before
-     - A batch that reopens a ✅ maintenance stage writes the stage's 🚧
-       itself
-     - Write that icon into the two cells in the same commit as the bullets
+     - A maintenance batch rolls the maintenance stage up with its verb,
+       after wiring its bullets
+     - Commit what it writes in the same commit as the bullets
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/queue-NNN.md

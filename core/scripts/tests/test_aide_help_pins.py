@@ -423,6 +423,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("a stage summary row marked ✅ over a stage whose deliverables do "
          "not roll up to ✅",
          "test_aide_help_pins::test_the_summary_over_claim_is_measured_by_the_rollup"),
+        # The `over` list's message, summary and header alike (issue #459).
+        ("each such stage error naming `aide progress rollup --stage N`, "
+         "which writes the rollup into the stage's cells",
+         ("test_aide_maintenance_stage::"
+          "test_a_reopened_stage_rolls_down_to_in_progress_and_check_is_clean",
+          "test_aide_defer::test_a_header_marked_done_with_no_summary_row_is_an_error")),
         # The same list for the header, and the Objective loop's
         # `current == "complete"` error (issue #285).
         ("and a stage header or Objective row so marked over a rollup that "
@@ -643,6 +649,35 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("in a spec that is not a record",
          ("test_aide_doc_shape::test_a_record_spec_is_not_warned_about_a_stale_engine_marker",
           "test_aide_doc_shape::test_a_live_spec_is_still_warned_about_a_stale_engine_marker")),
+        # `maintenance_stage_warnings` (issue #459), called from run_checks
+        # on the warnings side; `stage_title` == `MAINTENANCE_TITLE`, each
+        # file read for itself.
+        ("the maintenance stage \u2014 a stage titled exactly Maintenance "
+         "\u2014 given a second stage of that title, in roadmap.md or in "
+         "progress.md",
+         ("test_aide_maintenance_stage::test_a_second_maintenance_stage_is_named",
+          "test_aide_maintenance_stage::test_a_stage_titled_otherwise_is_not_the_maintenance_stage",
+          "test_aide_maintenance_stage::test_the_title_is_read_past_the_icon_comment_and_emphasis",
+          "test_aide_maintenance_stage::test_check_reports_them_as_warnings_and_never_errors")),
+        # `named_stage_numbers` over a coverage row, `_objective_row_stages`
+        # over a progress.md Objective row.
+        ("named by a roadmap.md coverage row or a progress.md Objective row",
+         ("test_aide_maintenance_stage::test_a_coverage_row_naming_it_is_named",
+          "test_aide_maintenance_stage::test_a_progress_objective_row_naming_it_is_named")),
+        # `blocking_dependency_stages`, the #282 slot reader, both ways.
+        ("named in another stage's blocking slot or naming any stage in its "
+         "own",
+         ("test_aide_maintenance_stage::test_a_blocking_slot_naming_it_is_named",
+          "test_aide_maintenance_stage::test_its_own_blocking_slot_naming_a_stage_is_named",
+          "test_aide_maintenance_stage::test_the_template_shape_is_silent")),
+        # `roadmap_acceptance_bullets` under a stage not in `started` — the
+        # header and summary-row statuses other than 📋 (grandfathering).
+        ("or given Validation / acceptance bullets in roadmap.md while "
+         "progress.md shows it at nothing but \U0001f4cb, so a started "
+         "maintenance stage keeps the criteria it was written with",
+         ("test_aide_maintenance_stage::test_criteria_on_a_maintenance_stage_not_started_are_named",
+          "test_aide_maintenance_stage::test_criteria_with_no_progress_section_are_named",
+          "test_aide_maintenance_stage::test_criteria_on_a_started_maintenance_stage_are_grandfathered")),
         # `forward_dependency_warnings` (issue #282), called from run_checks
         # on the warnings side; `blocking_dependency_stages` cuts the slot at
         # `_DEPS_SLOT_END_RE` and reads numbers by `_DEPS_STAGE_LIST_RE` or
@@ -1026,10 +1061,55 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("as does an Objective row whose stages are all \u2705 or "
          "\u23f8\ufe0f, which reads \u23f8\ufe0f",
          "test_aide_defer::test_deferring_every_open_item_moves_header_summary_and_objective_to_deferred"),
-        # `_held_by_hand`, and `set_item_status`'s touched stages.
+        # `_held_by_hand`, and `set_item_status`'s touched stages; `rollup`
+        # passes its stages as `downgrade_stages`, which releases it (#459).
         ("A header, summary row or Objective row marked \u23f8\ufe0f by hand "
-         "stays as it reads until a verb moves a bullet of its stage",
-         "test_aide_defer::test_a_hand_set_deferred_stage_is_left_alone_by_a_set_elsewhere"),
+         "stays as it reads until a verb moves a bullet of its stage, or "
+         "rollup rolls that stage up",
+         ("test_aide_defer::test_a_hand_set_deferred_stage_is_left_alone_by_a_set_elsewhere",
+          "test_aide_maintenance_stage::test_a_deferred_cell_set_by_hand_is_written_over")),
+        # `rollup_progress` -> `_recompute_rollups(only=, downgrade_stages=)`
+        # over the one stage or every one (issue #459); no bullet line is
+        # touched.
+        ("write what the rollup computes into stage N's header, its "
+         "summary-table row and every Objective row naming it (--stage N), "
+         "or into those of every stage, up or down; it moves no bullet",
+         ("test_aide_maintenance_stage::test_a_reopened_stage_rolls_down_to_in_progress_and_check_is_clean",
+          "test_aide_maintenance_stage::test_an_objective_row_naming_the_stage_follows_it_down",
+          "test_aide_maintenance_stage::test_with_no_stage_every_stage_and_objective_row_follows_its_rollup")),
+        # The ✅-over-open error of `derived_cell_findings` is what the verb
+        # clears; the derivation is `aide check`'s own.
+        ("rollup is for a bullet added by hand, the one write no other verb "
+         "rolls up: until then the stage's cells read as before, and a "
+         "\u2705 over the new \U0001f4cb bullet is an `aide check` error",
+         "test_aide_maintenance_stage::test_a_reopened_stage_rolls_down_to_in_progress_and_check_is_clean"),
+        # `only=` leaves every other stage's cells and Objective rows alone;
+        # `downgrade_stages=` releases `_held_by_hand`'s ⏸️.
+        ("Each cell it rolls up is written as the rollup computes it, a "
+         "\u23f8\ufe0f set by hand included, and every other cell is left as "
+         "it reads",
+         ("test_aide_maintenance_stage::test_a_deferred_cell_set_by_hand_is_written_over",
+          "test_aide_maintenance_stage::test_a_reopened_stage_holding_a_deferred_bullet_reaches_in_progress",
+          "test_aide_maintenance_stage::test_stage_n_writes_its_own_cells_and_leaves_every_other_as_it_reads")),
+        # `withdrawn_stages` drops the stage from `targets`; `_held_by_hand`
+        # keeps ❌ always; `rollup_status` is None with no bullet.
+        ("A stage whose summary row is \u274c is left whole, a \u274c header "
+         "or Objective row stays, and a stage with no deliverable bullet "
+         "derives nothing",
+         ("test_aide_maintenance_stage::test_a_withdrawn_stage_and_an_excluded_cell_are_left_as_they_read",
+          "test_aide_maintenance_stage::test_a_stage_with_no_bullet_derives_nothing")),
+        # `_cmd_progress_rollup`: one line per message, `_commit_or_restore`
+        # as `set`'s, and the early `return 0` with no message.
+        ("It prints each cell it writes, and commits progress.md as set does; "
+         "with every cell already its rollup it writes nothing and exits 0",
+         ("test_aide_maintenance_stage::test_the_verb_writes_the_rollup_and_prints_each_cell",
+          "test_aide_maintenance_stage::test_the_verb_commits_progress_alone",
+          "test_aide_maintenance_stage::test_a_rollup_whose_commit_fails_is_put_back_and_exits_1",
+          "test_aide_maintenance_stage::test_the_verb_is_a_no_op_exit_0_when_nothing_changes")),
+        ("It refuses, exit 1, a stage with no section in progress.md, and, "
+         "exit 2, any argument but --stage and --no-commit",
+         ("test_aide_maintenance_stage::test_the_verb_refuses_a_stage_with_no_section",
+          "test_aide_maintenance_stage::test_the_verb_refuses_any_argument_but_stage_and_no_commit")),
         ("an objective linked to an Outcome target that is not \u2705 Met "
          "never rolls up",
          "test_aide_core::test_unmet_target_blocks_objective_rollup_not_stage"),
