@@ -158,7 +158,9 @@ instead — that is the bump policy above, and it is enforced by
   decision — queue it, decline it, or, for a `gap`, move it to the roadmap's
   Backlog (2.45.0) — and never pass it over again; three is a convention,
   not an `aide.toml` key. §1 → `insights-maintenance-queue.md` stops the
-  queue's author passing such an entry over too. In one consumer 21 gaps
+  queue's author passing such an entry over too: until the owner has said,
+  the author puts the decision to the owner where the queue is reviewed —
+  the closing summary its queue PR carries. In one consumer 21 gaps
   dated across two weeks had sat through six or seven maintenance queues,
   each pass-over recorded in a queue file and never on the entry. A trail
   line per pass-over and an `aide check` age warning were rejected — the
