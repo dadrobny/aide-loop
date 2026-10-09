@@ -136,6 +136,74 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.44.0] — 2026-10-09
+
+### Added
+
+- **The maintenance queue has a stage home: an optional, standing
+  maintenance stage (issue #454, parent #453).** §1 → `roadmap.md` defines
+  it. It is the stage titled exactly `Maintenance` (`## Stage N —
+  Maintenance`, as the template writes it), at most one per roadmap,
+  authored once through the roadmap entry point. Its Deliverables are the
+  maintenance queues' items, which the roadmap does not list, so it is the
+  one exception to "never a bullet added to a started stage", and only in
+  `progress.md`. It has no blocking Dependencies and no stage's blocking
+  slot names it; no Objective row names it; and it has no acceptance
+  criteria of its own, so `aide check --queue` never asks for a `Validate
+  stage N` item for it. It reopens and closes by rollup. A stage queue never
+  takes it as its next stage, and a stage appended after it is ordinary. A
+  maintenance stage written earlier with criteria keeps them.
+  §1 → `insights-maintenance-queue.md` says a maintenance item's bullet goes
+  under it, never under the feature stage whose module it touches. It also
+  says that a batch reopening a ✅ maintenance stage writes the 🚧 the
+  rollup computes into its section header and Stage summary row in the same
+  commit, because no verb moves a stage when a bullet is added and `aide
+  check` errors on a ✅ cell over a 📋 bullet. §1 → `progress.md` names that
+  🚧 as the one hand-written stage cell, gives the stage's section no
+  Acceptance block and an empty Deliverables block until its first batch,
+  and puts `—` in its summary row's Objectives cell. The evidence came from
+  two consumers. One ran a single standing stage through six closes with its
+  stage boxes attested only at the first two, and filed a repair under an
+  unrelated feature stage to avoid reopening it without validation. The
+  other made a stage per batch, each needing an owner pass. No engine
+  change: `tests/test_fixture_consumer.py` holds a template-shaped
+  maintenance stage in `roadmap.md`, checks it clean, and drives it through
+  two batches. `aide-create-queue` (requirements 1 and 8 and the
+  maintenance-queue paragraph), `queue-planner`, `aide-create-roadmap`,
+  `aide-create-progress`, `/aide-run-roadmap` and the `aide-queue-and-inbox`
+  section skill say the same, under pin where they quote it.
+- **`roadmap template 2`.** The roadmap template ends with an optional
+  maintenance-stage block: a Goal, a Deliverables line saying the
+  maintenance queues add them to `progress.md`, `Dependencies. None.`, and a
+  pointer to §1 → `roadmap.md`. **What a consumer edits:** `aide check`
+  warns that `docs/aide/roadmap.md` was created from template 1; set its
+  `aide-template` line to `roadmap 2`. A consumer running maintenance queues
+  adds the maintenance stage once through `/aide-create-roadmap`, titled
+  `Maintenance` and appended after its last stage, with a Stage summary row
+  (`—` for Objectives) and an empty section in `progress.md`. A consumer
+  that already runs one standing maintenance stage under another title
+  retitles it `Maintenance` instead, in `roadmap.md` and in its
+  `progress.md` header and summary row — the one edit the freeze allows a
+  started stage's heading; its boxes stay as they are. Earlier per-batch
+  maintenance stages stay feature stages, and the next batch goes under a
+  new `Maintenance` stage. A consumer with no maintenance queues adds
+  nothing.
+
+### Changed
+
+- **A planner whose inbox warrants a maintenance queue now hands back when
+  the roadmap has no maintenance stage, so an unattended run stops until
+  the owner adds one.** Until 2.43.1 the queue planner wrote the maintenance
+  queue anyway and wired its items under whichever stage it judged right. Now
+  it writes neither queue, names the entries that warrant one, and hands
+  back, as it does for any answer that changes `roadmap.md`;
+  `/aide-run-roadmap` discards the empty queue branch and stops on it.
+  Nothing else triggers it: a boundary with no entry that warrants a
+  maintenance queue writes its stage queue as before. **What a consumer
+  does:** a project that runs maintenance queues adds the maintenance stage
+  (above) before its next queue boundary, or answers the first hand-back by
+  adding it.
+
 ## [2.43.1] — 2026-10-09
 
 ### Fixed

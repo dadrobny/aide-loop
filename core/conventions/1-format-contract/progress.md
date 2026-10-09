@@ -12,7 +12,8 @@ with the first. Move it, do not copy it.
 Mandatory, in order (consumer in brackets):
 
 1. **Stage summary table** — one row per stage; `Stage` is an integer,
-   `Status` a single icon. *(aide check, status report, queue-planner)*
+   `Status` a single icon. The maintenance stage's `Objectives` cell reads
+   `—`. *(aide check, status report, queue-planner)*
 2. **Objective coverage table** — one row per vision objective; the objective
    cell starts with a `G<n>` code, `Status` a single icon. *(aide check, status
    report, validator)*
@@ -24,6 +25,10 @@ Mandatory, in order (consumer in brackets):
      aide progress, status report)*
    - an **Acceptance** block of `- [ ]` / `- [x]` checkboxes, ticked only by
      `aide progress accept` — never derived. *(validator)*
+
+   The maintenance stage (§1 → `roadmap.md`) is the one section without an
+   Acceptance block, and its Deliverables block is empty until its first
+   maintenance queue adds the bullets.
 
 **The Stage summary table is complete.** Every stage section has its row, a
 ⏸️ or ❌ stage too: a ❌ summary row is what excludes a stage, and a ⏸️ one
@@ -82,7 +87,10 @@ icon, its summary-table row, its section header and the Objective rows it
 delivers are all derived from the Deliverables bullets under it, by one
 deterministic rule `aide progress` and `aide check` both apply — `aide progress
 -h` states the rule. Write the bullets and let the stage follow; an icon typed
-over a derived cell is drift `aide check` reports.
+over a derived cell is drift `aide check` reports. The one stage cell written by
+hand is the 🚧 a batch writes when it reopens a ✅ maintenance stage (§1 →
+`insights-maintenance-queue.md`): no verb runs when a bullet is added, and the
+icon written is the one the rollup computes.
 
 **Deferral is recorded on the item, with its reason, and the stage follows.**
 Postpone an item with `aide progress set NNN deferred --reason …`, never by
@@ -209,7 +217,8 @@ Semantics
 - Marking a target `❌ Not met` is a *finding*, so route it like one: capture
   a `gap` with `aide insights add` alongside the edit. The follow-on
   deliverables then enter through the queue, never by retro-editing a closed
-  stage's deliverable list.
+  stage's deliverable list; a maintenance queue adding its items under the
+  maintenance stage (§1 → `roadmap.md`) is that route, not a retro-edit.
 
 #### Rationale
 
@@ -336,6 +345,16 @@ Semantics
   about when a verb may *write*, not about what a cell should say. So `check`
   takes the same derivation with neither, which is also why no sequence of
   verbs can write a file it then reports.
+- **Why the maintenance stage is the one exception to the hand-written
+  rule.** Issue #454 gave the maintenance queues one standing stage that
+  reopens at every batch, and asked for no engine change: a bullet added
+  under a ✅ stage is the one write no verb makes, so the stage's cells stay
+  ✅ until the next `aide progress set`. Writing the computed 🚧 asserts
+  nothing the bullets do not, and `aide check` still holds it to the rollup.
+  Recomputing on the add is the engine follow-up that would retire the
+  exception. The empty Deliverables block and the missing Acceptance block
+  follow from §1 → `roadmap.md`, which gives the stage neither, and `—` in
+  its Objectives cell from its delivering no objective.
 - **Why a stage section needs its summary row.** Since issue #285 a stage's
   header and bullets are compared whatever the summary says, so a stage the
   summary left out was still checked — but the summary row is the one cell

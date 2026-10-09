@@ -59,7 +59,15 @@ Follow the `aide-create-queue` skill in full. In brief:
    of the numbering (§1 → `queue-NNN.md`, preloaded above). Item numbers still
    run sequentially across the pair, maintenance queue first. Write only the
    stage queue when there is nothing to batch, or nothing that warrants a queue
-   of its own — and say which it was.
+   of its own — and say which it was. A maintenance queue's items are wired
+   under the roadmap's **maintenance stage** (step 5). **When a maintenance
+   queue is warranted and the roadmap has no maintenance stage, the queue's
+   author hands back**, before writing either queue: stop, name the entries
+   that warrant one, and say that **the owner adds the stage once, through
+   the create-roadmap entry point** (`/aide-create-roadmap`; §1 →
+   `insights-maintenance-queue.md`, preloaded above). Nothing else triggers
+   it: a boundary with no entry that warrants a maintenance queue writes its
+   stage queue as before.
 3. **Tidy the superseded previous queue** with the CLI — it writes the
    completion note itself, and the stamp is never typed by hand (§1 →
    `queue-NNN.md`, preloaded above):
@@ -83,6 +91,12 @@ Follow the `aide-create-queue` skill in full. In brief:
    pad with the following stage. A stage needing more spans multiple queues at the
    cap. The cap is a context budget, not a target. Prioritise by roadmap order and
    unblocked dependencies.
+
+   **A stage queue never takes the maintenance stage as its next stage**: it
+   has no roadmap deliverable to queue, so pass over it when choosing the
+   next stage. **The maintenance stage is the stage titled exactly
+   `Maintenance`** (§1 → `roadmap.md`). **A stage appended after it is an
+   ordinary stage**, queued in its turn.
 
    **A blocking dependency on an earlier stage is met only once that stage is
    ✅** (§1 → `roadmap.md`, which is not preloaded — read it there): queue a
@@ -110,6 +124,15 @@ Follow the `aide-create-queue` skill in full. In brief:
    items splits the bullet into one per item. **Never change a status
    icon** (leave deliverables 📋 — status transitions are `aide progress set`'s job
    during execution).
+
+   **A maintenance item's deliverable bullet goes under the maintenance
+   stage**, **never under the feature stage whose module it touches**, and
+   the roadmap lists no deliverable there, so each is a new bullet. **A batch
+   that reopens a ✅ maintenance stage writes the stage's 🚧 itself**: no verb
+   moves a stage when a bullet is added, and `aide check` errors until it
+   reads 🚧, so **write that icon into the two cells in the same commit as the
+   bullets** — its section header and Stage summary row (§1 →
+   `insights-maintenance-queue.md`, preloaded above).
 
    **Wire a marker onto a 📋 bullet only.** An item born on a ⏸️ or ❌
    bullet is settled from the start, and its queue reads done the moment it
@@ -238,7 +261,7 @@ and resolving it destroys the only thing the gate protects.
   `progress.md` only the item-reference back-fill (step 5), the deferral of
   a carried item or the drop of one its owner decided against (step 3) and
   the resume of a deferred bullet its owner decided to queue (step 5), each
-  by its verb, and
+  by its verb, the 🚧 a reopened maintenance stage rolls up to (step 5), and
   **adding a row to `## Human gates`** (above), never a deliverable's status
   icon by hand and never new stages/acceptance. Adding a gate row
   is permitted because raising a blocker is safe; **resolving** one is not
@@ -307,6 +330,26 @@ only writes allowed outside your edit scope.
        deferred work waits on its owner's decision, not on the next queue
      - A blocking dependency on a withdrawn stage is never met
      - so the dependent stage is re-planned, not queued
+     - The maintenance stage is the stage titled exactly `Maintenance`
+     - A stage queue never takes the maintenance stage as its next stage
+     - A stage appended after it is an ordinary stage
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/insights-maintenance-queue.md
+     Steps 2 and 5 quote the maintenance stage's placement, hand-back and
+     reopen rules from the section this role is preloaded with through
+     `aide-queue-and-inbox` (issue #454).
+     - A maintenance item's deliverable bullet goes under the maintenance
+       stage
+     - never under the feature stage whose module it touches
+     - When a maintenance queue is warranted and the roadmap has no
+       maintenance stage, the queue's author hands back
+     - the owner adds the stage once, through the create-roadmap entry point
+     - Nothing else triggers it: a boundary with no entry that warrants a
+       maintenance queue writes its stage queue as before
+     - A batch that reopens a ✅ maintenance stage writes the stage's 🚧
+       itself
+     - Write that icon into the two cells in the same commit as the bullets
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/queue-NNN.md

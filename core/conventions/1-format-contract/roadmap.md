@@ -15,8 +15,9 @@ Mandatory (consumer in brackets):
    its Goal, Deliverables, Dependencies and Validation / acceptance blocks.
    The acceptance bullets are the ones `progress.md` mirrors as its boxes; a
    measured outcome is a `Target:` bullet instead, and §1 → `progress.md`
-   says which is which. *(aide check, aide progress reword, create-progress,
-   queue-planner, spec-author)*
+   says which is which. The maintenance stage (below) is the one whose
+   Deliverables list nothing and which has no acceptance bullets. *(aide
+   check, aide progress reword, create-progress, queue-planner, spec-author)*
 
 **The coverage table is complete both ways.** Every G-code in `vision.md` has
 a row — an objective withdrawn from scope too, for as long as the vision lists
@@ -41,7 +42,9 @@ acceptance criterion nothing has yet been claimed against is reworded with
 **New or changed scope enters as a new stage, appended after the last.** Work a
 started stage turns out to need arrives the same way, or through the queue as
 §1 → `progress.md` routes a `❌ Not met` target — never as a bullet added to
-the stage that has started.
+the stage that has started. The maintenance stage (below) is the one
+exception, and only in `progress.md`: its bullets are the maintenance
+queues' items, added under it after it has started.
 
 **A stage's blocking Dependencies name only earlier-numbered stages.** Stages
 close in number order, so a stage waiting on a later one cannot close when its
@@ -76,6 +79,50 @@ stage.
 item in an open queue — while an earlier stage its blocking Dependencies name
 is ⏸️ or withdrawn: the two states no queue ends. A 📋, 🚧 or 🔍 earlier stage
 is the ordinary wait, and is not named.
+
+**A roadmap holds at most one maintenance stage, and needs none.** It is the
+home of the maintenance queues' items (§1 → `insights-maintenance-queue.md`):
+a `## Stage N — Title` section like any other, authored once through the
+create-roadmap entry point and frozen once started, which differs from a
+feature stage in what it carries.
+
+**The maintenance stage is the stage titled exactly `Maintenance`** — its
+heading reads `## Stage N — Maintenance`, the template's, here and in
+`progress.md` — and no other stage takes that title. Nothing else marks it:
+a stage that holds repairs under any other title is a feature stage.
+**A started stage already run as a standing maintenance stage becomes the
+maintenance stage by one retitle to `Maintenance`**, made by the owner
+through the create-roadmap entry point, in its heading here and in its
+`progress.md` header and Stage summary row; it is the one edit the freeze
+allows a started stage's heading, and it changes nothing else in the stage.
+
+**A stage queue never takes the maintenance stage as its next stage.** It
+has no roadmap deliverable to queue, so the queue's author choosing the next
+stage passes over it; only a maintenance queue writes under it. A stage
+appended after it is an ordinary stage, queued in its turn.
+
+What it carries:
+
+- **Its Deliverables are the maintenance queues' items, so the roadmap lists
+  none.** Each maintenance queue adds one `progress.md` bullet per item under
+  the stage's section. It is the one stage whose `progress.md` bullets keep
+  growing after it has started; its text here does not.
+- **It has no blocking Dependencies, and no stage's blocking slot names it.**
+  A stage that reopens at every batch would never meet a dependency on it.
+- **No Objective row names it.** Maintenance repairs shipped work and
+  delivers no objective, and a row naming the stage would flip to 🚧 at every
+  reopen.
+- **It has no acceptance criteria of its own.** Each maintenance item's spec
+  carries its own. With no box at stage level nothing goes stale between
+  batches, and `aide check --queue` never reports a queue-end need for the
+  stage: a stage with no unticked box has none.
+- **It reopens and closes by rollup.** It reads 🚧 while a maintenance
+  queue's items are open and ✅ once they ship; the one hand edit a reopen
+  asks for is §1 → `insights-maintenance-queue.md`'s.
+
+A maintenance stage written earlier with acceptance criteria of its own, and
+retitled so, keeps them, since it is frozen: its boxes record its first close, and nothing
+re-attests them per batch.
 
 #### Rationale
 
@@ -167,3 +214,51 @@ is the ordinary wait, and is not named.
   stages and puts ordering without blocking in a sentence after it
   (`None. Independent of Stage 17 — may be queued in either order.`); reading
   the whole block would flag exactly the phrasing the template recommends.
+- **Why one standing maintenance stage.** Before issue #454 the maintenance
+  queue had no stage to put its bullets under, and two consumers improvised
+  opposite answers. One ran a single standing stage through six closes with
+  no `aide check` warning. The other created a new stage per maintenance
+  batch, and each needed an owner pass through the roadmap entry point — the
+  planner cannot write a stage — and was mapped to objectives it did not
+  deliver. A stage per batch is the rejected alternative for both reasons,
+  and for inflating the plan. So is a `## Maintenance` section of
+  `progress.md` that is not a stage: rollup, `set`, `claim`, `merge`,
+  `check`, `status`, gate reach and the ledger's stage cell all key on stage
+  sections, so it would be a large engine change for the same behaviour.
+- **Why an exact title identifies it, and the stage queue passes it over.**
+  The roadmap is frozen once a stage starts and the engine reads no marker
+  for it, so the title is the one thing every role reads the same way with
+  no judgement: the template writes it, and a planner comparing it decides
+  nothing. Without the pass-over, a feature stage appended after the
+  maintenance stage leaves it as the lowest unfinished stage, and a planner
+  queueing "exactly the next stage" would find no deliverable to queue
+  there.
+- **Why a retitle, and not a looser match.** A title only starting with
+  `Maintenance`, or matched by meaning, would count a project's several
+  per-batch maintenance stages as several, and would ask a planner to judge
+  a title. A consumer that already runs one standing stage under another
+  title would otherwise have to add a second one beside it and split the
+  repair history across two stages; one retitle by the owner keeps the
+  history in one place and changes nothing the freeze protects.
+- **Why the maintenance stage has no criteria.** The standing stage above
+  carried four acceptance boxes. They were attested at its first two closes
+  and never again, so from the third batch on they asserted nothing about
+  the work under them. And one repair was filed under an unrelated feature
+  stage, so as not to reopen the maintenance stage without a planned
+  validation. Criteria on the item, where they are checked when the item is
+  built, remove both: nothing at stage level to go stale, and no queue-end
+  item to plan for.
+- **Why no Objective row and no dependency.** Both would read the stage's
+  status, and its status moves at every batch. An Objective row would report
+  a delivered objective as 🚧 whenever a repair is open; a blocking
+  dependency on it would be met only between batches, by accident.
+- **Why the engine does not recognise the stage.** It needs nothing new: a
+  stage section with no acceptance box raises no queue-end need, its rollup
+  is any stage's, and the ledger's `maintenance` kind comes from the insight
+  tick. A warning on an Objective row or a blocking slot naming the stage
+  would need the engine to tell it apart, by its title for instance, so it is
+  left until drift is seen.
+- **Why a stage written earlier keeps its criteria.** A started stage is
+  frozen, and its ticked boxes are attestations of its first close; dropping
+  them would rewrite history, and re-attesting them per batch is the drift
+  the rule above removes.
