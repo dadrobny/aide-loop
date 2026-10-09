@@ -52,7 +52,7 @@ Follow the `aide-create-queue` skill in full. In brief:
    over — never silently dropped**. A decline, or a `gap` moved to the
    roadmap's Backlog, closes an entry too, but both are the owner's (§1 →
    `insights-triage.md`): you may propose either with a pass-over, never make
-   it. The roadmap's `# Backlog`, if it has one, is not a stage, and **the
+   it, and a proposed decline's reason names no item. The roadmap's `# Backlog`, if it has one, is not a stage, and **the
    queue planner never queues from it** (§1 → `roadmap.md`).
 2. **Determine the next queue number** NNN (highest existing + 1) and the next
    **item number** (sequential across *all* queues — never restart numbering).

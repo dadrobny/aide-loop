@@ -58,7 +58,7 @@ three types is the owner's too (§1 → `insights-triage.md`).
 **`defect` and `automation` entries never go to the Backlog.** **A
 pass-over may carry a proposal for the owner, never a decision** — name the
 decline, with its reason, or the Backlog move with the pass-over; tick
-neither.
+neither. A decline's reason names no item (§1 → `insights-triage.md`).
 
 **The roadmap's `# Backlog`, if it has one, is not a stage, and the queue
 planner never queues from it** (§1 → `roadmap.md`): a bullet there reaches a
