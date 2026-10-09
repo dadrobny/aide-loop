@@ -156,6 +156,13 @@ queue, so a `framework` entry may be triaged **on capture or on demand**.
 - **Why an unchecked entry is honest.** The next queue's author is bound to
   read the open inbox (§1 → `insights-maintenance-queue.md`), which is what
   makes leaving an entry unchecked at triage a routing rather than a hope.
+- **Why a `defect` never goes to the Backlog.** One consumer ticked nine
+  bullets out of the inbox into a `Carried defects` list in its roadmap. Six
+  weeks later three had been fixed without the list recording it, one had
+  been absorbed, and five were still open but invisible to
+  `insights list --open`. A defect outside the inbox is lost to the one read
+  the queue's author is bound to make; a decline is the honest way out of
+  it.
 - **Why the version leads a `framework` issue.** Triage at the destination
   begins by checking the claim against that engine's history: a report triaged
   against the wrong version is closed as already-fixed when it is not, or
@@ -198,13 +205,6 @@ queue, so a `framework` entry may be triaged **on capture or on demand**.
   but not pursuing a reported defect is a decision about the project's
   scope, and the queue boundary is where a person reads. A role that
   declined by itself would make an unreviewed scope decision.
-- **Why a `defect` never goes to the Backlog.** One consumer ticked nine
-  bullets out of the inbox into a `Carried defects` list in its roadmap. Six
-  weeks later three had been fixed without the list recording it, one had
-  been absorbed, and five were still open but invisible to
-  `insights list --open`. A defect outside the inbox is lost to the one read
-  the queue's author is bound to make; a decline is the honest way out of
-  it.
 - **Why a wait, and a decision at three.** Each pass-over was recorded in a
   queue file and never on the entry, so in one consumer 21 gaps captured
   over two weeks sat through six or seven maintenance queues, and `insights
