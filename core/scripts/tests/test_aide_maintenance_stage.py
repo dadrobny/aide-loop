@@ -506,6 +506,10 @@ def test_a_second_maintenance_stage_is_named(tmp_path: Path):
         "roadmap.md: stages 3, 4 are all titled 'Maintenance' — a",
         "progress.md: stages 3, 4 are all titled 'Maintenance' — "]
     assert all(w.endswith("— §1 → roadmap.md") for w in out)
+    # The remedy names the route the owner takes: an amendment, not the
+    # create-roadmap entry point (issue #461).
+    assert all("the owner keeps one, by an amendment to roadmap.md — " in w
+               for w in out)
 
 
 def test_a_stage_titled_otherwise_is_not_the_maintenance_stage(tmp_path: Path):

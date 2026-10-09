@@ -155,8 +155,8 @@ instead — that is the bump policy above, and it is enforced by
   started-stage freeze. The owner edits 2.44.0 and 2.45.0 routed "through
   the create-roadmap entry point" follow suit. In §1 → `roadmap.md` adding
   the maintenance stage, its one-time retitle and the Backlog's edits are
-  made "by either route above", and the re-plan of a stage behind a
-  withdrawn one is simply the owner's decision. Where the queue's author
+  made "by either of the file's two writers", and the re-plan of a stage
+  behind a withdrawn one is simply the owner's decision. Where the queue's author
   hands back for want of a maintenance stage (§1 →
   `insights-maintenance-queue.md`, `queue-planner`, `aide-create-queue`,
   `aide-queue-and-inbox`, their pins included), and where a `gap` is moved

@@ -87,19 +87,19 @@ is the ordinary wait, and is not named.
 
 **A roadmap holds at most one maintenance stage, and needs none.** It is the
 home of the maintenance queues' items (§1 → `insights-maintenance-queue.md`):
-a `## Stage N — Title` section like any other, added once by the owner, by
-either route above, and frozen once started, which differs from a
-feature stage in what it carries.
+a `## Stage N — Title` section like any other, added once by either of the
+file's two writers (the opening of this section) and frozen once started,
+which differs from a feature stage in what it carries.
 
 **The maintenance stage is the stage titled exactly `Maintenance`** — its
 heading reads `## Stage N — Maintenance`, the template's, here and in
 `progress.md` — and no other stage takes that title. Nothing else marks it:
 a stage that holds repairs under any other title is a feature stage.
 **A started stage already run as a standing maintenance stage becomes the
-maintenance stage by one retitle to `Maintenance`**, made by the owner by
-either route above, in its heading here and in its `progress.md` header and
-Stage summary row; it is the one edit the freeze
-allows a started stage's heading, and it changes nothing else in the stage.
+maintenance stage by one retitle to `Maintenance`**, made by either of the
+file's two writers, in its heading here and in its `progress.md` header and
+Stage summary row; it is the one edit the freeze allows a started stage's
+heading, and it changes nothing else in the stage.
 
 **A stage queue never takes the maintenance stage as its next stage.** It
 has no roadmap deliverable to queue, so the queue's author choosing the next
@@ -140,7 +140,7 @@ never named.
 ready to plan.** It is not a stage: its heading is `# Backlog`, never a
 `## Stage N`, so it ends the last stage's section and no reader takes a
 bullet of it for that stage's. It is edited as the rest of this file is,
-by either route above, and the started-stage freeze does not reach it.
+by either of its two writers, and the started-stage freeze does not reach it.
 
 - **Ideas only.** A bullet is a piece of scope in a sentence or two — never a
   defect, a status icon, a trail, a date, an owner or an annotation such as
