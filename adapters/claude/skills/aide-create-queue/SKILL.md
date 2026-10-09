@@ -46,13 +46,23 @@ and `/aide-review-insights` cannot hold different copies of it):
 |---|---|---|
 | `knowledge` | the owning document — the smallest edit that preserves the fact | the triaging role, on the fold |
 | `defect` | a candidate item on the **maintenance queue** | the queue that absorbs it |
-| `gap` | a candidate item — maintenance queue, or the stage queue when the stage was going to fill it anyway | the queue that absorbs it |
+| `gap` | a candidate item — maintenance queue, or the stage queue when the stage was going to fill it anyway; or the roadmap's Backlog, by the owner, when it is scope not ready to plan | the queue that absorbs it; the owner, ticked `→ roadmap Backlog` |
 | `automation` | a candidate item adding the script/CLI verb **and** the prose that mandates it | the queue that absorbs it |
 | `framework` | an issue on `[framework] repo` from `aide.toml`; unset or offline, it stays pending | the filing role, on the hand-over |
 
 Only the three middle rows are yours: a `knowledge` or `framework` entry still
 open here was not triaged, so route it through `/aide-review-insights` rather
-than folding or filing it mid-batch.
+than folding or filing it mid-batch. The `gap` row's Backlog half is not
+yours either: the owner moves a `gap` there, and a decline of any of the
+three types is the owner's too (§1 → `insights-triage.md`).
+**`defect` and `automation` entries never go to the Backlog.** **A
+pass-over may carry a proposal for the owner, never a decision** — name the
+decline, with its reason, or the Backlog move with the pass-over; tick
+neither. A decline's reason names no item (§1 → `insights-triage.md`).
+
+**The roadmap's `# Backlog`, if it has one, is not a stage, and the queue
+planner never queues from it** (§1 → `roadmap.md`): a bullet there reaches a
+queue only once the owner has promoted it into a stage.
 
 ### Emit a maintenance queue first when there are fixes to batch
 
@@ -300,7 +310,9 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
 - the ones you passed over, with why — **a pass-over leaves the entry open and
   is stated where the queue is reviewed**, rather than left for the next reader
   to re-derive. That is what makes leaving an entry unchecked an honest routing
-  rather than a hope.
+  rather than a hope;
+- the declines and Backlog moves you propose, each with its reason, for the
+  owner to decide.
 
 <!-- pins: .aide/conventions/1-format-contract/insights-maintenance-queue.md
      What this skill does with a routed entry, quoted from the section that
@@ -328,14 +340,17 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
      - A batch that reopens a ✅ maintenance stage writes the stage's 🚧
        itself
      - Write that icon into the two cells in the same commit as the bullets
+     - A pass-over may carry a proposal for the owner, never a decision
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/roadmap.md
      Requirement 1 quotes how the next stage is chosen around the
-     maintenance stage (issue #454).
+     maintenance stage (issue #454), and the one Backlog statement a queue's
+     author acts on (issue #455).
      - The maintenance stage is the stage titled exactly `Maintenance`
      - A stage queue never takes the maintenance stage as its next stage
      - A stage appended after it is an ordinary stage
+     - The queue planner never queues from it
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/insights-triage.md
@@ -352,11 +367,14 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
      - | `defect` | a candidate item on the **maintenance queue** | the queue
        that absorbs it |
      - | `gap` | a candidate item — maintenance queue, or the stage queue when
-       the stage was going to fill it anyway | the queue that absorbs it |
+       the stage was going to fill it anyway; or the roadmap's Backlog, by the
+       owner, when it is scope not ready to plan | the queue that absorbs it;
+       the owner, ticked `→ roadmap Backlog` |
      - | `automation` | a candidate item adding the script/CLI verb **and** the
        prose that mandates it | the queue that absorbs it |
      - | `framework` | an issue on `[framework] repo` from `aide.toml`; unset or
        offline, it stays pending | the filing role, on the hand-over |
+     - `defect` and `automation` entries never go to the Backlog
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/vision.md

@@ -1,7 +1,7 @@
 ### Insight triage — routing an entry, and judging it
 
 How an entry captured in `insights.md` (§1 → `insights.md`) leaves the inbox.
-It governs the pass that triages the backlog and the role that hands a
+It governs the pass that triages the open inbox and the role that hands a
 `framework` entry over — the insight-review pass, and whatever orchestrates it.
 The routing table has a second reader: the queue's author, who queues what
 triage left open and needs the same table to know which types are theirs
@@ -17,15 +17,27 @@ rule.**
 |---|---|---|
 | `knowledge` | the owning document — the smallest edit that preserves the fact | the triaging role, on the fold |
 | `defect` | a candidate item on the **maintenance queue** | the queue that absorbs it |
-| `gap` | a candidate item — maintenance queue, or the stage queue when the stage was going to fill it anyway | the queue that absorbs it |
+| `gap` | a candidate item — maintenance queue, or the stage queue when the stage was going to fill it anyway; or the roadmap's Backlog, by the owner, when it is scope not ready to plan | the queue that absorbs it; the owner, ticked `→ roadmap Backlog` |
 | `automation` | a candidate item adding the script/CLI verb **and** the prose that mandates it | the queue that absorbs it |
 | `framework` | an issue on `[framework] repo` from `aide.toml`; unset or offline, it stays pending | the filing role, on the hand-over |
 
 **Routing a `defect`, `gap` or `automation` entry never ticks it.** Triage
 stands *at* the queue boundary, so the queue that would carry such an entry does
 not exist yet: leaving it unchecked **is** the routing, and the open inbox is
-what carries it to whoever authors that queue. The exception is the entry triage
-does **not** route — see *decayed premise* below, which closes one.
+what carries it to whoever authors that queue. The exceptions are not
+triage's routings: the entry triage does **not** route — see *decayed premise*
+below, which closes one — and the two closes only the owner makes, a decline
+and a `gap` moved to the roadmap's Backlog.
+
+**`defect` and `automation` entries never go to the Backlog.** A defect is a
+fix to shipped work, and it stays open in the inbox until an item fixes it or
+the owner declines it; an `automation` entry likewise stays open until an item
+carries it or the owner declines it. The Backlog holds scope not yet ready to
+plan (§1 → `roadmap.md`), so a `gap` that is such scope is the one entry it
+takes. **The owner moves it there**, through the create-roadmap entry point:
+the bullet cites the entry as `insight <ID>`, and the entry is ticked with
+`--pointer "roadmap Backlog"` in the same pass. A roadmap with no `# Backlog`
+yet gets one in the same edit, in the roadmap template's shape.
 
 #### Triage judges the entry; the judgement is a trail line
 
@@ -41,11 +53,26 @@ line under the entry, never an edit to the claim**:
   been fixed by work done since. **A decayed premise is ticked, because there is
   nothing left for a queue to carry** — the trail line says what closed it, and
   the claim remains the record of what was true when it was captured. This is
-  the one tick triage performs on a `defect`, `gap` or `automation` entry, and
-  it is not a routing: nothing is being sent anywhere.
+  the one tick triage makes on its own judgement on a `defect`, `gap` or
+  `automation` entry — a decline it applies is the owner's decision (below) —
+  and it is not a routing: nothing is being sent anywhere.
 - **Wrong type** — the entry describes a defect and is filed as knowledge, or
   the reverse. Route it by what it *is* and say so in the trail; the type in the
   captured line is never rewritten.
+
+**A fourth judgement closes an entry without a queue: the owner's decline.**
+
+- **Declined** — the owner decides a `defect`, `gap` or `automation` entry
+  will not be pursued. It is ticked with `--pointer "declined: <reason>"`, and
+  the claim stays the record of what was observed. **The reason names no
+  item**: an item number in a ticked entry's pointer reads as the item the
+  entry became, so the ledger would count that item as an insight-derived
+  fix (§1 → `ledger.md`). Say "superseded by the greeter's rewrite", not
+  "superseded by item 12".
+- **Only the owner declines.** The triage pass and the queue's author may
+  propose a decline, with its reason, where a person reads it; neither makes
+  one. A decline is a scope decision, and it is made at the queue boundary,
+  where a person reviews what the next queue carries.
 
 **A ticked entry whose status is now stale gets a trail line too** — that is
 triage as much as routing is.
@@ -143,6 +170,25 @@ queue, so a `framework` entry may be triaged **on capture or on demand**.
   named repository as a consumer of the framework; after "a private consumer"
   it only repeated the value, and a filing role fills the header literally
   (issue #283).
+- **Why an owner's decline.** Before issue #455 an open `defect`, `gap` or
+  `automation` entry closed only through an item, a decayed premise or a
+  hand-over, so an entry the owner had decided against stayed open for
+  ever. In one consumer 62 entries were open, and 21 of them had been passed
+  over in six or seven queues: the queue's author re-derived the same
+  pass-overs at every boundary, and a real defect stopped being noticed among
+  them. No verb was needed — `tick` takes any pointer.
+- **Why only the owner declines.** Triage and the queue's author both judge
+  an entry already (since 2.41.0 the triager judges and the caller writes),
+  but not pursuing a reported defect is a decision about the project's
+  scope, and the queue boundary is where a person reads. A role that
+  declined by itself would make an unreviewed scope decision.
+- **Why a `defect` never goes to the Backlog.** One consumer ticked nine
+  bullets out of the inbox into a `Carried defects` list in its roadmap. Six
+  weeks later three had been fixed without the list recording it, one had
+  been absorbed, and five were still open but invisible to
+  `insights list --open`. A defect outside the inbox is lost to the one read
+  the queue's author is bound to make; a decline is the honest way out of
+  it.
 - **Why `framework` entries need not wait.** Routing them through the boundary
   too means the inbox accumulates for exactly as long as a queue runs, and a
   long queue is normal.

@@ -124,6 +124,28 @@ A maintenance stage written earlier with acceptance criteria of its own, and
 retitled so, keeps them, since it is frozen: its boxes record its first close, and nothing
 re-attests them per batch.
 
+**An optional `# Backlog` section, after the last stage, holds scope not yet
+ready to plan.** It is not a stage: its heading is `# Backlog`, never a
+`## Stage N`, so it ends the last stage's section and no reader takes a
+bullet of it for that stage's. It is edited as the rest of this file is,
+through the create-roadmap entry point, and the started-stage freeze does not
+reach it.
+
+- **Ideas only.** A bullet is a piece of scope in a sentence or two — never a
+  defect, a status icon, a trail, a date, an owner or an annotation such as
+  `→ Stage N`. A defect stays in the inbox (§1 → `insights-triage.md`); a
+  policy belongs in `vision.md`'s guiding principles; a decision about a stage belongs in that
+  stage.
+- **A bullet that came from the inbox cites its entry as `insight <ID>`**,
+  which `aide check` resolves like any citation (§1 → `insights.md`). Only a
+  `gap` entry arrives this way, moved by the owner.
+- **The queue planner never queues from it.** A queue is cut from stages; a
+  Backlog bullet reaches a queue only once it is a stage.
+- **A bullet leaves in one of two ways**: promoted into a new stage appended
+  after the last, as any new scope enters (above), or deleted by the owner.
+  Promotion deletes the bullet in the same edit, so nothing reads in two
+  places.
+
 #### Rationale
 
 - **Why a started stage is frozen.** Queues were cut from it, items were
@@ -262,3 +284,26 @@ re-attests them per batch.
   frozen, and its ticked boxes are attestations of its first close; dropping
   them would rewrite history, and re-attesting them per batch is the drift
   the rule above removes.
+- **Why a Backlog, and why ruled.** Scope the owner wants recorded but is
+  not ready to plan had no home but a stage, and a stage is planned the moment
+  it is written. One consumer invented a backlog section without rules, and
+  it drifted: a settled project-wide policy that belongs in `vision.md`'s
+  guiding principles, a vision question, and an adjudication tied to a stage
+  that has since closed all sat in it (issue #455). The rules keep it a list
+  of unplanned scope and nothing else.
+- **Why ideas only, and never a defect.** The same consumer's `Carried
+  defects` list shows what a ruleless holding list becomes for defects: of
+  nine entries ticked out of the inbox into it, three were fixed without the
+  list saying so, one was absorbed, and five were still open six weeks later
+  but invisible to `insights list --open` (§1 → `insights-triage.md`). A
+  status or a `→ Stage N` annotation is the same drift in another form: it is
+  a second record of what `progress.md` records.
+- **Why not a tracker.** The framework is deliberately not a
+  project-management or issue-tracking product, so the section carries no
+  status, order, assignment or burndown: it is unplanned scope, kept in the
+  document that owns scope. A forge's tracker is the alternative, and a
+  project with no forge (§4) has none.
+- **Why the `# Backlog` heading needs no engine change.** Every reader of a
+  stage section ends it at the next `#` or `##` heading, so the last stage's
+  Validation / acceptance block never takes in a Backlog bullet; one consumer
+  carried such a section for two months with no `aide check` warning.

@@ -136,6 +136,52 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.45.0] — 2026-10-09
+
+### Added
+
+- **"Not now" has two homes, neither of them a holding list: the owner's
+  decline, and the roadmap's `# Backlog` (issue #455, parent #453).**
+  §1 → `insights-triage.md` gains a fourth judgement: the owner decides a
+  `defect`, `gap` or `automation` entry will not be pursued, and it is
+  ticked `--pointer "declined: <reason>"`, the claim staying the record;
+  the reason names no item, since the ledger reads an item number in a
+  ticked entry's pointer as the item the entry became and would count that
+  item `maintenance`. **Only the owner declines** — the triage pass and the queue's author
+  propose one, with its reason, where a person reads, since a decline is a
+  scope decision made at the queue boundary. §1 → `roadmap.md` adds an
+  optional `# Backlog` after the last stage for scope not yet ready to plan:
+  ideas only (never a defect, a status, a trail or a `→ Stage N`), a bullet
+  from the inbox citing `insight <ID>`, never queued from, leaving by
+  promotion into a new stage or by the owner's deletion, edited as the rest
+  of the file is and outside the started-stage freeze. The routing table's
+  `gap` row gains the Backlog as a second destination, by the owner, ticked
+  `→ roadmap Backlog`; `defect` and `automation` entries never go there.
+  §1 → `insights-maintenance-queue.md` lets a pass-over carry a proposal for
+  the owner, never a decision. In one consumer 62 entries were open, 21 of
+  them passed over in six or seven queues, with no way out for one the owner
+  had decided against; another consumer's ruleless backlog section had
+  drifted, and its `Carried defects` list — nine entries ticked out of the
+  inbox — had three fixed unrecorded, one absorbed and five still open but
+  invisible to `insights list --open` six weeks later. No verb or engine
+  change: `tick` already takes any pointer, every stage reader ends a
+  section at a `#` heading, and `check` already resolves citations under
+  `docs/aide/`; `tests/test_fixture_consumer.py` drives a roadmap with a
+  Backlog through `check`, `progress reword` and both closes. The routing
+  table moves in `aide-create-queue` and `aide-review-insights` under pin;
+  `aide-queue-and-inbox`, `queue-planner`, `aide-create-roadmap`,
+  `insights-triager` and `aide-feedback-loop` say who proposes and who
+  decides.
+- **The optional `# Backlog` block joins roadmap template 2** (introduced in
+  2.44.0; the template number does not move again, since the two releases
+  ship back to back). **What a consumer edits:** nothing is required. A
+  consumer already on `roadmap 2` keeps its `aide-template` line; one still
+  on template 1 sets it to `roadmap 2`, as 2.44.0 says. A consumer that
+  keeps a backlog-like section in `roadmap.md` renames its heading to
+  `# Backlog`, moves any defect in it back to the inbox (`aide insights
+  add defect …`), and moves any policy, status or stage annotation out to
+  the document that owns it.
+
 ## [2.44.0] — 2026-10-09
 
 ### Added

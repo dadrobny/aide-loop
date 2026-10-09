@@ -114,6 +114,7 @@ paths:
      - A batch that reopens a ✅ maintenance stage writes the stage's 🚧
        itself
      - Write that icon into the two cells in the same commit as the bullets
+     - A pass-over may carry a proposal for the owner, never a decision
 -->
 
 # Queue files and the insight inbox
@@ -224,6 +225,13 @@ Whether an entry warrants one is yours to decide and never silent: too small
 to be worth a branch, blocked on something unbuilt, out of scope, or a `gap`
 the upcoming stage was going to fill anyway — say which, where the queue is
 reviewed.
+
+**A pass-over may carry a proposal for the owner, never a decision.** An
+entry you pass over again and again is named with what the owner might do
+instead — decline it, with its reason, or move a `gap` that is scope not
+ready to plan to the roadmap's Backlog. Both are the owner's (§1 →
+`insights-triage.md`), so you tick neither, and the entry stays open until
+the owner decides.
 
 **A maintenance item's deliverable bullet goes under the maintenance stage**
 (§1 → `insights-maintenance-queue.md`; what that stage is, §1 → `roadmap.md`),

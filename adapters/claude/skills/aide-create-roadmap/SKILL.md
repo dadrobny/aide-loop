@@ -75,6 +75,15 @@ read it before editing. In practice:
    stage the project already runs as its standing maintenance stage under
    another title is retitled `Maintenance` once instead, here and in
    `progress.md` — the one edit the freeze allows a started stage's heading.
+7. **An optional `# Backlog` after the last stage, for ideas the owner wants
+   kept but no stage is ready to take on** — never a defect or a status. A
+   `gap` insight the owner moves there gets a bullet citing `insight <ID>` —
+   in a section added in the template's shape, when the roadmap has none yet
+   — and the entry is ticked in the same pass:
+   `python .aide/scripts/aide.py insights tick <ID> --pointer "roadmap Backlog"`.
+   A bullet promoted into a new stage is deleted from the Backlog in the same
+   edit. What a bullet may say is `.aide/conventions.md` §1 → roadmap.md, and
+   the template's optional Backlog block draws its shape.
 
 ### Output
 
