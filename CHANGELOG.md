@@ -136,6 +136,22 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.43.1] — 2026-10-09
+
+### Fixed
+
+- **`aide test` and `aide merge` run a test command whose program is a
+  Windows `.cmd` or `.bat` shim, such as `npm` (issue #449).** The suite was
+  spawned by its bare name, which Windows searches for with `.exe` alone, so
+  `test_command = "npm test"` ended in a `FileNotFoundError` traceback before
+  any test ran — while `aide env` reported the same program found, since its
+  lookup applies `PATHEXT`. The suite now spawns the path that lookup
+  returned, so the report and the run agree. A program found and still not
+  startable (on POSIX, an executable file the kernel cannot run) is refused
+  in one sentence naming where it was found, where it was a traceback. A
+  command not found at all is refused as before. Nothing for a consumer to
+  edit; a `node` wrapper kept as a workaround can go.
+
 ## [2.43.0] — 2026-10-08
 
 ### Changed

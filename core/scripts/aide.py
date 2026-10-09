@@ -420,6 +420,16 @@ class RunnerMissing(MissingTool):
                          f"or fix [python] test_command in aide.toml")
 
 
+class RunnerUnrunnable(MissingTool):
+    """The test command's program was found, and starting it failed."""
+
+    def __init__(self, program: str, found: str, exc: OSError) -> None:
+        why = exc.strerror or str(exc)
+        super().__init__(f"the test command '{program}' was found at {found} "
+                         f"and cannot be run ({why}) — fix [python] "
+                         f"test_command in aide.toml")
+
+
 class ToolMisconfigured(MissingTool):
     """`.aide/local.toml` names where a program is, and it is not there — or
     the file cannot be read, so where it puts the program cannot be known
@@ -15673,14 +15683,24 @@ def junit_failure_ids(xml_text: str,
 def _run_suite_argv(argv: List[str], repo_root: Path) -> subprocess.CompletedProcess:
     """The one entry the engine runs the test command through: a program that
     is not there is `RunnerMissing`, never a `FileNotFoundError` traceback
-    (issue #352), and an empty command is refused by each verb before this."""
-    try:
-        return subprocess.run(argv, cwd=str(repo_root))
-    except (FileNotFoundError, PermissionError):
-        # PermissionError: a path that names a file with no execute bit.
-        if resolve_tool(argv[0], repo_root) is None:
+    (issue #352), and an empty command is refused by each verb before this.
+
+    The program spawned is the one `resolve_tool` found, as `aide env`
+    reports it: on Windows a list argv is searched for with `.exe` alone, so
+    the bare name of an `npm.cmd` shim was a `FileNotFoundError` for a
+    program the engine had just called present (issue #449). One found and
+    still not startable is `RunnerUnrunnable`, naming where it was found."""
+    found = resolve_tool(argv[0], repo_root)
+    if found is None:
+        try:
+            return subprocess.run(argv, cwd=str(repo_root))
+        except (FileNotFoundError, PermissionError):
+            # PermissionError: a path that names a file with no execute bit.
             raise RunnerMissing(argv[0], repo_root) from None
-        raise
+    try:
+        return subprocess.run([found, *argv[1:]], cwd=str(repo_root))
+    except OSError as exc:
+        raise RunnerUnrunnable(argv[0], found, exc) from None
 
 
 def run_test_suite(repo_root: Path, argv: List[str],
