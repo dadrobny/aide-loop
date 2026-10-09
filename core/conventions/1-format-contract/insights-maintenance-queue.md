@@ -38,6 +38,22 @@ own — too small to be worth a branch, blocked on something unbuilt, out of sco
 `gap` the upcoming stage was going to fill anyway belongs in the stage queue,
 with that stage named as the reason. What is never allowed is silence.
 
+**A maintenance item's deliverable bullet goes under the maintenance stage**
+(§1 → `roadmap.md`), **never under the feature stage whose module it
+touches**: placing it there would reopen a closed stage. A `gap` routed to
+the stage queue is not a maintenance item, and its bullet goes under that
+stage as the stage queue's do. When the roadmap has no maintenance stage, the
+queue's author hands back, as for any answer that changes `roadmap.md`, and
+the owner adds the stage once, through the create-roadmap entry point (§5).
+
+**A batch that reopens a ✅ maintenance stage writes the stage's 🚧 itself.**
+No verb moves a stage when a bullet is added, so its section header and its
+Stage summary row still read ✅ over the new 📋 bullets, and `aide check`
+errors on both until they read the 🚧 the rollup now computes. Write that icon
+into the two cells in the same commit as the bullets: it is the derived value,
+not an icon typed over one (§1 → `progress.md`), and the next `aide progress
+set` on the stage writes the same.
+
 #### Rationale
 
 - **Why a maintenance queue, and not the stage batch.** A one-line fix that
@@ -50,3 +66,20 @@ with that stage named as the reason. What is never allowed is silence.
   review or two — or as neither, in a project whose `git.mode` pushes nothing
   (§4). What the engine fixes is that the fixes are queued *ahead*, never the
   shape of the checkpoint around them.
+- **Why the maintenance stage, and not the stage the repair touches.** A
+  repair is to work already shipped, so the stage whose module it touches is
+  usually ✅, and a 📋 bullet under it reopens a stage whose acceptance was
+  attested against the work as first delivered. One consumer did exactly
+  that, filing a repair under an unrelated feature stage so as not to reopen
+  its maintenance stage without a planned validation (issue #453); with no
+  criteria on the maintenance stage (§1 → `roadmap.md`), reopening it plans
+  nothing, so the incentive is gone.
+- **Why a hand-back, and not a stage the planner adds.** The queue's author
+  never edits `roadmap.md`, and the maintenance stage is authored once, so
+  the hand-back is paid once per roadmap rather than once per batch — the
+  cost that made a stage per batch the rejected alternative.
+- **Why the reopen writes the icon by hand.** Issue #454 needed no engine
+  change, and the rollup is recomputed only by the verbs that move a bullet's
+  status; a bullet added under a ✅ stage is the one write no verb makes. The
+  icon written is the one the rollup computes, so nothing about the stage's
+  status is asserted by hand, and `aide check` holds the pair to it.

@@ -15,8 +15,9 @@ Mandatory (consumer in brackets):
    its Goal, Deliverables, Dependencies and Validation / acceptance blocks.
    The acceptance bullets are the ones `progress.md` mirrors as its boxes; a
    measured outcome is a `Target:` bullet instead, and §1 → `progress.md`
-   says which is which. *(aide check, aide progress reword, create-progress,
-   queue-planner, spec-author)*
+   says which is which. The maintenance stage (below) is the one whose
+   Deliverables list nothing and which has no acceptance bullets. *(aide
+   check, aide progress reword, create-progress, queue-planner, spec-author)*
 
 **The coverage table is complete both ways.** Every G-code in `vision.md` has
 a row — an objective withdrawn from scope too, for as long as the vision lists
@@ -76,6 +77,33 @@ stage.
 item in an open queue — while an earlier stage its blocking Dependencies name
 is ⏸️ or withdrawn: the two states no queue ends. A 📋, 🚧 or 🔍 earlier stage
 is the ordinary wait, and is not named.
+
+**A roadmap holds at most one maintenance stage, and needs none.** It is the
+home of the maintenance queues' items (§1 → `insights-maintenance-queue.md`):
+a `## Stage N — Title` section like any other, authored once through the
+create-roadmap entry point and frozen once started, which differs from a
+feature stage in what it carries:
+
+- **Its Deliverables are the maintenance queues' items, so the roadmap lists
+  none.** Each maintenance queue adds one `progress.md` bullet per item under
+  the stage's section. It is the one stage whose `progress.md` bullets keep
+  growing after it has started; its text here does not.
+- **It has no blocking Dependencies, and no stage's blocking slot names it.**
+  A stage that reopens at every batch would never meet a dependency on it.
+- **No Objective row names it.** Maintenance repairs shipped work and
+  delivers no objective, and a row naming the stage would flip to 🚧 at every
+  reopen.
+- **It has no acceptance criteria of its own.** Each maintenance item's spec
+  carries its own. With no box at stage level nothing goes stale between
+  batches, and `aide check --queue` never reports a queue-end need for the
+  stage: a stage with no unticked box has none.
+- **It reopens and closes by rollup.** It reads 🚧 while a maintenance
+  queue's items are open and ✅ once they ship; the one hand edit a reopen
+  asks for is §1 → `insights-maintenance-queue.md`'s.
+
+A maintenance stage written earlier with acceptance criteria of its own keeps
+them, since it is frozen: its boxes record its first close, and nothing
+re-attests them per batch.
 
 #### Rationale
 
@@ -167,3 +195,36 @@ is the ordinary wait, and is not named.
   stages and puts ordering without blocking in a sentence after it
   (`None. Independent of Stage 17 — may be queued in either order.`); reading
   the whole block would flag exactly the phrasing the template recommends.
+- **Why one standing maintenance stage.** Before issue #454 the maintenance
+  queue had no stage to put its bullets under, and two consumers improvised
+  opposite answers. One ran a single standing stage through six closes with
+  no `aide check` warning. The other created a new stage per maintenance
+  batch, and each needed an owner pass through the roadmap entry point — the
+  planner cannot write a stage — and was mapped to objectives it did not
+  deliver. A stage per batch is the rejected alternative for both reasons,
+  and for inflating the plan. So is a `## Maintenance` section of
+  `progress.md` that is not a stage: rollup, `set`, `claim`, `merge`,
+  `check`, `status`, gate reach and the ledger's stage cell all key on stage
+  sections, so it would be a large engine change for the same behaviour.
+- **Why the maintenance stage has no criteria.** The standing stage above
+  carried four acceptance boxes. They were attested at its first two closes
+  and never again, so from the third batch on they asserted nothing about
+  the work under them. And one repair was filed under an unrelated feature
+  stage, so as not to reopen the maintenance stage without a planned
+  validation. Criteria on the item, where they are checked when the item is
+  built, remove both: nothing at stage level to go stale, and no queue-end
+  item to plan for.
+- **Why no Objective row and no dependency.** Both would read the stage's
+  status, and its status moves at every batch. An Objective row would report
+  a delivered objective as 🚧 whenever a repair is open; a blocking
+  dependency on it would be met only between batches, by accident.
+- **Why the engine does not recognise the stage.** It needs nothing new: a
+  stage section with no acceptance box raises no queue-end need, its rollup
+  is any stage's, and the ledger's `maintenance` kind comes from the insight
+  tick. A warning on an Objective row or a blocking slot naming the stage
+  would need the engine to tell it apart, by its title for instance, so it is
+  left until drift is seen.
+- **Why a stage written earlier keeps its criteria.** A started stage is
+  frozen, and its ticked boxes are attestations of its first close; dropping
+  them would rewrite history, and re-attesting them per batch is the drift
+  the rule above removes.

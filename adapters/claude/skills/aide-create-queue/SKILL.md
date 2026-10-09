@@ -71,7 +71,15 @@ one**, so the maintenance queue is served first and the stage queue starts when
 it empties. How the pair reaches a human is the caller's, below: push and PR are
 never this step's. Number the items sequentially across both,
 maintenance queue first, and wire every one of them into `progress.md`
-(requirement 8) exactly as for a single queue.
+(requirement 8) exactly as for a single queue — **a maintenance item's
+deliverable bullet goes under the maintenance stage, never under the feature
+stage whose module it touches** (§1 → `insights-maintenance-queue.md`; what
+the stage is, §1 → `roadmap.md`).
+
+**When the roadmap has no maintenance stage, the queue's author hands back**
+— before writing either queue, since the answer changes `roadmap.md`: name
+the entries that warrant a maintenance queue, and say that **the owner adds
+the stage once, through the create-roadmap entry point**.
 
 Write only the stage queue when there is nothing to batch: no open `defect`,
 `gap` or `automation` entry, or none that warrants a queue of its own. That
@@ -163,13 +171,20 @@ as the reason.
    - Append to an existing reference when a deliverable maps to several items
      (`… *(Items 006, NNN)*`); add the reference to the bullet that has none; or,
      if the item delivers something not yet listed, add a new
-     `- 📋 <deliverable>. *(Item NNN)*` bullet under the right stage. A shared
+     `- 📋 <deliverable>. *(Item NNN)*` bullet under the right stage — for a
+     maintenance queue's item, the maintenance stage, whose deliverables the
+     roadmap never lists. A shared
      marker is shorthand, not a shared status cell: the first status change to
      any of its items splits the bullet into one per item, so the siblings keep
      📋 rather than being completed alongside.
    - **Never change a deliverable's status icon** — leave it 📋. This step only
      makes the item *trackable*; status transitions (📋→🚧→✅) are
      `aide progress set`'s job during execution.
+   - **A batch that reopens a ✅ maintenance stage writes the stage's 🚧
+     itself.** No verb moves the stage when you add a bullet, so `aide check`
+     errors while its section header and Stage summary row still read ✅.
+     **Write that icon into the two cells in the same commit as the bullets**
+     — the value the rollup computes, not drift.
    - **Wire a marker onto a 📋 bullet only.** An item born on a ⏸️ or ❌
      bullet is settled from the start, so its queue would read done the
      moment it is written (§1 → `progress.md`). Queue a ⏸️ bullet only where
@@ -295,6 +310,15 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
        before the stage queue
      - a pass-over leaves the entry open and is stated where the queue is
        reviewed
+     - A maintenance item's deliverable bullet goes under the maintenance
+       stage
+     - never under the feature stage whose module it touches
+     - When the roadmap has no maintenance stage, the queue's author hands
+       back
+     - the owner adds the stage once, through the create-roadmap entry point
+     - A batch that reopens a ✅ maintenance stage writes the stage's 🚧
+       itself
+     - Write that icon into the two cells in the same commit as the bullets
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/insights-triage.md

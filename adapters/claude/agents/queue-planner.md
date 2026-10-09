@@ -59,7 +59,12 @@ Follow the `aide-create-queue` skill in full. In brief:
    of the numbering (§1 → `queue-NNN.md`, preloaded above). Item numbers still
    run sequentially across the pair, maintenance queue first. Write only the
    stage queue when there is nothing to batch, or nothing that warrants a queue
-   of its own — and say which it was.
+   of its own — and say which it was. A maintenance queue's items are wired
+   under the roadmap's **maintenance stage** (step 5); **when the roadmap has
+   no maintenance stage, stop and hand back** before writing either queue,
+   naming the entries that warrant one: the owner adds the stage once, through
+   `/aide-create-roadmap` (§1 → `insights-maintenance-queue.md`, preloaded
+   above).
 3. **Tidy the superseded previous queue** with the CLI — it writes the
    completion note itself, and the stamp is never typed by hand (§1 →
    `queue-NNN.md`, preloaded above):
@@ -110,6 +115,14 @@ Follow the `aide-create-queue` skill in full. In brief:
    items splits the bullet into one per item. **Never change a status
    icon** (leave deliverables 📋 — status transitions are `aide progress set`'s job
    during execution).
+
+   **A maintenance queue's items go under the maintenance stage**, never
+   under the feature stage whose module they touch, and the roadmap lists no
+   deliverable there, so each is a new bullet. When that stage reads ✅, the
+   new 📋 bullets reopen it: write the 🚧 the rollup computes into its
+   section header and Stage summary row in the same commit, since no verb
+   moves a stage when a bullet is added and `aide check` errors until you do
+   (§1 → `insights-maintenance-queue.md`, preloaded above).
 
    **Wire a marker onto a 📋 bullet only.** An item born on a ⏸️ or ❌
    bullet is settled from the start, and its queue reads done the moment it
@@ -238,7 +251,7 @@ and resolving it destroys the only thing the gate protects.
   `progress.md` only the item-reference back-fill (step 5), the deferral of
   a carried item or the drop of one its owner decided against (step 3) and
   the resume of a deferred bullet its owner decided to queue (step 5), each
-  by its verb, and
+  by its verb, the 🚧 a reopened maintenance stage rolls up to (step 5), and
   **adding a row to `## Human gates`** (above), never a deliverable's status
   icon by hand and never new stages/acceptance. Adding a gate row
   is permitted because raising a blocker is safe; **resolving** one is not

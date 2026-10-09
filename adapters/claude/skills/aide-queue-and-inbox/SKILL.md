@@ -94,6 +94,16 @@ paths:
        queue
      - a maintenance queue, authored and merged before the stage queue
      - An unchecked entry is still a candidate
+     - A maintenance item's deliverable bullet goes under the maintenance
+       stage
+     - never under the feature stage whose module it touches
+     - placing it there would reopen a closed stage
+     - When the roadmap has no maintenance stage, the queue's author hands
+       back
+     - the owner adds the stage once, through the create-roadmap entry point
+     - A batch that reopens a ✅ maintenance stage writes the stage's 🚧
+       itself
+     - Write that icon into the two cells in the same commit as the bullets
 -->
 
 # Queue files and the insight inbox
@@ -204,3 +214,17 @@ Whether an entry warrants one is yours to decide and never silent: too small
 to be worth a branch, blocked on something unbuilt, out of scope, or a `gap`
 the upcoming stage was going to fill anyway — say which, where the queue is
 reviewed.
+
+**A maintenance item's deliverable bullet goes under the maintenance stage**
+(§1 → `insights-maintenance-queue.md`; what that stage is, §1 → `roadmap.md`),
+**never under the feature stage whose module it touches**: placing it there
+would reopen a closed stage. A `gap` you route to the stage queue is a stage
+item, wired under that stage. When the roadmap has no maintenance stage, the
+queue's author hands back: the owner adds the stage once, through the
+create-roadmap entry point, since the answer changes `roadmap.md`.
+
+**A batch that reopens a ✅ maintenance stage writes the stage's 🚧 itself.**
+No verb moves a stage when a bullet is added, so its section header and Stage
+summary row still read ✅ over the new 📋 bullets, and `aide check` errors on
+both. Write that icon into the two cells in the same commit as the bullets —
+the value the rollup computes, so it is not drift.

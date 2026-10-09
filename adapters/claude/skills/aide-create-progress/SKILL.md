@@ -36,6 +36,11 @@ error rate, a benchmark), mirror it as a row of the optional
 `## Outcome targets` table, **not** as an acceptance checkbox — targets gate
 objectives, never stages (`.aide/conventions.md` §1 → `progress.md`).
 
+A roadmap's maintenance stage, if it has one (`.aide/conventions.md` §1 →
+roadmap.md), gets its section and Stage summary row like any stage, with an
+empty Deliverables block and no Acceptance block: its bullets arrive with the
+maintenance queues, and no Objective row names it.
+
 Run `python .aide/scripts/aide.py check` after writing — it must pass, apart from
 any `this machine:` error, which is reported to the human, never fixed by
 editing `aide.toml`.

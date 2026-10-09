@@ -136,6 +136,44 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.44.0] — 2026-10-09
+
+### Added
+
+- **The maintenance queue has a stage home: an optional, standing
+  maintenance stage (issue #454, parent #453).** §1 → `roadmap.md` defines
+  it — at most one per roadmap, authored once through the roadmap entry
+  point; its Deliverables are the maintenance queues' items, which the
+  roadmap does not list; no blocking Dependencies and no stage's blocking
+  slot naming it; no Objective row; no acceptance criteria of its own, so
+  `aide check --queue` never asks for a `Validate stage N` item for it; and
+  it reopens and closes by rollup. A maintenance stage written earlier with
+  criteria keeps them. §1 → `insights-maintenance-queue.md` says a
+  maintenance item's bullet goes under it, never under the feature stage
+  whose module it touches; that the queue's author hands back when the
+  roadmap has none; and that a batch reopening a ✅ maintenance stage
+  writes the 🚧 the rollup computes into its section header and Stage
+  summary row in the same commit — no verb moves a stage when a bullet is
+  added, and `aide check` errors on a ✅ cell over a 📋 bullet. One
+  consumer ran a single standing stage through six closes with its stage
+  boxes attested only at the first two, and filed a repair under an
+  unrelated feature stage to avoid reopening it without validation; another
+  made a stage per batch, each needing an owner pass. No engine change:
+  `tests/test_fixture_consumer.py` drives a criteria-free maintenance stage
+  through two batches. `aide-create-queue` (requirement 8 and the
+  maintenance-queue paragraph), `queue-planner`, `aide-create-roadmap`,
+  `aide-create-progress` and the `aide-queue-and-inbox` section skill say
+  the same, under pin where they quote it.
+- **`roadmap template 2`.** The roadmap template ends with an optional
+  maintenance-stage block — a Goal, a Deliverables line saying the
+  maintenance queues add them to `progress.md`, `Dependencies. None.`, and a
+  pointer to §1 → `roadmap.md`. **What a consumer edits:** `aide check` warns
+  that `docs/aide/roadmap.md` was created from template 1; set its
+  `aide-template` line to `roadmap 2`. A consumer running maintenance queues
+  adds the maintenance stage once through `/aide-create-roadmap`, appended
+  after its last stage, with a Stage summary row and an empty section in
+  `progress.md`. A consumer with no maintenance queues adds nothing.
+
 ## [2.43.1] — 2026-10-09
 
 ### Fixed

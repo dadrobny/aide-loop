@@ -2996,6 +2996,75 @@ def test_a_maintenance_queue_is_served_before_the_stage_queue_behind_it(
     assert _branch(consumer).startswith("aide/004-")
 
 
+def test_a_maintenance_stage_reopens_and_closes_with_no_queue_end_need(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    """Issue #454's "no engine change", exercised rather than assumed.
+
+    §1 → `roadmap.md`'s maintenance stage has no acceptance criteria and no
+    Objective row, and each maintenance queue adds its items' bullets under
+    it. Two batches through one such stage: each `check --queue` is clean and
+    reports no queue-end need, and the stage reads 🚧 while its batch is open
+    and ✅ once it ships. The second batch wires a 📋 bullet under a ✅ stage:
+    no verb recomputes the stage then, so `check` errors until the queue's
+    author writes the 🚧 the rollup computes into the stage's two cells — the
+    one hand edit the reopen asks for.
+    """
+    ddir = consumer / "docs" / "aide"
+    progress = ddir / "progress.md"
+    report = tmp_path / "report.json"
+    for n in ("1", "2"):
+        assert aide.main(["--repo", str(consumer), "progress", "set", n, "done"]) == 0
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "| 1 | Foundations | G1 | ✅ |",
+        "| 1 | Foundations | G1 | ✅ |\n| 2 | Maintenance | — | 📋 |")
+        + "\n## Stage 2 — Maintenance — 📋\n\n**Deliverables.**\n",
+        encoding="utf-8")
+    _commit(consumer, "docs: the maintenance stage")
+
+    def stage_2(icon: str) -> tuple:
+        return (f"| 2 | Maintenance | — | {icon} |",
+                f"## Stage 2 — Maintenance — {icon}")
+
+    def stage_2_reads(status: str) -> bool:
+        lines = progress.read_text(encoding="utf-8").splitlines()
+        return all(c in lines for c in stage_2(aide.STATUS_TO_ICON[status]))
+
+    for queue, item in ((2, 3), (3, 4)):
+        (ddir / "queue" / f"queue-{queue:03d}.md").write_text(
+            f"# Fixture — Work Queue {queue:03d} (maintenance)\n\n"
+            "> Insight-derived fixes for the maintenance stage.\n\n"
+            f"### Item {item:03d}: Fix {item}\nAn insight-derived fix.\n",
+            encoding="utf-8")
+        progress.write_text(progress.read_text(encoding="utf-8")
+                            + f"- 📋 Fix {item}. *(Item {item:03d})*\n",
+                            encoding="utf-8")
+        if stage_2_reads("complete"):
+            assert aide.main(["--repo", str(consumer), "check"]) == 1
+            text = progress.read_text(encoding="utf-8")
+            for done, open_ in zip(stage_2("✅"), stage_2("🚧")):
+                text = text.replace(done, open_)
+            progress.write_text(text, encoding="utf-8")
+        _commit(consumer, f"docs: maintenance queue {queue:03d}")
+        assert aide.main(["--repo", str(consumer), "queue", "tidy",
+                          str(queue - 1)]) == 0
+        capsys.readouterr()
+        assert aide.main(["--repo", str(consumer), "check", "--queue",
+                          str(queue), "--report", str(report)]) == 0
+        assert "OK (0 warning(s))" in capsys.readouterr().out
+        findings = json.loads(report.read_text(encoding="utf-8"))["findings"]
+        assert not [f for f in findings if f["kind"].startswith("queue-end")]
+
+        assert aide.main(["--repo", str(consumer), "progress", "set",
+                          str(item), "in-progress"]) == 0
+        assert stage_2_reads("in-progress")
+        assert aide.main(["--repo", str(consumer), "progress", "set",
+                          str(item), "done"]) == 0
+        assert stage_2_reads("complete")
+        capsys.readouterr()
+        assert aide.main(["--repo", str(consumer), "check"]) == 0
+        assert "OK (0 warning(s))" in capsys.readouterr().out
+
+
 def test_claim_reports_none_left_when_every_open_item_is_already_claimed(
         aide, consumer: Path, capsys):
     """The queue is still open, but nothing in it is pickable. Distinct from

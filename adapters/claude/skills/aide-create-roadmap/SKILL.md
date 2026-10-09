@@ -66,6 +66,12 @@ read it before editing. In practice:
    holds is `.aide/conventions.md` §1 → roadmap.md.
 4. **Prescriptive detail** — most work is done by AI; be specific.
 5. **Realistic scope** — each stage deployable locally, roughly a week.
+6. **At most one maintenance stage, and only when the project runs
+   maintenance queues** — the home of the insight-derived fixes those queues
+   carry. It is added once, appended like any new stage, usually when the
+   queue planner hands back for want of one. What it carries and what nothing
+   may say about it is `.aide/conventions.md` §1 → roadmap.md, and the
+   template's optional maintenance-stage block draws its shape.
 
 ### Output
 
