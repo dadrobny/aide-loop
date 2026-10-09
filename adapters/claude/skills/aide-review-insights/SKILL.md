@@ -95,8 +95,9 @@ Routing an entry as written is not the whole of triage. Three findings, one form
   been fixed by work done since. **A decayed premise is ticked, because there is
   nothing left for a queue to carry** — the trail line says what closed it, and
   the claim remains the record of what was true when it was captured. This is
-  the one tick you perform on a `defect`, `gap` or `automation` entry, and it is
-  not a routing: nothing is being sent anywhere.
+  the one tick you make on your own judgement on a `defect`, `gap` or
+  `automation` entry — a decline you apply in step 5 is the owner's decision —
+  and it is not a routing: nothing is being sent anywhere.
 - **Wrong type** — the entry describes a defect and is filed as knowledge, or
   the reverse. Route it by what it *is* and say so in the trail; the type in the
   captured line is never rewritten.
@@ -105,7 +106,8 @@ A fourth judgement closes an entry, and it is never yours to make:
 
 - **Declined** — the owner decides a `defect`, `gap` or `automation` entry
   will not be pursued; it is ticked `--pointer "declined: <reason>"`, and the
-  claim stays the record. **Only the owner declines.** Propose a decline, with
+  claim stays the record. **The reason names no item**: an item number there
+  reads as the item the entry became. **Only the owner declines.** Propose a decline, with
   its reason, where an entry has been passed over queue after queue or its
   owner has said it will not be done; apply it (step 5) only once the person
   watching this session agrees. A decline is a scope decision, and it is
@@ -243,6 +245,7 @@ open is what the next queue author is about to read.
      - Routing a `defect`, `gap` or `automation` entry never ticks it
      - `defect` and `automation` entries never go to the Backlog
      - Only the owner declines
+     - The reason names no item
      - A decline is a scope decision, and it is made at the queue boundary
      - a decayed premise is ticked, because there is nothing left for a
        queue to carry

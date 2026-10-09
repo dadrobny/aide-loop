@@ -36,7 +36,8 @@ carries it or the owner declines it. The Backlog holds scope not yet ready to
 plan (§1 → `roadmap.md`), so a `gap` that is such scope is the one entry it
 takes. **The owner moves it there**, through the create-roadmap entry point:
 the bullet cites the entry as `insight <ID>`, and the entry is ticked with
-`--pointer "roadmap Backlog"` in the same pass.
+`--pointer "roadmap Backlog"` in the same pass. A roadmap with no `# Backlog`
+yet gets one in the same edit, in the roadmap template's shape.
 
 #### Triage judges the entry; the judgement is a trail line
 
@@ -52,8 +53,9 @@ line under the entry, never an edit to the claim**:
   been fixed by work done since. **A decayed premise is ticked, because there is
   nothing left for a queue to carry** — the trail line says what closed it, and
   the claim remains the record of what was true when it was captured. This is
-  the one tick triage performs on a `defect`, `gap` or `automation` entry, and
-  it is not a routing: nothing is being sent anywhere.
+  the one tick triage makes on its own judgement on a `defect`, `gap` or
+  `automation` entry — a decline it applies is the owner's decision (below) —
+  and it is not a routing: nothing is being sent anywhere.
 - **Wrong type** — the entry describes a defect and is filed as knowledge, or
   the reverse. Route it by what it *is* and say so in the trail; the type in the
   captured line is never rewritten.
@@ -62,7 +64,11 @@ line under the entry, never an edit to the claim**:
 
 - **Declined** — the owner decides a `defect`, `gap` or `automation` entry
   will not be pursued. It is ticked with `--pointer "declined: <reason>"`, and
-  the claim stays the record of what was observed.
+  the claim stays the record of what was observed. **The reason names no
+  item**: an item number in a ticked entry's pointer reads as the item the
+  entry became, so the ledger would count that item as an insight-derived
+  fix (§1 → `ledger.md`). Say "superseded by the greeter's rewrite", not
+  "superseded by item 12".
 - **Only the owner declines.** The triage pass and the queue's author may
   propose a decline, with its reason, where a person reads it; neither makes
   one. A decline is a scope decision, and it is made at the queue boundary,

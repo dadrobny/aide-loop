@@ -5732,6 +5732,44 @@ def test_a_roadmap_backlog_ends_the_last_stage_and_closes_its_inbox_entries(
     assert aide.main(["--repo", str(consumer), "check"]) == 1
 
 
+@pytest.mark.parametrize("heading", ["# Backlog", "## Backlog"])
+def test_a_backlog_after_the_maintenance_stage_ends_it_as_the_template_ships(
+        aide, consumer: Path, capsys, heading: str):
+    """The layout `roadmap template 2` draws: the last stage is the
+    maintenance stage — no Deliverables list, no acceptance block — and the
+    Backlog follows it. Either heading level ends the stage, so no Backlog
+    bullet becomes one of its criteria (nor of stage 1's), and `check` is
+    clean over the pair."""
+    ddir = consumer / "docs" / "aide"
+    progress = ddir / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "| 1 | Foundations | G1 | 📋 |",
+        "| 1 | Foundations | G1 | 📋 |\n| 2 | Maintenance | — | 📋 |")
+        + "\n## Stage 2 — Maintenance — 📋\n\n**Deliverables.**\n",
+        encoding="utf-8")
+    roadmap = ddir / "roadmap.md"
+    roadmap.write_text(
+        "# Fixture — Roadmap\n\n> Derived from the vision.\n\n"
+        "| Objective | Delivered by |\n|---|---|\n| G1 Foundations | Stage 1 |\n"
+        + _ROADMAP.split("\n", 1)[1]
+        + "\n## Stage 2 — Maintenance\n\n"
+        "**Goal.** Repairs to the shipped greeter.\n\n"
+        "**Deliverables.** Added to `progress.md` by each maintenance queue.\n\n"
+        "**Dependencies.** None.\n\n---\n\n"
+        f"{heading}\n\n- A greeting in a second locale.\n"
+        "- A farewell in a second locale.\n", encoding="utf-8")
+    _commit(consumer, "docs: a maintenance stage, then the Backlog")
+
+    lines = roadmap.read_text(encoding="utf-8").splitlines()
+    at = lines.index(heading)
+    assert [end for _, end, _ in aide.stage_sections(lines)][-1] <= at
+    assert aide.roadmap_acceptance_bullets(lines, "2") is None
+    assert len(aide.roadmap_acceptance_bullets(lines, "1")) == 1
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "OK (0 warning(s))" in capsys.readouterr().out
+
+
 def test_reword_refuses_once_the_criterion_has_been_attested(aide, consumer: Path):
     _accept_one(aide, consumer, "checked")
     before = (consumer / "docs" / "aide" / "progress.md").read_bytes()

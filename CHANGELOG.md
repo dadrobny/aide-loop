@@ -144,8 +144,10 @@ instead — that is the bump policy above, and it is enforced by
   decline, and the roadmap's `# Backlog` (issue #455, parent #453).**
   §1 → `insights-triage.md` gains a fourth judgement: the owner decides a
   `defect`, `gap` or `automation` entry will not be pursued, and it is
-  ticked `--pointer "declined: <reason>"`, the claim staying the record.
-  **Only the owner declines** — the triage pass and the queue's author
+  ticked `--pointer "declined: <reason>"`, the claim staying the record;
+  the reason names no item, since the ledger reads an item number in a
+  ticked entry's pointer as the item the entry became and would count that
+  item `maintenance`. **Only the owner declines** — the triage pass and the queue's author
   propose one, with its reason, where a person reads, since a decline is a
   scope decision made at the queue boundary. §1 → `roadmap.md` adds an
   optional `# Backlog` after the last stage for scope not yet ready to plan:
