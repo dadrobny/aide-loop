@@ -192,7 +192,7 @@ PADDED = """\
 """
 
 
-def test_a_zero_padded_stage_is_matched_by_value(tmp_path: Path, capsys):
+def test_a_zero_padded_stage_rolls_up_as_check_reads_it(tmp_path: Path, capsys):
     """`--stage 7` and `--stage 07` are one stage, and so are a section
     headed `07` and a row naming `Stage 07`. A row naming `Stage 7` under a
     section headed `07` names no section as `aide check` reads it, so the
