@@ -1089,8 +1089,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "\u23f8\ufe0f set by hand included, and every other cell is left as "
          "it reads",
          ("test_aide_maintenance_stage::test_a_deferred_cell_set_by_hand_is_written_over",
-          "test_aide_maintenance_stage::test_a_reopened_stage_holding_a_deferred_bullet_reaches_in_progress",
+          "test_aide_maintenance_stage::test_a_reopened_stage_holding_a_deferred_bullet_reaches_its_rollup",
           "test_aide_maintenance_stage::test_stage_n_writes_its_own_cells_and_leaves_every_other_as_it_reads")),
+        # `_apply_objective_rollup` derives a row named by `only` from
+        # `stage_rollups` over every stage it names — the bullets, not the
+        # cells — which is `derived_cell_findings`' own derivation.
+        ("An Objective row naming stage N is written from every stage it "
+         "names, those not rolled up included, as `aide check` compares it",
+         "test_aide_maintenance_stage::"
+         "test_an_objective_row_follows_every_stage_it_names"),
         # `withdrawn_stages` drops the stage from `targets`; `_held_by_hand`
         # keeps ❌ always; `rollup_status` is None with no bullet.
         ("A stage whose summary row is \u274c is left whole, a \u274c header "

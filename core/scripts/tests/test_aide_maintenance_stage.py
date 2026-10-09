@@ -155,6 +155,66 @@ def test_an_objective_row_naming_the_stage_follows_it_down():
                         "stage 2: header ✅ → 🚧 in-progress"]
 
 
+def test_an_objective_row_follows_every_stage_it_names():
+    """`--stage 3` rolls G2's row, which names stages 2 and 3, from both:
+    stage 3 is ✅, stage 2 rolls up to 🚧, so the row reads 🚧 — while
+    stage 2's own cells, not rolled up, are left as they read."""
+    text = PROGRESS.replace("| G2 Reports | Stage 2 | 🚧 |",
+                            "| G2 Reports | Stages 2, 3 | ✅ |")
+    text = text.replace("## Stage 2 — Reports — 🚧", "## Stage 2 — Reports — ✅")
+    out, messages = aide.rollup_progress(text, 3)
+    assert "| G2 Reports | Stages 2, 3 | 🚧 |" in out
+    assert "## Stage 2 — Reports — ✅" in out
+    assert messages == ["objective G2 ✅ → 🚧 in-progress"]
+    errors, _, _ = aide.derived_cell_findings(out.splitlines())
+    assert not [e for e in errors if "G2" in e]
+
+
+PADDED = """\
+## Stage summary
+
+| Stage | Title | Objectives | Status |
+|-------|-------|-----------|--------|
+| 07 | Maintenance | — | ✅ |
+
+## Objective coverage
+
+| Objective | Delivered by | Status |
+|-----------|--------------|--------|
+| G1 Rules | Stage 07 | ✅ |
+| G2 Reports | Stage 7 | ✅ |
+
+## Stage 07 — Maintenance — ✅
+
+**Deliverables.**
+- ✅ Fix 040. *(Item 040)*
+- 📋 Fix 041. *(Item 041)*
+"""
+
+
+def test_a_zero_padded_stage_is_matched_by_value(tmp_path: Path, capsys):
+    """`--stage 7` and `--stage 07` are one stage, and so are a section
+    headed `07` and a row naming `Stage 07`. A row naming `Stage 7` under a
+    section headed `07` names no section as `aide check` reads it, so the
+    rollup derives nothing for it and leaves it, as check does."""
+    out, messages = aide.rollup_progress(PADDED, 7)
+    assert "## Stage 07 — Maintenance — 🚧" in out
+    assert "| 07 | Maintenance | — | 🚧 |" in out
+    assert "| G1 Rules | Stage 07 | 🚧 |" in out
+    assert "| G2 Reports | Stage 7 | ✅ |" in out
+    _, warnings, _ = aide.derived_cell_findings(out.splitlines())
+    assert any(w.startswith("objective G2: Delivered by 'Stage 7' names no "
+                            "stage") for w in warnings)
+    printed = []
+    for i, stage in enumerate(("7", "07")):
+        repo = _repo(tmp_path / str(i), PADDED)
+        assert _rollup(repo, "--stage", stage) == 0
+        printed.append(capsys.readouterr().out)
+        assert (repo / "docs" / "aide" / "progress.md").read_text(
+            encoding="utf-8") == out
+    assert printed[0] == printed[1] == "".join(m + "\n" for m in messages)
+
+
 def test_a_deferred_cell_set_by_hand_is_written_over():
     """The decision: rollup writes what the bullets say, a hand-set ⏸️ too —
     once a bullet is added a computed ⏸️ and a typed one read the same."""
@@ -168,14 +228,21 @@ def test_a_deferred_cell_set_by_hand_is_written_over():
     assert "stage 2: header ⏸️ → 🚧 in-progress" in messages
 
 
-def test_a_reopened_stage_holding_a_deferred_bullet_reaches_in_progress():
+def test_a_reopened_stage_holding_a_deferred_bullet_reaches_its_rollup():
     """Why the ⏸️ is not held: a maintenance stage that rolled up to ⏸️
-    reopens like a ✅ one."""
+    reopens to what its rollup computes — 📋 over ⏸️ and 📋 alone, 🚧 once a
+    bullet has shipped."""
     text = PROGRESS.replace("- ✅ Fix 040. *(Item 040)*", "- ⏸️ Fix 040. *(Item 040)*")
     text = text.replace("| 3 | Maintenance | — | ✅ |", "| 3 | Maintenance | — | ⏸️ |")
     text = text.replace("## Stage 3 — Maintenance — ✅", "## Stage 3 — Maintenance — ⏸️")
     out, _ = aide.rollup_progress(text + "- 📋 Fix 041. *(Item 041)*\n", 3)
     assert "## Stage 3 — Maintenance — 📋" in out
+    assert "| 3 | Maintenance | — | 📋 |" in out
+    assert _findings_about(out, "3") == []
+    shipped = text + "- ✅ Fix 039. *(Item 039)*\n- 📋 Fix 041. *(Item 041)*\n"
+    out, _ = aide.rollup_progress(shipped, 3)
+    assert "## Stage 3 — Maintenance — 🚧" in out
+    assert "| 3 | Maintenance | — | 🚧 |" in out
     assert _findings_about(out, "3") == []
 
 
@@ -237,8 +304,10 @@ def test_the_verb_refuses_a_stage_with_no_section(tmp_path: Path, capsys):
 
 
 @pytest.mark.parametrize("argv", [
-    ["3"], ["--stage", "3", "--deliverable", "1"], ["--reason", "why"],
-    ["--criterion", "1"], ["--all"], ["--stage", "3", "extra"],
+    ["3"], ["--stage", "3", "extra"], ["--stage", "3", "--deliverable", "1"],
+    ["--reason", "why"], ["--criterion", "1"], ["--all"], ["--item", "41"],
+    ["--text", "new prose"], ["--evidence", "seen"], ["--date", "2026-10-09"],
+    ["3", "done"],
 ])
 def test_the_verb_refuses_any_argument_but_stage_and_no_commit(
         tmp_path: Path, capsys, argv):

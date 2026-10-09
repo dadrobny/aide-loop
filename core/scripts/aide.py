@@ -2339,6 +2339,11 @@ def _blocked_objectives(lines: List[str]) -> Set[str]:
             for g in t.objectives}
 
 
+def _stage_key(num: str) -> str:
+    """A stage number compared by value: ``07`` and ``7`` are one stage."""
+    return str(int(num)) if num.isdigit() else num
+
+
 def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
                             downgrade_stages: Set[str] = frozenset(),
                             touched_stages: Set[str] = frozenset(),
@@ -2368,6 +2373,7 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
     # roll up to ✅: its stages shipping is necessary but not sufficient.
     blocked = _blocked_objectives(lines)
     withdrawn = withdrawn_stages(lines)
+    only_keys = None if only is None else {_stage_key(n) for n in only}
     for i, line in enumerate(lines):
         if not line.strip().startswith("|"):
             continue
@@ -2375,8 +2381,8 @@ def _apply_objective_rollup(lines: List[str], stage_status: Dict[str, str],
         gm = re.match(r"G\d+", cells[0]) if len(cells) == 3 else None
         if gm and _icon_status(cells[2]):
             nums = _objective_row_stages(cells[1])
-            if not nums or (only is not None
-                            and not any(n in only for n in nums)):
+            if not nums or (only_keys is not None and not any(
+                    _stage_key(n) in only_keys for n in nums)):
                 continue
             current = _icon_status(cells[2])
             # Released by a verb only: a stage the calling verb moved. A ⏸️ row
@@ -2614,10 +2620,12 @@ def _recompute_rollups(lines: List[str],
     *only*, when given, is the set of stages whose cells are written at all —
     their header, their summary row and the Objective rows naming one of
     them — and every other cell is left as it reads (`rollup_progress`).
+    It is matched by value (`_stage_key`), so `07` and `7` are one stage.
     """
     stage_status = stage_rollups(lines)
+    only_keys = None if only is None else {_stage_key(n) for n in only}
     for start, end, stage_num in stage_sections(lines):
-        if only is not None and stage_num not in only:
+        if only_keys is not None and _stage_key(stage_num) not in only_keys:
             continue
         derived = rollup_status(stage_deliverable_statuses(lines, start, end))
         if derived is None:
@@ -20430,7 +20438,9 @@ def build_parser() -> argparse.ArgumentParser:
             "a \u2705 over the new \U0001f4cb bullet is an `aide check` "
             "error. Each cell it rolls up is written as the rollup computes "
             "it, a \u23f8\ufe0f set by hand included, and every other cell "
-            "is left as it reads. A stage whose summary row is \u274c is "
+            "is left as it reads. An Objective row naming stage N is "
+            "written from every stage it names, those not rolled up "
+            "included, as `aide check` compares it. A stage whose summary row is \u274c is "
             "left whole, a \u274c header or Objective row stays, and a "
             "stage with no deliverable bullet derives nothing. It prints "
             "each cell it writes, and commits progress.md as set does; with "

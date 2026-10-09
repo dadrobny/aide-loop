@@ -361,8 +361,9 @@ Semantics
 - **Why rollup writes over a hand-set ⏸️.** Once a bullet is added under a
   stage, a ⏸️ the rollup computed before it and one typed by hand read the
   same, and a maintenance stage that rolled up to ⏸️ over a deferred repair
-  must reach 🚧 when the next batch reopens it; holding the ⏸️ would leave
-  that stage deferred over open work. The ⏸️ typed by hand is drift `aide
+  must reach the icon its rollup computes when the next batch reopens it —
+  🚧 once any bullet has shipped or is in flight, else 📋; holding the ⏸️
+  would leave that stage deferred over open work. The ⏸️ typed by hand is drift `aide
   check` already names, the deferral it stands for is recorded on the
   bullets or nowhere, and the verb prints each cell it writes. ❌ is a scope
   decision, not a rollup, so it stays.

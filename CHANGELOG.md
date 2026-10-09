@@ -156,7 +156,9 @@ instead — that is the bump policy above, and it is enforced by
   leaves a withdrawn stage (❌ summary row) and a ❌ cell as they read, and
   writes over a ⏸️ set by hand: once a bullet is added a computed ⏸️ and a
   typed one read the same, and a maintenance stage that rolled up to ⏸️
-  over a deferred repair must reach 🚧 when the next batch reopens it. §1 →
+  over a deferred repair must reach the icon its rollup computes when the
+  next batch reopens it — 🚧 once any bullet has shipped or is in flight,
+  else 📋. §1 →
   `insights-maintenance-queue.md` now has every maintenance batch run
   `progress rollup --stage N --no-commit` after wiring its bullets and
   commit the result with them; §1 → `progress.md` loses its exception and
