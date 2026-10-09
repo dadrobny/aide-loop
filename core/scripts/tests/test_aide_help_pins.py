@@ -2309,10 +2309,18 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_a_test_reconciled_in_another_items_file_is_not_counted"),
         # `item_kind`: the title regex, then the inbox pointers, else normal.
         ("its kind \u2014 validate-stage from an item titled `Validate stage "
-         "N`, maintenance from an inbox entry ticked with this item's number, "
-         "else normal",
+         "N`, maintenance from a defect, gap or automation entry ticked `item "
+         "NNN` with this item's number, on its line or a dated trail line",
          ("test_aide_ledger::test_a_validate_stage_item_is_its_own_kind",
-          "test_aide_ledger::test_an_item_an_insight_was_routed_to_is_maintenance")),
+          "test_aide_ledger::test_an_item_an_insight_was_routed_to_is_maintenance",
+          "test_aide_ledger::test_a_maintenance_tick_in_the_trail_counts",
+          "test_aide_ledger::test_a_maintenance_tick_may_name_several_items")),
+        # `_MAINTENANCE_TICK_RE` is anchored at both ends (issue #460).
+        ("a pointer that only mentions the item, as a decline's reason may, "
+         "is not that tick \u2014 else normal",
+         ("test_aide_ledger::test_a_declined_pointer_naming_an_item_is_not_maintenance",
+          "test_aide_ledger::test_a_decayed_premise_naming_an_item_is_not_maintenance",
+          "test_aide_ledger::test_trail_prose_naming_an_item_is_not_maintenance")),
         # `ledger_cells`: `"" if rounds is None else str(rounds)`, and the same
         # for each rank — so a rank passed as 0 stays a 0.
         ("A count nobody passed is a blank cell and never a 0",

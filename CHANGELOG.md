@@ -136,6 +136,39 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.47.1] — 2026-10-09
+
+### Fixed
+
+- **The ledger's `kind` reads only the maintenance tick, so an item a
+  decline or a decayed premise cites is no longer `maintenance` (issue
+  #460, follows #455).** `aide merge` and `aide ledger abandon` derived
+  `kind = maintenance` from any item number in a ticked `defect`, `gap` or
+  `automation` entry's pointer or trail, so an owner's decline citing what
+  superseded the entry — `declined: superseded by item 12` — marked item 12
+  `maintenance`, and inflated the maintenance share `aide ledger report`
+  draws. The engine now reads a pointer only where it is of the maintenance
+  tick's own form: item references alone — `item NNN`, `items 012, 013`,
+  `item 012 and item 013`, `items 012-014` — on a **ticked** entry's line or
+  on a dated trail line, where `tick` writes the pointer on an entry already
+  ticked (a declined entry the owner later says to queue) and where
+  `resolve` keeps the other side's tick. A decline, any trail prose, and a
+  pointer that merely mentions an item no longer count. **Decided:** a
+  decayed premise's `fixed by item 121` does not count either — the item
+  fixed the entry but was planned as something else, and `kind` exists so
+  that a small-by-design fix is not pooled with the rest. §1 →
+  `insights-maintenance-queue.md` states that the tick is the one record
+  that an item is insight-derived, §1 → `ledger.md`'s `kind` bullet says
+  which items it marks, with the reason in its Rationale, and `aide merge
+  -h` says the same under pin. **Retired:** 2.45.0's rule that "a
+  decline's reason names no item", from §1 → `insights-triage.md`,
+  `aide-review-insights` (prose and pin), `insights-triager`,
+  `queue-planner` and `aide-create-queue` — it covered one of the readings,
+  nothing enforced it, and the engine no longer reads a decline's reason,
+  so a reason may name the item that superseded the entry. `queue-planner`
+  step 7 and `aide-create-queue` carry the new rule under pin. Nothing a
+  consumer edits: a row already written keeps its `kind`.
+
 ## [2.47.0] — 2026-10-09
 
 ### Added

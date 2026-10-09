@@ -64,11 +64,7 @@ line under the entry, never an edit to the claim**:
 
 - **Declined** — the owner decides a `defect`, `gap` or `automation` entry
   will not be pursued. It is ticked with `--pointer "declined: <reason>"`, and
-  the claim stays the record of what was observed. **The reason names no
-  item**: an item number in a ticked entry's pointer reads as the item the
-  entry became, so the ledger would count that item as an insight-derived
-  fix (§1 → `ledger.md`). Say "superseded by the greeter's rewrite", not
-  "superseded by item 12".
+  the claim stays the record of what was observed.
 - **Only the owner declines.** The triage pass and the queue's author may
   propose a decline, with its reason, where a person reads it; neither makes
   one. A decline is a scope decision, and it is made at the queue boundary,

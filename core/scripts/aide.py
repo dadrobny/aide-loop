@@ -11997,15 +11997,51 @@ def _queue_item_title(repo_root: Path, config, number: int) -> Optional[str]:
     return None
 
 
+#: The maintenance tick's own pointer (§1 → `insights-maintenance-queue.md`):
+#: `item NNN`, and nothing but item references — `items 012, 013`, `item 012,
+#: item 013`, `items 012–014` — with an optional closing full stop. Anchored at
+#: both ends, so a pointer that merely MENTIONS an item — `declined: superseded
+#: by item 12`, `fixed by item 121` — is not this form, whatever its prose says.
+_ITEM_REFS_ONLY = (r"[Ii]tems?\s+" + _ITEM_REF_NUM
+                   + r"(?:\s*[,/–-]\s*" + _ITEM_REF_NUM + r")*")
+_MAINTENANCE_TICK_RE = re.compile(
+    r"^\s*" + _ITEM_REFS_ONLY
+    + r"(?:\s*(?:[,;&]|\band\b)\s*" + _ITEM_REFS_ONLY + r")*\s*\.?\s*$")
+#: A dated status-trail line as `tick` writes it: `  - **DATE** → POINTER`.
+_INSIGHT_TRAIL_POINTER_RE = re.compile(
+    r"^\s+[-*]\s+\*\*\d{4}-\d{2}-\d{2}\*\*\s*→\s*(?P<pointer>.*)$")
+
+
+def _maintenance_tick_items(pointer: Optional[str]) -> List[int]:
+    """The items a pointer of the maintenance tick's own form names, else ``[]``."""
+    if not pointer or not _MAINTENANCE_TICK_RE.match(pointer):
+        return []
+    return _referenced_item_numbers(pointer)
+
+
 def _insight_derived_item(repo_root: Path, config, number: int) -> bool:
     """Did an insight become item *number*?
 
     §1 → the maintenance queue: the author who queues an open `defect`, `gap`
     or `automation` entry ticks it with the item number it became
     (`insights tick N --pointer "item NNN"`), so the inbox is where the engine
-    can read that an item is insight-derived. The pointer and the entry's trail
-    are read; its **provenance** deliberately is not — that names the item the
-    insight was captured *in*, which is the opposite claim.
+    can read that an item is insight-derived. Only a **ticked** entry counts,
+    and only a pointer of that tick's own form (`_MAINTENANCE_TICK_RE`): the one
+    on the entry line, or the pointer of a dated trail line — which is where
+    `tick` writes it on an entry already ticked, and where `resolve` keeps a
+    second side's tick. Any other pointer is not read for item numbers
+    (issue #460):
+
+    - a **decline**, `declined: <reason>`, closes the entry *without* an item,
+      so an item its reason cites is not the item the entry became;
+    - a **decayed premise**, `fixed by item 121`, deliberately does not count
+      either: the item fixed the entry, but it was planned as something else
+      and the entry was closed because nothing was left to queue — `kind`
+      says how an item was planned (small by design), not what it touched;
+    - any other trail prose naming an item is a remark about the entry.
+
+    The entry's **provenance** is never read — it names the item the insight
+    was captured *in*, which is the opposite claim.
     """
     path = insights_path(docs_dir(repo_root, config))
     if not path.is_file():
@@ -12015,11 +12051,15 @@ def _insight_derived_item(repo_root: Path, config, number: int) -> bool:
     except (OSError, UnicodeDecodeError):
         return False
     for entry in entries:
-        if entry.type not in _LEDGER_MAINTENANCE_TYPES:
+        if entry.type not in _LEDGER_MAINTENANCE_TYPES or not entry.ticked:
             continue
-        for text in ([entry.pointer] if entry.pointer else []) + list(entry.trail):
-            if _references_item(text, number):
-                return True
+        pointers = [entry.pointer]
+        for line in entry.trail:
+            m = _INSIGHT_TRAIL_POINTER_RE.match(line)
+            if m:
+                pointers.append(m.group("pointer"))
+        if any(number in _maintenance_tick_items(p) for p in pointers):
+            return True
     return False
 
 
@@ -21041,8 +21081,11 @@ def register_git_subcommands(sub) -> None:
             "write, and committed together with the \u2705 so the two can "
             "never disagree. Every cell is derived here: the item, its queue, "
             "its stage, its kind \u2014 validate-stage from an item titled "
-            "`Validate stage N`, maintenance from an inbox entry ticked with "
-            "this item's number, else normal \u2014 how many acceptance "
+            "`Validate stage N`, maintenance from a defect, gap or "
+            "automation entry ticked `item NNN` with this item's number, on "
+            "its line or a dated trail line \u2014 a pointer that only "
+            "mentions the item, as a decline's reason may, is not that "
+            "tick \u2014 else normal \u2014 how many acceptance "
             "criteria its spec "
             "carries, how many test functions and files the branch added "
             "against the base this run resolved \u2014 less the tests "

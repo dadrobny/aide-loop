@@ -58,7 +58,7 @@ three types is the owner's too (§1 → `insights-triage.md`).
 **`defect` and `automation` entries never go to the Backlog.** **A
 pass-over may carry a proposal for the owner, never a decision** — name the
 decline, with its reason, or the Backlog move with the pass-over; tick
-neither. A decline's reason names no item (§1 → `insights-triage.md`).
+neither.
 **An entry open across three or more queues is already the
 owner's decision** (§1 → `insights-maintenance-queue.md`; `insights list
 --open` prints each entry's wait): do not pass it over again. Queue it when
@@ -307,6 +307,10 @@ by `N`, which the next archive renumbers:
 python .aide/scripts/aide.py insights tick N --pointer "item NNN"
 ```
 
+The pointer is the item references alone: **that tick is the one record that
+an item is insight-derived**, and a pointer that only mentions an item does not
+count.
+
 Never flip the checkbox or reword the line by hand: **the claim is immutable and
 ticking the checkbox is the one in-place edit**. An entry passed over is left
 exactly as it stands.
@@ -342,6 +346,8 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
        before the stage queue
      - a pass-over leaves the entry open and is stated where the queue is
        reviewed
+     - That tick is the one record that an item is insight-derived
+     - A pointer that only mentions an item does not count
      - A maintenance item's deliverable bullet goes under the maintenance
        stage
      - never under the feature stage whose module it touches
