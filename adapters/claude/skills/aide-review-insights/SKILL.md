@@ -107,18 +107,19 @@ A fourth judgement closes an entry, and it is never yours to make:
 - **Declined** — the owner decides a `defect`, `gap` or `automation` entry
   will not be pursued; it is ticked `--pointer "declined: <reason>"`, and the
   claim stays the record. **The reason names no item**: an item number there
-  reads as the item the entry became. **Only the owner declines.** Propose a decline, with
-  its reason, where an entry has waited (below) or its owner has said it will
-  not be done; apply it (step 5) only once the person watching this session
-  agrees. A decline is a scope decision, and it is made at the queue
+  reads as the item the entry became. **Only the owner declines.** Propose a
+  decline, with its reason, where an entry has waited (below) or its owner
+  has said it will not be done; apply it (step 5) only once the person
+  watching this session agrees. A decline is a scope decision, and it is made at the queue
   boundary, where a person reads.
 
 **Triage brings each entry open across three or more queues to the owner as
 a decision, and does not pass it over again.** Step 1's listing prints each
 entry's wait as `open across N queues`, and its last line counts the ones at
 three or more. For each of them, put one of three decisions to the person
-watching, with the one you would take and why: queue it; decline it; or, for
-a `gap`, move it to the roadmap's Backlog. An entry the owner says to queue
+watching — or, with nobody watching, in your report, where the owner reads
+it — with the one you would take and why: queue it; decline it; or, for a
+`gap`, move it to the roadmap's Backlog. An entry the owner says to queue
 stays open for the next queue's author, who queues it rather than passing it
 over; the other two are applied as step 5 and step 2 say. Three is a
 convention, not a setting.

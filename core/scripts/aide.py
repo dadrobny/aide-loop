@@ -19099,9 +19099,15 @@ def cmd_status(args: argparse.Namespace) -> int:
     qdir = docs_dir(repo_root, config) / "queue"
     live_seen = False
     live_work: List[int] = []
-    if iter_queue_paths(qdir):
-        for path in iter_queue_paths(qdir):
-            nums = queue_item_numbers(path.read_text(encoding=_ENCODING))
+    # Each queue file is read once: its items here, its Created date for the
+    # inbox line below (issue #456).
+    created: List[Optional[str]] = []
+    queue_paths = iter_queue_paths(qdir)
+    if queue_paths:
+        for path in queue_paths:
+            qtext = path.read_text(encoding=_ENCODING)
+            created.append(queue_created_date(qtext))
+            nums = queue_item_numbers(qtext)
             idle = [n for n in nums if n in withdrawn
                     and item_status.get(n, "planned") == "planned"]
             open_nums = [n for n in nums
@@ -19129,8 +19135,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     ipath = insights_path(docs_dir(repo_root, config))
     if ipath.is_file():
         n_open, by_type, waited = inbox_wait_summary(
-            parse_insights(ipath.read_text(encoding=_ENCODING)),
-            queue_created_dates(qdir))
+            parse_insights(ipath.read_text(encoding=_ENCODING)), created)
         breakdown = ", ".join(f"{n} {t}" for t, n in by_type.items() if n)
         print(f"  inbox: {n_open} open"
               + (f" ({breakdown})" if breakdown else "")

@@ -53,8 +53,11 @@ Follow the `aide-create-queue` skill in full. In brief:
    roadmap's Backlog, closes an entry too, but both are the owner's (§1 →
    `insights-triage.md`): you may propose either with a pass-over, never make
    it, and a proposed decline's reason names no item. An entry the listing shows open across three or more queues is past
-   proposing: queue it if the owner has said to, and otherwise never pass it
-   over again — name it for the owner instead. The roadmap's `# Backlog`, if it has one, is not a stage, and **the
+   proposing: queue it if the owner has said to; otherwise never pass it over
+   again, and put it in step 8's summary — which the queue PR body carries —
+   as a decision for the owner: queue, decline, or for a `gap` the Backlog,
+   with the one you would take and why. With nobody watching, that review is
+   where the owner answers. The roadmap's `# Backlog`, if it has one, is not a stage, and **the
    queue planner never queues from it** (§1 → `roadmap.md`).
 2. **Determine the next queue number** NNN (highest existing + 1) and the next
    **item number** (sequential across *all* queues — never restart numbering).
@@ -205,7 +208,9 @@ Follow the `aide-create-queue` skill in full. In brief:
    Name the inbox entries you queued (with the item numbers
    they became) **and the ones you passed over, with why** — a pass-over is
    stated where the queue is reviewed, not left for the next reader to
-   re-derive — with any decline or Backlog move you propose to the owner. Name the two ways to proceed (`/aide-spec-queue NNN` up
+   re-derive — with any decline or Backlog move you propose to the owner,
+   and each entry open across three or more queues the owner has not yet
+   decided, put to them as a decision (step 1). Name the two ways to proceed (`/aide-spec-queue NNN` up
    front, or per-item during `/aide-run-queue NNN`) in the summary — the
    orchestrator carries it into the queue-PR body.
 

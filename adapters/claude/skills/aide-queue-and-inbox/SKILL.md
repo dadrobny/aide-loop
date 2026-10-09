@@ -117,6 +117,8 @@ paths:
      - A pass-over may carry a proposal for the owner, never a decision
      - An entry open across three or more queues is already the owner's
        decision
+     - Until the owner has said, the author puts the decision to the owner
+       where the queue is reviewed
 -->
 
 # Queue files and the insight inbox
@@ -236,6 +238,10 @@ ready to plan to the roadmap's Backlog. Both are the owner's (§1 →
 the owner decides. **An entry open across three or more queues is already
 the owner's decision** — `insights list --open` prints each entry's wait —
 so you do not pass it over again, and you queue it once the owner says to.
+**Until the owner has said, the author puts the decision to the owner where
+the queue is reviewed** — queue it, decline it, or, for a `gap`, move it to
+the roadmap's Backlog — with the one you would take and why; an unattended
+run has no owner to ask, so the queue's review is where the answer comes.
 
 **A maintenance item's deliverable bullet goes under the maintenance stage**
 (§1 → `insights-maintenance-queue.md`; what that stage is, §1 → `roadmap.md`),

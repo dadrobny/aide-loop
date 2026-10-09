@@ -62,8 +62,12 @@ neither. A decline's reason names no item (§1 → `insights-triage.md`).
 **An entry open across three or more queues is already the
 owner's decision** (§1 → `insights-maintenance-queue.md`; `insights list
 --open` prints each entry's wait): do not pass it over again. Queue it when
-the owner has said to; otherwise name it in your summary with the decision
-you would propose.
+the owner has said to. **Until the owner has said, the author puts the
+decision to the owner where the queue is reviewed** — in your closing
+summary, which the queue PR body carries: queue it, decline it, or, for a
+`gap`, move it to the roadmap's Backlog, with the one you would take and
+why. Running with nobody watching does not change this; the queue's review
+is where the owner answers.
 
 **The roadmap's `# Backlog`, if it has one, is not a stage, and the queue
 planner never queues from it** (§1 → `roadmap.md`): a bullet there reaches a
@@ -318,7 +322,8 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
   rather than a hope;
 - the declines and Backlog moves you propose, each with its reason, for the
   owner to decide, and every entry open across three or more queues the
-  owner has not yet decided.
+  owner has not yet decided, put to them as a decision — queue, decline, or
+  for a `gap` the Backlog — with the one you would take.
 
 <!-- pins: .aide/conventions/1-format-contract/insights-maintenance-queue.md
      What this skill does with a routed entry, quoted from the section that
@@ -349,6 +354,8 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
      - A pass-over may carry a proposal for the owner, never a decision
      - An entry open across three or more queues is already the owner's
        decision
+     - Until the owner has said, the author puts the decision to the owner
+       where the queue is reviewed
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/roadmap.md

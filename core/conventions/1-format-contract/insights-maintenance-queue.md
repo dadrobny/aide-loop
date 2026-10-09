@@ -45,7 +45,12 @@ ready to plan, move it to the roadmap's Backlog. Both are the owner's (§1 →
 `insights-triage.md`); the queue's author makes neither, and the entry stays
 open until the owner does. **An entry open across three or more queues is
 already the owner's decision** (§1 → `insights-triage.md`): the author does
-not pass it over again, and queues it once the owner says to.
+not pass it over again, and queues it once the owner says to. **Until the
+owner has said, the author puts the decision to the owner where the queue is
+reviewed** — queue it, decline it, or, for a `gap`, move it to the roadmap's
+Backlog — with the one it would take and why. An author running with nobody
+watching cannot learn the answer, so the queue's review is where the owner
+gives it.
 
 **A maintenance item's deliverable bullet goes under the maintenance stage**
 (§1 → `roadmap.md`), **never under the feature stage whose module it
@@ -89,7 +94,10 @@ set` on the stage writes the same.
   pass-over can be passed over too, and "again and again" had no count, so
   nothing marked the boundary where proposing should stop (issue #456). The
   wait gives it one, and triage brings the entry to the owner there; a
-  further pass-over by the queue's author would undo that.
+  further pass-over by the queue's author would undo that. An unattended
+  author has no owner to ask, and a line in a summary nobody is asked to
+  answer is the silent pass-over again, so the decision goes where a person
+  reviews the queue.
 - **Why the maintenance stage, and not the stage the repair touches.** A
   repair is to work already shipped, so the stage whose module it touches is
   usually ✅, and a 📋 bullet under it reopens a stage whose acceptance was
