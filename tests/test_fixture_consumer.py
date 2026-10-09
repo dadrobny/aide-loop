@@ -26,6 +26,7 @@ import codecs
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -5768,6 +5769,59 @@ def test_a_backlog_after_the_maintenance_stage_ends_it_as_the_template_ships(
     capsys.readouterr()
     assert aide.main(["--repo", str(consumer), "check"]) == 0
     assert "OK (0 warning(s))" in capsys.readouterr().out
+
+
+def test_an_entrys_wait_is_counted_from_the_queue_files_alone(
+        aide, consumer: Path, capsys):
+    """Issue #456: `insights list --open` and `status` count, per open entry,
+    the queue files created after its capture — read from each file's
+    `Created` line, so the installed engine needs no git history for it, and
+    an owner's close takes the entry out of the count.
+
+    The scaffold's queue 001 is dated 2026-08-24, after both open entries.
+    Queue 002 is dated, queue 003 is not: the defect (2026-08-20) and the gap
+    (2026-08-21) have each waited across all three. The entry captured on
+    queue 002's own day has waited across none.
+    """
+    ddir = consumer / "docs" / "aide"
+    (ddir / "queue" / "queue-002.md").write_text(
+        "# Fixture — Work Queue 002\n\n> **Created:** 2026-08-30\n",
+        encoding="utf-8")
+    (ddir / "queue" / "queue-003.md").write_text(
+        "# Fixture — Work Queue 003\n\n> A queue file with no date.\n",
+        encoding="utf-8")
+    inbox = ddir / "insights.md"
+    inbox.write_text(inbox.read_text(encoding="utf-8")
+                     + "- [ ] gap — the farewell has no docs *(2026-08-30)*\n",
+                     encoding="utf-8")
+    _commit(consumer, "docs: two more queues, one more entry")
+
+    def waits() -> dict:
+        capsys.readouterr()
+        assert aide.main(["--repo", str(consumer), "insights", "list",
+                          "--open"]) == 0
+        return {m.group(1): int(m.group(2)) for m in re.finditer(
+            r"— (.+?) \*\(.*?· open across (\d+) queues?$",
+            capsys.readouterr().out, flags=re.M)}
+
+    def waited_in_status() -> int:
+        capsys.readouterr()
+        assert aide.main(["--repo", str(consumer), "status", "--no-fetch"]) == 0
+        (line,) = [l for l in capsys.readouterr().out.splitlines()
+                   if l.startswith("  inbox: ")]
+        return int(re.search(r"; (\d+) open across 3 or more", line).group(1))
+
+    assert waits() == {"greet() does not strip whitespace": 3,
+                       "nothing checks the farewell": 3,
+                       "the farewell has no docs": 0}
+    assert waited_in_status() == 2
+
+    defect = _insight_id(aide, consumer, "greet() does not strip whitespace")
+    assert aide.main(["--repo", str(consumer), "insights", "tick", defect,
+                      "--pointer", "declined: callers strip their own input",
+                      "--date", "2026-10-09"]) == 0
+    assert "greet() does not strip whitespace" not in waits()
+    assert waited_in_status() == 1
 
 
 def test_reword_refuses_once_the_criterion_has_been_attested(aide, consumer: Path):

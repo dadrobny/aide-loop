@@ -43,7 +43,9 @@ entry passed over again and again is named with what the owner might do
 instead: decline it, with its reason, or, for a `gap` that is scope not
 ready to plan, move it to the roadmap's Backlog. Both are the owner's (§1 →
 `insights-triage.md`); the queue's author makes neither, and the entry stays
-open until the owner does.
+open until the owner does. **An entry open across three or more queues is
+already the owner's decision** (§1 → `insights-triage.md`): the author does
+not pass it over again, and queues it once the owner says to.
 
 **A maintenance item's deliverable bullet goes under the maintenance stage**
 (§1 → `roadmap.md`), **never under the feature stage whose module it
@@ -83,6 +85,11 @@ set` on the stage writes the same.
   over at every boundary, re-deriving the same reason each time. A decline
   ends that, and is a scope decision; the queue's author is the role that
   sees the repeat, so it proposes, and the owner, reading the queue, decides.
+- **Why a waited entry is not passed over again.** A proposal made with a
+  pass-over can be passed over too, and "again and again" had no count, so
+  nothing marked the boundary where proposing should stop (issue #456). The
+  wait gives it one, and triage brings the entry to the owner there; a
+  further pass-over by the queue's author would undo that.
 - **Why the maintenance stage, and not the stage the repair touches.** A
   repair is to work already shipped, so the stage whose module it touches is
   usually ✅, and a 📋 bullet under it reopens a stage whose acceptance was

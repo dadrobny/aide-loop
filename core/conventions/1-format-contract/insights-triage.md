@@ -77,6 +77,22 @@ line under the entry, never an edit to the claim**:
 **A ticked entry whose status is now stale gets a trail line too** — that is
 triage as much as routing is.
 
+#### An entry that has waited is the owner's decision
+
+**An entry's wait is the number of queues it has stayed open across.** `aide
+insights list --open` prints it beside each open entry, and `aide status`
+counts the entries that have reached three; how it is counted is `aide
+insights -h`.
+
+- **Triage brings each entry open across three or more queues to the owner
+  as a decision, and does not pass it over again.** The decision is one of
+  three: queue it; decline it; or, for a `gap`, move it to the roadmap's
+  Backlog. Triage proposes the one it would take, with its reason, where a
+  person reads; the owner makes it.
+- **An entry the owner says to queue is queued by the next queue's author**,
+  who then has no pass-over left to give it.
+- **Three is a convention, not a setting.** No `aide.toml` key changes it.
+
 #### Handing a `framework` entry over
 
 **A `framework` issue body opens with the engine version the observation was
@@ -189,6 +205,40 @@ queue, so a `framework` entry may be triaged **on capture or on demand**.
   `insights list --open`. A defect outside the inbox is lost to the one read
   the queue's author is bound to make; a decline is the honest way out of
   it.
+- **Why a wait, and a decision at three.** Each pass-over was recorded in a
+  queue file and never on the entry, so in one consumer 21 gaps captured
+  over two weeks sat through six or seven maintenance queues, and `insights
+  list --open` showed a date but no measure of how many boundaries had gone
+  by (issue #456). A decline and the Backlog (issue #455) gave the owner a
+  way out; the count makes the moment to use it visible. Three is one
+  boundary past "the next queue had no room": late enough to spare an entry
+  the next queue will absorb, early enough to stop the seventh pass-over. It
+  stays a convention until a consumer needs another number.
+- **Why a count, and not a trail line per pass-over.** A line under each
+  entry at each boundary is exact, but at sixty open entries it is sixty
+  lines a boundary, written by hand or by a verb that has to know which
+  entries a queue considered. The number of queues created since the
+  capture is derivable from what already exists, needs no new state and no
+  trail grammar.
+- **Why a queue's `Created` line, and not its first commit.** The planner
+  writes `**Created:**` from the queue template, so the date is in the file
+  in every clone: shallow, in `local` mode, and with no git at all, and
+  reading it costs no spawn. A first-commit date was the rejected
+  alternative: it needs history (a shallow clone dates every old queue to the
+  clone's tip), it moves under a rebase or squash, a queue being planned has
+  none yet, and it is one `git log` per queue file on a platform where a
+  spawn is slow. A queue file written without the line — one consumer's
+  earliest queues were — counts when it is numbered after one that does,
+  because numbering follows creation, and never otherwise.
+- **Why a queue created on the capture day does not count.** Both dates are
+  days, and an entry captured on the day a queue was created may have been
+  captured after that queue was planned, so counting it would count a
+  boundary the entry never waited at. Not counting it undercounts by at most
+  one, and only on that day's queue.
+- **Why no `aide check` warning on age.** A warning that only a decision can
+  clear is noise to an unattended run, which cannot make the decision. The
+  decision belongs at the boundary, where `status` and triage are read by a
+  person.
 - **Why `framework` entries need not wait.** Routing them through the boundary
   too means the inbox accumulates for exactly as long as a queue runs, and a
   long queue is normal.
