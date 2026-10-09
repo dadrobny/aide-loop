@@ -151,7 +151,9 @@ instead — that is the bump policy above, and it is enforced by
   tick's own form: it opens with item references — `item NNN`, `items 012,
   013`, `item 012 and item 013`, `items 012-014` — and only those count; a
   gloss may follow (`item NNN (what it fixed)`, `item NNN: …`), and a number
-  in it is never an item. Such a pointer is read on a **ticked** entry's
+  in it is never an item. A bare number continues the references only after
+  the plural `items`, so `item 216, 3 rewritten` reads item 216 alone; the
+  shape given up is a singular list, `item 012/013`, which reads item 012. Such a pointer is read on a **ticked** entry's
   line or on a dated trail line, where `tick` writes the pointer on an entry already
   ticked (a declined entry the owner later says to queue) and where
   `resolve` keeps the other side's tick. A decline, any trail prose, and a

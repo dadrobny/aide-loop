@@ -155,7 +155,7 @@ the reader's.
   entry the owner later says to queue — and where `resolve` keeps the other
   side's tick. **Why the tick may carry a gloss.** A pointer is "where it
   landed", free-form (§1 → `insights.md`), and one consumer's queue authors
-  annotated a fifth of their ticks — `item NNN (what it fixed)`, `item NNN:
+  annotated about one tick in eleven — `item NNN (what it fixed)`, `item NNN:
   …` — so a form demanding item references alone misread real ticks as
   `normal`. Reading the opening references, and only them, keeps those ticks
   and still never reads a pointer that opens with prose.

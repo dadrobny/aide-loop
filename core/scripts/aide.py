@@ -12003,12 +12003,18 @@ def _queue_item_title(repo_root: Path, config, number: int) -> Optional[str]:
 #: the author's gloss, which `<where it landed>` allows (§1 → `insights.md`):
 #: `item 191 (the border case)`, `item 216: decision 3 rewritten`, `items
 #: 173-178 (178 deletes the directory)`, `item 216 D16: …`; a number in the
-#: gloss is never an item. Anchored at the start, so a pointer that opens with
+#: gloss is never an item. A bare number continues the head only after the
+#: plural `items` (`items 12, 13`, `items 173-178`); after a singular `item N`
+#: only another `item M` does, so `item 216, 3 rewritten` and `item 216 - 3
+#: rewritten` read [216]. The shape given up is a singular list, `item
+#: 012/013` or `item 012, 013`: it reads as item 012 alone. Anchored at the
+#: start, so a pointer that opens with
 #: prose and only MENTIONS an item — `declined: superseded by item 12`, `fixed
 #: by item 121` — is not this form (issue #460). ``(?!\w)`` ends the head at a
 #: word boundary, so `item 12abc` is no reference at all.
-_ITEM_REFS_HEAD = (r"[Ii]tems?\s+" + _ITEM_REF_NUM
-                   + r"(?:\s*[,/–-]\s*" + _ITEM_REF_NUM + r")*")
+_ITEM_REFS_HEAD = (r"(?:[Ii]tems\s+" + _ITEM_REF_NUM
+                   + r"(?:\s*[,/–-]\s*" + _ITEM_REF_NUM + r")*"
+                   + r"|[Ii]tem\s+" + _ITEM_REF_NUM + r")")
 _MAINTENANCE_TICK_RE = re.compile(
     r"\s*" + _ITEM_REFS_HEAD
     + r"(?:\s*(?:[,;&]|\band\b)\s*" + _ITEM_REFS_HEAD + r")*(?!\w)")

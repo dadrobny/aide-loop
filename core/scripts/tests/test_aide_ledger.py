@@ -406,11 +406,26 @@ def test_a_number_in_a_ticks_gloss_is_not_an_item():
     assert aide._maintenance_tick_items(
         "item 191 (border gating); extents are stage 27's, see item 40") == [191]
     assert aide._maintenance_tick_items("item 216 D16: rows corrected") == [216]
+    assert aide._maintenance_tick_items("items 12, 13") == [12, 13]
     assert aide._maintenance_tick_items("item 216: decision 3 rewritten") == [216]
     for prose in ("declined: superseded by item 12", "fixed by item 121",
                   "superseded by item 12", "decayed premise: item 5 is gone",
                   "item 12abc", ""):
         assert aide._maintenance_tick_items(prose) == [], prose
+
+
+def test_a_bare_number_continues_only_a_plural_head():
+    """`items 12, 13` and `items 173-178` are the documented lists; after a
+    singular `item N` only another `item M` continues the head, so a gloss
+    opening with a comma, a dash or a slash and a number reads no item."""
+    for gloss in ("item 216, 3 rewritten", "item 216 - 3 rewritten",
+                  "item 216 / 3 files"):
+        assert aide._maintenance_tick_items(gloss) == [216], gloss
+    assert aide._maintenance_tick_items(
+        "items 173-178 (the last deletes it)") == list(range(173, 179))
+    assert aide._maintenance_tick_items("items 12, 13") == [12, 13]
+    assert aide._maintenance_tick_items("item 012, item 013") == [12, 13]
+    assert aide._maintenance_tick_items("item 012 and item 013") == [12, 13]
 
 
 def test_a_declined_pointer_naming_an_item_is_not_maintenance(tmp_path: Path):

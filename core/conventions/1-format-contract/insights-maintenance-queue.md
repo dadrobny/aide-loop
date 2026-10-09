@@ -27,7 +27,9 @@ entry is still a candidate**, and the next queue's author sees it.
 which is where `tick` writes it on an entry already ticked. **The pointer
 opens with the item references** — `item NNN`, or several — and only those
 count: a gloss may follow them, as in `item NNN (what it fixed)`, and a
-number in it is never an item. A pointer that opens with prose and only
+number in it is never an item. Several are written `items NNN, MMM`,
+`items NNN-MMM` or `item NNN and item MMM`; after a singular `item NNN` a
+bare number is gloss. A pointer that opens with prose and only
 mentions an item does not count: a decline's reason, or a decayed premise's
 "fixed by item NNN", where the item fixed the entry without being queued as
 it.
