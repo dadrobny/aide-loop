@@ -90,6 +90,11 @@ feature stage in what it carries.
 heading reads `## Stage N — Maintenance`, the template's, here and in
 `progress.md` — and no other stage takes that title. Nothing else marks it:
 a stage that holds repairs under any other title is a feature stage.
+**A started stage already run as a standing maintenance stage becomes the
+maintenance stage by one retitle to `Maintenance`**, made by the owner
+through the create-roadmap entry point, in its heading here and in its
+`progress.md` header and Stage summary row; it is the one edit the freeze
+allows a started stage's heading, and it changes nothing else in the stage.
 
 **A stage queue never takes the maintenance stage as its next stage.** It
 has no roadmap deliverable to queue, so the queue's author choosing the next
@@ -115,8 +120,8 @@ What it carries:
   queue's items are open and ✅ once they ship; the one hand edit a reopen
   asks for is §1 → `insights-maintenance-queue.md`'s.
 
-A maintenance stage written earlier with acceptance criteria of its own keeps
-them, since it is frozen: its boxes record its first close, and nothing
+A maintenance stage written earlier with acceptance criteria of its own, and
+retitled so, keeps them, since it is frozen: its boxes record its first close, and nothing
 re-attests them per batch.
 
 #### Rationale
@@ -228,6 +233,13 @@ re-attests them per batch.
   maintenance stage leaves it as the lowest unfinished stage, and a planner
   queueing "exactly the next stage" would find no deliverable to queue
   there.
+- **Why a retitle, and not a looser match.** A title only starting with
+  `Maintenance`, or matched by meaning, would count a project's several
+  per-batch maintenance stages as several, and would ask a planner to judge
+  a title. A consumer that already runs one standing stage under another
+  title would otherwise have to add a second one beside it and split the
+  repair history across two stages; one retitle by the owner keeps the
+  history in one place and changes nothing the freeze protects.
 - **Why the maintenance stage has no criteria.** The standing stage above
   carried four acceptance boxes. They were attested at its first two closes
   and never again, so from the third batch on they asserted nothing about

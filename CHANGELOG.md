@@ -181,7 +181,13 @@ instead — that is the bump policy above, and it is enforced by
   adds the maintenance stage once through `/aide-create-roadmap`, titled
   `Maintenance` and appended after its last stage, with a Stage summary row
   (`—` for Objectives) and an empty section in `progress.md`. A consumer
-  with no maintenance queues adds nothing.
+  that already runs one standing maintenance stage under another title
+  retitles it `Maintenance` instead, in `roadmap.md` and in its
+  `progress.md` header and summary row — the one edit the freeze allows a
+  started stage's heading; its boxes stay as they are. Earlier per-batch
+  maintenance stages stay feature stages, and the next batch goes under a
+  new `Maintenance` stage. A consumer with no maintenance queues adds
+  nothing.
 
 ### Changed
 

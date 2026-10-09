@@ -217,7 +217,8 @@ Semantics
 - Marking a target `❌ Not met` is a *finding*, so route it like one: capture
   a `gap` with `aide insights add` alongside the edit. The follow-on
   deliverables then enter through the queue, never by retro-editing a closed
-  stage's deliverable list.
+  stage's deliverable list; a maintenance queue adding its items under the
+  maintenance stage (§1 → `roadmap.md`) is that route, not a retro-edit.
 
 #### Rationale
 

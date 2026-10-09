@@ -71,7 +71,10 @@ read it before editing. In practice:
    carry. It is added once, appended like any new stage, usually when the
    queue planner hands back for want of one. What it carries and what nothing
    may say about it is `.aide/conventions.md` §1 → roadmap.md, and the
-   template's optional maintenance-stage block draws its shape.
+   template's optional maintenance-stage block draws its shape. A started
+   stage the project already runs as its standing maintenance stage under
+   another title is retitled `Maintenance` once instead, here and in
+   `progress.md` — the one edit the freeze allows a started stage's heading.
 
 ### Output
 
