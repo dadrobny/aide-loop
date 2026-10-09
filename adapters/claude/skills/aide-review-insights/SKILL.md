@@ -1,11 +1,11 @@
 ---
 name: aide-review-insights
-description: Triage the open insight inbox — an `insights-triager` sub-agent routes each entry by type and judges duplicates, decayed premises and wrong types; this session applies its plan with the verbs and hands `framework` entries over as issues.
+description: Triage the open insight inbox — an `insights-triager` sub-agent routes each entry by type and judges duplicates, decayed premises and wrong types, and proposes the declines its owner decides; this session applies its plan with the verbs and hands `framework` entries over as issues.
 ---
 
 # Review the insight inbox
 
-Triage `docs/aide/insights.md`: read the open backlog, **route** each entry by
+Triage `docs/aide/insights.md`: read the open entries, **route** each entry by
 its type, **judge** the ones that no longer say what they used to, and hand
 `framework` entries over to the framework repo. It is the boundary pass for
 every type that lands in *this* project, and it runs on its own — before
@@ -32,7 +32,7 @@ the recently closed entries alone.
 
 ## Instructions
 
-### 1. Read the backlog with the verb, not by opening the file
+### 1. Read the open inbox with the verb, not by opening the file
 
 ```
 python .aide/scripts/aide.py insights list --open
@@ -55,7 +55,7 @@ it):
 |---|---|---|
 | `knowledge` | the owning document — the smallest edit that preserves the fact | the triaging role, on the fold |
 | `defect` | a candidate item on the **maintenance queue** | the queue that absorbs it |
-| `gap` | a candidate item — maintenance queue, or the stage queue when the stage was going to fill it anyway | the queue that absorbs it |
+| `gap` | a candidate item — maintenance queue, or the stage queue when the stage was going to fill it anyway; or the roadmap's Backlog, by the owner, when it is scope not ready to plan | the queue that absorbs it; the owner, ticked `→ roadmap Backlog` |
 | `automation` | a candidate item adding the script/CLI verb **and** the prose that mandates it | the queue that absorbs it |
 | `framework` | an issue on `[framework] repo` from `aide.toml`; unset or offline, it stays pending | the filing role, on the hand-over |
 
@@ -65,8 +65,17 @@ does not exist yet: leaving it unchecked **is** the routing, and the open inbox
 is what carries it to whoever authors that queue — which reads it with
 `insights list --open` and either queues it or says why it passed it over.
 Do not fix such an entry inline here either; that is the queue's work, reviewed
-in the queue's PR. The exception is the entry you do **not** route — see
-*decayed premise* in step 3, which closes one.
+in the queue's PR. The exceptions are not your routings: the entry you do
+**not** route — see *decayed premise* in step 3, which closes one — and the
+two closes only the owner makes, a decline (step 3) and a `gap` moved to the
+roadmap's Backlog.
+
+**`defect` and `automation` entries never go to the Backlog.** A defect stays
+open in the inbox until an item fixes it or the owner declines it. A `gap`
+that is scope not ready to plan may go there, but **the owner moves it**,
+through `/aide-create-roadmap`: the Backlog bullet cites `insight <ID>`, and
+the entry is ticked `--pointer "roadmap Backlog"`. Propose the move in your
+report; never make it in this pass.
 
 For an `automation` entry, both halves reach the queue or agents keep
 improvising: the deterministic script/verb, *and* the prose edit that mandates
@@ -91,6 +100,16 @@ Routing an entry as written is not the whole of triage. Three findings, one form
 - **Wrong type** — the entry describes a defect and is filed as knowledge, or
   the reverse. Route it by what it *is* and say so in the trail; the type in the
   captured line is never rewritten.
+
+A fourth judgement closes an entry, and it is never yours to make:
+
+- **Declined** — the owner decides a `defect`, `gap` or `automation` entry
+  will not be pursued; it is ticked `--pointer "declined: <reason>"`, and the
+  claim stays the record. **Only the owner declines.** Propose a decline, with
+  its reason, where an entry has been passed over queue after queue or its
+  owner has said it will not be done; apply it (step 5) only once the person
+  watching this session agrees. A decline is a scope decision, and it is
+  made at the queue boundary, where a person reads.
 
 **A ticked entry whose status is now stale gets a trail line too** — sweep the
 recently-closed entries for one whose pointer you now know to be wrong. That is
@@ -175,7 +194,9 @@ python .aide/scripts/aide.py insights tick 7 --pointer "docs/architecture.md"
 `7` is the position `list` just printed; the entry's ID works in its place,
 and is the only handle to write anywhere that outlives this pass.
 
-That appends `→ docs/architecture.md` to the entry and flips its checkbox.
+That appends `→ docs/architecture.md` to the entry and flips its checkbox. A
+decline the owner agreed to is ticked the same way, with
+`--pointer "declined: <reason>"`.
 **Ticking the checkbox is the one in-place edit**, and the verb owns it.
 
 Never reword, reorder or delete a captured claim — including one that turned out
@@ -192,7 +213,8 @@ triage pass, never the middle.
 
 Say what you routed, in one block: the entries folded (with where), the ones
 handed over (with issue numbers), the ones left open for the next queue and
-which type each is, and every judgement you recorded. The count of entries left
+which type each is, every judgement you recorded, and every decline or
+Backlog move you propose for the owner, with its reason. The count of entries left
 open is what the next queue author is about to read.
 
 <!-- pins: .aide/conventions/1-format-contract/insights-triage.md
@@ -211,12 +233,17 @@ open is what the next queue author is about to read.
      - | `defect` | a candidate item on the **maintenance queue** | the queue
        that absorbs it |
      - | `gap` | a candidate item — maintenance queue, or the stage queue when
-       the stage was going to fill it anyway | the queue that absorbs it |
+       the stage was going to fill it anyway; or the roadmap's Backlog, by the
+       owner, when it is scope not ready to plan | the queue that absorbs it;
+       the owner, ticked `→ roadmap Backlog` |
      - | `automation` | a candidate item adding the script/CLI verb **and** the
        prose that mandates it | the queue that absorbs it |
      - | `framework` | an issue on `[framework] repo` from `aide.toml`; unset or
        offline, it stays pending | the filing role, on the hand-over |
      - Routing a `defect`, `gap` or `automation` entry never ticks it
+     - `defect` and `automation` entries never go to the Backlog
+     - Only the owner declines
+     - A decline is a scope decision, and it is made at the queue boundary
      - a decayed premise is ticked, because there is nothing left for a
        queue to carry
      - a dated trail line under the entry, never an edit to the claim

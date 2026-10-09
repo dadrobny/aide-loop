@@ -38,6 +38,13 @@ own — too small to be worth a branch, blocked on something unbuilt, out of sco
 `gap` the upcoming stage was going to fill anyway belongs in the stage queue,
 with that stage named as the reason. What is never allowed is silence.
 
+**A pass-over may carry a proposal for the owner, never a decision.** An
+entry passed over again and again is named with what the owner might do
+instead: decline it, with its reason, or, for a `gap` that is scope not
+ready to plan, move it to the roadmap's Backlog. Both are the owner's (§1 →
+`insights-triage.md`); the queue's author makes neither, and the entry stays
+open until the owner does.
+
 **A maintenance item's deliverable bullet goes under the maintenance stage**
 (§1 → `roadmap.md`), **never under the feature stage whose module it
 touches**: placing it there would reopen a closed stage. A `gap` routed to
@@ -71,6 +78,11 @@ set` on the stage writes the same.
   review or two — or as neither, in a project whose `git.mode` pushes nothing
   (§4). What the engine fixes is that the fixes are queued *ahead*, never the
   shape of the checkpoint around them.
+- **Why a proposal, and not a decline.** Before issue #455 an entry the
+  owner had decided against had no way out, and the queue's author passed it
+  over at every boundary, re-deriving the same reason each time. A decline
+  ends that, and is a scope decision; the queue's author is the role that
+  sees the repeat, so it proposes, and the owner, reading the queue, decides.
 - **Why the maintenance stage, and not the stage the repair touches.** A
   repair is to work already shipped, so the stage whose module it touches is
   usually ✅, and a 📋 bullet under it reopens a stage whose acceptance was

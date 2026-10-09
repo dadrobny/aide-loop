@@ -5679,6 +5679,59 @@ def test_reword_replaces_a_wrapped_roadmap_bullet_whole(aide, consumer: Path):
         "- Target: the greeter answers in under a millisecond."]
 
 
+def test_a_roadmap_backlog_ends_the_last_stage_and_closes_its_inbox_entries(
+        aide, consumer: Path, capsys):
+    """Issue #455's "no engine change", exercised rather than assumed.
+
+    §1 → `roadmap.md`'s optional `# Backlog` sits after the last stage. Every
+    stage reader ends a section at a `#` heading, so the Backlog's bullets
+    never join stage 1's Validation / acceptance block: `check` stays clean
+    (no acceptance-count drift, no coverage warning) and `reword` lines the
+    one box up with the one criterion and leaves the Backlog alone. Its
+    `insight <ID>` citation is read like any other — a dangling one errors —
+    and both owner closes §1 → `insights-triage.md` adds, `→ roadmap
+    Backlog` and `declined: …`, take an entry out of `insights list --open`.
+    """
+    ddir = consumer / "docs" / "aide"
+    gap = _insight_id(aide, consumer, "nothing checks the farewell")
+    defect = _insight_id(aide, consumer, "greet() does not strip whitespace")
+    roadmap = ddir / "roadmap.md"
+    backlog = ("\n---\n\n# Backlog\n\n"
+               "- A greeting in a second locale, once there is one.\n"
+               f"- A check on the farewell (insight {gap}).\n")
+    roadmap.write_text(
+        _ROADMAP.replace("# Fixture — Roadmap\n",
+                         "# Fixture — Roadmap\n\n> Derived from the vision.\n\n"
+                         "| Objective | Delivered by |\n"
+                         "|---|---|\n| G1 Foundations | Stage 1 |\n")
+        + backlog, encoding="utf-8")
+    _commit(consumer, "docs: the roadmap's Backlog")
+    assert aide.main(["--repo", str(consumer), "insights", "tick", gap,
+                      "--pointer", "roadmap Backlog", "--date", "2026-10-09"]) == 0
+    assert aide.main(["--repo", str(consumer), "insights", "tick", defect,
+                      "--pointer", "declined: callers strip their own input",
+                      "--date", "2026-10-09"]) == 0
+
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "insights", "list", "--open"]) == 0
+    out = capsys.readouterr().out
+    assert "nothing checks the farewell" not in out
+    assert "greet() does not strip whitespace" not in out
+
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "OK (0 warning(s))" in capsys.readouterr().out
+
+    assert aide.main(["--repo", str(consumer), "progress", "reword", "1",
+                      "--criterion", "1", "--text", "Both items merge to main."]) == 0
+    lines = roadmap.read_text(encoding="utf-8").splitlines()
+    assert lines.index("- Both items merge to main.") < lines.index("# Backlog")
+    assert lines[-len(backlog.splitlines()):] == backlog.splitlines()
+
+    roadmap.write_text(roadmap.read_text(encoding="utf-8").replace(
+        f"insight {gap}", "insight 2026-01-01-ffff"), encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
+
+
 def test_reword_refuses_once_the_criterion_has_been_attested(aide, consumer: Path):
     _accept_one(aide, consumer, "checked")
     before = (consumer / "docs" / "aide" / "progress.md").read_bytes()

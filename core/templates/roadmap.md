@@ -114,3 +114,15 @@ acceptance block, and no row in the coverage table. What it may carry is
 **Deliverables.** Added to `progress.md` by each maintenance queue.
 
 **Dependencies.** None.
+
+---
+
+# Backlog  <!-- OPTIONAL: after the last stage -->
+
+_OPTIONAL — delete unless the project has ideas worth keeping that no stage
+is ready to take on. Keep the `#` heading: it is not a stage. One short
+bullet per idea; what a bullet may say, and how one leaves the list, is
+`.aide/conventions.md` §1 → roadmap.md._
+
+- {{idea, in a sentence or two}}
+- {{idea moved here from the inbox}} (insight {{insight-id}})
