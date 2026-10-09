@@ -1413,6 +1413,28 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # `not args.open_only or not e.ticked`.
         ("--open narrows to the untriaged",
          "test_aide_insights::test_list_open_hides_the_closed_history"),
+        # `queues_open_across` over `queue_created_dates`, printed only
+        # `if args.open_only` (issue #456).
+        ("With --open each entry also prints its wait, `open across N "
+         "queues`: the queue files numbered from the first whose **Created:** "
+         "date is later than the entry's capture date, that one included",
+         ("test_aide_insights::"
+          "test_list_open_prints_each_entrys_wait_and_counts_the_long_waits",
+          "test_aide_insights::test_the_wait_counts_queues_created_strictly_after_the_capture",
+          "test_aide_insights::test_list_without_open_prints_no_wait")),
+        # `d > captured`, strictly; the scan starts at the first dated queue
+        # that counts, so an undated one before it never does.
+        ("A queue created on the capture day is not counted, and a queue file "
+         "with no Created date counts only when it is numbered after one that "
+         "does",
+         ("test_aide_insights::test_the_wait_counts_queues_created_strictly_after_the_capture",
+          "test_aide_insights::test_an_undated_queue_counts_only_after_a_dated_one_that_does",
+          "test_aide_insights::"
+          "test_list_open_prints_each_entrys_wait_and_counts_the_long_waits")),
+        # `inbox_wait_summary(...)[2]` against `INSIGHT_WAIT_DECISION`.
+        ("A closing line counts the entries open across 3 or more queues",
+         "test_aide_insights::"
+         "test_list_open_prints_each_entrys_wait_and_counts_the_long_waits"),
         # `tick_insight_text` — the only function in the CLI that rewrites an
         # existing entry's line.
         # ... and `live_ordinal_for_ref` turns an ID into that position.
@@ -1773,6 +1795,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
 
     # --------------------------------------------------------------- status --
     "status": [
+        # `inbox_wait_summary` in `cmd_status`, the same reading `insights
+        # list --open` makes (issue #456); `ipath.is_file()` guards the read,
+        # and nothing on that path writes.
+        ("An `inbox:` line counts the open insights.md entries by type and "
+         "how many of them are open across 3 or more queues",
+         "test_aide_insights::test_status_prints_the_inbox_by_type_and_its_long_waits"),
+        ("it reads none where there is no insights.md, which status never "
+         "creates",
+         "test_aide_insights::test_status_reads_no_inbox_as_none_and_creates_none"),
         # `elif st == "in-review"` — the note says "awaiting review" and the
         # `run 'aide gc'` string belongs to the `complete` branch only.
         ("A \U0001f50d item's claim branch is reported as awaiting review, "

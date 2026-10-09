@@ -54,23 +54,28 @@ relative to whatever `docs_dir` actually is.
    decayed, whether its type is wrong. A decayed premise is a claim about the
    tree, so check it there — the file, the verb, the commit or the item that
    closed it — and name what you found. A duplicate names the earlier entry
-   by ID. Where the owner might rather not pursue an entry at all — passed
-   over queue after queue, or already said not to be wanted — propose a
-   decline with its reason, or for a `gap` that is scope not ready to plan, a
-   move to the roadmap's Backlog. Both are the owner's decision; you name
-   them, and a `defect` or `automation` entry is never proposed for the
-   Backlog.
+   by ID. Where the owner might rather not pursue an entry at all — already
+   said not to be wanted — propose a decline with its reason, or for a `gap`
+   that is scope not ready to plan, a move to the roadmap's Backlog. Both are
+   the owner's decision; you name them, and a `defect` or `automation` entry
+   is never proposed for the Backlog.
 
-4. **For a `knowledge` entry, name the fold.** The owning document, where in
+4. **An entry that has waited is not left open again.** The listing prints
+   each open entry's wait (`open across N queues`); at three or more, the
+   section makes it the owner's call. Give it a row of its own: queue it,
+   decline it, or (a `gap` only) the Backlog — the one you would choose, and
+   why.
+
+5. **For a `knowledge` entry, name the fold.** The owning document, where in
    it, and the exact text of the smallest edit that keeps the fact — written
    so the caller can apply it as given.
 
-5. **For a `framework` entry, compose the hand-over.** The issue title and the
+6. **For a `framework` entry, compose the hand-over.** The issue title and the
    whole body, header line first, by the section's rules on what the body may
    carry; the version comes from the entry's own marker. When `[framework]
    repo` is unset, say the entry stays pending and compose nothing.
 
-6. **Sweep the recently closed entries** for one whose pointer you now know to
+7. **Sweep the recently closed entries** for one whose pointer you now know to
    be wrong, and propose its trail line.
 
 ## Report
@@ -79,7 +84,11 @@ One row per entry you touched — its position and ID, its type, and the
 action:
 
 - **fold** — the target document, the edit, and the `--pointer` text;
-- **leave open** — the type, and the queue it is waiting for;
+- **leave open** — the type, and the queue it is waiting for; never for an
+  entry at a wait of three or more;
+- **owner's decision** — an entry at that wait: its wait, and queue,
+  decline (with the `--pointer "declined: <reason>"` text) or Backlog, with
+  the one you would choose and why;
 - **tick, decayed premise** — the `--pointer` text naming what closed it;
 - **propose to the owner** — a decline, with the `--pointer "declined:
   <reason>"` text, a reason that names no item (the ledger reads an item
@@ -96,7 +105,8 @@ really a `defect`, `gap` or `automation`, a hand-over for what is really
 `framework` — and add the `--trail` text saying the type was
 wrong and what it is.
 
-Then the counts: folded, handed over, left open by type, judged. Say plainly
+Then the counts: folded, handed over, left open by type, judged, and put to
+the owner. Say plainly
 when an entry needs nothing beyond its route, and when the inbox needs nothing
 at all — a clean pass is a real result.
 

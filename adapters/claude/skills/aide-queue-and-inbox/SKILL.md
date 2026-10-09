@@ -115,6 +115,10 @@ paths:
        itself
      - Write that icon into the two cells in the same commit as the bullets
      - A pass-over may carry a proposal for the owner, never a decision
+     - An entry open across three or more queues is already the owner's
+       decision
+     - Until the owner has said, the author puts the decision to the owner
+       where the queue is reviewed
 -->
 
 # Queue files and the insight inbox
@@ -231,7 +235,13 @@ entry you pass over again and again is named with what the owner might do
 instead — decline it, with its reason, or move a `gap` that is scope not
 ready to plan to the roadmap's Backlog. Both are the owner's (§1 →
 `insights-triage.md`), so you tick neither, and the entry stays open until
-the owner decides.
+the owner decides. **An entry open across three or more queues is already
+the owner's decision** — `insights list --open` prints each entry's wait —
+so you do not pass it over again, and you queue it once the owner says to.
+**Until the owner has said, the author puts the decision to the owner where
+the queue is reviewed** — queue it, decline it, or, for a `gap`, move it to
+the roadmap's Backlog — with the one you would take and why; an unattended
+run has no owner to ask, so the queue's review is where the answer comes.
 
 **A maintenance item's deliverable bullet goes under the maintenance stage**
 (§1 → `insights-maintenance-queue.md`; what that stage is, §1 → `roadmap.md`),

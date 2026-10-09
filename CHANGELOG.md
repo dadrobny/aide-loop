@@ -136,6 +136,44 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.46.0] — 2026-10-09
+
+### Added
+
+- **An open insight's wait is visible, and an entry that has waited three
+  queues is the owner's decision (issue #456, parent #453).** `aide insights
+  list --open` prints each open entry's wait as `open across N queues` and
+  closes with a count of the entries at three or more; `aide status` gains
+  one `inbox:` line — open entries by type, and that count — where it said
+  nothing about the inbox before (`inbox: none` with no `insights.md`, which
+  `status` never creates). N is the number of queue files numbered from the
+  first whose `**Created:**` date is strictly later than the entry's capture
+  date: a queue created on the capture day does not count, and a queue file
+  with no `Created` line counts only when it is numbered after one that
+  does. The date is read from the queue file, never from git, so the figure
+  is the same in a shallow clone, in `local` mode and with no git at all,
+  and costs no spawn; a first-commit date was rejected for moving under a
+  rebase and needing history. §1 → `insights-triage.md` makes the triage
+  pass bring each entry open across three or more queues to the owner as a
+  decision — queue it, decline it, or, for a `gap`, move it to the roadmap's
+  Backlog (2.45.0) — and never pass it over again; three is a convention,
+  not an `aide.toml` key. §1 → `insights-maintenance-queue.md` stops the
+  queue's author passing such an entry over too: until the owner has said,
+  the author puts the decision to the owner where the queue is reviewed —
+  the closing summary its queue PR carries. In one consumer 21 gaps
+  dated across two weeks had sat through six or seven maintenance queues,
+  each pass-over recorded in a queue file and never on the entry. A trail
+  line per pass-over and an `aide check` age warning were rejected — the
+  count is derivable, and a warning only a decision clears is noise to an
+  unattended run. `aide-review-insights`, `insights-triager`,
+  `aide-create-queue`, `queue-planner`, `aide-queue-and-inbox` and
+  `aide-feedback-loop` carry the decision, under pin where they quote it;
+  the new `-h` sentences are pinned in `test_aide_help_pins.py`, and
+  `tests/test_fixture_consumer.py` drives both verbs against an install.
+  **What a consumer edits:** nothing. A queue file without a `Created` line
+  in its header (the queue template has carried one throughout) is counted
+  only after a dated one; add the line to such a file if its wait matters.
+
 ## [2.45.0] — 2026-10-09
 
 ### Added

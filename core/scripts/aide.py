@@ -4003,6 +4003,72 @@ def _find_entry(entries: List[InsightEntry], ordinal: int) -> InsightEntry:
 
 
 # --------------------------------------------------------------------------- #
+# an entry's wait — open across N queues (§1 → insights-triage.md, #456)
+# --------------------------------------------------------------------------- #
+#: The wait at which triage brings an open entry to its owner as a decision.
+#: A convention stated in §1 → `insights-triage.md`, deliberately not an
+#: aide.toml key until a consumer needs another value.
+INSIGHT_WAIT_DECISION = 3
+#: The `**Created:** YYYY-MM-DD` a queue file's header carries
+#: (templates/queue.md); it may share its line with other header fields.
+_QUEUE_CREATED_RE = re.compile(r"\*\*Created:\*\*\s*(\d{4}-\d{2}-\d{2})\b")
+
+
+def queue_created_date(text: str) -> Optional[str]:
+    """The `**Created:**` date of a queue file's header, or None.
+
+    Only the header is read — everything above the first ``## `` heading — so
+    an item description quoting the field is never taken for the queue's own.
+    """
+    for line in text.splitlines():
+        if line.startswith("## "):
+            break
+        m = _QUEUE_CREATED_RE.search(line)
+        if m is not None:
+            return m.group(1)
+    return None
+
+
+def queue_created_dates(qdir: Path) -> List[Optional[str]]:
+    """Each queue file's `Created` date, in queue-number order ([] with none).
+
+    Read from the file and never from git: the figure is the same in every
+    clone, shallow or not, in local mode and with no git at all, and it costs
+    no spawn.
+    """
+    return [queue_created_date(p.read_text(encoding=_ENCODING))
+            for p in iter_queue_paths(qdir)]
+
+
+def queues_open_across(captured: str, created: List[Optional[str]]) -> int:
+    """How many queues an entry captured on *captured* has stayed open across.
+
+    The queue files numbered from the first one whose `Created` date is
+    strictly later than the capture date, that one included. A queue created
+    on the capture day is not counted: both dates are days, and the entry may
+    have been captured after that queue was planned. An undated queue counts
+    when it is numbered after one that does — numbering follows creation —
+    and never otherwise, since nothing says when it was made.
+    """
+    for i, d in enumerate(created):
+        if d is not None and d > captured:
+            return len(created) - i
+    return 0
+
+
+def inbox_wait_summary(entries: List[InsightEntry],
+                       created: List[Optional[str]]
+                       ) -> Tuple[int, Dict[str, int], int]:
+    """(open entries, open entries by type, open ones at the decision wait)."""
+    open_entries = [e for e in entries if not e.ticked]
+    by_type = {t: sum(1 for e in open_entries if e.type == t)
+               for t in _INSIGHT_TYPES}
+    waited = sum(1 for e in open_entries if e.date is not None
+                 and queues_open_across(e.date, created) >= INSIGHT_WAIT_DECISION)
+    return len(open_entries), by_type, waited
+
+
+# --------------------------------------------------------------------------- #
 # insight IDs — the durable handle (conventions.md §1 → insights.md, #276)
 # --------------------------------------------------------------------------- #
 #: The shortest hex an ID is printed with. Lengthened per entry only as far as
@@ -10929,7 +10995,9 @@ def cmd_insights(args: argparse.Namespace) -> int:
         return _cmd_insights_add(path, ddir, ddir_rel, repo_root, config, args,
                                  capture or "")
     if args.action == "list":
-        return _cmd_insights_list(parse_insights(text), load_insight_pool(ddir), args)
+        return _cmd_insights_list(parse_insights(text), load_insight_pool(ddir), args,
+                                  queue_created_dates(ddir / "queue")
+                                  if args.open_only else [])
     if args.action == "tick":
         return _cmd_insights_tick(path, text, ddir, ddir_rel, repo_root, config,
                                   args, _dt.date.today().isoformat())
@@ -10967,7 +11035,8 @@ def _render_insight(e: InsightEntry, label: str, iid: Optional[str],
 
 def _cmd_insights_list(entries: List[InsightEntry],
                        pool: List[Tuple[str, InsightEntry]],
-                       args: argparse.Namespace) -> int:
+                       args: argparse.Namespace,
+                       created: Optional[List[Optional[str]]] = None) -> int:
     if args.type and args.type not in _INSIGHT_TYPES:
         print(f"aide insights: --type must be one of {', '.join(_INSIGHT_TYPES)}",
               file=sys.stderr)
@@ -10982,17 +11051,26 @@ def _cmd_insights_list(entries: List[InsightEntry],
     shown = [e for e in entries
              if (not args.open_only or not e.ticked)
              and (not args.type or e.type == args.type)]
+    created = created or []
     for e in shown:
         iid = live_ids[e.ordinal - 1] if e.ordinal <= len(live_ids) else None
-        _render_insight(e, f"{e.ordinal:>3}.", iid, args.trail)
-    open_entries = [e for e in entries if not e.ticked]
-    by_type = {t: sum(1 for e in open_entries if e.type == t) for t in _INSIGHT_TYPES}
+        # The wait is printed under --open only: it is what the queue
+        # boundary reads, and the full listing is the history (issue #456).
+        wait = ""
+        if args.open_only and e.type is not None and e.date is not None:
+            n = queues_open_across(e.date, created)
+            wait = f" · open across {n} queue{'' if n == 1 else 's'}"
+        _render_insight(e, f"{e.ordinal:>3}.", iid, args.trail, wait)
+    n_open, by_type, waited = inbox_wait_summary(entries, created)
     breakdown = ", ".join(f"{n} {t}" for t, n in by_type.items() if n)
     malformed = sum(1 for e in entries if e.type is None)
     print(f"aide insights: {len(entries)} entr{'y' if len(entries) == 1 else 'ies'}, "
-          f"{len(open_entries)} open"
+          f"{n_open} open"
           f"{' (' + breakdown + ')' if breakdown else ''}"
           f"{f'; {malformed} malformed — see `aide check`' if malformed else ''}")
+    if args.open_only:
+        print(f"aide insights: {waited} open across {INSIGHT_WAIT_DECISION} "
+              f"or more queues")
     if len(shown) != len(entries):
         print(f"aide insights: {len(shown)} shown by the filters given")
     return 0
@@ -19021,9 +19099,15 @@ def cmd_status(args: argparse.Namespace) -> int:
     qdir = docs_dir(repo_root, config) / "queue"
     live_seen = False
     live_work: List[int] = []
-    if iter_queue_paths(qdir):
-        for path in iter_queue_paths(qdir):
-            nums = queue_item_numbers(path.read_text(encoding=_ENCODING))
+    # Each queue file is read once: its items here, its Created date for the
+    # inbox line below (issue #456).
+    created: List[Optional[str]] = []
+    queue_paths = iter_queue_paths(qdir)
+    if queue_paths:
+        for path in queue_paths:
+            qtext = path.read_text(encoding=_ENCODING)
+            created.append(queue_created_date(qtext))
+            nums = queue_item_numbers(qtext)
             idle = [n for n in nums if n in withdrawn
                     and item_status.get(n, "planned") == "planned"]
             open_nums = [n for n in nums
@@ -19045,6 +19129,19 @@ def cmd_status(args: argparse.Namespace) -> int:
                 print(f"  {path.name}: done" + (f" — {aside}" if aside else ""))
     else:
         print("  queues: none")
+
+    # The inbox, read and never created here (issue #456): open entries by
+    # type, and how many have waited long enough to be the owner's decision.
+    ipath = insights_path(docs_dir(repo_root, config))
+    if ipath.is_file():
+        n_open, by_type, waited = inbox_wait_summary(
+            parse_insights(ipath.read_text(encoding=_ENCODING)), created)
+        breakdown = ", ".join(f"{n} {t}" for t, n in by_type.items() if n)
+        print(f"  inbox: {n_open} open"
+              + (f" ({breakdown})" if breakdown else "")
+              + f"; {waited} open across {INSIGHT_WAIT_DECISION} or more queues")
+    else:
+        print("  inbox: none")
 
     # Outcome targets not yet ✅ Met — the goal-level state a summary table's
     # stage icons deliberately do not carry (conventions.md §1).
@@ -20359,7 +20456,13 @@ def build_parser() -> argparse.ArgumentParser:
             "archive or merge changes; four hex digits, more only where two "
             "different claims of one date would share them. list N or list "
             "ID prints that one entry with its trail, and an ID is found in "
-            "the archives too\n"
+            "the archives too. With --open each entry also prints its wait, "
+            "`open across N queues`: the queue files numbered from the first "
+            "whose **Created:** date is later than the entry's capture date, "
+            "that one included. A queue created on the capture day is not "
+            "counted, and a queue file with no Created date counts only when "
+            "it is numbered after one that does. A closing line counts the "
+            "entries open across 3 or more queues\n"
             "tick:    the one in-place edit — tick entry N (or ID) with --pointer; on "
             "an entry already ticked, append a dated trail line instead; "
             "with --trail, append the dated line under entry N and leave "
@@ -20399,7 +20502,8 @@ def build_parser() -> argparse.ArgumentParser:
                             "(item NNN, queue-NNN, items NNN-NNN); omitted "
                             "when not given")
     p_ins.add_argument("--open", action="store_true", dest="open_only",
-                       help="list: only entries still untriaged")
+                       help="list: only entries still untriaged, each with "
+                            "its wait")
     p_ins.add_argument("--type", default=None,
                        help="list: one of " + ", ".join(_INSIGHT_TYPES))
     p_ins.add_argument("--trail", action="store_true",
@@ -20866,7 +20970,7 @@ def register_git_subcommands(sub) -> None:
     p_status = sub.add_parser(
         "status", help="one-call roadmap-state report (branch, queues, "
         "claims, PRs, open gates, unmet targets, unverified capabilities, "
-        "retracted criteria)",
+        "retracted criteria, inbox)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "A \U0001f50d item's claim branch is reported as awaiting review, "
@@ -20895,6 +20999,10 @@ def register_git_subcommands(sub) -> None:
             "or not; one that times out or cannot start is not satisfied — "
             "a satisfied profile under an unverified row is a row this "
             "machine can verify now.\n\n"
+            "An `inbox:` line counts the open insights.md entries by type and "
+            "how many of them are open across 3 or more queues, the wait "
+            "`aide insights list --open` prints; it reads none where there is "
+            "no insights.md, which status never creates.\n\n"
             "The stack of unmerged queue branches \u2014 the ones `aide queue "
             "start` counts against [loop] max_open_queues \u2014 is printed "
             "bottom first, after a `stack: N/CAP` line: one `stack N: <branch> "

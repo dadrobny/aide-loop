@@ -107,11 +107,22 @@ A fourth judgement closes an entry, and it is never yours to make:
 - **Declined** — the owner decides a `defect`, `gap` or `automation` entry
   will not be pursued; it is ticked `--pointer "declined: <reason>"`, and the
   claim stays the record. **The reason names no item**: an item number there
-  reads as the item the entry became. **Only the owner declines.** Propose a decline, with
-  its reason, where an entry has been passed over queue after queue or its
-  owner has said it will not be done; apply it (step 5) only once the person
-  watching this session agrees. A decline is a scope decision, and it is
-  made at the queue boundary, where a person reads.
+  reads as the item the entry became. **Only the owner declines.** Propose a
+  decline, with its reason, where an entry has waited (below) or its owner
+  has said it will not be done; apply it (step 5) only once the person
+  watching this session agrees. A decline is a scope decision, and it is made at the queue
+  boundary, where a person reads.
+
+**Triage brings each entry open across three or more queues to the owner as
+a decision, and does not pass it over again.** Step 1's listing prints each
+entry's wait as `open across N queues`, and its last line counts the ones at
+three or more. For each of them, put one of three decisions to the person
+watching — or, with nobody watching, in your report, where the owner reads
+it — with the one you would take and why: queue it; decline it; or, for a
+`gap`, move it to the roadmap's Backlog. An entry the owner says to queue
+stays open for the next queue's author, who queues it rather than passing it
+over; the other two are applied as step 5 and step 2 say. Three is a
+convention, not a setting.
 
 **A ticked entry whose status is now stale gets a trail line too** — sweep the
 recently-closed entries for one whose pointer you now know to be wrong. That is
@@ -215,8 +226,9 @@ triage pass, never the middle.
 
 Say what you routed, in one block: the entries folded (with where), the ones
 handed over (with issue numbers), the ones left open for the next queue and
-which type each is, every judgement you recorded, and every decline or
-Backlog move you propose for the owner, with its reason. The count of entries left
+which type each is, every judgement you recorded, every decline or
+Backlog move you propose for the owner, with its reason, and every entry
+open across three or more queues with the decision the owner made on it. The count of entries left
 open is what the next queue author is about to read.
 
 <!-- pins: .aide/conventions/1-format-contract/insights-triage.md
@@ -247,6 +259,9 @@ open is what the next queue author is about to read.
      - Only the owner declines
      - The reason names no item
      - A decline is a scope decision, and it is made at the queue boundary
+     - Triage brings each entry open across three or more queues to the
+       owner as a decision, and does not pass it over again
+     - Three is a convention, not a setting
      - a decayed premise is ticked, because there is nothing left for a
        queue to carry
      - a dated trail line under the entry, never an edit to the claim
