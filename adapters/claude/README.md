@@ -49,8 +49,9 @@ contract obligations:
 - **`aide-review-insights`** — step 7's inbox triage, spun out of the feedback loop
   so the pass that always runs at a queue boundary can be reached without the
   retrospective around it. It routes by the §1 routing table, judges duplicates and
-  decayed premises — the judging dispatched to `insights-triager`, the writes kept
-  in the session — and files `framework` entries as issues.
+  decayed premises, proposes declines and Backlog moves for the owner to decide —
+  the judging dispatched to `insights-triager`, the writes kept in the session —
+  and files `framework` entries as issues.
 - **`aide-review-ledger`** — step 7's reading of the run ledger: runs `aide ledger
   report`, annotates each engine-version cohort boundary with the framework release
   notes and the `aide.toml` history behind it, and routes what it suggests into the
