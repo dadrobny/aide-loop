@@ -11998,25 +11998,30 @@ def _queue_item_title(repo_root: Path, config, number: int) -> Optional[str]:
 
 
 #: The maintenance tick's own pointer (§1 → `insights-maintenance-queue.md`):
-#: `item NNN`, and nothing but item references — `items 012, 013`, `item 012,
-#: item 013`, `items 012–014` — with an optional closing full stop. Anchored at
-#: both ends, so a pointer that merely MENTIONS an item — `declined: superseded
-#: by item 12`, `fixed by item 121` — is not this form, whatever its prose says.
-_ITEM_REFS_ONLY = (r"[Ii]tems?\s+" + _ITEM_REF_NUM
+#: it OPENS with item references — `item NNN`, `items 012, 013`, `item 012 and
+#: item 013`, `items 012–014` — and only that head is read. What follows it is
+#: the author's gloss, which `<where it landed>` allows (§1 → `insights.md`):
+#: `item 191 (the border case)`, `item 216: decision 3 rewritten`, `items
+#: 173-178 (178 deletes the directory)`, `item 216 D16: …`; a number in the
+#: gloss is never an item. Anchored at the start, so a pointer that opens with
+#: prose and only MENTIONS an item — `declined: superseded by item 12`, `fixed
+#: by item 121` — is not this form (issue #460). ``(?!\w)`` ends the head at a
+#: word boundary, so `item 12abc` is no reference at all.
+_ITEM_REFS_HEAD = (r"[Ii]tems?\s+" + _ITEM_REF_NUM
                    + r"(?:\s*[,/–-]\s*" + _ITEM_REF_NUM + r")*")
 _MAINTENANCE_TICK_RE = re.compile(
-    r"^\s*" + _ITEM_REFS_ONLY
-    + r"(?:\s*(?:[,;&]|\band\b)\s*" + _ITEM_REFS_ONLY + r")*\s*\.?\s*$")
+    r"\s*" + _ITEM_REFS_HEAD
+    + r"(?:\s*(?:[,;&]|\band\b)\s*" + _ITEM_REFS_HEAD + r")*(?!\w)")
 #: A dated status-trail line as `tick` writes it: `  - **DATE** → POINTER`.
 _INSIGHT_TRAIL_POINTER_RE = re.compile(
     r"^\s+[-*]\s+\*\*\d{4}-\d{2}-\d{2}\*\*\s*→\s*(?P<pointer>.*)$")
 
 
 def _maintenance_tick_items(pointer: Optional[str]) -> List[int]:
-    """The items a pointer of the maintenance tick's own form names, else ``[]``."""
-    if not pointer or not _MAINTENANCE_TICK_RE.match(pointer):
-        return []
-    return _referenced_item_numbers(pointer)
+    """The items at the head of a pointer of the maintenance tick's own form,
+    else ``[]`` — never a number in the gloss after them."""
+    m = _MAINTENANCE_TICK_RE.match(pointer) if pointer else None
+    return _referenced_item_numbers(m.group(0)) if m else []
 
 
 def _insight_derived_item(repo_root: Path, config, number: int) -> bool:
@@ -12026,11 +12031,12 @@ def _insight_derived_item(repo_root: Path, config, number: int) -> bool:
     or `automation` entry ticks it with the item number it became
     (`insights tick N --pointer "item NNN"`), so the inbox is where the engine
     can read that an item is insight-derived. Only a **ticked** entry counts,
-    and only a pointer of that tick's own form (`_MAINTENANCE_TICK_RE`): the one
-    on the entry line, or the pointer of a dated trail line — which is where
-    `tick` writes it on an entry already ticked, and where `resolve` keeps a
-    second side's tick. Any other pointer is not read for item numbers
-    (issue #460):
+    and only a pointer of that tick's own form (`_MAINTENANCE_TICK_RE`) — one
+    that OPENS with item references, of which only those count, whatever gloss
+    the author wrote after them: the one on the entry line, or the pointer of a
+    dated trail line — which is where `tick` writes it on an entry already
+    ticked, and where `resolve` keeps a second side's tick. A pointer that
+    opens with prose is not read for item numbers (issue #460):
 
     - a **decline**, `declined: <reason>`, closes the entry *without* an item,
       so an item its reason cites is not the item the entry became;
@@ -12038,7 +12044,8 @@ def _insight_derived_item(repo_root: Path, config, number: int) -> bool:
       either: the item fixed the entry, but it was planned as something else
       and the entry was closed because nothing was left to queue — `kind`
       says how an item was planned (small by design), not what it touched;
-    - any other trail prose naming an item is a remark about the entry.
+    - any other prose naming an item, in a pointer or a trail line, is a
+      remark about the entry, and so is a number in a tick's gloss.
 
     The entry's **provenance** is never read — it names the item the insight
     was captured *in*, which is the opposite claim.
@@ -21082,10 +21089,11 @@ def register_git_subcommands(sub) -> None:
             "never disagree. Every cell is derived here: the item, its queue, "
             "its stage, its kind \u2014 validate-stage from an item titled "
             "`Validate stage N`, maintenance from a defect, gap or "
-            "automation entry ticked `item NNN` with this item's number, on "
-            "its line or a dated trail line \u2014 a pointer that only "
-            "mentions the item, as a decline's reason may, is not that "
-            "tick \u2014 else normal \u2014 how many acceptance "
+            "automation entry ticked with a pointer that opens with this "
+            "item's number, `item NNN`, on its line or a dated trail line, "
+            "whatever gloss follows \u2014 a pointer that opens with prose "
+            "and only mentions the item, as a decline's reason may, is not "
+            "that tick \u2014 else normal \u2014 how many acceptance "
             "criteria its spec "
             "carries, how many test functions and files the branch added "
             "against the base this run resolved \u2014 less the tests "

@@ -383,6 +383,36 @@ def test_a_maintenance_tick_may_name_several_items(tmp_path: Path):
         assert aide.item_kind(repo, aide.load_config(repo), 27) == "maintenance", pointer
 
 
+def test_a_maintenance_tick_may_carry_a_gloss(tmp_path: Path):
+    """A pointer is "where it landed", free-form, so an author may annotate the
+    tick; the references it opens with still count (issue #460, review)."""
+    for i, pointer in enumerate((
+            "item 027 (edge gating); the wider bound is stage 4's",
+            "items 026-027 (027 removes the old module)",
+            "item 027 (descriptions corrected, AC6)",
+            "item 027: design decision 3 rewritten",
+            "item 027 D16: version rows corrected",
+            "item 027 — the bounds fix")):
+        routed = INSIGHTS + f"- [x] gap — no bound *(2026-09-01)* → {pointer}\n"
+        repo = _docs(tmp_path / f"r{i}", insights=routed)
+        assert aide.item_kind(repo, aide.load_config(repo), 27) == "maintenance", pointer
+
+
+def test_a_number_in_a_ticks_gloss_is_not_an_item():
+    """Only the references the pointer opens with are read: the gloss's
+    numbers — a bare one, or even one written `item NNN` — name no item."""
+    assert aide._maintenance_tick_items(
+        "items 173-178 (178 deletes the directory)") == list(range(173, 179))
+    assert aide._maintenance_tick_items(
+        "item 191 (border gating); extents are stage 27's, see item 40") == [191]
+    assert aide._maintenance_tick_items("item 216 D16: rows corrected") == [216]
+    assert aide._maintenance_tick_items("item 216: decision 3 rewritten") == [216]
+    for prose in ("declined: superseded by item 12", "fixed by item 121",
+                  "superseded by item 12", "decayed premise: item 5 is gone",
+                  "item 12abc", ""):
+        assert aide._maintenance_tick_items(prose) == [], prose
+
+
 def test_a_declined_pointer_naming_an_item_is_not_maintenance(tmp_path: Path):
     """Issue #460: an owner's decline closes the entry without an item, so an
     item its reason cites is not the item the entry became."""
@@ -407,11 +437,12 @@ def test_a_decayed_premise_naming_an_item_is_not_maintenance(tmp_path: Path):
 
 
 def test_trail_prose_naming_an_item_is_not_maintenance(tmp_path: Path):
-    """A trail line is read only for a pointer of the tick's own form; a
-    remark that names an item, dated or not, is a remark."""
+    """A trail line is read only for a pointer of the tick's own form, one
+    that opens with the item; a remark that names an item, dated or not, is a
+    remark."""
     remarked = INSIGHTS + (
         "- [x] automation — no lint *(2026-09-01)* → item 019\n"
-        "  - **2026-09-20** → item 027 touched the same module\n"
+        "  - **2026-09-20** → the same module was touched by item 027\n"
         "  - see item 027\n")
     repo = _docs(tmp_path / "repo", insights=remarked)
     config = aide.load_config(repo)

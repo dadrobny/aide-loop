@@ -307,9 +307,9 @@ by `N`, which the next archive renumbers:
 python .aide/scripts/aide.py insights tick N --pointer "item NNN"
 ```
 
-The pointer is the item references alone: **that tick is the one record that
-an item is insight-derived**, and a pointer that only mentions an item does not
-count.
+**The pointer opens with the item references**, and a gloss may follow them;
+**that tick is the one record that an item is insight-derived**, and a
+pointer that opens with prose and only mentions an item does not count.
 
 Never flip the checkbox or reword the line by hand: **the claim is immutable and
 ticking the checkbox is the one in-place edit**. An entry passed over is left
@@ -347,7 +347,9 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
      - a pass-over leaves the entry open and is stated where the queue is
        reviewed
      - That tick is the one record that an item is insight-derived
-     - A pointer that only mentions an item does not count
+     - The pointer opens with the item references
+     - A pointer that opens with prose and only mentions an item does not
+       count
      - A maintenance item's deliverable bullet goes under the maintenance
        stage
      - never under the feature stage whose module it touches

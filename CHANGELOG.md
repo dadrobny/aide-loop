@@ -148,12 +148,15 @@ instead — that is the bump policy above, and it is enforced by
   superseded the entry — `declined: superseded by item 12` — marked item 12
   `maintenance`, and inflated the maintenance share `aide ledger report`
   draws. The engine now reads a pointer only where it is of the maintenance
-  tick's own form: item references alone — `item NNN`, `items 012, 013`,
-  `item 012 and item 013`, `items 012-014` — on a **ticked** entry's line or
-  on a dated trail line, where `tick` writes the pointer on an entry already
+  tick's own form: it opens with item references — `item NNN`, `items 012,
+  013`, `item 012 and item 013`, `items 012-014` — and only those count; a
+  gloss may follow (`item NNN (what it fixed)`, `item NNN: …`), and a number
+  in it is never an item. Such a pointer is read on a **ticked** entry's
+  line or on a dated trail line, where `tick` writes the pointer on an entry already
   ticked (a declined entry the owner later says to queue) and where
   `resolve` keeps the other side's tick. A decline, any trail prose, and a
-  pointer that merely mentions an item no longer count. **Decided:** a
+  pointer that opens with prose and only mentions an item no longer count.
+  Checked against one consumer's inbox: every annotated tick still counts. **Decided:** a
   decayed premise's `fixed by item 121` does not count either — the item
   fixed the entry but was planned as something else, and `kind` exists so
   that a small-by-design fix is not pooled with the rest. §1 →

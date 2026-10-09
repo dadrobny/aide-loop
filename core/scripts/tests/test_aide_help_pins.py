@@ -2309,15 +2309,17 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_a_test_reconciled_in_another_items_file_is_not_counted"),
         # `item_kind`: the title regex, then the inbox pointers, else normal.
         ("its kind \u2014 validate-stage from an item titled `Validate stage "
-         "N`, maintenance from a defect, gap or automation entry ticked `item "
-         "NNN` with this item's number, on its line or a dated trail line",
+         "N`, maintenance from a defect, gap or automation entry ticked with a "
+         "pointer that opens with this item's number, `item NNN`, on its line "
+         "or a dated trail line, whatever gloss follows",
          ("test_aide_ledger::test_a_validate_stage_item_is_its_own_kind",
           "test_aide_ledger::test_an_item_an_insight_was_routed_to_is_maintenance",
           "test_aide_ledger::test_a_maintenance_tick_in_the_trail_counts",
-          "test_aide_ledger::test_a_maintenance_tick_may_name_several_items")),
+          "test_aide_ledger::test_a_maintenance_tick_may_name_several_items",
+          "test_aide_ledger::test_a_maintenance_tick_may_carry_a_gloss")),
         # `_MAINTENANCE_TICK_RE` is anchored at both ends (issue #460).
-        ("a pointer that only mentions the item, as a decline's reason may, "
-         "is not that tick \u2014 else normal",
+        ("a pointer that opens with prose and only mentions the item, as a "
+         "decline's reason may, is not that tick \u2014 else normal",
          ("test_aide_ledger::test_a_declined_pointer_naming_an_item_is_not_maintenance",
           "test_aide_ledger::test_a_decayed_premise_naming_an_item_is_not_maintenance",
           "test_aide_ledger::test_trail_prose_naming_an_item_is_not_maintenance")),

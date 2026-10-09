@@ -79,8 +79,9 @@ the reader's.
   reading of tests per criterion treats each by kind rather than pooling the
   three. **An item is `maintenance` only where a ticked `defect`, `gap` or
   `automation` entry carries the maintenance queue's own tick naming it**
-  (§1 → `insights-maintenance-queue.md`); an item a decline or a decayed
-  premise cites stays `normal`. The engine derives it, so the vocabulary is
+  (§1 → `insights-maintenance-queue.md`) — a pointer that opens with it; an
+  item a decline or a decayed premise cites, or a gloss after the tick
+  mentions, stays `normal`. The engine derives it, so the vocabulary is
   closed. *(aide merge, ledger abandon)*
 - **Two rows appended at one tail are a union: keep both.** Every pair of
   branches that each landed an item conflicts here, exactly as the inbox does
@@ -152,7 +153,12 @@ the reader's.
   that a small-by-design fix is not pooled with the rest. The trail is still
   read, because it is where `tick` puts an entry's second routing — a declined
   entry the owner later says to queue — and where `resolve` keeps the other
-  side's tick.
+  side's tick. **Why the tick may carry a gloss.** A pointer is "where it
+  landed", free-form (§1 → `insights.md`), and one consumer's queue authors
+  annotated a fifth of their ticks — `item NNN (what it fixed)`, `item NNN:
+  …` — so a form demanding item references alone misread real ticks as
+  `normal`. Reading the opening references, and only them, keeps those ticks
+  and still never reads a pointer that opens with prose.
 - **Why `-` rather than a fourth reading of a blank.** With the marker
   absent, a project that never switched review on and a run whose reviewer's
   findings were dropped on the floor wrote the identical row — and they are

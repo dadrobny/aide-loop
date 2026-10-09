@@ -200,9 +200,10 @@ Follow the `aide-create-queue` skill in full. In brief:
    the commit of step 6, not before** — the verb rebases onto the upstream before committing,
    and a working tree still holding the queue and the back-fill is exactly the
    state that makes the rebase fail; `aide-create-queue` orders it the same way.
-   The pointer is the item references alone: **that tick is the one record
-   that an item is insight-derived**, and a pointer that only mentions an
-   item does not count.
+   **The pointer opens with the item references**, and a gloss may follow
+   them; **that tick is the one record that an item is insight-derived**,
+   and a pointer that opens with prose and only mentions an item does not
+   count.
    An entry you passed over stays open and unticked — it is still a candidate
    for the next queue — and step 8 says so out loud. Never tick a decline or
    a Backlog move you propose: the owner decides it, and ticks it.
@@ -372,7 +373,9 @@ only writes allowed outside your edit scope.
        after wiring its bullets
      - Commit what it writes in the same commit as the bullets
      - That tick is the one record that an item is insight-derived
-     - A pointer that only mentions an item does not count
+     - The pointer opens with the item references
+     - A pointer that opens with prose and only mentions an item does not
+       count
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/queue-NNN.md
