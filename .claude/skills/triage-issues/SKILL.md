@@ -31,12 +31,17 @@ project's tracker, not a rule every runtime should express.
 
 ## What you may do without asking, and what you may not
 
-**Apply directly** (mechanical, idempotent, reversible):
-adding an issue to the Project, and reordering the board.
+**Apply directly** (reversible): adding an issue to the Project, reordering the
+board, and a new arrival's `Theme` and labels. A Theme or label is a judgement
+call, and a wrong `Theme` is invisible afterwards in a way a wrong position is
+not — so apply it, then **list it in the report**, one line per issue, where the
+user sees it and can say "change it". Name a strong alternative only when the
+choice was genuinely uncertain; do not pad a confident pick with one.
 
-**Propose and wait for a go-ahead**: `Theme`, labels, `Status`, closing an issue
-as already-fixed, and removing a `deferred` label. These are judgement calls, and
-a wrong `Theme` is invisible afterwards in a way a wrong position is not.
+**Propose and wait for a go-ahead**: `Status`, closing an issue as
+already-fixed, and adding or removing `deferred`. Those change what gets
+scheduled — `deferred` also rewrites the title — rather than how an issue is
+filed.
 
 Batch every proposal into **one** approval request at the end of the relevant
 step — not one question per issue.
@@ -118,7 +123,7 @@ $GH project item-add 1 --owner dadrobny --url https://github.com/dadrobny/aide-l
 Adding is idempotent-ish — re-adding an existing item returns the same item —
 but only add the numbers step 1 found missing.
 
-### Theme and labels (propose first)
+### Theme and labels (apply, then list)
 
 `Theme` is a single-select on the Project; labels live on the issue. Both must
 be filled — an item with a blank `Theme` is invisible to every grouped view.
@@ -252,10 +257,14 @@ Stop there. Do not cut the branch.
 
 Close the pass with a single report:
 
-- **New arrivals**, one line each: number, verdict from step 2, proposed Theme
-  and labels.
-- **Applied**: items added, board reordered (or already ordered).
-- **Awaiting your call**: Theme/label/close/un-defer proposals, batched.
+- **New arrivals**, one line each: number, verdict from step 2, and the Theme
+  and labels applied — plus the strong alternative, only where there was one.
+  Close the list with one line asking the user to say if any should change;
+  silence keeps them.
+- **Applied**: items added, Themes/labels set, board reordered (or already
+  ordered).
+- **Awaiting your call**: Status/close/defer/un-defer proposals, batched — or
+  "nothing" when there are none.
 - **Next PR**: the step 5 proposal.
 
 ## Filing an issue yourself
