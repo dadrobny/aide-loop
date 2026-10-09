@@ -76,10 +76,12 @@ deliverable bullet goes under the maintenance stage, never under the feature
 stage whose module it touches** (§1 → `insights-maintenance-queue.md`; what
 the stage is, §1 → `roadmap.md`).
 
-**When the roadmap has no maintenance stage, the queue's author hands back**
-— before writing either queue, since the answer changes `roadmap.md`: name
-the entries that warrant a maintenance queue, and say that **the owner adds
-the stage once, through the create-roadmap entry point**.
+**When a maintenance queue is warranted and the roadmap has no maintenance
+stage, the queue's author hands back** — before writing either queue, since
+the answer changes `roadmap.md`: name the entries that warrant a maintenance
+queue, and say that **the owner adds the stage once, through the
+create-roadmap entry point**. Nothing else triggers it: a boundary with no
+entry that warrants a maintenance queue writes its stage queue as before.
 
 Write only the stage queue when there is nothing to batch: no open `defect`,
 `gap` or `automation` entry, or none that warrants a queue of its own. That
@@ -98,6 +100,11 @@ as the reason.
    - A small **phase** whose stages together fit within the cap may be queued
      whole.
    - A stage needing more than the cap spans multiple queues.
+   - **A stage queue never takes the maintenance stage as its next stage**:
+     it has no roadmap deliverable to queue, so pass over it. **The
+     maintenance stage is the stage titled exactly `Maintenance`** (§1 →
+     `roadmap.md`). **A stage appended after it is an ordinary stage**,
+     queued in its turn.
    The cap is a **context budget, not a target**. Prioritise by roadmap order and
    unblocked dependencies; whether an earlier stage's icon meets a blocking
    dependency on it — a ⏸️ one included, or one withdrawn by a ❌ summary
@@ -313,12 +320,22 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
      - A maintenance item's deliverable bullet goes under the maintenance
        stage
      - never under the feature stage whose module it touches
-     - When the roadmap has no maintenance stage, the queue's author hands
-       back
+     - When a maintenance queue is warranted and the roadmap has no
+       maintenance stage, the queue's author hands back
+     - Nothing else triggers it: a boundary with no entry that warrants a
+       maintenance queue writes its stage queue as before
      - the owner adds the stage once, through the create-roadmap entry point
      - A batch that reopens a ✅ maintenance stage writes the stage's 🚧
        itself
      - Write that icon into the two cells in the same commit as the bullets
+-->
+
+<!-- pins: .aide/conventions/1-format-contract/roadmap.md
+     Requirement 1 quotes how the next stage is chosen around the
+     maintenance stage (issue #454).
+     - The maintenance stage is the stage titled exactly `Maintenance`
+     - A stage queue never takes the maintenance stage as its next stage
+     - A stage appended after it is an ordinary stage
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/insights-triage.md

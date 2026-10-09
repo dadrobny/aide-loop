@@ -42,9 +42,14 @@ with that stage named as the reason. What is never allowed is silence.
 (§1 → `roadmap.md`), **never under the feature stage whose module it
 touches**: placing it there would reopen a closed stage. A `gap` routed to
 the stage queue is not a maintenance item, and its bullet goes under that
-stage as the stage queue's do. When the roadmap has no maintenance stage, the
-queue's author hands back, as for any answer that changes `roadmap.md`, and
-the owner adds the stage once, through the create-roadmap entry point (§5).
+stage as the stage queue's do.
+
+**When a maintenance queue is warranted and the roadmap has no maintenance
+stage, the queue's author hands back**, before writing either queue, as for
+any answer that changes `roadmap.md`, and the owner adds the stage once,
+through the create-roadmap entry point (§5). Nothing else triggers it: a
+boundary with no entry that warrants a maintenance queue writes its stage
+queue as before, whether or not the roadmap has the stage.
 
 **A batch that reopens a ✅ maintenance stage writes the stage's 🚧 itself.**
 No verb moves a stage when a bullet is added, so its section header and its

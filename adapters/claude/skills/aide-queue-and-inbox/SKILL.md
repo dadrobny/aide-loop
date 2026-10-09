@@ -85,6 +85,14 @@ paths:
      - A longer ID is the same ID
 -->
 
+<!-- pins: .aide/conventions/1-format-contract/roadmap.md
+     Two sentences of a section this skill does not deliver, quoted because
+     the planner picks the next stage by them (issue #454).
+     - The maintenance stage is the stage titled exactly `Maintenance`
+     - A stage queue never takes the maintenance stage as its next stage
+     - A stage appended after it is an ordinary stage
+-->
+
 <!-- pins: .aide/conventions/1-format-contract/insights-maintenance-queue.md
      - The open inbox is an input to queue authoring, not only an output of
        triage
@@ -98,8 +106,10 @@ paths:
        stage
      - never under the feature stage whose module it touches
      - placing it there would reopen a closed stage
-     - When the roadmap has no maintenance stage, the queue's author hands
-       back
+     - When a maintenance queue is warranted and the roadmap has no
+       maintenance stage, the queue's author hands back
+     - Nothing else triggers it: a boundary with no entry that warrants a
+       maintenance queue writes its stage queue as before
      - the owner adds the stage once, through the create-roadmap entry point
      - A batch that reopens a ✅ maintenance stage writes the stage's 🚧
        itself
@@ -219,9 +229,17 @@ reviewed.
 (§1 → `insights-maintenance-queue.md`; what that stage is, §1 → `roadmap.md`),
 **never under the feature stage whose module it touches**: placing it there
 would reopen a closed stage. A `gap` you route to the stage queue is a stage
-item, wired under that stage. When the roadmap has no maintenance stage, the
-queue's author hands back: the owner adds the stage once, through the
-create-roadmap entry point, since the answer changes `roadmap.md`.
+item, wired under that stage. **When a maintenance queue is warranted and the
+roadmap has no maintenance stage, the queue's author hands back**, before
+writing either queue: the owner adds the stage once, through the
+create-roadmap entry point, since the answer changes `roadmap.md`. Nothing
+else triggers it: a boundary with no entry that warrants a maintenance queue
+writes its stage queue as before.
+
+**The maintenance stage is the stage titled exactly `Maintenance`**, and **a
+stage queue never takes the maintenance stage as its next stage** — it has no
+roadmap deliverable to queue; a stage appended after it is an ordinary
+stage (§1 → `roadmap.md`).
 
 **A batch that reopens a ✅ maintenance stage writes the stage's 🚧 itself.**
 No verb moves a stage when a bullet is added, so its section header and Stage

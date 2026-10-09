@@ -3002,7 +3002,8 @@ def test_a_maintenance_stage_reopens_and_closes_with_no_queue_end_need(
 
     §1 → `roadmap.md`'s maintenance stage has no acceptance criteria and no
     Objective row, and each maintenance queue adds its items' bullets under
-    it. Two batches through one such stage: each `check --queue` is clean and
+    it. `roadmap.md` holds the template's maintenance-stage block, and `check`
+    is clean over it before any batch. Two batches through one such stage: each `check --queue` is clean and
     reports no queue-end need, and the stage reads 🚧 while its batch is open
     and ✅ once it ships. The second batch wires a 📋 bullet under a ✅ stage:
     no verb recomputes the stage then, so `check` errors until the queue's
@@ -3012,6 +3013,26 @@ def test_a_maintenance_stage_reopens_and_closes_with_no_queue_end_need(
     ddir = consumer / "docs" / "aide"
     progress = ddir / "progress.md"
     report = tmp_path / "report.json"
+    (ddir / "vision.md").write_text(
+        "# Fixture — Vision\n\n> The root document.\n\n"
+        "## Guiding principles\n\n- Small.\n\n## Goals & objectives\n\n"
+        "| Code | Objective |\n|---|---|\n| G1 | Foundations |\n\n"
+        "## Out of scope\n\n- Anything else.\n\n"
+        "## Success criteria\n\n- It greets.\n",
+        encoding="utf-8")
+    # The template's maintenance-stage block: a prose Deliverables line, no
+    # Validation / acceptance block, and no row in the coverage table.
+    (ddir / "roadmap.md").write_text(
+        "# Fixture — Roadmap\n\n> Derived from the vision.\n\n"
+        "| Objective | Delivered by |\n|---|---|\n| G1 Foundations | Stage 1 |\n\n"
+        "## Stage 1 — Foundations\n\n**Goal.** A greeter and a farewell.\n\n"
+        "**Deliverables.**\n\n- The greeter.\n- The farewell.\n\n"
+        "**Dependencies.** None.\n\n**Validation / acceptance.**\n\n"
+        "- Both items land.\n\n"
+        "## Stage 2 — Maintenance\n\n"
+        "**Goal.** Repairs to the shipped greeter.\n\n"
+        "**Deliverables.** Added to `progress.md` by each maintenance queue.\n\n"
+        "**Dependencies.** None.\n", encoding="utf-8")
     for n in ("1", "2"):
         assert aide.main(["--repo", str(consumer), "progress", "set", n, "done"]) == 0
     progress.write_text(progress.read_text(encoding="utf-8").replace(
@@ -3020,6 +3041,10 @@ def test_a_maintenance_stage_reopens_and_closes_with_no_queue_end_need(
         + "\n## Stage 2 — Maintenance — 📋\n\n**Deliverables.**\n",
         encoding="utf-8")
     _commit(consumer, "docs: the maintenance stage")
+    assert aide.main(["--repo", str(consumer), "queue", "tidy", "1"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "OK (0 warning(s))" in capsys.readouterr().out
 
     def stage_2(icon: str) -> tuple:
         return (f"| 2 | Maintenance | — | {icon} |",
@@ -3045,8 +3070,9 @@ def test_a_maintenance_stage_reopens_and_closes_with_no_queue_end_need(
                 text = text.replace(done, open_)
             progress.write_text(text, encoding="utf-8")
         _commit(consumer, f"docs: maintenance queue {queue:03d}")
-        assert aide.main(["--repo", str(consumer), "queue", "tidy",
-                          str(queue - 1)]) == 0
+        if queue > 2:
+            assert aide.main(["--repo", str(consumer), "queue", "tidy",
+                              str(queue - 1)]) == 0
         capsys.readouterr()
         assert aide.main(["--repo", str(consumer), "check", "--queue",
                           str(queue), "--report", str(report)]) == 0

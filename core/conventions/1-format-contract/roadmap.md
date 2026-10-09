@@ -42,7 +42,9 @@ acceptance criterion nothing has yet been claimed against is reworded with
 **New or changed scope enters as a new stage, appended after the last.** Work a
 started stage turns out to need arrives the same way, or through the queue as
 §1 → `progress.md` routes a `❌ Not met` target — never as a bullet added to
-the stage that has started.
+the stage that has started. The maintenance stage (below) is the one
+exception, and only in `progress.md`: its bullets are the maintenance
+queues' items, added under it after it has started.
 
 **A stage's blocking Dependencies name only earlier-numbered stages.** Stages
 close in number order, so a stage waiting on a later one cannot close when its
@@ -82,7 +84,19 @@ is the ordinary wait, and is not named.
 home of the maintenance queues' items (§1 → `insights-maintenance-queue.md`):
 a `## Stage N — Title` section like any other, authored once through the
 create-roadmap entry point and frozen once started, which differs from a
-feature stage in what it carries:
+feature stage in what it carries.
+
+**The maintenance stage is the stage titled exactly `Maintenance`** — its
+heading reads `## Stage N — Maintenance`, the template's, here and in
+`progress.md` — and no other stage takes that title. Nothing else marks it:
+a stage that holds repairs under any other title is a feature stage.
+
+**A stage queue never takes the maintenance stage as its next stage.** It
+has no roadmap deliverable to queue, so the queue's author choosing the next
+stage passes over it; only a maintenance queue writes under it. A stage
+appended after it is an ordinary stage, queued in its turn.
+
+What it carries:
 
 - **Its Deliverables are the maintenance queues' items, so the roadmap lists
   none.** Each maintenance queue adds one `progress.md` bullet per item under
@@ -206,6 +220,14 @@ re-attests them per batch.
   `progress.md` that is not a stage: rollup, `set`, `claim`, `merge`,
   `check`, `status`, gate reach and the ledger's stage cell all key on stage
   sections, so it would be a large engine change for the same behaviour.
+- **Why an exact title identifies it, and the stage queue passes it over.**
+  The roadmap is frozen once a stage starts and the engine reads no marker
+  for it, so the title is the one thing every role reads the same way with
+  no judgement: the template writes it, and a planner comparing it decides
+  nothing. Without the pass-over, a feature stage appended after the
+  maintenance stage leaves it as the lowest unfinished stage, and a planner
+  queueing "exactly the next stage" would find no deliverable to queue
+  there.
 - **Why the maintenance stage has no criteria.** The standing stage above
   carried four acceptance boxes. They were attested at its first two closes
   and never again, so from the third batch on they asserted nothing about
