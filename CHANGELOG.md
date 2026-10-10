@@ -163,8 +163,16 @@ instead — that is the bump policy above, and it is enforced by
   `progress rollup --stage N --no-commit` after wiring its bullets and
   commit the result with them; §1 → `progress.md` loses its exception and
   says a hand-set ⏸️ stands until a verb moves a bullet of its stage or
-  `rollup` rolls the stage up. `aide check`'s error for a ✅ stage cell over
-  bullets that do not roll up to ✅ names the verb. `aide-create-queue`
+  `rollup` rolls the stage up. Every `aide check` finding that names a
+  stage header, summary row or Objective row against its rollup — the ✅
+  errors and the drift warnings alike, which said "set the cell to X" —
+  now names `aide progress rollup --stage N` as the fix, for an Objective
+  row the first stage it names that has deliverables and is not withdrawn;
+  a test runs each named command and finds the cell cleared. Two keep
+  their remedies, because the rollup is not theirs to apply: a ⏸️ cell
+  over open work, which the owner defers bullet by bullet (§1 →
+  `progress.md`), and an Objective row whose every stage is withdrawn,
+  set to ❌, which `rollup` skips. `aide-create-queue`
   requirement 8, `aide-queue-and-inbox` and `queue-planner` step 5 (and its
   edit scope) carry the change under pin; `core/AGENT-CONTEXT.md`'s verb
   list names `rollup`, so the always-on floor moves from 9584 to 9591

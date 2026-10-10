@@ -463,7 +463,7 @@ def test_an_objective_marked_done_over_an_open_stage_is_an_error(tmp_path: Path)
 
 
 @pytest.mark.parametrize("icon, name, fix", [
-    ("📋", "planned", "set it to ✅"),
+    ("📋", "planned", "write ✅ with 'aide progress rollup --stage 1'"),
     ("⏸️", "deferred", "restore ✅"),
 ])
 def test_an_objective_row_below_its_done_stage_is_a_warning(
@@ -1688,7 +1688,7 @@ def test_check_reads_an_objective_from_the_stages_still_in_scope(tmp_path: Path)
     assert _about(warnings, "objective G1:") == [
         "objective G1: 🚧 in-progress but the stages it names (stage 1 ✅, "
         "2 ❌ withdrawn) roll up to ✅ complete — an Objective row follows "
-        "its stages, so set it to ✅"], warnings
+        "its stages, so write ✅ with 'aide progress rollup --stage 1'"], warnings
 
 
 @pytest.mark.parametrize("icon, status, where", [

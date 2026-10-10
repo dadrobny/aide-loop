@@ -17,6 +17,7 @@ against a real install.
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -267,6 +268,63 @@ def test_a_stage_with_no_bullet_derives_nothing():
 def test_a_stage_with_no_section_is_refused():
     with pytest.raises(ValueError, match=r"no '## Stage 9' section"):
         aide.rollup_progress(PROGRESS, 9)
+
+
+# --------------------------------------------------------------------------- #
+# every drift remedy that names the verb is cleared by running it
+# --------------------------------------------------------------------------- #
+_NAMED = re.compile(r"'aide progress rollup --stage (\d+)'")
+
+_DONE_2 = (PROGRESS.replace("- 📋 Charts. *(Item 032)*", "- ✅ Charts. *(Item 032)*"))
+
+
+@pytest.mark.parametrize("text, about", [
+    # A stage header below its rollup, and a summary row above one.
+    (PROGRESS.replace("## Stage 2 — Reports — 🚧", "## Stage 2 — Reports — 📋"),
+     "stage 2:"),
+    (PROGRESS.replace("| 2 | Reports | G2 | 🚧 |", "| 2 | Reports | G2 | 🔍 |"),
+     "stage 2:"),
+    # Every open bullet deferred under cells that say otherwise.
+    (PROGRESS.replace("- 📋 Charts. *(Item 032)*", "- ⏸️ Charts. *(Item 032)*"),
+     "stage 2:"),
+    # Every bullet ✅ under cells that are not — the Outcome-target arm.
+    (_DONE_2.replace("| G2 Reports | Stage 2 | 🚧 |", "| G2 Reports | Stage 2 | ✅ |"),
+     "stage 2:"),
+    # An Objective row off its stages, both ways.
+    (PROGRESS.replace("| G2 Reports | Stage 2 | 🚧 |", "| G2 Reports | Stage 2 | 📋 |"),
+     "objective G2:"),
+    (_DONE_2.replace("| 2 | Reports | G2 | 🚧 |", "| 2 | Reports | G2 | ✅ |")
+     .replace("## Stage 2 — Reports — 🚧", "## Stage 2 — Reports — ✅"),
+     "objective G2:"),
+    # One naming two stages, below and above: the first is the one named.
+    (PROGRESS.replace("| G1 Rules | Stage 1 | ✅ |", "| G1 Rules | Stages 1, 2 | 📋 |"),
+     "objective G1"),
+    (PROGRESS.replace("| G1 Rules | Stage 1 | ✅ |", "| G1 Rules | Stages 1, 2 | ✅ |"),
+     "objective G1"),
+])
+def test_a_drift_warning_names_the_rollup_and_running_it_clears_it(text, about):
+    errors, warnings, _ = aide.derived_cell_findings(text.splitlines())
+    hits = [f for f in errors + warnings if f.startswith(about)]
+    assert len(hits) == 1, errors + warnings
+    named = _NAMED.search(hits[0])
+    assert named, hits[0]
+    out, messages = aide.rollup_progress(text, int(named.group(1)))
+    assert messages, hits[0]
+    errors, warnings, _ = aide.derived_cell_findings(out.splitlines())
+    assert not [f for f in errors + warnings if f.startswith(about)]
+
+
+@pytest.mark.parametrize("text", [
+    # A ⏸️ typed over open work: the remedy is the deferral (§1 → progress.md).
+    PROGRESS.replace("## Stage 2 — Reports — 🚧", "## Stage 2 — Reports — ⏸️"),
+    PROGRESS.replace("| G2 Reports | Stage 2 | 🚧 |", "| G2 Reports | Stage 2 | ⏸️ |"),
+    # An objective every stage of which is withdrawn: rollup skips the stage.
+    PROGRESS.replace("| 2 | Reports | G2 | 🚧 |", "| 2 | Reports | G2 | ❌ |"),
+])
+def test_a_deferred_or_withdrawn_remedy_does_not_name_the_rollup(text):
+    errors, warnings, _ = aide.derived_cell_findings(text.splitlines())
+    assert errors + warnings
+    assert not [f for f in errors + warnings if _NAMED.search(f)], errors + warnings
 
 
 # --------------------------------------------------------------------------- #

@@ -8069,10 +8069,17 @@ def _stage_drift_fix(off: List[Tuple[str, str]], derived: str,
     carry no item marker, which `set NNN deferred` cannot address (issue
     #336): the remedy names the positional form for them, beside the item
     form while *marked_open* says an itemised bullet is open too.
+
+    Where no cell is ⏸️, the remedy names `aide progress rollup --stage N`,
+    which writes exactly the derivation this compares with (issue #459). A
+    ⏸️ cell keeps its own remedy: §1 → progress.md has the owner record the
+    deferral on the bullets, or put back what the rollup computes.
     """
     target = "cells" if len(off) > 1 else off[0][0]
+    rollup = _rollup_command(stage)
     if derived == "deferred":
-        return f"every open deliverable is ⏸️, so set the {target} to ⏸️"
+        return (f"every open deliverable is ⏸️, so write ⏸️ into the "
+                f"{target} with {rollup}")
     if any(st == "deferred" for _, st in off):
         if derived == "complete":
             return "nothing is left open to defer, so restore ✅"
@@ -8080,9 +8087,15 @@ def _stage_drift_fix(off: List[Tuple[str, str]], derived: str,
                              else "its", [(stage, list(unmarked))]
                              if unmarked else [], marked_open, derived,
                              droppable)
-    return (f"a stage's cells follow its bullets, so set the {target} to "
-            f"{STATUS_TO_ICON[derived]}, or move the bullets with "
-            f"'aide progress set'")
+    return (f"a stage's cells follow its bullets, so write "
+            f"{STATUS_TO_ICON[derived]} into the {target} with {rollup}, or "
+            f"move the bullets with 'aide progress set'")
+
+
+def _rollup_command(stage: str) -> str:
+    """``'aide progress rollup --stage N'`` for a stage as its section heads it."""
+    return (f"'aide progress rollup --stage "
+            f"{int(stage) if stage.isdigit() else stage}'")
 
 
 def derived_cell_findings(lines: List[str]
@@ -8137,7 +8150,7 @@ def derived_cell_findings(lines: List[str]
                 f"stage {num}: {where} marked ✅ but has non-complete "
                 f"deliverables — they roll up to {STATUS_TO_ICON[derived]} "
                 f"{derived}; a stage's cells follow its bullets, so write "
-                f"the rollup with 'aide progress rollup --stage {int(num)}', "
+                f"the rollup with {_rollup_command(num)}, "
                 f"or move the bullets with 'aide progress set'")
         if rest:
             unmarked = _unmarked_open_positions(lines, num)
@@ -8149,8 +8162,8 @@ def derived_cell_findings(lines: List[str]
                     f"stage {num}: all deliverables ✅ but {shown} — if the "
                     f"work shipped but the stage's goal is unmet, record the "
                     f"goal as an Outcome target (❌ Not met) and close the "
-                    f"stage; stages track shipped work, targets track "
-                    f"measured outcomes")
+                    f"stage with {_rollup_command(num)}; stages track "
+                    f"shipped work, targets track measured outcomes")
             else:
                 warnings.append(
                     f"stage {num}: {_cells_shown(rest)} but its deliverables "
@@ -8200,6 +8213,10 @@ def derived_cell_findings(lines: List[str]
         if current == derived:
             continue
         named.add(g)
+        # Any live stage it names rolls the row with it (`rollup_progress`
+        # writes every Objective row naming a stage it rolls up, from every
+        # stage the row names), so the first is the one the remedy names.
+        live = next(n for n in nums if n in stage_status and n not in withdrawn)
         stages = ", ".join(
             f"{n} ❌ withdrawn" if n in withdrawn
             else f"{n} {STATUS_TO_ICON[stage_status[n]]}"
@@ -8211,10 +8228,12 @@ def derived_cell_findings(lines: List[str]
                 f"objective {g} marked ✅ but the stages it names (stage "
                 f"{stages}) roll up to {STATUS_TO_ICON[derived]} {derived} — "
                 f"an objective is delivered only when every stage that "
-                f"delivers it is ✅")
+                f"delivers it is ✅, so write {STATUS_TO_ICON[derived]} with "
+                f"{_rollup_command(live)}")
             continue
         if derived == "deferred":
-            fix = "every stage it names is ✅ or ⏸️, so set it to ⏸️"
+            fix = (f"every stage it names is ✅ or ⏸️, so write ⏸️ with "
+                   f"{_rollup_command(live)}")
         elif current == "deferred":
             named_sections = [(start, end, n) for start, end, n in
                               stage_sections(lines)
@@ -8232,8 +8251,8 @@ def derived_cell_findings(lines: List[str]
                                     _stage_can_lose_a_bullet(lines, n)
                                     for n, _ in unmarked))
         else:
-            fix = (f"an Objective row follows its stages, so set it to "
-                   f"{STATUS_TO_ICON[derived]}")
+            fix = (f"an Objective row follows its stages, so write "
+                   f"{STATUS_TO_ICON[derived]} with {_rollup_command(live)}")
         warnings.append(
             f"objective {g}: {STATUS_TO_ICON[current]} {current} but the "
             f"stages it names (stage {stages}) roll up to "
@@ -20087,7 +20106,15 @@ def build_parser() -> argparse.ArgumentParser:
             "over a rollup that is not \u2705 is its error alone, a "
             "stage's other off cells share one warning, and an Objective "
             "row named against its rollup is not compared with its Outcome "
-            "targets.\n"
+            "targets. A finding naming a stage header, summary row or "
+            "Objective row that is not \u23f8\ufe0f against its rollup, "
+            "error or warning, names `aide progress rollup --stage N` as "
+            "the fix, which "
+            "writes that rollup \u2014 for an Objective row, N the first "
+            "stage it names that has deliverables and is not withdrawn; one "
+            "naming a \u23f8\ufe0f cell names deferring the open work "
+            "instead, and one over an Objective row whose every stage is "
+            "withdrawn names \u274c.\n"
             "\n"
             "Over the Environment-Gated Capability Verification table, "
             "warnings only, since no other check gates on it: a row its "

@@ -423,6 +423,23 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("a stage summary row marked ✅ over a stage whose deliverables do "
          "not roll up to ✅",
          "test_aide_help_pins::test_the_summary_over_claim_is_measured_by_the_rollup"),
+        # `_stage_drift_fix` / `_rollup_command`, and the Objective loop's
+        # `live` stage; `_deferral_fix` and the all-withdrawn arm keep
+        # their own remedies (issue #459, PR #464).
+        ("A finding naming a stage header, summary row or Objective row that "
+         "is not \u23f8\ufe0f against its rollup, error or warning, names "
+         "`aide progress rollup --stage N` as the fix, which writes that "
+         "rollup \u2014 for an Objective row, N the first stage it names "
+         "that has deliverables and is not withdrawn",
+         ("test_aide_maintenance_stage::"
+          "test_a_drift_warning_names_the_rollup_and_running_it_clears_it",
+          "test_aide_defer::test_an_objective_row_below_its_done_stage_is_a_warning")),
+        ("one naming a \u23f8\ufe0f cell names deferring the open work "
+         "instead, and one over an Objective row whose every stage is "
+         "withdrawn names \u274c",
+         ("test_aide_maintenance_stage::"
+          "test_a_deferred_or_withdrawn_remedy_does_not_name_the_rollup",
+          "test_aide_defer::test_an_objective_whose_every_stage_is_withdrawn_reads_excluded")),
         # The `over` list's message, summary and header alike (issue #459).
         ("each such stage error naming `aide progress rollup --stage N`, "
          "which writes the rollup into the stage's cells",
@@ -3321,8 +3338,9 @@ def test_a_stage_header_disagreeing_with_its_summary_row_is_a_warning(
     stage = [w for w in warnings if w.startswith("stage 1:")]
     assert stage == [
         "stage 1: summary 🚧 in-progress but its deliverables roll up to 📋 "
-        "planned — a stage's cells follow its bullets, so set the summary "
-        "to 📋, or move the bullets with 'aide progress set'"], warnings
+        "planned — a stage's cells follow its bullets, so write 📋 into the "
+        "summary with 'aide progress rollup --stage 1', or move the bullets "
+        "with 'aide progress set'"], warnings
 
 
 def test_a_summary_row_with_no_stage_section_is_a_warning(tmp_path: Path):
