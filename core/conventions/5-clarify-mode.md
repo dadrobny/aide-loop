@@ -106,8 +106,8 @@ it finds as it claims (`aide claim -h`).
 - **Why "author", and not every write.** Since 2.47.2 (issue #461) §1 →
   `roadmap.md` and `vision.md` name two writers, both the owner's: the entry
   point authors, and an amendment the owner agrees to — the feedback loop's
-  included — is applied in the owner's own session. This sentence
-  still said "do not write a root document directly", which binds that
+  included — is applied in the owner's own session. The rule here still
+  said "do not write a root document directly", which binds that
   session too, on the always-on page every session reads: a careful agent
   applying an agreed amendment in the feedback loop could balk and route it
   to the create entry point that loop forbids (issue #468). The safeguards the

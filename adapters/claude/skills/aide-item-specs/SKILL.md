@@ -438,6 +438,6 @@ is `/aide-create-vision` / `/aide-create-roadmap`, which carries the
 existing-document check and the draft-for-review hand-off. **Do not author a
 root document directly, however well the template shape is known**; **an agreed
 amendment is applied in the owner's session** (`.aide/conventions.md` §1 →
-`roadmap.md`, `vision.md`). Authoring one, ask until the mandatory sections are
+`roadmap.md`, `vision.md`). When authoring one, ask until the mandatory sections are
 grounded in the human's answers, and never fill **Guiding principles**, **Out of
 scope**, or **Success criteria** from assumption.
