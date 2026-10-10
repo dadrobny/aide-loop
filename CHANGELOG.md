@@ -136,6 +136,25 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.47.3] — 2026-10-10
+
+### Fixed
+
+- **The rule against writing a root document directly is scoped to authoring
+  one (issue #468).** Since 2.47.2 (issue #461) §1 → `roadmap.md` and §1 →
+  `vision.md` name two writers, both the owner's: the create entry point
+  authors the document, and an amendment the owner agrees to is applied in
+  the owner's own session, the feedback loop's included. §5, the always-on
+  page and `aide-item-specs` still said "Do not write a root document
+  directly, however well the template shape is known", which read literally
+  binds the session applying that amendment. §5 now says "Do not author a
+  root document directly … ; an agreed amendment is applied in the owner's
+  session", pointing at the two §1 sections, with the provenance in its
+  `Rationale`; `aide-item-specs` and its pins follow. `core/AGENT-CONTEXT.md`
+  carries the same clause, and its heading reads "Root documents are
+  authored through their entry point", so the always-on floor moves from
+  9591 to 9657 content bytes. Nothing a consumer edits.
+
 ## [2.47.2] — 2026-10-09
 
 ### Fixed
