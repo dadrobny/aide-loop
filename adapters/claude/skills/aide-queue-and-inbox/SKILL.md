@@ -110,7 +110,7 @@ paths:
        maintenance stage, the queue's author hands back
      - Nothing else triggers it: a boundary with no entry that warrants a
        maintenance queue writes its stage queue as before
-     - the owner adds the stage once, through the create-roadmap entry point
+     - the owner adds the stage once, as an amendment to `roadmap.md`
      - A maintenance batch rolls the maintenance stage up with its verb,
        after wiring its bullets
      - Commit what it writes in the same commit as the bullets
@@ -249,8 +249,8 @@ run has no owner to ask, so the queue's review is where the answer comes.
 would reopen a closed stage. A `gap` you route to the stage queue is a stage
 item, wired under that stage. **When a maintenance queue is warranted and the
 roadmap has no maintenance stage, the queue's author hands back**, before
-writing either queue: the owner adds the stage once, through the
-create-roadmap entry point, since the answer changes `roadmap.md`. Nothing
+writing either queue: the owner adds the stage once, as an amendment to
+`roadmap.md`, since the answer changes it. Nothing
 else triggers it: a boundary with no entry that warrants a maintenance queue
 writes its stage queue as before.
 

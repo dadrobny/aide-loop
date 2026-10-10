@@ -98,8 +98,8 @@ the stage is, §1 → `roadmap.md`).
 **When a maintenance queue is warranted and the roadmap has no maintenance
 stage, the queue's author hands back** — before writing either queue, since
 the answer changes `roadmap.md`: name the entries that warrant a maintenance
-queue, and say that **the owner adds the stage once, through the
-create-roadmap entry point**. Nothing else triggers it: a boundary with no
+queue, and say that **the owner adds the stage once, as an amendment to
+`roadmap.md`**. Nothing else triggers it: a boundary with no
 entry that warrants a maintenance queue writes its stage queue as before.
 
 Write only the stage queue when there is nothing to batch: no open `defect`,
@@ -357,7 +357,7 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
        maintenance stage, the queue's author hands back
      - Nothing else triggers it: a boundary with no entry that warrants a
        maintenance queue writes its stage queue as before
-     - the owner adds the stage once, through the create-roadmap entry point
+     - the owner adds the stage once, as an amendment to `roadmap.md`
      - A maintenance batch rolls the maintenance stage up with its verb,
        after wiring its bullets
      - Commit what it writes in the same commit as the bullets

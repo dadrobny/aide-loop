@@ -7338,7 +7338,7 @@ def maintenance_stage_warnings(ddir: Path) -> List[str]:
                 f"{name}: stages {', '.join(str(n) for n in maint)} are all "
                 f"titled '{MAINTENANCE_TITLE}' — a roadmap holds at most one "
                 f"maintenance stage, and its exact title is what marks it; "
-                f"the owner keeps one, through the create-roadmap entry point "
+                f"the owner keeps one, by an amendment to roadmap.md "
                 f"— {rule}")
 
     maint = maintenance_stage_numbers(rlines)

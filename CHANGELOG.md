@@ -136,6 +136,36 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.47.2] — 2026-10-09
+
+### Fixed
+
+- **§1 → `roadmap.md` and §1 → `vision.md` name both of their writers
+  (issue #461).** §1 → `roadmap.md` said the document was "authored and
+  updated only through the create-roadmap entry point", and §1 →
+  `vision.md` that it was "authored only through the create-vision entry
+  point", while `aide-feedback-loop` step 6, since 2.41.0 (issues #392,
+  #359), applies an agreed amendment to either in the session and tells
+  the user not to send it through those entry points. Each opening now
+  says the entry point authors the document — create-roadmap also
+  re-stages it from a changed vision; create-vision replaces it only once
+  the owner confirms — and an amendment the owner agrees to is applied in
+  the owner's own session, the feedback loop's included; both land through
+  the merge policy's reviewed PR, and for `roadmap.md` both are held to the
+  started-stage freeze. The owner edits 2.44.0 and 2.45.0 routed "through
+  the create-roadmap entry point" follow suit. In §1 → `roadmap.md` adding
+  the maintenance stage, its one-time retitle and the Backlog's edits are
+  made "by either of the file's two writers", and the re-plan of a stage
+  behind a withdrawn one is simply the owner's decision. Where the queue's author
+  hands back for want of a maintenance stage (§1 →
+  `insights-maintenance-queue.md`, `queue-planner`, `aide-create-queue`,
+  `aide-queue-and-inbox`, their pins included), and where a `gap` is moved
+  into the Backlog (§1 → `insights-triage.md`, `aide-review-insights`), the
+  owner now makes the edit as an amendment to `roadmap.md`; `aide check`'s
+  second-maintenance-stage warning says the same. The
+  2.44.0 entry's "authored once through the roadmap entry point" is the
+  wording this release replaces. Nothing a consumer edits.
+
 ## [2.47.1] — 2026-10-09
 
 ### Fixed

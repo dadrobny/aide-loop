@@ -34,8 +34,8 @@ fix to shipped work, and it stays open in the inbox until an item fixes it or
 the owner declines it; an `automation` entry likewise stays open until an item
 carries it or the owner declines it. The Backlog holds scope not yet ready to
 plan (§1 → `roadmap.md`), so a `gap` that is such scope is the one entry it
-takes. **The owner moves it there**, through the create-roadmap entry point:
-the bullet cites the entry as `insight <ID>`, and the entry is ticked with
+takes. **The owner moves it there**, as an amendment to `roadmap.md`: the
+bullet cites the entry as `insight <ID>`, and the entry is ticked with
 `--pointer "roadmap Backlog"` in the same pass. A roadmap with no `# Backlog`
 yet gets one in the same edit, in the roadmap template's shape.
 

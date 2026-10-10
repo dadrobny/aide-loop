@@ -72,8 +72,8 @@ stage as the stage queue's do.
 
 **When a maintenance queue is warranted and the roadmap has no maintenance
 stage, the queue's author hands back**, before writing either queue, as for
-any answer that changes `roadmap.md`, and the owner adds the stage once,
-through the create-roadmap entry point (§5). Nothing else triggers it: a
+any answer that changes `roadmap.md`, and the owner adds the stage once, as
+an amendment to `roadmap.md` (§1 → `roadmap.md`). Nothing else triggers it: a
 boundary with no entry that warrants a maintenance queue writes its stage
 queue as before, whether or not the roadmap has the stage.
 

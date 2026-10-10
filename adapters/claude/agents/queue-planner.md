@@ -72,9 +72,9 @@ Follow the `aide-create-queue` skill in full. In brief:
    under the roadmap's **maintenance stage** (step 5). **When a maintenance
    queue is warranted and the roadmap has no maintenance stage, the queue's
    author hands back**, before writing either queue: stop, name the entries
-   that warrant one, and say that **the owner adds the stage once, through
-   the create-roadmap entry point** (`/aide-create-roadmap`; §1 →
-   `insights-maintenance-queue.md`, preloaded above). Nothing else triggers
+   that warrant one, and say that **the owner adds the stage once, as an
+   amendment to `roadmap.md`** (§1 → `insights-maintenance-queue.md`,
+   preloaded above). Nothing else triggers
    it: a boundary with no entry that warrants a maintenance queue writes its
    stage queue as before.
 3. **Tidy the superseded previous queue** with the CLI — it writes the
@@ -366,7 +366,7 @@ only writes allowed outside your edit scope.
      - never under the feature stage whose module it touches
      - When a maintenance queue is warranted and the roadmap has no
        maintenance stage, the queue's author hands back
-     - the owner adds the stage once, through the create-roadmap entry point
+     - the owner adds the stage once, as an amendment to `roadmap.md`
      - Nothing else triggers it: a boundary with no entry that warrants a
        maintenance queue writes its stage queue as before
      - A maintenance batch rolls the maintenance stage up with its verb,

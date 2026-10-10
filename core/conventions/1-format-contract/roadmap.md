@@ -1,10 +1,16 @@
 ### `roadmap.md` (the staged plan the queues are cut from)
 
 Governs `docs/aide/roadmap.md`: what it must contain and which of its stages
-may still change. It is authored and updated only through the create-roadmap
-entry point (§5); `queue-planner` and `spec-author` read it, and `aide check`
-and `aide progress reword` parse it. `.aide/templates/roadmap.md` draws its
-shape; this section names that shape and fixes what the template cannot carry.
+may still change. **It has two writers, both the owner's.** The create-roadmap
+entry point (§5) authors it, and re-stages it from a changed vision; an
+amendment the owner agrees to — a stage added, a 📋 Planned stage reworded, a
+Backlog bullet — is applied in the owner's own session instead, the feedback
+loop's included, with no need for that entry point. Both are held to the
+started-stage freeze below, and both land through the merge policy's reviewed
+PR (`.aide/README.md`). `queue-planner` and `spec-author` read it, and
+`aide check` and `aide progress reword` parse it. `.aide/templates/roadmap.md`
+draws its shape; this section names that shape and fixes what the template
+cannot carry.
 
 Mandatory (consumer in brackets):
 
@@ -71,9 +77,8 @@ waits on.
 re-planned, not queued.** While it is 📋 Planned, its Dependencies are
 reworded here to drop the withdrawn stage, or name what replaces it; started,
 it is frozen, so it is withdrawn too, or what it still needs enters as a new
-stage. Either is the owner's decision, made through the create-roadmap entry
-point (§5); the queue planner hands back rather than queue the dependent
-stage.
+stage. Either is the owner's decision; the queue planner hands back rather
+than queue the dependent stage.
 
 `aide check` warns on a stage under way — 🚧 in `progress.md`, or with a 📋
 item in an open queue — while an earlier stage its blocking Dependencies name
@@ -82,19 +87,19 @@ is the ordinary wait, and is not named.
 
 **A roadmap holds at most one maintenance stage, and needs none.** It is the
 home of the maintenance queues' items (§1 → `insights-maintenance-queue.md`):
-a `## Stage N — Title` section like any other, authored once through the
-create-roadmap entry point and frozen once started, which differs from a
-feature stage in what it carries.
+a `## Stage N — Title` section like any other, added once by either of the
+file's two writers (the opening of this section) and frozen once started,
+which differs from a feature stage in what it carries.
 
 **The maintenance stage is the stage titled exactly `Maintenance`** — its
 heading reads `## Stage N — Maintenance`, the template's, here and in
 `progress.md` — and no other stage takes that title. Nothing else marks it:
 a stage that holds repairs under any other title is a feature stage.
 **A started stage already run as a standing maintenance stage becomes the
-maintenance stage by one retitle to `Maintenance`**, made by the owner
-through the create-roadmap entry point, in its heading here and in its
-`progress.md` header and Stage summary row; it is the one edit the freeze
-allows a started stage's heading, and it changes nothing else in the stage.
+maintenance stage by one retitle to `Maintenance`**, the owner's, made by
+either of the file's two writers, in its heading here and in its `progress.md` header and
+Stage summary row; it is the one edit the freeze allows a started stage's
+heading, and it changes nothing else in the stage.
 
 **A stage queue never takes the maintenance stage as its next stage.** It
 has no roadmap deliverable to queue, so the queue's author choosing the next
@@ -135,8 +140,7 @@ never named.
 ready to plan.** It is not a stage: its heading is `# Backlog`, never a
 `## Stage N`, so it ends the last stage's section and no reader takes a
 bullet of it for that stage's. It is edited as the rest of this file is,
-through the create-roadmap entry point, and the started-stage freeze does not
-reach it.
+by either of its two writers, and the started-stage freeze does not reach it.
 
 - **Ideas only.** A bullet is a piece of scope in a sentence or two — never a
   defect, a status icon, a trail, a date, an owner or an annotation such as
@@ -155,6 +159,17 @@ reach it.
 
 #### Rationale
 
+- **Why two writers, and one rule over both.** This section once said the
+  file was authored and updated only through the create-roadmap entry point,
+  while the feedback loop, since 2.41.0 (issues #392, #359), applied an
+  agreed amendment in the session and told the user not to rebuild a
+  document to amend it; the owner edits added in 2.44.0 and 2.45.0 — the
+  maintenance stage, its retitle, a Backlog move — were routed through the
+  entry point and so inherited the contradiction (issue #461). The entry
+  point exists for what an amendment does not need: staging a plan from a
+  vision, asking until each stage is grounded. A one-stage edit the owner has
+  already agreed to needs none of that. What protects the plan is the freeze
+  and the reviewed PR, so those bind both routes alike.
 - **Why a started stage is frozen.** Queues were cut from it, items were
   specified against its deliverables, and `progress.md` mirrors its criteria;
   editing it re-points all of that at a plan nobody built to, and a shipped
@@ -247,7 +262,7 @@ reach it.
   queue had no stage to put its bullets under, and two consumers improvised
   opposite answers. One ran a single standing stage through six closes with
   no `aide check` warning. The other created a new stage per maintenance
-  batch, and each needed an owner pass through the roadmap entry point — the
+  batch, and each needed an owner amendment to the roadmap — the
   planner cannot write a stage — and was mapped to objectives it did not
   deliver. A stage per batch is the rejected alternative for both reasons,
   and for inflating the plan. So is a `## Maintenance` section of

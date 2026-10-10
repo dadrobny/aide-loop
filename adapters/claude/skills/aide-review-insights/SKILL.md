@@ -73,7 +73,7 @@ roadmap's Backlog.
 **`defect` and `automation` entries never go to the Backlog.** A defect stays
 open in the inbox until an item fixes it or the owner declines it. A `gap`
 that is scope not ready to plan may go there, but **the owner moves it**,
-through `/aide-create-roadmap`: the Backlog bullet cites `insight <ID>`, and
+as an amendment to `roadmap.md`: the Backlog bullet cites `insight <ID>`, and
 the entry is ticked `--pointer "roadmap Backlog"`. Propose the move in your
 report; never make it in this pass.
 
