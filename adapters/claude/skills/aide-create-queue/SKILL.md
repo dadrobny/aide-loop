@@ -206,11 +206,13 @@ as the reason.
    - **Never change a deliverable's status icon** — leave it 📋. This step only
      makes the item *trackable*; status transitions (📋→🚧→✅) are
      `aide progress set`'s job during execution.
-   - **A batch that reopens a ✅ maintenance stage writes the stage's 🚧
-     itself.** No verb moves the stage when you add a bullet, so `aide check`
-     errors while its section header and Stage summary row still read ✅.
-     **Write that icon into the two cells in the same commit as the bullets**
-     — the value the rollup computes, not drift.
+   - **A maintenance batch rolls the maintenance stage up with its verb,
+     after wiring its bullets.** No verb moves the stage when you add a
+     bullet, so `aide check` errors while a reopened ✅ stage's section header
+     and Stage summary row still read ✅. Run `python .aide/scripts/aide.py
+     progress rollup --stage N --no-commit`, N the maintenance stage, and
+     **commit what it writes in the same commit as the bullets** — never
+     type the icon.
    - **Wire a marker onto a 📋 bullet only.** An item born on a ⏸️ or ❌
      bullet is settled from the start, so its queue would read done the
      moment it is written (§1 → `progress.md`). Queue a ⏸️ bullet only where
@@ -348,9 +350,9 @@ Close your turn by naming, in chat and in the queue-PR body if one is opened:
      - Nothing else triggers it: a boundary with no entry that warrants a
        maintenance queue writes its stage queue as before
      - the owner adds the stage once, through the create-roadmap entry point
-     - A batch that reopens a ✅ maintenance stage writes the stage's 🚧
-       itself
-     - Write that icon into the two cells in the same commit as the bullets
+     - A maintenance batch rolls the maintenance stage up with its verb,
+       after wiring its bullets
+     - Commit what it writes in the same commit as the bullets
      - A pass-over may carry a proposal for the owner, never a decision
      - An entry open across three or more queues is already the owner's
        decision

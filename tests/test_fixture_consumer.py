@@ -1414,6 +1414,37 @@ def test_a_recording_verb_whose_commit_fails_exits_1_and_a_retry_commits(
                              consumer).stdout
 
 
+def test_a_rollup_whose_commit_fails_exits_1_and_a_retry_commits(
+        aide, consumer: Path, capsys):
+    """`progress rollup` (issue #459) records as `set` does: a ✅ typed over
+    stage 1's 📋 bullets is rolled back down, a failed commit puts
+    progress.md back byte for byte, and the retry commits the rollup alone."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8")
+                        .replace("| 1 | Foundations | G1 | 📋 |",
+                                 "| 1 | Foundations | G1 | ✅ |"),
+                        encoding="utf-8")
+    _commit(consumer, "docs: a summary row typed over its rollup")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
+    assert "'aide progress rollup --stage 1'" in capsys.readouterr().out
+    before, head = progress.read_bytes(), _sha(consumer, "HEAD")
+    argv = ["progress", "rollup", "--stage", "1"]
+
+    assert _under_a_held_index_lock(aide, consumer, argv) == 1
+    assert progress.read_bytes() == before
+    assert _sha(consumer, "HEAD") == head and _clean(consumer)
+
+    assert aide.main(["--repo", str(consumer), *argv]) == 0
+    assert _sha(consumer, "HEAD~1") == head and _clean(consumer)
+    assert "| 1 | Foundations | G1 | 📋 |" in _git(
+        ["show", "HEAD:docs/aide/progress.md"], consumer).stdout
+    assert _git(["log", "-1", "--format=%s"], consumer).stdout.strip() == (
+        "progress(aide): roll up stage 1")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+
 def test_a_gate_decision_outside_git_is_written_and_exits_0(
         aide, consumer: Path):
     """No `.git` is no commit to fail: the decision is written and kept, as
@@ -3007,9 +3038,10 @@ def test_a_maintenance_stage_reopens_and_closes_with_no_queue_end_need(
     is clean over it before any batch. Two batches through one such stage: each `check --queue` is clean and
     reports no queue-end need, and the stage reads 🚧 while its batch is open
     and ✅ once it ships. The second batch wires a 📋 bullet under a ✅ stage:
-    no verb recomputes the stage then, so `check` errors until the queue's
-    author writes the 🚧 the rollup computes into the stage's two cells — the
-    one hand edit the reopen asks for.
+    no verb moves the stage then, so `check` errors until the batch runs
+    `aide progress rollup --stage 2 --no-commit` (issue #459), which writes
+    the 🚧 into the stage's two cells for the batch's own commit; run again
+    it is a no-op, exit 0, that commits nothing.
     """
     ddir = consumer / "docs" / "aide"
     progress = ddir / "progress.md"
@@ -3064,13 +3096,25 @@ def test_a_maintenance_stage_reopens_and_closes_with_no_queue_end_need(
         progress.write_text(progress.read_text(encoding="utf-8")
                             + f"- 📋 Fix {item}. *(Item {item:03d})*\n",
                             encoding="utf-8")
+        rollup = ["--repo", str(consumer), "progress", "rollup",
+                  "--stage", "2", "--no-commit"]
         if stage_2_reads("complete"):
+            capsys.readouterr()
             assert aide.main(["--repo", str(consumer), "check"]) == 1
-            text = progress.read_text(encoding="utf-8")
-            for done, open_ in zip(stage_2("✅"), stage_2("🚧")):
-                text = text.replace(done, open_)
-            progress.write_text(text, encoding="utf-8")
+            assert ("'aide progress rollup --stage 2'"
+                    in capsys.readouterr().out)
+            head = _sha(consumer, "HEAD")
+            assert aide.main(rollup) == 0
+            assert stage_2_reads("in-progress")
+            assert _sha(consumer, "HEAD") == head and not _clean(consumer)
+        else:
+            before = progress.read_bytes()
+            assert aide.main(rollup) == 0
+            assert progress.read_bytes() == before
         _commit(consumer, f"docs: maintenance queue {queue:03d}")
+        head = _sha(consumer, "HEAD")
+        assert aide.main(rollup[:-1]) == 0
+        assert _sha(consumer, "HEAD") == head and _clean(consumer)
         if queue > 2:
             assert aide.main(["--repo", str(consumer), "queue", "tidy",
                               str(queue - 1)]) == 0

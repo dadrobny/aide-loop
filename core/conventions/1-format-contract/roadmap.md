@@ -117,12 +117,19 @@ What it carries:
   batches, and `aide check --queue` never reports a queue-end need for the
   stage: a stage with no unticked box has none.
 - **It reopens and closes by rollup.** It reads 🚧 while a maintenance
-  queue's items are open and ✅ once they ship; the one hand edit a reopen
-  asks for is §1 → `insights-maintenance-queue.md`'s.
+  queue's items are open and ✅ once they ship; the batch that adds its
+  bullets rolls it up with its verb (§1 → `insights-maintenance-queue.md`).
 
 A maintenance stage written earlier with acceptance criteria of its own, and
 retitled so, keeps them, since it is frozen: its boxes record its first close, and nothing
 re-attests them per batch.
+
+`aide check` warns on a second stage titled `Maintenance`, on a coverage row
+or `progress.md` Objective row naming the maintenance stage, on a stage's
+blocking slot naming it and on its own blocking slot naming any stage, and
+on acceptance bullets under it while `progress.md` shows it at nothing but
+📋 Planned — a started one may be one retitled with its criteria, so it is
+never named.
 
 **An optional `# Backlog` section, after the last stage, holds scope not yet
 ready to plan.** It is not a stage: its heading is `# Backlog`, never a
@@ -274,12 +281,19 @@ reach it.
   status, and its status moves at every batch. An Objective row would report
   a delivered objective as 🚧 whenever a repair is open; a blocking
   dependency on it would be met only between batches, by accident.
-- **Why the engine does not recognise the stage.** It needs nothing new: a
-  stage section with no acceptance box raises no queue-end need, its rollup
-  is any stage's, and the ledger's `maintenance` kind comes from the insight
-  tick. A warning on an Objective row or a blocking slot naming the stage
-  would need the engine to tell it apart, by its title for instance, so it is
-  left until drift is seen.
+- **Why the engine recognises the stage, and only to warn.** Its behaviour
+  needs nothing new: a stage section with no acceptance box raises no
+  queue-end need, its rollup is any stage's, and the ledger's `maintenance`
+  kind comes from the insight tick. Issue #454 left the prose rules above
+  unchecked, since a warning would need the engine to tell the stage apart,
+  until drift was seen. The exact title it fixed is that key, so issue #459
+  turned the rules into warnings rather than wait. A warning, for the
+  forward-dependency reason: a started stage is frozen, and the fix is the
+  owner's. The blocking slot is the one #282 reads, so an ordering sentence
+  after `None.` names the stage freely. Criteria are named only on a stage
+  not yet started: a started one may be one retitled with its criteria,
+  which keeps them, and nothing in the file tells that one from a stage
+  given criteria by mistake.
 - **Why a stage written earlier keeps its criteria.** A started stage is
   frozen, and its ticked boxes are attestations of its first close; dropping
   them would rewrite history, and re-attesting them per batch is the drift
