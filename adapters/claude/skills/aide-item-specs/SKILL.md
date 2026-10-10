@@ -191,8 +191,9 @@ paths:
        and the divergence is raised in the return rather than agreed to
      - Root documents are authored through their loop entry point,
        interactively — whatever `loop.clarify` says
-     - Do not write a root document directly, however well the template shape
+     - Do not author a root document directly, however well the template shape
        is known
+     - an agreed amendment is applied in the owner's session
      - ask until the mandatory sections are grounded in the human's answers,
        and never fill **Guiding principles**, **Out of scope**, or **Success
        criteria** from assumption
@@ -434,7 +435,9 @@ rather than agreed to**.
 **Root documents are authored through their loop entry point, interactively —
 whatever `loop.clarify` says** (`.aide/conventions.md` §5); here that entry point
 is `/aide-create-vision` / `/aide-create-roadmap`, which carries the
-existing-document check and the draft-for-review hand-off. **Do not write a root
-document directly, however well the template shape is known** — ask until the
-mandatory sections are grounded in the human's answers, and never fill **Guiding
-principles**, **Out of scope**, or **Success criteria** from assumption.
+existing-document check and the draft-for-review hand-off. **Do not author a
+root document directly, however well the template shape is known**; **an agreed
+amendment is applied in the owner's session** (`.aide/conventions.md` §1 →
+`roadmap.md`, `vision.md`). When authoring one, ask until the mandatory sections are
+grounded in the human's answers, and never fill **Guiding principles**, **Out of
+scope**, or **Success criteria** from assumption.
