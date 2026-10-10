@@ -52,7 +52,7 @@ Follow the `aide-create-queue` skill in full. In brief:
    over — never silently dropped**. A decline, or a `gap` moved to the
    roadmap's Backlog, closes an entry too, but both are the owner's (§1 →
    `insights-triage.md`): you may propose either with a pass-over, never make
-   it, and a proposed decline's reason names no item. An entry the listing shows open across three or more queues is past
+   it. An entry the listing shows open across three or more queues is past
    proposing: queue it if the owner has said to; otherwise never pass it over
    again, and put it in step 8's summary — which the queue PR body carries —
    as a decision for the owner: queue, decline, or for a `gap` the Backlog,
@@ -200,6 +200,10 @@ Follow the `aide-create-queue` skill in full. In brief:
    the commit of step 6, not before** — the verb rebases onto the upstream before committing,
    and a working tree still holding the queue and the back-fill is exactly the
    state that makes the rebase fail; `aide-create-queue` orders it the same way.
+   **The pointer opens with the item references**, and a gloss may follow
+   them; **that tick is the one record that an item is insight-derived**,
+   and a pointer that opens with prose and only mentions an item does not
+   count.
    An entry you passed over stays open and unticked — it is still a candidate
    for the next queue — and step 8 says so out loud. Never tick a decline or
    a Backlog move you propose: the owner decides it, and ticks it.
@@ -368,6 +372,10 @@ only writes allowed outside your edit scope.
      - A maintenance batch rolls the maintenance stage up with its verb,
        after wiring its bullets
      - Commit what it writes in the same commit as the bullets
+     - That tick is the one record that an item is insight-derived
+     - The pointer opens with the item references
+     - A pointer that opens with prose and only mentions an item does not
+       count
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/queue-NNN.md

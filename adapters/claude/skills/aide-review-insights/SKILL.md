@@ -106,8 +106,7 @@ A fourth judgement closes an entry, and it is never yours to make:
 
 - **Declined** — the owner decides a `defect`, `gap` or `automation` entry
   will not be pursued; it is ticked `--pointer "declined: <reason>"`, and the
-  claim stays the record. **The reason names no item**: an item number there
-  reads as the item the entry became. **Only the owner declines.** Propose a
+  claim stays the record. **Only the owner declines.** Propose a
   decline, with its reason, where an entry has waited (below) or its owner
   has said it will not be done; apply it (step 5) only once the person
   watching this session agrees. A decline is a scope decision, and it is made at the queue
@@ -257,7 +256,6 @@ open is what the next queue author is about to read.
      - Routing a `defect`, `gap` or `automation` entry never ticks it
      - `defect` and `automation` entries never go to the Backlog
      - Only the owner declines
-     - The reason names no item
      - A decline is a scope decision, and it is made at the queue boundary
      - Triage brings each entry open across three or more queues to the
        owner as a decision, and does not pass it over again

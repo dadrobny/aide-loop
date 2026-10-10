@@ -91,8 +91,7 @@ action:
   the one you would choose and why;
 - **tick, decayed premise** — the `--pointer` text naming what closed it;
 - **propose to the owner** — a decline, with the `--pointer "declined:
-  <reason>"` text, a reason that names no item (the ledger reads an item
-  number there as the item the entry became), or a Backlog move (`--pointer "roadmap Backlog"`, plus the
+  <reason>"` text, or a Backlog move (`--pointer "roadmap Backlog"`, plus the
   bullet citing `insight <ID>`), and why; applied only once the owner agrees;
 - **trail only** — a duplicate, or a stale pointer on a closed entry, with
   the `--trail` text;

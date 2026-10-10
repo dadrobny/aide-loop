@@ -22,6 +22,18 @@ file when git can); a pass-over leaves the entry open and is stated where the qu
 is reviewed, rather than left for the next reader to re-derive. **An unchecked
 entry is still a candidate**, and the next queue's author sees it.
 
+**That tick is the one record that an item is insight-derived** (the ledger's
+`kind`, §1 → `ledger.md`), on the entry's line or on a dated trail line,
+which is where `tick` writes it on an entry already ticked. **The pointer
+opens with the item references** — `item NNN`, or several — and only those
+count: a gloss may follow them, as in `item NNN (what it fixed)`, and a
+number in it is never an item. Several are written `items NNN, MMM`,
+`items NNN-MMM` or `item NNN and item MMM`; after a singular `item NNN` a
+bare number is gloss. A pointer that opens with prose and only
+mentions an item does not count: a decline's reason, or a decayed premise's
+"fixed by item NNN", where the item fixed the entry without being queued as
+it.
+
 **Insight-derived fixes get a queue of their own, ahead of the stage queue.**
 When open `defect`, `gap` or `automation` entries exist at a queue boundary they
 are batched into a **maintenance queue, authored and merged before the stage

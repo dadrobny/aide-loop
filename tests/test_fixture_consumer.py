@@ -4162,8 +4162,17 @@ def test_merge_creates_the_ledger_from_the_installed_template_and_appends_a_row(
         aide, consumer: Path):
     """The whole path a consumer runs: no ledger, then one merge, then a row —
     with the file created from `.aide/templates/ledger.md` beside the script,
-    not from this repository's copy."""
+    not from this repository's copy.
+
+    The inbox carries an owner's decline whose reason cites item 001, and the
+    row still reads `normal`: only the maintenance tick's own `item NNN`
+    pointer makes an item insight-derived (issue #460)."""
     assert not (consumer / "docs" / "aide" / "ledger.md").exists()
+    inbox = consumer / "docs" / "aide" / "insights.md"
+    inbox.write_text(inbox.read_text(encoding="utf-8") + (
+        "- [x] defect — the banner wraps *(2026-08-22)* "
+        "→ declined: superseded by item 001\n"), encoding="utf-8")
+    _commit(consumer, "docs: an owner's decline naming an item")
     assert _claim(aide, consumer) == 0
     _do_the_work(consumer)
 
