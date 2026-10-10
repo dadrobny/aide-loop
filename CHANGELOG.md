@@ -168,7 +168,7 @@ instead — that is the bump policy above, and it is enforced by
   errors and the drift warnings alike, which said "set the cell to X" —
   now names `aide progress rollup --stage N` as the fix, for an Objective
   row the first stage it names that has deliverables and is not withdrawn;
-  a test runs each named command and finds the cell cleared. Two keep
+  a test runs the named command for each kind of cell and finds it cleared. Two keep
   their remedies, because the rollup is not theirs to apply: a ⏸️ cell
   over open work, which the owner defers bullet by bullet (§1 →
   `progress.md`), and an Objective row whose every stage is withdrawn,

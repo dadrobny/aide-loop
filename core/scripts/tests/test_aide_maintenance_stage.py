@@ -301,6 +301,16 @@ _DONE_2 = (PROGRESS.replace("- 📋 Charts. *(Item 032)*", "- ✅ Charts. *(Item
      "objective G1"),
     (PROGRESS.replace("| G1 Rules | Stage 1 | ✅ |", "| G1 Rules | Stages 1, 2 | ✅ |"),
      "objective G1"),
+    # The stage named is the first live one: not a withdrawn stage ahead of
+    # it, which rollup skips, nor one with no deliverable, which derives none.
+    (PROGRESS.replace("| 1 | Rules | G1 | ✅ |", "| 1 | Rules | G1 | ❌ |")
+     .replace("| G2 Reports | Stage 2 | 🚧 |", "| G2 Reports | Stages 1, 2 | ✅ |"),
+     "objective G2"),
+    (PROGRESS.replace("| 3 | Maintenance | — | ✅ |",
+                      "| 3 | Maintenance | — | ✅ |\n| 4 | Later | G2 | 📋 |")
+     .replace("| G2 Reports | Stage 2 | 🚧 |", "| G2 Reports | Stages 4, 2 | ✅ |")
+     + "\n## Stage 4 — Later — 📋\n\n**Deliverables.**\n",
+     "objective G2"),
 ])
 def test_a_drift_warning_names_the_rollup_and_running_it_clears_it(text, about):
     errors, warnings, _ = aide.derived_cell_findings(text.splitlines())
