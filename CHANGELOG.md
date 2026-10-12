@@ -136,6 +136,27 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.48.1] — 2026-10-12
+
+### Fixed
+
+- **`aide env --bootstrap` looks up its command before it touches the venv
+  (issues #400, #401).** A stale venv is rebuilt with `-m venv --clear`, and
+  the bootstrap command's program was looked up only after that. A program
+  found nowhere left an emptied venv where a stale one that still ran had
+  been (#400). A bootstrap starting `git` or `gh` whose `[tools]` key in
+  `.aide/local.toml` names nothing raised after the clear, taking the old
+  bootstrap record with it and writing none, so `aide env` could read the
+  bare venv as OK (#401). The program is now looked up first, on the PATH it
+  will run with. A `[tools]` key that names nothing refuses whether or not a
+  venv is there; a program found nowhere refuses while a venv is there,
+  which is left as it was. With no venv the build goes ahead and the lookup
+  after it decides as before, since a new venv's script directory can hold
+  a program nothing else does (`pip3`). A program found only in the venv
+  being replaced still passes: whether the new venv supplies it is known
+  only after the build, which then records the unrun bootstrap. No consumer
+  edits.
+
 ## [2.48.0] — 2026-10-12
 
 ### Changed

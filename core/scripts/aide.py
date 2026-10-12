@@ -14770,6 +14770,53 @@ def _bootstrap_unfound(program: str, repo_root: Path, scripts: Path) -> str:
             f"it, or fix [python] bootstrap in aide.toml")
 
 
+def _bootstrap_precheck(bootstrap: List[str], venv: Path, repo_root: Path,
+                        config: Dict[str, Dict[str, object]]) -> Optional[str]:
+    """Why `env --bootstrap` must stop before it touches the venv, or None.
+
+    Building runs `-m venv --clear` over a venv already there, so a bootstrap
+    command whose program is then not found used to leave less than it
+    started with: a stale venv that still ran, emptied (issue #400). And a
+    `[tools] git`/`gh` key naming nothing raised `ToolMisconfigured` after
+    the clear, taking the old bootstrap record with it and writing none, so
+    the bare venv could read as OK (issue #401). The command is therefore
+    looked up first, on the PATH it will run with, the venv's current
+    script directory first.
+
+    Two outcomes are decided here and no others:
+
+    * a `[tools]` key that names nothing refuses whether or not a venv is
+      there — `resolve_tool` never searches a path for it, so no new venv
+      can make it right;
+    * a program found nowhere refuses only when a venv is there to lose.
+      With none, the build goes ahead and the lookup after it decides,
+      because a new venv's script directory can hold a program no
+      directory holds yet (`pip3`, which `-m venv` writes).
+
+    A program found only in the old script directory passes: `--clear`
+    empties that directory, and whether the new venv supplies the program
+    again is known only after the build — which then records an unrun
+    bootstrap, as it did before this check.
+    """
+    if not bootstrap:
+        return None
+    vpy = venv_python(repo_root, config)
+    cmd, is_command = bootstrap_argv(bootstrap, vpy, repo_root)
+    if not is_command:
+        return None
+    path = bootstrap_command_env(venv, vpy.parent)["PATH"]
+    try:
+        found = resolve_tool(cmd[0], repo_root, path=path)
+    except ToolMisconfigured as exc:
+        kept = (f"{venv} is as it was" if venv.exists()
+                else "nothing was built")
+        return f"{exc}; {kept}"
+    if found is None and venv.exists():
+        return (f"{_bootstrap_unfound(cmd[0], repo_root, vpy.parent)}; "
+                f"{venv} is as it was, not cleared")
+    return None
+
+
 def _bootstrap_venv(repo_root: Path, config: Dict[str, Dict[str, object]]) -> int:
     """Build and populate the venv from `[python] interpreter`; 0 when built."""
     venv = _venv_dir(repo_root, config)
@@ -14782,6 +14829,10 @@ def _bootstrap_venv(repo_root: Path, config: Dict[str, Dict[str, object]]) -> in
     # re-points the scripts and pyvenv.cfg at the new interpreter and keeps
     # the old site-packages beside them, which is neither venv.
     venv_args = ["-m", "venv", *(["--clear"] if venv.exists() else []), str(venv)]
+    refused = _bootstrap_precheck(bootstrap, venv, repo_root, config)
+    if refused is not None:
+        print(f"aide env: bootstrap refused — {refused}.", file=sys.stderr)
+        return 1
     print(f"aide env: bootstrapping {venv} with {' '.join(interpreter)} …")
     try:
         made = subprocess.run([*interpreter, *venv_args], cwd=str(repo_root), check=False)
@@ -21367,6 +21418,9 @@ def register_git_subcommands(sub) -> None:
             "then on PATH, and run with that directory first on PATH and "
             "VIRTUAL_ENV and UV_PROJECT_ENVIRONMENT set to the venv. A "
             "command found in neither is a failed bootstrap that names it. "
+            "The command is looked up before the venv is touched: a [tools] "
+            "git or gh that names nothing refuses, and so does a command "
+            "found nowhere while a venv is there, which is left as it was. "
             "Only a first word the old reading could never have run is a "
             "command, so a bootstrap that worked runs the same way, and a "
             "shell script in the repository is written `sh <script>`. An "

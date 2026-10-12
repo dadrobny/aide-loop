@@ -6189,6 +6189,19 @@ def test_a_bare_command_bootstrap_runs_from_the_venv(aide, consumer: Path):
     assert record["command"][1:] == ["--version"]
 
 
+def test_a_bootstrap_found_nowhere_leaves_the_venv_there(aide, consumer: Path):
+    """#400: the program is looked up before `-m venv --clear`, so a venv
+    already there is not emptied for a bootstrap that cannot start."""
+    _set_python_keys(consumer, venv=".venv", bootstrap="no-such-tool-aide-400 sync")
+    _set_test_command(consumer, "git --version")
+    kept = consumer / ".venv" / "kept-aide-400.txt"
+    kept.parent.mkdir()
+    kept.write_text("still here", encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "env", "--bootstrap"]) == 1
+    assert kept.read_text(encoding="utf-8") == "still here"
+    assert not (consumer / ".venv" / "aide-bootstrap.json").exists()
+
+
 # --------------------------------------------------------------------------- #
 # the dependency report: a mode this machine cannot meet is refused, never
 # adapted (issue #354)

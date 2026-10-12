@@ -2612,6 +2612,95 @@ def test_a_bootstrap_command_found_nowhere_is_a_failed_bootstrap_that_names_it(
     assert record["exit"] == 127 and "no-such-tool-378" in record["unrun"]
 
 
+def _stale_venv(venv: Path) -> Path:
+    """A venv already there, with a record the rebuild must not lose."""
+    _fake_program(_scripts_dir(venv), "python")
+    (venv / aide._BOOTSTRAP_RECORD).write_text(
+        '{"exit": 1, "command": ["old"]}\n', encoding="utf-8")
+    return venv / aide._BOOTSTRAP_RECORD
+
+
+def test_a_bootstrap_command_found_nowhere_leaves_an_existing_venv_as_it_was(
+        tmp_path: Path, monkeypatch, capsys):
+    """Issue #400: the program is looked up before `-m venv --clear`, so a
+    stale venv that still ran is not emptied for a bootstrap that cannot
+    start. Nothing is launched, and the old record stays."""
+    (tmp_path / "aide.toml").write_text(
+        '[python]\nvenv = ".venv"\nbootstrap = "no-such-tool-400 sync"\n',
+        encoding="utf-8")
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    venv = tmp_path / ".venv"
+    record = _stale_venv(venv)
+    before = record.read_text(encoding="utf-8")
+    launched = []
+    monkeypatch.setattr(aide.subprocess, "run",
+                        lambda argv, **_kw: launched.append(list(argv)))
+    monkeypatch.setattr(aide, "env_report",
+                        lambda root, config: ("stale", "stub"))
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(tmp_path), "env", "--bootstrap"]) == 1
+    assert launched == []                       # no `-m venv --clear`
+    assert record.read_text(encoding="utf-8") == before
+    err = capsys.readouterr().err
+    assert "'no-such-tool-400'" in err and "not cleared" in err
+    assert "Traceback" not in err
+
+
+def test_a_bootstrap_program_in_the_old_script_directory_still_rebuilds(
+        tmp_path: Path, monkeypatch):
+    """Found only in the venv being replaced, the program passes the check:
+    whether the new venv supplies it again is known only after the build."""
+    (tmp_path / "aide.toml").write_text(
+        '[python]\nvenv = ".venv"\nbootstrap = "pip3-400 install ."\n',
+        encoding="utf-8")
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    venv = tmp_path / ".venv"
+    _stale_venv(venv)
+    _fake_program(_scripts_dir(venv), "pip3-400")
+    calls = _stub_bootstrap_runs(monkeypatch, venv, "pip3-400")
+    # Stale until the bootstrap has run, so `--bootstrap` rebuilds.
+    monkeypatch.setattr(aide, "env_report", lambda root, config: (
+        ("ok", "stub") if calls else ("stale", "stub")))
+    assert aide.main(["--repo", str(tmp_path), "env", "--bootstrap"]) == 0
+    ((argv, _env),) = calls
+    assert Path(argv[0]).parent == _scripts_dir(venv)
+
+
+@pytest.mark.parametrize("venv_there", [True, False])
+def test_a_misconfigured_tools_bootstrap_refuses_before_the_venv_is_touched(
+        tmp_path: Path, monkeypatch, capsys, venv_there: bool):
+    """Issue #401: a bootstrap starting `git` whose `[tools] git` names
+    nothing refused only after `--clear`, losing the record and writing
+    none. It now refuses first, whether or not a venv is there, naming the
+    key; nothing is launched and nothing is built."""
+    (tmp_path / "aide.toml").write_text(
+        '[python]\nvenv = ".venv"\nbootstrap = "git submodule update"\n',
+        encoding="utf-8")
+    (tmp_path / ".aide").mkdir()
+    (tmp_path / ".aide" / "local.toml").write_text(
+        '[tools]\ngit = "/no/such/git-401"\n', encoding="utf-8")
+    venv = tmp_path / ".venv"
+    record = _stale_venv(venv) if venv_there else None
+    before = record.read_text(encoding="utf-8") if record else None
+    launched = []
+    monkeypatch.setattr(aide.subprocess, "run",
+                        lambda argv, **_kw: launched.append(list(argv)))
+    monkeypatch.setattr(aide, "env_report",
+                        lambda root, config: ("stale", "stub"))
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(tmp_path), "env", "--bootstrap"]) == 1
+    assert launched == []
+    err = capsys.readouterr().err
+    assert "[tools] git" in err and "Traceback" not in err
+    if venv_there:
+        assert record.read_text(encoding="utf-8") == before
+        assert "is as it was" in err
+    else:
+        assert not venv.exists() and "nothing was built" in err
+
+
 def test_a_bootstrap_that_cannot_start_is_a_failed_bootstrap_not_a_traceback(
         tmp_path: Path, monkeypatch, capsys):
     (tmp_path / "aide.toml").write_text(
