@@ -145,6 +145,8 @@ paths:
        table
      - Item specs may also carry an optional **Validation** section (see the
        item template) that the validator must execute
+     - The cells are labels; the table's trail is the record
+     - Whoever writes the row writes its trail line
 -->
 
 <!-- pins: .aide/conventions/1-format-contract/vision.md
@@ -352,7 +354,7 @@ so two additive mechanisms record whether the gated path was ever run for
 real — the item template's optional **Environment / Hardware Dependencies**
 section, naming the package or tool, its declaration and the required fallback;
 and `progress.md`'s optional verification table, one row per capability,
-starting `❓ Unverified` and flipped to `✅ Verified (date, host/CI)` only when
+starting `❓ Unverified` and flipped to `✅ Verified (date)` only when
 something that actually has the dependency has run the gated path, **never
 inferred from the stage's own ✅ status**. **The queue-end item's
 Implementation Steps must add/update the row(s) for any capability its stage
@@ -368,7 +370,11 @@ updates the capability table** — ✅ Verified where the profile is satisfied, 
 explicit ❓ Unverified with the reason: **a row still `❓ Unverified` once its
 stage is ✅ records why in its Notes cell**, and **a row names the
 `[validation]` profile that would verify it in its Package / Tool cell, as
-`` `<name>` profile ``**. `queue-planner` names it; this role writes its
+`` `<name>` profile ``**. **The cells are labels; the table's trail is the
+record**: the host or CI run, and a note longer than a line, go on a bullet
+under the table keyed by the Capability cell, and **whoever writes the row
+writes its trail line** — the queue-end item's builder, so say so in its
+Implementation Steps. `queue-planner` names it; this role writes its
 spec.
 
 ## The vision's build posture

@@ -11,7 +11,7 @@ the code**, never by a second prose copy to quote against.
 `test_progress_help_states_the_rollup_the_code_applies` (issue #192) is the
 model and the seventh entry below: it transcribes the help sentence as a
 predicate and compares it to `rollup_status` over the whole input space.
-`HELP_PINS` is the register for all seven verbs. Each entry is
+`HELP_PINS` is the register for every pinned verb. Each entry is
 ``(sentence, "module::function")``:
 
 * the **sentence** is a load-bearing clause quoted from the help `argparse`
@@ -1152,6 +1152,37 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "exit 2, any argument but --stage and --no-commit",
          ("test_aide_maintenance_stage::test_the_verb_refuses_a_stage_with_no_section",
           "test_aide_maintenance_stage::test_the_verb_refuses_any_argument_but_stage_and_no_commit")),
+        # `compact_progress` over `_COMPACT_COLUMNS` (issue #474): the long
+        # cells of the three trail tables, `append_trail` under each.
+        ("compact: move each long cell of the Human gates, "
+         "Environment-Gated Capability Verification and Outcome targets "
+         "tables to a trail line under its table",
+         "test_aide_progress_trail::test_compact_moves_long_cells_verbatim_and_leaves_pointers"),
+        # `_row_compacts` (`LONG_CELL`), `table_trail`'s two key shapes, and
+        # `_short_status` / `TRAIL_POINTER` for what the cell keeps. The
+        # number is `LONG_CELL`, written into the help from the constant.
+        ("compact moves every Status, Decision / evidence, Notes or "
+         "Evidence / follow-up cell longer than 150 characters, verbatim, "
+         "onto a trail line under its table keyed to its row \u2014 a "
+         "gate's by its gate-<hex> ID, a capability's or a target's by its "
+         "first cell \u2014 and leaves the cell `see trail`, or for a "
+         "Status cell its leading mark and the first date it names",
+         "test_aide_progress_trail::test_compact_moves_long_cells_verbatim_and_leaves_pointers"),
+        # `_COMPACT_COLUMNS` names no identity column; `_row_compacts`
+        # returns nothing for a row with no key.
+        ("It never changes a Gate, Capability or Target cell, and skips a "
+         "gate row with an empty Gate cell",
+         ("test_aide_progress_trail::test_compact_never_touches_an_identity_cell",
+          "test_aide_progress_trail::test_compact_skips_a_gate_row_with_no_id_and_is_idempotent")),
+        # `_cmd_progress_compact`: one line per message, `_commit_or_restore`,
+        # and the early `return 0` with no message.
+        ("It prints each cell it moves and commits progress.md as set does; "
+         "with no cell that long it writes nothing and exits 0",
+         ("test_aide_progress_trail::test_compact_cli_prints_what_moved_and_refuses_other_arguments",
+          "test_aide_progress_trail::test_compact_commits_progress_alone",
+          "test_aide_progress_trail::test_a_compaction_whose_commit_fails_is_put_back")),
+        ("It refuses, exit 2, any argument but --no-commit",
+         "test_aide_progress_trail::test_compact_cli_prints_what_moved_and_refuses_other_arguments"),
         ("an objective linked to an Outcome target that is not \u2705 Met "
          "never rolls up",
          "test_aide_core::test_unmet_target_blocks_objective_rollup_not_stage"),
@@ -1495,6 +1526,54 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
     ],
 
     # ------------------------------------------------------------- insights --
+    "gate": [
+        # `gate_trail_record`: the latest decision note or plain line, the
+        # latest `context:` line, else the fourth cell (issue #474).
+        ("under it the latest context and evidence its trail records, else "
+         "its Decision / evidence cell",
+         ("test_aide_progress_trail::test_gate_list_prints_context_and_evidence",
+          "test_aide_progress_trail::test_the_record_reads_the_trail_and_falls_back_to_the_cell")),
+        # `set_gate_status`: `cells[2]`.
+        ("approve: \u2705 Approved (date) in the Status cell",
+         "test_aide_gates::test_approve_writes_mark_date_and_note"),
+        ("decline: \u274c Declined (date) in the Status cell",
+         "test_aide_gates::test_decline_is_recorded_distinctly"),
+        # `set_gate_status`: the trail lines, `append_trail`, and the
+        # `TRAIL_POINTER` cell; a held cell's text goes first.
+        ("approve and decline with --evidence write the note on a trail line "
+         "under the table, `- gate-<hex> \u2014 \u2705 Approved <date>: "
+         "<note>`, and leave the Decision / evidence cell `see trail "
+         "(<date>)`",
+         ("test_aide_progress_trail::test_evidence_goes_on_a_trail_line_under_the_table",
+          "test_aide_progress_trail::test_a_second_decision_appends_and_keeps_the_first",
+          "test_aide_gates::test_approve_writes_mark_date_and_note")),
+        ("text the cell held is first moved to a trail line of its own, "
+         "verbatim",
+         "test_aide_progress_trail::test_text_the_cell_held_is_moved_to_the_trail_first_verbatim"),
+        ("Without --evidence the cell is left as it reads",
+         "test_aide_progress_trail::test_without_evidence_the_cell_is_left_as_it_reads"),
+        # `reword_gate` writes the cell and the `reworded` line.
+        ("reword writes the new question into the Gate cell, which gives the "
+         "gate a new ID, and appends `- gate-<new> \u2014 reworded <date>, "
+         "was: <old question>` to the trail",
+         "test_aide_progress_trail::test_reword_restates_the_question_and_keeps_the_old_id_resolving"),
+        # `_gate_aliases` into `HumanGate.aliases`, read by
+        # `resolve_gate_ref` — which every reader of an ID calls.
+        ("Every reader of a gate ID takes the old ID for the row while that "
+         "line stands",
+         ("test_aide_progress_trail::test_reword_restates_the_question_and_keeps_the_old_id_resolving",
+          "test_aide_progress_trail::test_two_rewords_in_a_row_still_lead_to_the_gate",
+          "test_aide_progress_trail::test_the_alias_stands_only_while_its_trail_line_does",
+          "test_aide_progress_trail::test_a_citation_of_the_old_id_passes_check_after_a_reword",
+          "test_aide_progress_trail::test_a_decision_line_written_under_the_old_id_still_reads_as_the_gate_s")),
+        # `reword_gate`'s ValueErrors, raised before `_cmd_gate_reword` writes.
+        ("It refuses, writing nothing, a \u2705 or \u274c gate, an empty "
+         "question, one holding '|', and one this row or another already asks",
+         ("test_aide_progress_trail::test_reword_refuses",
+          "test_aide_progress_trail::test_reword_refuses_a_decided_gate",
+          "test_aide_progress_trail::test_gate_reword_cli_refuses_writing_nothing")),
+    ],
+
     "insights": [
         # `insight_capture_line` builds the line from today's date and
         # `_engine_stamp()` (`.aide/VERSION`), dropping an absent provenance
@@ -1952,6 +2031,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "Met, every retracted acceptance criterion and every progress.md "
          "table row no reader can use is printed too",
          "test_aide_help_pins::test_status_prints_the_four_states_it_promises"),
+        # `gate_trail_record` in `cmd_status`'s gate loop (issue #474).
+        ("A declined gate is printed with the evidence its trail records, "
+         "else its Decision / evidence cell",
+         ("test_aide_progress_trail::test_status_prints_a_declined_gate_s_evidence_from_the_trail",
+          "test_aide_progress_trail::test_status_reads_an_old_row_s_evidence_from_its_cell")),
         # The `reopened_items` loop in `cmd_status` (issue #271), and the
         # `; re-accepted` / `; completed again` suffix both loops carry (#273).
         ("So is every item `aide progress reopen` sent back",
