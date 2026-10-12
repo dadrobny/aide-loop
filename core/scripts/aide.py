@@ -11246,13 +11246,19 @@ def _cmd_progress_unarchive(args: argparse.Namespace) -> int:
     before = _snapshot([progress_path, source])
     commit = _commits_here(args.no_commit, repo_root)
     rels = [_progress_rel(config)]
-    if commit and _is_tracked(repo_root, _archive_rel(config, args.stage)):
+    archive_rel = _archive_rel(config, args.stage)
+    committed = commit and _is_tracked(repo_root, archive_rel)
+    if committed:
         # A file `archive --no-commit` wrote and nobody committed is not in
         # git, so its removal is no change to commit: naming it would fail
         # the commit on a pathspec matching nothing, every time.
-        rels.append(_archive_rel(config, args.stage))
+        rels.append(archive_rel)
     progress_path.write_text(updated, encoding="utf-8")
     source.unlink()
+    if commit and not committed:
+        # Only staged, it would stay staged as the add of a file now gone.
+        git(["rm", "--cached", "-q", "--ignore-unmatch", "--", archive_rel],
+            repo_root, check=False)
     try:
         source.parent.rmdir()  # only when it is empty now
     except OSError:
@@ -11267,8 +11273,11 @@ def _cmd_progress_unarchive(args: argparse.Namespace) -> int:
 
 
 def _is_tracked(repo_root: Path, rel: str) -> bool:
-    """Whether git's index holds *rel*, a path relative to *repo_root*."""
-    return git(["ls-files", "--error-unmatch", "--", rel], repo_root,
+    """Whether HEAD holds *rel*, a path relative to *repo_root*.
+
+    HEAD, not the index: a file only staged and then removed is no change a
+    commit naming it can record, so the pathspec would match nothing."""
+    return git(["cat-file", "-e", f"HEAD:{rel}"], repo_root,
                check=False).returncode == 0
 
 
@@ -20907,7 +20916,6 @@ def cmd_status(args: argparse.Namespace) -> int:
     # stage icons deliberately do not carry (conventions.md §1).
     ppath = docs_dir(repo_root, config) / "progress.md"
     if ppath.is_file():
-        plines = ppath.read_text(encoding=_ENCODING).splitlines()
         gates = human_gates(plines)
         record = gate_trail_record(plines, gates)
         for n, (g, gid) in enumerate(zip(gates, gate_ids(gates)), start=1):

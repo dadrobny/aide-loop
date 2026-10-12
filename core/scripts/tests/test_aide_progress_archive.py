@@ -635,15 +635,19 @@ def test_an_archive_whose_commit_fails_is_put_back(tmp_path):
     assert _git(["status", "--porcelain"], repo).stdout == ""
 
 
-def test_an_uncommitted_archive_is_unarchived_and_committed(tmp_path):
-    """`archive --no-commit` leaves stage-2.md untracked: the committing
-    unarchive removes it and commits progress.md alone, rather than failing
-    on a pathspec git does not know, on every re-run."""
+@pytest.mark.parametrize("staged", [False, True], ids=["untracked", "staged"])
+def test_an_uncommitted_archive_is_unarchived_and_committed(tmp_path, staged):
+    """`archive --no-commit` leaves stage-2.md uncommitted — untracked, or
+    only staged: the committing unarchive removes it and commits progress.md
+    alone, rather than failing on a pathspec git does not know, on every
+    re-run, and leaves no staged add of the file behind."""
     repo = _committed_repo(tmp_path)
     original = _read(repo)
     assert _archive(repo, "--stage", "2") == 0
     # progress.md committed by hand, the new file forgotten.
     _git(["commit", "-qm", "half", "--", "docs/aide/progress.md"], repo)
+    if staged:
+        _git(["add", "--", "docs/aide/progress/stage-2.md"], repo)
     head = _git(["rev-parse", "HEAD"], repo).stdout
     assert aide.main(["--repo", str(repo), "progress", "unarchive",
                       "--stage", "2"]) == 0
