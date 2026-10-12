@@ -362,6 +362,20 @@ def test_a_status_cell_compact_moved_is_not_the_gate_s_evidence():
     assert record[0] == {"evidence": "too risky"}
 
 
+@pytest.mark.parametrize("body", [
+    "❌ Declined by David: " + ("far too risky " * 12).strip(),
+    "✅ Approved by Dana 2026-01-01: sign-off",
+])
+def test_an_evidence_line_that_opens_with_its_mark_is_still_evidence(body):
+    text = _progress(gates="| Golden retirement approved | 028 | ❌ Declined (2026-10-01) | see trail |")
+    gates = aide.human_gates(text.splitlines())
+    key = aide.gate_ids(gates)[0]
+    row = "| Golden retirement approved | 028 | ❌ Declined (2026-10-01) | see trail |"
+    lines = text.replace(row, f"{row}\n\n- {key} — {body}").splitlines()
+    record = aide.gate_trail_record(lines, aide.human_gates(lines))
+    assert record[0] == {"evidence": body}
+
+
 @pytest.mark.parametrize("cell, short", [
     ("✅ Met 2026-02-02 — " + "detail " * 30, "✅ Met (2026-02-02)"),
     ("✅ Met (2026-02-02, " + "detail " * 30 + ")", "✅ Met (2026-02-02)"),

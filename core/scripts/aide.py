@@ -1614,6 +1614,10 @@ _REWORDED_TRAIL_RE = re.compile(
 _DECISION_TRAIL_RE = re.compile(
     r"^(?P<mark>✅ Approved|❌ Declined)\s+(?P<date>\d{4}-\d{2}-\d{2})"
     r"(?::\s*(?P<evidence>.*))?$")
+#: A gate Status cell moved to the trail: the status word, then its
+#: parenthesised date — never a decision line with a note after it.
+_STATUS_TRAIL_RE = re.compile(
+    r"^(?:⏳ Awaiting|✅ Approved|❌ Declined)\s*\(\d{4}-\d{2}-\d{2}")
 #: A gate's context line — what a one-line question leaves out.
 _CONTEXT_TRAIL_RE = re.compile(r"^context:\s*(?P<text>.*)$", re.IGNORECASE)
 #: What a cell moved to the trail is left holding (`aide progress compact`).
@@ -1812,9 +1816,11 @@ def gate_trail_record(lines: List[str], gates: List[HumanGate]
             if d.group("evidence"):
                 rec["evidence"] = d.group("evidence").strip()
             continue
-        if t.body.startswith(tuple(_GATE_STATUS_KIND)):
+        if _STATUS_TRAIL_RE.match(t.body):
             # A Status cell `compact` moved (`❌ Declined (date, …)`): the
-            # decision's own record, not the evidence cell's.
+            # decision's own record, not the evidence cell's. Only the
+            # Status shape — an evidence line that opens with its mark
+            # (`❌ Declined by …: …`) is still evidence.
             continue
         rec["evidence"] = t.body
     for n, g in enumerate(gates):
