@@ -288,7 +288,12 @@ not restated per agent:
   PATH — a shim, or Debian's `python-is-python3` — since every control file
   and the allow-list name `python`. `[tools] python` in `.aide/local.toml`
   changes only what the engine *prints* in a suggested command, and the sh
-  hook wrapper never reads it.
+  hook wrapper never reads it. `[tools] git` and `[tools] gh` go further and
+  no further: they reach the engine and `scripts/await_run.py`, which runs
+  git through the engine's resolver (issue #452), but not the raw `git …` /
+  `gh …` the control files tell an agent to type, nor the allow-list, whose
+  rules match the bare name — so a host without git or gh on PATH needs them
+  there too, a PATH entry or a shim, as with `python`.
 - **Command substitution in commits** (`$(…)`/backticks) is **never** auto-approved —
   use `-m`/`-F` per `conventions.md` §3.
 

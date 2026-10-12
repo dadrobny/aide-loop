@@ -798,6 +798,20 @@ def test_check_passes_clean_on_the_scaffold(aide, consumer: Path, capsys):
     assert "OK (0 warning(s))" in capsys.readouterr().out
 
 
+def test_env_keeps_no_venv_until_the_tree_holds_a_python_manifest(
+        aide, consumer: Path):
+    """The scaffold leaves `[python] venv` unset and the fixture has no
+    Python dependency manifest, so `env` has no venv to refuse and
+    `--bootstrap` none to build; a `pyproject.toml` makes `.venv` the venv,
+    and its absence a refusal (issue #450)."""
+    repo = ["--repo", str(consumer)]
+    assert aide.main([*repo, "env"]) == 0
+    assert aide.main([*repo, "env", "--bootstrap"]) == 1
+    assert not (consumer / ".venv").exists()
+    (consumer / "pyproject.toml").write_text("", encoding="utf-8")
+    assert aide.main([*repo, "env"]) == 1
+
+
 def test_check_queue_reports_the_queue_end_item_the_planner_must_add(
         aide, consumer: Path, capsys):
     """Queue 001 closes stage 1, whose one criterion no spec annotates: the

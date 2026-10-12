@@ -86,6 +86,82 @@ def test_outside_a_git_checkout_is_a_usage_error(tmp_path: Path, capsys,
 
 
 # --------------------------------------------------------------------------- #
+# which git — the engine's resolver, so [tools] git reaches this script (#452)
+# --------------------------------------------------------------------------- #
+def _tools(repo: Path, git: str) -> None:
+    (repo / ".aide").mkdir(exist_ok=True)
+    (repo / ".aide" / "local.toml").write_text(f'[tools]\ngit = "{git}"\n',
+                                               encoding="utf-8")
+
+
+def _no_git_on_path(tmp_path: Path, monkeypatch) -> None:
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+
+
+def test_a_configured_git_is_the_one_run(repo: Path, tmp_path: Path, monkeypatch):
+    git = Path(shutil.which("git")).as_posix()
+    _tools(repo, git)
+    _no_git_on_path(tmp_path, monkeypatch)
+    ran = []
+    real = subprocess.run
+    monkeypatch.setattr(ar.subprocess, "run",
+                        lambda argv, **kw: ran.append(argv[0]) or real(argv, **kw))
+    assert ar.state_dir(repo, ENGINE) == (repo / ".git" / ar.STATE_DIR).resolve()
+    assert Path(ar.git_program(repo, ENGINE)) == Path(shutil.which(git))
+    assert ran and all(Path(program) == Path(shutil.which(git)) for program in ran)
+
+
+def test_an_engine_that_cannot_load_is_a_usage_error(repo: Path, capsys):
+    engine = repo / ".aide" / "scripts" / "aide.py"
+    engine.parent.mkdir(parents=True)
+    engine.write_text("def broken(:\n", encoding="utf-8")
+    assert ar.main(["wait", "suite-20260101-000000"], root=repo,
+                   engine=engine) == ar.EXIT_USAGE
+    err = capsys.readouterr().err
+    assert err.startswith(f"await_run: the engine at {engine} cannot be loaded")
+    assert "Traceback" not in err
+
+
+def test_a_misconfigured_tools_git_is_a_usage_error(repo: Path, capsys):
+    _tools(repo, "no/such/git")
+    assert ar.main(["wait", "suite-20260101-000000"], root=repo,
+                   engine=ENGINE) == ar.EXIT_USAGE
+    err = capsys.readouterr().err
+    assert err.startswith("await_run: ") and "[tools] git" in err
+    assert "Traceback" not in err
+
+
+def test_a_git_found_nowhere_is_refused_in_current_branch(repo: Path, tmp_path: Path,
+                                                          monkeypatch):
+    _no_git_on_path(tmp_path, monkeypatch)
+    for engine in (ENGINE, repo / ".aide" / "scripts" / "aide.py"):
+        with pytest.raises(ar.UsageError, match="git is not on PATH"):
+            ar.current_branch(repo, engine)
+    with pytest.raises(ar.UsageError, match="git is not on PATH"):
+        ar.ci_command(repo, ENGINE)
+
+
+def test_a_git_that_cannot_start_is_refused_in_current_branch(repo: Path,
+                                                              monkeypatch):
+    def refuse(*a, **k):
+        raise PermissionError(13, "Permission denied")
+    monkeypatch.setattr(ar.subprocess, "run", refuse)
+    with pytest.raises(ar.UsageError, match="git could not be run"):
+        ar.current_branch(repo, ENGINE)
+
+
+def test_start_ci_with_no_git_exits_usage_not_a_traceback(repo: Path, tmp_path: Path,
+                                                          monkeypatch, capsys):
+    monkeypatch.setattr(ar, "state_dir", lambda *a, **k: tmp_path / "state")
+    monkeypatch.setattr(ar, "start_run", lambda *a, **k: pytest.fail("launched"))
+    _no_git_on_path(tmp_path, monkeypatch)
+    assert ar.main(["start", "ci"], root=repo, engine=ENGINE) == ar.EXIT_USAGE
+    assert "git is not on PATH" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
 # start / wait
 # --------------------------------------------------------------------------- #
 def test_the_run_survives_the_process_that_started_it(repo: Path):

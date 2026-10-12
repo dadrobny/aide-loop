@@ -136,6 +136,56 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.48.0] — 2026-10-12
+
+### Changed
+
+- **`[python] venv` left unset follows the tree (issue #450).** It defaulted
+  to `.venv` whatever the project was, so a project with no Python
+  dependencies — a Node one, say, with `[python] test_command = "node …"` —
+  had `aide env` refuse on a venv nobody meant to build until it wrote
+  `venv = ""`. Unset, it is now `.venv` given a manifest, a `.venv`
+  directory, or a `bootstrap` you set — a Python dependency manifest at the
+  repository root (`pyproject.toml`, `setup.py`, `setup.cfg`, `Pipfile`,
+  `requirements*.txt`), a `.venv/` already there, or `[python] bootstrap`
+  written in `aide.toml` — and no venv otherwise: the venv line is left out,
+  a leading `python` in the test command is left unbound, and
+  `env --bootstrap` refuses with nothing to build, naming the unset key. An
+  explicit value is unchanged: `venv = ""` keeps no venv, and any other
+  value is checked whether or not a manifest is there. Every reader of the
+  key goes through one function, `venv_setting`, and `DEFAULT_CONFIG` no
+  longer carries `venv` or `bootstrap` (read through `bootstrap_setting`),
+  so unset is told apart from the default; `aide env -h` says so, pinned in
+  `test_aide_help_pins.py`, and the scaffolded `aide.toml`'s comment and
+  `aide-execute-item`'s "skip `env --bootstrap`" line follow. The directory
+  keeps a venv built by hand the one a leading `python` binds to, and a
+  written `bootstrap` — `pip install -r tools/requirements.txt`, say —
+  keeps the venv on a fresh clone, worktree or CI runner, where no
+  directory is there yet. The one venv that goes is on a checkout with no
+  root manifest, no `.venv` and the default bootstrap, whose
+  `pip install -e .[dev]` could never build it, since it installs the root
+  manifest that is not there. So no consumer needs to edit anything; one
+  with no Python manifest, no `.venv` and no `bootstrap` may drop its
+  `venv = ""`.
+
+### Fixed
+
+- **`await_run.py` runs the git that `[tools] git` names, and refuses
+  cleanly when there is none (issue #452).** It ran a bare `git` for its
+  state directory and for `start ci`'s branch, so on a host whose git is
+  only in `.aide/local.toml` it failed where every engine verb worked, and
+  `current_branch` let a git that could not be started escape as a
+  traceback. Both now resolve git through the engine's `resolve_tool`: a
+  `[tools] git` that names nothing, or a `[tools]` table that cannot be
+  read, is the engine's own one-sentence refusal, and a git found nowhere is
+  the engine's "git is not on PATH" — each exit 64 with no traceback. With
+  no engine installed, git is looked up on PATH, so `wait` and `stop` still
+  reach a run under way. `local.toml.example` and the adapter README now say
+  what `[tools] git` and `gh` do not reach: the raw `git …` / `gh …` the
+  control files tell an agent to type, and the allow-list, which matches
+  the bare name — a host without them on PATH still needs them there.
+  Nothing a consumer edits.
+
 ## [2.47.3] — 2026-10-10
 
 ### Fixed
