@@ -436,6 +436,16 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "section",
          "test_aide_help_pins::"
          "test_check_errors_on_each_missing_table_and_on_missing_stage_sections"),
+        # `if not sections and not archived` (issue #475).
+        ("a stage archived to progress/stage-N.md counting as a section",
+         "test_aide_progress_archive::test_every_stage_archived_still_passes_the_section_check"),
+        # `archive_consistency_errors`, one arm per clause.
+        ("Progress.md disagreeing with its archive about a stage is an error "
+         "too: a summary row's Title cell linking to a progress/stage-N.md "
+         "that does not exist, such a file no summary row links to or "
+         "holding no `## Stage N` section, and a stage archived there that "
+         "still has a section in progress.md",
+         "test_aide_progress_archive::test_progress_and_its_archive_disagreeing_is_an_error"),
         # `derived_cell_findings`' `over` list — the measure is
         # `rollup_status`, under which a ❌ bullet counts toward ✅.
         ("a stage summary row marked ✅ over a stage whose deliverables do "
@@ -528,11 +538,14 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_a_stage_header_disagreeing_with_its_summary_row_is_a_warning"),
         # `if nums and not any(n in section_nums for n in nums)`.
         ("an Objective row whose Delivered by cell names no stage with a "
-         "section",
-         "test_aide_defer::test_an_objective_naming_no_stage_section_is_a_warning"),
-        # `for num in summary_status: if num not in section_nums`.
-        ("a summary row with no stage section",
-         "test_aide_help_pins::test_a_summary_row_with_no_stage_section_is_a_warning"),
+         "section or an archive",
+         ("test_aide_defer::test_an_objective_naming_no_stage_section_is_a_warning",
+          "test_aide_progress_archive::test_every_stage_archived_still_passes_the_section_check")),
+        # `for num in summary_status: if num not in section_nums and num not
+        # in archived`.
+        ("a summary row with no stage section and no link to its archive",
+         ("test_aide_help_pins::test_a_summary_row_with_no_stage_section_is_a_warning",
+          "test_aide_progress_archive::test_every_stage_archived_still_passes_the_section_check")),
         # `elif t.kind != "met"` — unverified, or unrecognised.
         ("an objective marked ✅ over a target not yet ✅ Met",
          "test_aide_core::test_check_warns_objective_complete_over_unverified_target"),
@@ -1148,8 +1161,9 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_maintenance_stage::test_the_verb_commits_progress_alone",
           "test_aide_maintenance_stage::test_a_rollup_whose_commit_fails_is_put_back_and_exits_1",
           "test_aide_maintenance_stage::test_the_verb_is_a_no_op_exit_0_when_nothing_changes")),
-        ("It refuses, exit 1, a stage with no section in progress.md, and, "
-         "exit 2, any argument but --stage and --no-commit",
+        ("It refuses, exit 1, a stage with neither a section in progress.md "
+         "nor a summary row linking to its archive, and, exit 2, any "
+         "argument but --stage and --no-commit",
          ("test_aide_maintenance_stage::test_the_verb_refuses_a_stage_with_no_section",
           "test_aide_maintenance_stage::test_the_verb_refuses_any_argument_but_stage_and_no_commit")),
         # `compact_progress` over `_COMPACT_COLUMNS` (issue #474): the long
@@ -1183,6 +1197,84 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_progress_trail::test_a_compaction_whose_commit_fails_is_put_back")),
         ("It refuses, exit 2, any argument but --no-commit",
          "test_aide_progress_trail::test_compact_cli_prints_what_moved_and_refuses_other_arguments"),
+        # `_cmd_progress_archive` / `_cmd_progress_unarchive` (issue #475):
+        # `archive_stage_text` writes the file and links the row,
+        # `unarchive_stage_text` undoes it.
+        ("archive: move each settled stage's section to progress/stage-N.md "
+         "beside progress.md, its summary row's Title cell linking there "
+         "(--stage N for one stage)",
+         ("test_aide_progress_archive::test_archive_moves_the_section_verbatim_and_links_the_summary_row",
+          "test_aide_progress_archive::test_archive_with_no_stage_takes_every_eligible_one_and_names_the_rest")),
+        ("unarchive: move stage N's section back from its archive file "
+         "(--stage N)",
+         "test_aide_progress_archive::test_unarchive_moves_the_stage_back_and_removes_the_file"),
+        # `archive_refusal`, condition by condition, in its order; the
+        # branch half through `_BranchView`.
+        ("archive takes a stage only when its summary row is \u2705 or "
+         "\u274c; no deliverable bullet in its section is \U0001f4cb, "
+         "\U0001f6a7, \U0001f50d or \u23f8\ufe0f and no acceptance box is "
+         "unticked; it is not the maintenance stage; no human gate but a "
+         "\u2705 Approved one reaches it, as `stage N`, `stage N+` or "
+         "`stage N\u2013M`; no item its bullets name has a bullet outside "
+         "it; and every queue file listing one of those items is settled, "
+         "with neither that queue's branch nor a claim branch of the items "
+         "unmerged into main_branch",
+         ("test_aide_progress_archive::test_each_eligibility_condition_refuses_on_its_own",
+          "test_aide_progress_archive::test_an_approved_gate_reaching_the_stage_does_not_hold_it",
+          "test_aide_progress_archive::test_an_open_queue_listing_its_items_holds_the_stage",
+          "test_aide_progress_archive::test_an_unmerged_queue_branch_of_its_queue_holds_the_stage",
+          "test_aide_progress_archive::test_an_unmerged_claim_branch_of_its_items_holds_the_stage")),
+        # `archive_stage_text`: `_without_trailing_separators`,
+        # `_archive_header`, `_replace_cell` on the Title cell alone.
+        ("The section moves verbatim, less the `---` after it, under one "
+         "line pointing back at progress.md, and the summary row's Title "
+         "cell becomes a link to the file while its Status cell stays",
+         "test_aide_progress_archive::test_archive_moves_the_section_verbatim_and_links_the_summary_row"),
+        # `ProgressLines.archive_status` folded in by `_parse_item_status`;
+        # `stage_rollups` reads `archived_summary_stages`.
+        ("From then on every reader of item status reads the archived "
+         "bullets too, and the stage rolls up to its summary row",
+         ("test_aide_progress_archive::test_item_status_reads_the_archived_bullets_and_a_slice_does_not",
+          "test_aide_progress_archive::test_an_archived_stage_rolls_up_to_its_summary_row",
+          "test_aide_progress_archive::test_check_reads_an_archived_tree_as_it_read_the_live_one")),
+        ("With --stage N it refuses, exit 1, a stage that is not eligible, "
+         "naming the first condition it fails",
+         "test_aide_progress_archive::test_archive_of_an_ineligible_stage_writes_nothing"),
+        ("without, it archives every eligible stage and prints each \u2705 "
+         "or \u274c stage it keeps, with why, and with none eligible it "
+         "writes nothing and exits 0",
+         "test_aide_progress_archive::test_archive_with_no_stage_takes_every_eligible_one_and_names_the_rest"),
+        ("It commits progress.md and the files it writes as set does",
+         ("test_aide_progress_archive::test_archive_and_unarchive_commit_both_files",
+          "test_aide_progress_archive::test_an_archive_whose_commit_fails_is_put_back")),
+        ("unarchive puts the section back before the first stage section "
+         "numbered above it, or after the last one, takes the link off the "
+         "Title cell, removes the file and commits both as archive does",
+         ("test_aide_progress_archive::test_unarchive_puts_back_exactly_what_archive_took",
+          "test_aide_progress_archive::test_two_stages_archived_come_back_in_number_order",
+          "test_aide_progress_archive::test_archive_and_unarchive_commit_both_files",
+          "test_aide_progress_archive::test_an_unarchive_whose_commit_fails_is_put_back")),
+        ("It refuses, exit 1, a stage with no archive file, and one "
+         "progress.md has a section of as well",
+         ("test_aide_progress_archive::test_unarchive_refuses_a_stage_that_is_not_archived",
+          "test_aide_progress_archive::test_unarchive_refuses_a_stage_progress_md_still_has")),
+        ("archive and unarchive refuse, exit 2, any argument but --stage and "
+         "--no-commit, and unarchive one without --stage",
+         "test_aide_progress_archive::test_both_verbs_refuse_any_argument_but_stage_and_no_commit"),
+        # `_archived_target_refusal` at the top of `cmd_progress`, the
+        # back-fill's own arm, and `cmd_merge`'s check before the merge.
+        ("No verb writes into the archive: set, reopen, reword, accept, "
+         "amend and retract refuse, exit 1 and writing nothing, an item "
+         "whose bullets or a stage whose section is archived, naming `aide "
+         "progress unarchive --stage N`, and `aide merge` refuses such an "
+         "item before it merges anything",
+         ("test_aide_progress_archive::test_no_writer_reaches_into_the_archive",
+          "test_aide_progress_archive::test_a_back_fill_into_an_archived_stage_is_refused",
+          "test_aide_progress_archive::test_merge_refuses_an_item_of_an_archived_stage")),
+        # `rollup_progress` takes an archived stage into `targets`.
+        ("An archived stage has no section and rolls up to its summary row, "
+         "so rolling it up writes the Objective rows naming it",
+         "test_aide_progress_archive::test_rollup_of_an_archived_stage_writes_the_objective_rows_naming_it"),
         ("an objective linked to an Outcome target that is not \u2705 Met "
          "never rolls up",
          "test_aide_core::test_unmet_target_blocks_objective_rollup_not_stage"),

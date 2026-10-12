@@ -78,7 +78,7 @@ derived from it.
 ```
 python .aide/scripts/aide.py check | status | env | sync | claim | scope
     | test | merge | gc
-    | progress set/accept/amend/retract/reword/reopen/rollup/compact
+    | progress set/accept/amend/retract/reword/reopen/rollup/compact/archive/unarchive
     | gate list/approve/decline/reword | insights add/list/tick/archive/resolve
     | queue start/tidy/restack/gate/pr/ready/discard | ledger abandon/report
 ```
