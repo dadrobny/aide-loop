@@ -146,8 +146,8 @@ instead — that is the bump policy above, and it is enforced by
   had `aide env` refuse on a venv nobody meant to build until it wrote
   `venv = ""`. Unset, it is now `.venv` where the repository
   root holds a Python dependency manifest (`pyproject.toml`, `setup.py`,
-  `setup.cfg`, `Pipfile`, `requirements*.txt`) and no venv where it holds
-  none: the venv line is left out, a leading `python` in the test command is
+  `setup.cfg`, `Pipfile`, `requirements*.txt`) or a `.venv` directory
+  already, and no venv where it holds neither: the venv line is left out, a leading `python` in the test command is
   left unbound, and `env --bootstrap` refuses with nothing to build, naming
   the unset key. An explicit value is unchanged: `venv = ""` keeps no venv,
   and any other value is checked whether or not a manifest is there. Every
@@ -155,10 +155,12 @@ instead — that is the bump policy above, and it is enforced by
   `DEFAULT_CONFIG` no longer carries `venv`, so unset is told apart from the
   default; `aide env -h` says so, pinned in `test_aide_help_pins.py`, and the
   scaffolded `aide.toml`'s comment and `aide-execute-item`'s "skip
-  `env --bootstrap`" line follow. A consumer with no Python manifest may
-  drop its `venv = ""`; one that keeps a venv without a manifest at its
-  root (dependencies installed by hand, or a manifest in a subdirectory)
-  must now write `venv = ".venv"` for `aide env` to keep checking it.
+  `env --bootstrap`" line follow. The directory counts on its own so a venv
+  built by hand — dependencies installed without a root manifest, or from
+  one in a subdirectory — is still the one a leading `python` binds to and
+  `aide env` checks, as under the old default. No consumer needs to edit
+  anything; one with no Python manifest and no `.venv` may drop its
+  `venv = ""`.
 
 ### Fixed
 

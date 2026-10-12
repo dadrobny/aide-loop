@@ -14101,13 +14101,18 @@ def venv_setting(repo_root: Path, config: Dict[str, Dict[str, object]]) -> str:
 
     Set, the value decides — ``""`` is no venv (issue #354), and any other
     value is checked whatever the tree holds. Unset, it follows the tree:
-    ``.venv`` where the root holds a Python dependency manifest, and no venv
-    where it holds none (issue #450), so a project in another language is not
-    refused on a venv nobody meant to build until it writes ``venv = ""``.
+    ``.venv`` where the root holds a Python dependency manifest or a `.venv`
+    directory already, and no venv where it holds neither (issue #450), so a
+    project in another language is not refused on a venv nobody meant to
+    build until it writes ``venv = ""``. The directory counts on its own so a
+    venv someone built by hand, with no manifest at the root, stays the one a
+    leading ``python`` binds to, as it was when ``.venv`` was the default.
     """
     value = config["python"].get("venv")
     if value is None:
-        return ".venv" if has_python_manifest(repo_root) else ""
+        kept = (has_python_manifest(repo_root)
+                or (Path(repo_root) / ".venv").is_dir())
+        return ".venv" if kept else ""
     value = str(value)
     return value if value.strip() else ""
 
@@ -14602,8 +14607,8 @@ def cmd_env(args: argparse.Namespace) -> int:
         if config["python"].get("venv") is None:
             why = ("[python] venv is unset in aide.toml and the repository "
                    "root holds no Python dependency manifest ("
-                   + ", ".join(PYTHON_MANIFESTS) + "), so this project keeps "
-                   "no venv")
+                   + ", ".join(PYTHON_MANIFESTS) + ") and no .venv, so this "
+                   "project keeps no venv")
         else:
             why = '[python] venv = "" in aide.toml says this project keeps no venv'
         print(f"aide env: {why}, so there is none to build — set [python] "
@@ -21324,9 +21329,9 @@ def register_git_subcommands(sub) -> None:
             "project keeps no venv: the venv line is left out, and --bootstrap "
             "refuses. Unset, [python] venv is .venv where the repository "
             "root holds a Python dependency manifest (pyproject.toml, "
-            "setup.py, setup.cfg, Pipfile or a requirements*.txt) and no venv "
-            "where it holds none; a value that is set is checked whatever "
-            "the root holds. Exits 0 when every requirement the configuration needs "
+            "setup.py, setup.cfg, Pipfile or a requirements*.txt) or a .venv "
+            "directory, and no venv where it holds neither; a value that is "
+            "set is checked whatever the root holds. Exits 0 when every requirement the configuration needs "
             "is met. `aide check` without --queue errors on the offline "
             "part of the same report.\n"
             "\n"

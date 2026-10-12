@@ -264,7 +264,11 @@ def _load_engine(engine: Path):
     if spec is None or spec.loader is None or not engine.is_file():
         raise UsageError(f"the engine is not at {engine}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:  # a broken install, never a traceback
+        raise UsageError(f"the engine at {engine} cannot be loaded "
+                         f"({type(exc).__name__}: {exc})") from None
     _ENGINES[key] = module
     return module
 

@@ -274,7 +274,8 @@ test_command = "{test_command}"
 # The project venv `aide env` checks and `env --bootstrap` builds; "" for a
 # project that keeps none, which leaves the venv out of `aide env`. Left
 # commented out, it follows the tree: ".venv" beside a pyproject.toml,
-# setup.py, setup.cfg, Pipfile or requirements*.txt, none without one.
+# setup.py, setup.cfg, Pipfile or requirements*.txt, or where a .venv/
+# directory already is; none without either.
 # venv = ".venv"
 # The Python `env --bootstrap` builds the venv from — a command on PATH
 # ("python3.12", "py -3.12") or an absolute path. Unset, it is whatever Python

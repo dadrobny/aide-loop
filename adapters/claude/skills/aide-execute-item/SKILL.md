@@ -40,7 +40,8 @@ or, resuming an existing claim, `python .aide/scripts/aide.py sync --item NNN`
 `python .aide/scripts/aide.py env --bootstrap` (it builds the venv only if
 missing/stale, and answers for the venv alone); skip it when the project keeps
 no venv — `aide.toml` sets `[python] venv = ""`, or leaves it unset in a
-repository with no Python dependency manifest at its root (`aide env -h`).
+repository with neither a Python dependency manifest nor a `.venv/` at its
+root (`aide env -h`).
 
 ### During implementation
 

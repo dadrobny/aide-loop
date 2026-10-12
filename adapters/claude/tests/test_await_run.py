@@ -113,6 +113,17 @@ def test_a_configured_git_is_the_one_run(repo: Path, tmp_path: Path, monkeypatch
     assert ran and all(Path(program) == Path(shutil.which(git)) for program in ran)
 
 
+def test_an_engine_that_cannot_load_is_a_usage_error(repo: Path, capsys):
+    engine = repo / ".aide" / "scripts" / "aide.py"
+    engine.parent.mkdir(parents=True)
+    engine.write_text("def broken(:\n", encoding="utf-8")
+    assert ar.main(["wait", "suite-20260101-000000"], root=repo,
+                   engine=engine) == ar.EXIT_USAGE
+    err = capsys.readouterr().err
+    assert err.startswith(f"await_run: the engine at {engine} cannot be loaded")
+    assert "Traceback" not in err
+
+
 def test_a_misconfigured_tools_git_is_a_usage_error(repo: Path, capsys):
     _tools(repo, "no/such/git")
     assert ar.main(["wait", "suite-20260101-000000"], root=repo,

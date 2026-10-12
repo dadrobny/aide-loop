@@ -56,7 +56,8 @@ login, the interpreter the engine prints in its suggestions, and the venv.
 A project that keeps no venv leaves that line out of `env`: unset, `venv`
 under `[python]` in `aide.toml` is `.venv` only beside a Python dependency
 manifest at the repository root (`pyproject.toml`, `setup.py`, `setup.cfg`,
-`Pipfile`, `requirements*.txt`), and `venv = ""` says so outright; otherwise `interpreter = "python3.12"` there
+`Pipfile`, `requirements*.txt`) or where a `.venv/` directory already is, and
+`venv = ""` says so outright; otherwise `interpreter = "python3.12"` there
 pins what `--bootstrap` builds the venv from, when the dependency closure
 resolves on a narrower Python range than the project declares, and
 `bootstrap` is what it installs with — `pip install -e .[dev]` unless set, or

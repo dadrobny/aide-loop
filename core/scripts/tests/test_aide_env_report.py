@@ -318,6 +318,35 @@ def test_an_unset_venv_beside_a_manifest_is_dot_venv_and_checked(
     assert "aide env: the venv is missing" in out
 
 
+def test_an_unset_venv_beside_an_existing_dot_venv_is_kept(tmp_path: Path, capsys):
+    """A venv built by hand, with no manifest at the root, stays the venv: a
+    leading `python` binds to it and `env` checks it, as under the old
+    `.venv` default."""
+    repo = _repo(tmp_path, venv=None, test_command="python -m pytest")
+    vpy = (repo / ".venv" / "Scripts" / "python.exe" if os.name == "nt"
+           else repo / ".venv" / "bin" / "python")
+    vpy.parent.mkdir(parents=True)
+    vpy.write_text("", encoding="utf-8")
+    config = aide.load_config(repo)
+    assert not aide.has_python_manifest(repo)
+    assert aide.venv_setting(repo, config) == ".venv"
+    assert aide.resolve_test_command(repo, config)[0] == str(vpy)
+    code, out = _env(repo, capsys)
+    assert code == 1  # checked: no bootstrap record, so not OK
+    assert "  venv " in out
+
+
+def test_env_help_names_every_python_manifest():
+    """`aide env -h` lists the manifests by hand; adding one to
+    `PYTHON_MANIFESTS` without the help fails here."""
+    parser = aide.build_parser()
+    env = next(a for a in parser._subparsers._group_actions
+               if hasattr(a, "choices")).choices["env"]
+    text = " ".join(env.format_help().split())
+    for name in aide.PYTHON_MANIFESTS:
+        assert name in text, name
+
+
 def test_a_manifest_below_the_root_is_not_one(tmp_path: Path):
     repo = _repo(tmp_path, venv=None)
     (repo / "docs").mkdir()
