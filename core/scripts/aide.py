@@ -18,7 +18,9 @@ Subcommands::
     python .aide/scripts/aide.py progress set NNN dropped --reason TEXT  # ❌ on an item the stage does not need
     python .aide/scripts/aide.py progress set NNN restored --reason TEXT  # ❌ back to 📋 (--stage N --deliverable K for an unmarked bullet)
     python .aide/scripts/aide.py progress rollup [--stage N]  # a stage's cells to what its bullets roll up to
+    python .aide/scripts/aide.py progress compact  # long gate/capability/target cells to their trails
     python .aide/scripts/aide.py gate list|approve|decline [N|ID]  # human gates in progress.md
+    python .aide/scripts/aide.py gate reword N|ID --text QUESTION  # restate a live gate; its old ID keeps resolving
     python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
     python .aide/scripts/aide.py queue tidy NNN        # mark a superseded queue as completed
     python .aide/scripts/aide.py queue gate NNN        # raise a planned queue's plan-review gate
@@ -1068,6 +1070,11 @@ class HumanGate(NamedTuple):
     #: The Blocks cell as written, stripped. Read where "names nothing" must
     #: be told apart from "names something no reader parses" (issue #396).
     blocks_cell: str = ""
+    #: Full hashes of the questions this row asked before `aide gate reword`
+    #: restated it, read from the `reworded` lines of the table's trail
+    #: (issue #474). ``resolve_gate_ref`` takes an old ID for this row while
+    #: its line stands; ``gate_hash`` and ``gate_ids`` never read them.
+    aliases: Tuple[str, ...] = ()
 
     @property
     def stage_range(self) -> Optional[Tuple[int, Optional[int]]]:
@@ -1435,6 +1442,10 @@ def human_gates(lines: List[str]) -> List[HumanGate]:
         blocks = [] if (blocks_all or stage) else _blocked_item_numbers(blocks_cell)
         out.append(HumanGate(i + 1, cells[0], blocks, stage, blocks_all, kind,
                              stage_last, stage_open, blocks_cell))
+    if out:
+        aliases = _gate_aliases(lines, out)
+        out = [g._replace(aliases=aliases[n]) if aliases.get(n) else g
+               for n, g in enumerate(out)]
     return out
 
 
@@ -1534,12 +1545,23 @@ def is_gate_id(ref: str) -> bool:
 
 
 def resolve_gate_ref(ref: str, gates: List[HumanGate]) -> List[int]:
-    """Indices into *gates* whose Gate cell the ID *ref* names (hash prefix)."""
+    """Indices into *gates* whose Gate cell the ID *ref* names (hash prefix).
+
+    A row's own question decides first. Only when no Gate cell matches is an
+    old ID read: the row a `reworded` trail line says once asked that
+    question (``HumanGate.aliases``, issue #474), so a citation written
+    before `aide gate reword` keeps naming the gate it meant.
+    """
     m = _GATE_ID_RE.match(ref)
     if m is None:
         return []
+    hexes = m.group("hex")
+    direct = [i for i, g in enumerate(gates)
+              if (gate_hash(g) or "").startswith(hexes)]
+    if direct:
+        return direct
     return [i for i, g in enumerate(gates)
-            if (gate_hash(g) or "").startswith(m.group("hex"))]
+            if any(a.startswith(hexes) for a in g.aliases)]
 
 
 def gate_index_for_ref(ref: str, gates: List[HumanGate]) -> int:
@@ -1562,7 +1584,8 @@ def gate_index_for_ref(ref: str, gates: List[HumanGate]) -> int:
     if not hits:
         raise ValueError(
             f"no gate {ref} in progress.md — its row was removed, or its Gate "
-            f"cell reworded, which makes it a different gate; see `aide gate list`")
+            f"cell reworded by hand, which makes it a different gate (`aide "
+            f"gate reword` keeps the old ID); see `aide gate list`")
     if len({gate_hash(gates[i]) for i in hits}) > 1:
         ids = gate_ids(gates)
         raise ValueError(
@@ -1574,6 +1597,230 @@ def gate_index_for_ref(ref: str, gates: List[HumanGate]) -> int:
             f"{', '.join(str(i + 1) for i in hits)}) — resolve by position, "
             f"and reword one of them so each has its own ID")
     return hits[0] + 1
+
+
+# --------------------------------------------------------------------------- #
+# trails — the record under a progress.md table (conventions.md §1, #474)
+# --------------------------------------------------------------------------- #
+#: A trail line: a bullet under the table, its key, an em dash, its body.
+_TRAIL_BULLET_RE = re.compile(r"^\s*[-*]\s+(?P<rest>\S.*?)\s*$")
+#: A gate's trail line is keyed by the gate's ID.
+_GATE_TRAIL_RE = re.compile(
+    r"^(?P<key>" + _GATE_ID_SHAPE + r")\s+—\s+(?P<body>.*)$")
+#: The body `aide gate reword` writes: the old question, kept verbatim.
+_REWORDED_TRAIL_RE = re.compile(
+    r"^reworded\s+(?P<date>\d{4}-\d{2}-\d{2}),\s+was:\s+(?P<old>.+)$")
+#: The body `aide gate approve|decline --evidence` writes.
+_DECISION_TRAIL_RE = re.compile(
+    r"^(?P<mark>✅ Approved|❌ Declined)\s+(?P<date>\d{4}-\d{2}-\d{2})"
+    r"(?::\s*(?P<evidence>.*))?$")
+#: A gate's context line — what a one-line question leaves out.
+_CONTEXT_TRAIL_RE = re.compile(r"^context:\s*(?P<text>.*)$", re.IGNORECASE)
+#: What a cell moved to the trail is left holding (`aide progress compact`).
+TRAIL_POINTER = "see trail"
+#: A cell longer than this is long: `aide check` warns on it in a live row's
+#: identity cell and `aide progress compact` moves it from any other cell.
+#: Measured on the two consumers' progress.md (2026-10-12, 66 rows): every
+#: Capability cell was 26–53 characters and every Outcome target 92–142 but
+#: one (290), while every Gate cell was 201–1781; among the cells compact
+#: moves, the one-line evidence notes were 28–95 and the 142-character
+#: annotator stamps, and the prose ran from 166 (a Status parenthetical) to
+#: 2347 (a Notes cell). 150 sits above every label and below every prose cell.
+LONG_CELL = 150
+
+
+class TrailLine(NamedTuple):
+    lineno: int              # 1-based line number of the bullet
+    key: str                 # a gate ID, or the row's first cell
+    body: str                # after the dash, continuation lines joined
+
+
+def _section_span(lines: List[str], heading: "re.Pattern"
+                  ) -> Optional[Tuple[int, int]]:
+    """``(heading index, end index)`` of the section *heading* opens."""
+    head = next((i for i, line in enumerate(lines) if heading.match(line)), None)
+    if head is None:
+        return None
+    end = next((j for j in range(head + 1, len(lines))
+                if _ANY_HEADER_RE.match(lines[j])), len(lines))
+    return head, end
+
+
+def _trail_bullets(lines: List[str], table: _ProgressTable
+                   ) -> List[Tuple[int, int, str]]:
+    """``(first index, last index, text)`` of each bullet under *table*.
+
+    Every bullet in the table's section below its first row, a wrapped
+    line — indented, not itself a bullet or a row — joined to it.
+    """
+    span = _section_span(lines, table.heading)
+    if span is None:
+        return []
+    head, end = span
+    first = next((j for j in range(head + 1, end)
+                  if lines[j].strip().startswith("|")), None)
+    if first is None:
+        return []
+    out: List[Tuple[int, int, str]] = []
+    j = first + 1
+    while j < end:
+        m = _TRAIL_BULLET_RE.match(lines[j])
+        if m is None or lines[j].strip().startswith("|"):
+            j += 1
+            continue
+        parts, k = [m.group("rest")], j
+        while (k + 1 < end and lines[k + 1].strip()
+               and lines[k + 1][:1] in (" ", "\t")
+               and not _TRAIL_BULLET_RE.match(lines[k + 1])):
+            k += 1
+            parts.append(lines[k].strip())
+        out.append((j, k, " ".join(parts)))
+        j = k + 1
+    return out
+
+
+def table_trail(lines: List[str], table: _ProgressTable) -> List[TrailLine]:
+    """The trail under *table*: its keyed bullets, in file order.
+
+    A gate's line is keyed by a gate ID (``gate-<hex> — …``); a capability's
+    or a target's by its row's first cell, as written (``<cell> — …``) — the
+    longest first cell a bullet starts with, so a cell holding a dash of its
+    own is still one key. A bullet keyed to nothing is not a trail line.
+    """
+    out: List[TrailLine] = []
+    if table is _HUMAN_GATES:
+        for j, _, text in _trail_bullets(lines, table):
+            m = _GATE_TRAIL_RE.match(text)
+            if m:
+                out.append(TrailLine(j + 1, m.group("key"), m.group("body").strip()))
+        return out
+    keys = sorted({cells[0] for _, cells, problem in _table_rows(lines, table)
+                   if problem is None and cells[0]}, key=len, reverse=True)
+    for j, _, text in _trail_bullets(lines, table):
+        key = next((k for k in keys if text.startswith(k + " — ")), None)
+        if key is not None:
+            out.append(TrailLine(j + 1, key, text[len(key) + 3:].strip()))
+    return out
+
+
+def _gate_question_hash(text: str) -> Optional[str]:
+    """``gate_hash`` of a Gate cell that is not a row — an old question."""
+    return gate_hash(HumanGate(0, text, [], None, False, None))
+
+
+def _gate_aliases(lines: List[str], gates: List[HumanGate]
+                  ) -> Dict[int, Tuple[str, ...]]:
+    """``{gate index: old question hashes}`` from the `reworded` trail lines.
+
+    Each line is keyed by the ID the row had once restated, and keeps the
+    question it asked before. A key naming no row now is followed through
+    the line that restated *it*, so two rewords in a row still lead to the
+    gate; a key matching two different rows leads nowhere.
+    """
+    renames: List[Tuple[str, str]] = []
+    for t in table_trail(lines, _HUMAN_GATES):
+        m = _REWORDED_TRAIL_RE.match(t.body)
+        old = _gate_question_hash(m.group("old")) if m else None
+        if old:
+            renames.append((old, t.key[len("gate-"):]))
+    if not renames:
+        return {}
+    hashes = [gate_hash(g) or "" for g in gates]
+
+    def row_of(hexes: str, seen: Set[str]) -> Optional[int]:
+        hits = {h for h in hashes if h and h.startswith(hexes)}
+        if len(hits) == 1:
+            return hashes.index(hits.pop())
+        if hits:
+            return None
+        for old, key in reversed(renames):
+            if old.startswith(hexes) and old not in seen:
+                return row_of(key, seen | {old})
+        return None
+
+    out: Dict[int, List[str]] = {}
+    for old, key in renames:
+        n = row_of(key, {old})
+        if n is not None and old != hashes[n] and old not in out.get(n, []):
+            out.setdefault(n, []).append(old)
+    return {n: tuple(v) for n, v in out.items()}
+
+
+def _trail_insert_at(lines: List[str], table: _ProgressTable) -> Optional[int]:
+    """Where a new trail line goes: after the last trail bullet, else after
+    the table's last row; None for a section with no table."""
+    span = _section_span(lines, table.heading)
+    if span is None:
+        return None
+    head, end = span
+    pipes = [j for j in range(head + 1, end) if lines[j].strip().startswith("|")]
+    if not pipes:
+        return None
+    after = [k for _, k, _ in _trail_bullets(lines, table) if k > pipes[-1]]
+    return (after[-1] if after else pipes[-1]) + 1
+
+
+def append_trail(lines: List[str], table: _ProgressTable,
+                 new: List[str]) -> List[str]:
+    """*lines* with the trail lines *new* appended under *table*.
+
+    Below the bullets already there, else below the table's last row with a
+    blank line between, so a renderer ends the table before the list. Never
+    edits a line already written: a correction is a later line.
+    """
+    at = _trail_insert_at(lines, table)
+    if at is None:
+        raise ValueError(f"no '{table.name}' table in progress.md to write a "
+                         f"trail under")
+    out = list(lines)
+    if at > 0 and out[at - 1].strip().startswith("|"):
+        new = ["", *new]
+        if at < len(out) and out[at].strip():
+            new.append("")
+    out[at:at] = new
+    return out
+
+
+def _is_trail_pointer(cell: str) -> bool:
+    return cell.strip().lower().startswith(TRAIL_POINTER)
+
+
+def gate_trail_record(lines: List[str], gates: List[HumanGate]
+                      ) -> Dict[int, Dict[str, str]]:
+    """``{gate index: {"evidence": …, "context": …}}`` for `gate list` and
+    `aide status` — what the trail records, else what the cell holds.
+
+    Evidence is the latest decision line's note or the latest plain line
+    (a cell `aide progress compact` moved); a row with neither reads its
+    Decision / evidence cell, as every row did before the trail (issue
+    #474). Context is the latest `context:` line.
+    """
+    out: Dict[int, Dict[str, str]] = {}
+    for t in table_trail(lines, _HUMAN_GATES):
+        hits = resolve_gate_ref(t.key, gates)
+        if len({gate_hash(gates[i]) for i in hits}) != 1:
+            continue
+        rec = out.setdefault(hits[0], {})
+        if _REWORDED_TRAIL_RE.match(t.body):
+            continue
+        c = _CONTEXT_TRAIL_RE.match(t.body)
+        if c:
+            rec["context"] = c.group("text").strip()
+            continue
+        d = _DECISION_TRAIL_RE.match(t.body)
+        if d:
+            if d.group("evidence"):
+                rec["evidence"] = d.group("evidence").strip()
+            continue
+        rec["evidence"] = t.body
+    for n, g in enumerate(gates):
+        if "evidence" in out.get(n, {}):
+            continue
+        cells = _split_row(lines[g.lineno - 1])
+        cell = cells[3] if len(cells) == 4 else ""
+        if cell not in _EMPTY_CELL and not _is_trail_pointer(cell):
+            out.setdefault(n, {})["evidence"] = cell
+    return out
 
 
 def outcome_targets(lines: List[str]) -> List[OutcomeTarget]:
@@ -8362,6 +8609,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     errors.extend(gate_errors)
     warnings.extend(gate_ref_warnings)
     warnings.extend(capability_warnings(lines, config.get("validation") or {}))
+    warnings.extend(long_cell_warnings(lines))
     # A withdrawn attestation is normal, not a defect — the point is that it
     # stays visible. Retracting is append-only, so without a surfacing rule the
     # withdrawal would live only in one commit's diff, which is exactly the
@@ -9807,10 +10055,17 @@ def set_gate_status(text: str, index: int, kind: str,
                     note: Optional[str] = None, today: Optional[str] = None) -> str:
     """Resolve the *index*-th (1-based) row of the ``## Human gates`` table.
 
-    Writes the decision and the date into the Status cell, and *note* into the
-    last cell. Raises ``ValueError`` for a missing table or an out-of-range
-    index — a typo must not pass as a silent no-op, which is exactly how a
-    hand-edited gate went wrong before there was a verb for it.
+    Writes the decision and the date into the Status cell. *note* goes on a
+    trail line under the table — ``- gate-<hex> — ✅ Approved <date>: <note>``
+    — and the Decision / evidence cell keeps only a pointer to it, so the
+    table stays a table (issue #474). Text that cell already held is moved
+    to a trail line of its own first, verbatim, never overwritten. A gate
+    with no ID (an empty Gate cell) has no trail key, so its note is written
+    into the cell as before.
+
+    Raises ``ValueError`` for a missing table or an out-of-range index — a
+    typo must not pass as a silent no-op, which is exactly how a hand-edited
+    gate went wrong before there was a verb for it.
     """
     lines = text.splitlines()
     gates = human_gates(lines)
@@ -9819,22 +10074,91 @@ def set_gate_status(text: str, index: int, kind: str,
     if not 1 <= index <= len(gates):
         raise ValueError(f"there are {len(gates)} human gate(s); {index} is out of range")
     gate = gates[index - 1]
-    if note and ("|" in note or "\n" in note or "\r" in note):
+    gid = gate_ids(gates)[index - 1]
+    if note and ("\n" in note or "\r" in note):
         raise ValueError(
-            "the note may not contain '|' or a line break — either breaks the "
-            "row's shape, and a gate row the parser cannot read stops being a "
-            "gate: `aide check` fails and `aide claim` holds every item until "
-            "someone repairs it")
+            "the note may not contain a line break — it is written as one "
+            "trail line, and a break would end it mid-note")
+    if note and gid is None and "|" in note:
+        raise ValueError(
+            "the note may not contain '|' — a gate with an empty Gate cell has "
+            "no ID to key a trail line by, so the note goes into its last cell, "
+            "and a '|' there breaks the row's shape: a gate row the parser "
+            "cannot read stops being a gate, `aide check` fails and `aide "
+            "claim` holds every item until someone repairs it")
     icon = {"approved": "✅ Approved", "declined": "❌ Declined"}[kind]
     import datetime as _dt
     stamp = today or _dt.date.today().isoformat()
     i = gate.lineno - 1
     cells = _split_row(lines[i])
     cells[2] = f"{icon} ({stamp})"
-    if note:
+    trail: List[str] = []
+    if note and gid is None:
         cells[3] = note
+    elif note:
+        held = cells[3].strip()
+        if held not in _EMPTY_CELL and not _is_trail_pointer(held):
+            trail.append(f"- {gid} — {held}")
+        trail.append(f"- {gid} — {icon} {stamp}: {note}")
+        cells[3] = f"{TRAIL_POINTER} ({stamp})"
     lines[i] = "| " + " | ".join(cells) + " |"
+    if trail:
+        lines = append_trail(lines, _HUMAN_GATES, trail)
     return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+
+def reword_gate(text: str, index: int, question: str,
+                today: Optional[str] = None) -> Tuple[str, str, str]:
+    """Restate the *index*-th gate's question; ``(text, old ID, new ID)``.
+
+    The Gate cell becomes *question*, and a trail line keyed by the new ID
+    keeps the old one verbatim — ``- gate-<new> — reworded <date>, was:
+    <old question>`` — which is what lets the old ID resolve to the row
+    while the line stands (``HumanGate.aliases``, issue #474). Refuses, by
+    ``ValueError``: a decided gate, whose question is the record of what was
+    decided; an empty question, one holding ``|`` or a line break, one the
+    row already asks, and one another row asks.
+    """
+    lines = text.splitlines()
+    gates = human_gates(lines)
+    if not gates:
+        raise ValueError("no '## Human gates' table in progress.md")
+    if not 1 <= index <= len(gates):
+        raise ValueError(f"there are {len(gates)} human gate(s); {index} is out of range")
+    gate = gates[index - 1]
+    old_id = gate_ids(gates)[index - 1]
+    question = " ".join(question.split())
+    if not question:
+        raise ValueError("the new question is empty")
+    if "|" in question:
+        raise ValueError("the new question may not contain '|' — it would "
+                         "break the row's shape, and a gate row the parser "
+                         "cannot read holds every item")
+    if gate.kind in ("approved", "declined"):
+        raise ValueError(
+            f"{old_id or f'gate {index}'} is {'✅ approved' if gate.kind == 'approved' else '❌ declined'} "
+            f"— a decided gate's question is the record of what was decided; "
+            f"to ask something else, raise a new row")
+    if old_id is None:
+        raise ValueError(f"gate {index} has an empty Gate cell, so no ID to "
+                         f"keep resolving — write its question by hand")
+    new_hash = _gate_question_hash(question)
+    if new_hash == gate_hash(gate):
+        raise ValueError(f"{old_id} already asks that question")
+    if any(gate_hash(g) == new_hash for g in gates):
+        raise ValueError("another gate row already asks that question — two "
+                         "rows asking one question share an ID")
+    import datetime as _dt
+    stamp = today or _dt.date.today().isoformat()
+    i = gate.lineno - 1
+    cells = _split_row(lines[i])
+    cells[0] = question
+    lines[i] = "| " + " | ".join(cells) + " |"
+    new_id = gate_ids(human_gates(lines))[index - 1]
+    lines = append_trail(lines, _HUMAN_GATES,
+                         [f"- {new_id} — reworded {stamp}, was: {gate.text}"])
+    return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""),
+            old_id, new_id or "")
 
 
 #: The header a `## Human gates` table is written with when a verb has to
@@ -9942,11 +10266,15 @@ def cmd_gate(args: argparse.Namespace) -> int:
         if not gates and not unreadable:
             print("aide gate: no '## Human gates' table (nothing gated)")
             return 0
+        record = gate_trail_record(text.splitlines(), gates)
         for n, (g, gid) in enumerate(zip(gates, gate_ids(gates)), start=1):
             reach = g.reach
             mark = {"approved": "✅", "declined": "❌", "awaiting": "⏳"}.get(g.kind, "⚠")
             print(f"  {n}. {mark} {gid or '(no ID — empty Gate cell)'} "
                   f"{g.text} — blocks {reach}")
+            for label in ("context", "evidence"):
+                if record.get(n - 1, {}).get(label):
+                    print(f"       {label}: {record[n - 1][label]}")
         # Unnumbered: `approve <n>` counts readable gates only, and a row the
         # parser cannot read is not one a verb should write into.
         for lineno, problem in unreadable:
@@ -9961,6 +10289,11 @@ def cmd_gate(args: argparse.Namespace) -> int:
     if args.number is None:
         print(f"aide gate: '{args.action}' needs a gate number or ID — see "
               f"`aide gate list`", file=sys.stderr)
+        return 2
+    if args.action == "reword":
+        return _cmd_gate_reword(args, repo_root, config, ppath, text, gates)
+    if args.text is not None:
+        print("aide gate: --text belongs to `reword` alone", file=sys.stderr)
         return 2
     kind = "approved" if args.action == "approve" else "declined"
     try:
@@ -9986,6 +10319,36 @@ def cmd_gate(args: argparse.Namespace) -> int:
         # re-run, which would never commit it (issue #309).
         return _commit_or_restore(repo_root, config, f"aide gate {args.action}",
                                   "the decision", f"docs: human {handle} {kind}",
+                                  [_progress_rel(config)], before)
+    return 0
+
+
+def _cmd_gate_reword(args: argparse.Namespace, repo_root: Path, config,
+                     ppath: Path, text: str, gates: List[HumanGate]) -> int:
+    """`aide gate reword N|ID --text Q` — restate a live gate's question,
+    keeping its old ID resolving through the trail (issue #474)."""
+    if args.text is None:
+        print("aide gate: reword needs --text, the gate's new question",
+              file=sys.stderr)
+        return 2
+    if args.note is not None:
+        print("aide gate: reword takes no --evidence; the old question goes "
+              "on the trail line it writes", file=sys.stderr)
+        return 2
+    try:
+        index = gate_index_for_ref(args.number, gates)
+        updated, old_id, new_id = reword_gate(text, index, args.text)
+    except ValueError as exc:
+        print(f"aide gate: {exc}", file=sys.stderr)
+        return 2
+    before = _snapshot([ppath])
+    ppath.write_text(updated, encoding="utf-8")
+    print(f"{new_id}: reworded — {old_id} still names it while its "
+          f"`reworded` trail line stands")
+    if _commits_here(args.no_commit, repo_root, before):
+        return _commit_or_restore(repo_root, config, "aide gate reword",
+                                  "the reworded gate",
+                                  f"docs: human {old_id} reworded as {new_id}",
                                   [_progress_rel(config)], before)
     return 0
 
@@ -10036,6 +10399,8 @@ def cmd_progress(args: argparse.Namespace) -> int:
             f"argument number: invalid int value: '{args.number}'")
     if args.action == "rollup":
         return _cmd_progress_rollup(args)
+    if args.action == "compact":
+        return _cmd_progress_compact(args)
     if args.item is not None and args.action != "reword":
         print(f"aide progress {args.action}: --item belongs to `reword` alone "
               f"(reword --item NNN --text TEXT)", file=sys.stderr)
@@ -10169,6 +10534,181 @@ def cmd_progress(args: argparse.Namespace) -> int:
             return _commit_or_restore(repo_root, config, "aide progress set",
                                       "the status", message,
                                       [_progress_rel(config)], before)
+    return 0
+
+
+#: The cells `aide progress compact` may move, by table: ``{column: name}``.
+#: Never an identity cell (Gate, Capability, Target) — a gate's ID is a hash
+#: of its own — and never a cell a reader parses for more than its leading
+#: mark (Blocks, Objective, Attempted by, Package / Tool, Introduced by).
+_COMPACT_COLUMNS: Tuple[Tuple[_ProgressTable, int, Dict[int, str]], ...] = (
+    (_HUMAN_GATES, 2, {2: "Status", 3: "Decision / evidence"}),
+    (_CAPABILITIES, 3, {3: "Status", 4: "Notes"}),
+    (_OUTCOME_TARGETS, 3, {3: "Status", 4: "Evidence / follow-up"}),
+)
+
+
+def _short_status(cell: str) -> str:
+    """A long Status cell cut to its mark, and the first date it names.
+
+    The leading text up to the first bracket, dash or punctuation, so the
+    leading icon every reader decides on is kept as it was: `✅ Verified
+    (2026-08-29, this workstation: …)` is `✅ Verified (2026-08-29)`.
+    """
+    head = re.split(r"\s*[(—:;,]", cell, maxsplit=1)[0].strip()
+    if len(head) > 40:
+        head = " ".join(cell.split()[:2])
+    date = re.search(r"\b\d{4}-\d{2}-\d{2}\b", cell)
+    return f"{head} ({date.group(0)})" if date else head
+
+
+def _row_compacts(cells: List[str], key: Optional[str],
+                  columns: Dict[int, str]) -> List[int]:
+    """The columns `compact` would move out of one row — none without a key."""
+    if key is None:
+        return []
+    return [c for c in columns
+            if len(cells[c]) > LONG_CELL and not _is_trail_pointer(cells[c])]
+
+
+def _compact_rows(lines: List[str], table: _ProgressTable
+                  ) -> List[Tuple[int, List[str], str, List[int]]]:
+    """``(index, cells, key, columns)`` for every row of *table* `compact`
+    would change: its long Status, evidence or Notes cells."""
+    columns = next(t[2] for t in _COMPACT_COLUMNS if t[0] is table)
+    rows = [(i, cells) for i, cells, problem in _table_rows(lines, table)
+            if problem is None]
+    if table is _HUMAN_GATES:
+        keys = gate_ids(human_gates(lines))
+    else:
+        keys = [cells[0] or None for _, cells in rows]
+    out = []
+    for (i, cells), key in zip(rows, keys):
+        moved = _row_compacts(cells, key, columns)
+        if moved:
+            out.append((i, cells, key or "", moved))
+    return out
+
+
+def compact_progress(text: str) -> Tuple[str, List[str]]:
+    """Move every long non-identity cell of the three trail tables to the trail.
+
+    Each moved cell goes verbatim onto a trail line keyed to its row, in
+    column order, and the cell keeps a pointer: ``see trail`` for an
+    evidence or Notes cell, and for a Status cell its mark and first date
+    (``_short_status``), so its leading icon — what every reader decides on —
+    does not move. Returns ``(text, one message per moved cell)``; the text is
+    unchanged when nothing is long. Issue #474.
+    """
+    lines = text.splitlines()
+    messages: List[str] = []
+    for table, status_col, columns in _COMPACT_COLUMNS:
+        rows = _compact_rows(lines, table)
+        if not rows:
+            continue
+        trail: List[str] = []
+        for i, cells, key, moved in rows:
+            shown = key if len(key) <= 60 else key[:57] + "…"
+            for c in moved:
+                trail.append(f"- {key} — {cells[c]}")
+                messages.append(
+                    f"progress.md:{i + 1}: {table.name} '{shown}' — moved its "
+                    f"{columns[c]} cell ({len(cells[c])} characters) to the "
+                    f"trail")
+                cells[c] = (_short_status(cells[c]) if c == status_col
+                            else TRAIL_POINTER)
+            lines[i] = "| " + " | ".join(cells) + " |"
+        lines = append_trail(lines, table, trail)
+    if not messages:
+        return text, []
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else ""), messages
+
+
+def long_cell_warnings(lines: List[str]) -> List[str]:
+    """`aide check`'s findings on long cells in the three trail tables.
+
+    A **live** row — a gate ⏳ Awaiting, a capability not ✅ Verified, a
+    target ❓ Unverified, or any of them under a Status no reader knows —
+    whose identity cell is longer than ``LONG_CELL`` is a warning naming the
+    fix: ``aide gate reword`` for a gate, which keeps its ID resolving; a
+    shorter label for the others. A settled row's identity cell is the record
+    of what was decided or measured, and is not warned on (the spirit of
+    #338's records exemption). Every row `aide progress compact` would change
+    is counted into **one** warning per table rather than one per row.
+    """
+    out: List[str] = []
+    live_kinds = {_HUMAN_GATES.name: ("awaiting", None),
+                  _CAPABILITIES.name: ("unverified", None),
+                  _OUTCOME_TARGETS.name: ("unverified", None)}
+    gates = human_gates(lines)
+    for g, gid in zip(gates, gate_ids(gates)):
+        if g.kind in live_kinds[_HUMAN_GATES.name] and len(g.text) > LONG_CELL:
+            fix = (f"`aide gate reword {gid} --text …`, which keeps {gid} "
+                   f"resolving" if gid else "a shorter question")
+            out.append(
+                f"progress.md:{g.lineno}: human gate {gid}'s Gate cell is "
+                f"{len(g.text)} characters — a gate asks its question in one "
+                f"line, its context on a trail line under the table; restate "
+                f"it with {fix} (conventions.md §1 → human gates)")
+    for rows, table, what in (
+            (gated_capabilities(lines), _CAPABILITIES, "Capability"),
+            (outcome_targets(lines), _OUTCOME_TARGETS, "Target")):
+        for r in rows:
+            if r.kind in live_kinds[table.name] and len(r.text) > LONG_CELL:
+                out.append(
+                    f"progress.md:{r.lineno}: {table.name} row's {what} cell "
+                    f"is {len(r.text)} characters — it is the row's label and "
+                    f"its trail key; shorten it, and put the detail on a trail "
+                    f"line under the table keyed by the new label "
+                    f"(conventions.md §1)")
+    for table, _, _ in _COMPACT_COLUMNS:
+        n = len(_compact_rows(lines, table))
+        if n:
+            out.append(
+                f"progress.md: {table.name} table — {n} row(s) hold a cell "
+                f"over {LONG_CELL} characters that `aide progress compact` "
+                f"would move to the table's trail, leaving a pointer")
+    return out
+
+
+def _cmd_progress_compact(args: argparse.Namespace) -> int:
+    """``aide progress compact`` — move long cells of the three trail tables
+    to their trails, and commit it as every recording verb does (#474)."""
+    usage = "usage: aide progress compact [--no-commit]"
+    extra = [flag for flag, given in (
+        ("NUMBER", args.number is not None), ("STATUS", args.status is not None),
+        ("--stage", args.stage is not None),
+        ("--deliverable", args.deliverable is not None),
+        ("--criterion", args.criterion is not None),
+        ("--item", args.item is not None), ("--all", args.all_criteria),
+        ("--reason", args.reason is not None), ("--text", args.text is not None),
+        ("--evidence", args.evidence is not None),
+        ("--date", args.date is not None)) if given]
+    if extra:
+        print(f"{usage}\naide progress compact: takes --no-commit alone, not "
+              f"{', '.join(extra)}", file=sys.stderr)
+        return 2
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    progress_path = docs_dir(repo_root, config) / "progress.md"
+    if not progress_path.is_file():
+        print(f"error: {progress_path} not found", file=sys.stderr)
+        return 1
+    text = progress_path.read_text(encoding=_ENCODING)
+    updated, messages = compact_progress(text)
+    if not messages:
+        print(f"progress.md: no change — no Status, evidence or Notes cell is "
+              f"over {LONG_CELL} characters")
+        return 0
+    for msg in messages:
+        print(msg)
+    before = _snapshot([progress_path])
+    progress_path.write_text(updated, encoding="utf-8")
+    if _commits_here(args.no_commit, repo_root, before):
+        return _commit_or_restore(
+            repo_root, config, "aide progress compact", "the compaction",
+            "progress(aide): compact long table cells into their trails",
+            [_progress_rel(config)], before)
     return 0
 
 
@@ -13114,7 +13654,9 @@ def _queue_gate(args: argparse.Namespace) -> int:
     def key(cell: str) -> Optional[str]:
         return gate_hash(HumanGate(0, cell, [], None, False, None))
 
-    present = {gate_hash(g) for g in human_gates(lines)}
+    # A plan gate restated by `aide gate reword` still asks its question:
+    # its old hash is an alias of the row, and a re-run raises nothing.
+    present = {h for g in human_gates(lines) for h in (gate_hash(g), *g.aliases)}
     new = [r for r in rows if key(r[0]) not in present]
     before = _snapshot([ppath])
     if new:
@@ -13123,7 +13665,8 @@ def _queue_gate(args: argparse.Namespace) -> int:
     gates = human_gates(text.splitlines())
     ids = gate_ids(gates)
     for cell, blocks in rows:
-        gid = next(i for g, i in zip(gates, ids) if gate_hash(g) == key(cell))
+        gid = next(i for g, i in zip(gates, ids)
+                   if key(cell) in (gate_hash(g), *g.aliases))
         state = "raised" if (cell, blocks) in new else "already raised"
         print(f"{gid}: {state} — {cell} (blocks {blocks})")
     if new and _commits_here(args.no_commit, repo_root, before):
@@ -19616,6 +20159,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     if ppath.is_file():
         plines = ppath.read_text(encoding=_ENCODING).splitlines()
         gates = human_gates(plines)
+        record = gate_trail_record(plines, gates)
         for n, (g, gid) in enumerate(zip(gates, gate_ids(gates)), start=1):
             if g.kind == "approved":
                 continue
@@ -19624,6 +20168,11 @@ def cmd_status(args: argparse.Namespace) -> int:
                 g.kind, "⚠ unrecognised status")
             print(f"  gate {n}: {g.text}{f' ({gid})' if gid else ''} "
                   f"[blocks {reach}] — {label}")
+            # A decline's reason is what a re-plan starts from (issue #474):
+            # read from the trail, where the verb now writes it.
+            evidence = record.get(n - 1, {}).get("evidence")
+            if g.kind == "declined" and evidence:
+                print(f"    evidence: {evidence}")
         # Every table, not only gates: a row no reader can use is missing
         # from the lines above, and would otherwise be missing from here.
         for table, i, _, problem in _unreadable_rows(plines):
@@ -20464,6 +21013,9 @@ def build_parser() -> argparse.ArgumentParser:
             "its summary-table row and every Objective row naming it "
             "(--stage N), or into those of every stage, up or down; it moves "
             "no bullet\n"
+            "compact: move each long cell of the Human gates, "
+            "Environment-Gated Capability Verification and Outcome targets "
+            "tables to a trail line under its table\n"
             "\n"
             "The rollup, applied by set and read by `aide check`: a stage is "
             "\u2705 when every deliverable bullet in it is \u2705 or \u274c "
@@ -20636,10 +21188,23 @@ def build_parser() -> argparse.ArgumentParser:
             "each cell it writes, and commits progress.md as set does; with "
             "every cell already its rollup it writes nothing and exits 0. It "
             "refuses, exit 1, a stage with no section in progress.md, and, "
-            "exit 2, any argument but --stage and --no-commit."))
+            "exit 2, any argument but --stage and --no-commit.\n"
+            "\n"
+            "compact moves every Status, Decision / evidence, Notes or "
+            f"Evidence / follow-up cell longer than {LONG_CELL} characters, "
+            "verbatim, "
+            "onto a trail line under its table keyed to its row \u2014 a "
+            "gate's by its gate-<hex> ID, a capability's or a target's by its "
+            "first cell \u2014 and leaves the cell `see trail`, or for a "
+            "Status cell its leading mark and the first date it names. It "
+            "never changes a Gate, Capability or Target cell, and skips a "
+            "gate row with an empty Gate cell. It prints each cell it moves "
+            "and commits progress.md as set does; with no cell that long it "
+            "writes nothing and exits 0. It refuses, exit 2, any argument "
+            "but --no-commit."))
     p_prog.add_argument("action",
                         choices=["set", "accept", "amend", "retract", "reword",
-                                 "reopen", "rollup"])
+                                 "reopen", "rollup", "compact"])
     p_prog.add_argument("number", type=_progress_number, nargs="?", default=None,
                         help="item number (set, reopen) | stage number "
                              "(every other action; none for reword --item or rollup)")
@@ -20695,14 +21260,41 @@ def build_parser() -> argparse.ArgumentParser:
     p_prog.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
     p_prog.set_defaults(func=cmd_progress, progress_parser=p_prog)
 
-    p_gate = sub.add_parser("gate", help="list / resolve human gates in progress.md")
-    p_gate.add_argument("action", choices=["list", "approve", "decline"])
+    p_gate = sub.add_parser(
+        "gate", help="list / resolve / reword human gates in progress.md",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "list:    every gate row with its ID, status and reach, and under "
+            "it the latest context and evidence its trail records, else its "
+            "Decision / evidence cell\n"
+            "approve: \u2705 Approved (date) in the Status cell\n"
+            "decline: \u274c Declined (date) in the Status cell\n"
+            "reword:  restate a live gate's question (--text)\n"
+            "\n"
+            "approve and decline with --evidence write the note on a trail "
+            "line under the table, `- gate-<hex> \u2014 \u2705 Approved "
+            "<date>: <note>`, and leave the Decision / evidence cell "
+            "`see trail (<date>)`; text the cell held is first moved to a "
+            "trail line of its own, verbatim. Without --evidence the cell is "
+            "left as it reads.\n"
+            "\n"
+            "reword writes the new question into the Gate cell, which gives "
+            "the gate a new ID, and appends `- gate-<new> \u2014 reworded "
+            "<date>, was: <old question>` to the trail. Every reader of a gate "
+            "ID takes the old ID for the row while that line stands. It "
+            "refuses, writing nothing, a \u2705 or \u274c gate, an empty "
+            "question, one holding '|', and one this row or another already "
+            "asks."))
+    p_gate.add_argument("action", choices=["list", "approve", "decline", "reword"])
     p_gate.add_argument("number", nargs="?", default=None, metavar="N|ID",
-                        help="the gate to resolve (approve/decline): its "
+                        help="the gate to resolve or reword: its "
                              "gate-<hex> ID, or its 1-based row as `aide gate "
                              "list` numbers it today")
     p_gate.add_argument("--evidence", "--reason", dest="note", default=None,
-                        help="decision note written into the gate's last cell")
+                        help="approve/decline: decision note, written on a "
+                             "trail line under the table")
+    p_gate.add_argument("--text", default=None,
+                        help="reword: the gate's new question (required)")
     p_gate.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
     p_gate.set_defaults(func=cmd_gate)
 
@@ -21505,6 +22097,8 @@ def register_git_subcommands(sub) -> None:
             "target not yet \u2705 Met, every retracted acceptance "
             "criterion and every progress.md table row no reader can use is "
             "printed too, so none of them lives only in one commit's diff. "
+            "A declined gate is printed with the evidence its trail records, "
+            "else its Decision / evidence cell. "
             "So is every item `aide progress reopen` sent back, and a "
             "retracted criterion or reopened item that has since been "
             "re-accepted or completed again says so. "
@@ -21650,7 +22244,7 @@ def register_git_subcommands(sub) -> None:
 #: The verbs, by action, that write a document and then commit it through
 #: `_commits_here` — ``None`` for every action of the verb.
 _RECORDING_ACTIONS: Dict[str, Optional[Tuple[str, ...]]] = {
-    "gate": ("approve", "decline"),
+    "gate": ("approve", "decline", "reword"),
     "progress": None,
     "insights": ("add", "tick", "archive"),
     "ledger": ("abandon",),

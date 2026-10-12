@@ -207,7 +207,8 @@ Acceptance box. Such goals go in the **Outcome targets** table below.
 `## Outcome targets` section, one row per measured goal, its Target cell never
 empty and its Objective cell naming the `G<n>` objectives it gates — one
 naming none gates none. Status is table-local (like the env-gated verification table's): `❓ Unverified` until
-measured, then `✅ Met (date, evidence)` or `❌ Not met (result → follow-up)`.
+measured, then `✅ Met (date)` or `❌ Not met (date)`, the evidence — or the
+measured result and its follow-up — on the table's trail.
 Semantics
 *(aide progress, aide check, aide status)*:
 
@@ -221,6 +222,32 @@ Semantics
   deliverables then enter through the queue, never by retro-editing a closed
   stage's deliverable list; a maintenance queue adding its items under the
   maintenance stage (§1 → `roadmap.md`) is that route, not a retro-edit.
+
+**The three optional tables hold labels; each one's trail is the record.**
+Outcome targets, Human gates (§1 → Human gates) and Environment-Gated
+Capability Verification (§1 → Environment-gated capabilities) keep every cell
+a short label or a pointer, and put the detail on a **trail**: bullets
+directly under the table, one entry each, keyed to a row.
+
+- **The key.** A gate's line is keyed by its ID, `- gate-3fa1 — …`. A
+  target's or a capability's is keyed by the row's first cell, exactly as
+  written: `- <Target cell> — ✅ Met 2026-10-12: <evidence>`.
+- **A Status cell keeps its leading icon**, which is all any reader decides
+  on, and the date: `✅ Met (2026-10-12)`. The evidence, the host, the
+  measured result go on the trail line.
+- **A correction appends a line**, and the earlier one stays as written.
+- **The width of every row stays.** A trail is bullets, never a column, so
+  an old table reads as it did, and a row with no trail line is read from
+  its cells.
+- **A long cell is over 150 characters.** `aide check` warns on a long
+  Gate, Capability or Target cell in a live row — ⏳ Awaiting, ❓ Unverified,
+  or a Status no reader knows — and names the fix. A settled row's is not
+  warned on. Every row whose Status, evidence or Notes cell is long counts
+  toward one warning per table, which names `aide progress compact`; `aide
+  progress -h` states what it moves.
+- **A label changed by hand re-keys nothing.** Trail lines under the old
+  first cell stay as written; write the next one under the new label. A
+  gate is restated with `aide gate reword`, which keeps its ID.
 
 #### Rationale
 
@@ -420,3 +447,24 @@ Semantics
   living only in one commit's diff. `aide progress -h` states all of this.
 - **A range spanning more than 50** is read as a typo and contributes only
   its endpoints.
+- **Why a trail, not a longer cell or a linked file (#474, from #170).** The
+  overview had stopped reading at a glance: Gate cells up to 1.8 KB, and
+  capability Notes and target Evidence cells up to 2.3 KB, in the two
+  consumers. A cell is read across a row, so its length is the table's; a
+  bullet under the table is read down the page, where length costs nothing
+  the table pays for. A sidecar file was the other option, and moves the
+  record away from the row it qualifies.
+- **Why the first cell keys a target and a capability.** No verb writes
+  their rows and nothing cites them by an ID, so a hash would be an ID with
+  nothing to resolve it; the first cell is what the reader already sees.
+  It costs a re-key when a label is reworded, which is rare and is a hand
+  edit to the row anyway.
+- **Why 150 characters.** Measured over both consumers' tables (66 rows,
+  2026-10-12): every Capability cell was 26–53 characters and every Target
+  92–142 bar one of 290, while every Gate cell was 201–1781; among the cells
+  `compact` moves, one-line notes ran 28–142 and prose from 166 to 2347. The
+  threshold sits above every label and below every prose cell.
+- **Why settled rows are counted, not warned on.** A decided gate or a met
+  target is a record, and #338 keeps a record out of the warnings it cannot
+  act on. Compacting it is mechanical and changes no identity cell, so one
+  line per table names the verb; one per row would bury the live warnings.

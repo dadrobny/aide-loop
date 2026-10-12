@@ -136,6 +136,62 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.49.0] — 2026-10-12
+
+### Added
+
+- **The Human gates, Environment-Gated Capability Verification and Outcome
+  targets tables keep short cells, and each grows a trail (issue #474).** A
+  trail is bullets directly under the table, one entry each, keyed to a
+  row: a gate by its `gate-<hex>` ID, a capability or a target by its first
+  cell as written (`- <cell> — <entry>`). A correction appends a line. No
+  table changes width and no reader changes what it decides on, so a table
+  written before the trail reads as it did and passes `aide check`. The
+  contract is §1 → Human gates, Environment-gated capabilities and
+  `progress.md` → Outcome targets; first-cell keys were chosen over a hash
+  for capabilities and targets because no verb writes those rows and
+  nothing cites them by ID.
+- **`aide gate approve|decline --evidence` writes the note to the trail**,
+  `- gate-<hex> — ✅ Approved <date>: <note>`, and leaves the Decision /
+  evidence cell `see trail (<date>)`; text the cell already held is moved to
+  a trail line first, verbatim, where 2.48.1 overwrote it. A note may now
+  hold `|`. `aide gate list` prints each gate's latest context and evidence
+  under it, and `aide status` a declined gate's evidence — from the trail,
+  else from the cell.
+- **`aide gate reword N|ID --text QUESTION`** restates a live gate's
+  question and appends `- gate-<new> — reworded <date>, was: <old question>`
+  to the trail. Every reader of a gate ID — `gate`, `check`'s citation
+  check, evidence annotations, `merge`, `claim`, `queue gate`'s re-run —
+  takes the old ID for the row while that line stands. It refuses a ✅ or ❌
+  gate.
+- **`aide progress compact`** moves each Status, Decision / evidence, Notes
+  or Evidence / follow-up cell over 150 characters of the three tables onto
+  a trail line, verbatim, and leaves `see trail` (a Status cell keeps its
+  mark and first date). It never touches a Gate, Capability or Target cell,
+  prints what it moved and commits progress.md as `set` does, putting it
+  back on a failed commit.
+- **`aide check` warns on a long cell.** A live row's Gate, Capability or
+  Target cell over 150 characters is one warning naming the fix (`aide gate
+  reword` for a gate); a settled row's is not warned on. The rows `compact`
+  would change are one warning per table. 150 is measured: over both local
+  consumers' 66 rows, every Capability and Target label was 26–142
+  characters bar one of 290, and every Gate cell 201–1781.
+- **progress template 2.** The three optional tables' guidance names the
+  trail and shows one example bullet under each; the capability and target
+  Status examples lose their evidence parenthetical. `aide check` reports a
+  `progress.md` on template 1. To follow it, run `python
+  .aide/scripts/aide.py progress compact` and review its commit; restate
+  each live gate the check names with `aide gate reword`; then set the
+  document's `<!-- aide-template: progress 1 -->` line to `progress 2`.
+  Nothing else is required: an uncompacted document still passes.
+
+### Changed
+
+- The `aide-human-gates`, `aide-progress-file` and `aide-item-specs` skills
+  deliver the trail rules, with pins. `core/AGENT-CONTEXT.md`'s verb list
+  names `progress compact` and `gate reword`, so the always-on floor moves
+  from 9,657 to 9,676 content bytes.
+
 ## [2.48.1] — 2026-10-12
 
 ### Fixed

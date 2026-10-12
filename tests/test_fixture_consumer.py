@@ -1108,6 +1108,75 @@ def test_a_gate_is_cited_and_resolved_by_its_id_across_a_renumbering(
     assert f"{gid} names no human gate" in capsys.readouterr().out
 
 
+def test_a_gate_reworded_by_its_verb_keeps_its_citations_and_its_trail(
+        aide, consumer: Path, capsys):
+    """Issue #474: the decision note goes on a trail line under the table,
+    and `gate reword` restates a live question without breaking the ID an
+    item spec cites — the reword the long-cell warning names."""
+    _raise_a_gate(consumer)
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8")
+                        + "| Budget signed | 001 | ⏳ Awaiting | — |\n",
+                        encoding="utf-8")
+    _commit(consumer, "raise the budget gate")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "gate", "list"]) == 0
+    schema, budget = [w for w in capsys.readouterr().out.split()
+                      if w.startswith("gate-")]
+    (consumer / "docs" / "aide" / "items").mkdir(exist_ok=True)
+    (consumer / "docs" / "aide" / "items" / "002-note.md").write_text(
+        f"Held by {schema}.\n", encoding="utf-8")
+    _commit(consumer, "cite the schema gate")
+
+    assert aide.main(["--repo", str(consumer), "gate", "reword", schema,
+                      "--text", "Is the schema approved?"]) == 0
+    assert _clean(consumer)
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    # The old ID still resolves the row a person decides.
+    assert aide.main(["--repo", str(consumer), "gate", "approve", schema,
+                      "--evidence", "reviewed with the owner"]) == 0
+    assert _clean(consumer)
+    text = _git(["show", "HEAD:docs/aide/progress.md"], consumer).stdout
+    assert "| Is the schema approved? | 002 | ✅ Approved (" in text
+    assert "| ✅ Approved (" in text and "| see trail (" in text
+    assert "reworded" in text and "was: Schema approved" in text
+    assert re.search(r"^- gate-[0-9a-f]+ — ✅ Approved \d{4}-\d{2}-\d{2}: "
+                     r"reviewed with the owner$", text, re.M)
+    assert "| Budget signed | 001 | ⏳ Awaiting | — |" in text
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+
+def test_progress_compact_moves_long_cells_and_commits(aide, consumer: Path,
+                                                      capsys):
+    """Issue #474: an old document whose gate evidence is prose still passes
+    `check`, which counts what `compact` would move; `compact` moves it to
+    the trail verbatim, commits, and the check is quiet about it after."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    note = "Approved after the review: " + "the schema holds " * 12
+    progress.write_text(
+        progress.read_text(encoding="utf-8")
+        + "\n## Human gates\n\n"
+          "| Gate | Blocks | Status | Decision / evidence |\n"
+          "|------|--------|--------|---------------------|\n"
+          f"| Schema approved | 002 | ✅ Approved (2026-10-01) | {note.strip()} |\n",
+        encoding="utf-8")
+    _commit(consumer, "an old gate row with prose evidence")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "aide progress compact" in capsys.readouterr().out
+    head = _sha(consumer, "HEAD")
+
+    assert aide.main(["--repo", str(consumer), "progress", "compact"]) == 0
+    assert _sha(consumer, "HEAD~1") == head and _clean(consumer)
+    text = _git(["show", "HEAD:docs/aide/progress.md"], consumer).stdout
+    assert "| Schema approved | 002 | ✅ Approved (2026-10-01) | see trail |" in text
+    assert f" — {note.strip()}" in text
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "aide progress compact" not in capsys.readouterr().out
+
+
 def test_check_is_silent_on_a_declined_gate_whose_reach_holds_nothing_open(
         aide, consumer: Path, capsys):
     """Issue #396: a gate declined because scope was re-drawn, re-asked as a
@@ -1406,6 +1475,8 @@ def _raise_a_gate(repo: Path) -> None:
      "- [x] Both items land."),
     (["progress", "reword", "--item", "001", "--text", "The greeting."],
      "- 📋 The greeting. *(Item 001)*"),
+    (["gate", "reword", "1", "--text", "Is the schema approved?"],
+     "| Is the schema approved? | 002 | ⏳ Awaiting | — |"),
 ])
 def test_a_recording_verb_whose_commit_fails_exits_1_and_a_retry_commits(
         aide, consumer: Path, argv: list, committed: str):

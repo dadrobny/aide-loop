@@ -119,6 +119,9 @@ paths:
      - refuses over a box that is ticked, annotated, or already carries a correction trail
      - writes both documents or neither wherever `roadmap.md` mirrors the stage
      - A stage with no Validation / acceptance block in `roadmap.md` has no mirror to drift from
+     - The three optional tables hold labels; each one's trail is the record
+     - A Status cell keeps its leading icon
+     - A correction appends a line
 -->
 
 # `progress.md`
@@ -220,6 +223,15 @@ instead. **Marking a target `❌ Not met` is a *finding*, so route it like one:
 capture a `gap` with `aide insights add` alongside the edit.** Write the
 row with care: **a table row its reader cannot use is an `aide check`
 error** — a `|` inside a cell, usually.
+
+**The three optional tables hold labels; each one's trail is the record.**
+Outcome targets, Human gates and the capability table keep each cell short and
+put the detail on bullets directly under the table, keyed to a row: a target
+by its Target cell as written, `- <Target cell> — ✅ Met 2026-10-12:
+<evidence>`. **A Status cell keeps its leading icon** and the date — `✅ Met
+(2026-10-12)` — and the evidence or the measured result goes on the trail
+line. **A correction appends a line**; the earlier one stays. Long cells an
+older table already holds move with `aide progress compact`.
 
 **Correcting an attestation has verbs too, so it is never a hand edit either.**
 **The attestation is immutable; what is recorded about it is not** — the rule
