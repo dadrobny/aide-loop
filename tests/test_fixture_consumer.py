@@ -26,6 +26,7 @@ import codecs
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1411,6 +1412,37 @@ def test_a_recording_verb_whose_commit_fails_exits_1_and_a_retry_commits(
     assert _sha(consumer, "HEAD") != head and _clean(consumer)
     assert committed in _git(["show", "HEAD:docs/aide/progress.md"],
                              consumer).stdout
+
+
+def test_a_rollup_whose_commit_fails_exits_1_and_a_retry_commits(
+        aide, consumer: Path, capsys):
+    """`progress rollup` (issue #459) records as `set` does: a ✅ typed over
+    stage 1's 📋 bullets is rolled back down, a failed commit puts
+    progress.md back byte for byte, and the retry commits the rollup alone."""
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8")
+                        .replace("| 1 | Foundations | G1 | 📋 |",
+                                 "| 1 | Foundations | G1 | ✅ |"),
+                        encoding="utf-8")
+    _commit(consumer, "docs: a summary row typed over its rollup")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
+    assert "'aide progress rollup --stage 1'" in capsys.readouterr().out
+    before, head = progress.read_bytes(), _sha(consumer, "HEAD")
+    argv = ["progress", "rollup", "--stage", "1"]
+
+    assert _under_a_held_index_lock(aide, consumer, argv) == 1
+    assert progress.read_bytes() == before
+    assert _sha(consumer, "HEAD") == head and _clean(consumer)
+
+    assert aide.main(["--repo", str(consumer), *argv]) == 0
+    assert _sha(consumer, "HEAD~1") == head and _clean(consumer)
+    assert "| 1 | Foundations | G1 | 📋 |" in _git(
+        ["show", "HEAD:docs/aide/progress.md"], consumer).stdout
+    assert _git(["log", "-1", "--format=%s"], consumer).stdout.strip() == (
+        "progress(aide): roll up stage 1")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
 
 
 def test_a_gate_decision_outside_git_is_written_and_exits_0(
@@ -2996,6 +3028,114 @@ def test_a_maintenance_queue_is_served_before_the_stage_queue_behind_it(
     assert _branch(consumer).startswith("aide/004-")
 
 
+def test_a_maintenance_stage_reopens_and_closes_with_no_queue_end_need(
+        aide, consumer: Path, tmp_path: Path, capsys):
+    """Issue #454's "no engine change", exercised rather than assumed.
+
+    §1 → `roadmap.md`'s maintenance stage has no acceptance criteria and no
+    Objective row, and each maintenance queue adds its items' bullets under
+    it. `roadmap.md` holds the template's maintenance-stage block, and `check`
+    is clean over it before any batch. Two batches through one such stage: each `check --queue` is clean and
+    reports no queue-end need, and the stage reads 🚧 while its batch is open
+    and ✅ once it ships. The second batch wires a 📋 bullet under a ✅ stage:
+    no verb moves the stage then, so `check` errors until the batch runs
+    `aide progress rollup --stage 2 --no-commit` (issue #459), which writes
+    the 🚧 into the stage's two cells for the batch's own commit; run again
+    it is a no-op, exit 0, that commits nothing.
+    """
+    ddir = consumer / "docs" / "aide"
+    progress = ddir / "progress.md"
+    report = tmp_path / "report.json"
+    (ddir / "vision.md").write_text(
+        "# Fixture — Vision\n\n> The root document.\n\n"
+        "## Guiding principles\n\n- Small.\n\n## Goals & objectives\n\n"
+        "| Code | Objective |\n|---|---|\n| G1 | Foundations |\n\n"
+        "## Out of scope\n\n- Anything else.\n\n"
+        "## Success criteria\n\n- It greets.\n",
+        encoding="utf-8")
+    # The template's maintenance-stage block: a prose Deliverables line, no
+    # Validation / acceptance block, and no row in the coverage table.
+    (ddir / "roadmap.md").write_text(
+        "# Fixture — Roadmap\n\n> Derived from the vision.\n\n"
+        "| Objective | Delivered by |\n|---|---|\n| G1 Foundations | Stage 1 |\n\n"
+        "## Stage 1 — Foundations\n\n**Goal.** A greeter and a farewell.\n\n"
+        "**Deliverables.**\n\n- The greeter.\n- The farewell.\n\n"
+        "**Dependencies.** None.\n\n**Validation / acceptance.**\n\n"
+        "- Both items land.\n\n"
+        "## Stage 2 — Maintenance\n\n"
+        "**Goal.** Repairs to the shipped greeter.\n\n"
+        "**Deliverables.** Added to `progress.md` by each maintenance queue.\n\n"
+        "**Dependencies.** None.\n", encoding="utf-8")
+    for n in ("1", "2"):
+        assert aide.main(["--repo", str(consumer), "progress", "set", n, "done"]) == 0
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "| 1 | Foundations | G1 | ✅ |",
+        "| 1 | Foundations | G1 | ✅ |\n| 2 | Maintenance | — | 📋 |")
+        + "\n## Stage 2 — Maintenance — 📋\n\n**Deliverables.**\n",
+        encoding="utf-8")
+    _commit(consumer, "docs: the maintenance stage")
+    assert aide.main(["--repo", str(consumer), "queue", "tidy", "1"]) == 0
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "OK (0 warning(s))" in capsys.readouterr().out
+
+    def stage_2(icon: str) -> tuple:
+        return (f"| 2 | Maintenance | — | {icon} |",
+                f"## Stage 2 — Maintenance — {icon}")
+
+    def stage_2_reads(status: str) -> bool:
+        lines = progress.read_text(encoding="utf-8").splitlines()
+        return all(c in lines for c in stage_2(aide.STATUS_TO_ICON[status]))
+
+    for queue, item in ((2, 3), (3, 4)):
+        (ddir / "queue" / f"queue-{queue:03d}.md").write_text(
+            f"# Fixture — Work Queue {queue:03d} (maintenance)\n\n"
+            "> Insight-derived fixes for the maintenance stage.\n\n"
+            f"### Item {item:03d}: Fix {item}\nAn insight-derived fix.\n",
+            encoding="utf-8")
+        progress.write_text(progress.read_text(encoding="utf-8")
+                            + f"- 📋 Fix {item}. *(Item {item:03d})*\n",
+                            encoding="utf-8")
+        rollup = ["--repo", str(consumer), "progress", "rollup",
+                  "--stage", "2", "--no-commit"]
+        if stage_2_reads("complete"):
+            capsys.readouterr()
+            assert aide.main(["--repo", str(consumer), "check"]) == 1
+            assert ("'aide progress rollup --stage 2'"
+                    in capsys.readouterr().out)
+            head = _sha(consumer, "HEAD")
+            assert aide.main(rollup) == 0
+            assert stage_2_reads("in-progress")
+            assert _sha(consumer, "HEAD") == head and not _clean(consumer)
+        else:
+            before = progress.read_bytes()
+            assert aide.main(rollup) == 0
+            assert progress.read_bytes() == before
+        _commit(consumer, f"docs: maintenance queue {queue:03d}")
+        head = _sha(consumer, "HEAD")
+        assert aide.main(rollup[:-1]) == 0
+        assert _sha(consumer, "HEAD") == head and _clean(consumer)
+        if queue > 2:
+            assert aide.main(["--repo", str(consumer), "queue", "tidy",
+                              str(queue - 1)]) == 0
+        capsys.readouterr()
+        assert aide.main(["--repo", str(consumer), "check", "--queue",
+                          str(queue), "--report", str(report)]) == 0
+        assert "OK (0 warning(s))" in capsys.readouterr().out
+        findings = json.loads(report.read_text(encoding="utf-8"))["findings"]
+        assert not [f for f in findings if f["kind"].startswith("queue-end")]
+
+        assert aide.main(["--repo", str(consumer), "progress", "set",
+                          str(item), "in-progress"]) == 0
+        assert stage_2_reads("in-progress")
+        assert aide.main(["--repo", str(consumer), "progress", "set",
+                          str(item), "done"]) == 0
+        assert stage_2_reads("complete")
+        capsys.readouterr()
+        assert aide.main(["--repo", str(consumer), "check"]) == 0
+        assert "OK (0 warning(s))" in capsys.readouterr().out
+
+
 def test_claim_reports_none_left_when_every_open_item_is_already_claimed(
         aide, consumer: Path, capsys):
     """The queue is still open, but nothing in it is pickable. Distinct from
@@ -4022,8 +4162,17 @@ def test_merge_creates_the_ledger_from_the_installed_template_and_appends_a_row(
         aide, consumer: Path):
     """The whole path a consumer runs: no ledger, then one merge, then a row —
     with the file created from `.aide/templates/ledger.md` beside the script,
-    not from this repository's copy."""
+    not from this repository's copy.
+
+    The inbox carries an owner's decline whose reason cites item 001, and the
+    row still reads `normal`: only the maintenance tick's own `item NNN`
+    pointer makes an item insight-derived (issue #460)."""
     assert not (consumer / "docs" / "aide" / "ledger.md").exists()
+    inbox = consumer / "docs" / "aide" / "insights.md"
+    inbox.write_text(inbox.read_text(encoding="utf-8") + (
+        "- [x] defect — the banner wraps *(2026-08-22)* "
+        "→ declined: superseded by item 001\n"), encoding="utf-8")
+    _commit(consumer, "docs: an owner's decline naming an item")
     assert _claim(aide, consumer) == 0
     _do_the_work(consumer)
 
@@ -5582,6 +5731,150 @@ def test_reword_replaces_a_wrapped_roadmap_bullet_whole(aide, consumer: Path):
     assert roadmap.splitlines()[-2:] == [
         "- Both items merge to main.",
         "- Target: the greeter answers in under a millisecond."]
+
+
+def test_a_roadmap_backlog_ends_the_last_stage_and_closes_its_inbox_entries(
+        aide, consumer: Path, capsys):
+    """Issue #455's "no engine change", exercised rather than assumed.
+
+    §1 → `roadmap.md`'s optional `# Backlog` sits after the last stage. Every
+    stage reader ends a section at a `#` heading, so the Backlog's bullets
+    never join stage 1's Validation / acceptance block: `check` stays clean
+    (no acceptance-count drift, no coverage warning) and `reword` lines the
+    one box up with the one criterion and leaves the Backlog alone. Its
+    `insight <ID>` citation is read like any other — a dangling one errors —
+    and both owner closes §1 → `insights-triage.md` adds, `→ roadmap
+    Backlog` and `declined: …`, take an entry out of `insights list --open`.
+    """
+    ddir = consumer / "docs" / "aide"
+    gap = _insight_id(aide, consumer, "nothing checks the farewell")
+    defect = _insight_id(aide, consumer, "greet() does not strip whitespace")
+    roadmap = ddir / "roadmap.md"
+    backlog = ("\n---\n\n# Backlog\n\n"
+               "- A greeting in a second locale, once there is one.\n"
+               f"- A check on the farewell (insight {gap}).\n")
+    roadmap.write_text(
+        _ROADMAP.replace("# Fixture — Roadmap\n",
+                         "# Fixture — Roadmap\n\n> Derived from the vision.\n\n"
+                         "| Objective | Delivered by |\n"
+                         "|---|---|\n| G1 Foundations | Stage 1 |\n")
+        + backlog, encoding="utf-8")
+    _commit(consumer, "docs: the roadmap's Backlog")
+    assert aide.main(["--repo", str(consumer), "insights", "tick", gap,
+                      "--pointer", "roadmap Backlog", "--date", "2026-10-09"]) == 0
+    assert aide.main(["--repo", str(consumer), "insights", "tick", defect,
+                      "--pointer", "declined: callers strip their own input",
+                      "--date", "2026-10-09"]) == 0
+
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "insights", "list", "--open"]) == 0
+    out = capsys.readouterr().out
+    assert "nothing checks the farewell" not in out
+    assert "greet() does not strip whitespace" not in out
+
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "OK (0 warning(s))" in capsys.readouterr().out
+
+    assert aide.main(["--repo", str(consumer), "progress", "reword", "1",
+                      "--criterion", "1", "--text", "Both items merge to main."]) == 0
+    lines = roadmap.read_text(encoding="utf-8").splitlines()
+    assert lines.index("- Both items merge to main.") < lines.index("# Backlog")
+    assert lines[-len(backlog.splitlines()):] == backlog.splitlines()
+
+    roadmap.write_text(roadmap.read_text(encoding="utf-8").replace(
+        f"insight {gap}", "insight 2026-01-01-ffff"), encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 1
+
+
+@pytest.mark.parametrize("heading", ["# Backlog", "## Backlog"])
+def test_a_backlog_after_the_maintenance_stage_ends_it_as_the_template_ships(
+        aide, consumer: Path, capsys, heading: str):
+    """The layout `roadmap template 2` draws: the last stage is the
+    maintenance stage — no Deliverables list, no acceptance block — and the
+    Backlog follows it. Either heading level ends the stage, so no Backlog
+    bullet becomes one of its criteria (nor of stage 1's), and `check` is
+    clean over the pair."""
+    ddir = consumer / "docs" / "aide"
+    progress = ddir / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "| 1 | Foundations | G1 | 📋 |",
+        "| 1 | Foundations | G1 | 📋 |\n| 2 | Maintenance | — | 📋 |")
+        + "\n## Stage 2 — Maintenance — 📋\n\n**Deliverables.**\n",
+        encoding="utf-8")
+    roadmap = ddir / "roadmap.md"
+    roadmap.write_text(
+        "# Fixture — Roadmap\n\n> Derived from the vision.\n\n"
+        "| Objective | Delivered by |\n|---|---|\n| G1 Foundations | Stage 1 |\n"
+        + _ROADMAP.split("\n", 1)[1]
+        + "\n## Stage 2 — Maintenance\n\n"
+        "**Goal.** Repairs to the shipped greeter.\n\n"
+        "**Deliverables.** Added to `progress.md` by each maintenance queue.\n\n"
+        "**Dependencies.** None.\n\n---\n\n"
+        f"{heading}\n\n- A greeting in a second locale.\n"
+        "- A farewell in a second locale.\n", encoding="utf-8")
+    _commit(consumer, "docs: a maintenance stage, then the Backlog")
+
+    lines = roadmap.read_text(encoding="utf-8").splitlines()
+    at = lines.index(heading)
+    assert [end for _, end, _ in aide.stage_sections(lines)][-1] <= at
+    assert aide.roadmap_acceptance_bullets(lines, "2") is None
+    assert len(aide.roadmap_acceptance_bullets(lines, "1")) == 1
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "OK (0 warning(s))" in capsys.readouterr().out
+
+
+def test_an_entrys_wait_is_counted_from_the_queue_files_alone(
+        aide, consumer: Path, capsys):
+    """Issue #456: `insights list --open` and `status` count, per open entry,
+    the queue files created after its capture — read from each file's
+    `Created` line, so the installed engine needs no git history for it, and
+    an owner's close takes the entry out of the count.
+
+    The scaffold's queue 001 is dated 2026-08-24, after both open entries.
+    Queue 002 is dated, queue 003 is not: the defect (2026-08-20) and the gap
+    (2026-08-21) have each waited across all three. The entry captured on
+    queue 002's own day has waited across none.
+    """
+    ddir = consumer / "docs" / "aide"
+    (ddir / "queue" / "queue-002.md").write_text(
+        "# Fixture — Work Queue 002\n\n> **Created:** 2026-08-30\n",
+        encoding="utf-8")
+    (ddir / "queue" / "queue-003.md").write_text(
+        "# Fixture — Work Queue 003\n\n> A queue file with no date.\n",
+        encoding="utf-8")
+    inbox = ddir / "insights.md"
+    inbox.write_text(inbox.read_text(encoding="utf-8")
+                     + "- [ ] gap — the farewell has no docs *(2026-08-30)*\n",
+                     encoding="utf-8")
+    _commit(consumer, "docs: two more queues, one more entry")
+
+    def waits() -> dict:
+        capsys.readouterr()
+        assert aide.main(["--repo", str(consumer), "insights", "list",
+                          "--open"]) == 0
+        return {m.group(1): int(m.group(2)) for m in re.finditer(
+            r"— (.+?) \*\(.*?· open across (\d+) queues?$",
+            capsys.readouterr().out, flags=re.M)}
+
+    def waited_in_status() -> int:
+        capsys.readouterr()
+        assert aide.main(["--repo", str(consumer), "status", "--no-fetch"]) == 0
+        (line,) = [l for l in capsys.readouterr().out.splitlines()
+                   if l.startswith("  inbox: ")]
+        return int(re.search(r"; (\d+) open across 3 or more", line).group(1))
+
+    assert waits() == {"greet() does not strip whitespace": 3,
+                       "nothing checks the farewell": 3,
+                       "the farewell has no docs": 0}
+    assert waited_in_status() == 2
+
+    defect = _insight_id(aide, consumer, "greet() does not strip whitespace")
+    assert aide.main(["--repo", str(consumer), "insights", "tick", defect,
+                      "--pointer", "declined: callers strip their own input",
+                      "--date", "2026-10-09"]) == 0
+    assert "greet() does not strip whitespace" not in waits()
+    assert waited_in_status() == 1
 
 
 def test_reword_refuses_once_the_criterion_has_been_attested(aide, consumer: Path):

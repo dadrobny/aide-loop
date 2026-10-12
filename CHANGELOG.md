@@ -136,6 +136,311 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.47.3] — 2026-10-10
+
+### Fixed
+
+- **The rule against writing a root document directly is scoped to authoring
+  one (issue #468).** Since 2.47.2 (issue #461) §1 → `roadmap.md` and §1 →
+  `vision.md` name two writers, both the owner's: the create entry point
+  authors the document, and an amendment the owner agrees to is applied in
+  the owner's own session, the feedback loop's included. §5, the always-on
+  page and `aide-item-specs` still said "Do not write a root document
+  directly, however well the template shape is known", which read literally
+  binds the session applying that amendment. §5 now says "Do not author a
+  root document directly … ; an agreed amendment is applied in the owner's
+  session", pointing at the two §1 sections, with the provenance in its
+  `Rationale`; `aide-item-specs` and its pins follow. `core/AGENT-CONTEXT.md`
+  carries the same clause, and its heading reads "Root documents are
+  authored through their entry point", so the always-on floor moves from
+  9591 to 9657 content bytes. Nothing a consumer edits.
+
+## [2.47.2] — 2026-10-09
+
+### Fixed
+
+- **§1 → `roadmap.md` and §1 → `vision.md` name both of their writers
+  (issue #461).** §1 → `roadmap.md` said the document was "authored and
+  updated only through the create-roadmap entry point", and §1 →
+  `vision.md` that it was "authored only through the create-vision entry
+  point", while `aide-feedback-loop` step 6, since 2.41.0 (issues #392,
+  #359), applies an agreed amendment to either in the session and tells
+  the user not to send it through those entry points. Each opening now
+  says the entry point authors the document — create-roadmap also
+  re-stages it from a changed vision; create-vision replaces it only once
+  the owner confirms — and an amendment the owner agrees to is applied in
+  the owner's own session, the feedback loop's included; both land through
+  the merge policy's reviewed PR, and for `roadmap.md` both are held to the
+  started-stage freeze. The owner edits 2.44.0 and 2.45.0 routed "through
+  the create-roadmap entry point" follow suit. In §1 → `roadmap.md` adding
+  the maintenance stage, its one-time retitle and the Backlog's edits are
+  made "by either of the file's two writers", and the re-plan of a stage
+  behind a withdrawn one is simply the owner's decision. Where the queue's author
+  hands back for want of a maintenance stage (§1 →
+  `insights-maintenance-queue.md`, `queue-planner`, `aide-create-queue`,
+  `aide-queue-and-inbox`, their pins included), and where a `gap` is moved
+  into the Backlog (§1 → `insights-triage.md`, `aide-review-insights`), the
+  owner now makes the edit as an amendment to `roadmap.md`; `aide check`'s
+  second-maintenance-stage warning says the same. The
+  2.44.0 entry's "authored once through the roadmap entry point" is the
+  wording this release replaces. Nothing a consumer edits.
+
+## [2.47.1] — 2026-10-09
+
+### Fixed
+
+- **The ledger's `kind` reads only the maintenance tick, so an item a
+  decline or a decayed premise cites is no longer `maintenance` (issue
+  #460, follows #455).** `aide merge` and `aide ledger abandon` derived
+  `kind = maintenance` from any item number in a ticked `defect`, `gap` or
+  `automation` entry's pointer or trail, so an owner's decline citing what
+  superseded the entry — `declined: superseded by item 12` — marked item 12
+  `maintenance`, and inflated the maintenance share `aide ledger report`
+  draws. The engine now reads a pointer only where it is of the maintenance
+  tick's own form: it opens with item references — `item NNN`, `items 012,
+  013`, `item 012 and item 013`, `items 012-014` — and only those count; a
+  gloss may follow (`item NNN (what it fixed)`, `item NNN: …`), and a number
+  in it is never an item. A bare number continues the references only after
+  the plural `items`, so `item 216, 3 rewritten` reads item 216 alone; the
+  shape given up is a singular list, `item 012/013`, which reads item 012. Such a pointer is read on a **ticked** entry's
+  line or on a dated trail line, where `tick` writes the pointer on an entry already
+  ticked (a declined entry the owner later says to queue) and where
+  `resolve` keeps the other side's tick. A decline, any trail prose, and a
+  pointer that opens with prose and only mentions an item no longer count.
+  Checked against one consumer's inbox: every annotated tick still counts. **Decided:** a
+  decayed premise's `fixed by item 121` does not count either — the item
+  fixed the entry but was planned as something else, and `kind` exists so
+  that a small-by-design fix is not pooled with the rest. §1 →
+  `insights-maintenance-queue.md` states that the tick is the one record
+  that an item is insight-derived, §1 → `ledger.md`'s `kind` bullet says
+  which items it marks, with the reason in its Rationale, and `aide merge
+  -h` says the same under pin. **Retired:** 2.45.0's rule that "a
+  decline's reason names no item", from §1 → `insights-triage.md`,
+  `aide-review-insights` (prose and pin), `insights-triager`,
+  `queue-planner` and `aide-create-queue` — it covered one of the readings,
+  nothing enforced it, and the engine no longer reads a decline's reason,
+  so a reason may name the item that superseded the entry. `queue-planner`
+  step 7 and `aide-create-queue` carry the new rule under pin. Nothing a
+  consumer edits: a row already written keeps its `kind`.
+
+## [2.47.0] — 2026-10-09
+
+### Added
+
+- **`aide progress rollup [--stage N]` — a stage's cells from its bullets,
+  and the hand-written 🚧 retired (issue #459, follows #454).** A bullet
+  added under a stage moves no cell until a verb rolls the stage up, so a
+  maintenance batch that reopened a ✅ maintenance stage left its section
+  header and Stage summary row ✅ over the new 📋 bullet, and `aide check`
+  errored on both — inside the window the planner's own `check --queue`
+  runs in. 2.44.0 had the batch type the computed 🚧 itself, the one stage
+  cell §1 → `progress.md` let a role write. The new verb writes what the
+  rollup computes into stage N's header, its summary row and every
+  Objective row naming it — or every stage's, with no `--stage` — up or
+  down, prints each cell it writes, and commits `progress.md` as `set`
+  does (`--no-commit` too, and a failed commit puts the file back, exit 1);
+  with every cell at its rollup it is a no-op, exit 0. It moves no bullet,
+  leaves a withdrawn stage (❌ summary row) and a ❌ cell as they read, and
+  writes over a ⏸️ set by hand: once a bullet is added a computed ⏸️ and a
+  typed one read the same, and a maintenance stage that rolled up to ⏸️
+  over a deferred repair must reach the icon its rollup computes when the
+  next batch reopens it — 🚧 once any bullet has shipped or is in flight,
+  else 📋. §1 →
+  `insights-maintenance-queue.md` now has every maintenance batch run
+  `progress rollup --stage N --no-commit` after wiring its bullets and
+  commit the result with them; §1 → `progress.md` loses its exception and
+  says a hand-set ⏸️ stands until a verb moves a bullet of its stage or
+  `rollup` rolls the stage up. Every `aide check` finding that names a
+  stage header, summary row or Objective row against its rollup — the ✅
+  errors and the drift warnings alike, which said "set the cell to X" —
+  now names `aide progress rollup --stage N` as the fix, for an Objective
+  row the first stage it names that has deliverables and is not withdrawn;
+  a test runs the named command for each kind of cell and finds it cleared. Two keep
+  their remedies, because the rollup is not theirs to apply: a ⏸️ cell
+  over open work, which the owner defers bullet by bullet (§1 →
+  `progress.md`), and an Objective row whose every stage is withdrawn,
+  set to ❌, which `rollup` skips. `aide-create-queue`
+  requirement 8, `aide-queue-and-inbox` and `queue-planner` step 5 (and its
+  edit scope) carry the change under pin; `core/AGENT-CONTEXT.md`'s verb
+  list names `rollup`, so the always-on floor moves from 9584 to 9591
+  content bytes. Rejected: `check` reading a ✅ over a new 📋 bullet
+  as derivable, which leaves the file claiming ✅ over open work, and a verb
+  for wiring a bullet. The settings allow-list already covers every `aide`
+  sub-verb.
+- **`aide check` recognises the maintenance stage (issue #459).** The stage
+  titled exactly `Maintenance` (2.44.0) is now checked against §1 →
+  `roadmap.md`'s rules for it, each a warning naming the section: a second
+  stage of that title, in `roadmap.md` or in `progress.md`; a roadmap
+  coverage row or a `progress.md` Objective row naming it; another stage's
+  blocking Dependencies slot naming it, or its own naming any stage — the
+  slot the #282 forward-dependency warning reads, so an ordering sentence
+  after `None.` is not named; and Validation / acceptance bullets on it
+  while `progress.md` shows it at nothing but 📋. A started maintenance
+  stage is never named for its criteria: one retitled to `Maintenance` keeps
+  the criteria it was written with, and nothing in the file tells it from a
+  stage given criteria by mistake. The §1 → `roadmap.md` rationale's "left
+  until drift is seen" is replaced by why the engine now recognises the
+  stage. New `-h` sentences of `progress` and `check` are pinned in
+  `test_aide_help_pins.py`, guarded by the new
+  `test_aide_maintenance_stage.py`; `tests/test_fixture_consumer.py` drives
+  the reopen through the verb and its failed commit against an install.
+
+  **What a consumer edits:** nothing. A roadmap that breaks one of the
+  maintenance-stage rules now reads a warning, which never moves the exit
+  code.
+
+## [2.46.0] — 2026-10-09
+
+### Added
+
+- **An open insight's wait is visible, and an entry that has waited three
+  queues is the owner's decision (issue #456, parent #453).** `aide insights
+  list --open` prints each open entry's wait as `open across N queues` and
+  closes with a count of the entries at three or more; `aide status` gains
+  one `inbox:` line — open entries by type, and that count — where it said
+  nothing about the inbox before (`inbox: none` with no `insights.md`, which
+  `status` never creates). N is the number of queue files numbered from the
+  first whose `**Created:**` date is strictly later than the entry's capture
+  date: a queue created on the capture day does not count, and a queue file
+  with no `Created` line counts only when it is numbered after one that
+  does. The date is read from the queue file, never from git, so the figure
+  is the same in a shallow clone, in `local` mode and with no git at all,
+  and costs no spawn; a first-commit date was rejected for moving under a
+  rebase and needing history. §1 → `insights-triage.md` makes the triage
+  pass bring each entry open across three or more queues to the owner as a
+  decision — queue it, decline it, or, for a `gap`, move it to the roadmap's
+  Backlog (2.45.0) — and never pass it over again; three is a convention,
+  not an `aide.toml` key. §1 → `insights-maintenance-queue.md` stops the
+  queue's author passing such an entry over too: until the owner has said,
+  the author puts the decision to the owner where the queue is reviewed —
+  the closing summary its queue PR carries. In one consumer 21 gaps
+  dated across two weeks had sat through six or seven maintenance queues,
+  each pass-over recorded in a queue file and never on the entry. A trail
+  line per pass-over and an `aide check` age warning were rejected — the
+  count is derivable, and a warning only a decision clears is noise to an
+  unattended run. `aide-review-insights`, `insights-triager`,
+  `aide-create-queue`, `queue-planner`, `aide-queue-and-inbox` and
+  `aide-feedback-loop` carry the decision, under pin where they quote it;
+  the new `-h` sentences are pinned in `test_aide_help_pins.py`, and
+  `tests/test_fixture_consumer.py` drives both verbs against an install.
+  **What a consumer edits:** nothing. A queue file without a `Created` line
+  in its header (the queue template has carried one throughout) is counted
+  only after a dated one; add the line to such a file if its wait matters.
+
+## [2.45.0] — 2026-10-09
+
+### Added
+
+- **"Not now" has two homes, neither of them a holding list: the owner's
+  decline, and the roadmap's `# Backlog` (issue #455, parent #453).**
+  §1 → `insights-triage.md` gains a fourth judgement: the owner decides a
+  `defect`, `gap` or `automation` entry will not be pursued, and it is
+  ticked `--pointer "declined: <reason>"`, the claim staying the record;
+  the reason names no item, since the ledger reads an item number in a
+  ticked entry's pointer as the item the entry became and would count that
+  item `maintenance`. **Only the owner declines** — the triage pass and the queue's author
+  propose one, with its reason, where a person reads, since a decline is a
+  scope decision made at the queue boundary. §1 → `roadmap.md` adds an
+  optional `# Backlog` after the last stage for scope not yet ready to plan:
+  ideas only (never a defect, a status, a trail or a `→ Stage N`), a bullet
+  from the inbox citing `insight <ID>`, never queued from, leaving by
+  promotion into a new stage or by the owner's deletion, edited as the rest
+  of the file is and outside the started-stage freeze. The routing table's
+  `gap` row gains the Backlog as a second destination, by the owner, ticked
+  `→ roadmap Backlog`; `defect` and `automation` entries never go there.
+  §1 → `insights-maintenance-queue.md` lets a pass-over carry a proposal for
+  the owner, never a decision. In one consumer 62 entries were open, 21 of
+  them passed over in six or seven queues, with no way out for one the owner
+  had decided against; another consumer's ruleless backlog section had
+  drifted, and its `Carried defects` list — nine entries ticked out of the
+  inbox — had three fixed unrecorded, one absorbed and five still open but
+  invisible to `insights list --open` six weeks later. No verb or engine
+  change: `tick` already takes any pointer, every stage reader ends a
+  section at a `#` heading, and `check` already resolves citations under
+  `docs/aide/`; `tests/test_fixture_consumer.py` drives a roadmap with a
+  Backlog through `check`, `progress reword` and both closes. The routing
+  table moves in `aide-create-queue` and `aide-review-insights` under pin;
+  `aide-queue-and-inbox`, `queue-planner`, `aide-create-roadmap`,
+  `insights-triager` and `aide-feedback-loop` say who proposes and who
+  decides.
+- **The optional `# Backlog` block joins roadmap template 2** (introduced in
+  2.44.0; the template number does not move again, since the two releases
+  ship back to back). **What a consumer edits:** nothing is required. A
+  consumer already on `roadmap 2` keeps its `aide-template` line; one still
+  on template 1 sets it to `roadmap 2`, as 2.44.0 says. A consumer that
+  keeps a backlog-like section in `roadmap.md` renames its heading to
+  `# Backlog`, moves any defect in it back to the inbox (`aide insights
+  add defect …`), and moves any policy, status or stage annotation out to
+  the document that owns it.
+
+## [2.44.0] — 2026-10-09
+
+### Added
+
+- **The maintenance queue has a stage home: an optional, standing
+  maintenance stage (issue #454, parent #453).** §1 → `roadmap.md` defines
+  it. It is the stage titled exactly `Maintenance` (`## Stage N —
+  Maintenance`, as the template writes it), at most one per roadmap,
+  authored once through the roadmap entry point. Its Deliverables are the
+  maintenance queues' items, which the roadmap does not list, so it is the
+  one exception to "never a bullet added to a started stage", and only in
+  `progress.md`. It has no blocking Dependencies and no stage's blocking
+  slot names it; no Objective row names it; and it has no acceptance
+  criteria of its own, so `aide check --queue` never asks for a `Validate
+  stage N` item for it. It reopens and closes by rollup. A stage queue never
+  takes it as its next stage, and a stage appended after it is ordinary. A
+  maintenance stage written earlier with criteria keeps them.
+  §1 → `insights-maintenance-queue.md` says a maintenance item's bullet goes
+  under it, never under the feature stage whose module it touches. It also
+  says that a batch reopening a ✅ maintenance stage writes the 🚧 the
+  rollup computes into its section header and Stage summary row in the same
+  commit, because no verb moves a stage when a bullet is added and `aide
+  check` errors on a ✅ cell over a 📋 bullet. §1 → `progress.md` names that
+  🚧 as the one hand-written stage cell, gives the stage's section no
+  Acceptance block and an empty Deliverables block until its first batch,
+  and puts `—` in its summary row's Objectives cell. The evidence came from
+  two consumers. One ran a single standing stage through six closes with its
+  stage boxes attested only at the first two, and filed a repair under an
+  unrelated feature stage to avoid reopening it without validation. The
+  other made a stage per batch, each needing an owner pass. No engine
+  change: `tests/test_fixture_consumer.py` holds a template-shaped
+  maintenance stage in `roadmap.md`, checks it clean, and drives it through
+  two batches. `aide-create-queue` (requirements 1 and 8 and the
+  maintenance-queue paragraph), `queue-planner`, `aide-create-roadmap`,
+  `aide-create-progress`, `/aide-run-roadmap` and the `aide-queue-and-inbox`
+  section skill say the same, under pin where they quote it.
+- **`roadmap template 2`.** The roadmap template ends with an optional
+  maintenance-stage block: a Goal, a Deliverables line saying the
+  maintenance queues add them to `progress.md`, `Dependencies. None.`, and a
+  pointer to §1 → `roadmap.md`. **What a consumer edits:** `aide check`
+  warns that `docs/aide/roadmap.md` was created from template 1; set its
+  `aide-template` line to `roadmap 2`. A consumer running maintenance queues
+  adds the maintenance stage once through `/aide-create-roadmap`, titled
+  `Maintenance` and appended after its last stage, with a Stage summary row
+  (`—` for Objectives) and an empty section in `progress.md`. A consumer
+  that already runs one standing maintenance stage under another title
+  retitles it `Maintenance` instead, in `roadmap.md` and in its
+  `progress.md` header and summary row — the one edit the freeze allows a
+  started stage's heading; its boxes stay as they are. Earlier per-batch
+  maintenance stages stay feature stages, and the next batch goes under a
+  new `Maintenance` stage. A consumer with no maintenance queues adds
+  nothing.
+
+### Changed
+
+- **A planner whose inbox warrants a maintenance queue now hands back when
+  the roadmap has no maintenance stage, so an unattended run stops until
+  the owner adds one.** Until 2.43.1 the queue planner wrote the maintenance
+  queue anyway and wired its items under whichever stage it judged right. Now
+  it writes neither queue, names the entries that warrant one, and hands
+  back, as it does for any answer that changes `roadmap.md`;
+  `/aide-run-roadmap` discards the empty queue branch and stops on it.
+  Nothing else triggers it: a boundary with no entry that warrants a
+  maintenance queue writes its stage queue as before. **What a consumer
+  does:** a project that runs maintenance queues adds the maintenance stage
+  (above) before its next queue boundary, or answers the first hand-back by
+  adding it.
+
 ## [2.43.1] — 2026-10-09
 
 ### Fixed

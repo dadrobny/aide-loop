@@ -133,11 +133,12 @@ FLOOR_PINS = {
         "a second truth that will disagree with the first",
         "Move it, do not copy it.",
     ],
-    # Root documents go through their entry point
+    # Root documents are authored through their entry point
     "conventions/5-clarify-mode.md": [
         "carry the safeguards a free-hand file write skips",
-        "Do not write a root document directly, however well the template "
+        "Do not author a root document directly, however well the template "
         "shape is known",
+        "an agreed amendment is applied in the owner's session",
         "whatever `loop.clarify` says",
         "the mandatory sections are grounded in the human's answers",
         "Present the result as a draft",

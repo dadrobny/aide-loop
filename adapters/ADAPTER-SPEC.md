@@ -70,7 +70,7 @@ entirely — a runtime that does not express one simply has no cell here:
 |---|---|---|---|
 | reviewer | **T2** | `claude-sonnet-5-5, high` | reads one item's diff adversarially, once per run, concurrent with that run's first validation; produces findings, merges nothing |
 | spec-reviewer | **T3** | `claude-opus-5-5, high` | reads all of a queue's specs for the cross-item conflicts `aide check --queue` cannot decide |
-| insights-triager | **T2** | `claude-sonnet-5-5, high` | reads the open insight inbox and judges each entry's route, duplicate, decayed premise or wrong type; returns a plan, writes nothing |
+| insights-triager | **T2** | `claude-sonnet-5-5, high` | reads the open insight inbox and judges each entry's route, duplicate, decayed premise or wrong type, and proposes the owner's declines; returns a plan, writes nothing |
 
 Recon/claim is **not a role** — it is deterministic (`aide claim`), so no agent and
 no tier. The **Claude** column is the reference binding — **T3→Opus, T2→Sonnet**
@@ -150,6 +150,7 @@ adapter that omits the reviewer still gets everything a script can decide.
 **insights-triager** at **T2** for the judgement half of the inbox triage
 (`conventions.md` §1 → `insights-triage.md`): one pass over every open entry,
 reporting each one's route and any duplicate, decayed premise or wrong type,
+any decline or Backlog move to propose to the owner,
 the fold a `knowledge` entry needs and the body a `framework` hand-over would
 carry. It writes nothing — the ticks, trail lines and folds stay with the
 entry-point that dispatched it, which applies them through `aide insights` and
