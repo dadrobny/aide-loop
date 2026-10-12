@@ -53,8 +53,10 @@ next. Both also refuse a setting this machine cannot meet: `git.mode =
 "auto-merge"` or `"pr"` with no remote named `origin`, say, is an error naming
 the two ways out — add the remote, or set `mode = "local"`. `env` adds `gh`'s
 login, the interpreter the engine prints in its suggestions, and the venv.
-A project that keeps no venv sets `venv = ""` under `[python]` in `aide.toml`
-and `env` leaves that line out; otherwise `interpreter = "python3.12"` there
+A project that keeps no venv leaves that line out of `env`: unset, `venv`
+under `[python]` in `aide.toml` is `.venv` only beside a Python dependency
+manifest at the repository root (`pyproject.toml`, `setup.py`, `setup.cfg`,
+`Pipfile`, `requirements*.txt`), and `venv = ""` says so outright; otherwise `interpreter = "python3.12"` there
 pins what `--bootstrap` builds the venv from, when the dependency closure
 resolves on a narrower Python range than the project declares, and
 `bootstrap` is what it installs with — `pip install -e .[dev]` unless set, or

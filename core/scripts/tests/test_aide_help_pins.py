@@ -209,6 +209,14 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "line is left out, and --bootstrap refuses",
          ("test_aide_env_report::test_an_empty_venv_setting_leaves_the_venv_line_out",
           "test_aide_env_report::test_bootstrap_refuses_when_no_venv_is_kept")),
+        # `venv_setting`: unset follows `has_python_manifest` (issue #450).
+        ("Unset, [python] venv is .venv where the repository root holds a "
+         "Python dependency manifest (pyproject.toml, setup.py, setup.cfg, "
+         "Pipfile or a requirements*.txt) and no venv where it holds none; a "
+         "value that is set is checked whatever the root holds",
+         ("test_aide_env_report::test_an_unset_venv_with_no_manifest_keeps_no_venv",
+          "test_aide_env_report::test_an_unset_venv_beside_a_manifest_is_dot_venv_and_checked",
+          "test_aide_env_report::test_a_kept_venv_that_is_missing_is_refused")),
         # `cmd_env`: `--bootstrap` returns on `env_report` / `_bootstrap_venv`
         # and never reaches `_print_dependency_report`.
         ("--bootstrap builds the venv where it is missing or stale and "

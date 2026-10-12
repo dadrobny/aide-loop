@@ -279,7 +279,9 @@ DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
     # from an ambient conda, a source build that failed on cmake, and an
     # `env` that still said OK (issue #166). `bootstrap` is what the build
     # installs with, read by its first word in `bootstrap_argv` (issue #378).
-    "python": {"venv": ".venv", "bootstrap": "pip install -e .[dev]",
+    # `venv` has no default here: unset, it follows the tree (`venv_setting`,
+    # issue #450), which a default merged in would hide.
+    "python": {"bootstrap": "pip install -e .[dev]",
                "test_command": "python -m pytest", "import_check": "",
                "interpreter": ""},
     "git": {"mode": "auto-merge", "main_branch": "main", "branch_prefix": "aide/"},
@@ -14080,26 +14082,54 @@ def _queue_restack(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 # git layer — claim / merge / env
 # --------------------------------------------------------------------------- #
+#: The files at the repository root that say a project has Python
+#: dependencies to install, so a venv to keep (issue #450). `requirements`
+#: is a glob: `requirements.txt`, `requirements-dev.txt`, ….
+PYTHON_MANIFESTS = ("pyproject.toml", "setup.py", "setup.cfg", "Pipfile",
+                    "requirements*.txt")
+
+
+def has_python_manifest(repo_root: Path) -> bool:
+    """Does *repo_root* hold one of `PYTHON_MANIFESTS`?"""
+    return any(path.is_file() for pattern in PYTHON_MANIFESTS
+               for path in Path(repo_root).glob(pattern))
+
+
+def venv_setting(repo_root: Path, config: Dict[str, Dict[str, object]]) -> str:
+    """The project venv's directory, relative to *repo_root*; "" when the
+    project keeps none. The one reader of `[python] venv`.
+
+    Set, the value decides — ``""`` is no venv (issue #354), and any other
+    value is checked whatever the tree holds. Unset, it follows the tree:
+    ``.venv`` where the root holds a Python dependency manifest, and no venv
+    where it holds none (issue #450), so a project in another language is not
+    refused on a venv nobody meant to build until it writes ``venv = ""``.
+    """
+    value = config["python"].get("venv")
+    if value is None:
+        return ".venv" if has_python_manifest(repo_root) else ""
+    value = str(value)
+    return value if value.strip() else ""
+
+
 def venv_python(repo_root: Path, config: Dict[str, Dict[str, object]]) -> Path:
     """Resolve the venv interpreter path (Windows Scripts vs. posix bin)."""
-    venv = repo_root / str(config["python"].get("venv", ".venv"))
+    venv = _venv_dir(repo_root, config)
     if os.name == "nt":
         return venv / "Scripts" / "python.exe"
     return venv / "bin" / "python"
 
 
-def has_venv(config: Dict[str, Dict[str, object]]) -> bool:
-    """Does this project keep a venv? ``[python] venv = ""`` says it does not
-    (issue #354): a project in another language, whose `aide env` would
-    otherwise fail forever on a venv nobody meant to build."""
-    return bool(str(config["python"].get("venv", ".venv") or "").strip())
+def has_venv(repo_root: Path, config: Dict[str, Dict[str, object]]) -> bool:
+    """Does this project keep a venv? (`venv_setting`)"""
+    return bool(venv_setting(repo_root, config))
 
 
 def resolve_test_command(repo_root: Path, config: Dict[str, Dict[str, object]]) -> List[str]:
     """The configured test command, with a leading ``python`` bound to the venv."""
     raw = str(config["python"].get("test_command", "python -m pytest")).split()
     vpy = venv_python(repo_root, config)
-    if raw and raw[0] == "python" and has_venv(config) and vpy.exists():
+    if raw and raw[0] == "python" and has_venv(repo_root, config) and vpy.exists():
         return [str(vpy), *raw[1:]]
     return raw
 
@@ -14114,7 +14144,7 @@ _BOOTSTRAP_RECORD = "aide-bootstrap.json"
 
 
 def _venv_dir(repo_root: Path, config: Dict[str, Dict[str, object]]) -> Path:
-    return repo_root / str(config["python"].get("venv", ".venv"))
+    return repo_root / venv_setting(repo_root, config)
 
 
 def _configured_interpreter(config: Dict[str, Dict[str, object]]) -> List[str]:
@@ -14435,7 +14465,7 @@ def dependency_report(repo_root: Path, config: Dict[str, Dict[str, object]],
                 pass
             elif found_at is None and raw[0] == "python":
                 build = (f"build the venv ('{aide_command(repo_root, 'env --bootstrap')}'), "
-                         if has_venv(config) else "")
+                         if has_venv(repo_root, config) else "")
                 instead = ""
                 if shutil.which("python3"):
                     instead = (" — this machine has python3, so '"
@@ -14477,8 +14507,8 @@ def dependency_report(repo_root: Path, config: Dict[str, Dict[str, object]],
                 f"and this machine has no {printed} on PATH; {fix}")
     lines.append(Requirement("python", found, "always", None, note=note))
 
-    if has_venv(config):
-        venv = str(config["python"].get("venv", ".venv"))
+    venv = venv_setting(repo_root, config)
+    if venv:
         status, detail = env_report(repo_root, config)
         refusal = None
         if status != "ok":
@@ -14529,7 +14559,7 @@ def evaluate_profile(repo_root: Path, config: Dict[str, Dict[str, object]],
     never disagree about whether this machine has a capability.
     """
     vpy = venv_python(repo_root, config)
-    interpreter = (str(vpy) if has_venv(config) and vpy.exists()
+    interpreter = (str(vpy) if has_venv(repo_root, config) and vpy.exists()
                    else sys.executable)
     code = f"import sys\nsys.exit(0 if ({expr}) else 1)"
     try:
@@ -14568,10 +14598,16 @@ def cmd_env(args: argparse.Namespace) -> int:
               f"validation gated on it must record '❓ Unverified', never a silent pass")
         return 1
 
-    if args.bootstrap and not has_venv(config):
-        print('aide env: [python] venv = "" in aide.toml says this project '
-              'keeps no venv, so there is none to build — set it to a '
-              'directory to build one there', file=sys.stderr)
+    if args.bootstrap and not has_venv(repo_root, config):
+        if config["python"].get("venv") is None:
+            why = ("[python] venv is unset in aide.toml and the repository "
+                   "root holds no Python dependency manifest ("
+                   + ", ".join(PYTHON_MANIFESTS) + "), so this project keeps "
+                   "no venv")
+        else:
+            why = '[python] venv = "" in aide.toml says this project keeps no venv'
+        print(f"aide env: {why}, so there is none to build — set [python] "
+              f"venv to a directory to build one there", file=sys.stderr)
         return 1
     if args.bootstrap:
         # The venv alone, as before the report existed: the validator runs
@@ -21286,7 +21322,11 @@ def register_git_subcommands(sub) -> None:
             "machine lacks is a note that fails nothing: it decides only "
             "what a suggestion says. [python] venv = \"\" means the "
             "project keeps no venv: the venv line is left out, and --bootstrap "
-            "refuses. Exits 0 when every requirement the configuration needs "
+            "refuses. Unset, [python] venv is .venv where the repository "
+            "root holds a Python dependency manifest (pyproject.toml, "
+            "setup.py, setup.cfg, Pipfile or a requirements*.txt) and no venv "
+            "where it holds none; a value that is set is checked whatever "
+            "the root holds. Exits 0 when every requirement the configuration needs "
             "is met. `aide check` without --queue errors on the offline "
             "part of the same report.\n"
             "\n"

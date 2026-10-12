@@ -35,12 +35,13 @@ def _git(args, cwd: Path) -> None:
 
 
 def _repo(tmp_path: Path, *, mode: str = "local", origin: bool = False,
-          test_command: str = "git --version", venv: str = "",
+          test_command: str = "git --version", venv: Optional[str] = "",
           gh: Optional[str] = None, python: str = PYTHON,
           init: bool = True) -> Path:
     """A repository whose every requirement is met unless a keyword says
     otherwise: `local`, no venv kept, a test command that is git, and the
-    running interpreter as the one the engine prints."""
+    running interpreter as the one the engine prints. ``venv=None`` leaves
+    `[python] venv` unset."""
     repo = tmp_path / "repo"
     repo.mkdir()
     if init:
@@ -50,7 +51,8 @@ def _repo(tmp_path: Path, *, mode: str = "local", origin: bool = False,
         _git(["remote", "add", "origin", (tmp_path / "origin.git").as_posix()],
              repo)
     (repo / "aide.toml").write_text(
-        f'[python]\ntest_command = "{test_command}"\nvenv = "{venv}"\n'
+        f'[python]\ntest_command = "{test_command}"\n'
+        + (f'venv = "{venv}"\n' if venv is not None else "") +
         f'[git]\nmode = "{mode}"\n', encoding="utf-8")
     (repo / ".aide").mkdir()
     tools = f"[tools]\npython = '{python}'\n"
@@ -241,7 +243,9 @@ def test_an_empty_venv_setting_leaves_the_venv_line_out(tmp_path: Path, capsys):
 
 
 def test_a_kept_venv_that_is_missing_is_refused(tmp_path: Path, capsys):
+    """Set, the value decides: no dependency manifest is in this root (#450)."""
     repo = _repo(tmp_path, venv=".venv")
+    assert not aide.has_python_manifest(repo)
     code, out = _env(repo, capsys)
     assert code == 1
     assert "aide env: the venv is missing" in out
@@ -274,6 +278,51 @@ def test_no_venv_kept_leaves_a_leading_python_unbound(tmp_path: Path):
     repo = _repo(tmp_path, venv="", test_command="python -m pytest")
     config = aide.load_config(repo)
     assert aide.resolve_test_command(repo, config)[0] == "python"
+
+
+# --------------------------------------------------------------------------- #
+# venv unset — it follows the tree (issue #450)
+# --------------------------------------------------------------------------- #
+def test_an_unset_venv_with_no_manifest_keeps_no_venv(tmp_path: Path, capsys):
+    """A project in another language is not refused on a venv nobody meant
+    to build, and need not write `venv = ""` to say so."""
+    repo = _repo(tmp_path, venv=None, test_command="python -m pytest")
+    config = aide.load_config(repo)
+    assert aide.venv_setting(repo, config) == ""
+    assert aide.resolve_test_command(repo, config)[0] == "python"
+    other = tmp_path / "other"
+    other.mkdir()
+    code, out = _env(_repo(other, venv=None), capsys)
+    assert code == 0, out
+    assert "  venv " not in out
+
+
+def test_bootstrap_refuses_an_unset_venv_with_no_manifest(tmp_path: Path, capsys):
+    repo = _repo(tmp_path, venv=None)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "env", "--bootstrap"]) == 1
+    assert "[python] venv is unset" in capsys.readouterr().err
+    assert not (repo / ".venv").exists()
+
+
+@pytest.mark.parametrize("manifest", ["pyproject.toml", "setup.py", "setup.cfg",
+                                      "Pipfile", "requirements.txt",
+                                      "requirements-dev.txt"])
+def test_an_unset_venv_beside_a_manifest_is_dot_venv_and_checked(
+        tmp_path: Path, capsys, manifest: str):
+    repo = _repo(tmp_path, venv=None)
+    (repo / manifest).write_text("", encoding="utf-8")
+    assert aide.venv_setting(repo, aide.load_config(repo)) == ".venv"
+    code, out = _env(repo, capsys)
+    assert code == 1
+    assert "aide env: the venv is missing" in out
+
+
+def test_a_manifest_below_the_root_is_not_one(tmp_path: Path):
+    repo = _repo(tmp_path, venv=None)
+    (repo / "docs").mkdir()
+    (repo / "docs" / "requirements.txt").write_text("", encoding="utf-8")
+    assert aide.venv_setting(repo, aide.load_config(repo)) == ""
 
 
 # --------------------------------------------------------------------------- #
