@@ -153,9 +153,10 @@ instead — that is the bump policy above, and it is enforced by
   which is left as it was. With no venv the build goes ahead and the lookup
   after it decides as before, since a new venv's script directory can hold
   a program nothing else does (`pip3`). A program found only in the venv
-  being replaced still passes: whether the new venv supplies it is known
-  only after the build, which then records the unrun bootstrap. No consumer
-  edits.
+  being replaced still passes, a `[tools]` git or gh pointing into it
+  included: whether the new venv supplies it is known only after the build,
+  which then records the unrun bootstrap, so the venv reads stale. No
+  consumer edits.
 
 ## [2.48.0] — 2026-10-12
 

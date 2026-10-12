@@ -14786,17 +14786,17 @@ def _bootstrap_precheck(bootstrap: List[str], venv: Path, repo_root: Path,
     Two outcomes are decided here and no others:
 
     * a `[tools]` key that names nothing refuses whether or not a venv is
-      there — `resolve_tool` never searches a path for it, so no new venv
-      can make it right;
+      there — a configured path no new venv can make right, and a bare
+      name the venv alone would supply is not a configuration to build for;
     * a program found nowhere refuses only when a venv is there to lose.
       With none, the build goes ahead and the lookup after it decides,
       because a new venv's script directory can hold a program no
       directory holds yet (`pip3`, which `-m venv` writes).
 
-    A program found only in the old script directory passes: `--clear`
-    empties that directory, and whether the new venv supplies the program
-    again is known only after the build — which then records an unrun
-    bootstrap, as it did before this check.
+    A program found only in the old script directory passes, `[tools]`
+    git/gh included: `--clear` empties that directory, and whether the new
+    venv supplies the program again is known only after the build — which
+    then records an unrun bootstrap, as it did before this check.
     """
     if not bootstrap:
         return None
@@ -14857,9 +14857,15 @@ def _bootstrap_venv(repo_root: Path, config: Dict[str, Dict[str, object]]) -> in
         # argv is not searched for on the child's PATH, and `uv` is `uv.exe`.
         # The record then names the program that ran, venv or not.
         env = bootstrap_command_env(venv, vpy.parent)
-        found = resolve_tool(cmd[0], repo_root, path=env["PATH"])
+        try:
+            found = resolve_tool(cmd[0], repo_root, path=env["PATH"])
+        except ToolMisconfigured as exc:
+            # `_bootstrap_precheck` passed a `[tools]` git/gh that only the
+            # cleared venv held: recorded, so the bare venv never reads OK.
+            found, unrun = None, str(exc)
         if found is None:
-            unrun = _bootstrap_unfound(cmd[0], repo_root, vpy.parent)
+            if unrun is None:
+                unrun = _bootstrap_unfound(cmd[0], repo_root, vpy.parent)
         else:
             cmd = [found, *cmd[1:]]
     # The shell's statuses for a command that did not start: 127 not found,

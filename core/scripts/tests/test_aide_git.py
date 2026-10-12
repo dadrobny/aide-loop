@@ -2701,6 +2701,40 @@ def test_a_misconfigured_tools_bootstrap_refuses_before_the_venv_is_touched(
         assert not venv.exists() and "nothing was built" in err
 
 
+def test_a_tools_git_only_the_cleared_venv_held_is_recorded_unrun(
+        tmp_path: Path, monkeypatch, capsys):
+    """`[tools] git` naming a program inside the venv passes the pre-check
+    and is gone after `--clear`: the lookup after the build records it as
+    an unrun bootstrap, so the bare venv reads stale, not OK (#401)."""
+    venv = tmp_path / ".venv"
+    in_venv = (_scripts_dir(venv) / "git").relative_to(tmp_path).as_posix()
+    (tmp_path / "aide.toml").write_text(
+        '[python]\nvenv = ".venv"\nbootstrap = "git submodule update"\n',
+        encoding="utf-8")
+    (tmp_path / ".aide").mkdir()
+    (tmp_path / ".aide" / "local.toml").write_text(
+        f'[tools]\ngit = "{in_venv}"\n', encoding="utf-8")
+    _stale_venv(venv)
+    _fake_program(_scripts_dir(venv), "git")
+    calls = _stub_bootstrap_runs(monkeypatch, venv, None)
+    monkeypatch.setattr(aide, "env_report", lambda root, config: ("stale", "stub"))
+    real_run = aide.subprocess.run
+
+    def clearing_run(argv, **kw):
+        if list(argv)[1:3] == ["-m", "venv"]:
+            shutil.rmtree(venv)
+        return real_run(argv, **kw)
+    monkeypatch.setattr(aide.subprocess, "run", clearing_run)
+    capsys.readouterr()
+
+    assert aide.main(["--repo", str(tmp_path), "env", "--bootstrap"]) == 1
+    assert calls == []
+    err = capsys.readouterr().err
+    assert "Traceback" not in err and "[tools] git" in err
+    record = aide._read_bootstrap_record(venv)
+    assert record["exit"] == 127 and "[tools] git" in record["unrun"]
+
+
 def test_a_bootstrap_that_cannot_start_is_a_failed_bootstrap_not_a_traceback(
         tmp_path: Path, monkeypatch, capsys):
     (tmp_path / "aide.toml").write_text(
