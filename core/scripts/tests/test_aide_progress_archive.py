@@ -20,6 +20,7 @@ import importlib.util
 import subprocess
 import sys
 from pathlib import Path
+from typing import Dict, Optional
 
 import pytest
 
@@ -361,6 +362,55 @@ def test_an_approved_gate_reaching_the_stage_does_not_hold_it(tmp_path):
     assert _refusal(text, "1", tmp_path) is None
 
 
+@pytest.mark.parametrize("reach, stage", [
+    ("stage 1–2", "3"),     # the range ends below it
+    ("stage 2-3", "1"),     # it starts above it (a hyphen reads as a range)
+    ("stage 3", "2"),
+])
+def test_a_gate_whose_reach_misses_the_stage_does_not_hold_it(
+        tmp_path, reach, stage):
+    text = _progress().replace("| stage 3 | ⏳ Awaiting |",
+                               f"| {reach} | ⏳ Awaiting |")
+    text = text.replace("| 3 | Reports | G2 | 🚧 |", "| 3 | Reports | G2 | ✅ |")
+    text = text.replace("- 📋 Charts. *(Item 006)*", "- ✅ Charts. *(Item 006)*")
+    text = text.replace("- [ ] Reports render.", "- [x] Reports render.")
+    assert _refusal(text, stage, tmp_path, queues=False) is None
+
+
+def test_an_item_with_a_bullet_already_in_the_archive_holds_the_stage(tmp_path):
+    """The archive half of the split-item rule: 003's other bullet sits in
+    archived stage 2, not in progress.md."""
+    repo = _repo(tmp_path)
+    assert _archive(repo, "--stage", "2") == 0
+    path = _ddir(repo) / "progress.md"
+    path.write_text(_read(repo).replace(
+        "- ✅ Limits. *(Item 002)*",
+        "- ✅ Limits. *(Item 002)*\n- ✅ Lint again. *(Item 003)*"),
+        encoding="utf-8")
+    lines = aide.read_progress_lines(path)
+    why = aide.archive_refusal(_ddir(repo), lines, "1", None)
+    assert why is not None and "item 003 also has a bullet outside it" in why
+
+
+def test_a_stage_whose_archive_file_exists_already_is_refused(tmp_path, capsys):
+    """One stage in two places, which `check` errors on: archiving over the
+    stale file would lose whichever copy was the record."""
+    repo = _repo(tmp_path)
+    folder = _ddir(repo) / "progress"
+    folder.mkdir()
+    (folder / "stage-1.md").write_text("an older copy\n", encoding="utf-8")
+    before = _read(repo)
+    assert _archive(repo, "--stage", "1") == 1
+    err = capsys.readouterr().err
+    assert "progress/stage-1.md already exists beside its section" in err
+    assert (folder / "stage-1.md").read_text(encoding="utf-8") == "an older copy\n"
+    assert _read(repo) == before
+    assert _archive(repo) == 0            # stage 2 alone, stage 1 kept
+    assert "stage 1: kept — progress/stage-1.md already exists" in (
+        capsys.readouterr().out)
+    assert (folder / "stage-1.md").read_text(encoding="utf-8") == "an older copy\n"
+
+
 def test_an_open_queue_listing_its_items_holds_the_stage(tmp_path):
     repo = _repo(tmp_path)
     (_ddir(repo) / "queue" / "queue-003.md").write_text(
@@ -376,8 +426,8 @@ def _git(args, repo: Path) -> subprocess.CompletedProcess:
                           text=True, encoding="utf-8", check=True)
 
 
-def _committed_repo(tmp_path: Path) -> Path:
-    repo = _repo(tmp_path)
+def _committed_repo(tmp_path: Path, progress: str = "") -> Path:
+    repo = _repo(tmp_path, progress)
     (repo / "aide.toml").write_text(
         AIDE_TOML + '\n[git]\nmode = "local"\nmain_branch = "main"\n',
         encoding="utf-8")
@@ -581,7 +631,28 @@ def test_an_archive_whose_commit_fails_is_put_back(tmp_path):
     finally:
         lock.unlink()
     assert _read(repo) == before
-    assert aide.archived_stage_files(_ddir(repo)) == {}
+    assert not (_ddir(repo) / "progress").exists()   # the folder it made too
+    assert _git(["status", "--porcelain"], repo).stdout == ""
+
+
+def test_an_uncommitted_archive_is_unarchived_and_committed(tmp_path):
+    """`archive --no-commit` leaves stage-2.md untracked: the committing
+    unarchive removes it and commits progress.md alone, rather than failing
+    on a pathspec git does not know, on every re-run."""
+    repo = _committed_repo(tmp_path)
+    original = _read(repo)
+    assert _archive(repo, "--stage", "2") == 0
+    # progress.md committed by hand, the new file forgotten.
+    _git(["commit", "-qm", "half", "--", "docs/aide/progress.md"], repo)
+    head = _git(["rev-parse", "HEAD"], repo).stdout
+    assert aide.main(["--repo", str(repo), "progress", "unarchive",
+                      "--stage", "2"]) == 0
+    assert _git(["rev-parse", "HEAD~1"], repo).stdout == head
+    assert _git(["log", "-1", "--format=%s"], repo).stdout.strip() == (
+        "progress(aide): unarchive stage 2")
+    assert _git(["status", "--porcelain"], repo).stdout == ""
+    assert _read(repo) == original
+    assert not (_ddir(repo) / "progress").exists()
 
 
 def test_merge_refuses_an_item_of_an_archived_stage(tmp_path, capsys):
@@ -598,3 +669,154 @@ def test_merge_refuses_an_item_of_an_archived_stage(tmp_path, capsys):
     assert "`aide progress unarchive --stage 2`" in err
     assert "nothing was merged or pushed" in err
     assert _git(["rev-parse", "HEAD"], repo).stdout == head
+
+
+# --------------------------------------------------------------------------- #
+# every reader of item status, after an archive — one guard per read site
+# --------------------------------------------------------------------------- #
+#: Item 006 waits on 003 (✅) and 004 (❌), both in stage 2; its A1 pins
+#: 004's interface, and 004 left the way without landing.
+SPEC_006 = """\
+# Item 006 — Charts
+
+> **Stage:** 3 — Reports
+
+## Dependencies
+
+- Item 003 (lint) and Item 004 (fuzz).
+
+## Assumptions
+
+- **A1:** item 004's corpus is a directory of files.
+"""
+
+
+def _archived(tmp_path: Path, files: Optional[Dict[str, str]] = None,
+              gates: str = "") -> Path:
+    """Stages 1 and 2 archived and committed; by default no gate holds
+    stage 3. *files* are written under docs_dir first."""
+    repo = _committed_repo(tmp_path, _progress(gates=gates))
+    for rel, text in (files or {}).items():
+        path = _ddir(repo) / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    _git(["add", "-A"], repo)
+    _git(["commit", "-qm", "specs", "--allow-empty"], repo)
+    assert aide.main(["--repo", str(repo), "progress", "archive"]) == 0
+    assert sorted(aide.archived_stage_files(_ddir(repo))) == [1, 2]
+    return repo
+
+
+def test_claim_offers_an_item_whose_dependencies_are_archived(tmp_path, capsys):
+    """`_open_queue_texts` reads queue-001 as settled, `_pick_item` reads
+    006's dependencies as having left the way, and `_interface_pin_report`
+    reads 004 as ❌ — no code to check against."""
+    repo = _archived(tmp_path, {"items/006-charts.md": SPEC_006})
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "claim"]) == 0
+    out = capsys.readouterr().out
+    assert _git(["rev-parse", "--abbrev-ref", "HEAD"], repo).stdout.startswith(
+        "aide/006-")
+    assert "A1 (item 004, no code to check against)" in out
+
+
+def test_claim_held_by_a_gate_reports_no_archived_item_as_waiting(
+        tmp_path, capsys):
+    """The stage 3 gate holds 006: the report (`_report_nothing_claimable`)
+    names the gate, and no archived item as open work."""
+    repo = _archived(tmp_path, {"items/006-charts.md": SPEC_006}, gates=GATES)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "claim", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("none left"), out
+    assert "Ship the report format" in out
+    assert not any(f"item {n:03d}" in out for n in (1, 2, 3, 4)), out
+
+
+def test_status_reads_an_archived_queue_as_done(tmp_path, capsys):
+    repo = _archived(tmp_path)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "status"]) == 0
+    out = capsys.readouterr().out
+    assert "queue-001.md: done" in out
+    assert "queue-002.md: open (live) — 1/2 items open (006)" in out
+
+
+def test_gc_deletes_the_landed_branch_of_an_archived_item(tmp_path):
+    repo = _archived(tmp_path)
+    _git(["branch", "aide/003-lint"], repo)
+    assert aide.main(["--repo", str(repo), "gc", "--yes"]) == 0
+    assert "aide/003-lint" not in _git(["branch"], repo).stdout
+
+
+def test_check_queue_discounts_archived_items_on_both_sides(tmp_path):
+    """001 and 002 both claim one path; both are archived ✅, so the overlap
+    is between two records and never reported (`queue_spec_findings`)."""
+    spec = ("# Item {n} — X\n\n> **Stage:** 1\n\n## Authorised paths\n\n"
+            "**May change:**\n\n- `src/rules.py` — the rules\n")
+    repo = _archived(tmp_path, {"items/001-x.md": spec.format(n="001"),
+                                "items/002-x.md": spec.format(n="002")})
+    findings, _ = aide.queue_spec_findings(repo, aide.load_config(repo), 1)
+    assert findings == []
+
+
+def test_queue_end_findings_read_an_archived_queue_as_spent(tmp_path):
+    """002 is queue-001's queue-end item, ✅ in archived stage 1: spent, so
+    not idle over a stage the queue no longer closes in progress.md."""
+    queue = QUEUE_1.replace("### Item 002 — Limits",
+                            "### Item 002: Validate stage 1: Rules")
+    repo = _archived(tmp_path, {"queue/queue-001.md": queue})
+    assert aide.queue_end_findings(repo, aide.load_config(repo), 1) == []
+
+
+def test_claim_on_an_archived_queue_finds_nothing_open(tmp_path, capsys):
+    """`_report_nothing_claimable` over the named queue: every item is
+    archived ✅ or ❌, so the report is the bare exhaustion."""
+    repo = _archived(tmp_path)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "claim", "--dry-run",
+                      "--queue", "1"]) == 0
+    assert capsys.readouterr().out.strip() == "none left"
+
+
+def test_the_landed_review_reader_sees_archived_items(tmp_path):
+    repo = _archived(tmp_path)
+    status = aide._progress_item_status(repo, aide.load_config(repo))
+    assert status[3] == "complete" and status[4] == "excluded"
+
+
+def test_an_item_archived_and_planned_in_a_withdrawn_stage_is_not_withdrawn(
+        tmp_path):
+    """A hand edit no verb makes, read as `withdrawn_stage_items` reads a
+    bullet in a live stage: an item with a bullet outside the withdrawn
+    stage — here in the archive — is not withdrawn whole."""
+    repo = _repo(tmp_path, _progress(gates=""))
+    assert _archive(repo, "--stage", "2") == 0
+    path = _ddir(repo) / "progress.md"
+    path.write_text(_read(repo).replace("| 3 | Reports | G2 | 🚧 |",
+                                        "| 3 | Reports | G2 | ❌ |").replace(
+        "- 📋 Charts. *(Item 006)*", "- 📋 Charts. *(Item 006)*\n"
+        "- 📋 Lint again. *(Item 003)*"), encoding="utf-8")
+    lines = aide.read_progress_lines(path)
+    assert 3 not in aide.withdrawn_stage_items(lines)
+    assert 6 in aide.withdrawn_stage_items(lines)
+
+
+def test_claim_names_no_archived_item_among_withdrawn_queued_work(
+        tmp_path, capsys):
+    """Stage 3 withdrawn, with 006 📋 there and a hand-made 📋 copy of 003,
+    whose ✅ bullet is archived: no queue is open, and the refusal names
+    006 alone (`_withdrawn_queued_lines`)."""
+    repo = _archived(tmp_path)
+    path = _ddir(repo) / "progress.md"
+    path.write_text(_read(repo).replace("| 3 | Reports | G2 | 🚧 |",
+                                        "| 3 | Reports | G2 | ❌ |").replace(
+        "- 📋 Charts. *(Item 006)*", "- 📋 Charts. *(Item 006)*\n"
+        "- 📋 Lint again. *(Item 003)*"), encoding="utf-8")
+    _git(["commit", "-qam", "stage 3 withdrawn"], repo)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "claim", "--dry-run"]) == 1
+    err = capsys.readouterr().err
+    assert "  006 item 6 — in withdrawn stage 3" in err, err
+    assert "003" not in err, err
+

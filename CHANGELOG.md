@@ -149,8 +149,9 @@ instead — that is the bump policy above, and it is enforced by
   tables stay. A stage is eligible only when its summary row is ✅ or ❌, no
   bullet in it is 📋, 🚧, 🔍 or ⏸️ and no box is unticked, it is not the
   maintenance stage, no gate short of ✅ Approved reaches it in any reach
-  form, no item of it has a bullet elsewhere, and every queue listing its
-  items is settled with no queue or claim branch of theirs unmerged. With
+  form, no item of it has a bullet elsewhere, every queue listing its items
+  is settled with no queue or claim branch of theirs unmerged, and no
+  `progress/stage-N.md` exists for it already. With
   `--stage N` an ineligible stage is refused, exit 1, naming the condition;
   without, every eligible stage is archived and each settled stage kept is
   named with why. Both files are committed as `progress set` commits, and
@@ -158,7 +159,8 @@ instead — that is the bump policy above, and it is enforced by
 - **`aide progress unarchive --stage N`** moves the section back into its
   place among the stage sections, takes the link off the Title cell and
   removes the file, in one commit — the way back for a correction or a
-  reopen.
+  reopen. A file `archive --no-commit` wrote and nobody committed is removed
+  and left out of that commit, which carries `progress.md` alone.
 - **An archived stage is read everywhere and written nowhere.** Item status
   — what `claim`, `status`, `check`, `gc`, the queue open state, the
   dependency checks and the #338 records read — includes the archived

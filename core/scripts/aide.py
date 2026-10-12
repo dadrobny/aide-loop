@@ -2681,7 +2681,10 @@ def withdrawn_stage_items(lines: List[str]) -> Dict[int, List[str]]:
         for n in _parse_item_status(lines[start:end])[2]:
             inside.setdefault(n, []).append(num)
         rest[start:end] = [""] * (end - start)
-    elsewhere = _parse_item_status(rest)[2]
+    # `rest` is a plain list: an archived stage's bullets count as
+    # elsewhere too, since they sit in no withdrawn stage (issue #475).
+    elsewhere = set(_parse_item_status(rest)[2]) | set(
+        getattr(lines, "archive_status", {}))
     return {n: stages for n, stages in inside.items() if n not in elsewhere}
 
 
@@ -7635,7 +7638,7 @@ def forward_dependency_warnings(ddir: Path) -> List[str]:
     under_way: Set[str] = set()
     ppath = ddir / "progress.md"
     if ppath.is_file():
-        plines = ppath.read_text(encoding=_ENCODING).splitlines()
+        plines = read_progress_lines(ppath)
         for start, _end, num in stage_sections(plines):
             if _header_status(plines[start]) == "deferred":
                 deferred.add(str(int(num)))
@@ -10971,6 +10974,12 @@ def archive_refusal(ddir: Path, lines: List[str], stage: str,
                 if int(stage) in archived_stage_files(ddir)
                 else f"progress.md has no '## Stage {stage}' section")
     start, end, num = sec
+    if archive_file(ddir, int(num)).exists():
+        # One stage in two places, which `check` already errors on: an
+        # archive written over it would lose whichever copy was the record.
+        return (f"{archive_link(int(num))} already exists beside its "
+                f"section — one stage in two places; delete the copy that is "
+                f"stale, then re-run")
     row = _summary_row_index(lines, num)
     if row is None:
         return "it has no Stage summary row"
@@ -11160,6 +11169,8 @@ def _cmd_progress_archive(args: argparse.Namespace) -> int:
             print("progress.md: no change — no stage is eligible to archive")
             return 0
     targets = [archive_file(ddir, int(num)) for num in chosen]
+    folder = ddir / PROGRESS_ARCHIVE_DIR
+    created = not folder.exists()
     before = _snapshot([progress_path, *targets])
     updated = text
     for num, target in zip(chosen, targets):
@@ -11170,12 +11181,20 @@ def _cmd_progress_archive(args: argparse.Namespace) -> int:
     progress_path.write_text(updated, encoding="utf-8")
     if _commits_here(args.no_commit, repo_root, before):
         stages = ", ".join(str(int(n)) for n in chosen)
-        return _commit_or_restore(
+        code = _commit_or_restore(
             repo_root, config, "aide progress archive", "the archive",
             f"progress(aide): archive stage{'' if len(chosen) == 1 else 's'} "
             f"{stages}",
             [_progress_rel(config), *(_archive_rel(config, int(n))
                                       for n in chosen)], before)
+        if code and created:
+            # Put back means as it was: the folder this run made goes too,
+            # when the put-back left it empty.
+            try:
+                folder.rmdir()
+            except OSError:
+                pass
+        return code
     return 0
 
 
@@ -11225,6 +11244,13 @@ def _cmd_progress_unarchive(args: argparse.Namespace) -> int:
         print(f"{tag}: {exc}; nothing was written", file=sys.stderr)
         return 1
     before = _snapshot([progress_path, source])
+    commit = _commits_here(args.no_commit, repo_root)
+    rels = [_progress_rel(config)]
+    if commit and _is_tracked(repo_root, _archive_rel(config, args.stage)):
+        # A file `archive --no-commit` wrote and nobody committed is not in
+        # git, so its removal is no change to commit: naming it would fail
+        # the commit on a pathspec matching nothing, every time.
+        rels.append(_archive_rel(config, args.stage))
     progress_path.write_text(updated, encoding="utf-8")
     source.unlink()
     try:
@@ -11233,12 +11259,17 @@ def _cmd_progress_unarchive(args: argparse.Namespace) -> int:
         pass
     print(f"stage {args.stage}: moved back to progress.md from "
           f"{archive_link(args.stage)}")
-    if _commits_here(args.no_commit, repo_root, before):
+    if commit:
         return _commit_or_restore(
             repo_root, config, tag, "the move",
-            f"progress(aide): unarchive stage {args.stage}",
-            [_progress_rel(config), _archive_rel(config, args.stage)], before)
+            f"progress(aide): unarchive stage {args.stage}", rels, before)
     return 0
+
+
+def _is_tracked(repo_root: Path, rel: str) -> bool:
+    """Whether git's index holds *rel*, a path relative to *repo_root*."""
+    return git(["ls-files", "--error-unmatch", "--", rel], repo_root,
+               check=False).returncode == 0
 
 
 #: The cells `aide progress compact` may move, by table: ``{column: name}``.
@@ -20970,10 +21001,9 @@ def cmd_status(args: argparse.Namespace) -> int:
     unpublished = {br for br, why in off_origin.items()
                    if why.kind == OFF_ORIGIN_UNPUBLISHED}
     withdrawn_items: Dict[int, str] = {}
-    ppath = docs_dir(repo_root, config) / "progress.md"
-    if branches and ppath.is_file():
-        withdrawn_items = spent_by_withdrawal(
-            read_progress_lines(ppath), item_status)
+    if branches and plines:
+        # The lines read above, archive and all: one read, reused.
+        withdrawn_items = spent_by_withdrawal(plines, item_status)
     if branches:
         for br in branches:
             num = _branch_item_number(br, prefix)
@@ -21945,7 +21975,9 @@ def build_parser() -> argparse.ArgumentParser:
             "`stage N\u2013M`; no item its bullets name has a bullet outside "
             "it; and every queue file listing one of those items is settled, "
             "with neither that queue's branch nor a claim branch of the items "
-            "unmerged into main_branch. The section moves verbatim, less the "
+            "unmerged into main_branch. It also refuses a stage whose "
+            "progress/stage-N.md already exists, a second copy `aide check` "
+            "reports. The section moves verbatim, less the "
             "`---` after it, under one line pointing back at progress.md, and "
             "the summary row's Title cell becomes a link to the file while "
             "its Status cell stays. From then on every reader of item status "
@@ -21960,7 +21992,8 @@ def build_parser() -> argparse.ArgumentParser:
             "unarchive puts the section back before the first stage section "
             "numbered above it, or after the last one, takes the link off "
             "the Title cell, removes the file and commits both as archive "
-            "does. It refuses, exit 1, a stage with no archive file, and one "
+            "does, or progress.md alone where the file was never committed. "
+            "It refuses, exit 1, a stage with no archive file, and one "
             "progress.md has a section of as well. archive and unarchive "
             "refuse, exit 2, any argument but --stage and --no-commit, and "
             "unarchive one without --stage.\n"

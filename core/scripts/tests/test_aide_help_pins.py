@@ -1223,7 +1223,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_progress_archive::test_an_approved_gate_reaching_the_stage_does_not_hold_it",
           "test_aide_progress_archive::test_an_open_queue_listing_its_items_holds_the_stage",
           "test_aide_progress_archive::test_an_unmerged_queue_branch_of_its_queue_holds_the_stage",
-          "test_aide_progress_archive::test_an_unmerged_claim_branch_of_its_items_holds_the_stage")),
+          "test_aide_progress_archive::test_an_unmerged_claim_branch_of_its_items_holds_the_stage",
+          "test_aide_progress_archive::test_a_gate_whose_reach_misses_the_stage_does_not_hold_it",
+          "test_aide_progress_archive::test_an_item_with_a_bullet_already_in_the_archive_holds_the_stage")),
+        # `archive_refusal`'s first test once the section is found.
+        ("It also refuses a stage whose progress/stage-N.md already exists, "
+         "a second copy `aide check` reports",
+         "test_aide_progress_archive::test_a_stage_whose_archive_file_exists_already_is_refused"),
         # `archive_stage_text`: `_without_trailing_separators`,
         # `_archive_header`, `_replace_cell` on the Title cell alone.
         ("The section moves verbatim, less the `---` after it, under one "
@@ -1236,7 +1242,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "bullets too, and the stage rolls up to its summary row",
          ("test_aide_progress_archive::test_item_status_reads_the_archived_bullets_and_a_slice_does_not",
           "test_aide_progress_archive::test_an_archived_stage_rolls_up_to_its_summary_row",
-          "test_aide_progress_archive::test_check_reads_an_archived_tree_as_it_read_the_live_one")),
+          "test_aide_progress_archive::test_check_reads_an_archived_tree_as_it_read_the_live_one",
+          "test_aide_progress_archive::test_claim_offers_an_item_whose_dependencies_are_archived",
+          "test_aide_progress_archive::test_status_reads_an_archived_queue_as_done",
+          "test_aide_progress_archive::test_gc_deletes_the_landed_branch_of_an_archived_item")),
         ("With --stage N it refuses, exit 1, a stage that is not eligible, "
          "naming the first condition it fails",
          "test_aide_progress_archive::test_archive_of_an_ineligible_stage_writes_nothing"),
@@ -1254,6 +1263,9 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_progress_archive::test_two_stages_archived_come_back_in_number_order",
           "test_aide_progress_archive::test_archive_and_unarchive_commit_both_files",
           "test_aide_progress_archive::test_an_unarchive_whose_commit_fails_is_put_back")),
+        # `_is_tracked` decides whether the file's path is committed.
+        ("or progress.md alone where the file was never committed",
+         "test_aide_progress_archive::test_an_uncommitted_archive_is_unarchived_and_committed"),
         ("It refuses, exit 1, a stage with no archive file, and one "
          "progress.md has a section of as well",
          ("test_aide_progress_archive::test_unarchive_refuses_a_stage_that_is_not_archived",
