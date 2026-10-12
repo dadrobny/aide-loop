@@ -109,7 +109,7 @@ def test_a_configured_git_is_the_one_run(repo: Path, tmp_path: Path, monkeypatch
     monkeypatch.setattr(ar.subprocess, "run",
                         lambda argv, **kw: ran.append(argv[0]) or real(argv, **kw))
     assert ar.state_dir(repo, ENGINE) == (repo / ".git" / ar.STATE_DIR).resolve()
-    assert ar.git_program(repo, ENGINE) == shutil.which(git)
+    assert Path(ar.git_program(repo, ENGINE)) == Path(shutil.which(git))
     assert ran and all(Path(program) == Path(shutil.which(git)) for program in ran)
 
 
