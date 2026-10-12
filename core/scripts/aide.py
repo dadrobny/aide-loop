@@ -279,10 +279,11 @@ DEFAULT_CONFIG: Dict[str, Dict[str, object]] = {
     # from an ambient conda, a source build that failed on cmake, and an
     # `env` that still said OK (issue #166). `bootstrap` is what the build
     # installs with, read by its first word in `bootstrap_argv` (issue #378).
-    # `venv` has no default here: unset, it follows the tree (`venv_setting`,
-    # issue #450), which a default merged in would hide.
-    "python": {"bootstrap": "pip install -e .[dev]",
-               "test_command": "python -m pytest", "import_check": "",
+    # Neither `venv` nor `bootstrap` has a default here: unset, the venv
+    # follows the tree and an explicit `bootstrap` (`venv_setting`, issue
+    # #450), which a default merged in would hide; `bootstrap_setting` reads
+    # `DEFAULT_BOOTSTRAP` in its place.
+    "python": {"test_command": "python -m pytest", "import_check": "",
                "interpreter": ""},
     "git": {"mode": "auto-merge", "main_branch": "main", "branch_prefix": "aide/"},
     # `review` names whether the item loop runs an adversarial read of the diff
@@ -14095,23 +14096,41 @@ def has_python_manifest(repo_root: Path) -> bool:
                for path in Path(repo_root).glob(pattern))
 
 
+#: What `env --bootstrap` installs with when `[python] bootstrap` is unset.
+DEFAULT_BOOTSTRAP = "pip install -e .[dev]"
+
+
+def bootstrap_setting(config: Dict[str, Dict[str, object]]) -> str:
+    """`[python] bootstrap`, or `DEFAULT_BOOTSTRAP` when unset. The one
+    reader of the key; `venv_setting` asks only whether it was written."""
+    value = config["python"].get("bootstrap")
+    return DEFAULT_BOOTSTRAP if value is None else str(value)
+
+
 def venv_setting(repo_root: Path, config: Dict[str, Dict[str, object]]) -> str:
     """The project venv's directory, relative to *repo_root*; "" when the
     project keeps none. The one reader of `[python] venv`.
 
     Set, the value decides — ``""`` is no venv (issue #354), and any other
-    value is checked whatever the tree holds. Unset, it follows the tree:
-    ``.venv`` where the root holds a Python dependency manifest or a `.venv`
-    directory already, and no venv where it holds neither (issue #450), so a
-    project in another language is not refused on a venv nobody meant to
-    build until it writes ``venv = ""``. The directory counts on its own so a
-    venv someone built by hand, with no manifest at the root, stays the one a
-    leading ``python`` binds to, as it was when ``.venv`` was the default.
+    value is checked whatever the tree holds. Unset, it is ``.venv`` where
+    the root holds a Python dependency manifest or a `.venv` directory, or
+    aide.toml sets `[python] bootstrap`, and no venv where none of the three
+    is so (issue #450): a project in another language is not refused on a
+    venv nobody meant to build until it writes ``venv = ""``.
+
+    The directory keeps a venv built by hand, with no manifest at the root,
+    the one a leading ``python`` binds to; a written `bootstrap` (``pip
+    install -r tools/requirements.txt``, say) keeps it on a fresh checkout,
+    where no directory is there yet. What none of the three covers is a
+    fresh checkout with no manifest and the default bootstrap, which the old
+    ``.venv`` default would have tried to build with ``pip install -e
+    .[dev]`` — an install that needs the root manifest it lacks.
     """
     value = config["python"].get("venv")
     if value is None:
         kept = (has_python_manifest(repo_root)
-                or (Path(repo_root) / ".venv").is_dir())
+                or (Path(repo_root) / ".venv").is_dir()
+                or config["python"].get("bootstrap") is not None)
         return ".venv" if kept else ""
     value = str(value)
     return value if value.strip() else ""
@@ -14607,8 +14626,8 @@ def cmd_env(args: argparse.Namespace) -> int:
         if config["python"].get("venv") is None:
             why = ("[python] venv is unset in aide.toml and the repository "
                    "root holds no Python dependency manifest ("
-                   + ", ".join(PYTHON_MANIFESTS) + ") and no .venv, so this "
-                   "project keeps no venv")
+                   + ", ".join(PYTHON_MANIFESTS) + "), no .venv and no "
+                   "[python] bootstrap is set, so this project keeps no venv")
         else:
             why = '[python] venv = "" in aide.toml says this project keeps no venv'
         print(f"aide env: {why}, so there is none to build — set [python] "
@@ -14757,7 +14776,7 @@ def _bootstrap_venv(repo_root: Path, config: Dict[str, Dict[str, object]]) -> in
     # Whitespace, as `test_command` is split: shlex would re-read a value
     # that works today — a Windows path's backslashes, a quote pip was
     # handed literally — and nothing in the issue needed quoting.
-    bootstrap = str(config["python"].get("bootstrap", "pip install -e .[dev]")).split()
+    bootstrap = bootstrap_setting(config).split()
     interpreter = _configured_interpreter(config)
     # A stale venv is rebuilt from nothing: `-m venv` over an existing tree
     # re-points the scripts and pyvenv.cfg at the new interpreter and keeps
@@ -21330,8 +21349,9 @@ def register_git_subcommands(sub) -> None:
             "refuses. Unset, [python] venv is .venv where the repository "
             "root holds a Python dependency manifest (pyproject.toml, "
             "setup.py, setup.cfg, Pipfile or a requirements*.txt) or a .venv "
-            "directory, and no venv where it holds neither; a value that is "
-            "set is checked whatever the root holds. Exits 0 when every requirement the configuration needs "
+            "directory, or aide.toml sets [python] bootstrap, and no venv "
+            "otherwise; a value that is set is checked whatever the root "
+            "holds. Exits 0 when every requirement the configuration needs "
             "is met. `aide check` without --queue errors on the offline "
             "part of the same report.\n"
             "\n"

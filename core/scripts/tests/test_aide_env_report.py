@@ -336,6 +336,36 @@ def test_an_unset_venv_beside_an_existing_dot_venv_is_kept(tmp_path: Path, capsy
     assert "  venv " in out
 
 
+def test_an_unset_venv_with_a_written_bootstrap_is_kept(tmp_path: Path, capsys,
+                                                       monkeypatch):
+    """No manifest at the root and no `.venv` yet — a fresh clone — but a
+    bootstrap written in aide.toml: the venv is `.venv`, checked, and
+    `--bootstrap` goes to build it rather than refusing."""
+    repo = _repo(tmp_path, venv=None)
+    text = (repo / "aide.toml").read_text(encoding="utf-8").replace(
+        "[python]\n",
+        '[python]\nbootstrap = "pip install -r tools/requirements.txt"\n')
+    (repo / "aide.toml").write_text(text, encoding="utf-8")
+    config = aide.load_config(repo)
+    assert not aide.has_python_manifest(repo) and not (repo / ".venv").exists()
+    assert aide.venv_setting(repo, config) == ".venv"
+    assert aide.bootstrap_setting(config) == "pip install -r tools/requirements.txt"
+    code, out = _env(repo, capsys)
+    assert code == 1
+    assert "aide env: the venv is missing" in out
+    built = []
+    monkeypatch.setattr(aide, "_bootstrap_venv",
+                        lambda root, cfg: built.append(root) or 0)
+    capsys.readouterr()
+    assert aide.main(["--repo", str(repo), "env", "--bootstrap"]) == 0
+    assert built == [repo]
+    assert "keeps no venv" not in capsys.readouterr().err
+
+
+def test_an_unset_bootstrap_reads_as_the_default():
+    assert aide.bootstrap_setting({"python": {}}) == aide.DEFAULT_BOOTSTRAP
+
+
 def test_env_help_names_every_python_manifest():
     """`aide env -h` lists the manifests by hand; adding one to
     `PYTHON_MANIFESTS` without the help fails here."""
