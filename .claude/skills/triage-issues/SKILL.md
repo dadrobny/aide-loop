@@ -146,9 +146,10 @@ correctness bug in a consumer.
 
 Labels are the standard set plus **`deferred`**, which is the only scheduling
 signal this tracker has (CLAUDE.md, "Where direction lives"). Applying
-`deferred` also means editing the title to say so — the existing deferred issues
-all end `(deferred — recorded, not scheduled)`, and that convention is what makes
-the state legible in a plain issue list. **Do not invent a priority or ordering
+`deferred` also means editing the title to say so — every deferred issue's title
+starts `Deferred: `, and that convention is what makes the state legible in a
+plain issue list. (A `(deferred — recorded, not scheduled)` suffix was the earlier
+form; the prefix replaced it on 2026-10-12 as shorter and read first.) **Do not invent a priority or ordering
 label**; a `Wave` field existed, encoded one batch's ordering, and was dropped.
 
 ### Order the board (apply directly)
@@ -219,7 +220,7 @@ check whether the something arrived. For each open `deferred` issue:
   reason to un-defer.
 
 Propose the un-defers as one batch: issue, what changed, and whether the title's
-`(deferred — …)` suffix comes off with the label.
+`Deferred: ` prefix comes off with the label.
 
 ## Step 5 — Propose the next PR
 
