@@ -14796,7 +14796,8 @@ def _bootstrap_precheck(bootstrap: List[str], venv: Path, repo_root: Path,
     A program found only in the old script directory passes, `[tools]`
     git/gh included: `--clear` empties that directory, and whether the new
     venv supplies the program again is known only after the build — which
-    then records an unrun bootstrap, as it did before this check.
+    then records an unrun bootstrap: as before this check for a program,
+    and in place of an uncaught `ToolMisconfigured` for a `[tools]` key.
     """
     if not bootstrap:
         return None
