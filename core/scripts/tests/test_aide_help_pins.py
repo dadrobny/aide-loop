@@ -11,7 +11,7 @@ the code**, never by a second prose copy to quote against.
 `test_progress_help_states_the_rollup_the_code_applies` (issue #192) is the
 model and the seventh entry below: it transcribes the help sentence as a
 predicate and compares it to `rollup_status` over the whole input space.
-`HELP_PINS` is the register for all seven verbs. Each entry is
+`HELP_PINS` is the register for every pinned verb. Each entry is
 ``(sentence, "module::function")``:
 
 * the **sentence** is a load-bearing clause quoted from the help `argparse`
