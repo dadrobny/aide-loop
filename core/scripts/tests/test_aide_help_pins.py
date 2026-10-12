@@ -242,6 +242,12 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "neither is a failed bootstrap that names it",
          ("test_aide_git::test_a_bootstrap_command_runs_with_the_venv_active",
           "test_aide_git::test_a_bootstrap_command_found_nowhere_is_a_failed_bootstrap_that_names_it")),
+        # `_bootstrap_precheck` runs before `-m venv --clear` (#400, #401).
+        ("The command is looked up before the venv is touched: a [tools] git "
+         "or gh that names nothing refuses, and so does a command found "
+         "nowhere while a venv is there, which is left as it was",
+         ("test_aide_git::test_a_bootstrap_command_found_nowhere_leaves_an_existing_venv_as_it_was",
+          "test_aide_git::test_a_misconfigured_tools_bootstrap_refuses_before_the_venv_is_touched")),
         # `_bootstrap_venv` skips `bootstrap_argv` for an empty value.
         ("An empty bootstrap builds the venv and installs nothing",
          "test_aide_git::test_an_empty_bootstrap_builds_the_venv_and_installs_nothing"),
