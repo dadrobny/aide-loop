@@ -163,7 +163,8 @@ instead — that is the bump policy above, and it is enforced by
   to the trail. Every reader of a gate ID — `gate`, `check`'s citation
   check, evidence annotations, `merge`, `claim`, `queue gate`'s re-run —
   takes the old ID for the row while that line stands. It refuses a ✅ or ❌
-  gate.
+  gate, and a question another row once asked, whose old ID would otherwise
+  move to this row.
 - **`aide progress compact`** moves each Status, Decision / evidence, Notes
   or Evidence / follow-up cell over 150 characters of the three tables onto
   a trail line, verbatim, and leaves `see trail` (a Status cell keeps its
@@ -173,7 +174,9 @@ instead — that is the bump policy above, and it is enforced by
 - **`aide check` warns on a long cell.** A live row's Gate, Capability or
   Target cell over 150 characters is one warning naming the fix (`aide gate
   reword` for a gate); a settled row's is not warned on. The rows `compact`
-  would change are one warning per table. 150 is measured: over both local
+  would change are one warning per table. A trail line's key is not a
+  citation: a key whose row was removed or reworded by hand is a warning
+  naming it, never an error, since the trail is append-only. 150 is measured: over both local
   consumers' 66 rows, every Capability and Target label was 26–142
   characters bar one of 290, and every Gate cell 201–1781.
 - **progress template 2.** The three optional tables' guidance names the

@@ -1812,6 +1812,10 @@ def gate_trail_record(lines: List[str], gates: List[HumanGate]
             if d.group("evidence"):
                 rec["evidence"] = d.group("evidence").strip()
             continue
+        if t.body.startswith(tuple(_GATE_STATUS_KIND)):
+            # A Status cell `compact` moved (`❌ Declined (date, …)`): the
+            # decision's own record, not the evidence cell's.
+            continue
         rec["evidence"] = t.body
     for n, g in enumerate(gates):
         if "evidence" in out.get(n, {}):
@@ -1820,6 +1824,36 @@ def gate_trail_record(lines: List[str], gates: List[HumanGate]
         cell = cells[3] if len(cells) == 4 else ""
         if cell not in _EMPTY_CELL and not _is_trail_pointer(cell):
             out.setdefault(n, {})["evidence"] = cell
+    return out
+
+
+def gate_trail_warnings(lines: List[str]) -> List[str]:
+    """A gate trail line whose key names no row, or two — a warning each.
+
+    The trail is append-only (§1 → human gates), so a key left behind by a
+    row removed, or a Gate cell reworded by hand, is never an error: the
+    line stays as the record, and the warning says which ID it lost.
+    """
+    gates = human_gates(lines)
+    out: List[str] = []
+    for t in table_trail(lines, _HUMAN_GATES):
+        hits = resolve_gate_ref(t.key, gates)
+        distinct = {gate_hash(gates[i]) for i in hits}
+        if len(distinct) == 1:
+            continue
+        m = _REWORDED_TRAIL_RE.match(t.body)
+        asked = f" (it restated '{m.group('old')}')" if m else ""
+        if not distinct:
+            out.append(
+                f"progress.md:{t.lineno}: trail line keyed {t.key}{asked} "
+                f"names no human gate row — the row it recorded was removed, "
+                f"or its Gate cell reworded by hand (`aide gate reword` keeps "
+                f"the ID); the line stays as the record (conventions.md §1 → "
+                f"human gates)")
+        else:
+            out.append(
+                f"progress.md:{t.lineno}: trail line keyed {t.key} matches "
+                f"more than one human gate row, so it records none of them")
     return out
 
 
@@ -5099,15 +5133,25 @@ def gate_reference_findings(repo_root: Path,
     ids = gate_ids(gates)
     records = record_documents(ddir, _parse_item_status(lines)[2],
                                withdrawn_stage_items(lines))
+    # A trail line's key is the line's own address, not a citation (issue
+    # #474): the trail is append-only, so a key whose row was removed or
+    # reworded by hand stays, and `gate_trail_warnings` reports it — an
+    # error here would stall every merge over a record no one may edit.
+    trail_keys = {t.lineno: t.key for t in table_trail(lines, _HUMAN_GATES)}
+    progress_path = ddir / "progress.md"
     for path in docs:
         try:
             text = path.read_text(encoding=_ENCODING)
         except (OSError, UnicodeDecodeError):
             continue
         where = _rel_display(path, repo_root)
+        keyed = trail_keys if path == progress_path else {}
         for lineno, line in enumerate(text.splitlines(), start=1):
             for m in _GATE_ID_CITATION_RE.finditer(line):
                 ref = m.group("id")
+                if (lineno in keyed and ref == keyed[lineno]
+                        and m.start() == line.index(ref)):
+                    continue
                 hits = resolve_gate_ref(ref, gates)
                 if not hits:
                     # An unreadable row is dropped before IDs are computed, so
@@ -8610,6 +8654,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(gate_ref_warnings)
     warnings.extend(capability_warnings(lines, config.get("validation") or {}))
     warnings.extend(long_cell_warnings(lines))
+    warnings.extend(gate_trail_warnings(lines))
     # A withdrawn attestation is normal, not a defect — the point is that it
     # stays visible. Retracting is append-only, so without a surfacing rule the
     # withdrawal would live only in one commit's diff, which is exactly the
@@ -10148,6 +10193,10 @@ def reword_gate(text: str, index: int, question: str,
     if any(gate_hash(g) == new_hash for g in gates):
         raise ValueError("another gate row already asks that question — two "
                          "rows asking one question share an ID")
+    if any(new_hash in g.aliases for n, g in enumerate(gates) if n != index - 1):
+        raise ValueError("another gate row once asked that question, and its "
+                         "old ID still names that row through the trail — "
+                         "ask it in other words")
     import datetime as _dt
     stamp = today or _dt.date.today().isoformat()
     i = gate.lineno - 1
@@ -10558,6 +10607,7 @@ def _short_status(cell: str) -> str:
     head = re.split(r"\s*[(—:;,]", cell, maxsplit=1)[0].strip()
     if len(head) > 40:
         head = " ".join(cell.split()[:2])
+    head = re.sub(r"\s+\d{4}-\d{2}-\d{2}$", "", head)
     date = re.search(r"\b\d{4}-\d{2}-\d{2}\b", cell)
     return f"{head} ({date.group(0)})" if date else head
 

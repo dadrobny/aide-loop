@@ -1147,6 +1147,23 @@ def test_a_gate_reworded_by_its_verb_keeps_its_citations_and_its_trail(
     assert aide.main(["--repo", str(consumer), "check"]) == 0
 
 
+def test_a_trail_line_whose_gate_row_went_warns_and_check_passes(
+        aide, consumer: Path, capsys):
+    """PR #478 review: a decided gate's row deleted under its trail line is
+    a warning naming the key, never a `check` error that stalls a merge."""
+    _raise_a_gate(consumer)
+    assert aide.main(["--repo", str(consumer), "gate", "approve", "1",
+                      "--evidence", "reviewed"]) == 0
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text("\n".join(
+        l for l in progress.read_text(encoding="utf-8").splitlines()
+        if not l.startswith("| Schema approved")) + "\n", encoding="utf-8")
+    _commit(consumer, "drop the decided row by hand")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "names no human gate row" in capsys.readouterr().out
+
+
 def test_progress_compact_moves_long_cells_and_commits(aide, consumer: Path,
                                                       capsys):
     """Issue #474: an old document whose gate evidence is prose still passes

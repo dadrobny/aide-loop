@@ -35,7 +35,8 @@ directly under the table, one per entry, each keyed by the gate's ID —
   `- gate-3fa1 — context: <what the question leaves out>`.
 - **A correction appends a line.** A trail line is never edited or
   removed: a second decision, a corrected note or a restated question is a
-  later line, and the earlier one stays as written.
+  later line, and the earlier one stays as written — a line whose row was
+  later removed included, which `aide check` reports as a warning.
 - **`aide gate list` and `aide status` read the trail**, and a row with no
   trail line keeps reading its Decision / evidence cell, so a table written
   before the trail reads as it did.
@@ -179,7 +180,9 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
 - **The Gate cell is the gate's identity.** Rewording it — including to
   "change what the gate asks" after a decline — makes a different gate with a
   different ID, and every citation of the old one stops resolving. Re-point
-  each at the new ID, or drop it.
+  each citation at the new ID, or drop it. The gate's trail lines are not
+  citations and stay as written; `aide check` warns on a trail key that
+  names no row, and never errors on one.
 - **Restating the same question keeps its ID: `aide gate reword`.** It
   writes the shorter question into the Gate cell and appends `- gate-<new> —
   reworded <date>, was: <old question>` to the trail, and the old ID names
@@ -191,8 +194,8 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   same hash names the same gate. Two rows asking the same question share an
   ID, and a verb takes a position for them.
 - **`aide check` holds citations to the table.** Over `docs_dir`, the inbox
-  and its archives excepted: a cited gate ID that names no row is an
-  **error** — it blocks a merge, like every check error. A cited ID matching
+  and its archives excepted, and a trail line's own key excepted: a cited
+  gate ID that names no row is an **error** — it blocks a merge, like every check error. A cited ID matching
   two different Gate cells, and a citation by position (`gate 3`, `human gate
   #3`) while the `## Human gates` table has a row, are warnings naming the
   ID to write. A record is not read for positions, and a zero-padded number
@@ -283,7 +286,12 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   the question is the same one, restated; the trail line it writes is the
   evidence of that, so the alias lasts exactly as long as the line. A
   question that changed is still a new row. Rewording a decided gate is
-  refused because the decision answered the words it was asked in.
+  refused because the decision answered the words it was asked in, and so is
+  a question another row once asked: its old ID would start naming this one.
+- **Why a dangling trail key warns and never errors.** A trail line's key
+  addresses the line, not a decision someone waits on, and the trail is
+  append-only. Read as a citation, a key left by a removed row was an error
+  no permitted edit could clear, and it blocked every merge (PR #478 review).
 - **Why the check reads `docs_dir` only.** Gates are cited by the documents
   that plan work. `gate-` and hex is ordinary vocabulary in a test suite,
   where an error would block a merge over a word that was never a citation.

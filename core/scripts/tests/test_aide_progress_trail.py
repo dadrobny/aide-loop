@@ -306,6 +306,71 @@ def test_gate_reword_commits_progress_alone(tmp_path: Path, capsys):
         "docs/aide/progress.md"]
 
 
+@pytest.mark.parametrize("breakage", ["cell shortened by hand", "row deleted"])
+def test_a_dangling_trail_key_is_a_warning_never_an_error(tmp_path: Path,
+                                                         breakage: str):
+    """PR #478 review: the trail is append-only, so a key whose row went is
+    reported, and is not a citation `check` errors on (which stalls merge)."""
+    text = aide.set_gate_status(_progress(gates=f"{AWAITING}\n{SECOND}"), 1,
+                                "approved", "fine", today="2026-10-12")
+    gid = _gid(text)
+    if breakage == "row deleted":
+        text = "\n".join(l for l in text.splitlines()
+                         if not l.startswith("| Golden")) + "\n"
+    else:
+        text = text.replace("| Golden retirement approved |", "| Golden retired |")
+    repo = _repo(tmp_path, text)
+    ddir = repo / "docs" / "aide"
+    errors, warnings = aide.run_checks(repo, aide.load_config(repo), branches=[])
+    assert errors == []
+    assert [w for w in warnings if "trail line keyed" in w] == [
+        w for w in warnings if f"trail line keyed {gid}" in w and "names no human gate row" in w]
+    assert any(f"trail line keyed {gid}" in w for w in warnings)
+
+
+def test_a_citation_in_a_trail_line_s_body_is_still_checked(tmp_path: Path):
+    text = _progress(gates=AWAITING)
+    gid = _gid(text)
+    text = text.replace(f"{AWAITING}\n",
+                        f"{AWAITING}\n\n- {gid} — context: see gate-dead\n")
+    repo = _repo(tmp_path, text)
+    ddir = repo / "docs" / "aide"
+    errors, _ = aide.gate_reference_findings(
+        repo, aide.load_config(repo), ddir, text.splitlines())
+    assert len(errors) == 1 and "gate-dead names no human gate" in errors[0]
+
+
+def test_reword_refuses_a_question_another_row_once_asked():
+    """Otherwise the other row's old ID — its citations — would move here."""
+    text = _progress(gates=f"{AWAITING}\n{SECOND}")
+    once, _, _ = aide.reword_gate(text, 1, "Retire the golden files?",
+                                  today="2026-10-12")
+    with pytest.raises(ValueError, match="once asked that question"):
+        aide.reword_gate(once, 2, "Golden retirement approved")
+    # Its own old wording is its own alias, and may come back.
+    back, _, _ = aide.reword_gate(once, 1, "Golden retirement approved",
+                                  today="2026-10-13")
+    assert "| Golden retirement approved | 028 |" in back
+
+
+def test_a_status_cell_compact_moved_is_not_the_gate_s_evidence():
+    status = "❌ Declined (2026-10-01, " + "after a long meeting " * 10 + ")"
+    text = _progress(gates=f"| Golden retirement approved | 028 | {status} | too risky |")
+    out, messages = aide.compact_progress(text)
+    assert len(messages) == 1
+    record = aide.gate_trail_record(out.splitlines(), aide.human_gates(out.splitlines()))
+    assert record[0] == {"evidence": "too risky"}
+
+
+@pytest.mark.parametrize("cell, short", [
+    ("✅ Met 2026-02-02 — " + "detail " * 30, "✅ Met (2026-02-02)"),
+    ("✅ Met (2026-02-02, " + "detail " * 30 + ")", "✅ Met (2026-02-02)"),
+    ("❌ Not met, measured 0.90 " + "detail " * 30, "❌ Not met"),
+])
+def test_a_short_status_names_its_date_once(cell, short):
+    assert aide._short_status(cell) == short
+
+
 # --------------------------------------------------------------------------- #
 # progress compact
 # --------------------------------------------------------------------------- #
