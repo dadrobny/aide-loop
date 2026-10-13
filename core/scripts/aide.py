@@ -7857,7 +7857,11 @@ _BLOCKQUOTE_RE = re.compile(r"^ {0,3}>")
 _THEMATIC_BREAK_RE = re.compile(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
 _MD_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 #: A top-level list bullet: at most one space of indent, then `-`, `*` or `+`
-#: and a space — so `**bold**` at a line's start is not one.
+#: and a space — so `**bold**` at a line's start is not one. Deliberately
+#: unmeasured, as edges the template's shape does not produce: a numbered
+#: (`1.`) deliverable list, since the template writes `-` bullets; a fence
+#: indented four or more spaces inside a nested bullet, read as bullet text;
+#: and, for the blockquote signal, a wrapped line that happens to open `>`.
 _TOP_BULLET_RE = re.compile(r"^ ?[-*+][ \t]+\S")
 _TOP_BULLET_LEAD_RE = re.compile(r"^ ?[-*+][ \t]+")
 

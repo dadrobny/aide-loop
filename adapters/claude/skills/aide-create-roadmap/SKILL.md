@@ -47,7 +47,8 @@ read it before editing. In practice:
 1. **Read `docs/aide/progress.md` first** to see which stages have started.
 2. **Edit only the stages §1 → roadmap.md leaves open**; for a criterion of a
    started stage, run `python .aide/scripts/aide.py progress reword`, whose
-   flags are `progress -h`.
+   flags are `progress -h`. Anything else learned about a started stage goes
+   to the route §1 → roadmap.md names for it, never into the stage's section.
 3. **Add new stages** at the end to cover new or changed vision features.
 
 ### Requirements

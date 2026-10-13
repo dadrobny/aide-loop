@@ -183,7 +183,9 @@ instead — that is the bump policy above, and it is enforced by
   work is done by AI; be specific", which pushed stage sections toward
   item-spec content. It now reads: specific about what lands and how it is
   checked; how it is built is the item spec's — pointing at §1 →
-  `roadmap.md`. **`aide-feedback-loop`** step 6 points a roadmap amendment
+  `roadmap.md`; its "Updating an existing roadmap" step 2 sends anything
+  else learned about a started stage to that section's routes.
+  **`aide-feedback-loop`** step 6 points a roadmap amendment
   about a started stage at the same routes instead of the stage's section.
 
 ## [2.50.0] — 2026-10-12
