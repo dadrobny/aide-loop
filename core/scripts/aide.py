@@ -7990,7 +7990,8 @@ def roadmap_shape_findings(rlines: List[str],
                    f"it is {STATUS_TO_ICON[status]}, so nothing is added to "
                    f"its section: an annotation added after the stage was "
                    f"written moves to its route and is deleted, which "
-                   f"restores the stage as written")
+                   f"restores the stage as written (the section's git "
+                   f"history says which text that is)")
             out.append(
                 f"roadmap.md:{runs[0] + 1}: stage {n} holds "
                 f"{len(runs)} blockquote{'' if len(runs) == 1 else 's'} — a "

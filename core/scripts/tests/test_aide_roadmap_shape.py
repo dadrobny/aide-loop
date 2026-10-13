@@ -264,6 +264,7 @@ def test_the_threshold_is_the_one_the_rule_and_help_state():
     core = section.split("#### Rationale", 1)[0]
     assert f"about {aide.LONG_DELIVERABLE} characters" in " ".join(core.split())
 
+
 def test_a_nested_bullet_belongs_to_its_top_level_bullet():
     nested = "  - " + "y" * (aide.LONG_DELIVERABLE - 5) + "\n"
     text = CLEAN.replace("- The rule runner", "- Parent.\n" + nested + "- The rule runner", 1)
