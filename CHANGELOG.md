@@ -136,6 +136,58 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.51.0] — 2026-10-13
+
+### Added
+
+- **§1 → `roadmap.md` says what a stage section may hold (issue #483, from
+  #170).** A stage section is the plan and nothing else: a one-paragraph
+  Goal, the deliverable bullets, the Dependencies slot and its ordering
+  sentence, the optional Human gate and the acceptance bullets. A
+  deliverable says what lands and how it is checked; how it is built is the
+  item spec's, and an absorbed inbox entry is cited as `insight <ID>`. Text
+  learned after a stage is planned goes to its home — a table names one per
+  kind: `aide progress reword`, the box's correction trail, a new stage, the
+  `--reason` of `aide progress set … deferred` or `… dropped`, `aide insights
+  add`, the item spec, a human gate, `vision.md`. Nothing is added to a
+  started stage's section, and an annotation found there moves to its route
+  and is deleted, which restores the stage as written: the freeze paragraph
+  now says that deletion is not an edit it forbids. The Backlog's "a
+  decision about a stage belongs in that stage" now reads by the same
+  routes once the stage has started.
+- **`aide check` warns on a stage section's shape, scoped by what its status
+  still lets be fixed.** On a 📋 stage: a blockquote, a Goal of more than one
+  paragraph, a paragraph opening in bold that is not one of the five
+  template labels, and a top-level deliverable bullet over 800 characters
+  (`LONG_DELIVERABLE`) with its continuation lines. On a 🚧, 🔍 or ⏸️ stage:
+  a blockquote alone. On a ✅ or ❌ stage: nothing. The status is the Stage
+  summary row's in `progress.md`, or the header's where the row is missing
+  or reads 📋 under a started header; a stage in neither reads 📋. One
+  warning per stage and signal, at its first line; fenced code and HTML
+  comments are not read. Warnings only, never an error. On the two consumer
+  roadmaps it was measured against it fires four times: blockquotes in
+  three ⏸️ stages and one bold paragraph in a 📋 stage.
+- **`roadmap template 3`.** The Goal slot is followed by a guidance line
+  pointing at §1 → `roadmap.md` for what the section may hold and where
+  later text goes, and the Deliverables guidance says a bullet states what
+  lands and how it is checked, the design being the item spec's. **What a
+  consumer edits:** `aide check` warns that `docs/aide/roadmap.md` was
+  created from template 2; set its `aide-template` line to `roadmap 3`.
+  Nothing in a started stage is edited for this release; a 📋 stage the new
+  warnings name is edited as plan, and a blockquote in a 🚧, 🔍 or ⏸️ stage
+  moves to its route and is deleted when its owner chooses.
+
+### Changed
+
+- **`aide-create-roadmap` requirement 4** read "Prescriptive detail — most
+  work is done by AI; be specific", which pushed stage sections toward
+  item-spec content. It now reads: specific about what lands and how it is
+  checked; how it is built is the item spec's — pointing at §1 →
+  `roadmap.md`; its "Updating an existing roadmap" step 2 sends anything
+  else learned about a started stage to that section's routes.
+  **`aide-feedback-loop`** step 6 points a roadmap amendment
+  about a started stage at the same routes instead of the stage's section.
+
 ## [2.50.0] — 2026-10-12
 
 ### Added
