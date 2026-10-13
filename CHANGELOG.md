@@ -148,8 +148,8 @@ instead — that is the bump policy above, and it is enforced by
   cell keeps the icon. The summary, objective, target, gate and capability
   tables stay. A stage is eligible only when its summary row is ✅ or ❌, no
   bullet in it is 📋, 🚧, 🔍 or ⏸️ and no box is unticked, it is not the
-  maintenance stage, no gate short of ✅ Approved reaches it in any reach
-  form, no item of it has a bullet elsewhere, every queue listing its items
+  maintenance stage, no Human gates row is unreadable and no gate short of
+  ✅ Approved reaches it in any reach form, no item of it has a bullet elsewhere, every queue listing its items
   is settled with no queue or claim branch of theirs unmerged, and no
   `progress/stage-N.md` exists for it already. With
   `--stage N` an ineligible stage is refused, exit 1, naming the condition;

@@ -356,6 +356,18 @@ def test_each_eligibility_condition_refuses_on_its_own(tmp_path, edit, stage, wh
     assert found is not None and why in found, found
 
 
+def test_an_unreadable_gate_row_holds_every_stage(tmp_path):
+    """What the row reaches is unknown, so it may be any stage: held, as
+    `claim` holds every item while one stands."""
+    text = _progress().replace("| stage 3 | ⏳ Awaiting | — |",
+                               "| stage 3 | ⏳ Awaiting |")   # a cell short
+    assert aide.unreadable_gate_rows(text.splitlines())
+    for stage in ("1", "2"):
+        found = _refusal(text, stage, tmp_path / stage)
+        assert found is not None and "Human gates row no reader can use" in (
+            found), found
+
+
 def test_an_approved_gate_reaching_the_stage_does_not_hold_it(tmp_path):
     text = _progress().replace("| stage 3 | ⏳ Awaiting |",
                                "| stage 1+ | ✅ Approved (2026-09-03) |")
@@ -470,6 +482,20 @@ def test_an_unmerged_queue_branch_of_its_queue_holds_the_stage(tmp_path, capsys)
     # Landed by a merge commit, its work is in main and it holds nothing.
     _git(["merge", "-q", "--no-ff", "--no-edit", "aide/queue-001"], repo)
     assert _archive(repo, "--stage", "1") == 0
+
+
+def test_a_queue_branch_git_cannot_judge_holds_the_stage_and_names_both_remedies(
+        tmp_path, capsys):
+    """A queue branch at main's tip with no start recorded: git cannot tell a
+    fast-forward landing from a branch with no commits yet, so it holds the
+    stage, and the refusal names the way out either way."""
+    repo = _committed_repo(tmp_path)
+    _git(["branch", "aide/queue-001"], repo)
+    assert _archive(repo, "--stage", "1") == 1
+    err = capsys.readouterr().err
+    assert "git cannot tell whether aide/queue-001" in err
+    assert "'aide gc --merged --yes'" in err
+    assert "'aide queue restack 001 --base main'" in err
 
 
 # --------------------------------------------------------------------------- #

@@ -1230,6 +1230,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("It also refuses a stage whose progress/stage-N.md already exists, "
          "a second copy `aide check` reports",
          "test_aide_progress_archive::test_a_stage_whose_archive_file_exists_already_is_refused"),
+        # `archive_refusal`: `unreadable_gate_rows`, before the reach walk.
+        ("takes no stage while a Human gates row no reader can use stands, "
+         "since that row could reach any",
+         "test_aide_progress_archive::test_an_unreadable_gate_row_holds_every_stage"),
         # `archive_stage_text`: `_without_trailing_separators`,
         # `_archive_header`, `_replace_cell` on the Title cell alone.
         ("The section moves verbatim, less the `---` after it, under one "

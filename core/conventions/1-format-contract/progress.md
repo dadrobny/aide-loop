@@ -259,16 +259,17 @@ icon. The Stage summary, Objective coverage and the three optional tables stay
 here. It is the verb's move, never a hand edit, and a stage is eligible only
 when all of these hold:
 
+- no `progress/stage-N.md` exists for it already;
 - its summary row is ✅ or ❌;
+- it is not the maintenance stage;
 - no deliverable bullet in its section is 📋, 🚧, 🔍 or ⏸️, and no
   acceptance box is unticked;
-- no human gate but a ✅ Approved one reaches it, in any reach form —
-  `stage N`, `stage N+` or `stage N–M`;
-- it is not the maintenance stage;
-- every queue listing its items is settled, and neither those queues'
-  branches nor its items' claim branches are unmerged;
+- no Human gates row is one no reader can use, and no human gate but a ✅
+  Approved one reaches it, in any reach form — `stage N`, `stage N+` or
+  `stage N–M`;
 - no item its bullets name has a bullet anywhere else;
-- no `progress/stage-N.md` exists for it already.
+- every queue listing its items is settled, and neither those queues'
+  branches nor its items' claim branches are unmerged.
 
 **An archived stage is a record: read everywhere, written nowhere.** Every
 reader of an item's status reads the archived bullets as well, and the stage
@@ -522,7 +523,9 @@ in both places.
   (#446) reach only live work, so nothing on an unmerged branch may still need
   the section. An item with bullets on both sides would have its status split
   between the two files. A file already there is a stale copy `check` errors
-  on, and writing over it would lose whichever of the two was the record.
+  on, and writing over it would lose whichever of the two was the record. A
+  gate row no reader can use may reach any stage, so it holds every one, as it
+  holds every item from `claim`.
 - **Why the link sits in the Title cell.** The Status cell keeps the icon
   every reader decides on — "dependency met only once ✅" reads it there — and
   the Title is the cell a person follows to the record. The file is what item

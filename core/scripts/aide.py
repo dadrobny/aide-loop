@@ -10961,12 +10961,13 @@ def archive_refusal(ddir: Path, lines: List[str], stage: str,
                     branches: Optional[_BranchView]) -> Optional[str]:
     """Why stage *stage* may not be archived — one clause — or None.
 
-    §1 → progress.md's eligibility rule, in its order: a settled summary
-    row; no open bullet and no unticked box; not the maintenance stage; no
-    gate short of ✅ Approved reaching it; no item of it with a bullet
-    anywhere else; and every queue listing its items settled, with no queue
-    or claim branch of theirs unmerged. *branches* None skips the last half,
-    for a caller with no repository to ask.
+    §1 → progress.md's eligibility rule, in its order: no archive file for
+    it already; a settled summary row; not the maintenance stage; no open
+    bullet and no unticked box; no unreadable gate row and no gate short of
+    ✅ Approved reaching it; no item of it with a bullet anywhere else; and
+    every queue listing its items settled, with no queue or claim branch of
+    theirs unmerged. *branches* None skips the last half, for a caller with
+    no repository to ask.
     """
     sec = stage_section(lines, stage)
     if sec is None:
@@ -10999,6 +11000,11 @@ def archive_refusal(ddir: Path, lines: List[str], stage: str,
     boxes = [_CHECKBOX_RE.match(l) for l in lines[start:end]]
     if any(m and m.group("mark") == " " for m in boxes):
         return "it still has an unticked acceptance box"
+    if unreadable_gate_rows(lines):
+        # What such a row reaches is unknown, so it may be this stage: the
+        # fail-closed reading `claim` gives it too.
+        return ("a Human gates row no reader can use, which `aide check` "
+                "names, could reach it")
     gates = human_gates(lines)
     for g, gid in zip(gates, gate_ids(gates)):
         rng = g.stage_range
@@ -11037,7 +11043,17 @@ def archive_refusal(ddir: Path, lines: List[str], stage: str,
         qnum = queue_number(qpath)
         if branches is not None and qnum is not None:
             qbranch = queue_branch_name(branches.prefix, qnum)
-            if qbranch in branches.unmerged_queue_branches():
+            unmerged = branches.unmerged_queue_branches()
+            if qbranch in unmerged:
+                if unmerged[qbranch] is None:
+                    main = str(branches.config["git"].get("main_branch",
+                                                          "main"))
+                    return (f"git cannot tell whether {qbranch}, the branch "
+                            f"of {qpath.name}, which lists its items, landed "
+                            f"(no start is recorded): if it did, delete it "
+                            f"with 'aide gc --merged --yes'; if it is open, "
+                            f"record its start with 'aide queue restack "
+                            f"{qnum:03d} --base {main}'")
                 return (f"{qbranch}, the branch of {qpath.name}, which lists "
                         f"its items, is not merged")
     if branches is not None:
@@ -11255,6 +11271,10 @@ def _cmd_progress_unarchive(args: argparse.Namespace) -> int:
         rels.append(archive_rel)
     progress_path.write_text(updated, encoding="utf-8")
     source.unlink()
+    # Like every committing verb, this commits progress.md whole: run after
+    # an `archive --no-commit` of another stage, it records that stage's link
+    # without its still-uncommitted file, which `check` then errors on. The
+    # hazard is `--no-commit`'s, not the archive's, so it is not guarded here.
     if commit and not committed:
         # Only staged, it would stay staged as the add of a file now gone.
         git(["rm", "--cached", "-q", "--ignore-unmatch", "--", archive_rel],
@@ -14634,6 +14654,9 @@ def _queue_branch_evidence_waits(repo_root: Path,
                 break
     if qtext is None:
         return {}
+    # Another ref's progress.md, read without its archive (#475): an
+    # archived stage holds no item a live branch still carries — the
+    # eligibility rule refuses one with an unmerged queue or claim branch.
     shown = git(["show", f"{branch}:./{_progress_rel(config)}"], repo_root,
                 check=False)
     item_status = (_parse_item_status(shown.stdout.splitlines())[2]
@@ -18391,6 +18414,9 @@ def _merge_withdrawn_item(repo_root: Path, config, number: int, base: str,
                            path.read_text(encoding=_ENCODING).splitlines()))
         except (OSError, UnicodeDecodeError):
             pass
+    # Another ref's progress.md, read without its archive (#475): an
+    # archived stage holds no item a live branch still carries — the
+    # eligibility rule refuses one with an unmerged queue or claim branch.
     shown = git(["show", f"{base}:./{rel}"], repo_root, check=False)
     if shown.returncode == 0:
         copies.append((f"on {base}", shown.stdout.splitlines()))
@@ -20596,6 +20622,9 @@ def _queue_branch_ci(repo_root: Path, config: Dict[str, Dict[str, object]],
     items = _branch_queue_items(repo_root, config, ref, base, branch)
     if not items:
         return False, 0
+    # Another ref's progress.md, read without its archive (#475): an
+    # archived stage holds no item a live branch still carries — the
+    # eligibility rule refuses one with an unmerged queue or claim branch.
     shown = git(["show", f"{ref}:./{_docs_rel(config)}/progress.md"],
                 repo_root, check=False)
     if shown.returncode != 0:
@@ -21985,7 +22014,8 @@ def build_parser() -> argparse.ArgumentParser:
             "with neither that queue's branch nor a claim branch of the items "
             "unmerged into main_branch. It also refuses a stage whose "
             "progress/stage-N.md already exists, a second copy `aide check` "
-            "reports. The section moves verbatim, less the "
+            "reports, and takes no stage while a Human gates row no reader "
+            "can use stands, since that row could reach any. The section moves verbatim, less the "
             "`---` after it, under one line pointing back at progress.md, and "
             "the summary row's Title cell becomes a link to the file while "
             "its Status cell stays. From then on every reader of item status "
