@@ -450,7 +450,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("So is roadmap.md disagreeing with its archive or with "
          "progress.md's: a stub linking to a roadmap/stage-N.md that does not "
          "exist, such a file roadmap.md has no stub for, holding no `## Stage "
-         "N` section or beside a whole section, and a roadmap section "
+         "N` section or beside a whole section, a stub whose heading is not "
+         "the one in its file, and a roadmap section "
          "archived while its progress.md section is live",
          "test_aide_progress_archive::test_roadmap_and_its_archive_disagreeing_is_an_error"),
         # `roadmap_archive_findings`' warnings, cleared by `roadmap_catch_up`.
@@ -1292,7 +1293,9 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "stub, and refuses, exit 1, a roadmap.md with no stub for the stage",
          ("test_aide_progress_archive::test_unarchive_moves_back_whichever_half_is_archived",
           "test_aide_progress_archive::test_unarchive_roadmap_text_puts_back_exactly_what_archive_took",
-          "test_aide_progress_archive::test_unarchive_refuses_a_roadmap_with_no_stub_to_replace")),
+          "test_aide_progress_archive::test_unarchive_refuses_a_roadmap_with_no_stub_to_replace",
+          "test_aide_progress_archive::test_unarchive_refuses_a_roadmap_with_no_section_for_the_stage",
+          "test_aide_progress_archive::test_unarchive_refuses_when_there_is_no_roadmap_md")),
         # `archive_refusal`, condition by condition, in its order; the
         # branch half through `_BranchView`.
         ("archive takes a stage only when its summary row is \u2705 or "

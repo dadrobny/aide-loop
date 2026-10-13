@@ -7,10 +7,14 @@ amendment the owner agrees to — a stage added, a 📋 Planned stage reworded, 
 Backlog bullet — is applied in the owner's own session instead, the feedback
 loop's included, with no need for that entry point. Both are held to the
 started-stage freeze below, and both land through the merge policy's reviewed
-PR (`.aide/README.md`). `queue-planner` and `spec-author` read it, and
-`aide check` and `aide progress reword` parse it. `.aide/templates/roadmap.md`
-draws its shape; this section names that shape and fixes what the template
-cannot carry.
+PR (`.aide/README.md`). Three verbs also write it, mechanically and only as
+their own rules fix: `aide progress reword` mirrors a reworded acceptance
+criterion into it, and `aide progress archive` and `unarchive` move a settled
+stage's section to its archive and back (below). None of them is a third
+author: each writes what an owner has already decided. `queue-planner` and
+`spec-author` read it, and `aide check` and `aide progress reword` parse it.
+`.aide/templates/roadmap.md` draws its shape; this section names that shape
+and fixes what the template cannot carry.
 
 Mandatory (consumer in brackets):
 
@@ -109,18 +113,12 @@ file, exactly when it archives the stage's `progress.md` section, and leaves a
 linking to that file. What stays in this file is the Strategy section with the
 coverage table and the dependency graph, every stage not archived, whole, a
 stub for each archived stage, and the Backlog. A stub is the verb's, never a
-hand edit, and no reader follows it into the archive: a later stage's
-dependency on an archived stage needs only its number and its ✅ in
-`progress.md`, the coverage table needs only the stage's section, which the
-stub is, and `aide progress reword` reaches a started stage only while it is
-not archived. **An archived stage is frozen by construction.** The one heading
-edit the freeze allows, the retitle to `Maintenance`, makes a stage the
-maintenance stage, which is never archived; a stage archived under another
-title is moved back with `aide progress unarchive --stage N` first, which
-moves both sections. `aide check` errors where this file, its archive and
-`progress.md`'s disagree about a stage, and warns on a stage whose
-`progress.md` section is archived while its section here is whole, which
-`aide progress archive` then archives too.
+hand edit, and no reader follows it into the archive. **An archived stage is
+frozen, its stub's heading included**: a stage is retitled — to
+`Maintenance`, the one heading edit the freeze allows — only after `aide
+progress unarchive --stage N` has moved both sections back. `aide check`
+errors where this file, its archive and `progress.md`'s disagree about a
+stage, and `aide check -h` states each case.
 
 **A stage's blocking Dependencies name only earlier-numbered stages.** Stages
 close in number order, so a stage waiting on a later one cannot close when its
@@ -240,7 +238,10 @@ by either of its two writers, and the started-stage freeze does not reach it.
   point exists for what an amendment does not need: staging a plan from a
   vision, asking until each stage is grounded. A one-stage edit the owner has
   already agreed to needs none of that. What protects the plan is the freeze
-  and the reviewed PR, so those bind both routes alike.
+  and the reviewed PR, so those bind both routes alike. The verbs that write
+  the file are not a third route: `reword` mirrors a criterion an owner
+  rewords, and `archive` moves text the owner already settled, each within
+  its own rule.
 - **Why a started stage is frozen.** Queues were cut from it, items were
   specified against its deliverables, and `progress.md` mirrors its criteria;
   editing it re-points all of that at a plan nobody built to, and a shipped
@@ -309,6 +310,24 @@ by either of its two writers, and the started-stage freeze does not reach it.
   return nothing: what shipped, the planner learns from `progress.md`'s
   summary table. Archiving by the same verb, on the same eligibility, means
   the two archives cannot disagree about which stages are settled.
+- **Why no reader needs more than the stub.** A later stage's dependency on
+  an archived stage needs only its number and its ✅ in `progress.md`; the
+  coverage table needs only the stage's section, which the stub is; `aide
+  progress reword` reaches a started stage only while it is not archived,
+  since every writer refuses an archived stage. The one reader whose
+  findings change is the forward-dependency warning: a stub has no
+  Dependencies slot, so a settled stage whose slot named a later stage is
+  no longer named once archived — it has closed, so there is no closure
+  left for the later stage to stand in the way of, and the archive keeps the
+  slot as written.
+- **Why the stub's heading is checked against the archive.** The freeze
+  holds by construction only while a stub is the verb's: the maintenance
+  stage is never archived, so the retitle that makes one never reaches an
+  archived stage — unless the stub is retitled by hand, which would make a
+  settled stage the maintenance stage while its section, archived, still
+  says otherwise. `aide check` errors on it, and `unarchive` is the way to a
+  retitle, because it brings back the section the retitle has to land in,
+  in both documents.
 - **Why a stub, and not a link in a table.** `progress.md` links an archived
   stage from its summary row because it has one row per stage; this file has
   none. A heading with one line under it keeps every rule that reads "a named

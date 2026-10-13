@@ -153,7 +153,8 @@ instead — that is the bump policy above, and it is enforced by
   condition: no `roadmap/stage-N.md` exists for the stage already and its
   section is not a stub already. A `roadmap.md` with no section for the
   stage, or no `roadmap.md`, holds nothing: `progress.md`'s section moves
-  alone, and the verb says so.
+  alone — the verb prints a line saying so when `roadmap.md` exists without
+  the section, and nothing when there is no `roadmap.md`.
 - **A stage archived by 2.50.x or 2.51.x is caught up.** Its `progress.md`
   section is archived and its `roadmap.md` section is still whole; `aide
   progress archive` — without `--stage`, or with `--stage N` for that stage
@@ -165,20 +166,27 @@ instead — that is the bump policy above, and it is enforced by
 - **`aide check` errors where `roadmap.md`, its archive and `progress.md`'s
   disagree**: a stub linking to a file that does not exist, a
   `roadmap/stage-N.md` that `roadmap.md` has no stub for, that holds no
-  `## Stage N` section or that sits beside a whole section, and a roadmap
-  section archived while its `progress.md` section is live. It **warns** on
+  `## Stage N` section or that sits beside a whole section, a stub whose
+  heading differs from the one in its `roadmap/stage-N.md` (a hand retitle,
+  to `Maintenance` say, of a stage that is archived and therefore frozen),
+  and a roadmap section archived while its `progress.md` section is live. It **warns** on
   a stage archived in `progress/stage-N.md` whose `roadmap.md` section is
   still whole — the catch-up above clears it. A `roadmap/stage-N.md` is a
   record (#338).
 
-No roadmap reader follows a stub: the shape, coverage, dependency,
-maintenance-stage and acceptance-mirror checks read an archived stage's
-stub as they read its whole section, since a stage is archived only once
-settled, and `aide progress reword` already refuses an archived stage. §1 →
-`roadmap.md` states the stub, what stays in the file, and that an archived
-stage is frozen by construction — the freeze's one heading edit, the retitle
-to `Maintenance`, makes the maintenance stage, which is never archived; a
-stage archived under another title is unarchived first. §1 → `progress.md`'s
+No roadmap reader follows a stub. The shape, coverage, maintenance-stage and
+acceptance-mirror checks, and the under-way-over-an-unmet-dependency
+warning, report the same over a stub as over the whole section, since a
+stage is archived only once settled, and `aide progress reword` already
+refuses an archived stage. The one finding that changes is the
+forward-dependency warning (#282): a settled stage whose Dependencies named
+a later stage is warned on while its section is whole and is silent once
+archived, because the stub has no Dependencies slot — the stage has closed,
+so there is no closure left for the later stage to block, and the archive
+keeps the slot as written. §1 → `roadmap.md` states the stub, what stays
+in the file, the verbs that write the file besides its two owner routes,
+and that an archived stage is frozen, its stub's heading included: a stage
+is retitled to `Maintenance` only after `unarchive` has moved it back. §1 → `progress.md`'s
 archive paragraph and eligibility list name the roadmap half, and the
 `aide-progress-file` skill delivers it. The roadmap template is unchanged:
 the stub is written by the verb, never by an author. **What a consumer

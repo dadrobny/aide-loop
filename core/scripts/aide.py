@@ -11578,7 +11578,10 @@ def roadmap_archive_findings(ddir: Path,
     roadmap the spec author reads it in — as are the disagreements
     `archive_consistency_errors` names on the progress side: a stub whose
     file is not there, a file roadmap.md has no stub for or holding no
-    ``## Stage N`` section, and a stage both archived and whole in roadmap.md.
+    ``## Stage N`` section, a stage both archived and whole in roadmap.md,
+    and a stub whose heading is not the archived section's — an archived
+    stage is frozen, so a retitle (to ``Maintenance``, say) waits for
+    `unarchive`.
     The one warning is a progress.md section archived while the roadmap
     section stays whole — every stage archived before issue #476 — which
     loses nothing and which `aide progress archive` catches up.
@@ -11607,9 +11610,20 @@ def roadmap_archive_findings(ddir: Path,
         except (OSError, UnicodeDecodeError) as exc:
             errors.append(f"{rel}: cannot be read ({exc.__class__.__name__})")
             continue
-        if stage_section(alines, str(n)) is None:
+        asec = stage_section(alines, str(n))
+        if asec is None:
             errors.append(f"{rel}: holds no '## Stage {n}' section — restore "
                           f"it from git history")
+        elif n in stubs:
+            sec = stage_section(rlines, str(n))
+            heading, archived = rlines[sec[0]].strip(), alines[asec[0]].strip()
+            if heading != archived:
+                errors.append(
+                    f"roadmap.md: stage {n}'s stub is headed '{heading}', but "
+                    f"{rel} holds '{archived}' — an archived stage is "
+                    f"frozen, its heading too; write the stub's heading back "
+                    f"as the file's, or move the stage back with `aide "
+                    f"progress unarchive --stage {n}` before retitling it")
         if n in whole:
             errors.append(f"stage {n}: archived in {rel} and still a whole "
                           f"'## Stage {n}' section of roadmap.md — one stage "
@@ -22161,7 +22175,8 @@ def build_parser() -> argparse.ArgumentParser:
             "is roadmap.md disagreeing with its archive or with "
             "progress.md's: a stub linking to a roadmap/stage-N.md that does "
             "not exist, such a file roadmap.md has no stub for, holding no "
-            "`## Stage N` section or beside a whole section, and a roadmap "
+            "`## Stage N` section or beside a whole section, a stub whose "
+            "heading is not the one in its file, and a roadmap "
             "section archived while its progress.md section is live; a stage "
             "archived to progress/stage-N.md whose roadmap.md section is "
             "still whole is a warning, which `aide progress archive` clears. "

@@ -1114,7 +1114,17 @@ def _progress_moved_back(d: Path) -> None:
     (d / "progress" / "stage-2.md").unlink()
 
 
+def _stub_retitled(d: Path) -> None:
+    road = (d / "roadmap.md").read_text(encoding="utf-8")
+    (d / "roadmap.md").write_text(road.replace(
+        "## Stage 2 — Checks\n", "## Stage 2 — Maintenance\n"),
+        encoding="utf-8")
+
+
 @pytest.mark.parametrize("damage, finding", [
+    (_stub_retitled,
+     "roadmap.md: stage 2's stub is headed '## Stage 2 — Maintenance', but "
+     "roadmap/stage-2.md holds '## Stage 2 — Checks'"),
     (_stub_without_file,
      "roadmap.md: stage 2's section is a stub linking to roadmap/stage-2.md, "
      "which does not exist"),
@@ -1129,7 +1139,7 @@ def _progress_moved_back(d: Path) -> None:
     (_progress_moved_back,
      "stage 2: its roadmap.md section is archived in roadmap/stage-2.md while "
      "its progress.md section is live"),
-], ids=["stub-without-file", "file-beside-whole", "file-without-stub",
+], ids=["stub-retitled", "stub-without-file", "file-beside-whole", "file-without-stub",
         "file-without-section", "progress-live"])
 def test_roadmap_and_its_archive_disagreeing_is_an_error(tmp_path, damage,
                                                          finding):
@@ -1242,3 +1252,49 @@ def test_a_failed_archive_commit_puts_the_roadmap_back(tmp_path):
     assert _read(repo, "roadmap.md") == ROADMAP
     assert not (_ddir(repo) / "roadmap").exists()
     assert _git(["status", "--porcelain"], repo).stdout == ""
+
+
+def test_unarchive_refuses_a_roadmap_with_no_section_for_the_stage(
+        tmp_path, capsys):
+    repo = _road_repo(tmp_path)
+    assert _archive(repo, "--stage", "2") == 0
+    _file_without_stub(_ddir(repo))
+    before = (_read(repo), _read(repo, "roadmap.md"))
+    capsys.readouterr()
+    assert _unarchive(repo, "--stage", "2") == 1
+    assert ("roadmap.md has no '## Stage 2' stub to put the section back in "
+            "place of" in capsys.readouterr().err)
+    assert (_read(repo), _read(repo, "roadmap.md")) == before
+    assert (_ddir(repo) / "progress" / "stage-2.md").is_file()
+    assert (_ddir(repo) / "roadmap" / "stage-2.md").is_file()
+
+
+def test_unarchive_refuses_when_there_is_no_roadmap_md(tmp_path, capsys):
+    repo = _road_repo(tmp_path)
+    assert _archive(repo, "--stage", "2") == 0
+    (_ddir(repo) / "roadmap.md").unlink()
+    before = _read(repo)
+    capsys.readouterr()
+    assert _unarchive(repo, "--stage", "2") == 1
+    assert ("there is no roadmap.md to move roadmap/stage-2.md back into"
+            in capsys.readouterr().err)
+    assert _read(repo) == before
+    assert (_ddir(repo) / "progress" / "stage-2.md").is_file()
+    assert (_ddir(repo) / "roadmap" / "stage-2.md").is_file()
+
+
+def test_an_archived_stage_naming_a_later_stage_is_no_longer_warned_on(
+        tmp_path):
+    """The one roadmap reader whose findings a stub changes: the stub has no
+    Dependencies slot, so a settled stage whose slot named a later stage is
+    warned on while whole and silent once archived. Intended — the stage has
+    closed, so there is no closure left for the later stage to stand in the
+    way of — and the archive file keeps the slot as written."""
+    road = ROADMAP.replace("**Dependencies.** Stage 1.",
+                        "**Dependencies.** Stage 3.", 1)
+    repo = _road_repo(tmp_path, roadmap=road, progress=_progress(gates=""))
+    forward = "roadmap.md: stage 2's Dependencies name later stage 3"
+    assert any(w.startswith(forward) for w in _check(repo)[1])
+    assert _archive(repo, "--stage", "2") == 0
+    assert not any(w.startswith(forward) for w in _check(repo)[1])
+    assert "**Dependencies.** Stage 3." in _read(repo, "roadmap/stage-2.md")
