@@ -136,6 +136,15 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.51.1] — 2026-10-13
+
+### Changed
+
+- **A private consumer is no longer named.** Two test-module docstrings
+  under `core/scripts/tests/` and two earlier entries of this changelog
+  called a private consumer repository by its name; they now say "a
+  consumer". No behaviour changes, and nothing a consumer edits.
+
 ## [2.51.0] — 2026-10-13
 
 ### Added
@@ -4406,8 +4415,8 @@ shape; compare the two first.
   - **§1** replaces "No tool reads the verification table" with what reads
     it. It adds two rules: a row names its profile in the Package / Tool cell
     as `` `<name>` profile ``, and a row still ❓ once its stage is ✅
-    records why in Notes. The profile form is the one spine-failure-lab
-    already wrote by hand. A new column would have made every existing row
+    records why in Notes. The profile form is the one a consumer already
+    wrote by hand. A new column would have made every existing row
     unreadable. The template row shows the form. `aide-item-specs` pins
     both rules, and `aide-create-queue` names the Notes cell.
 
@@ -7309,8 +7318,8 @@ receives.
   never in the one place a role reads to learn what the CLI *is*, which is what
   makes an unnamed verb unreachable. Issue #78 measured a pointer to
   `conventions.md` as followed about 3% of the time — a verb no always-loaded
-  file names effectively does not exist. On 2026-08-29 in
-  consumer `spine-failure-lab` a role asked to triage the insight inbox read
+  file names effectively does not exist. On 2026-08-29 in a
+  consumer a role asked to triage the insight inbox read
   `docs/aide/insights.md` raw, unaware of `aide insights list --open`; closing
   an entry would have been a hand-edit of the checkboxes that
   `aide insights tick N --pointer` owns. The line now reads
