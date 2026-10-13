@@ -850,3 +850,395 @@ def test_claim_names_no_archived_item_among_withdrawn_queued_work(
     assert "  006 item 6 — in withdrawn stage 3" in err, err
     assert "003" not in err, err
 
+
+
+# --------------------------------------------------------------------------- #
+# roadmap.md's half — issue #476
+# --------------------------------------------------------------------------- #
+VISION = """\
+# Demo — Vision
+
+## Objectives
+
+| Code | Objective |
+|------|-----------|
+| G1 | Rules |
+| G2 | Reports |
+"""
+
+ROADMAP = """\
+<!-- aide-template: roadmap 3 -->
+# Demo — Development Roadmap
+
+> **Status:** Draft v1
+
+---
+
+## Strategy
+
+### Objective → stage coverage
+
+| Objective | Delivered by |
+|-----------|--------------|
+| G1 Rules | Stage 1, 2 |
+| G2 Reports | Stage 2, 3 |
+
+### Stage dependency graph
+
+```
+1 ─► 2 ─► 3
+```
+
+---
+
+## Stage 1 — Rules
+
+**Goal.** Rules fire.
+
+**Deliverables.**
+
+- Bounds and limits.
+
+**Dependencies.** None.
+
+**Validation / acceptance.**
+
+- Rules fire.
+
+---
+
+## Stage 2 — Checks
+
+**Goal.** Checks run.
+
+> Annotated later: a note the freeze kept out of reach.
+
+**Deliverables.**
+
+- Lint and fuzz.
+
+**Dependencies.** Stage 1.
+
+**Validation / acceptance.**
+
+- Checks run.
+
+---
+
+## Stage 3 — Reports
+
+**Goal.** Reports render.
+
+**Deliverables.**
+
+- Summary and charts.
+
+**Dependencies.** Stage 2.
+
+**Validation / acceptance.**
+
+- Reports render.
+
+---
+
+## Stage 4 — Maintenance
+
+**Goal.** Repairs shipped work.
+
+**Deliverables.** Added to `progress.md` by each maintenance queue.
+
+**Dependencies.** None.
+
+---
+
+# Backlog
+
+- An idea.
+"""
+
+
+def _road_repo(tmp_path: Path, roadmap: str = ROADMAP, **kw) -> Path:
+    repo = _repo(tmp_path, **kw)
+    (_ddir(repo) / "roadmap.md").write_text(roadmap, encoding="utf-8")
+    (_ddir(repo) / "vision.md").write_text(VISION, encoding="utf-8")
+    return repo
+
+
+def test_archive_roadmap_text_leaves_a_stub_and_moves_the_section():
+    updated, archived = aide.archive_roadmap_text(ROADMAP, 2)
+    stub = "## Stage 2 — Checks\n\nArchived in [roadmap/stage-2.md](roadmap/stage-2.md).\n\n---\n\n## Stage 3"
+    assert stub in updated
+    assert "Annotated later" not in updated
+    alines = archived.splitlines()
+    assert alines[0] == aide._roadmap_archive_header(2)
+    assert "../roadmap.md" in alines[0]
+    section = ROADMAP[ROADMAP.index("## Stage 2"):ROADMAP.index("## Stage 3")]
+    body = section.rstrip().removesuffix("---").rstrip()
+    assert archived == aide._roadmap_archive_header(2) + "\n\n" + body + "\n"
+    stub_bytes = len(("## Stage 2 — Checks\n\n"
+                      + aide.roadmap_stub_line(2) + "\n").encode("utf-8"))
+    assert stub_bytes < 100
+    assert aide.roadmap_stub_stages(updated.splitlines()) == {2}
+    assert aide.roadmap_whole_stages(updated.splitlines()) == {1, 3, 4}
+
+
+@pytest.mark.parametrize("stage", [1, 2, 3, 4])
+def test_unarchive_roadmap_text_puts_back_exactly_what_archive_took(stage):
+    """First, middle and last stage, the last before the Backlog heading."""
+    updated, archived = aide.archive_roadmap_text(ROADMAP, stage)
+    assert aide.unarchive_roadmap_text(updated, archived, stage) == ROADMAP
+
+
+def test_archive_moves_the_roadmap_section_with_the_progress_section(
+        tmp_path, capsys):
+    repo = _road_repo(tmp_path)
+    assert _archive(repo, "--stage", "2") == 0
+    out = capsys.readouterr().out
+    assert "stage 2: archived to progress/stage-2.md" in out
+    assert "stage 2: roadmap.md's section archived to roadmap/stage-2.md" in out
+    road = _read(repo, "roadmap.md")
+    assert "Archived in [roadmap/stage-2.md](roadmap/stage-2.md)." in road
+    assert "Lint and fuzz" not in road
+    assert "Lint and fuzz" in _read(repo, "roadmap/stage-2.md")
+
+
+def test_archive_with_no_stage_moves_every_eligible_roadmap_section(
+        tmp_path):
+    repo = _road_repo(tmp_path)
+    assert _archive(repo) == 0
+    assert sorted(aide.roadmap_archived_files(_ddir(repo))) == [1, 2]
+    rlines = _read(repo, "roadmap.md").splitlines()
+    assert aide.roadmap_stub_stages(rlines) == {1, 2}
+    assert aide.roadmap_whole_stages(rlines) == {3, 4}
+
+
+def test_check_reads_a_stubbed_roadmap_as_it_read_the_whole_one(tmp_path):
+    """No roadmap reader in `aide check` changes its findings over a stub:
+    shape, coverage, dependencies, the maintenance rules, the acceptance
+    mirror. Stage 2's blockquote was never named (✅), and stage 3's
+    dependency on stage 2 needs only its number."""
+    repo = _road_repo(tmp_path, progress=_progress(gates=""))
+    before = _check(repo)
+    assert not any(w.startswith("roadmap.md") for w in before[1]), before
+    assert _archive(repo) == 0
+    assert _check(repo) == before
+
+
+def test_a_stage_archived_without_its_roadmap_section_is_caught_up(
+        tmp_path, capsys):
+    """A stage archived by 2.50.x: progress.md's half only. `check` warns,
+    and `archive` — with or without --stage — moves the roadmap half alone."""
+    repo = _road_repo(tmp_path)
+    road = _read(repo, "roadmap.md")
+    (_ddir(repo) / "roadmap.md").unlink()
+    assert _archive(repo) == 0                 # stages 1 and 2, no roadmap
+    (_ddir(repo) / "roadmap.md").write_text(road, encoding="utf-8")
+    progress = _read(repo)
+    _errors, warnings = _check(repo)
+    for n in (1, 2):
+        assert any(w.startswith(
+            f"stage {n}: archived in progress/stage-{n}.md while its "
+            f"roadmap.md section is whole") for w in warnings), warnings
+    capsys.readouterr()
+    assert _archive(repo, "--stage", "1") == 0
+    out = capsys.readouterr().out
+    assert "stage 1: roadmap.md's section archived to roadmap/stage-1.md" in out
+    assert "progress/stage-1.md" not in out
+    assert _archive(repo) == 0
+    assert sorted(aide.roadmap_archived_files(_ddir(repo))) == [1, 2]
+    assert _read(repo) == progress             # progress.md untouched
+    assert not any("section is whole" in w for w in _check(repo)[1])
+    assert _archive(repo) == 0
+    assert "no stage is eligible" in capsys.readouterr().out
+
+
+def test_a_roadmap_with_no_section_for_the_stage_lets_progress_move_alone(
+        tmp_path, capsys):
+    road = ROADMAP.replace(
+        ROADMAP[ROADMAP.index("## Stage 2"):ROADMAP.index("## Stage 3")], "")
+    repo = _road_repo(tmp_path, roadmap=road)
+    assert _archive(repo, "--stage", "2") == 0
+    out = capsys.readouterr().out
+    assert "stage 2: archived to progress/stage-2.md" in out
+    assert ("stage 2: roadmap.md has no '## Stage 2' section, so "
+            "progress.md's alone moved") in out
+    assert _read(repo, "roadmap.md") == road
+    assert not (_ddir(repo) / "roadmap").exists()
+
+
+@pytest.mark.parametrize("damage, why", [
+    (lambda d: (d / "roadmap").mkdir() or (d / "roadmap" / "stage-2.md")
+     .write_text("## Stage 2 — Checks\n", encoding="utf-8"),
+     "roadmap/stage-2.md already exists while its progress.md section is "
+     "live"),
+    (lambda d: (d / "roadmap.md").write_text(
+        aide.archive_roadmap_text((d / "roadmap.md").read_text(
+            encoding="utf-8"), 2)[0], encoding="utf-8"),
+     "roadmap.md's '## Stage 2' section is an archive stub with no "
+     "roadmap/stage-2.md behind it"),
+])
+def test_a_roadmap_half_already_moved_holds_the_stage(tmp_path, capsys,
+                                                      damage, why):
+    repo = _road_repo(tmp_path)
+    damage(_ddir(repo))
+    before = (_read(repo), _read(repo, "roadmap.md"))
+    assert _archive(repo, "--stage", "2") == 1
+    assert why in capsys.readouterr().err
+    assert (_read(repo), _read(repo, "roadmap.md")) == before
+    assert not (_ddir(repo) / "progress").exists()
+
+
+def _stub_without_file(d: Path) -> None:
+    (d / "roadmap" / "stage-2.md").unlink()
+
+
+def _file_beside_whole(d: Path) -> None:
+    (d / "roadmap.md").write_text(ROADMAP, encoding="utf-8")
+
+
+def _file_without_stub(d: Path) -> None:
+    (d / "roadmap.md").write_text(ROADMAP.replace(
+        ROADMAP[ROADMAP.index("## Stage 2"):ROADMAP.index("## Stage 3")], ""),
+        encoding="utf-8")
+
+
+def _file_without_section(d: Path) -> None:
+    (d / "roadmap" / "stage-2.md").write_text("> archived\n", encoding="utf-8")
+
+
+def _progress_moved_back(d: Path) -> None:
+    text = (d / "progress.md").read_text(encoding="utf-8")
+    archived = (d / "progress" / "stage-2.md").read_text(encoding="utf-8")
+    (d / "progress.md").write_text(
+        aide.unarchive_stage_text(text, archived, 2), encoding="utf-8")
+    (d / "progress" / "stage-2.md").unlink()
+
+
+@pytest.mark.parametrize("damage, finding", [
+    (_stub_without_file,
+     "roadmap.md: stage 2's section is a stub linking to roadmap/stage-2.md, "
+     "which does not exist"),
+    (_file_beside_whole,
+     "stage 2: archived in roadmap/stage-2.md and still a whole '## Stage 2' "
+     "section of roadmap.md"),
+    (_file_without_stub,
+     "roadmap/stage-2.md: archives stage 2, which roadmap.md has no "
+     "'## Stage 2' stub for"),
+    (_file_without_section,
+     "roadmap/stage-2.md: holds no '## Stage 2' section"),
+    (_progress_moved_back,
+     "stage 2: its roadmap.md section is archived in roadmap/stage-2.md while "
+     "its progress.md section is live"),
+], ids=["stub-without-file", "file-beside-whole", "file-without-stub",
+        "file-without-section", "progress-live"])
+def test_roadmap_and_its_archive_disagreeing_is_an_error(tmp_path, damage,
+                                                         finding):
+    repo = _road_repo(tmp_path, progress=_progress(gates=""))
+    assert _archive(repo, "--stage", "2") == 0
+    assert _check(repo)[0] == []
+    damage(_ddir(repo))
+    errors, _ = _check(repo)
+    assert any(e.startswith(finding) for e in errors), errors
+
+
+def test_a_roadmap_archive_file_is_a_record(tmp_path):
+    repo = _road_repo(tmp_path)
+    assert _archive(repo, "--stage", "2") == 0
+    assert _ddir(repo) / "roadmap" / "stage-2.md" in aide._docs_records(
+        _ddir(repo))
+
+
+def test_unarchive_moves_both_halves_back(tmp_path, capsys):
+    repo = _road_repo(tmp_path)
+    before = (_read(repo), _read(repo, "roadmap.md"))
+    assert _archive(repo, "--stage", "2") == 0
+    capsys.readouterr()
+    assert _unarchive(repo, "--stage", "2") == 0
+    out = capsys.readouterr().out
+    assert "stage 2: moved back to progress.md from progress/stage-2.md" in out
+    assert "stage 2: moved back to roadmap.md from roadmap/stage-2.md" in out
+    assert (_read(repo), _read(repo, "roadmap.md")) == before
+    assert not (_ddir(repo) / "progress").exists()
+    assert not (_ddir(repo) / "roadmap").exists()
+
+
+def test_unarchive_moves_back_whichever_half_is_archived(tmp_path, capsys):
+    """progress.md's half alone (archived by 2.50.x), and roadmap.md's half
+    alone — the disagreement `check` errors on, whose remedy this is."""
+    repo = _road_repo(tmp_path)
+    road = _read(repo, "roadmap.md")
+    (_ddir(repo) / "roadmap.md").unlink()
+    assert _archive(repo, "--stage", "2") == 0
+    (_ddir(repo) / "roadmap.md").write_text(road, encoding="utf-8")
+    assert _unarchive(repo, "--stage", "2") == 0
+    assert _read(repo, "roadmap.md") == road
+    assert not (_ddir(repo) / "progress").exists()
+
+    assert _archive(repo, "--stage", "2") == 0
+    _progress_moved_back(_ddir(repo))
+    progress = _read(repo)
+    capsys.readouterr()
+    assert _unarchive(repo, "--stage", "2") == 0
+    out = capsys.readouterr().out
+    assert "moved back to roadmap.md" in out
+    assert "moved back to progress.md" not in out
+    assert (_read(repo), _read(repo, "roadmap.md")) == (progress, road)
+
+
+def test_unarchive_refuses_a_roadmap_with_no_stub_to_replace(tmp_path, capsys):
+    repo = _road_repo(tmp_path)
+    assert _archive(repo, "--stage", "2") == 0
+    _file_beside_whole(_ddir(repo))
+    before = (_read(repo), _read(repo, "roadmap.md"))
+    capsys.readouterr()
+    assert _unarchive(repo, "--stage", "2") == 1
+    assert ("roadmap.md already has a '## Stage 2' section beside "
+            "roadmap/stage-2.md" in capsys.readouterr().err)
+    assert (_read(repo), _read(repo, "roadmap.md")) == before
+    assert (_ddir(repo) / "progress" / "stage-2.md").is_file()
+
+
+def test_archive_and_unarchive_commit_the_roadmap_half_too(tmp_path):
+    repo = _repo(tmp_path)
+    (_ddir(repo) / "roadmap.md").write_text(ROADMAP, encoding="utf-8")
+    (repo / "aide.toml").write_text(
+        AIDE_TOML + '\n[git]\nmode = "local"\nmain_branch = "main"\n',
+        encoding="utf-8")
+    for args in (["init", "-q", "-b", "main"], ["config", "user.name", "t"],
+                 ["config", "user.email", "t@example.com"],
+                 ["config", "core.autocrlf", "false"], ["add", "-A"],
+                 ["commit", "-qm", "init"]):
+        _git(args, repo)
+    argv = ["--repo", str(repo), "progress"]
+    assert aide.main([*argv, "archive", "--stage", "2"]) == 0
+    assert _git(["status", "--porcelain"], repo).stdout == ""
+    shown = _git(["show", "--name-only", "--format=", "HEAD"], repo).stdout
+    assert sorted(shown.split()) == ["docs/aide/progress.md",
+                                     "docs/aide/progress/stage-2.md",
+                                     "docs/aide/roadmap.md",
+                                     "docs/aide/roadmap/stage-2.md"]
+    assert aide.main([*argv, "unarchive", "--stage", "2"]) == 0
+    assert _git(["status", "--porcelain"], repo).stdout == ""
+    assert _git(["diff", "HEAD~2", "--stat"], repo).stdout == ""
+
+
+def test_a_failed_archive_commit_puts_the_roadmap_back(tmp_path):
+    repo = _repo(tmp_path)
+    (_ddir(repo) / "roadmap.md").write_text(ROADMAP, encoding="utf-8")
+    (repo / "aide.toml").write_text(
+        AIDE_TOML + '\n[git]\nmode = "local"\nmain_branch = "main"\n',
+        encoding="utf-8")
+    for args in (["init", "-q", "-b", "main"], ["config", "user.name", "t"],
+                 ["config", "user.email", "t@example.com"],
+                 ["config", "core.autocrlf", "false"], ["add", "-A"],
+                 ["commit", "-qm", "init"]):
+        _git(args, repo)
+    lock = repo / ".git" / "index.lock"
+    lock.write_bytes(b"")
+    try:
+        assert aide.main(["--repo", str(repo), "progress", "archive"]) == 1
+    finally:
+        lock.unlink()
+    assert _read(repo, "roadmap.md") == ROADMAP
+    assert not (_ddir(repo) / "roadmap").exists()
+    assert _git(["status", "--porcelain"], repo).stdout == ""

@@ -1231,16 +1231,53 @@ ARCHIVABLE = """\
 """
 
 
+ARCHIVABLE_ROADMAP = """\
+# Fixture — Roadmap
+
+| Objective | Delivered by |
+|-----------|--------------|
+| G1 Foundations | Stage 1, 2 |
+
+---
+
+## Stage 1 — Foundations
+
+**Goal.** A greeter and a farewell.
+
+**Deliverables.**
+
+- The greeter and the farewell.
+
+**Dependencies.** None.
+
+---
+
+## Stage 2 — Extras
+
+**Goal.** A wave.
+
+**Deliverables.**
+
+- The wave.
+
+**Dependencies.** Stage 1.
+"""
+
+
 def test_an_archived_stage_reads_as_shipped_and_moves_back_for_a_correction(
         aide, consumer: Path):
     """Issue #475: `progress archive` moves a settled stage to
     progress/stage-N.md and commits; `check` still passes, and `claim` still
     reads the archived items as ✅ — it takes the next queue's item, not a
     shipped one. A writer refuses the archived item, and `unarchive` brings
-    the section back, byte for byte, in its own commit."""
+    the section back, byte for byte, in its own commit. Issue #476: the
+    stage's roadmap.md section moves with it, to roadmap/stage-N.md, a stub
+    left in its place, and comes back with it."""
     ddir = consumer / "docs" / "aide"
     progress = ddir / "progress.md"
     progress.write_text(ARCHIVABLE, encoding="utf-8")
+    roadmap = ddir / "roadmap.md"
+    roadmap.write_text(ARCHIVABLE_ROADMAP, encoding="utf-8")
     queue = ddir / "queue" / "queue-001.md"
     queue.write_text(queue.read_text(encoding="utf-8").replace(
         "Live", "✅ Completed"), encoding="utf-8")
@@ -1256,6 +1293,10 @@ def test_an_archived_stage_reads_as_shipped_and_moves_back_for_a_correction(
     assert _sha(consumer, "HEAD~1") == head and _clean(consumer)
     assert (ddir / "progress" / "stage-1.md").is_file()
     assert "## Stage 1" not in progress.read_text(encoding="utf-8")
+    assert (ddir / "roadmap" / "stage-1.md").is_file()
+    stubbed = roadmap.read_text(encoding="utf-8")
+    assert "## Stage 1 — Foundations\n\nArchived in" in stubbed
+    assert "The greeter and the farewell" not in stubbed
     assert aide.main(["--repo", str(consumer), "check"]) == 0
 
     archived = progress.read_bytes()
@@ -1272,7 +1313,9 @@ def test_an_archived_stage_reads_as_shipped_and_moves_back_for_a_correction(
                       "--stage", "1"]) == 0
     assert _sha(consumer, "HEAD~1") == moved and _clean(consumer)
     assert progress.read_text(encoding="utf-8") == ARCHIVABLE
+    assert roadmap.read_text(encoding="utf-8") == ARCHIVABLE_ROADMAP
     assert not (ddir / "progress").exists()
+    assert not (ddir / "roadmap").exists()
     assert aide.main(["--repo", str(consumer), "check"]) == 0
 
 

@@ -136,6 +136,55 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.52.0] — 2026-10-13
+
+### Added
+
+- **`aide progress archive` archives a stage's `roadmap.md` section with its
+  `progress.md` section (issue #476, from #170).** The section moves,
+  verbatim and heading included, to `docs/aide/roadmap/stage-N.md` beside
+  `roadmap.md`, under one line pointing back, and `roadmap.md` keeps a
+  **stub** in its place: the stage's `## Stage N — Title` heading with one
+  line under it, `Archived in [roadmap/stage-N.md](roadmap/stage-N.md).` What
+  stays in `roadmap.md` is the Strategy section, the coverage table, the
+  dependency graph, every stage not archived, whole, a stub per archived
+  stage, and the Backlog. A roadmap section is archived exactly when its
+  `progress.md` section is, so the eligibility rule is #475's, plus one
+  condition: no `roadmap/stage-N.md` exists for the stage already and its
+  section is not a stub already. A `roadmap.md` with no section for the
+  stage, or no `roadmap.md`, holds nothing: `progress.md`'s section moves
+  alone, and the verb says so.
+- **A stage archived by 2.50.x or 2.51.x is caught up.** Its `progress.md`
+  section is archived and its `roadmap.md` section is still whole; `aide
+  progress archive` — without `--stage`, or with `--stage N` for that stage
+  — archives the roadmap half alone, in one commit.
+- **`aide progress unarchive --stage N`** moves back whichever of
+  `progress/stage-N.md` and `roadmap/stage-N.md` exists, the roadmap section
+  in place of its stub, and refuses, exit 1, a `roadmap.md` with no stub for
+  the stage.
+- **`aide check` errors where `roadmap.md`, its archive and `progress.md`'s
+  disagree**: a stub linking to a file that does not exist, a
+  `roadmap/stage-N.md` that `roadmap.md` has no stub for, that holds no
+  `## Stage N` section or that sits beside a whole section, and a roadmap
+  section archived while its `progress.md` section is live. It **warns** on
+  a stage archived in `progress/stage-N.md` whose `roadmap.md` section is
+  still whole — the catch-up above clears it. A `roadmap/stage-N.md` is a
+  record (#338).
+
+No roadmap reader follows a stub: the shape, coverage, dependency,
+maintenance-stage and acceptance-mirror checks read an archived stage's
+stub as they read its whole section, since a stage is archived only once
+settled, and `aide progress reword` already refuses an archived stage. §1 →
+`roadmap.md` states the stub, what stays in the file, and that an archived
+stage is frozen by construction — the freeze's one heading edit, the retitle
+to `Maintenance`, makes the maintenance stage, which is never archived; a
+stage archived under another title is unarchived first. §1 → `progress.md`'s
+archive paragraph and eligibility list name the roadmap half, and the
+`aide-progress-file` skill delivers it. The roadmap template is unchanged:
+the stub is written by the verb, never by an author. **What a consumer
+edits:** nothing; a consumer that archived stages on 2.50.x sees one
+warning per such stage until it runs `aide progress archive`.
+
 ## [2.51.1] — 2026-10-13
 
 ### Changed

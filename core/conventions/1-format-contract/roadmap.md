@@ -22,8 +22,9 @@ Mandatory (consumer in brackets):
    The acceptance bullets are the ones `progress.md` mirrors as its boxes; a
    measured outcome is a `Target:` bullet instead, and §1 → `progress.md`
    says which is which. The maintenance stage (below) is the one whose
-   Deliverables list nothing and which has no acceptance bullets. *(aide
-   check, aide progress reword, create-progress, queue-planner, spec-author)*
+   Deliverables list nothing and which has no acceptance bullets. An
+   archived stage's section is a stub (below). *(aide check, aide progress
+   reword, create-progress, queue-planner, spec-author)*
 
 **A stage section is the plan and nothing else.** It holds a Goal of one
 paragraph, the deliverable bullets, the Dependencies slot with any ordering
@@ -99,6 +100,27 @@ paragraph, a bold paragraph opener that is not one of the five labels, and a
 deliverable bullet of more than about 800 characters; on a 🚧, 🔍 or ⏸️ stage,
 a blockquote alone — the rest was written as its plan, and the freeze keeps
 it; on a ✅ or ❌ stage, nothing. `aide check -h` states how each is read.
+
+**A settled stage's section is archived with its `progress.md` section, and a
+stub keeps its place.** `aide progress archive` (§1 → `progress.md`) moves the
+section, heading included and verbatim, to `roadmap/stage-N.md` beside this
+file, exactly when it archives the stage's `progress.md` section, and leaves a
+**stub**: the stage's `## Stage N — Title` heading with one line under it
+linking to that file. What stays in this file is the Strategy section with the
+coverage table and the dependency graph, every stage not archived, whole, a
+stub for each archived stage, and the Backlog. A stub is the verb's, never a
+hand edit, and no reader follows it into the archive: a later stage's
+dependency on an archived stage needs only its number and its ✅ in
+`progress.md`, the coverage table needs only the stage's section, which the
+stub is, and `aide progress reword` reaches a started stage only while it is
+not archived. **An archived stage is frozen by construction.** The one heading
+edit the freeze allows, the retitle to `Maintenance`, makes a stage the
+maintenance stage, which is never archived; a stage archived under another
+title is moved back with `aide progress unarchive --stage N` first, which
+moves both sections. `aide check` errors where this file, its archive and
+`progress.md`'s disagree about a stage, and warns on a stage whose
+`progress.md` section is archived while its section here is whole, which
+`aide progress archive` then archives too.
 
 **A stage's blocking Dependencies name only earlier-numbered stages.** Stages
 close in number order, so a stage waiting on a later one cannot close when its
@@ -270,11 +292,42 @@ by either of its two writers, and the started-stage freeze does not reach it.
   annotation, so deleting it is the fix, while a long Goal, a bold paragraph
   or a long deliverable in a started stage was written as its plan, and the
   freeze keeps it. A ✅ or ❌ stage is a settled record — the records
-  exemption `aide check` applies elsewhere (issue #338) — and archiving the
-  settled stages is a separate change (issue #476). On both consumers'
+  exemption `aide check` applies elsewhere (issue #338) — and once archived
+  its section is a stub (issue #476). On both consumers'
   roadmaps the warnings fired four times when they were introduced: on
   blockquotes in three ⏸️ stages, and on one bold paragraph in a 📋 stage,
   plan text that belongs in its Goal.
+- **Why a settled stage's section is archived, beside `progress.md`'s
+  (#476, from #170).** One consumer's `roadmap.md` reached 145 KB, most of
+  it delivered stages, frozen once started. Of its readers, the spec author
+  reads only the 🚧 stage it serves, the reviewer, validator and builders
+  name the file only as a path they must not write, `aide check` parses the
+  coverage table, the blocking Dependencies slots and a not-yet-started
+  maintenance stage's acceptance bullets, and `reword` touches a started,
+  unsettled stage. The queue planner reads the whole file at every queue,
+  and the owner at each re-staging, and the settled stages cost that read and
+  return nothing: what shipped, the planner learns from `progress.md`'s
+  summary table. Archiving by the same verb, on the same eligibility, means
+  the two archives cannot disagree about which stages are settled.
+- **Why a stub, and not a link in a table.** `progress.md` links an archived
+  stage from its summary row because it has one row per stage; this file has
+  none. A heading with one line under it keeps every rule that reads "a named
+  stage has a section" true — the coverage table's completeness, the
+  dependency graph's legibility — in under 100 bytes a stage. Removing the
+  section outright was the alternative, and would have made every coverage
+  row naming a settled stage a warning.
+- **Why the archive keeps the heading.** The file reads cold as the stage it
+  holds, and `unarchive` puts back the section exactly as it moved, as
+  `progress/stage-N.md` does.
+- **Why a stage archived before #476 is a warning.** Stages a consumer
+  archived on 2.50.x moved `progress.md`'s half alone, which loses nothing:
+  the roadmap section is still there, only unarchived. An error would fail
+  `aide check` on the first run after the update over a state the verb
+  itself made, so the warning names the catch-up, and `archive` takes it.
+  Every other disagreement is an error, as the `progress.md` side's are: a
+  stub with no file, or a file beside a whole section, leaves the plan in no
+  place or two, and a roadmap section archived while its `progress.md` stage
+  is live takes the plan away from the spec author who reads it.
 - **Why the shape is a warning.** For the forward-dependency reason below:
   roadmaps written before the rule exist, a started stage is frozen, and the
   human at the queue boundary reads warnings.

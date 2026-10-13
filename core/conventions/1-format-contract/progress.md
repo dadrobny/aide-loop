@@ -256,10 +256,13 @@ progress archive [--stage N]` moves a stage's section, verbatim, to
 unpadded as the heading writes it — and the stage's summary row's Title cell
 becomes a link to that file, the title its text; its Status cell keeps the
 icon. The Stage summary, Objective coverage and the three optional tables stay
-here. It is the verb's move, never a hand edit, and a stage is eligible only
-when all of these hold:
+here. **The same verb archives the stage's `roadmap.md` section with it**, to
+`roadmap/stage-N.md`, and §1 → `roadmap.md` says what stays there. It is the
+verb's move, never a hand edit, and a stage is eligible only when all of these
+hold:
 
-- no `progress/stage-N.md` exists for it already;
+- no `progress/stage-N.md` or `roadmap/stage-N.md` exists for it already, and
+  its `roadmap.md` section is not an archive stub already;
 - its summary row is ✅ or ❌;
 - it is not the maintenance stage;
 - no deliverable bullet in its section is 📋, 🚧, 🔍 or ⏸️, and no
@@ -280,7 +283,8 @@ a reopen first moves the stage back with `aide progress unarchive --stage N`,
 and every writer that meets an archived stage refuses and names that verb.
 `aide check` errors wherever `progress.md` and the archive disagree about a
 stage — a link to a file that is not there, a file no row links to, one stage
-in both places.
+in both places. `aide progress unarchive --stage N` moves the stage's
+`roadmap.md` section back with it.
 
 #### Rationale
 
@@ -539,3 +543,10 @@ in both places.
   the section, verbatim, so the record reads as it did.
 - **Why the filename is unpadded.** It matches the heading, and a zero-pad
   would read as a position, which #338 rules out.
+- **Why one verb moves both documents' sections (#476).** A roadmap stage is
+  archived exactly when its `progress.md` stage is, so the two archives
+  cannot disagree about which stages are settled, and the eligibility rule
+  above — written for the record `progress.md` keeps — is the only one to
+  keep. A roadmap section already moved, or a stub with nothing behind it,
+  holds the stage for the reason a `progress/stage-N.md` already there does:
+  writing over it would lose whichever copy was the record.

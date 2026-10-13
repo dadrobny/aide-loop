@@ -19,7 +19,7 @@ Subcommands::
     python .aide/scripts/aide.py progress set NNN restored --reason TEXT  # ❌ back to 📋 (--stage N --deliverable K for an unmarked bullet)
     python .aide/scripts/aide.py progress rollup [--stage N]  # a stage's cells to what its bullets roll up to
     python .aide/scripts/aide.py progress compact  # long gate/capability/target cells to their trails
-    python .aide/scripts/aide.py progress archive [--stage N]  # settled stages' sections to progress/stage-N.md
+    python .aide/scripts/aide.py progress archive [--stage N]  # settled stages to progress/ and roadmap/stage-N.md
     python .aide/scripts/aide.py progress unarchive --stage N  # an archived stage's section back, for a correction
     python .aide/scripts/aide.py gate list|approve|decline [N|ID]  # human gates in progress.md
     python .aide/scripts/aide.py gate reword N|ID --text QUESTION  # restate a live gate; its old ID keeps resolving
@@ -1026,6 +1026,68 @@ def read_progress_lines(path: Path) -> List[str]:
         return []
     return with_archive(path.read_text(encoding=_ENCODING).splitlines(),
                         path.parent)
+
+
+# --------------------------------------------------------------------------- #
+# roadmap.md's archive — beside progress.md's, moved by the same verb (#476)
+# --------------------------------------------------------------------------- #
+#: The folder beside roadmap.md an archived stage's section is moved to, one
+#: ``stage-N.md`` per stage, exactly as progress.md's (`PROGRESS_ARCHIVE_DIR`).
+ROADMAP_ARCHIVE_DIR = "roadmap"
+#: The one line under an archived stage's heading in roadmap.md — the stub.
+#: No reader follows it: it keeps the stage's heading in the file, so the
+#: coverage table and the dependency graph still name a section.
+_ROADMAP_STUB_RE = re.compile(
+    r"^Archived in \[[^\]]*\]\(" + ROADMAP_ARCHIVE_DIR
+    + r"/stage-(?P<n>\d+)\.md\)\.?\s*$")
+
+
+def roadmap_archive_link(stage: int) -> str:
+    """The relative link an archived stage's roadmap.md stub points at."""
+    return f"{ROADMAP_ARCHIVE_DIR}/stage-{stage}.md"
+
+
+def roadmap_archive_file(ddir: Path, stage: int) -> Path:
+    """Where stage *stage*'s roadmap.md section is kept once archived."""
+    return ddir / ROADMAP_ARCHIVE_DIR / f"stage-{stage}.md"
+
+
+def roadmap_stub_line(stage: int) -> str:
+    """The pointer line a stub holds under its heading."""
+    link = roadmap_archive_link(stage)
+    return f"Archived in [{link}]({link})."
+
+
+def roadmap_archived_files(ddir: Path) -> Dict[int, Path]:
+    """Every ``roadmap/stage-N.md`` under *ddir*, by stage number."""
+    folder = ddir / ROADMAP_ARCHIVE_DIR
+    out: Dict[int, Path] = {}
+    if not folder.is_dir():
+        return out
+    for path in sorted(folder.iterdir()):
+        m = _ARCHIVE_FILE_RE.match(path.name)
+        if m and path.is_file():
+            out[int(m.group(1))] = path
+    return out
+
+
+def roadmap_stub_stages(rlines: List[str]) -> Set[int]:
+    """The roadmap.md stages whose section is an archive stub: a line under
+    the heading pointing at the stage's own ``roadmap/stage-N.md``."""
+    out: Set[int] = set()
+    for start, end, num in stage_sections(rlines):
+        for line in rlines[start + 1:end]:
+            m = _ROADMAP_STUB_RE.match(line.strip())
+            if m and int(m.group("n")) == int(num):
+                out.add(int(num))
+                break
+    return out
+
+
+def roadmap_whole_stages(rlines: List[str]) -> Set[int]:
+    """The roadmap.md stages that still have their whole section."""
+    return ({int(num) for _s, _e, num in stage_sections(rlines)}
+            - roadmap_stub_stages(rlines))
 
 
 def stage_deliverable_statuses(lines: List[str], start: int, end: int) -> List[str]:
@@ -4119,9 +4181,11 @@ def record_documents(ddir: Path, item_status: Dict[int, str],
     the warnings return once the stage's summary row is off ❌.
 
     An archived stage's file (``progress/stage-N.md``, issue #475) is one
-    too: a section archived settled, which no verb writes into.
+    too: a section archived settled, which no verb writes into — and so is
+    its roadmap section's (``roadmap/stage-N.md``, issue #476).
     """
     out: Set[Path] = set(archived_stage_files(ddir).values())
+    out.update(roadmap_archived_files(ddir).values())
     idir = ddir / "items"
     if idir.is_dir():
         for ipath in idir.glob("*.md"):
@@ -9046,6 +9110,9 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     # every check below, including the ones that would have errored on it.
     errors.extend(unreadable_row_errors(lines))
     errors.extend(archive_consistency_errors(ddir, lines))
+    road_errors, road_warnings = roadmap_archive_findings(ddir, lines)
+    errors.extend(road_errors)
+    warnings.extend(road_warnings)
     errors.extend(evidence_annotation_errors(repo_root, ddir, lines))
     evidence = evidence_gate_citations(ddir, lines)
     warnings.extend(gate_warnings(lines, evidence))
@@ -11225,12 +11292,58 @@ class _BranchView:
         return None
 
 
+def _roadmap_lines(ddir: Path) -> Optional[List[str]]:
+    """roadmap.md's lines, or None when there is no roadmap.md."""
+    rpath = ddir / "roadmap.md"
+    if not rpath.is_file():
+        return None
+    return rpath.read_text(encoding=_ENCODING).splitlines()
+
+
+def roadmap_archive_refusal(ddir: Path, stage: int,
+                            rlines: Optional[List[str]] = None) -> Optional[str]:
+    """Why stage *stage*'s roadmap.md section may not move with its
+    progress.md section — one clause — or None (issue #476).
+
+    Only a roadmap half already moved holds the stage: a
+    ``roadmap/stage-N.md`` that exists, or a stub in roadmap.md with no file
+    behind it, each a disagreement `aide check` errors on. A roadmap.md with
+    no section for the stage, or no roadmap.md, holds nothing: progress.md's
+    section moves alone. *rlines* None reads roadmap.md from *ddir*.
+    """
+    if rlines is None:
+        rlines = _roadmap_lines(ddir) or []
+    if roadmap_archive_file(ddir, stage).exists():
+        return (f"{roadmap_archive_link(stage)} already exists while its "
+                f"progress.md section is live — `aide check` names the "
+                f"disagreement; delete the copy that is stale, then re-run")
+    if stage in roadmap_stub_stages(rlines):
+        return (f"roadmap.md's '## Stage {stage}' section is an archive stub "
+                f"with no {roadmap_archive_link(stage)} behind it — restore "
+                f"the section from git history, then re-run")
+    return None
+
+
+def roadmap_catch_up(ddir: Path, lines: List[str], rlines: List[str],
+                     stage: int) -> bool:
+    """Whether stage *stage*'s progress.md section is archived and its
+    roadmap.md section is not yet: the whole section is there, with no
+    ``roadmap/stage-N.md`` beside it — a stage archived before issue #476,
+    which `archive` takes on its own."""
+    return (archive_file(ddir, stage).is_file()
+            and stage_section(lines, str(stage)) is None
+            and stage in roadmap_whole_stages(rlines)
+            and not roadmap_archive_file(ddir, stage).exists())
+
+
 def archive_refusal(ddir: Path, lines: List[str], stage: str,
-                    branches: Optional[_BranchView]) -> Optional[str]:
+                    branches: Optional[_BranchView],
+                    rlines: Optional[List[str]] = None) -> Optional[str]:
     """Why stage *stage* may not be archived — one clause — or None.
 
     §1 → progress.md's eligibility rule, in its order: no archive file for
-    it already; a settled summary row; not the maintenance stage; no open
+    it already, in either folder (`roadmap_archive_refusal`); a settled
+    summary row; not the maintenance stage; no open
     bullet and no unticked box; no unreadable gate row and no gate short of
     ✅ Approved reaching it; no item of it with a bullet anywhere else; and
     every queue listing its items settled, with no queue or claim branch of
@@ -11249,6 +11362,9 @@ def archive_refusal(ddir: Path, lines: List[str], stage: str,
         return (f"{archive_link(int(num))} already exists beside its "
                 f"section — one stage in two places; delete the copy that is "
                 f"stale, then re-run")
+    road = roadmap_archive_refusal(ddir, int(num), rlines)
+    if road is not None:
+        return road
     row = _summary_row_index(lines, num)
     if row is None:
         return "it has no Stage summary row"
@@ -11394,6 +11510,129 @@ def unarchive_stage_text(text: str, archived: str, stage: int) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _roadmap_archive_header(stage: int) -> str:
+    """The one line a roadmap archive file opens with, pointing back."""
+    return (f"> Stage {stage}'s section, archived from "
+            f"[roadmap.md](../roadmap.md) by `aide progress archive`; "
+            f"`aide progress unarchive --stage {stage}` moves it back.")
+
+
+def archive_roadmap_text(text: str, stage: int) -> Tuple[str, str]:
+    """``(roadmap.md, the archive file)`` once stage *stage*'s roadmap
+    section is archived (issue #476).
+
+    The section — its heading included — moves verbatim, less the separator
+    after it, under `_roadmap_archive_header`; in roadmap.md its heading
+    stays, with `roadmap_stub_line` under it and the separator after it as
+    it was, so the stage keeps its place among the others. The caller has
+    found the whole section there.
+    """
+    lines = text.splitlines()
+    sec = stage_section(lines, str(stage))
+    assert sec is not None
+    start, end, _num = sec
+    body = _without_trailing_separators(lines[start:end])
+    tail = lines[start + len(body):end]
+    stub = [lines[start], "", roadmap_stub_line(stage)]
+    kept = lines[:start] + stub + tail + lines[end:]
+    archived = "\n".join([_roadmap_archive_header(stage), "", *body]) + "\n"
+    return ("\n".join(kept) + ("\n" if text.endswith("\n") else "")), archived
+
+
+def unarchive_roadmap_text(text: str, archived: str, stage: int) -> str:
+    """roadmap.md with stage *stage*'s stub replaced by the section in
+    *archived*, in the stub's place. ``ValueError`` when *archived* holds no
+    ``## Stage N`` section, or roadmap.md no stub for the stage — a whole
+    section there already, or none."""
+    alines = archived.splitlines()
+    asec = stage_section(alines, str(stage))
+    if asec is None:
+        raise ValueError(f"{roadmap_archive_link(stage)} holds no '## Stage "
+                         f"{stage}' section")
+    body = _without_trailing_separators(alines[asec[0]:])
+    lines = text.splitlines()
+    sec = stage_section(lines, str(stage))
+    if sec is None:
+        raise ValueError(f"roadmap.md has no '## Stage {stage}' stub to put "
+                         f"the section back in place of — restore the stub "
+                         f"from git history")
+    if stage not in roadmap_stub_stages(lines):
+        raise ValueError(f"roadmap.md already has a '## Stage {stage}' "
+                         f"section beside {roadmap_archive_link(stage)} — "
+                         f"delete the copy that is stale")
+    start, end, _num = sec
+    stub = _without_trailing_separators(lines[start:end])
+    tail = lines[start + len(stub):end]
+    kept = lines[:start] + body + tail + lines[end:]
+    return "\n".join(kept) + ("\n" if text.endswith("\n") else "")
+
+
+def roadmap_archive_findings(ddir: Path,
+                             lines: List[str]) -> Tuple[List[str], List[str]]:
+    """Where roadmap.md, its archive and progress.md's archive disagree about
+    a stage (issue #476); ``(errors, warnings)``.
+
+    A stage's roadmap section is archived exactly when its progress.md
+    section is, so a ``roadmap/stage-N.md`` beside a live progress.md
+    section is an error — the plan of a live stage moved away from the
+    roadmap the spec author reads it in — as are the disagreements
+    `archive_consistency_errors` names on the progress side: a stub whose
+    file is not there, a file roadmap.md has no stub for or holding no
+    ``## Stage N`` section, and a stage both archived and whole in roadmap.md.
+    The one warning is a progress.md section archived while the roadmap
+    section stays whole — every stage archived before issue #476 — which
+    loses nothing and which `aide progress archive` catches up.
+    """
+    rlines = _roadmap_lines(ddir)
+    files = roadmap_archived_files(ddir)
+    if rlines is None:
+        rlines = []
+        if not files:
+            return [], []
+    stubs = roadmap_stub_stages(rlines)
+    whole = roadmap_whole_stages(rlines)
+    progress_files = archived_stage_files(ddir)
+    progress_sections = {int(n) for _, _, n in stage_sections(lines)}
+    errors: List[str] = []
+    for n in sorted(set(files) | stubs):
+        rel = roadmap_archive_link(n)
+        if n not in files:
+            errors.append(f"roadmap.md: stage {n}'s section is a stub linking "
+                          f"to {rel}, which does not exist, so the stage's "
+                          f"plan is nowhere — restore the file from git "
+                          f"history")
+            continue
+        try:
+            alines = files[n].read_text(encoding=_ENCODING).splitlines()
+        except (OSError, UnicodeDecodeError) as exc:
+            errors.append(f"{rel}: cannot be read ({exc.__class__.__name__})")
+            continue
+        if stage_section(alines, str(n)) is None:
+            errors.append(f"{rel}: holds no '## Stage {n}' section — restore "
+                          f"it from git history")
+        if n in whole:
+            errors.append(f"stage {n}: archived in {rel} and still a whole "
+                          f"'## Stage {n}' section of roadmap.md — one stage "
+                          f"in two places; delete the copy that is stale")
+        elif n not in stubs:
+            errors.append(f"{rel}: archives stage {n}, which roadmap.md has "
+                          f"no '## Stage {n}' stub for — write its heading "
+                          f"with '{roadmap_stub_line(n)}' under it")
+        if n not in progress_files or n in progress_sections:
+            errors.append(f"stage {n}: its roadmap.md section is archived in "
+                          f"{rel} while its progress.md section is live — a "
+                          f"roadmap section is archived exactly when its "
+                          f"progress.md section is; move it back with `aide "
+                          f"progress unarchive --stage {n}`")
+    warnings = [
+        f"stage {n}: archived in {archive_link(n)} while its roadmap.md "
+        f"section is whole — `aide progress archive --stage {n}` archives "
+        f"it to {roadmap_archive_link(n)} too"
+        for n in sorted(progress_files)
+        if n in whole and n not in files and n not in progress_sections]
+    return errors, warnings
+
+
 def _progress_archive_usage_error(args: argparse.Namespace) -> Optional[str]:
     """The flags `archive` and `unarchive` do not take, named; or None."""
     extra = [flag for flag, given in (
@@ -11411,8 +11650,12 @@ def _cmd_progress_archive(args: argparse.Namespace) -> int:
     """``aide progress archive [--stage N]`` — move settled stages out (#475).
 
     Each eligible stage's section goes to ``progress/stage-N.md`` and its
-    summary row links there; both files are committed as every recording verb
-    commits, and put back on a commit that did not happen (issue #309).
+    summary row links there; its roadmap.md section goes to
+    ``roadmap/stage-N.md``, a stub left in its place (#476). A stage whose
+    progress.md section was archived before its roadmap.md section could be
+    has the roadmap half moved on its own. Every file is committed as every
+    recording verb commits, and put back on a commit that did not happen
+    (issue #309).
     """
     usage = "usage: aide progress archive [--stage N] [--no-commit]"
     extra = _progress_archive_usage_error(args)
@@ -11429,14 +11672,22 @@ def _cmd_progress_archive(args: argparse.Namespace) -> int:
         return 1
     text = progress_path.read_text(encoding=_ENCODING)
     lines = with_archive(text.splitlines(), ddir)
+    roadmap_path = ddir / "roadmap.md"
+    rtext = (roadmap_path.read_text(encoding=_ENCODING)
+             if roadmap_path.is_file() else None)
+    rlines = rtext.splitlines() if rtext is not None else []
     branches = _BranchView(repo_root, config)
+    catch_up: List[int] = []
     if args.stage is not None:
-        why = archive_refusal(ddir, lines, str(args.stage), branches)
-        if why is not None:
+        why = archive_refusal(ddir, lines, str(args.stage), branches, rlines)
+        if why is None:
+            chosen = [stage_section(lines, str(args.stage))[2]]
+        elif roadmap_catch_up(ddir, lines, rlines, args.stage):
+            chosen, catch_up = [], [args.stage]
+        else:
             print(f"aide progress archive: stage {args.stage} is not "
                   f"archived — {why}; nothing was written", file=sys.stderr)
             return 1
-        chosen = [stage_section(lines, str(args.stage))[2]]
     else:
         summary = {cells[0]: _icon_status(cells[3])
                    for cells in (_split_row(l) for l in lines
@@ -11444,40 +11695,67 @@ def _cmd_progress_archive(args: argparse.Namespace) -> int:
                    if _reads(_STAGE_SUMMARY, cells)}
         chosen = []
         for _, _, num in stage_sections(lines):
-            why = archive_refusal(ddir, lines, num, branches)
+            why = archive_refusal(ddir, lines, num, branches, rlines)
             if why is None:
                 chosen.append(num)
             elif summary.get(num) in ("complete", "excluded"):
                 print(f"stage {int(num)}: kept — {why}")
-        if not chosen:
+        catch_up = [n for n in sorted(archived_stage_files(ddir))
+                    if roadmap_catch_up(ddir, lines, rlines, n)]
+        if not chosen and not catch_up:
             print("progress.md: no change — no stage is eligible to archive")
             return 0
+    whole = roadmap_whole_stages(rlines)
+    road = sorted({int(n) for n in chosen if int(n) in whole} | set(catch_up))
     targets = [archive_file(ddir, int(num)) for num in chosen]
-    folder = ddir / PROGRESS_ARCHIVE_DIR
-    created = not folder.exists()
-    before = _snapshot([progress_path, *targets])
+    rtargets = [roadmap_archive_file(ddir, n) for n in road]
+    folders = [f for f, used in ((ddir / PROGRESS_ARCHIVE_DIR, chosen),
+                                 (ddir / ROADMAP_ARCHIVE_DIR, road))
+               if used and not f.exists()]
+    paths = ([progress_path] if chosen else []) + (
+        [roadmap_path] if road else [])
+    before = _snapshot([*paths, *targets, *rtargets])
     updated = text
     for num, target in zip(chosen, targets):
         updated, archived = archive_stage_text(updated, num)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(archived, encoding="utf-8")
         print(f"stage {int(num)}: archived to {archive_link(int(num))}")
-    progress_path.write_text(updated, encoding="utf-8")
+        if rtext is not None and int(num) not in whole:
+            print(f"stage {int(num)}: roadmap.md has no '## Stage {int(num)}' "
+                  f"section, so progress.md's alone moved")
+    rupdated = rtext
+    for n, target in zip(road, rtargets):
+        rupdated, rarchived = archive_roadmap_text(rupdated, n)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(rarchived, encoding="utf-8")
+        print(f"stage {n}: roadmap.md's section archived to "
+              f"{roadmap_archive_link(n)}")
+    if chosen:
+        progress_path.write_text(updated, encoding="utf-8")
+    if road:
+        roadmap_path.write_text(rupdated, encoding="utf-8")
     if _commits_here(args.no_commit, repo_root, before):
-        stages = ", ".join(str(int(n)) for n in chosen)
+        stages = ", ".join(str(n) for n in sorted(
+            {int(n) for n in chosen} | set(road)))
+        many = len(chosen) + len(catch_up) > 1
+        docs = str(config["project"].get("docs_dir", "docs/aide"))
+        rels = (([_progress_rel(config)] if chosen else [])
+                + ([f"{docs}/roadmap.md"] if road else [])
+                + [_archive_rel(config, int(n)) for n in chosen]
+                + [f"{docs}/{roadmap_archive_link(n)}" for n in road])
         code = _commit_or_restore(
             repo_root, config, "aide progress archive", "the archive",
-            f"progress(aide): archive stage{'' if len(chosen) == 1 else 's'} "
-            f"{stages}",
-            [_progress_rel(config), *(_archive_rel(config, int(n))
-                                      for n in chosen)], before)
-        if code and created:
-            # Put back means as it was: the folder this run made goes too,
+            f"progress(aide): archive stage{'s' if many else ''} {stages}",
+            rels, before)
+        if code:
+            # Put back means as it was: a folder this run made goes too,
             # when the put-back left it empty.
-            try:
-                folder.rmdir()
-            except OSError:
-                pass
+            for folder in folders:
+                try:
+                    folder.rmdir()
+                except OSError:
+                    pass
         return code
     return 0
 
@@ -11491,8 +11769,11 @@ def _cmd_progress_unarchive(args: argparse.Namespace) -> int:
     """``aide progress unarchive --stage N`` — move an archived stage back.
 
     For a correction or a reopen, which no verb writes into the archive
-    (`archived_stage_refusal`). The file is removed and both paths are
-    committed as `archive` commits them.
+    (`archived_stage_refusal`). Both halves come back — progress.md's
+    section from ``progress/stage-N.md`` and roadmap.md's from
+    ``roadmap/stage-N.md`` in place of its stub (#476) — whichever of the
+    two files exists; each file is removed, and every path is committed as
+    `archive` commits them.
     """
     usage = "usage: aide progress unarchive --stage N [--no-commit]"
     extra = _progress_archive_usage_error(args)
@@ -11509,50 +11790,76 @@ def _cmd_progress_unarchive(args: argparse.Namespace) -> int:
         print(f"error: {progress_path} not found", file=sys.stderr)
         return 1
     source = archive_file(ddir, args.stage)
+    rsource = roadmap_archive_file(ddir, args.stage)
+    roadmap_path = ddir / "roadmap.md"
     tag = "aide progress unarchive"
-    if not source.is_file():
+    if not source.is_file() and not rsource.is_file():
         print(f"{tag}: stage {args.stage} is not archived — there is no "
-              f"{archive_link(args.stage)}; nothing was written",
+              f"{archive_link(args.stage)} or "
+              f"{roadmap_archive_link(args.stage)}; nothing was written",
               file=sys.stderr)
         return 1
-    text = progress_path.read_text(encoding=_ENCODING)
-    if stage_section(text.splitlines(), str(args.stage)) is not None:
-        print(f"{tag}: progress.md already has a '## Stage {args.stage}' "
-              f"section beside {archive_link(args.stage)} — delete the copy "
-              f"that is stale; nothing was written", file=sys.stderr)
-        return 1
-    try:
-        updated = unarchive_stage_text(
-            text, source.read_text(encoding=_ENCODING), args.stage)
-    except ValueError as exc:
-        print(f"{tag}: {exc}; nothing was written", file=sys.stderr)
-        return 1
-    before = _snapshot([progress_path, source])
+    updated: Optional[str] = None
+    if source.is_file():
+        text = progress_path.read_text(encoding=_ENCODING)
+        if stage_section(text.splitlines(), str(args.stage)) is not None:
+            print(f"{tag}: progress.md already has a '## Stage {args.stage}' "
+                  f"section beside {archive_link(args.stage)} — delete the "
+                  f"copy that is stale; nothing was written", file=sys.stderr)
+            return 1
+        try:
+            updated = unarchive_stage_text(
+                text, source.read_text(encoding=_ENCODING), args.stage)
+        except ValueError as exc:
+            print(f"{tag}: {exc}; nothing was written", file=sys.stderr)
+            return 1
+    rupdated: Optional[str] = None
+    if rsource.is_file():
+        if not roadmap_path.is_file():
+            print(f"{tag}: there is no roadmap.md to move "
+                  f"{roadmap_archive_link(args.stage)} back into; nothing "
+                  f"was written", file=sys.stderr)
+            return 1
+        try:
+            rupdated = unarchive_roadmap_text(
+                roadmap_path.read_text(encoding=_ENCODING),
+                rsource.read_text(encoding=_ENCODING), args.stage)
+        except ValueError as exc:
+            print(f"{tag}: {exc}; nothing was written", file=sys.stderr)
+            return 1
+    moves = [(progress_path, source, archive_link(args.stage), updated),
+             (roadmap_path, rsource, roadmap_archive_link(args.stage),
+              rupdated)]
+    moves = [m for m in moves if m[3] is not None]
+    before = _snapshot([p for m in moves for p in (m[0], m[1])])
     commit = _commits_here(args.no_commit, repo_root)
-    rels = [_progress_rel(config)]
-    archive_rel = _archive_rel(config, args.stage)
-    committed = commit and _is_tracked(repo_root, archive_rel)
-    if committed:
-        # A file `archive --no-commit` wrote and nobody committed is not in
-        # git, so its removal is no change to commit: naming it would fail
-        # the commit on a pathspec matching nothing, every time.
-        rels.append(archive_rel)
-    progress_path.write_text(updated, encoding="utf-8")
-    source.unlink()
-    # Like every committing verb, this commits progress.md whole: run after
-    # an `archive --no-commit` of another stage, it records that stage's link
-    # without its still-uncommitted file, which `check` then errors on. The
-    # hazard is `--no-commit`'s, not the archive's, so it is not guarded here.
-    if commit and not committed:
-        # Only staged, it would stay staged as the add of a file now gone.
-        git(["rm", "--cached", "-q", "--ignore-unmatch", "--", archive_rel],
-            repo_root, check=False)
-    try:
-        source.parent.rmdir()  # only when it is empty now
-    except OSError:
-        pass
-    print(f"stage {args.stage}: moved back to progress.md from "
-          f"{archive_link(args.stage)}")
+    docs = str(config["project"].get("docs_dir", "docs/aide"))
+    rels: List[str] = []
+    for doc, archived, link, new_text in moves:
+        rels.append(f"{docs}/{doc.name}")
+        archive_rel = f"{docs}/{link}"
+        committed = commit and _is_tracked(repo_root, archive_rel)
+        if committed:
+            # A file `archive --no-commit` wrote and nobody committed is not
+            # in git, so its removal is no change to commit: naming it would
+            # fail the commit on a pathspec matching nothing, every time.
+            rels.append(archive_rel)
+        doc.write_text(new_text, encoding="utf-8")
+        archived.unlink()
+        # Like every committing verb, this commits the documents whole: run
+        # after an `archive --no-commit` of another stage, it records that
+        # stage's link without its still-uncommitted file, which `check`
+        # then errors on. The hazard is `--no-commit`'s, not the archive's,
+        # so it is not guarded here.
+        if commit and not committed:
+            # Only staged, it would stay staged as the add of a file now gone.
+            git(["rm", "--cached", "-q", "--ignore-unmatch", "--",
+                 archive_rel], repo_root, check=False)
+        try:
+            archived.parent.rmdir()  # only when it is empty now
+        except OSError:
+            pass
+        print(f"stage {args.stage}: moved back to {doc.name} from {link}")
     if commit:
         return _commit_or_restore(
             repo_root, config, tag, "the move",
@@ -21850,7 +22157,14 @@ def build_parser() -> argparse.ArgumentParser:
             "stage is an error too: a summary row's Title cell linking to a "
             "progress/stage-N.md that does not exist, such a file no summary "
             "row links to or holding no `## Stage N` section, and a stage "
-            "archived there that still has a section in progress.md. "
+            "archived there that still has a section in progress.md. So "
+            "is roadmap.md disagreeing with its archive or with "
+            "progress.md's: a stub linking to a roadmap/stage-N.md that does "
+            "not exist, such a file roadmap.md has no stub for, holding no "
+            "`## Stage N` section or beside a whole section, and a roadmap "
+            "section archived while its progress.md section is live; a stage "
+            "archived to progress/stage-N.md whose roadmap.md section is "
+            "still whole is a warning, which `aide progress archive` clears. "
             "Warnings, and a warning never moves the exit "
             "code \u2014 only an error does: any other stage header, "
             "summary row or Objective row whose status is not its rollup, "
@@ -22092,9 +22406,10 @@ def build_parser() -> argparse.ArgumentParser:
             "tables to a trail line under its table\n"
             "archive: move each settled stage's section to "
             "progress/stage-N.md beside progress.md, its summary row's Title "
-            "cell linking there (--stage N for one stage)\n"
+            "cell linking there (--stage N for one stage); its roadmap.md "
+            "section goes with it, to roadmap/stage-N.md\n"
             "unarchive: move stage N's section back from its archive file "
-            "(--stage N)\n"
+            "(--stage N), and its roadmap.md section with it\n"
             "\n"
             "The rollup, applied by set and read by `aide check`: a stage is "
             "\u2705 when every deliverable bullet in it is \u2705 or \u274c "
@@ -22296,12 +22611,22 @@ def build_parser() -> argparse.ArgumentParser:
             "unmerged into main_branch. It also refuses a stage whose "
             "progress/stage-N.md already exists, a second copy `aide check` "
             "reports, and takes no stage while a Human gates row no reader "
-            "can use stands, since that row could reach any. The section moves verbatim, less the "
+            "can use stands, since that row could reach any. It refuses a "
+            "stage whose roadmap/stage-N.md already exists, or whose "
+            "roadmap.md section is a stub already, as well. The section moves verbatim, less the "
             "`---` after it, under one line pointing back at progress.md, and "
             "the summary row's Title cell becomes a link to the file while "
             "its Status cell stays. From then on every reader of item status "
             "reads the archived bullets too, and the stage rolls up to its "
-            "summary row. With --stage N it refuses, exit 1, a stage that is "
+            "summary row. The stage's roadmap.md section moves with it, "
+            "verbatim and heading included, less the `---` after it, to "
+            "roadmap/stage-N.md under one line pointing back at roadmap.md, "
+            "and in roadmap.md its heading stays with one line under it "
+            "linking to the file; where roadmap.md has no section for the "
+            "stage, progress.md's moves alone. A stage whose progress.md "
+            "section is archived and whose roadmap.md section is still whole "
+            "has its roadmap half archived alone, with --stage N or without. "
+            "With --stage N it refuses, exit 1, a stage that is "
             "not eligible, naming the first condition it fails; without, it "
             "archives every eligible stage and prints each \u2705 or \u274c "
             "stage it keeps, with why, and with none eligible it writes "
@@ -22313,7 +22638,10 @@ def build_parser() -> argparse.ArgumentParser:
             "the Title cell, removes the file and commits both as archive "
             "does, or progress.md alone where the file was never committed. "
             "It refuses, exit 1, a stage with no archive file, and one "
-            "progress.md has a section of as well. archive and unarchive "
+            "progress.md has a section of as well. It moves back whichever "
+            "of progress/stage-N.md and roadmap/stage-N.md exists, the "
+            "roadmap section in place of its stub, and refuses, exit 1, a "
+            "roadmap.md with no stub for the stage. archive and unarchive "
             "refuse, exit 2, any argument but --stage and --no-commit, and "
             "unarchive one without --stage.\n"
             "\n"

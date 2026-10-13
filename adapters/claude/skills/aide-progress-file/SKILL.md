@@ -126,6 +126,7 @@ paths:
      - Nothing writes into the archive, neither a verb nor a hand edit
      - a correction (`amend`, `retract`, `reword`) or a reopen first moves the
        stage back with `aide progress unarchive --stage N`
+     - The same verb archives the stage's `roadmap.md` section with it
 -->
 
 # `progress.md`
@@ -258,4 +259,6 @@ writes `progress.md` alone.
 whose summary row's Title cell links to `progress/stage-N.md` has its section
 in that file. **Nothing writes into the archive, neither a verb nor a hand
 edit**: **a correction (`amend`, `retract`, `reword`) or a reopen first moves
-the stage back with `aide progress unarchive --stage N`**.
+the stage back with `aide progress unarchive --stage N`**. **The same verb
+archives the stage's `roadmap.md` section with it**, to `roadmap/stage-N.md`,
+and `unarchive` brings both back.
