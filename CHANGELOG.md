@@ -155,10 +155,22 @@ instead — that is the bump policy above, and it is enforced by
   stage, or no `roadmap.md`, holds nothing: `progress.md`'s section moves
   alone — the verb prints a line saying so when `roadmap.md` exists without
   the section, and nothing when there is no `roadmap.md`.
+- **Relative links in an archived section are rebased, in both
+  documents.** A moved section sits one folder deeper, so a link to
+  `vision.md` or `items/150-….md` inside it pointed at nothing, silently:
+  `aide check` never follows a link, and one consumer's stage sections hold
+  about 40. `archive` now prefixes `../` to every relative inline link,
+  image and reference-definition target in the moved section — a URL, a
+  `/` or `#` target, an autolink, and anything in a code span or fenced
+  block are left as written — and `unarchive` strips it again, so the round
+  trip stays byte for byte. This applies to `progress/stage-N.md` too:
+  2.50.0 moved those sections verbatim.
 - **A stage archived by 2.50.x or 2.51.x is caught up.** Its `progress.md`
   section is archived and its `roadmap.md` section is still whole; `aide
   progress archive` — without `--stage`, or with `--stage N` for that stage
   — archives the roadmap half alone, in one commit.
+- **`aide progress -h`** says `archive` commits `roadmap.md` as well as
+  `progress.md` and the archive files.
 - **`aide progress unarchive --stage N`** moves back whichever of
   `progress/stage-N.md` and `roadmap/stage-N.md` exists, the roadmap section
   in place of its stub, and refuses, exit 1, a `roadmap.md` with no stub for
@@ -169,7 +181,9 @@ instead — that is the bump policy above, and it is enforced by
   `## Stage N` section or that sits beside a whole section, a stub whose
   heading differs from the one in its `roadmap/stage-N.md` (a hand retitle,
   to `Maintenance` say, of a stage that is archived and therefore frozen),
-  and a roadmap section archived while its `progress.md` section is live. It **warns** on
+  a stub holding anything besides its heading and its pointer line (a stub
+  is the verb's, never a hand edit), and a roadmap section archived while
+  its `progress.md` section is live. It **warns** on
   a stage archived in `progress/stage-N.md` whose `roadmap.md` section is
   still whole — the catch-up above clears it. A `roadmap/stage-N.md` is a
   record (#338).

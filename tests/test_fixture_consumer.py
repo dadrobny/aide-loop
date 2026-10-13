@@ -1217,7 +1217,7 @@ ARCHIVABLE = """\
 - ✅ The farewell. *(Item 002)*
 
 **Acceptance.**
-- [x] Both items land.
+- [x] Both items land, as [the roadmap](roadmap.md) plans.
 
 ---
 
@@ -1242,7 +1242,7 @@ ARCHIVABLE_ROADMAP = """\
 
 ## Stage 1 — Foundations
 
-**Goal.** A greeter and a farewell.
+**Goal.** A greeter and a farewell, tracked in [progress](progress.md).
 
 **Deliverables.**
 
@@ -1297,6 +1297,11 @@ def test_an_archived_stage_reads_as_shipped_and_moves_back_for_a_correction(
     stubbed = roadmap.read_text(encoding="utf-8")
     assert "## Stage 1 — Foundations\n\nArchived in" in stubbed
     assert "The greeter and the farewell" not in stubbed
+    # A relative link in a moved section resolves from the archive file.
+    for rel, target in (("progress/stage-1.md", "](../roadmap.md)"),
+                        ("roadmap/stage-1.md", "](../progress.md)")):
+        assert target in (ddir / rel).read_text(encoding="utf-8")
+        assert ((ddir / rel).parent / target[2:-1]).resolve().is_file()
     assert aide.main(["--repo", str(consumer), "check"]) == 0
 
     archived = progress.read_bytes()

@@ -256,7 +256,8 @@ progress archive [--stage N]` moves a stage's section, verbatim, to
 unpadded as the heading writes it — and the stage's summary row's Title cell
 becomes a link to that file, the title its text; its Status cell keeps the
 icon. The Stage summary, Objective coverage and the three optional tables stay
-here. **The same verb archives the stage's `roadmap.md` section with it**, to
+here. The section's relative links are rebased so they resolve from the
+archive file, and `aide progress unarchive` reverses it. **The same verb archives the stage's `roadmap.md` section with it**, to
 `roadmap/stage-N.md`, and §1 → `roadmap.md` says what stays there. It is the
 verb's move, never a hand edit, and a stage is eligible only when all of these
 hold:
@@ -543,6 +544,13 @@ in both places. `aide progress unarchive --stage N` moves the stage's
   the section, verbatim, so the record reads as it did.
 - **Why the filename is unpadded.** It matches the heading, and a zero-pad
   would read as a position, which #338 rules out.
+- **Why relative links are rebased (#476).** A moved section sits one folder
+  deeper than the file it left, so a link written there to `vision.md` or
+  `items/150-….md` would point at a file that is not there — one consumer's
+  stage sections held about 40 such links — and nothing would say so, since
+  `aide check` never follows a link. Rebasing is the one edit the move
+  makes to the text, and `unarchive` reverses it, so the round trip is
+  byte for byte; links in code are examples, and stay as written.
 - **Why one verb moves both documents' sections (#476).** A roadmap stage is
   archived exactly when its `progress.md` stage is, so the two archives
   cannot disagree about which stages are settled, and the eligibility rule

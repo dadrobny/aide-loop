@@ -1121,7 +1121,18 @@ def _stub_retitled(d: Path) -> None:
         encoding="utf-8")
 
 
+def _stub_with_text(d: Path) -> None:
+    road = (d / "roadmap.md").read_text(encoding="utf-8")
+    (d / "roadmap.md").write_text(road.replace(
+        "Archived in [roadmap/stage-2.md](roadmap/stage-2.md).\n",
+        "Archived in [roadmap/stage-2.md](roadmap/stage-2.md).\n\n"
+        "> Annotated after archiving.\n"), encoding="utf-8")
+
+
 @pytest.mark.parametrize("damage, finding", [
+    (_stub_with_text,
+     "stage 2's stub holds text besides its heading and its line linking to "
+     "roadmap/stage-2.md"),
     (_stub_retitled,
      "roadmap.md: stage 2's stub is headed '## Stage 2 — Maintenance', but "
      "roadmap/stage-2.md holds '## Stage 2 — Checks'"),
@@ -1139,7 +1150,7 @@ def _stub_retitled(d: Path) -> None:
     (_progress_moved_back,
      "stage 2: its roadmap.md section is archived in roadmap/stage-2.md while "
      "its progress.md section is live"),
-], ids=["stub-retitled", "stub-without-file", "file-beside-whole", "file-without-stub",
+], ids=["stub-with-text", "stub-retitled", "stub-without-file", "file-beside-whole", "file-without-stub",
         "file-without-section", "progress-live"])
 def test_roadmap_and_its_archive_disagreeing_is_an_error(tmp_path, damage,
                                                          finding):
@@ -1148,7 +1159,7 @@ def test_roadmap_and_its_archive_disagreeing_is_an_error(tmp_path, damage,
     assert _check(repo)[0] == []
     damage(_ddir(repo))
     errors, _ = _check(repo)
-    assert any(e.startswith(finding) for e in errors), errors
+    assert any(finding in e for e in errors), errors
 
 
 def test_a_roadmap_archive_file_is_a_record(tmp_path):
@@ -1298,3 +1309,72 @@ def test_an_archived_stage_naming_a_later_stage_is_no_longer_warned_on(
     assert _archive(repo, "--stage", "2") == 0
     assert not any(w.startswith(forward) for w in _check(repo)[1])
     assert "**Dependencies.** Stage 3." in _read(repo, "roadmap/stage-2.md")
+
+
+# --------------------------------------------------------------------------- #
+# relative links in a moved section — issue #476
+# --------------------------------------------------------------------------- #
+LINKED = [
+    'See [the vision](vision.md) and ![a chart](img/a.png "Chart").',
+    '- [x] Specified in [item 150](items/150-x.md#decisions "Decisions").',
+    "[web](https://x.org/a.md) [top](#goal) [abs](/docs/a.md) "
+    "<https://auto.org/b.md> [mail](mailto:a@b.org)",
+    "Written as code: `[x](vision.md)`, outside it [y](queue/queue-001.md).",
+    "```",
+    "[fenced](vision.md)",
+    "```",
+    "~~~~",
+    "[tilde](vision.md)",
+    "~~~~",
+    '[ref]: items/001-x.md "Item 1"',
+    "[parent](../README.md)",
+]
+
+UP = [
+    'See [the vision](../vision.md) and ![a chart](../img/a.png "Chart").',
+    '- [x] Specified in [item 150](../items/150-x.md#decisions "Decisions").',
+    "[web](https://x.org/a.md) [top](#goal) [abs](/docs/a.md) "
+    "<https://auto.org/b.md> [mail](mailto:a@b.org)",
+    "Written as code: `[x](vision.md)`, outside it [y](../queue/queue-001.md).",
+    "```",
+    "[fenced](vision.md)",
+    "```",
+    "~~~~",
+    "[tilde](vision.md)",
+    "~~~~",
+    '[ref]: ../items/001-x.md "Item 1"',
+    "[parent](../../README.md)",
+]
+
+
+def test_rebase_links_moves_only_relative_targets_outside_code():
+    assert aide.rebase_links(LINKED, True) == UP
+    assert aide.rebase_links(UP, False) == LINKED
+    # Down strips exactly one ../ and leaves a target without one as it is.
+    assert aide.rebase_links(["[a](x.md) [b](../../y.md)"], False) == [
+        "[a](x.md) [b](../y.md)"]
+
+
+def test_archive_rebases_relative_links_in_both_sections(tmp_path):
+    progress = _progress(gates="").replace(
+        "- [x] Checks run.\n", "- [x] Checks run, per [the roadmap](roadmap.md).\n")
+    road = ROADMAP.replace(
+        "## Stage 2 — Checks\n", "## Stage 2 — Checks ([spec](items/003-x.md))\n"
+    ).replace("- Lint and fuzz.", "- Lint and fuzz, see [vision](vision.md).")
+    p_updated, p_archived = aide.archive_stage_text(progress, "2")
+    assert "per [the roadmap](../roadmap.md)." in p_archived
+    assert p_archived.splitlines()[0] == aide._archive_header(2)
+    assert aide.unarchive_stage_text(p_updated, p_archived, 2) == progress
+    r_updated, r_archived = aide.archive_roadmap_text(road, 2)
+    assert "see [vision](../vision.md)." in r_archived
+    assert "## Stage 2 — Checks ([spec](../items/003-x.md))" in r_archived
+    assert "## Stage 2 — Checks ([spec](items/003-x.md))\n" in r_updated
+    assert r_archived.splitlines()[0] == aide._roadmap_archive_header(2)
+    assert aide.unarchive_roadmap_text(r_updated, r_archived, 2) == road
+    # Through the verb: the stub's heading still matches its file's, as
+    # unarchive would put it back, and the archived items still read.
+    repo = _road_repo(tmp_path, roadmap=road, progress=progress)
+    assert _archive(repo, "--stage", "2") == 0
+    assert _check(repo)[0] == []
+    lines = aide.read_progress_lines(_ddir(repo) / "progress.md")
+    assert aide._parse_item_status(lines)[2][3] == "complete"

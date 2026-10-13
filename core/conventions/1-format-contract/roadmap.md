@@ -110,7 +110,9 @@ stub keeps its place.** `aide progress archive` (§1 → `progress.md`) moves th
 section, heading included and verbatim, to `roadmap/stage-N.md` beside this
 file, exactly when it archives the stage's `progress.md` section, and leaves a
 **stub**: the stage's `## Stage N — Title` heading with one line under it
-linking to that file. What stays in this file is the Strategy section with the
+linking to that file. The section's relative links are rebased so they
+resolve from the archive file, and `aide progress unarchive` reverses it.
+What stays in this file is the Strategy section with the
 coverage table and the dependency graph, every stage not archived, whole, a
 stub for each archived stage, and the Backlog. A stub is the verb's, never a
 hand edit, and no reader follows it into the archive. **An archived stage is

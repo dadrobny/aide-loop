@@ -451,7 +451,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "progress.md's: a stub linking to a roadmap/stage-N.md that does not "
          "exist, such a file roadmap.md has no stub for, holding no `## Stage "
          "N` section or beside a whole section, a stub whose heading is not "
-         "the one in its file, and a roadmap section "
+         "the one in its file, a stub holding anything but its heading and "
+         "its line linking to the file, and a roadmap section "
          "archived while its progress.md section is live",
          "test_aide_progress_archive::test_roadmap_and_its_archive_disagreeing_is_an_error"),
         # `roadmap_archive_findings`' warnings, cleared by `roadmap_catch_up`.
@@ -1345,9 +1346,19 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "or \u274c stage it keeps, with why, and with none eligible it "
          "writes nothing and exits 0",
          "test_aide_progress_archive::test_archive_with_no_stage_takes_every_eligible_one_and_names_the_rest"),
-        ("It commits progress.md and the files it writes as set does",
+        # `rebase_links`, applied in all four text functions (issue #476).
+        ("In either moved section every relative link target \u2014 inline, "
+         "image or reference definition, outside code \u2014 is rebased with "
+         "a leading ../ so it resolves from the archive file, and unarchive "
+         "strips it again",
+         ("test_aide_progress_archive::test_archive_rebases_relative_links_in_both_sections",
+          "test_aide_progress_archive::test_rebase_links_moves_only_relative_targets_outside_code")),
+        ("It commits progress.md, roadmap.md and the files it writes as set "
+         "does",
          ("test_aide_progress_archive::test_archive_and_unarchive_commit_both_files",
-          "test_aide_progress_archive::test_an_archive_whose_commit_fails_is_put_back")),
+          "test_aide_progress_archive::test_archive_and_unarchive_commit_the_roadmap_half_too",
+          "test_aide_progress_archive::test_an_archive_whose_commit_fails_is_put_back",
+          "test_aide_progress_archive::test_a_failed_archive_commit_puts_the_roadmap_back")),
         ("unarchive puts the section back before the first stage section "
          "numbered above it, or after the last one, takes the link off the "
          "Title cell, removes the file and commits both as archive does",

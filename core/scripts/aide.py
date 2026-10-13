@@ -7817,6 +7817,9 @@ def maintenance_stage_warnings(ddir: Path) -> List[str]:
     rpath, ppath = ddir / "roadmap.md", ddir / "progress.md"
     rlines = (rpath.read_text(encoding=_ENCODING).splitlines()
               if rpath.is_file() else [])
+    # Read without the archive (`with_archive`) on purpose: only summary
+    # rows and stage headings are read here, and an archived stage keeps
+    # its row. A future read of item status here needs `with_archive`.
     plines = (ppath.read_text(encoding=_ENCODING).splitlines()
               if ppath.is_file() else [])
     for name, lines in (("roadmap.md", rlines), ("progress.md", plines)):
@@ -8162,6 +8165,9 @@ def roadmap_shape_warnings(ddir: Path) -> List[str]:
     if not rpath.is_file():
         return []
     ppath = ddir / "progress.md"
+    # Read without the archive (`with_archive`) on purpose: only summary
+    # rows and stage headings are read here, and an archived stage keeps
+    # its row. A future read of item status here needs `with_archive`.
     plines = (ppath.read_text(encoding=_ENCODING).splitlines()
               if ppath.is_file() else [])
     return roadmap_shape_findings(rpath.read_text(encoding=_ENCODING).splitlines(),
@@ -11154,6 +11160,75 @@ def _without_trailing_separators(block: List[str]) -> List[str]:
     return out
 
 
+#: An inline link or image target, ``](target)`` with an optional quoted
+#: title after it; a target in angle brackets is left as written.
+_INLINE_LINK_TARGET_RE = re.compile(
+    r"\]\((?P<target>[^\s()<>]+)(?P<rest>(?:\s+(?:\"[^\"]*\"|'[^']*'))?\s*)\)")
+#: A reference definition, ``[label]: target`` at the start of a line.
+_REF_DEFINITION_RE = re.compile(
+    r"^(?P<lead> {0,3}\[[^\]]+\]:[ \t]*)(?P<target>[^\s<>]+)(?P<rest>.*)$")
+#: A URL scheme (``https:``, ``mailto:``) — a target with one is absolute.
+_LINK_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+_CODE_SPAN_RE = re.compile(r"(`+).*?\1")
+
+
+def _rebase_target(target: str, up: bool) -> str:
+    """*target* one folder deeper (*up*) or back; only a relative one moves."""
+    if (target.startswith(("/", "#")) or _LINK_SCHEME_RE.match(target)):
+        return target
+    if up:
+        return "../" + target
+    return target[3:] if target.startswith("../") else target
+
+
+def rebase_links(lines: List[str], up: bool) -> List[str]:
+    """*lines* with every relative link target rebased for a section moved
+    one folder deeper — ``../`` prefixed when *up*, one leading ``../``
+    stripped otherwise, a target without one left as it is (issue #476).
+
+    The targets are inline link and image targets, their title and
+    ``#fragment`` kept, and reference definitions. A target with a URL
+    scheme, or opening ``/`` or ``#``, is not relative; an angle-bracket
+    autolink is not a target. Fenced code blocks and code spans are never
+    read, so a link written as an example stays as written.
+    """
+    out: List[str] = []
+    fence: Optional[str] = None
+    for line in lines:
+        m = _MD_FENCE_RE.match(line)
+        if fence is not None:
+            if (m and m.group(1)[0] == fence[0]
+                    and len(m.group(1)) >= len(fence)
+                    and not m.group(2).strip()):
+                fence = None
+            out.append(line)
+            continue
+        if m:
+            fence = m.group(1)
+            out.append(line)
+            continue
+        ref = _REF_DEFINITION_RE.match(line)
+        if ref:
+            out.append(ref.group("lead")
+                       + _rebase_target(ref.group("target"), up)
+                       + ref.group("rest"))
+            continue
+        parts: List[str] = []
+        pos = 0
+        for span in _CODE_SPAN_RE.finditer(line):
+            parts.append(_INLINE_LINK_TARGET_RE.sub(
+                lambda t: (f"]({_rebase_target(t.group('target'), up)}"
+                           f"{t.group('rest')})"),
+                line[pos:span.start()]))
+            parts.append(span.group(0))
+            pos = span.end()
+        parts.append(_INLINE_LINK_TARGET_RE.sub(
+            lambda t: (f"]({_rebase_target(t.group('target'), up)}"
+                       f"{t.group('rest')})"), line[pos:]))
+        out.append("".join(parts))
+    return out
+
+
 def archive_consistency_errors(ddir: Path, lines: List[str]) -> List[str]:
     """Where progress.md and its archive disagree about a stage (#475).
 
@@ -11461,7 +11536,8 @@ def archive_stage_text(text: str, stage: str) -> Tuple[str, str]:
     assert sec is not None
     start, end, num = sec
     n = int(num)
-    body = _without_trailing_separators(lines[start:end])
+    # One folder deeper, so its relative links are rebased to resolve there.
+    body = rebase_links(_without_trailing_separators(lines[start:end]), True)
     kept = lines[:start] + lines[end:]
     if end >= len(lines):
         # The last section: the separator above it would close the file.
@@ -11487,7 +11563,7 @@ def unarchive_stage_text(text: str, archived: str, stage: int) -> str:
     if sec is None:
         raise ValueError(f"{archive_link(stage)} holds no '## Stage {stage}' "
                          f"section")
-    body = _without_trailing_separators(alines[sec[0]:])
+    body = rebase_links(_without_trailing_separators(alines[sec[0]:]), False)
     lines = text.splitlines()
     after = next((s for s, _, num in stage_sections(lines) if int(num) > stage),
                  None)
@@ -11535,7 +11611,8 @@ def archive_roadmap_text(text: str, stage: int) -> Tuple[str, str]:
     tail = lines[start + len(body):end]
     stub = [lines[start], "", roadmap_stub_line(stage)]
     kept = lines[:start] + stub + tail + lines[end:]
-    archived = "\n".join([_roadmap_archive_header(stage), "", *body]) + "\n"
+    archived = "\n".join([_roadmap_archive_header(stage), "",
+                          *rebase_links(body, True)]) + "\n"
     return ("\n".join(kept) + ("\n" if text.endswith("\n") else "")), archived
 
 
@@ -11549,7 +11626,7 @@ def unarchive_roadmap_text(text: str, archived: str, stage: int) -> str:
     if asec is None:
         raise ValueError(f"{roadmap_archive_link(stage)} holds no '## Stage "
                          f"{stage}' section")
-    body = _without_trailing_separators(alines[asec[0]:])
+    body = rebase_links(_without_trailing_separators(alines[asec[0]:]), False)
     lines = text.splitlines()
     sec = stage_section(lines, str(stage))
     if sec is None:
@@ -11579,9 +11656,10 @@ def roadmap_archive_findings(ddir: Path,
     `archive_consistency_errors` names on the progress side: a stub whose
     file is not there, a file roadmap.md has no stub for or holding no
     ``## Stage N`` section, a stage both archived and whole in roadmap.md,
-    and a stub whose heading is not the archived section's — an archived
+    a stub whose heading is not the archived section's — an archived
     stage is frozen, so a retitle (to ``Maintenance``, say) waits for
-    `unarchive`.
+    `unarchive` — and a stub holding anything but its heading and its
+    pointer line.
     The one warning is a progress.md section archived while the roadmap
     section stays whole — every stage archived before issue #476 — which
     loses nothing and which `aide progress archive` catches up.
@@ -11597,6 +11675,19 @@ def roadmap_archive_findings(ddir: Path,
     progress_files = archived_stage_files(ddir)
     progress_sections = {int(n) for _, _, n in stage_sections(lines)}
     errors: List[str] = []
+    for start, end, num in stage_sections(rlines):
+        if int(num) not in stubs:
+            continue
+        held = [l.strip() for l in
+                _without_trailing_separators(rlines[start + 1:end])
+                if l.strip()]
+        if held != [roadmap_stub_line(int(num))]:
+            errors.append(
+                f"roadmap.md:{start + 1}: stage {int(num)}'s stub holds text "
+                f"besides its heading and its line linking to "
+                f"{roadmap_archive_link(int(num))} — a stub is the verb's, "
+                f"never a hand edit; move the text to its route (§1 → "
+                f"roadmap.md) and delete it")
     for n in sorted(set(files) | stubs):
         rel = roadmap_archive_link(n)
         if n not in files:
@@ -11616,7 +11707,10 @@ def roadmap_archive_findings(ddir: Path,
                           f"it from git history")
         elif n in stubs:
             sec = stage_section(rlines, str(n))
-            heading, archived = rlines[sec[0]].strip(), alines[asec[0]].strip()
+            # The archived heading as unarchive would put it back: its
+            # links were rebased one folder deeper on the way out.
+            heading = rlines[sec[0]].strip()
+            archived = rebase_links([alines[asec[0]]], False)[0].strip()
             if heading != archived:
                 errors.append(
                     f"roadmap.md: stage {n}'s stub is headed '{heading}', but "
@@ -22176,7 +22270,8 @@ def build_parser() -> argparse.ArgumentParser:
             "progress.md's: a stub linking to a roadmap/stage-N.md that does "
             "not exist, such a file roadmap.md has no stub for, holding no "
             "`## Stage N` section or beside a whole section, a stub whose "
-            "heading is not the one in its file, and a roadmap "
+            "heading is not the one in its file, a stub holding anything "
+            "but its heading and its line linking to the file, and a roadmap "
             "section archived while its progress.md section is live; a stage "
             "archived to progress/stage-N.md whose roadmap.md section is "
             "still whole is a warning, which `aide progress archive` clears. "
@@ -22641,12 +22736,16 @@ def build_parser() -> argparse.ArgumentParser:
             "stage, progress.md's moves alone. A stage whose progress.md "
             "section is archived and whose roadmap.md section is still whole "
             "has its roadmap half archived alone, with --stage N or without. "
+            "In either moved section every relative link target \u2014 "
+            "inline, image or reference definition, outside code \u2014 is "
+            "rebased with a leading ../ so it resolves from the archive "
+            "file, and unarchive strips it again. "
             "With --stage N it refuses, exit 1, a stage that is "
             "not eligible, naming the first condition it fails; without, it "
             "archives every eligible stage and prints each \u2705 or \u274c "
             "stage it keeps, with why, and with none eligible it writes "
-            "nothing and exits 0. It commits progress.md and the files it "
-            "writes as set does.\n"
+            "nothing and exits 0. It commits progress.md, roadmap.md and the "
+            "files it writes as set does.\n"
             "\n"
             "unarchive puts the section back before the first stage section "
             "numbered above it, or after the last one, takes the link off "
