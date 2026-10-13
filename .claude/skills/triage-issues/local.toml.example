@@ -11,5 +11,5 @@
 # Local consumer checkouts, each carrying the engine version it was installed
 # at in .aide/VERSION. Name -> path. Notes are free text. Last stanza on purpose.
 [consumers]
-# spine-failure-lab = { path = "/path/to/spine-failure-lab", notes = "has an InstructionsLoaded log" }
+# consumer-a = { path = "/path/to/consumer-a", notes = "has an InstructionsLoaded log" }
 # SegFACET = { path = "/path/to/SegFACET" }
