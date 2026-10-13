@@ -756,7 +756,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_roadmap_shape::test_each_signal_alone_is_named_once_on_a_planned_stage",
           "test_aide_roadmap_shape::test_a_template_label_is_read_with_or_without_its_dot",
           "test_aide_roadmap_shape::test_bold_inside_a_bullet_is_not_a_bold_block",
-          "test_aide_roadmap_shape::test_the_threshold_is_exclusive_and_continuation_lines_count")),
+          "test_aide_roadmap_shape::test_the_threshold_is_exclusive_and_continuation_lines_count",
+          "test_aide_roadmap_shape::test_the_threshold_is_the_one_the_rule_and_help_state")),
         # `if not planned: continue` after the blockquote; the settled
         # statuses are skipped before any signal is read.
         ("on a \U0001f6a7, \U0001f50d or ⏸️ stage, a blockquote "

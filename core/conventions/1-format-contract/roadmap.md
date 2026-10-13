@@ -84,8 +84,11 @@ stage is planned goes to its home.** Each kind of after-the-fact text has one:
 
 **An annotation found in a started stage's section moves to its route and is
 deleted.** A blockquote, a dated note, a reinterpretation prepended to a
-criterion — each was added after the stage was written, so deleting it
+criterion — is text added after the stage was written, so deleting it
 restores the stage as written and keeps the freeze rather than breaching it.
+Text the stage was written with stays, even in a shape this section now
+names, since the freeze keeps it; the section's history in git says which
+is which.
 Its content is not lost: the route records it, dated and attributable, where
 the reader who needs it looks. In a 📋 Planned stage the same text is folded
 into the plan, where it is plan, or sent to its route, where it is not.

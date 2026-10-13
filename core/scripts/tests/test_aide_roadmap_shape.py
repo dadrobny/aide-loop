@@ -255,6 +255,15 @@ def test_the_threshold_is_exclusive_and_continuation_lines_count():
     assert len(head) < aide.LONG_DELIVERABLE
 
 
+def test_the_threshold_is_the_one_the_rule_and_help_state():
+    """`aide check -h` and §1 → roadmap.md state the number, not the name:
+    moving `LONG_DELIVERABLE` alone would leave both saying 800."""
+    assert aide.LONG_DELIVERABLE == 800
+    section = (_MODULE_PATH.parents[1] / "conventions" / "1-format-contract"
+               / "roadmap.md").read_text(encoding="utf-8")
+    core = section.split("#### Rationale", 1)[0]
+    assert f"about {aide.LONG_DELIVERABLE} characters" in " ".join(core.split())
+
 def test_a_nested_bullet_belongs_to_its_top_level_bullet():
     nested = "  - " + "y" * (aide.LONG_DELIVERABLE - 5) + "\n"
     text = CLEAN.replace("- The rule runner", "- Parent.\n" + nested + "- The rule runner", 1)

@@ -7988,8 +7988,9 @@ def roadmap_shape_findings(rlines: List[str],
             fix = ("fold what is plan into the Goal or a deliverable, and "
                    "move the rest to its route" if planned else
                    f"it is {STATUS_TO_ICON[status]}, so nothing is added to "
-                   f"its section: move the annotation to its route and "
-                   f"delete it, which restores the stage as written")
+                   f"its section: an annotation added after the stage was "
+                   f"written moves to its route and is deleted, which "
+                   f"restores the stage as written")
             out.append(
                 f"roadmap.md:{runs[0] + 1}: stage {n} holds "
                 f"{len(runs)} blockquote{'' if len(runs) == 1 else 's'} — a "
