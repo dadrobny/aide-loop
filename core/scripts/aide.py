@@ -7837,6 +7837,267 @@ def maintenance_stage_warnings(ddir: Path) -> List[str]:
     return out
 
 
+#: A deliverable bullet of a 📋 Planned roadmap stage longer than this many
+#: characters, its continuation lines joined, is named (issue #483). It sits
+#: above the longest bullet of one consumer's early, plan-only stages (397)
+#: and the longest of a second consumer, an admission rule its stage must
+#: meet (707); every bullet over 700 in either sat in the late stages that
+#: carried item-spec content into their deliverables.
+LONG_DELIVERABLE = 800
+#: The five block labels a stage section's template gives it, read as the
+#: other roadmap readers read them: the trailing dot optional, a colon
+#: tolerated, any case (`_ROADMAP_DEPS_RE`, `_ROADMAP_ACCEPTANCE_RE`).
+_ROADMAP_LABEL_RE = re.compile(
+    r"^\*\*(?:Goal|Deliverables|Dependencies|Human\s+gate"
+    r"|Validation\s*/\s*acceptance)\s*[.:]?\*\*", re.IGNORECASE)
+_ROADMAP_GOAL_RE = re.compile(r"^\*\*Goal\s*[.:]?\*\*", re.IGNORECASE)
+_ROADMAP_DELIVERABLES_RE = re.compile(r"^\*\*Deliverables\s*[.:]?\*\*",
+                                      re.IGNORECASE)
+_BLOCKQUOTE_RE = re.compile(r"^ {0,3}>")
+_THEMATIC_BREAK_RE = re.compile(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
+_MD_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+#: A top-level list bullet: at most one space of indent, then `-`, `*` or `+`
+#: and a space — so `**bold**` at a line's start is not one.
+_TOP_BULLET_RE = re.compile(r"^ ?[-*+][ \t]+\S")
+_TOP_BULLET_LEAD_RE = re.compile(r"^ ?[-*+][ \t]+")
+
+
+def markdown_prose_lines(lines: List[str]) -> List[Optional[str]]:
+    """Each of *lines* as prose a shape lint reads, index for index.
+
+    ``None`` for a line inside a fenced code block (its fences included) or
+    wholly inside an HTML comment; any other line with its comment spans
+    removed. A fence closes on the same character, at least as long, with
+    nothing after it; one never closed runs to the end, as Markdown reads it.
+    """
+    out: List[Optional[str]] = []
+    fence: Optional[str] = None
+    in_comment = False
+    for line in lines:
+        if fence is not None:
+            out.append(None)
+            m = _MD_FENCE_RE.match(line)
+            if (m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence)
+                    and not m.group(2).strip()):
+                fence = None
+            continue
+        touched = in_comment or "<!--" in line
+        kept, rest = "", line
+        while rest:
+            if in_comment:
+                close = rest.find("-->")
+                if close < 0:
+                    break
+                rest, in_comment = rest[close + 3:], False
+            else:
+                begin = rest.find("<!--")
+                if begin < 0:
+                    kept += rest
+                    break
+                kept += rest[:begin]
+                rest, in_comment = rest[begin + 4:], True
+        if touched and not kept.strip():
+            out.append(None)
+            continue
+        m = _MD_FENCE_RE.match(kept)
+        if m:
+            fence = m.group(1)
+            out.append(None)
+            continue
+        out.append(kept)
+    return out
+
+
+def roadmap_stage_statuses(plines: List[str]) -> Dict[int, str]:
+    """Stage number -> its status as progress.md shows it, for the stages it
+    shows: the Stage summary row's, or the stage header's where there is no
+    readable row or the row reads 📋 while the header does not — a stage
+    either shows as started is started, as `maintenance_stage_warnings`
+    reads it. A stage in neither is absent; its caller reads it as 📋."""
+    out: Dict[int, str] = {}
+    for start, _end, num in stage_sections(plines):
+        status = _header_status(plines[start])
+        if status:
+            out[int(num)] = status
+    for line in plines:
+        cells = _split_row(line) if line.strip().startswith("|") else []
+        if cells and _reads(_STAGE_SUMMARY, cells) and cells[0].isdigit():
+            status = _icon_status(cells[3])
+            if status != "planned" or int(cells[0]) not in out:
+                out[int(cells[0])] = status
+    return out
+
+
+def _bold_lead(text: str, width: int = 60) -> str:
+    """The bold span opening *text*, shortened to *width* characters."""
+    m = re.match(r"\*\*(.+?)\*\*", text)
+    lead = m.group(1).strip() if m else text.strip()
+    return lead if len(lead) <= width else lead[:width - 1].rstrip() + "…"
+
+
+def roadmap_shape_findings(rlines: List[str],
+                           statuses: Dict[int, str]) -> List[str]:
+    """§1 → roadmap.md's content rule, checked on each stage section (issue
+    #483): a stage section is the plan and nothing else.
+
+    Four signals, each named once per stage at its first line:
+
+    1. **A blockquote** — a line opening ``>``. Every one traced in a
+       consumer's roadmap was a dated annotation added after its stage had
+       started; its fix is to move it to its route and delete it.
+    2. **A Goal of more than one paragraph** — blank-line-separated runs of
+       text from the ``**Goal.**`` opener to the next bold block or
+       thematic break; a blockquote line is no part of one, and a run that
+       is ``_italic guidance_`` throughout is not counted.
+    3. **A bold block that is not a template label** — a paragraph opening
+       ``**`` at the start of its line whose bold is none of Goal,
+       Deliverables, Dependencies, Human gate and Validation / acceptance.
+       Bold inside a bullet is not one, and neither is a line wrapped from
+       the one above it, which Markdown reads as that line's continuation.
+    4. **A deliverable bullet longer than `LONG_DELIVERABLE`** — the text of
+       a top-level bullet of the Deliverables block, its marker aside, with
+       its continuation lines (a nested bullet's included) joined by single
+       spaces.
+
+    Scoped by *statuses* (`roadmap_stage_statuses`; a stage absent from it
+    is 📋): a 📋 stage may be edited freely, so all four are named; a 🚧,
+    🔍 or ⏸️ stage is frozen and wrote the other three as its plan, so only a
+    blockquote is; a ✅ or ❌ stage is a settled record and nothing is. A
+    fenced code block and an HTML comment are never read.
+    """
+    out: List[str] = []
+    rule = "(conventions.md §1 → roadmap.md)"
+    prose = markdown_prose_lines(rlines)
+    for start, end, num in stage_sections(rlines):
+        n = int(num)
+        status = statuses.get(n, "planned")
+        if status in ("complete", "excluded"):
+            continue
+        planned = status == "planned"
+        body = [(i, prose[i]) for i in range(start + 1, end)
+                if prose[i] is not None]
+
+        runs: List[int] = []
+        inside = False
+        for i, text in body:
+            quoted = bool(_BLOCKQUOTE_RE.match(text))
+            if quoted and not inside:
+                runs.append(i)
+            inside = quoted
+        if runs:
+            fix = ("fold what is plan into the Goal or a deliverable, and "
+                   "move the rest to its route" if planned else
+                   f"it is {STATUS_TO_ICON[status]}, so nothing is added to "
+                   f"its section: move the annotation to its route and "
+                   f"delete it, which restores the stage as written")
+            out.append(
+                f"roadmap.md:{runs[0] + 1}: stage {n} holds "
+                f"{len(runs)} blockquote{'' if len(runs) == 1 else 's'} — a "
+                f"stage section is the plan and nothing else; {fix} {rule}")
+        if not planned:
+            continue
+
+        goal = next((k for k, (_i, t) in enumerate(body)
+                     if _ROADMAP_GOAL_RE.match(t)), None)
+        if goal is not None:
+            runs_of_text: List[List[str]] = [[]]
+            for k in range(goal, len(body)):
+                text = body[k][1]
+                if k == goal:
+                    text = _ROADMAP_GOAL_RE.sub("", text, count=1)
+                elif (_ROADMAP_BLOCK_END_RE.match(text)
+                      or _THEMATIC_BREAK_RE.match(text)):
+                    break
+                if _BLOCKQUOTE_RE.match(text):
+                    continue
+                if text.strip():
+                    runs_of_text[-1].append(text.strip())
+                elif runs_of_text[-1]:
+                    runs_of_text.append([])
+            paragraphs = sum(
+                1 for run in runs_of_text
+                if run and not _GUIDANCE_RE.match(" ".join(run)))
+            if paragraphs > 1:
+                out.append(
+                    f"roadmap.md:{body[goal][0] + 1}: stage {n}'s Goal runs "
+                    f"{paragraphs} paragraphs — a Goal is one paragraph; keep "
+                    f"the capability the stage delivers, and move the rest "
+                    f"to a deliverable or to its route {rule}")
+
+        bold = [(i, t) for k, (i, t) in enumerate(body)
+                if _ROADMAP_BLOCK_END_RE.match(t)
+                and not _ROADMAP_LABEL_RE.match(t)
+                and not _THEMATIC_BREAK_RE.match(t)
+                and (k == 0 or not body[k - 1][1].strip())]
+        if bold:
+            lead = f"'**{_bold_lead(bold[0][1])}**'"
+            what = (f"a block with {lead}, bold that is no template label"
+                    if len(bold) == 1 else
+                    f"{len(bold)} blocks with bold that is no template "
+                    f"label, the first {lead}")
+            out.append(
+                f"roadmap.md:{bold[0][0] + 1}: stage {n} opens {what} — a "
+                f"stage section holds Goal, Deliverables, "
+                f"Dependencies, an optional Human gate and Validation / "
+                f"acceptance; fold plan text into one of them, and move the "
+                f"rest to its route {rule}")
+
+        head = next((k for k, (_i, t) in enumerate(body)
+                     if _ROADMAP_DELIVERABLES_RE.match(t)), None)
+        if head is None:
+            continue
+        bullets: List[Tuple[int, List[str]]] = []
+        current: Optional[List[str]] = None
+        after_blank = False
+        for k in range(head + 1, len(body)):
+            i, text = body[k]
+            if _ROADMAP_BLOCK_END_RE.match(text) or _THEMATIC_BREAK_RE.match(text):
+                break
+            if _TOP_BULLET_RE.match(text):
+                current = [_TOP_BULLET_LEAD_RE.sub("", text, count=1).strip()]
+                bullets.append((i, current))
+                after_blank = False
+            elif not text.strip():
+                after_blank = True
+            elif current is not None and after_blank and not text[:1].isspace():
+                current = None
+            elif current is not None:
+                current.append(text.strip())
+                after_blank = False
+        long = [(i, len(" ".join(parts))) for i, parts in bullets
+                if len(" ".join(parts)) > LONG_DELIVERABLE]
+        if long:
+            what = (f"a deliverable bullet of {long[0][1]} characters, "
+                    f"over {LONG_DELIVERABLE}" if len(long) == 1 else
+                    f"{len(long)} deliverable bullets over "
+                    f"{LONG_DELIVERABLE} characters, the first of "
+                    f"{long[0][1]}")
+            out.append(
+                f"roadmap.md:{long[0][0] + 1}: stage {n} has {what} — a "
+                f"deliverable says what lands and how "
+                f"it is checked; how it is built is the item spec's "
+                f"(§1 → items.md), and "
+                f"an absorbed inbox entry is cited as insight <ID>, never "
+                f"narrated {rule}")
+    return out
+
+
+def roadmap_shape_warnings(ddir: Path) -> List[str]:
+    """`roadmap_shape_findings` over *ddir*'s roadmap.md, each stage scoped
+    by progress.md (`roadmap_stage_statuses`). A missing roadmap.md is
+    silent, as in `root_document_warnings`; a missing progress.md reads every
+    stage as 📋. A warning, never an error: roadmaps written before the rule
+    exist, and a started stage is frozen (§1 → roadmap.md)."""
+    rpath = ddir / "roadmap.md"
+    if not rpath.is_file():
+        return []
+    ppath = ddir / "progress.md"
+    plines = (ppath.read_text(encoding=_ENCODING).splitlines()
+              if ppath.is_file() else [])
+    return roadmap_shape_findings(rpath.read_text(encoding=_ENCODING).splitlines(),
+                                  roadmap_stage_statuses(plines))
+
+
 #: The G-code(s) opening a roadmap coverage row's first cell — `G2`, or a
 #: leading run `G2, G7`, `G2 and G7`, `G2/G7` — after emphasis, code spans and
 #: one leading parenthetical annotation are set aside: a consumer keeps a
@@ -8740,6 +9001,7 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     warnings.extend(forward_dependency_warnings(ddir))
     warnings.extend(coverage_completeness_warnings(ddir))
     warnings.extend(maintenance_stage_warnings(ddir))
+    warnings.extend(roadmap_shape_warnings(ddir))
     # A docs_dir outside the repo falls back to its absolute spelling, which
     # cannot appear in a spec's repo-relative paths — the always-authorised
     # pin lint then has nothing to match; the other spec-shape lints still
@@ -21681,7 +21943,20 @@ def build_parser() -> argparse.ArgumentParser:
             "own, or given Validation / acceptance bullets in roadmap.md "
             "while progress.md shows it at nothing but \U0001f4cb, so a "
             "started maintenance stage keeps the criteria it was written "
-            "with; every "
+            "with; a roadmap.md stage section whose shape is not the plan's, "
+            "named once per stage and signal at its first line and scoped by "
+            "the stage's status in progress.md — its Stage summary "
+            "row, or its header where the row is missing or reads "
+            "\U0001f4cb while the header does not, \U0001f4cb where it has "
+            "neither: on a \U0001f4cb stage, a blockquote line, a Goal of "
+            "more than one blank-line-separated paragraph, a paragraph "
+            "opening in bold whose bold is not Goal, Deliverables, "
+            "Dependencies, Human gate or Validation / acceptance, and a "
+            "top-level Deliverables bullet whose text, its continuation "
+            "lines joined, is longer than 800 characters; on a \U0001f6a7, \U0001f50d or "
+            "⏸️ stage, a blockquote line alone; on a ✅ or "
+            "❌ stage, nothing — a fenced code block and an HTML "
+            "comment are never read; every "
             "retracted acceptance criterion and every reopened item, a "
             "normal state rather than a defect, each reported once, by its "
             "latest retraction or reopening, and never as open once the box "

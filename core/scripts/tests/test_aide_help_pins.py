@@ -726,6 +726,48 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_maintenance_stage::test_criteria_on_a_maintenance_stage_not_started_are_named",
           "test_aide_maintenance_stage::test_criteria_with_no_progress_section_are_named",
           "test_aide_maintenance_stage::test_criteria_on_a_started_maintenance_stage_are_grandfathered")),
+        # `roadmap_shape_warnings` (issue #483), called from run_checks on the
+        # warnings side: `roadmap_shape_findings` emits one finding per
+        # signal per stage, at its first line.
+        ("a roadmap.md stage section whose shape is not the plan's, named "
+         "once per stage and signal at its first line",
+         ("test_aide_roadmap_shape::test_all_four_are_named_on_a_planned_stage_at_their_first_lines",
+          "test_aide_roadmap_shape::test_one_warning_per_stage_counts_its_blockquotes",
+          "test_aide_roadmap_shape::test_several_long_bullets_share_one_warning",
+          "test_aide_roadmap_shape::test_check_reports_them_as_warnings_and_never_errors")),
+        # `roadmap_stage_statuses`: the summary row, the header where the row
+        # is missing or 📋 under a started header, absent (read 📋) else.
+        ("scoped by the stage's status in progress.md — its Stage "
+         "summary row, or its header where the row is missing or reads "
+         "\U0001f4cb while the header does not, \U0001f4cb where it has "
+         "neither",
+         ("test_aide_roadmap_shape::test_the_status_is_the_summary_row_or_a_started_header",
+          "test_aide_roadmap_shape::test_a_stage_with_no_status_reads_as_planned",
+          "test_aide_roadmap_shape::test_the_warnings_follow_the_stage_status_in_progress")),
+        # The four signals on a 📋 stage: `_BLOCKQUOTE_RE`, the Goal's
+        # paragraph runs, `_ROADMAP_BLOCK_END_RE` minus `_ROADMAP_LABEL_RE`
+        # at a paragraph start, and `LONG_DELIVERABLE` over the joined text.
+        ("on a \U0001f4cb stage, a blockquote line, a Goal of more than one "
+         "blank-line-separated paragraph, a paragraph opening in bold whose "
+         "bold is not Goal, Deliverables, Dependencies, Human gate or "
+         "Validation / acceptance, and a top-level Deliverables bullet "
+         "whose text, its continuation lines joined, is longer than 800 "
+         "characters",
+         ("test_aide_roadmap_shape::test_each_signal_alone_is_named_once_on_a_planned_stage",
+          "test_aide_roadmap_shape::test_a_template_label_is_read_with_or_without_its_dot",
+          "test_aide_roadmap_shape::test_bold_inside_a_bullet_is_not_a_bold_block",
+          "test_aide_roadmap_shape::test_the_threshold_is_exclusive_and_continuation_lines_count")),
+        # `if not planned: continue` after the blockquote; the settled
+        # statuses are skipped before any signal is read.
+        ("on a \U0001f6a7, \U0001f50d or ⏸️ stage, a blockquote "
+         "line alone; on a ✅ or ❌ stage, nothing",
+         ("test_aide_roadmap_shape::test_a_started_stage_is_named_for_its_blockquote_alone",
+          "test_aide_roadmap_shape::test_a_started_stage_without_a_blockquote_is_silent",
+          "test_aide_roadmap_shape::test_a_settled_stage_is_silent")),
+        # `markdown_prose_lines` returns None for both.
+        ("a fenced code block and an HTML comment are never read",
+         ("test_aide_roadmap_shape::test_a_fenced_code_block_is_never_read",
+          "test_aide_roadmap_shape::test_an_html_comment_is_never_read")),
         # `forward_dependency_warnings` (issue #282), called from run_checks
         # on the warnings side; `blocking_dependency_stages` cuts the slot at
         # `_DEPS_SLOT_END_RE` and reads numbers by `_DEPS_STAGE_LIST_RE` or

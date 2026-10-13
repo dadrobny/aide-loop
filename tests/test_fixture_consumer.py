@@ -1946,6 +1946,38 @@ def test_check_warns_on_a_stage_depending_on_a_later_stage(
     assert "Dependencies name later" not in capsys.readouterr().out
 
 
+def test_check_warns_on_a_stage_section_holding_more_than_the_plan(
+        aide, consumer: Path, capsys):
+    """Issue #483: a stage section is the plan and nothing else. On a 📋
+    stage a blockquote and a bold paragraph that is no template label are
+    each named, and `check` still exits 0. Once progress.md shows the stage
+    started (⏸️ on its header), only the blockquote is: the freeze keeps the
+    rest as the plan it was written as, and deleting an annotation restores
+    the stage."""
+    (consumer / "docs" / "aide" / "roadmap.md").write_text(
+        "# Fixture — Roadmap\n\n"
+        "## Stage 1 — Foundations\n\n"
+        "> Retargeted in place 2026-09-15 — read before the text below.\n\n"
+        "**Goal.** The greeter answers.\n\n"
+        "**Deliverables.**\n\n- The greeter, checked by its test.\n\n"
+        "**Scope decision (maintainer).** Recorded here.\n\n"
+        "**Dependencies.** None.\n",
+        encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "stage 1 holds 1 blockquote" in out
+    assert "'**Scope decision (maintainer).**', bold that is no template label" in out
+
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "## Stage 1 — Foundations — 📋", "## Stage 1 — Foundations — ⏸️"),
+        encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "stage 1 holds 1 blockquote" in out
+    assert "no template label" not in out
+
+
 def test_check_warns_on_an_incomplete_coverage_table(
         aide, consumer: Path, capsys):
     """Issue #289: `check` said each coverage table existed, never that it was
