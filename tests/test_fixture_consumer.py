@@ -1194,6 +1194,88 @@ def test_progress_compact_moves_long_cells_and_commits(aide, consumer: Path,
     assert "aide progress compact" not in capsys.readouterr().out
 
 
+ARCHIVABLE = """\
+# Fixture — Progress
+
+## Stage summary
+
+| Stage | Title | Objectives | Status |
+|-------|-------|-----------|--------|
+| 1 | Foundations | G1 | ✅ |
+| 2 | Extras | G1 | 📋 |
+
+## Objective coverage
+
+| Objective | Delivered by | Status |
+|-----------|--------------|--------|
+| G1 Foundations | Stage 1, 2 | 🚧 |
+
+## Stage 1 — Foundations — ✅
+
+**Deliverables.**
+- ✅ The greeter. *(Item 001)*
+- ✅ The farewell. *(Item 002)*
+
+**Acceptance.**
+- [x] Both items land.
+
+---
+
+## Stage 2 — Extras — 📋
+
+**Deliverables.**
+- 📋 The wave. *(Item 003)*
+
+**Acceptance.**
+- [ ] The wave lands.
+"""
+
+
+def test_an_archived_stage_reads_as_shipped_and_moves_back_for_a_correction(
+        aide, consumer: Path):
+    """Issue #475: `progress archive` moves a settled stage to
+    progress/stage-N.md and commits; `check` still passes, and `claim` still
+    reads the archived items as ✅ — it takes the next queue's item, not a
+    shipped one. A writer refuses the archived item, and `unarchive` brings
+    the section back, byte for byte, in its own commit."""
+    ddir = consumer / "docs" / "aide"
+    progress = ddir / "progress.md"
+    progress.write_text(ARCHIVABLE, encoding="utf-8")
+    queue = ddir / "queue" / "queue-001.md"
+    queue.write_text(queue.read_text(encoding="utf-8").replace(
+        "Live", "✅ Completed"), encoding="utf-8")
+    (ddir / "queue" / "queue-002.md").write_text(
+        "# Fixture — Work Queue 002\n\n> **Status:** Live\n\n"
+        "### Item 003: The wave\nA wave function.\n", encoding="utf-8")
+    _commit(consumer, "stage 1 shipped, stage 2 queued")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    head = _sha(consumer, "HEAD")
+
+    archive = ["--repo", str(consumer), "progress", "archive"]
+    assert aide.main(archive) == 0
+    assert _sha(consumer, "HEAD~1") == head and _clean(consumer)
+    assert (ddir / "progress" / "stage-1.md").is_file()
+    assert "## Stage 1" not in progress.read_text(encoding="utf-8")
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+    archived = progress.read_bytes()
+    assert aide.main(["--repo", str(consumer), "progress", "reopen", "1",
+                      "--reason", "the greeter drops names"]) == 1
+    assert progress.read_bytes() == archived and _clean(consumer)
+
+    assert _claim(aide, consumer) == 0
+    assert _branch(consumer).startswith("aide/003-")
+    _git(["switch", "main"], consumer)
+
+    moved = _sha(consumer, "HEAD")
+    assert aide.main(["--repo", str(consumer), "progress", "unarchive",
+                      "--stage", "1"]) == 0
+    assert _sha(consumer, "HEAD~1") == moved and _clean(consumer)
+    assert progress.read_text(encoding="utf-8") == ARCHIVABLE
+    assert not (ddir / "progress").exists()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+
+
 def test_check_is_silent_on_a_declined_gate_whose_reach_holds_nothing_open(
         aide, consumer: Path, capsys):
     """Issue #396: a gate declined because scope was re-drawn, re-asked as a

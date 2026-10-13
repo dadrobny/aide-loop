@@ -18,7 +18,7 @@ Mandatory, in order (consumer in brackets):
    cell starts with a `G<n>` code, `Status` a single icon. *(aide check, status
    report, validator)*
 3. **One section per stage**, headed with the stage number, its title and its
-   rolled-up icon. Inside it:
+   rolled-up icon — an archived stage's in its own file (below). Inside it:
    - a **Deliverables** block of **flat** bullets, each
      `- <icon> <text>. *(Item NNN)*` — one status icon, one item ref, no nested
      status-bearing sub-bullets (keep rollup unambiguous). *(builder, validator,
@@ -33,7 +33,8 @@ Mandatory, in order (consumer in brackets):
 **The Stage summary table is complete.** Every stage section has its row, a
 ⏸️ or ❌ stage too: a ❌ summary row is what excludes a stage, and a ⏸️ one
 records its deferral where the table is read. `aide check` warns on a section
-with no row, as it does on a row with no section.
+with no row, as it does on a row with no section that does not link to its
+archive.
 
 **A table row its reader cannot use is an `aide check` error** in each of the
 four tables the engine reads: the two above, Outcome targets (below) and §1 →
@@ -248,6 +249,38 @@ directly under the table, one entry each, keyed to a row.
 - **A label changed by hand re-keys nothing.** Trail lines under the old
   first cell stay as written; write the next one under the new label. A
   gate is restated with `aide gate reword`, which keeps its ID.
+
+**A settled stage can be archived, and the overview keeps its row.** `aide
+progress archive [--stage N]` moves a stage's section, verbatim, to
+`progress/stage-N.md` beside this file — one file per archived stage, N
+unpadded as the heading writes it — and the stage's summary row's Title cell
+becomes a link to that file, the title its text; its Status cell keeps the
+icon. The Stage summary, Objective coverage and the three optional tables stay
+here. It is the verb's move, never a hand edit, and a stage is eligible only
+when all of these hold:
+
+- no `progress/stage-N.md` exists for it already;
+- its summary row is ✅ or ❌;
+- it is not the maintenance stage;
+- no deliverable bullet in its section is 📋, 🚧, 🔍 or ⏸️, and no
+  acceptance box is unticked;
+- no Human gates row is one no reader can use, and no human gate but a ✅
+  Approved one reaches it, in any reach form — `stage N`, `stage N+` or
+  `stage N–M`;
+- no item its bullets name has a bullet anywhere else;
+- every queue listing its items is settled, and neither those queues'
+  branches nor its items' claim branches are unmerged.
+
+**An archived stage is a record: read everywhere, written nowhere.** Every
+reader of an item's status reads the archived bullets as well, and the stage
+rolls up to its summary row, so `claim`, `status`, `check` and the Objective
+rows read it as they did before it moved. Nothing writes into the archive,
+neither a verb nor a hand edit: a correction (`amend`, `retract`, `reword`) or
+a reopen first moves the stage back with `aide progress unarchive --stage N`,
+and every writer that meets an archived stage refuses and names that verb.
+`aide check` errors wherever `progress.md` and the archive disagree about a
+stage — a link to a file that is not there, a file no row links to, one stage
+in both places.
 
 #### Rationale
 
@@ -468,3 +501,41 @@ directly under the table, one entry each, keyed to a row.
   target is a record, and #338 keeps a record out of the warnings it cannot
   act on. Compacting it is mechanical and changes no identity cell, so one
   line per table names the verb; one per row would bury the live warnings.
+- **Why an archive, one file per stage, and only settled stages (#475, from
+  #170).** About 80% of a consumer's 189 KB `progress.md` was settled stages,
+  sections nothing writes again but a correction, and they buried the overview
+  a person opens the file for. One file per stage keeps a stage findable by
+  its number and an archive one file's worth of diff; a single archive file
+  was the alternative, and grows the way `progress.md` did. Live stages stay:
+  the overview is for them, and splitting them out was declined on #170.
+- **Why readers skip an archived stage, and what that took.** The audit of a
+  scratch copy with its 22 eligible stages archived took `check` from 8
+  warnings to 96 and gave `claim` and `status` wrong answers: an item no
+  bullet names reads 📋 to every caller, so a shipped item was offered again,
+  25 done queues read open, and the records of #338 lost their exemption.
+  Item status reading the archive is the one change under all of that; the
+  rollup reads the summary row because the section is no longer there to
+  derive from, and the row was settled when it moved.
+- **Why each eligibility condition.** A gate short of ✅ Approved reaching an
+  archived stage read as a declined gate still blocking, and a later
+  `stage N` gate as a typo. The maintenance stage is ✅ between batches and
+  written to again at the next. A CI fix round (#332) and an owner reopen
+  (#446) reach only live work, so nothing on an unmerged branch may still need
+  the section. An item with bullets on both sides would have its status split
+  between the two files. A file already there is a stale copy `check` errors
+  on, and writing over it would lose whichever of the two was the record. A
+  gate row no reader can use may reach any stage, so it holds every one, as it
+  holds every item from `claim`.
+- **Why the link sits in the Title cell.** The Status cell keeps the icon
+  every reader decides on — "dependency met only once ✅" reads it there — and
+  the Title is the cell a person follows to the record. The file is what item
+  status is read from and the link is what the rollup and the structural
+  checks read, so `check` holds the two together, as an error: each without
+  the other leaves a stage read from one place by one reader and from the
+  other by the next.
+- **Why no verb writes into the archive.** A writer reaching into it would
+  make the file a second live copy, and every reader of the stage two places
+  to look; moving the stage back keeps one. The correction trails move with
+  the section, verbatim, so the record reads as it did.
+- **Why the filename is unpadded.** It matches the heading, and a zero-pad
+  would read as a position, which #338 rules out.

@@ -19,6 +19,8 @@ Subcommands::
     python .aide/scripts/aide.py progress set NNN restored --reason TEXT  # ❌ back to 📋 (--stage N --deliverable K for an unmarked bullet)
     python .aide/scripts/aide.py progress rollup [--stage N]  # a stage's cells to what its bullets roll up to
     python .aide/scripts/aide.py progress compact  # long gate/capability/target cells to their trails
+    python .aide/scripts/aide.py progress archive [--stage N]  # settled stages' sections to progress/stage-N.md
+    python .aide/scripts/aide.py progress unarchive --stage N  # an archived stage's section back, for a correction
     python .aide/scripts/aide.py gate list|approve|decline [N|ID]  # human gates in progress.md
     python .aide/scripts/aide.py gate reword N|ID --text QUESTION  # restate a live gate; its old ID keeps resolving
     python .aide/scripts/aide.py queue start NNN       # create the queue branch (--specs for specs-)
@@ -923,6 +925,107 @@ def stage_sections(lines: List[str]) -> List[Tuple[int, int, str]]:
                 break
         out.append((start, end, num))
     return out
+
+
+# --------------------------------------------------------------------------- #
+# progress.md's archive — one file per settled stage (issue #475)
+# --------------------------------------------------------------------------- #
+#: The folder beside progress.md an archived stage's section is moved to, one
+#: ``stage-N.md`` per stage, N unpadded as its heading writes it.
+PROGRESS_ARCHIVE_DIR = "progress"
+_ARCHIVE_FILE_RE = re.compile(r"^stage-(\d+)\.md$")
+#: An archived stage's summary-row Title cell: the title, linked to its file.
+_ARCHIVE_LINK_RE = re.compile(
+    r"^\[(?P<title>.*)\]\(" + PROGRESS_ARCHIVE_DIR
+    + r"/stage-(?P<n>\d+)\.md\)$")
+
+
+def archive_link(stage: int) -> str:
+    """The relative link an archived stage's summary row points at."""
+    return f"{PROGRESS_ARCHIVE_DIR}/stage-{stage}.md"
+
+
+def archive_file(ddir: Path, stage: int) -> Path:
+    """Where stage *stage*'s section is kept once archived."""
+    return ddir / PROGRESS_ARCHIVE_DIR / f"stage-{stage}.md"
+
+
+def archived_stage_files(ddir: Path) -> Dict[int, Path]:
+    """Every ``progress/stage-N.md`` under *ddir*, by stage number.
+
+    The files are the record: an archived stage's deliverable bullets live
+    there and nowhere else, so this is what item status reads beside
+    progress.md (`with_archive`). The summary row's link is how progress.md
+    says the same, and `archive_consistency_errors` holds the two together.
+    """
+    folder = ddir / PROGRESS_ARCHIVE_DIR
+    out: Dict[int, Path] = {}
+    if not folder.is_dir():
+        return out
+    for path in sorted(folder.iterdir()):
+        m = _ARCHIVE_FILE_RE.match(path.name)
+        if m and path.is_file():
+            out[int(m.group(1))] = path
+    return out
+
+
+def archived_summary_stages(lines: List[str]) -> Dict[str, str]:
+    """Stage number -> summary status, for each Stage summary row whose Title
+    cell links to its own stage's archive file — the stages progress.md says
+    are archived. The number is the Stage cell as written."""
+    out: Dict[str, str] = {}
+    for line in lines:
+        cells = _split_row(line) if line.strip().startswith("|") else []
+        if not (cells and _reads(_STAGE_SUMMARY, cells)):
+            continue
+        m = _ARCHIVE_LINK_RE.match(cells[1])
+        if m and int(m.group("n")) == int(cells[0]):
+            out[cells[0]] = _icon_status(cells[3])
+    return out
+
+
+class ProgressLines(list):
+    """progress.md's lines, carrying the item status its archive holds.
+
+    A plain list of the file's lines to every reader, which indexes and
+    slices it as one, plus ``archive_status``: item -> most-advanced status
+    over the deliverable bullets of every ``progress/stage-N.md``.
+    `_parse_item_status` folds it in when handed the whole file, and only
+    then — a slice is a plain ``list``, so one stage section's items never
+    gain another file's (issue #475).
+    """
+    archive_status: Dict[int, str] = {}
+
+
+def archived_item_status(ddir: Path) -> Dict[int, str]:
+    """Item -> most-advanced status over every archived stage's bullets; an
+    unreadable archive file contributes nothing."""
+    out: Dict[int, str] = {}
+    for path in archived_stage_files(ddir).values():
+        try:
+            alines = path.read_text(encoding=_ENCODING).splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for num, st in _parse_item_status(alines)[2].items():
+            if num not in out or RANK[st] > RANK[out[num]]:
+                out[num] = st
+    return out
+
+
+def with_archive(lines: List[str], ddir: Path) -> "ProgressLines":
+    """*lines* — progress.md's — with *ddir*'s archive attached to them."""
+    out = ProgressLines(lines)
+    out.archive_status = archived_item_status(ddir)
+    return out
+
+
+def read_progress_lines(path: Path) -> List[str]:
+    """progress.md at *path*, read with the archive beside it (`with_archive`);
+    no lines when there is no file."""
+    if not path.is_file():
+        return []
+    return with_archive(path.read_text(encoding=_ENCODING).splitlines(),
+                        path.parent)
 
 
 def stage_deliverable_statuses(lines: List[str], start: int, end: int) -> List[str]:
@@ -2518,12 +2621,21 @@ def stage_rollups(lines: List[str]) -> Dict[str, str]:
     A stage with no deliverable bullet has nothing to derive, and is absent.
     The one reading of "what the bullets say" that both the writer
     (`_recompute_rollups`) and `aide check` take a stage's status from.
+
+    An archived stage — its summary row linked to ``progress/stage-N.md``
+    and no section left here — rolls up to its summary row (issue #475): it
+    was archived settled, its bullets are no longer in this file, and the
+    row is the cell that kept the rollup.
     """
     out: Dict[str, str] = {}
-    for start, end, stage_num in stage_sections(lines):
+    sections = stage_sections(lines)
+    for start, end, stage_num in sections:
         derived = rollup_status(stage_deliverable_statuses(lines, start, end))
         if derived is not None:
             out[stage_num] = derived
+    for num, status in archived_summary_stages(lines).items():
+        if status and not any(_same_stage(num, n) for _, _, n in sections):
+            out[num] = status
     return out
 
 
@@ -2569,7 +2681,10 @@ def withdrawn_stage_items(lines: List[str]) -> Dict[int, List[str]]:
         for n in _parse_item_status(lines[start:end])[2]:
             inside.setdefault(n, []).append(num)
         rest[start:end] = [""] * (end - start)
-    elsewhere = _parse_item_status(rest)[2]
+    # `rest` is a plain list: an archived stage's bullets count as
+    # elsewhere too, since they sit in no withdrawn stage (issue #475).
+    elsewhere = set(_parse_item_status(rest)[2]) | set(
+        getattr(lines, "archive_status", {}))
     return {n: stages for n, stages in inside.items() if n not in elsewhere}
 
 
@@ -2949,10 +3064,15 @@ def rollup_progress(text: str, stage: Optional[int] = None
     """
     lines = text.splitlines()
     sections = stage_sections(lines)
-    if stage is not None and not any(int(n) == stage for _, _, n in sections):
+    # An archived stage has no section, and rolls up to its summary row
+    # (`stage_rollups`), so rolling it up writes the Objective rows naming
+    # it and nothing else (issue #475).
+    archived = archived_summary_stages(lines)
+    if stage is not None and not any(
+            int(n) == stage for n in [s for _, _, s in sections] + list(archived)):
         raise ValueError(f"progress.md has no '## Stage {stage}' section")
     withdrawn = withdrawn_stages(lines)
-    targets = {n for _, _, n in sections
+    targets = {n for n in [s for _, _, s in sections] + list(archived)
                if (stage is None or int(n) == stage) and n not in withdrawn}
     before = list(lines)
     _recompute_rollups(lines, downgrade_stages=targets, only=targets)
@@ -3968,7 +4088,7 @@ def _progress_item_status(repo_root: Path, config) -> Dict[int, str]:
     path = docs_dir(repo_root, config) / "progress.md"
     if not path.is_file():
         return {}
-    _, _, item_status = _parse_item_status(path.read_text(encoding=_ENCODING).splitlines())
+    _, _, item_status = _parse_item_status(read_progress_lines(path))
     return item_status
 
 
@@ -3997,8 +4117,11 @@ def record_documents(ddir: Path, item_status: Dict[int, str],
     one is: its spec is a record, and it keeps no queue open — `claim` never
     offers it (issue #393). Like ⏸️, the exemption is read on every run, so
     the warnings return once the stage's summary row is off ❌.
+
+    An archived stage's file (``progress/stage-N.md``, issue #475) is one
+    too: a section archived settled, which no verb writes into.
     """
-    out: Set[Path] = set()
+    out: Set[Path] = set(archived_stage_files(ddir).values())
     idir = ddir / "items"
     if idir.is_dir():
         for ipath in idir.glob("*.md"):
@@ -4025,7 +4148,8 @@ def _docs_records(ddir: Path) -> Set[Path]:
     statuses and the withdrawn stages; unreadable, nothing is a record."""
     path = ddir / "progress.md"
     try:
-        lines = path.read_text(encoding=_ENCODING).splitlines()
+        lines = with_archive(path.read_text(encoding=_ENCODING).splitlines(),
+                             ddir)
     except (OSError, UnicodeDecodeError):
         lines = []
     return record_documents(ddir, _parse_item_status(lines)[2],
@@ -7514,7 +7638,7 @@ def forward_dependency_warnings(ddir: Path) -> List[str]:
     under_way: Set[str] = set()
     ppath = ddir / "progress.md"
     if ppath.is_file():
-        plines = ppath.read_text(encoding=_ENCODING).splitlines()
+        plines = read_progress_lines(ppath)
         for start, _end, num in stage_sections(plines):
             if _header_status(plines[start]) == "deferred":
                 deferred.add(str(int(num)))
@@ -8474,7 +8598,9 @@ def derived_cell_findings(lines: List[str]
                 f"stage {num}: header {header_status} disagrees with summary {summ}")
 
     stage_status = stage_rollups(lines)
-    section_nums = {num for _, _, num in stage_sections(lines)}
+    # An archived stage is named as surely as one with a section (#475).
+    section_nums = ({num for _, _, num in stage_sections(lines)}
+                    | set(archived_summary_stages(lines)))
     blocked = _blocked_objectives(lines)
     withdrawn = {n for n, st in summary_status.items() if st == "excluded"}
     for line in lines:
@@ -8645,11 +8771,13 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
         # `docs_dir` exists but its central document does not: a real error.
         return [f"missing {progress_path}"], warnings
     # One read, reused: two reads can disagree if the file changes between them.
+    # The archive rides along, so item status reads its stages too (#475).
     text = progress_path.read_text(encoding=_ENCODING)
-    lines = text.splitlines()
+    lines = with_archive(text.splitlines(), ddir)
     # Before anything reads the tables: a row no reader can use is dropped by
     # every check below, including the ones that would have errored on it.
     errors.extend(unreadable_row_errors(lines))
+    errors.extend(archive_consistency_errors(ddir, lines))
     errors.extend(evidence_annotation_errors(repo_root, ddir, lines))
     evidence = evidence_gate_citations(ddir, lines)
     warnings.extend(gate_warnings(lines, evidence))
@@ -8695,7 +8823,8 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
         errors.append("progress.md: missing Stage summary table")
     if not has_obj_table:
         errors.append("progress.md: missing Objective coverage table")
-    if not sections:
+    archived = archived_summary_stages(lines)
+    if not sections and not archived:
         errors.append("progress.md: no '## Stage N' sections")
 
     # Every derived cell against the rollup (issue #285).
@@ -8709,7 +8838,9 @@ def run_checks(repo_root: Path, config: Dict[str, Dict[str, object]],
     section_nums = {num for _, _, num in sections}
 
     for num in summary_status:
-        if num not in section_nums:
+        # An archived stage's row links to its file instead (#475); one
+        # linking to no file is `archive_consistency_errors`'.
+        if num not in section_nums and num not in archived:
             warnings.append(f"stage {num}: in summary table but has no '## Stage {num}' section")
 
     # Outcome targets: goal truth gates the OBJECTIVE rows. Claiming an
@@ -8875,6 +9006,12 @@ def _parse_item_status(lines: List[str]) -> Tuple[List[str], List[str], Dict[int
     own 📋 bullet — and once spent items were discounted from the cross-spec
     checks, the mis-attribution silenced exactly the pre-build errors the
     checks exist to raise (issue #99).
+
+    Handed the whole of progress.md as `ProgressLines` — `read_progress_lines`
+    or `with_archive` — the map also holds the items of every archived stage
+    (issue #475): its bullets moved to ``progress/stage-N.md``, and an item
+    no bullet names reads as 📋 to every caller, so without them a shipped
+    item would be offered by `claim` again and its queue read as open.
     """
     item_status: Dict[int, str] = {}
     for start, last in _deliverable_bullet_spans(lines):
@@ -8882,6 +9019,9 @@ def _parse_item_status(lines: List[str]) -> Tuple[List[str], List[str], Dict[int
         for num in _bullet_marker_item_numbers(lines[last]):
             if num not in item_status or RANK[bullet_status] > RANK[item_status[num]]:
                 item_status[num] = bullet_status
+    for num, st in getattr(lines, "archive_status", {}).items():
+        if num not in item_status or RANK[st] > RANK[item_status[num]]:
+            item_status[num] = st
     return [], [], item_status
 
 
@@ -9310,7 +9450,7 @@ def queue_spec_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
     # an excluded one is (issue #393): `claim` never offers it, and its
     # owner's way back is the drop, so a conflict with it is never built.
     ppath = ddir / "progress.md"
-    plines = (ppath.read_text(encoding=_ENCODING).splitlines()
+    plines = (read_progress_lines(ppath)
               if ppath.is_file() else [])
     item_status = _parse_item_status(plines)[2]
     withdrawn = withdrawn_stage_items(plines)
@@ -9815,7 +9955,7 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
         return []
     qtext = qpath.read_text(encoding=_ENCODING)
     order = queue_item_numbers(qtext)
-    lines = ppath.read_text(encoding=_ENCODING).splitlines()
+    lines = read_progress_lines(ppath)
     item_status = _parse_item_status(lines)[2]
     withdrawn = withdrawn_stage_items(lines)
 
@@ -10436,6 +10576,37 @@ def _report_bullet_splits(number: int, lines: List[str],
             print(f"  progress.md:{lineno}: {lines[lineno - 1].strip()}")
 
 
+def _archived_target_refusal(args: argparse.Namespace) -> Optional[str]:
+    """`archived_stage_refusal` for what this `aide progress` call writes:
+    the item of `set NNN`, `reopen NNN` and `reword --item NNN`, else the
+    stage of `set --stage N` and the four acceptance verbs (issue #475).
+    None when the call is malformed — its own usage error says so — or when
+    progress.md is not there to read."""
+    if args.action == "reword" and args.item is not None:
+        item, stage = args.item, None
+    elif args.action == "set" and args.stage is not None:
+        item, stage = None, args.stage
+    elif args.action in ("set", "reopen"):
+        item, stage = args.number, None
+    else:
+        item, stage = None, args.number
+    if not isinstance(item, int) and not isinstance(stage, int):
+        return None
+    repo_root = find_repo_root(args.repo)
+    ddir = docs_dir(repo_root, load_config(repo_root))
+    path = ddir / "progress.md"
+    if not path.is_file():
+        return None
+    try:
+        lines = path.read_text(encoding=_ENCODING).splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    return archived_stage_refusal(
+        ddir, lines, f"aide progress {args.action}",
+        stage=stage if isinstance(stage, int) else None,
+        item=item if isinstance(item, int) else None)
+
+
 def cmd_progress(args: argparse.Namespace) -> int:
     #: The acceptance verbs, in the order §1 describes them: make an
     #: attestation, correct its evidence, withdraw it, or reword a criterion
@@ -10456,6 +10627,14 @@ def cmd_progress(args: argparse.Namespace) -> int:
         return _cmd_progress_rollup(args)
     if args.action == "compact":
         return _cmd_progress_compact(args)
+    if args.action == "archive":
+        return _cmd_progress_archive(args)
+    if args.action == "unarchive":
+        return _cmd_progress_unarchive(args)
+    refusal = _archived_target_refusal(args)
+    if refusal is not None:
+        print(refusal, file=sys.stderr)
+        return 1
     if args.item is not None and args.action != "reword":
         print(f"aide progress {args.action}: --item belongs to `reword` alone "
               f"(reword --item NNN --text TEXT)", file=sys.stderr)
@@ -10534,6 +10713,15 @@ def cmd_progress(args: argparse.Namespace) -> int:
     if args.number not in _parse_item_status(text.splitlines())[2]:
         stage, title = _spec_stage_and_title(repo_root, config, args.number)
         healed = insert_item_reference(text, args.number, stage, title) if stage and title else None
+        archived_home = (archived_stage_refusal(
+            docs_dir(repo_root, config), text.splitlines(), "aide progress set",
+            stage=int(stage)) if healed is None and stage and stage.isdigit()
+            else None)
+        if archived_home is not None:
+            # The spec's stage is archived (issue #475): the back-fill
+            # would write into the archive, which no verb does.
+            print(archived_home, file=sys.stderr)
+            return 1
         if healed is None:
             print(
                 f"item {args.number:03d}: ERROR — no deliverable in progress.md "
@@ -10590,6 +10778,527 @@ def cmd_progress(args: argparse.Namespace) -> int:
                                       "the status", message,
                                       [_progress_rel(config)], before)
     return 0
+
+
+# --------------------------------------------------------------------------- #
+# aide progress archive / unarchive (issue #475)
+# --------------------------------------------------------------------------- #
+def _archive_header(stage: int) -> str:
+    """The one line an archive file opens with, pointing back at progress.md."""
+    return (f"> Stage {stage}'s section, archived from "
+            f"[progress.md](../progress.md) by `aide progress archive`; "
+            f"`aide progress unarchive --stage {stage}` moves it back.")
+
+
+def _replace_cell(line: str, index: int, value: str) -> str:
+    """*line*, a ``| a | b |`` row, with cell *index* replaced by *value* and
+    the padding around it kept."""
+    parts = line.split("|")
+    cell = parts[index + 1]
+    lead = cell[:len(cell) - len(cell.lstrip())]
+    trail = cell[len(cell.rstrip()):]
+    parts[index + 1] = f"{lead}{value}{trail}"
+    return "|".join(parts)
+
+
+def _summary_row_index(lines: List[str], stage: str) -> Optional[int]:
+    """The index of stage *stage*'s readable Stage summary row, or None."""
+    for i, line in enumerate(lines):
+        cells = _split_row(line) if line.strip().startswith("|") else []
+        if cells and _reads(_STAGE_SUMMARY, cells) and _same_stage(cells[0], stage):
+            return i
+    return None
+
+
+def _without_trailing_separators(block: List[str]) -> List[str]:
+    """*block* less its trailing blank and ``---`` lines — the separator
+    between two sections, which belongs to neither."""
+    out = list(block)
+    while out and (not out[-1].strip() or out[-1].strip() == "---"):
+        out.pop()
+    return out
+
+
+def archive_consistency_errors(ddir: Path, lines: List[str]) -> List[str]:
+    """Where progress.md and its archive disagree about a stage (#475).
+
+    A ``progress/stage-N.md`` is the archived stage's section, and its
+    summary row's Title cell links to it; each without the other, or a stage
+    archived while progress.md still has its section, leaves a stage whose
+    bullets one reader takes from one place and another from the other — so
+    each is an error, never a warning. So is a file holding no ``## Stage N``
+    section, whose items every reader would then lose.
+    """
+    files = archived_stage_files(ddir)
+    linked = {int(n) for n in archived_summary_stages(lines)}
+    rows = {int(cells[0]) for cells in (_split_row(l) for l in lines
+                                        if l.strip().startswith("|"))
+            if _reads(_STAGE_SUMMARY, cells)}
+    sections = {int(n) for _, _, n in stage_sections(lines)}
+    out: List[str] = []
+    for n in sorted(set(files) | linked):
+        rel = archive_link(n)
+        if n in files:
+            try:
+                alines = files[n].read_text(encoding=_ENCODING).splitlines()
+            except (OSError, UnicodeDecodeError) as exc:
+                out.append(f"{rel}: cannot be read ({exc.__class__.__name__}), "
+                           f"so no reader sees stage {n}'s items")
+                continue
+            if stage_section(alines, str(n)) is None:
+                out.append(f"{rel}: holds no '## Stage {n}' section, so no "
+                           f"reader sees the stage's items — restore it from "
+                           f"git history")
+        if n in files and n in sections:
+            out.append(f"stage {n}: archived in {rel} and still a '## Stage "
+                       f"{n}' section of progress.md — one stage in two "
+                       f"places; delete the copy that is stale")
+        elif n not in files:
+            if n in sections:
+                out.append(f"stage {n}: its Stage summary row links to "
+                           f"{rel}, which does not exist, and its section is "
+                           f"in progress.md — take the link off the row's "
+                           f"Title cell")
+            else:
+                out.append(f"stage {n}: its Stage summary row links to "
+                           f"{rel}, which does not exist, and progress.md "
+                           f"has no '## Stage {n}' section, so the stage's "
+                           f"section is nowhere — restore the file from git "
+                           f"history")
+        elif n not in linked and n not in sections:
+            if n in rows:
+                out.append(f"stage {n}: archived in {rel}, but its Stage "
+                           f"summary row's Title cell does not link to it — "
+                           f"write the cell as [<title>]({rel})")
+            else:
+                out.append(f"{rel}: archives stage {n}, which has no row in "
+                           f"the Stage summary table — add the row, its "
+                           f"Title cell [<title>]({rel})")
+    return out
+
+
+def archived_item_stage(ddir: Path, lines: List[str],
+                        number: int) -> Optional[int]:
+    """The archived stage holding item *number*'s bullets, when progress.md's
+    own *lines* hold none of them; else None."""
+    if number in _parse_item_status(list(lines))[2]:
+        return None
+    for n, path in archived_stage_files(ddir).items():
+        try:
+            alines = path.read_text(encoding=_ENCODING).splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if number in _parse_item_status(alines)[2]:
+            return n
+    return None
+
+
+def archived_stage_refusal(ddir: Path, lines: List[str], verb: str, *,
+                           stage: Optional[int] = None,
+                           item: Optional[int] = None) -> Optional[str]:
+    """The one sentence a writer refuses with when what it would write sits
+    in an archived stage — stage *stage*, or item *item*'s bullets — or None.
+
+    No verb writes into the archive: a correction or a reopen moves the
+    stage back first, with `aide progress unarchive`, so every later read of
+    the stage is of progress.md again (issue #475).
+    """
+    if stage is not None:
+        if (stage_section(lines, str(stage)) is not None
+                or not archive_file(ddir, stage).is_file()):
+            return None
+        what, where = f"stage {stage}", stage
+    elif item is not None:
+        found = archived_item_stage(ddir, lines, item)
+        if found is None:
+            return None
+        what, where = (f"item {item:03d}'s deliverable bullet, in stage "
+                       f"{found},"), found
+    else:
+        return None
+    return (f"{verb}: {what} is archived in {archive_link(where)}, and no "
+            f"verb writes into the archive — move it back with `aide "
+            f"progress unarchive --stage {where}`, then re-run; nothing was "
+            f"written")
+
+
+class _BranchView:
+    """What git says about the loop's branches, asked at most once per run of
+    `archive` however many stages it weighs."""
+
+    def __init__(self, repo_root: Path, config) -> None:
+        self.repo_root, self.config = repo_root, config
+        self.prefix = str(config["git"].get("branch_prefix", "aide/"))
+        self._queues: Optional[Dict[str, Optional[bool]]] = None
+        self._claims: Optional[List[str]] = None
+        self.live = in_repository(repo_root)
+
+    def unmerged_queue_branches(self) -> Dict[str, Optional[bool]]:
+        if self._queues is None:
+            self._queues = (_unmerged_queue_branches(self.repo_root, self.config)
+                            if self.live else {})
+        return self._queues
+
+    def unmerged_claim_branch(self, number: int) -> Optional[str]:
+        """A claim branch of item *number* whose work is not in main_branch —
+        by `_branch_content_landed`, the oracle `gc` deletes by; one git
+        cannot judge counts as unmerged."""
+        if not self.live:
+            return None
+        if self._claims is None:
+            self._claims = _list_claim_branches(self.repo_root, self.prefix)
+        main = str(self.config["git"].get("main_branch", "main"))
+        for br in self._claims:
+            if _branch_item_number(br, self.prefix) != number:
+                continue
+            ref = br if _local_branch_exists(self.repo_root, br) else f"origin/{br}"
+            if _branch_content_landed(self.repo_root, main, ref) is not True:
+                return br
+        return None
+
+
+def archive_refusal(ddir: Path, lines: List[str], stage: str,
+                    branches: Optional[_BranchView]) -> Optional[str]:
+    """Why stage *stage* may not be archived — one clause — or None.
+
+    §1 → progress.md's eligibility rule, in its order: no archive file for
+    it already; a settled summary row; not the maintenance stage; no open
+    bullet and no unticked box; no unreadable gate row and no gate short of
+    ✅ Approved reaching it; no item of it with a bullet anywhere else; and
+    every queue listing its items settled, with no queue or claim branch of
+    theirs unmerged. *branches* None skips the last half, for a caller with
+    no repository to ask.
+    """
+    sec = stage_section(lines, stage)
+    if sec is None:
+        return (f"it is archived already, in {archive_link(int(stage))}"
+                if int(stage) in archived_stage_files(ddir)
+                else f"progress.md has no '## Stage {stage}' section")
+    start, end, num = sec
+    if archive_file(ddir, int(num)).exists():
+        # One stage in two places, which `check` already errors on: an
+        # archive written over it would lose whichever copy was the record.
+        return (f"{archive_link(int(num))} already exists beside its "
+                f"section — one stage in two places; delete the copy that is "
+                f"stale, then re-run")
+    row = _summary_row_index(lines, num)
+    if row is None:
+        return "it has no Stage summary row"
+    summary = _icon_status(_split_row(lines[row])[3])
+    if summary not in ("complete", "excluded"):
+        return (f"its Stage summary row is {STATUS_TO_ICON[summary]}, not "
+                f"✅ or ❌")
+    if stage_title(lines[start]) == MAINTENANCE_TITLE:
+        return ("it is the maintenance stage, which every maintenance batch "
+                "writes to again")
+    open_bullets = [st for st in stage_deliverable_statuses(lines, start, end)
+                    if st not in ("complete", "excluded")]
+    if open_bullets:
+        return (f"it still has {len(open_bullets)} deliverable "
+                f"bullet{'' if len(open_bullets) == 1 else 's'} that "
+                f"{'is' if len(open_bullets) == 1 else 'are'} not ✅ or ❌")
+    boxes = [_CHECKBOX_RE.match(l) for l in lines[start:end]]
+    if any(m and m.group("mark") == " " for m in boxes):
+        return "it still has an unticked acceptance box"
+    if unreadable_gate_rows(lines):
+        # What such a row reaches is unknown, so it may be this stage: the
+        # fail-closed reading `claim` gives it too.
+        return ("a Human gates row no reader can use, which `aide check` "
+                "names, could reach it")
+    gates = human_gates(lines)
+    for g, gid in zip(gates, gate_ids(gates)):
+        rng = g.stage_range
+        if g.kind == "approved" or rng is None:
+            continue
+        first, last = rng
+        if first <= int(num) and (last is None or int(num) <= last):
+            shown = {"awaiting": "⏳ Awaiting", "declined": "❌ Declined"}.get(
+                g.kind or "", "not ✅ Approved")
+            return (f"human gate {gid if gid else repr(g.text)} reaches it "
+                    f"({g.reach}) "
+                    f"and is {shown}")
+    items = stage_item_numbers(lines, num)
+    rest = list(lines)
+    rest[start:end] = [""] * (end - start)
+    elsewhere = set(_parse_item_status(rest)[2]) | set(
+        getattr(lines, "archive_status", {}))
+    split = sorted(n for n in items if n in elsewhere)
+    if split:
+        return (f"item {split[0]:03d} also has a bullet outside it, and an "
+                f"item's status is never split between progress.md and the "
+                f"archive")
+    if not items:
+        return None
+    item_status = _parse_item_status(lines)[2]
+    withdrawn = withdrawn_stage_items(lines)
+    for qpath in iter_queue_paths(ddir / "queue"):
+        try:
+            qtext = qpath.read_text(encoding=_ENCODING)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if not set(queue_item_numbers(qtext)) & set(items):
+            continue
+        if queue_is_open(qtext, item_status, withdrawn):
+            return f"{qpath.name}, which lists its items, is still open"
+        qnum = queue_number(qpath)
+        if branches is not None and qnum is not None:
+            qbranch = queue_branch_name(branches.prefix, qnum)
+            unmerged = branches.unmerged_queue_branches()
+            if qbranch in unmerged:
+                if unmerged[qbranch] is None:
+                    main = str(branches.config["git"].get("main_branch",
+                                                          "main"))
+                    return (f"git cannot tell whether {qbranch}, the branch "
+                            f"of {qpath.name}, which lists its items, landed "
+                            f"(no start is recorded): if it did, delete it "
+                            f"with 'aide gc --merged --yes'; if it is open, "
+                            f"record its start with 'aide queue restack "
+                            f"{qnum:03d} --base {main}'")
+                return (f"{qbranch}, the branch of {qpath.name}, which lists "
+                        f"its items, is not merged")
+    if branches is not None:
+        for n in items:
+            br = branches.unmerged_claim_branch(n)
+            if br is not None:
+                return f"claim branch {br} of item {n:03d} is not merged"
+    return None
+
+
+def archive_stage_text(text: str, stage: str) -> Tuple[str, str]:
+    """``(progress.md, the archive file)`` once stage *stage* is archived.
+
+    The section moves verbatim, less the ``---`` separator after it, under
+    `_archive_header`; the summary row's Title cell becomes a link to the
+    file, and every other line stays as it reads. The caller has weighed the
+    stage with `archive_refusal`.
+    """
+    lines = text.splitlines()
+    sec = stage_section(lines, stage)
+    assert sec is not None
+    start, end, num = sec
+    n = int(num)
+    body = _without_trailing_separators(lines[start:end])
+    kept = lines[:start] + lines[end:]
+    if end >= len(lines):
+        # The last section: the separator above it would close the file.
+        kept = _without_trailing_separators(kept)
+    row = _summary_row_index(kept, num)
+    if row is not None:
+        title = _split_row(kept[row])[1]
+        kept[row] = _replace_cell(kept[row], 1, f"[{title}]({archive_link(n)})")
+    archived = "\n".join([_archive_header(n), "", *body]) + "\n"
+    return "\n".join(kept) + "\n", archived
+
+
+def unarchive_stage_text(text: str, archived: str, stage: int) -> str:
+    """progress.md with stage *stage*'s section back from *archived*.
+
+    The section goes before the first section numbered above it, or after
+    the last one when none is, behind a ``---`` separator as the template
+    draws them; the summary row's Title cell loses its link. Raises
+    ``ValueError`` when *archived* holds no ``## Stage N`` section.
+    """
+    alines = archived.splitlines()
+    sec = stage_section(alines, str(stage))
+    if sec is None:
+        raise ValueError(f"{archive_link(stage)} holds no '## Stage {stage}' "
+                         f"section")
+    body = _without_trailing_separators(alines[sec[0]:])
+    lines = text.splitlines()
+    after = next((s for s, _, num in stage_sections(lines) if int(num) > stage),
+                 None)
+    if after is not None:
+        lines[after:after] = body + ["", "---", ""]
+    else:
+        sections = stage_sections(lines)
+        at = sections[-1][1] if sections else len(lines)
+        rest = lines[at:]
+        head = lines[:at]
+        while head and not head[-1].strip():
+            head.pop()
+        sep = [""] if head and head[-1].strip() == "---" else ["", "---", ""]
+        lines = head + sep + body + ([""] + rest if rest else [])
+    row = _summary_row_index(lines, str(stage))
+    if row is not None:
+        m = _ARCHIVE_LINK_RE.match(_split_row(lines[row])[1])
+        if m:
+            lines[row] = _replace_cell(lines[row], 1, m.group("title"))
+    return "\n".join(lines) + "\n"
+
+
+def _progress_archive_usage_error(args: argparse.Namespace) -> Optional[str]:
+    """The flags `archive` and `unarchive` do not take, named; or None."""
+    extra = [flag for flag, given in (
+        ("NUMBER", args.number is not None), ("STATUS", args.status is not None),
+        ("--deliverable", args.deliverable is not None),
+        ("--criterion", args.criterion is not None),
+        ("--item", args.item is not None), ("--all", args.all_criteria),
+        ("--reason", args.reason is not None), ("--text", args.text is not None),
+        ("--evidence", args.evidence is not None),
+        ("--date", args.date is not None)) if given]
+    return ", ".join(extra) if extra else None
+
+
+def _cmd_progress_archive(args: argparse.Namespace) -> int:
+    """``aide progress archive [--stage N]`` — move settled stages out (#475).
+
+    Each eligible stage's section goes to ``progress/stage-N.md`` and its
+    summary row links there; both files are committed as every recording verb
+    commits, and put back on a commit that did not happen (issue #309).
+    """
+    usage = "usage: aide progress archive [--stage N] [--no-commit]"
+    extra = _progress_archive_usage_error(args)
+    if extra:
+        print(f"{usage}\naide progress archive: takes --stage N and "
+              f"--no-commit alone, not {extra}", file=sys.stderr)
+        return 2
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    ddir = docs_dir(repo_root, config)
+    progress_path = ddir / "progress.md"
+    if not progress_path.is_file():
+        print(f"error: {progress_path} not found", file=sys.stderr)
+        return 1
+    text = progress_path.read_text(encoding=_ENCODING)
+    lines = with_archive(text.splitlines(), ddir)
+    branches = _BranchView(repo_root, config)
+    if args.stage is not None:
+        why = archive_refusal(ddir, lines, str(args.stage), branches)
+        if why is not None:
+            print(f"aide progress archive: stage {args.stage} is not "
+                  f"archived — {why}; nothing was written", file=sys.stderr)
+            return 1
+        chosen = [stage_section(lines, str(args.stage))[2]]
+    else:
+        summary = {cells[0]: _icon_status(cells[3])
+                   for cells in (_split_row(l) for l in lines
+                                 if l.strip().startswith("|"))
+                   if _reads(_STAGE_SUMMARY, cells)}
+        chosen = []
+        for _, _, num in stage_sections(lines):
+            why = archive_refusal(ddir, lines, num, branches)
+            if why is None:
+                chosen.append(num)
+            elif summary.get(num) in ("complete", "excluded"):
+                print(f"stage {int(num)}: kept — {why}")
+        if not chosen:
+            print("progress.md: no change — no stage is eligible to archive")
+            return 0
+    targets = [archive_file(ddir, int(num)) for num in chosen]
+    folder = ddir / PROGRESS_ARCHIVE_DIR
+    created = not folder.exists()
+    before = _snapshot([progress_path, *targets])
+    updated = text
+    for num, target in zip(chosen, targets):
+        updated, archived = archive_stage_text(updated, num)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(archived, encoding="utf-8")
+        print(f"stage {int(num)}: archived to {archive_link(int(num))}")
+    progress_path.write_text(updated, encoding="utf-8")
+    if _commits_here(args.no_commit, repo_root, before):
+        stages = ", ".join(str(int(n)) for n in chosen)
+        code = _commit_or_restore(
+            repo_root, config, "aide progress archive", "the archive",
+            f"progress(aide): archive stage{'' if len(chosen) == 1 else 's'} "
+            f"{stages}",
+            [_progress_rel(config), *(_archive_rel(config, int(n))
+                                      for n in chosen)], before)
+        if code and created:
+            # Put back means as it was: the folder this run made goes too,
+            # when the put-back left it empty.
+            try:
+                folder.rmdir()
+            except OSError:
+                pass
+        return code
+    return 0
+
+
+def _archive_rel(config, stage: int) -> str:
+    return (str(config["project"].get("docs_dir", "docs/aide")) + "/"
+            + archive_link(stage))
+
+
+def _cmd_progress_unarchive(args: argparse.Namespace) -> int:
+    """``aide progress unarchive --stage N`` — move an archived stage back.
+
+    For a correction or a reopen, which no verb writes into the archive
+    (`archived_stage_refusal`). The file is removed and both paths are
+    committed as `archive` commits them.
+    """
+    usage = "usage: aide progress unarchive --stage N [--no-commit]"
+    extra = _progress_archive_usage_error(args)
+    if extra or args.stage is None:
+        why = (f"takes --stage N and --no-commit alone, not {extra}" if extra
+               else "--stage N is required")
+        print(f"{usage}\naide progress unarchive: {why}", file=sys.stderr)
+        return 2
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    ddir = docs_dir(repo_root, config)
+    progress_path = ddir / "progress.md"
+    if not progress_path.is_file():
+        print(f"error: {progress_path} not found", file=sys.stderr)
+        return 1
+    source = archive_file(ddir, args.stage)
+    tag = "aide progress unarchive"
+    if not source.is_file():
+        print(f"{tag}: stage {args.stage} is not archived — there is no "
+              f"{archive_link(args.stage)}; nothing was written",
+              file=sys.stderr)
+        return 1
+    text = progress_path.read_text(encoding=_ENCODING)
+    if stage_section(text.splitlines(), str(args.stage)) is not None:
+        print(f"{tag}: progress.md already has a '## Stage {args.stage}' "
+              f"section beside {archive_link(args.stage)} — delete the copy "
+              f"that is stale; nothing was written", file=sys.stderr)
+        return 1
+    try:
+        updated = unarchive_stage_text(
+            text, source.read_text(encoding=_ENCODING), args.stage)
+    except ValueError as exc:
+        print(f"{tag}: {exc}; nothing was written", file=sys.stderr)
+        return 1
+    before = _snapshot([progress_path, source])
+    commit = _commits_here(args.no_commit, repo_root)
+    rels = [_progress_rel(config)]
+    archive_rel = _archive_rel(config, args.stage)
+    committed = commit and _is_tracked(repo_root, archive_rel)
+    if committed:
+        # A file `archive --no-commit` wrote and nobody committed is not in
+        # git, so its removal is no change to commit: naming it would fail
+        # the commit on a pathspec matching nothing, every time.
+        rels.append(archive_rel)
+    progress_path.write_text(updated, encoding="utf-8")
+    source.unlink()
+    # Like every committing verb, this commits progress.md whole: run after
+    # an `archive --no-commit` of another stage, it records that stage's link
+    # without its still-uncommitted file, which `check` then errors on. The
+    # hazard is `--no-commit`'s, not the archive's, so it is not guarded here.
+    if commit and not committed:
+        # Only staged, it would stay staged as the add of a file now gone.
+        git(["rm", "--cached", "-q", "--ignore-unmatch", "--", archive_rel],
+            repo_root, check=False)
+    try:
+        source.parent.rmdir()  # only when it is empty now
+    except OSError:
+        pass
+    print(f"stage {args.stage}: moved back to progress.md from "
+          f"{archive_link(args.stage)}")
+    if commit:
+        return _commit_or_restore(
+            repo_root, config, tag, "the move",
+            f"progress(aide): unarchive stage {args.stage}", rels, before)
+    return 0
+
+
+def _is_tracked(repo_root: Path, rel: str) -> bool:
+    """Whether HEAD holds *rel*, a path relative to *repo_root*.
+
+    HEAD, not the index: a file only staged and then removed is no change a
+    commit naming it can record, so the pathspec would match nothing."""
+    return git(["cat-file", "-e", f"HEAD:{rel}"], repo_root,
+               check=False).returncode == 0
 
 
 #: The cells `aide progress compact` may move, by table: ``{column: name}``.
@@ -11466,6 +12175,8 @@ def _put_back(before: Dict[Path, Optional[bytes]]) -> None:
     """Every file in *before* back to its bytes; one that did not exist, gone."""
     for path, data in before.items():
         if data is not None:
+            # A folder the verb emptied and removed comes back with the file.
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
         elif path.exists():
             path.unlink()
@@ -13943,6 +14654,9 @@ def _queue_branch_evidence_waits(repo_root: Path,
                 break
     if qtext is None:
         return {}
+    # Another ref's progress.md, read without its archive (#475): an
+    # archived stage holds no item a live branch still carries — the
+    # eligibility rule refuses one with an unmerged queue or claim branch.
     shown = git(["show", f"{branch}:./{_progress_rel(config)}"], repo_root,
                 check=False)
     item_status = (_parse_item_status(shown.stdout.splitlines())[2]
@@ -15591,7 +16305,7 @@ def _pick_item(repo_root: Path, config, queue_text: str,
     mis-shaped to read stops everything too, since what it holds is unknown.
     """
     ppath = docs_dir(repo_root, config) / "progress.md"
-    plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
+    plines = read_progress_lines(ppath)
     _, _, item_status = _parse_item_status(plines) if plines else ([], [], {})
     gate_blocked, block_everything = gate_blocked_items(plines)
     if block_everything or unreadable_gate_rows(plines):
@@ -15648,7 +16362,7 @@ def _open_queue_texts(repo_root: Path, config) -> List[str]:
     if not qdir.is_dir():
         return []
     ppath = docs_dir(repo_root, config) / "progress.md"
-    plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
+    plines = read_progress_lines(ppath)
     item_status = _parse_item_status(plines)[2]
     withdrawn = withdrawn_stage_items(plines)
     out: List[str] = []
@@ -15668,7 +16382,7 @@ def _withdrawn_queued_lines(repo_root: Path, config) -> List[str]:
     ppath = docs_dir(repo_root, config) / "progress.md"
     if not qdir.is_dir() or not ppath.is_file():
         return []
-    plines = ppath.read_text(encoding=_ENCODING).splitlines()
+    plines = read_progress_lines(ppath)
     withdrawn = withdrawn_stage_items(plines)
     if not withdrawn:
         return []
@@ -15742,7 +16456,7 @@ def _report_nothing_claimable(repo_root: Path, config, prefix: str,
     item is named, exit 0, and the ``early ready:`` line says no.
     """
     ppath = docs_dir(repo_root, config) / "progress.md"
-    plines = ppath.read_text(encoding=_ENCODING).splitlines() if ppath.is_file() else []
+    plines = read_progress_lines(ppath)
     _, _, item_status = _parse_item_status(plines) if plines else ([], [], {})
 
     unreadable = unreadable_gate_rows(plines)
@@ -16250,7 +16964,7 @@ def _interface_pin_report(repo_root: Path, config, number: int) -> Optional[str]
     if not deps:
         return None
     ppath = docs_dir(repo_root, config) / "progress.md"
-    plines = (ppath.read_text(encoding=_ENCODING).splitlines()
+    plines = (read_progress_lines(ppath)
               if ppath.is_file() else [])
     item_status = _parse_item_status(plines)[2]
     pins = interface_pins(specs[0].read_text(encoding=_ENCODING), deps,
@@ -17700,6 +18414,9 @@ def _merge_withdrawn_item(repo_root: Path, config, number: int, base: str,
                            path.read_text(encoding=_ENCODING).splitlines()))
         except (OSError, UnicodeDecodeError):
             pass
+    # Another ref's progress.md, read without its archive (#475): an
+    # archived stage holds no item a live branch still carries — the
+    # eligibility rule refuses one with an unmerged queue or claim branch.
     shown = git(["show", f"{base}:./{rel}"], repo_root, check=False)
     if shown.returncode == 0:
         copies.append((f"on {base}", shown.stdout.splitlines()))
@@ -17806,6 +18523,18 @@ def cmd_merge(args: argparse.Namespace) -> int:
               f"{args.number:03d} restored --reason …`, then re-run "
               f"'aide merge {args.number:03d}'.", file=sys.stderr)
         return 1
+    ddir = docs_dir(repo_root, config)
+    if (ddir / "progress.md").is_file():
+        # The tick finds its bullet by the same lookup every writer does, and
+        # an archived stage's bullets are not in progress.md (issue #475).
+        archived = archived_stage_refusal(
+            ddir, (ddir / "progress.md").read_text(
+                encoding=_ENCODING).splitlines(),
+            "aide merge", item=args.number)
+        if archived is not None:
+            print(f"{archived} — nothing was merged or pushed either",
+                  file=sys.stderr)
+            return 1
     withdrawn_in, stages = _merge_withdrawn_item(repo_root, config,
                                                  args.number, main, branch)
     if withdrawn_in:
@@ -19893,6 +20622,9 @@ def _queue_branch_ci(repo_root: Path, config: Dict[str, Dict[str, object]],
     items = _branch_queue_items(repo_root, config, ref, base, branch)
     if not items:
         return False, 0
+    # Another ref's progress.md, read without its archive (#475): an
+    # archived stage holds no item a live branch still carries — the
+    # eligibility rule refuses one with an unmerged queue or claim branch.
     shown = git(["show", f"{ref}:./{_docs_rel(config)}/progress.md"],
                 repo_root, check=False)
     if shown.returncode != 0:
@@ -20155,7 +20887,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"  tree: {'dirty (' + str(len(dirty.splitlines())) + ' path(s))' if dirty else 'clean'}")
 
     ppath = docs_dir(repo_root, config) / "progress.md"
-    plines = (ppath.read_text(encoding=_ENCODING).splitlines()
+    plines = (read_progress_lines(ppath)
               if ppath.is_file() else [])
     item_status = _parse_item_status(plines)[2]
     # Open as `claim` reads it (`queue_is_open`, issue #393): a 📋 item of a
@@ -20213,7 +20945,6 @@ def cmd_status(args: argparse.Namespace) -> int:
     # stage icons deliberately do not carry (conventions.md §1).
     ppath = docs_dir(repo_root, config) / "progress.md"
     if ppath.is_file():
-        plines = ppath.read_text(encoding=_ENCODING).splitlines()
         gates = human_gates(plines)
         record = gate_trail_record(plines, gates)
         for n, (g, gid) in enumerate(zip(gates, gate_ids(gates)), start=1):
@@ -20307,10 +21038,9 @@ def cmd_status(args: argparse.Namespace) -> int:
     unpublished = {br for br, why in off_origin.items()
                    if why.kind == OFF_ORIGIN_UNPUBLISHED}
     withdrawn_items: Dict[int, str] = {}
-    ppath = docs_dir(repo_root, config) / "progress.md"
-    if branches and ppath.is_file():
-        withdrawn_items = spent_by_withdrawal(
-            ppath.read_text(encoding=_ENCODING).splitlines(), item_status)
+    if branches and plines:
+        # The lines read above, archive and all: one read, reused.
+        withdrawn_items = spent_by_withdrawal(plines, item_status)
     if branches:
         for br in branches:
             num = _branch_item_number(br, prefix)
@@ -20603,7 +21333,7 @@ def cmd_gc(args: argparse.Namespace) -> int:
     item_status: Dict[int, str] = {}
     withdrawn_items: Dict[int, str] = {}
     if progress_path.is_file():
-        plines = progress_path.read_text(encoding=_ENCODING).splitlines()
+        plines = read_progress_lines(progress_path)
         _, _, item_status = _parse_item_status(plines)
         withdrawn_items = spent_by_withdrawal(plines, item_status)
 
@@ -20826,7 +21556,8 @@ def build_parser() -> argparse.ArgumentParser:
             "are all \u2705, \u274c or \u23f8\ufe0f gets none of them.\n"
             "\n"
             "Over progress.md's tables, ERRORS: a missing stage summary "
-            "table, objective coverage table or stage section; a stage "
+            "table, objective coverage table or stage section, a stage "
+            "archived to progress/stage-N.md counting as a section; a stage "
             "summary row marked \u2705 over a stage whose deliverables do not "
             "roll up to \u2705 (`aide progress -h` states the rollup), each "
             "such stage error naming `aide progress rollup --stage N`, which "
@@ -20847,7 +21578,12 @@ def build_parser() -> argparse.ArgumentParser:
             "icon \u2014 since the row is dropped from every check it would "
             "have fed. Each table is read under its template heading, or, "
             "for a summary or objective table without one, wherever its rows "
-            "are found. Warnings, and a warning never moves the exit "
+            "are found. Progress.md disagreeing with its archive about a "
+            "stage is an error too: a summary row's Title cell linking to a "
+            "progress/stage-N.md that does not exist, such a file no summary "
+            "row links to or holding no `## Stage N` section, and a stage "
+            "archived there that still has a section in progress.md. "
+            "Warnings, and a warning never moves the exit "
             "code \u2014 only an error does: any other stage header, "
             "summary row or Objective row whose status is not its rollup, "
             "compared in full \u2014 a cell `aide progress set` would leave "
@@ -20858,8 +21594,9 @@ def build_parser() -> argparse.ArgumentParser:
             "up to \u2705 under a summary row that is not; a stage header "
             "disagreeing with its summary row, where neither was named "
             "against the rollup; an Objective row whose Delivered by "
-            "cell names no stage with a section; a summary row with no stage "
-            "section, an objective marked \u2705 over a target not yet \u2705 "
+            "cell names no stage with a section or an archive; a summary row "
+            "with no stage section and no link to its archive, an objective "
+            "marked \u2705 over a target not yet \u2705 "
             "Met, an Outcome target or human gate whose Status is not one of "
             "its table's marks, and every human gate still blocking \u2014 a "
             "normal state rather than a defect \u2014 save a \u274c declined "
@@ -21072,6 +21809,11 @@ def build_parser() -> argparse.ArgumentParser:
             "compact: move each long cell of the Human gates, "
             "Environment-Gated Capability Verification and Outcome targets "
             "tables to a trail line under its table\n"
+            "archive: move each settled stage's section to "
+            "progress/stage-N.md beside progress.md, its summary row's Title "
+            "cell linking there (--stage N for one stage)\n"
+            "unarchive: move stage N's section back from its archive file "
+            "(--stage N)\n"
             "\n"
             "The rollup, applied by set and read by `aide check`: a stage is "
             "\u2705 when every deliverable bullet in it is \u2705 or \u274c "
@@ -21242,9 +21984,12 @@ def build_parser() -> argparse.ArgumentParser:
             "left whole, a \u274c header or Objective row stays, and a "
             "stage with no deliverable bullet derives nothing. It prints "
             "each cell it writes, and commits progress.md as set does; with "
-            "every cell already its rollup it writes nothing and exits 0. It "
-            "refuses, exit 1, a stage with no section in progress.md, and, "
-            "exit 2, any argument but --stage and --no-commit.\n"
+            "every cell already its rollup it writes nothing and exits 0. "
+            "An archived stage has no section and rolls up to its summary "
+            "row, so rolling it up writes the Objective rows naming it. It "
+            "refuses, exit 1, a stage with neither a section in progress.md "
+            "nor a summary row linking to its archive, and, exit 2, any "
+            "argument but --stage and --no-commit.\n"
             "\n"
             "compact moves every Status, Decision / evidence, Notes or "
             f"Evidence / follow-up cell longer than {LONG_CELL} characters, "
@@ -21257,13 +22002,53 @@ def build_parser() -> argparse.ArgumentParser:
             "gate row with an empty Gate cell. It prints each cell it moves "
             "and commits progress.md as set does; with no cell that long it "
             "writes nothing and exits 0. It refuses, exit 2, any argument "
-            "but --no-commit."))
+            "but --no-commit.\n"
+            "\n"
+            "archive takes a stage only when its summary row is \u2705 or "
+            "\u274c; no deliverable bullet in its section is \U0001f4cb, "
+            "\U0001f6a7, \U0001f50d or \u23f8\ufe0f and no acceptance box "
+            "is unticked; it is not the maintenance stage; no human gate but "
+            "a \u2705 Approved one reaches it, as `stage N`, `stage N+` or "
+            "`stage N\u2013M`; no item its bullets name has a bullet outside "
+            "it; and every queue file listing one of those items is settled, "
+            "with neither that queue's branch nor a claim branch of the items "
+            "unmerged into main_branch. It also refuses a stage whose "
+            "progress/stage-N.md already exists, a second copy `aide check` "
+            "reports, and takes no stage while a Human gates row no reader "
+            "can use stands, since that row could reach any. The section moves verbatim, less the "
+            "`---` after it, under one line pointing back at progress.md, and "
+            "the summary row's Title cell becomes a link to the file while "
+            "its Status cell stays. From then on every reader of item status "
+            "reads the archived bullets too, and the stage rolls up to its "
+            "summary row. With --stage N it refuses, exit 1, a stage that is "
+            "not eligible, naming the first condition it fails; without, it "
+            "archives every eligible stage and prints each \u2705 or \u274c "
+            "stage it keeps, with why, and with none eligible it writes "
+            "nothing and exits 0. It commits progress.md and the files it "
+            "writes as set does.\n"
+            "\n"
+            "unarchive puts the section back before the first stage section "
+            "numbered above it, or after the last one, takes the link off "
+            "the Title cell, removes the file and commits both as archive "
+            "does, or progress.md alone where the file was never committed. "
+            "It refuses, exit 1, a stage with no archive file, and one "
+            "progress.md has a section of as well. archive and unarchive "
+            "refuse, exit 2, any argument but --stage and --no-commit, and "
+            "unarchive one without --stage.\n"
+            "\n"
+            "No verb writes into the archive: set, reopen, reword, accept, "
+            "amend and retract refuse, exit 1 and writing nothing, an item "
+            "whose bullets or a stage whose section is archived, naming `aide "
+            "progress unarchive --stage N`, and `aide merge` refuses such an "
+            "item before it merges anything."))
     p_prog.add_argument("action",
                         choices=["set", "accept", "amend", "retract", "reword",
-                                 "reopen", "rollup", "compact"])
+                                 "reopen", "rollup", "compact", "archive",
+                                 "unarchive"])
     p_prog.add_argument("number", type=_progress_number, nargs="?", default=None,
                         help="item number (set, reopen) | stage number "
-                             "(every other action; none for reword --item or rollup)")
+                             "(every other action; none for reword --item, "
+                             "rollup, compact, archive or unarchive)")
     p_prog.add_argument("status", nargs="?", default=None,
                         help="set: in-progress | in-review | done | deferred "
                              "| dropped | resumed | restored (in-review = "
@@ -21285,7 +22070,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "stage whose "
                              "deliverable bullet --deliverable names, in "
                              "place of NNN; rollup: the one stage to roll "
-                             "up (default: every stage)")
+                             "up (default: every stage); archive: the one "
+                             "stage to archive (default: every eligible "
+                             "stage); unarchive: the stage to move back "
+                             "(required)")
     p_prog.add_argument("--deliverable", type=int, default=None, metavar="K",
                         help="set deferred|dropped|resumed|restored: the "
                              "1-based position "

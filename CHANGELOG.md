@@ -136,6 +136,56 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.50.0] — 2026-10-12
+
+### Added
+
+- **`aide progress archive [--stage N]` moves a settled stage's section out
+  of `progress.md` (issue #475, from #170).** The section goes, verbatim, to
+  `docs/aide/progress/stage-N.md` — one file per stage, N unpadded as the
+  heading writes it — under one line pointing back at `progress.md`, and the
+  stage's summary row's Title cell becomes a link to the file; its Status
+  cell keeps the icon. The summary, objective, target, gate and capability
+  tables stay. A stage is eligible only when its summary row is ✅ or ❌, no
+  bullet in it is 📋, 🚧, 🔍 or ⏸️ and no box is unticked, it is not the
+  maintenance stage, no Human gates row is unreadable and no gate short of
+  ✅ Approved reaches it in any reach form, no item of it has a bullet elsewhere, every queue listing its items
+  is settled with no queue or claim branch of theirs unmerged, and no
+  `progress/stage-N.md` exists for it already. With
+  `--stage N` an ineligible stage is refused, exit 1, naming the condition;
+  without, every eligible stage is archived and each settled stage kept is
+  named with why. Both files are committed as `progress set` commits, and
+  put back on a commit that did not happen.
+- **`aide progress unarchive --stage N`** moves the section back into its
+  place among the stage sections, takes the link off the Title cell and
+  removes the file, in one commit — the way back for a correction or a
+  reopen. A file `archive --no-commit` wrote and nobody committed is removed
+  and left out of that commit, which carries `progress.md` alone.
+- **An archived stage is read everywhere and written nowhere.** Item status
+  — what `claim`, `status`, `check`, `gc`, the queue open state, the
+  dependency checks and the #338 records read — includes the archived
+  bullets, so a shipped item is never offered again and its queue never
+  reads as open; an archived stage rolls up to its summary row, so the
+  Objective rows and `progress rollup` read it as before (`rollup --stage N`
+  on an archived stage writes the Objective rows naming it). `set`,
+  `reopen`, `reword`, `accept`, `amend` and `retract`, the back-fill of a
+  missing bullet, and `aide merge` refuse an archived item or stage, exit 1,
+  writing nothing, and name `aide progress unarchive --stage N`. An archive
+  file is a record (#338).
+- **`aide check` errors where `progress.md` and its archive disagree**: a
+  summary row linking to a `progress/stage-N.md` that does not exist, such a
+  file no row links to or holding no `## Stage N` section, and a stage both
+  archived and still a section. An archived stage is not a missing section:
+  the "summary row with no section" and "Objective row names no stage"
+  warnings, and the "no stage sections" error, count it.
+
+A consumer that never archives sees no change. §1 → `progress.md` gains the
+archive layout, the eligibility rule and the read-everywhere,
+write-nowhere rule; the `aide-progress-file` skill delivers the last. The
+progress template is unchanged: the link is written by the verb, never by an
+author. `core/AGENT-CONTEXT.md`'s verb list names `progress archive` and
+`unarchive`, so the always-on floor moves from 9,676 to 9,694 content bytes.
+
 ## [2.49.0] — 2026-10-12
 
 ### Added

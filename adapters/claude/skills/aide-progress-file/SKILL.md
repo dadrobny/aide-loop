@@ -122,6 +122,10 @@ paths:
      - The three optional tables hold labels; each one's trail is the record
      - A Status cell keeps its leading icon
      - A correction appends a line
+     - An archived stage is a record: read everywhere, written nowhere
+     - Nothing writes into the archive, neither a verb nor a hand edit
+     - a correction (`amend`, `retract`, `reword`) or a reopen first moves the
+       stage back with `aide progress unarchive --stage N`
 -->
 
 # `progress.md`
@@ -249,3 +253,9 @@ carries a correction trail**, and it **writes both documents or neither
 wherever `roadmap.md` mirrors the stage** — **a stage with no Validation /
 acceptance block in `roadmap.md` has no mirror to drift from**, so there it
 writes `progress.md` alone.
+
+**An archived stage is a record: read everywhere, written nowhere.** A stage
+whose summary row's Title cell links to `progress/stage-N.md` has its section
+in that file. **Nothing writes into the archive, neither a verb nor a hand
+edit**: **a correction (`amend`, `retract`, `reword`) or a reopen first moves
+the stage back with `aide progress unarchive --stage N`**.
