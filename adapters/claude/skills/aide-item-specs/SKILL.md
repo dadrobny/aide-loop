@@ -106,7 +106,13 @@ paths:
        and **pin** without changing
      - Include derived artifacts recomputed live, not just files compared
        byte-for-byte
-     - Three paths are authorised for every item without being listed
+     - A text search for the paths and tokens an item changes finds the files
+       that mention them: it lower-bounds the list, it does not complete it
+     - apply a draft of the change in a scratch copy, run the project's
+       generators and its conflict or drift checks, and list every file they
+       move or flag
+     - Four paths are authorised for every item without being listed
+     - The stage archives are not among them
      - Never list an always-authorised path under Asserts against
      - **Asserts against means pinned-not-changed**, so never list the same
        path under both **May change** and **Asserts against**
@@ -323,8 +329,17 @@ Prefer the narrowest form that covers the work. **Asserts against** — files or
 derived artifacts this item's tests read and **pin** without changing. Include
 derived artifacts recomputed live, not just files compared byte-for-byte.
 
-Three paths are authorised for every item without being listed —
-`progress.md`, `insights.md`, and the item's own spec — and **never list an
+**A text search for the paths and tokens an item changes finds the files that
+mention them: it lower-bounds the list, it does not complete it.** When the
+item changes a shape that generated files or static checks are computed from,
+apply a draft of the change in a scratch copy, run the project's generators and
+its conflict or drift checks, and list every file they move or flag — which
+commands those are, the project's README, CI or build configuration says.
+
+Four paths are authorised for every item without being listed —
+`progress.md`, `insights.md`, `insights/archive-*.md` and the item's own spec.
+The stage archives are not among them: `aide progress archive` and `unarchive`
+run on the main or queue branch alone, so no item lists them. **Never list an
 always-authorised path under Asserts against**. **Asserts against means
 pinned-not-changed**, so never list the same path under both **May change** and
 **Asserts against**, and never write a pin glob that covers a path **May

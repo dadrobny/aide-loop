@@ -127,6 +127,7 @@ paths:
      - a correction (`amend`, `retract`, `reword`) or a reopen first moves the
        stage back with `aide progress unarchive --stage N`
      - The same verb archives the stage's `roadmap.md` section with it
+     - `archive` and `unarchive` run on the main or queue branch alone
 -->
 
 # `progress.md`
@@ -261,4 +262,6 @@ in that file. **Nothing writes into the archive, neither a verb nor a hand
 edit**: **a correction (`amend`, `retract`, `reword`) or a reopen first moves
 the stage back with `aide progress unarchive --stage N`**. **The same verb
 archives the stage's `roadmap.md` section with it**, to `roadmap/stage-N.md`,
-and `unarchive` brings both back.
+and `unarchive` brings both back. **`archive` and `unarchive` run on the main or
+queue branch alone**: on a claim branch both refuse, since no item's Authorised
+paths name the files they write.
