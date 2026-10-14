@@ -11526,7 +11526,7 @@ def archive_refusal(ddir: Path, lines: List[str], stage: str,
 def archive_stage_text(text: str, stage: str) -> Tuple[str, str]:
     """``(progress.md, the archive file)`` once stage *stage* is archived.
 
-    The section moves verbatim, less the ``---`` separator after it, under
+    The section moves verbatim but for its relative links, less the ``---`` separator after it, under
     `_archive_header`; the summary row's Title cell becomes a link to the
     file, and every other line stays as it reads. The caller has weighed the
     stage with `archive_refusal`.
@@ -22723,13 +22723,13 @@ def build_parser() -> argparse.ArgumentParser:
             "reports, and takes no stage while a Human gates row no reader "
             "can use stands, since that row could reach any. It refuses a "
             "stage whose roadmap/stage-N.md already exists, or whose "
-            "roadmap.md section is a stub already, as well. The section moves verbatim, less the "
+            "roadmap.md section is a stub already, as well. The section moves verbatim but for its relative links, less the "
             "`---` after it, under one line pointing back at progress.md, and "
             "the summary row's Title cell becomes a link to the file while "
             "its Status cell stays. From then on every reader of item status "
             "reads the archived bullets too, and the stage rolls up to its "
             "summary row. The stage's roadmap.md section moves with it, "
-            "verbatim and heading included, less the `---` after it, to "
+            "verbatim but for its relative links and heading included, less the `---` after it, to "
             "roadmap/stage-N.md under one line pointing back at roadmap.md, "
             "and in roadmap.md its heading stays with one line under it "
             "linking to the file; where roadmap.md has no section for the "
