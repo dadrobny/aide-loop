@@ -136,6 +136,47 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.52.2] — 2026-10-14
+
+### Fixed
+
+- **`aide progress archive` and `unarchive` refuse on a claim branch (issue
+  #481).** Every writer that meets an archived stage names `aide progress
+  unarchive --stage N`, and the files the two verbs write —
+  `progress/stage-N.md`, `roadmap.md` and `roadmap/stage-N.md` — are in no
+  item's Authorised paths, so a validator or builder that followed the
+  advice on its claim branch produced a diff `aide scope` reported out of
+  scope. The always-authorised set is deliberately not widened to them:
+  both verbs now run on the main or queue branch alone, and on a claim
+  branch — recognised by the reader `claim` and `scope` use — refuse, exit 1,
+  in one sentence naming `main_branch` or the queue branch, writing nothing.
+  Every refusal and `aide check` error naming `unarchive`, and the line
+  heading each archive file, now say it is run on the main or queue branch;
+  §1 → `progress.md`, the `aide-progress-file` skill and `aide progress -h`
+  say where the verbs run.
+- **§1 → authorised paths states the always-authorised set the code
+  applies.** It said three paths — `progress.md`, `insights.md` and the
+  item's own spec — while `aide scope` also authorises
+  `insights/archive-*.md`, where `aide insights archive` moves closed
+  entries. The section now names all four, and says the stage archives are
+  not among them; §1 → authorised-paths-proof and the `aide-item-specs`
+  skill follow.
+
+### Changed
+
+- **Deriving `## Authorised paths` goes past a text search (issue #477).**
+  §1 → authorised paths now says a search for the paths and tokens an item
+  changes lower-bounds the list and does not complete it: when an item
+  changes a shape that generated files or static checks are computed from,
+  the spec author applies a draft of the change in a scratch copy, runs the
+  project's generators and its conflict or drift checks, and lists every
+  file they move or flag. A consumer's item had derived its list by token
+  search and then had to touch rule modules a generated catalogue's scan
+  attributed a key to, and a generated JSON counting record leaf paths —
+  files that never mention the moved paths. Which commands are the
+  generators stays project knowledge; no `aide.toml` key is added. The
+  `aide-item-specs` skill carries the rule, and `spec-author` points at it.
+
 ## [2.52.1] — 2026-10-14
 
 ### Fixed

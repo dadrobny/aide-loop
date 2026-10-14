@@ -283,6 +283,8 @@ rows read it as they did before it moved. Nothing writes into the archive,
 neither a verb nor a hand edit: a correction (`amend`, `retract`, `reword`) or
 a reopen first moves the stage back with `aide progress unarchive --stage N`,
 and every writer that meets an archived stage refuses and names that verb.
+**`archive` and `unarchive` run on the main or queue branch alone** — no item's
+Authorised paths name the files they write, so on a claim branch both refuse.
 `aide check` errors wherever `progress.md` and the archive disagree about a
 stage — a link to a file that is not there, a file no row links to, one stage
 in both places. `aide progress unarchive --stage N` moves the stage's

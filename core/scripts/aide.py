@@ -11128,7 +11128,8 @@ def _archive_header(stage: int) -> str:
     """The one line an archive file opens with, pointing back at progress.md."""
     return (f"> Stage {stage}'s section, archived from "
             f"[progress.md](../progress.md) by `aide progress archive`; "
-            f"`aide progress unarchive --stage {stage}` moves it back.")
+            f"`aide progress unarchive --stage {stage}`, run on the main or "
+            f"queue branch, moves it back.")
 
 
 def _replace_cell(line: str, index: int, value: str) -> str:
@@ -11328,8 +11329,8 @@ def archived_stage_refusal(ddir: Path, lines: List[str], verb: str, *,
         return None
     return (f"{verb}: {what} is archived in {archive_link(where)}, and no "
             f"verb writes into the archive — move it back with `aide "
-            f"progress unarchive --stage {where}`, then re-run; nothing was "
-            f"written")
+            f"progress unarchive --stage {where}` on the main or queue "
+            f"branch, then re-run; nothing was written")
 
 
 class _BranchView:
@@ -11590,7 +11591,8 @@ def _roadmap_archive_header(stage: int) -> str:
     """The one line a roadmap archive file opens with, pointing back."""
     return (f"> Stage {stage}'s section, archived from "
             f"[roadmap.md](../roadmap.md) by `aide progress archive`; "
-            f"`aide progress unarchive --stage {stage}` moves it back.")
+            f"`aide progress unarchive --stage {stage}`, run on the main or "
+            f"queue branch, moves it back.")
 
 
 def archive_roadmap_text(text: str, stage: int) -> Tuple[str, str]:
@@ -11717,7 +11719,8 @@ def roadmap_archive_findings(ddir: Path,
                     f"{rel} holds '{archived}' — an archived stage is "
                     f"frozen, its heading too; write the stub's heading back "
                     f"as the file's, or move the stage back with `aide "
-                    f"progress unarchive --stage {n}` before retitling it")
+                    f"progress unarchive --stage {n}` on the main or queue "
+                    f"branch before retitling it")
         if n in whole:
             errors.append(f"stage {n}: archived in {rel} and still a whole "
                           f"'## Stage {n}' section of roadmap.md — one stage "
@@ -11731,7 +11734,8 @@ def roadmap_archive_findings(ddir: Path,
                           f"{rel} while its progress.md section is live — a "
                           f"roadmap section is archived exactly when its "
                           f"progress.md section is; move it back with `aide "
-                          f"progress unarchive --stage {n}`")
+                          f"progress unarchive --stage {n}` on the main or "
+                          f"queue branch")
     warnings = [
         f"stage {n}: archived in {archive_link(n)} while its roadmap.md "
         f"section is whole — `aide progress archive --stage {n}` archives "
@@ -11739,6 +11743,30 @@ def roadmap_archive_findings(ddir: Path,
         for n in sorted(progress_files)
         if n in whole and n not in files and n not in progress_sections]
     return errors, warnings
+
+
+def _archive_claim_branch_refusal(repo_root: Path, config,
+                                  tag: str) -> Optional[str]:
+    """The one sentence `archive` and `unarchive` refuse with on a claim
+    branch, or None (issue #481).
+
+    The files they write — the stage archives and roadmap.md — are in no
+    item's Authorised paths and not always authorised, so on a claim branch
+    the move is a diff `aide scope` reports out of scope. The claim branch is
+    recognised by `_branch_item_number`, the one reader `claim` and `scope`
+    use; outside a repository there is no branch to refuse.
+    """
+    if not in_repository(repo_root):
+        return None
+    branch = _current_branch(repo_root)
+    prefix = str(config["git"].get("branch_prefix", "aide/"))
+    if _is_queue_branch(branch, prefix) or _branch_item_number(
+            branch, prefix) is None:
+        return None
+    main = str(config["git"].get("main_branch", "main"))
+    return (f"{tag}: {branch} is a claim branch, and no item's Authorised "
+            f"paths name the archive files this writes — run it on {main} or "
+            f"the queue branch; nothing was written")
 
 
 def _progress_archive_usage_error(args: argparse.Namespace) -> Optional[str]:
@@ -11773,6 +11801,11 @@ def _cmd_progress_archive(args: argparse.Namespace) -> int:
         return 2
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
+    refused = _archive_claim_branch_refusal(repo_root, config,
+                                            "aide progress archive")
+    if refused:
+        print(refused, file=sys.stderr)
+        return 1
     ddir = docs_dir(repo_root, config)
     progress_path = ddir / "progress.md"
     if not progress_path.is_file():
@@ -11892,6 +11925,11 @@ def _cmd_progress_unarchive(args: argparse.Namespace) -> int:
         return 2
     repo_root = find_repo_root(args.repo)
     config = load_config(repo_root)
+    refused = _archive_claim_branch_refusal(repo_root, config,
+                                            "aide progress unarchive")
+    if refused:
+        print(refused, file=sys.stderr)
+        return 1
     ddir = docs_dir(repo_root, config)
     progress_path = ddir / "progress.md"
     if not progress_path.is_file():
@@ -20092,6 +20130,10 @@ _ASSERTS_LABEL = "asserts against"
 #:
 #: The item's own spec is authorised separately, by number, in ``cmd_scope`` —
 #: the builder records Decisions & Trade-offs there on every item.
+#: The stage archives — ``progress/stage-N.md``, ``roadmap.md``,
+#: ``roadmap/stage-N.md`` — are deliberately absent: ``aide progress archive``
+#: and ``unarchive`` write them and refuse on a claim branch instead
+#: (`_archive_claim_branch_refusal`, issue #481).
 _ALWAYS_AUTHORISED = ("progress.md", "insights.md", "insights/archive-*.md")
 
 
@@ -22757,12 +22799,16 @@ def build_parser() -> argparse.ArgumentParser:
             "roadmap section in place of its stub, and refuses, exit 1, a "
             "roadmap.md with no stub for the stage. archive and unarchive "
             "refuse, exit 2, any argument but --stage and --no-commit, and "
-            "unarchive one without --stage.\n"
+            "unarchive one without --stage. Both run on the main or queue "
+            "branch alone: on a claim branch they refuse, exit 1 and writing "
+            "nothing, since no item's Authorised paths name the files they "
+            "write.\n"
             "\n"
             "No verb writes into the archive: set, reopen, reword, accept, "
             "amend and retract refuse, exit 1 and writing nothing, an item "
             "whose bullets or a stage whose section is archived, naming `aide "
-            "progress unarchive --stage N`, and `aide merge` refuses such an "
+            "progress unarchive --stage N` on the main or queue branch, and "
+            "`aide merge` refuses such an "
             "item before it merges anything."))
     p_prog.add_argument("action",
                         choices=["set", "accept", "amend", "retract", "reword",

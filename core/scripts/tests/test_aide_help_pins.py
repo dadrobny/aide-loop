@@ -1377,13 +1377,19 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("archive and unarchive refuse, exit 2, any argument but --stage and "
          "--no-commit, and unarchive one without --stage",
          "test_aide_progress_archive::test_both_verbs_refuse_any_argument_but_stage_and_no_commit"),
+        # `_archive_claim_branch_refusal`, read through `_branch_item_number`
+        # and `_is_queue_branch` (issue #481).
+        ("Both run on the main or queue branch alone: on a claim branch they "
+         "refuse, exit 1 and writing nothing",
+         ("test_aide_progress_archive::test_both_verbs_refuse_on_a_claim_branch",
+          "test_aide_progress_archive::test_both_verbs_run_on_a_queue_branch")),
         # `_archived_target_refusal` at the top of `cmd_progress`, the
         # back-fill's own arm, and `cmd_merge`'s check before the merge.
         ("No verb writes into the archive: set, reopen, reword, accept, "
          "amend and retract refuse, exit 1 and writing nothing, an item "
          "whose bullets or a stage whose section is archived, naming `aide "
-         "progress unarchive --stage N`, and `aide merge` refuses such an "
-         "item before it merges anything",
+         "progress unarchive --stage N` on the main or queue branch, and "
+         "`aide merge` refuses such an item before it merges anything",
          ("test_aide_progress_archive::test_no_writer_reaches_into_the_archive",
           "test_aide_progress_archive::test_a_back_fill_into_an_archived_stage_is_refused",
           "test_aide_progress_archive::test_merge_refuses_an_item_of_an_archived_stage")),

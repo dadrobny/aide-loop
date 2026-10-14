@@ -1272,7 +1272,9 @@ def test_an_archived_stage_reads_as_shipped_and_moves_back_for_a_correction(
     shipped one. A writer refuses the archived item, and `unarchive` brings
     the section back, byte for byte, in its own commit. Issue #476: the
     stage's roadmap.md section moves with it, to roadmap/stage-N.md, a stub
-    left in its place, and comes back with it."""
+    left in its place, and comes back with it. Issue #481: on a claim branch
+    both verbs refuse and write nothing — their files are in no item's
+    Authorised paths."""
     ddir = consumer / "docs" / "aide"
     progress = ddir / "progress.md"
     progress.write_text(ARCHIVABLE, encoding="utf-8")
@@ -1311,6 +1313,13 @@ def test_an_archived_stage_reads_as_shipped_and_moves_back_for_a_correction(
 
     assert _claim(aide, consumer) == 0
     assert _branch(consumer).startswith("aide/003-")
+    claimed = _sha(consumer, "HEAD")
+    for verb in (["archive"], ["unarchive", "--stage", "1"]):
+        assert aide.main(["--repo", str(consumer), "progress", *verb]) == 1
+        assert _sha(consumer, "HEAD") == claimed and _clean(consumer)
+        assert progress.read_bytes() == archived
+        assert (ddir / "progress" / "stage-1.md").is_file()
+        assert roadmap.read_text(encoding="utf-8") == stubbed
     _git(["switch", "main"], consumer)
 
     moved = _sha(consumer, "HEAD")

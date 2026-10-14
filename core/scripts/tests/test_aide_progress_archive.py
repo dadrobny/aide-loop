@@ -685,6 +685,50 @@ def test_an_uncommitted_archive_is_unarchived_and_committed(tmp_path, staged):
     assert not (_ddir(repo) / "progress").exists()
 
 
+def _tree(repo: Path):
+    """Every markdown file under docs/aide — so every file `archive` and
+    `unarchive` write — with its text, and HEAD."""
+    ddir = _ddir(repo)
+    files = sorted(p.relative_to(ddir).as_posix() for p in ddir.rglob("*.md"))
+    return ({f: _read(repo, f) for f in files},
+            _git(["rev-parse", "HEAD"], repo).stdout)
+
+
+def test_both_verbs_refuse_on_a_claim_branch(tmp_path, capsys):
+    """Issue #481: the files they write are in no item's Authorised paths,
+    so on a claim branch the move would be a diff `aide scope` reports.
+    Each refuses there, exit 1 and writing nothing, and runs on main."""
+    repo = _committed_repo(tmp_path)
+    argv = ["--repo", str(repo), "progress"]
+    _git(["switch", "-qc", "aide/009-late"], repo)
+    before = _tree(repo)
+    assert aide.main([*argv, "archive", "--stage", "2"]) == 1
+    assert _tree(repo) == before
+    assert not (_ddir(repo) / "progress").exists()
+    _git(["switch", "-q", "main"], repo)
+    assert aide.main([*argv, "archive", "--stage", "2"]) == 0
+    _git(["switch", "-q", "aide/009-late"], repo)
+    _git(["merge", "-q", "--ff-only", "main"], repo)
+    before = _tree(repo)
+    assert aide.main([*argv, "unarchive", "--stage", "2"]) == 1
+    assert _tree(repo) == before
+    assert (_ddir(repo) / "progress" / "stage-2.md").is_file()
+    _git(["switch", "-q", "main"], repo)
+    assert aide.main([*argv, "unarchive", "--stage", "2"]) == 0
+    assert not (_ddir(repo) / "progress").exists()
+
+
+def test_both_verbs_run_on_a_queue_branch(tmp_path):
+    repo = _committed_repo(tmp_path)
+    argv = ["--repo", str(repo), "progress"]
+    _git(["switch", "-qc", "aide/queue-002"], repo)
+    assert aide.main([*argv, "archive", "--stage", "2"]) == 0
+    assert (_ddir(repo) / "progress" / "stage-2.md").is_file()
+    assert aide.main([*argv, "unarchive", "--stage", "2"]) == 0
+    assert not (_ddir(repo) / "progress").exists()
+    assert _git(["status", "--porcelain"], repo).stdout == ""
+
+
 def test_merge_refuses_an_item_of_an_archived_stage(tmp_path, capsys):
     repo = _committed_repo(tmp_path)
     assert aide.main(["--repo", str(repo), "progress", "archive",
