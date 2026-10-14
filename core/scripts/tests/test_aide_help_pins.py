@@ -446,6 +446,19 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "holding no `## Stage N` section, and a stage archived there that "
          "still has a section in progress.md",
          "test_aide_progress_archive::test_progress_and_its_archive_disagreeing_is_an_error"),
+        # `roadmap_archive_findings`, one arm per clause (issue #476).
+        ("So is roadmap.md disagreeing with its archive or with "
+         "progress.md's: a stub linking to a roadmap/stage-N.md that does not "
+         "exist, such a file roadmap.md has no stub for, holding no `## Stage "
+         "N` section or beside a whole section, a stub whose heading is not "
+         "the one in its file, a stub holding anything but its heading and "
+         "its line linking to the file, and a roadmap section "
+         "archived while its progress.md section is live",
+         "test_aide_progress_archive::test_roadmap_and_its_archive_disagreeing_is_an_error"),
+        # `roadmap_archive_findings`' warnings, cleared by `roadmap_catch_up`.
+        ("a stage archived to progress/stage-N.md whose roadmap.md section is "
+         "still whole is a warning, which `aide progress archive` clears",
+         "test_aide_progress_archive::test_a_stage_archived_without_its_roadmap_section_is_caught_up"),
         # `derived_cell_findings`' `over` list — the measure is
         # `rollup_status`, under which a ❌ bullet counts toward ✅.
         ("a stage summary row marked ✅ over a stage whose deliverables do "
@@ -1251,6 +1264,39 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("unarchive: move stage N's section back from its archive file "
          "(--stage N)",
          "test_aide_progress_archive::test_unarchive_moves_the_stage_back_and_removes_the_file"),
+        # `archive_roadmap_text` / `unarchive_roadmap_text` (issue #476).
+        ("its roadmap.md section goes with it, to roadmap/stage-N.md",
+         "test_aide_progress_archive::test_archive_moves_the_roadmap_section_with_the_progress_section"),
+        ("and its roadmap.md section with it",
+         "test_aide_progress_archive::test_unarchive_moves_both_halves_back"),
+        # `archive_refusal` calls `roadmap_archive_refusal` after its own
+        # file test.
+        ("It refuses a stage whose roadmap/stage-N.md already exists, or "
+         "whose roadmap.md section is a stub already, as well",
+         "test_aide_progress_archive::test_a_roadmap_half_already_moved_holds_the_stage"),
+        ("The stage's roadmap.md section moves with it, verbatim and heading "
+         "included, less the `---` after it, to roadmap/stage-N.md under one "
+         "line pointing back at roadmap.md, and in roadmap.md its heading "
+         "stays with one line under it linking to the file",
+         ("test_aide_progress_archive::test_archive_roadmap_text_leaves_a_stub_and_moves_the_section",
+          "test_aide_progress_archive::test_archive_moves_the_roadmap_section_with_the_progress_section")),
+        ("where roadmap.md has no section for the stage, progress.md's moves "
+         "alone",
+         "test_aide_progress_archive::test_a_roadmap_with_no_section_for_the_stage_lets_progress_move_alone"),
+        # `roadmap_catch_up`, read with --stage and without.
+        ("A stage whose progress.md section is archived and whose roadmap.md "
+         "section is still whole has its roadmap half archived alone, with "
+         "--stage N or without",
+         "test_aide_progress_archive::test_a_stage_archived_without_its_roadmap_section_is_caught_up"),
+        # `_cmd_progress_unarchive`: each half on its own file.
+        ("It moves back whichever of progress/stage-N.md and "
+         "roadmap/stage-N.md exists, the roadmap section in place of its "
+         "stub, and refuses, exit 1, a roadmap.md with no stub for the stage",
+         ("test_aide_progress_archive::test_unarchive_moves_back_whichever_half_is_archived",
+          "test_aide_progress_archive::test_unarchive_roadmap_text_puts_back_exactly_what_archive_took",
+          "test_aide_progress_archive::test_unarchive_refuses_a_roadmap_with_no_stub_to_replace",
+          "test_aide_progress_archive::test_unarchive_refuses_a_roadmap_with_no_section_for_the_stage",
+          "test_aide_progress_archive::test_unarchive_refuses_when_there_is_no_roadmap_md")),
         # `archive_refusal`, condition by condition, in its order; the
         # branch half through `_BranchView`.
         ("archive takes a stage only when its summary row is \u2705 or "
@@ -1300,9 +1346,19 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "or \u274c stage it keeps, with why, and with none eligible it "
          "writes nothing and exits 0",
          "test_aide_progress_archive::test_archive_with_no_stage_takes_every_eligible_one_and_names_the_rest"),
-        ("It commits progress.md and the files it writes as set does",
+        # `rebase_links`, applied in all four text functions (issue #476).
+        ("In either moved section every relative link target \u2014 inline, "
+         "image or reference definition, outside code \u2014 is rebased with "
+         "a leading ../ so it resolves from the archive file, and unarchive "
+         "strips it again",
+         ("test_aide_progress_archive::test_archive_rebases_relative_links_in_both_sections",
+          "test_aide_progress_archive::test_rebase_links_moves_only_relative_targets_outside_code")),
+        ("It commits progress.md, roadmap.md and the files it writes as set "
+         "does",
          ("test_aide_progress_archive::test_archive_and_unarchive_commit_both_files",
-          "test_aide_progress_archive::test_an_archive_whose_commit_fails_is_put_back")),
+          "test_aide_progress_archive::test_archive_and_unarchive_commit_the_roadmap_half_too",
+          "test_aide_progress_archive::test_an_archive_whose_commit_fails_is_put_back",
+          "test_aide_progress_archive::test_a_failed_archive_commit_puts_the_roadmap_back")),
         ("unarchive puts the section back before the first stage section "
          "numbered above it, or after the last one, takes the link off the "
          "Title cell, removes the file and commits both as archive does",
