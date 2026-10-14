@@ -11754,7 +11754,10 @@ def _archive_claim_branch_refusal(repo_root: Path, config,
     item's Authorised paths and not always authorised, so on a claim branch
     the move is a diff `aide scope` reports out of scope. The claim branch is
     recognised by `_branch_item_number`, the one reader `claim` and `scope`
-    use; outside a repository there is no branch to refuse.
+    use; outside a repository there is no branch to refuse. Only a claim
+    branch is refused, though the contract says "the main or queue branch
+    alone": the loop creates no other kind, so refusing the one that is in
+    scope's reach is the whole rule.
     """
     if not in_repository(repo_root):
         return None
