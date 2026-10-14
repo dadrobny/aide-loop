@@ -1,6 +1,6 @@
 ---
 name: triage-issues
-description: Triage newly-raised aide-loop issues — version-check them against the changelog and HEAD, file them into the GitHub Project with Theme and labels, order the board, sweep the deferred pile for anything a release has un-blocked, and propose the next PR's worth of work.
+description: Triage newly-raised aide-loop issues — version-check them against the changelog and HEAD, file them into the GitHub Project with Theme and labels, order the board, sweep the deferred pile for anything a release has un-blocked, propose the next PR's worth of work, and clean up worktrees and branches already merged into main.
 ---
 
 # Triage the inbox
@@ -42,6 +42,9 @@ choice was genuinely uncertain; do not pad a confident pick with one.
 already-fixed, and adding or removing `deferred`. Those change what gets
 scheduled — `deferred` also rewrites the title — rather than how an issue is
 filed.
+
+Step 6's local cleanup is applied directly too, under that step's guards;
+deleting a branch on `origin` is proposed.
 
 Batch every proposal into **one** approval request at the end of the relevant
 step — not one question per issue.
@@ -254,6 +257,51 @@ The proposal is **written, not started**. It states:
 
 Stop there. Do not cut the branch.
 
+## Step 6 — Clean up merged worktrees and branches
+
+Every PR leaves a branch behind, and often a `../aide-loop-<N>` worktree.
+Other sessions work in this checkout and its worktrees at the same time, so
+remove only what is provably finished. A merged branch with uncommitted work in
+its worktree is not finished.
+
+```bash
+git fetch --prune origin          # drops remote-tracking refs for deleted branches
+git worktree list --porcelain     # every worktree, its HEAD and its branch
+git branch -vv                    # local branches and their upstreams
+git branch -r                     # what is left on origin
+```
+
+A branch counts as **merged** when either holds:
+
+- its tip is an ancestor of `origin/main` (`git merge-base --is-ancestor
+  <branch> origin/main`). Merge commits land that way.
+- its PR is merged (`$GH pr list --repo dadrobny/aide-loop --state merged
+  --head <branch> --json number,headRefOid`) **and** the branch tip equals that
+  PR's `headRefOid`. That covers a squash or rebase merge. A tip that moved past
+  `headRefOid` holds commits the PR never carried, so it is not merged.
+
+Never touch `main`, a branch with an open PR, or a branch not merged by that
+test, however old it is. Stale but unmerged work goes in the report and is
+left alone.
+
+**Worktrees (apply directly).** Remove a worktree other than the main checkout
+when its branch is merged, or its detached `HEAD` is an ancestor of
+`origin/main`, *and* `git -C <path> status --porcelain` prints nothing. Use
+`git worktree remove <path>` and **never `--force`**; a refusal means there
+is something to look at, so report it. Skip the worktree this session runs
+in. Then run `git worktree prune` for entries whose directory is already gone.
+
+**Local branches (apply directly).** For a merged branch that no remaining
+worktree has checked out, run `git branch -d <branch>`. Only when `-d` refuses a
+branch that the PR test proved merged, use `git branch -D`. Record each
+deleted branch's name and tip SHA in the report, since `git branch <name>
+<sha>` restores it.
+
+**Branches on origin (propose).** A merged branch still on `origin` is
+outward-facing, so list it under *Awaiting your call*. On a go-ahead, run `git
+push origin --delete <branch>`. GitHub can restore it from the PR page, but
+do not count on that.
+
 ## Report
 
 Close the pass with a single report:
@@ -263,9 +311,11 @@ Close the pass with a single report:
   Close the list with one line asking the user to say if any should change;
   silence keeps them.
 - **Applied**: items added, Themes/labels set, board reordered (or already
-  ordered).
-- **Awaiting your call**: Status/close/defer/un-defer proposals, batched — or
-  "nothing" when there are none.
+  ordered), and step 6's removals: each worktree path and each deleted branch
+  with its tip SHA. Also list what step 6 left alone and why: dirty, unmerged,
+  or a refused `remove`.
+- **Awaiting your call**: Status/close/defer/un-defer proposals and merged
+  branches on `origin` to delete, batched — or "nothing" when there are none.
 - **Next PR**: the step 5 proposal.
 
 ## Filing an issue yourself
