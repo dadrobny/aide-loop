@@ -251,13 +251,14 @@ directly under the table, one entry each, keyed to a row.
   gate is restated with `aide gate reword`, which keeps its ID.
 
 **A settled stage can be archived, and the overview keeps its row.** `aide
-progress archive [--stage N]` moves a stage's section, verbatim, to
-`progress/stage-N.md` beside this file — one file per archived stage, N
-unpadded as the heading writes it — and the stage's summary row's Title cell
-becomes a link to that file, the title its text; its Status cell keeps the
-icon. The Stage summary, Objective coverage and the three optional tables stay
-here. The section's relative links are rebased so they resolve from the
-archive file, and `aide progress unarchive` reverses it. **The same verb archives the stage's `roadmap.md` section with it**, to
+progress archive [--stage N]` moves a stage's section, verbatim but for its
+relative links, to `progress/stage-N.md` beside this file — one file per
+archived stage, N unpadded as the heading writes it — and the stage's summary
+row's Title cell becomes a link to that file, the title its text; its Status
+cell keeps the icon. The Stage summary, Objective coverage and the three
+optional tables stay here. The section's relative links are rebased so they
+resolve from the archive file, and `aide progress unarchive` reverses it.
+**The same verb archives the stage's `roadmap.md` section with it**, to
 `roadmap/stage-N.md`, and §1 → `roadmap.md` says what stays there. It is the
 verb's move, never a hand edit, and a stage is eligible only when all of these
 hold:

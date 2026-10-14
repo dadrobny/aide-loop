@@ -107,20 +107,20 @@ it; on a ✅ or ❌ stage, nothing. `aide check -h` states how each is read.
 
 **A settled stage's section is archived with its `progress.md` section, and a
 stub keeps its place.** `aide progress archive` (§1 → `progress.md`) moves the
-section, heading included and verbatim, to `roadmap/stage-N.md` beside this
-file, exactly when it archives the stage's `progress.md` section, and leaves a
-**stub**: the stage's `## Stage N — Title` heading with one line under it
-linking to that file. The section's relative links are rebased so they
-resolve from the archive file, and `aide progress unarchive` reverses it.
-What stays in this file is the Strategy section with the
-coverage table and the dependency graph, every stage not archived, whole, a
-stub for each archived stage, and the Backlog. A stub is the verb's, never a
+section, heading included and verbatim but for its relative links, to
+`roadmap/stage-N.md` beside this file, exactly when it archives the stage's
+`progress.md` section, and leaves a **stub**: the stage's `## Stage N — Title`
+heading with one line under it linking to that file. The section's relative
+links are rebased so they resolve from the archive file, and `aide progress
+unarchive` reverses it. What stays in this file is the Strategy section with
+the coverage table and the dependency graph, every stage not archived, whole,
+a stub for each archived stage, and the Backlog. A stub is the verb's, never a
 hand edit, and no reader follows it into the archive. **An archived stage is
-frozen, its stub's heading included**: a stage is retitled — to
-`Maintenance`, the one heading edit the freeze allows — only after `aide
-progress unarchive --stage N` has moved both sections back. `aide check`
-errors where this file, its archive and `progress.md`'s disagree about a
-stage, and `aide check -h` states each case.
+frozen, its stub's heading included**: a stage is retitled — to `Maintenance`,
+the one heading edit the freeze allows — only after `aide progress unarchive
+--stage N` has moved both sections back. `aide check` errors where this file,
+its archive and `progress.md`'s disagree about a stage, and `aide check -h`
+states each case.
 
 **A stage's blocking Dependencies name only earlier-numbered stages.** Stages
 close in number order, so a stage waiting on a later one cannot close when its

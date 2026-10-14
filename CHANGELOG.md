@@ -136,6 +136,18 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.52.1] — 2026-10-14
+
+### Fixed
+
+- **An archived section is described as moving "verbatim but for its
+  relative links".** 2.52.0 rebased an archived section's relative links but
+  still called the move verbatim. That wording is corrected in §1 →
+  `progress.md`, §1 → `roadmap.md` and `aide progress -h`; the move itself
+  is unchanged. Two cases the rebasing leaves as written: a link target with
+  parentheses in it or in angle brackets, and a section archived by 2.50.x,
+  which stays as it moved, unrebased. (#476, a follow-up to PR #487)
+
 ## [2.52.0] — 2026-10-13
 
 ### Added

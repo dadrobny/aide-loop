@@ -1274,8 +1274,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("It refuses a stage whose roadmap/stage-N.md already exists, or "
          "whose roadmap.md section is a stub already, as well",
          "test_aide_progress_archive::test_a_roadmap_half_already_moved_holds_the_stage"),
-        ("The stage's roadmap.md section moves with it, verbatim and heading "
-         "included, less the `---` after it, to roadmap/stage-N.md under one "
+        ("The stage's roadmap.md section moves with it, verbatim but for its "
+         "relative links and heading included, less the `---` after it, to roadmap/stage-N.md under one "
          "line pointing back at roadmap.md, and in roadmap.md its heading "
          "stays with one line under it linking to the file",
          ("test_aide_progress_archive::test_archive_roadmap_text_leaves_a_stub_and_moves_the_section",
@@ -1325,7 +1325,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "test_aide_progress_archive::test_an_unreadable_gate_row_holds_every_stage"),
         # `archive_stage_text`: `_without_trailing_separators`,
         # `_archive_header`, `_replace_cell` on the Title cell alone.
-        ("The section moves verbatim, less the `---` after it, under one "
+        ("The section moves verbatim but for its relative links, less the "
+         "`---` after it, under one "
          "line pointing back at progress.md, and the summary row's Title "
          "cell becomes a link to the file while its Status cell stays",
          "test_aide_progress_archive::test_archive_moves_the_section_verbatim_and_links_the_summary_row"),
