@@ -7,7 +7,8 @@ description: Triage newly-raised aide-loop issues — version-check them against
 
 Consumers raise issues against the framework faster than the framework lands
 them. This is the recurring pass that turns that inbox into an ordered board and
-one concrete proposal.
+one concrete proposal, and clears away the worktrees and branches already
+merged.
 
 **This skill is repo-local machinery, not framework content.** It lives in
 `.claude/skills/`, which `install.py` never copies — so unlike anything under
@@ -276,23 +277,27 @@ twice:
 
 ```bash
 $GH pr list --repo dadrobny/aide-loop --state all --head <branch> \
-    --json number,state,baseRefName,headRefOid   # its own PRs
+    --json number,state,baseRefName,headRefOid,isCrossRepository  # its own PRs
 $GH pr list --repo dadrobny/aide-loop --state open --base <branch> \
     --json number                                # PRs stacked on it
 ```
 
 **Excluded** — never touched, whatever else holds: `main`, a branch with an
-`OPEN` PR in the first list, and a branch the second list is not `[]` for.
+`OPEN` PR in the first list, and a branch the second list is not `[]` for. So
+is a branch either query fails for — a non-zero exit or no JSON: like activity
+that cannot be read, a PR list that cannot be read is not an empty one.
 
 A tip is **merged** only when the first list has a `MERGED` PR with
-`baseRefName` `main` **and** the tip either equals that PR's `headRefOid` (a
-squash or rebase merge) or is an ancestor of `origin/main` (`git merge-base
---is-ancestor <tip> origin/main`; a merge commit). Every branch here lands
-through a PR, so no PR merged into `main` means not merged — even when the tip
-is an ancestor, as a branch freshly cut from `main` is. A PR merged into a
-stacked parent or any other base does not count. A tip past `headRefOid` that
-is not an ancestor holds commits the PR never carried, so it is not merged.
-Stale but unmerged work goes in the report and is left alone.
+`baseRefName` `main` and `isCrossRepository` `false` (`--head` ignores the
+owner, so a fork's PR from a same-named branch would match), **and** the tip
+equals or is an ancestor of that PR's `headRefOid` (`git merge-base
+--is-ancestor <tip> <headRefOid>`; a missing object fails, and fails closed).
+Every branch here lands through a PR, so no PR merged into `main` means not
+merged. The test is against the PR's head, never `origin/main`: a branch reusing
+an old name, freshly cut from today's `main`, is an ancestor of `origin/main` but
+not of the old PR's head. A PR merged into a stacked parent or any other base
+does not count. A tip past `headRefOid` holds commits the PR never carried, so
+it is not merged. Stale but unmerged work goes in the report and is left alone.
 
 **Worktrees (apply directly).** A worktree other than the main checkout and the
 one this session runs in is a candidate when its branch is merged and not
@@ -313,19 +318,22 @@ order — the timestamps first, since a plain `git status` can rewrite the index
    Either within 86400 s of now leaves the worktree. So does either failing or
    printing nothing: activity that cannot be read is not absence of activity.
 2. **No operation in progress.** None of `MERGE_HEAD`, `CHERRY_PICK_HEAD`,
-   `REVERT_HEAD`, `BISECT_LOG`, `rebase-merge`, `rebase-apply` exists at
+   `REVERT_HEAD`, `BISECT_LOG`, `rebase-merge`, `rebase-apply`, `sequencer`
+   (a multi-commit cherry-pick or revert outlives its `*_HEAD`) exists at
    `git -C <path> rev-parse --path-format=absolute --git-path <name>`.
 3. **Clean, ignored files included.** `git worktree remove` deletes untracked
    and ignored files, and config such as `status.showUntrackedFiles=no` can
-   hide them, so pass every flag:
+   hide them, so pass every flag, and drop the regenerable caches — `!!`
+   entries under a `__pycache__/` or `.pytest_cache/` directory or ending
+   `.pyc` — since an ignored `.venv/` alone lists thousands of lines:
 
    ```bash
-   git -C <path> --no-optional-locks status --porcelain --ignored --untracked-files=all
+   git -C <path> --no-optional-locks status --porcelain --ignored --untracked-files=all \
+       | grep -Ev '^!! (.*/)?(__pycache__|\.pytest_cache)/|^!! .*\.pyc$' | head -20
    ```
 
-   It may list only `!!` entries under a `__pycache__/` or `.pytest_cache/`
-   directory or ending `.pyc`. Any other line — a change, a `??`, a `!!
-   local.toml` or `.venv/` file — leaves the worktree; report the file names.
+   It must print nothing. Any line — a change, a `??`, a `!! local.toml` or
+   `.venv/` file — leaves the worktree; report the lines.
 
 Then `git worktree remove <path>`, **never `--force`**; a refusal means there
 is something to look at, so report it. Finally run `git worktree prune
@@ -335,16 +343,19 @@ itself goes under *Awaiting your call*.
 
 **Local branches (apply directly).** For a branch whose local tip is merged,
 that is not excluded, and that no remaining worktree has checked out, run `git
-branch -d <branch>`. Only when `-d` refuses a branch whose tip equals the
-merged PR's `headRefOid`, use `git branch -D`. Record each deleted branch's
-name and tip SHA in the report, since `git branch <name> <sha>` restores it.
+branch -D <branch>`. Not `-d`: it judges against the current `HEAD` or the
+upstream, not the PR, so in a shared checkout it refuses branches the merged
+test already proved. Record each deleted branch's name and tip SHA in the
+report, since `git branch <name> <sha>` restores it.
 
 **Branches on origin (propose).** Run the merged test again on `origin/<branch>`
 itself — the remote tip, not the local one — including for a branch that exists
 only on `origin`. An unmerged remote tip is left alone and reported. A merged,
 non-excluded one is outward-facing, so list it under *Awaiting your call* with
-its remote tip, `git rev-parse origin/<branch>`. On a go-ahead, delete it with a
-lease against that SHA, so a branch someone pushed to since is not lost:
+its remote tip, `git rev-parse origin/<branch>`. On a go-ahead, first re-run
+both PR queries; a new PR on or stacked on the branch, or a failed query,
+leaves it and goes in the report. Then delete it with a lease against that SHA,
+so a branch someone pushed to since is not lost:
 
 ```bash
 git push --force-with-lease=refs/heads/<branch>:<sha> origin --delete <branch>
@@ -364,12 +375,13 @@ Close the pass with a single report:
   silence keeps them.
 - **Applied**: items added, Themes/labels set, board reordered (or already
   ordered), and step 6's removals: each worktree path and each deleted branch
-  with its tip SHA. Also list what step 6 left alone and why: no PR merged
-  into `main` (or one merged into another base), tip past the merged PR,
-  remote tip unmerged, an open PR on it or stacked on it, activity in the last
-  24 hours or activity unreadable, an operation in progress (name it), dirty
-  or ignored files other than caches (name them), a refused `remove`, or a
-  refused lease (with the branch's new tip).
+  with its tip SHA. Also list what step 6 left alone and why: no PR merged into
+  `main` (or one merged into another base, or from a fork), a PR query that
+  failed, tip not on the merged PR's head, remote tip unmerged, an open PR on
+  it or stacked on it (also when the pre-delete re-run finds one), activity in
+  the last 24 hours or activity unreadable, an operation in progress (name it),
+  dirty or ignored files other than caches (name them), a refused `remove`, or
+  a refused lease (with the branch's new tip).
 - **Awaiting your call**: Status/close/defer/un-defer proposals, merged
   branches on `origin` to delete, each with its remote tip SHA, and the
   entries `git worktree prune --dry-run --verbose` would drop, batched — or
