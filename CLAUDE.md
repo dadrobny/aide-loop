@@ -377,7 +377,8 @@ The recurring pass over that tracker — version-check newly-raised consumer
 issues against `CHANGELOG.md` and HEAD, file them into the Project with `Theme`
 and labels, order the board, sweep the deferred pile, propose the next PR's
 worth, and clean up merged worktrees and branches — is
-[`/triage-issues`](.claude/skills/triage-issues/SKILL.md). It is repo-local (`.claude/` is never installed), so it is outside the version rule.
+[`/triage-issues`](.claude/skills/triage-issues/SKILL.md). It is repo-local
+(`.claude/` is never installed), so it is outside the version rule.
 
 ## Merge policy
 
