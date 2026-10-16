@@ -282,7 +282,7 @@ def test_delete_remote_refuses_a_branch_that_moved(small, monkeypatch, capsys):
     git(repo, "push", "-q", "origin", f"{newer}:refs/heads/done")
     code, out = run(repo, gh, monkeypatch, capsys, "--delete-remote", f"done={sha}")
     assert code == 1
-    assert "moved to" in out["results"][0]["detail"]
+    assert f"origin is now at done={newer}; approve" in out["results"][0]["detail"]
     assert git(repo, "ls-remote", "origin", "refs/heads/done").startswith(newer)
 
 
@@ -390,6 +390,7 @@ def test_a_detached_rebase_or_bisect_keeps_its_branch(small, tmp_path, monkeypat
         assert branch[name].startswith("checked out in "), name
         assert origin[name].startswith("checked out in "), name
     assert left(plan, "worktree")["rb"] == "detached mid-rebase or mid-bisect on rb"
+    assert left(plan, "worktree")["bb"] == "detached mid-rebase or mid-bisect on bb"
     code, out = run(repo, gh, monkeypatch, capsys, "--delete-remote", f"rb={rb_tip}")
     assert code == 1 and out["results"][0]["detail"].startswith("checked out in ")
 
@@ -454,3 +455,95 @@ def test_no_tomllib_is_a_one_line_refusal(tmp_path):
     _, mod = _script_copy(tmp_path, "import tomllib_absent_on_this_python\n")
     with pytest.raises(mod.Refusal, match="pass --gh PATH"):
         mod.resolve_gh(None)
+
+
+def _rebase_stopped(repo: Path, wt: Path, branch: str) -> str:
+    """*branch* in worktree *wt*, rebasing onto a main that conflicts with it;
+    returns the branch's tip."""
+    git(repo, "worktree", "add", "-q", "-b", branch, str(wt), "main")
+    (wt / "f.txt").write_text(f"{branch}\n", encoding="utf-8")
+    git(wt, "commit", "-q", "-am", branch)
+    (repo / "f.txt").write_text(f"main against {branch}\n", encoding="utf-8")
+    git(repo, "commit", "-q", "-am", f"conflicts with {branch}")
+    stopped = subprocess.run(["git", "rebase", "main"], cwd=str(wt),
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    assert stopped.returncode != 0
+    return git(repo, "rev-parse", branch)
+
+
+def test_a_rebase_in_a_vanished_worktree_still_holds_its_branch(
+        small, tmp_path, monkeypatch, capsys):
+    """Its directory gone, the admin dir under the common dir still names it."""
+    import shutil
+    repo, gh, sha = small
+    rb = tmp_path / "rb"
+    tip = _rebase_stopped(repo, rb, "rb")
+    git(repo, "push", "-q", "origin", "main", "rb")
+    shutil.rmtree(rb)
+    answer(gh, [pr(1, "done", sha), pr(2, "rb", tip)])
+    _, plan = run(repo, gh, monkeypatch, capsys)
+    assert "rb" not in {b["branch"] for b in plan["delete_branches"]}
+    assert "rb" not in {r["branch"] for r in plan["propose_remote"]}
+    assert left(plan, "branch")["rb"].startswith("checked out in ")
+    assert left(plan, "origin")["rb"].startswith("checked out in ")
+    assert [Path(p).name for p in plan["propose_prune"]] == ["rb"]
+    code, out = run(repo, gh, monkeypatch, capsys, "--delete-remote", f"rb={tip}")
+    assert code == 1 and out["results"][0]["detail"].startswith("checked out in ")
+    assert git(repo, "ls-remote", "origin", "refs/heads/rb")
+
+
+def test_a_detached_head_rebase_holds_no_branch(small, tmp_path, monkeypatch, capsys):
+    repo, gh, sha = small
+    wt = tmp_path / "dh"
+    git(repo, "worktree", "add", "-q", "--detach", str(wt), "main")
+    (wt / "f.txt").write_text("detached\n", encoding="utf-8")
+    git(wt, "commit", "-q", "-am", "detached work")
+    (repo / "f.txt").write_text("main moved\n", encoding="utf-8")
+    git(repo, "commit", "-q", "-am", "conflicting")
+    git(repo, "push", "-q", "origin", "main")
+    assert subprocess.run(["git", "rebase", "main"], cwd=str(wt), stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE).returncode != 0
+    make_old(wt)
+    _, plan = run(repo, gh, monkeypatch, capsys)
+    [entry] = [l for l in plan["left_alone"] if l["kind"] == "worktree"]
+    assert Path(entry["path"]).name == "dh" and entry["branch"] is None
+    assert {b["branch"] for b in plan["delete_branches"]} == {"done"}
+
+
+def test_a_gitdir_less_admin_entry_is_proposed_and_pruned_by_id(
+        small, monkeypatch, capsys):
+    repo, gh, sha = small
+    stray = repo / ".git" / "worktrees" / "stray"
+    stray.mkdir(parents=True)
+    (stray / "HEAD").write_text(f"{sha}\n", encoding="utf-8")
+    _, plan = run(repo, gh, monkeypatch, capsys)
+    assert plan["propose_prune"] == ["worktrees/stray"]
+    code, out = run(repo, gh, monkeypatch, capsys, "--prune", "worktrees/other")
+    assert code == 1 and stray.exists()
+    code, out = run(repo, gh, monkeypatch, capsys, "--prune", "worktrees/stray")
+    assert code == 0, out
+    assert not stray.exists()
+
+
+def test_a_push_origin_refuses_at_the_approved_tip_is_its_own_error(small):
+    """The lease held (origin still at the SHA), but origin said no."""
+    repo, gh, sha = small
+    hook = repo.parent / "origin.git" / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\necho 'deletes are switched off here' >&2\nexit 1\n",
+                    encoding="utf-8")
+    hook.chmod(0o755)
+    ok, detail = cleanup.push_delete("done", sha, repo)
+    assert not ok and detail.startswith("refused by origin: "), detail
+    assert "approve" not in detail, detail
+    assert git(repo, "ls-remote", "origin", "refs/heads/done").startswith(sha)
+
+
+def test_a_worktree_with_no_admin_dir_found_is_unknown(small, tmp_path):
+    """No `worktrees/<id>/gitdir` names it: the branch it holds is unknown."""
+    repo, gh, sha = small
+    wts = cleanup.worktrees(repo)
+    ghost = {"path": str(tmp_path / "nowhere"), "HEAD": sha, "detached": True,
+             "branch": None}
+    unknown, gitdirless = cleanup.annotate([*wts, ghost], repo)
+    assert unknown == [ghost] and ghost["admin"] is None and gitdirless == []
+    assert wts[0]["admin"] is not None
