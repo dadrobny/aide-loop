@@ -386,6 +386,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_queue_specs::test_a_row_naming_another_item_does_not_cover_it",
           "test_aide_queue_specs::test_a_stage_only_row_covers_the_stages_env_items",
           "test_aide_queue_specs::test_one_stage_only_row_covers_one_env_item")),
+        # `queue_ci_box` drops the box from `unannotated` (issue #492).
+        ("An unticked box whose criterion carries `(evidence: queue CI)` is "
+         "the queue PR's CI to attest, not an item's, and is no need",
+         "test_aide_queue_specs::test_a_criterion_left_to_the_queue_ci_is_no_need"),
         # `queue_end_stages` on the title; the spec loop skips excluded items
         # and queue-end items before reading an annotation.
         ("A queue-end item is one titled `Validate stage N`, and neither its "
@@ -2319,6 +2323,14 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "reopen` stamped on a CI reopening of one of their items, read from "
          "the branch's own progress.md; no line where none has begun",
          "test_aide_queue_pr::test_a_draft_or_failing_pr_names_the_ci_fix_rounds_begun"),
+        # `queue_ci_handoff`, asked only where checks= is success; one line
+        # each in `cmd_status` (issue #492).
+        ("Where checks= is success, a `queue ci attests:` line below it names "
+         "each acceptance box still open and annotated `(evidence: queue CI)` "
+         "in a stage the queues the branch carries close, read from the "
+         "branch's own progress.md, with the `aide progress accept` call that "
+         "ticks it on the main branch once the PR has merged",
+         "test_aide_queue_pr::test_a_green_queue_pr_hands_off_its_queue_ci_criteria"),
         # `running_checks`, asked only under failure; one `pending check:`
         # line each in `cmd_status` (#332).
         ("Under failure, each check still running is named on a `pending "

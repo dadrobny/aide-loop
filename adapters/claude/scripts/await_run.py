@@ -60,7 +60,7 @@ call is not. ``checks=-`` beside an open PR is ``status`` saying
 ``[git] ci = "none"`` declares no CI, and answers at once: ``aide.toml`` has
 one reader, the engine (issue #355). It gives up after {ceiling} s. Its log
 is the stack line and the ``failing check:`` / ``pending check:`` / ``checks unknown:`` / ``ci fix
-rounds:`` lines under it, each time they
+rounds:`` / ``queue ci attests:`` lines under it, each time they
 change, then its verdict. ``poll-ci`` blocks until then, so it is only ever
 run this way; a crash of the poll itself exits 1, with its traceback in the
 log.
@@ -165,7 +165,7 @@ CI_NONE_DECLARED = 16
 _STACK_LINE_RE = re.compile(
     r"^\s*stack \d+: (?P<branch>\S+) .*?\bpr=(?P<pr>\S+) checks=(?P<checks>\S+)")
 _CI_DETAIL = ("failing check:", "pending check:", "checks unknown:",
-              "ci fix rounds:")
+              "ci fix rounds:", "queue ci attests:")
 _LABEL_RE = re.compile(r"^[a-z]+(?:-\d+)?-\d{8}-\d{6}(?:-\d+)?$")
 # The shape `aide merge --findings` takes; anything else never reaches it.
 _FINDINGS_RE = re.compile(r"^(?:blocking|minor|nit)=\d+(?:,(?:blocking|minor|nit)=\d+)*$")

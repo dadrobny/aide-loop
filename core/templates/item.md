@@ -169,8 +169,9 @@ nothing._
 ## Environment / Hardware Dependencies  <!-- OPTIONAL: delete if not applicable -->
 
 _Only for an item introducing an environment-gated capability
-(conventions.md §1 → Environment-gated capabilities). One row per
-capability:_
+(conventions.md §1 → Environment-gated capabilities; an item reusing a row
+the table already has deletes this section, as that section says). One row
+per capability:_
 
 - **{{package/tool name}}** — declared via {{pyproject optional-dependencies
   extra name, or "external tool (not a pip dependency)"}}. Required fallback:

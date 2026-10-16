@@ -53,6 +53,15 @@ one, `aide check` and `aide queue tidy` keep its declared status honest, and
   stage's use cases end-to-end, and updates the capability table (§1 →
   environment-gated capabilities). *(aide check, claim, queue-planner,
   spec-author, aide merge)*
+- **A stage criterion whose evidence is the queue PR's own CI run carries
+  `*(evidence: queue CI)*` on its acceptance box in `progress.md`** — those
+  words, any letter case, emphasis optional. No item attests it: the
+  queue-end item leaves the box open, and the box is no reason to plan one.
+  The person merging the queue PR attests it, on `main_branch` after the
+  merge, citing the green run: once the PR's checks are green, `aide status`
+  names each such box still open in a stage the queue closes, with the
+  `aide progress accept` call, and the queue-end step relays that list in
+  its stop report. *(aide check, status, queue-end step)*
 
 #### Rationale
 
@@ -109,6 +118,15 @@ one, `aide check` and `aide queue tidy` keep its declared status honest, and
   findings that trace to no item go to a queue-end item where the queue has
   one and to a person where it has none (#332); they remain the candidate
   second trigger.
+- **Why the queue's CI attests after the merge.** The queue-end step starts
+  when `aide claim` prints `none left`, so the queue-end item has already
+  merged when `aide queue ready` starts the PR's first CI run: a criterion
+  like "passes locally and in CI" had nothing to cite while the item ran,
+  nothing went back to the box afterwards, and `aide check` read the open
+  box as one no item had annotated (#492). Ticking it on the queue branch
+  once CI is green would push a commit that needs another CI run — the cost
+  #332 chose not to pay — so the box is attested where the merge lands, by
+  the person who merges, from a list the engine prints.
 - **Why the title stays `Validate stage N`.** It is the one place the engine
   learns what an item is: the ledger's `validate-stage` kind and this check
   both read it, and consumers' existing specs and ledger rows keep parsing.

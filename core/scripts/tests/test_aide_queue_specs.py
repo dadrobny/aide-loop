@@ -1021,6 +1021,17 @@ def test_every_criterion_annotated_or_ticked_is_no_need(tmp_path: Path):
     assert _qe(repo, "queue-end-needed") == []
 
 
+def test_a_criterion_left_to_the_queue_ci_is_no_need(tmp_path: Path):
+    """Issue #492: the queue PR's own CI attests the box, after the queue-end
+    item has merged — so it is no reason to plan one. Wrapped, any case."""
+    progress = PROGRESS_QE.replace(
+        "- [ ] Rules fire.", "- [ ] Rules fire in CI. *(evidence: queue\n  ci)*")
+    assert _qe(_qe_repo(tmp_path, progress=progress), "queue-end-needed") == []
+    idle = _qe(_qe_repo(tmp_path / "idle", progress=progress, queue_items=(27, 28, 29),
+                        titles={29: "Validate stage 1: Rules"}), "queue-end-idle")
+    assert len(idle) == 1 and "left to the queue CI" in idle[0].message
+
+
 def test_an_annotation_outside_acceptance_criteria_closes_nothing(tmp_path: Path):
     repo = _qe_repo(tmp_path, specs={
         27: "# Item 027 — B\n\n## Description\n\n(closes Stage 1 criterion 2)\n",
@@ -1089,7 +1100,9 @@ def test_an_item_declaring_an_environment_gated_capability_is_a_need(tmp_path: P
     repo = _qe_repo(tmp_path, progress=progress, specs={
         27: "# Item 027 — B\n\n## Environment / Hardware Dependencies\n\n- torch\n"})
     msg = _qe(repo, "queue-end-needed")[0].message
-    assert "item(s) 027 declaring an environment-gated capability" in msg
+    assert "item(s) 027 with an Environment / Hardware Dependencies section" in msg
+    # Issue #493: both remedies named, and no claim that no row exists.
+    assert "deletes the section" in msg and "owed a row naming it" in msg
 
 
 _ENV_SPEC = "# Item 026 — A\n\n## Environment / Hardware Dependencies\n\n- torch\n"
@@ -1110,7 +1123,7 @@ def test_a_merged_env_item_with_no_row_is_still_a_need(tmp_path: Path):
     is exactly the queue-end item's work, so ✅ does not retire the need."""
     repo = _qe_repo(tmp_path, progress=_PROGRESS_TICKED, specs={26: _ENV_SPEC})
     msg = _qe(repo, "queue-end-needed")[0].message
-    assert "item(s) 026 declaring an environment-gated capability" in msg
+    assert "item(s) 026 with an Environment / Hardware Dependencies section" in msg
 
 
 def test_a_merged_env_item_with_a_verified_row_is_no_need(tmp_path: Path):
@@ -1161,7 +1174,7 @@ def test_one_stage_only_row_covers_one_env_item(tmp_path: Path):
     repo = _qe_repo(tmp_path, progress=progress, specs={
         26: _ENV_SPEC, 27: _ENV_SPEC.replace("026", "027")})
     msg = _qe(repo, "queue-end-needed")[0].message
-    assert "item(s) 027 declaring" in msg and "026" not in msg
+    assert "item(s) 027 with" in msg and "026" not in msg
 
 
 def test_an_env_item_outside_the_stage_is_not_its_need(tmp_path: Path):

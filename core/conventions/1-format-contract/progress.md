@@ -160,6 +160,9 @@ on a check it actually performed — via `aide progress accept`, whose flags
 `aide progress -h` states.
 
 A stage may be ✅ with an unticked box; say why in an annotation beside it.
+A box whose evidence is the queue PR's own CI run says so with `*(evidence:
+queue CI)*`, written when the criterion is (§1 → `queue-NNN.md` says who
+ticks it, and when).
 
 **The attestation is immutable; what is recorded about it is not.** The
 criterion line is never reworded once anything has been claimed against it, and

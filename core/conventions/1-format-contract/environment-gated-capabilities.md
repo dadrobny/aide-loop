@@ -22,7 +22,9 @@ path was ever run for real:
 - **The item template's optional Environment / Hardware Dependencies
   section** — filled in by any item introducing such a capability, naming the
   package/tool, its `pyproject`/equivalent declaration, and the required
-  fallback behaviour.
+  fallback behaviour. The section is the declaration that the item
+  introduces a capability, so an item that only reuses a capability already
+  in the table omits it, and may say so in its Assumptions.
 - **`progress.md`'s optional Environment-Gated Capability Verification
   table** — one row per capability, starting `❓ Unverified`. The queue-end
   item's Implementation Steps must add/update the row(s) for any capability
@@ -88,6 +90,13 @@ Two additions make the verification *planned* rather than hoped-for:
   declared a capability and has no row, whether it is still to be built or
   merged without writing one, since the missing row is the queue-end item's
   to write.
+- **Why an item reusing a capability omits the section.** The check reads
+  the heading alone, so a spec that kept it to say "reuses the existing row;
+  declares no new capability" was reported as declaring one with no row, and
+  a later maintenance queue closing the stage was told it needed a whole
+  queue-end item whose only work was adding the item's number to an
+  existing row (#493). The section's trigger was already "introducing"; the
+  core now says what reuse writes instead.
 - **Why the host moved out of the Status cell.** It made the cell prose:
   Status cells up to 216 characters and Notes cells up to 2.2 KB in one
   consumer (#474). The leading icon is all a reader decides on, so the

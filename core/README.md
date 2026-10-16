@@ -148,8 +148,11 @@ ready straight to stopping for the merge, and reports "CI: none declared".
    only once every leg has finished, since a leg still running may fail too
    and its log cannot be read yet.
 5. **Read the answer.**
-   - `success`: stop for the merge. Under `/aide-run-roadmap`, go on to its
-     stack decision.
+   - `success`: stop for the merge, relaying each `queue ci attests:` line
+     under the branch's stack line: a criterion the queue's CI attests,
+     ticked on `main_branch` by the person merging, once merged (§1 →
+     `queue-NNN.md`). Under `/aide-run-roadmap`, go on to its stack
+     decision.
    - `failure`: run the **CI fix round** (below). After an early ready
      the answer is informational instead: report each `failing check:`
      line and stop, since the gated items are still to land.

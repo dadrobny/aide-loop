@@ -289,6 +289,41 @@ def test_status_reads_pending_and_success(tmp_path: Path, monkeypatch, capsys):
     assert _status_stack(repo, capsys)[0]["checks"] == "success"
 
 
+def test_a_green_queue_pr_hands_off_its_queue_ci_criteria(
+        tmp_path: Path, monkeypatch, capsys):
+    """Issue #492: on success, each still-open *(evidence: queue CI)* box of a
+    stage the queue closes is named with the accept call for after the merge;
+    an unannotated box, a ticked one and a pending PR are not."""
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1, "### Item 001: Alpha\n\n### Item 002: Beta\n")
+    text = PROGRESS.format(icon="✅", trail="").replace("- 📋 Beta.", "- ✅ Beta.")
+    (repo / "docs" / "aide" / "progress.md").write_text(
+        text + "\n**Acceptance.**\n- [ ] Unannotated.\n"
+        "- [x] Done. *(evidence: queue CI)* *(run 1)*\n"
+        "- [ ] Passes in CI. *(evidence: queue CI)*\n", encoding="utf-8")
+    _commit(repo, "progress")
+
+    def handoff() -> List[str]:
+        capsys.readouterr()
+        assert aide.main(["--repo", str(repo), "status", "--no-fetch"]) == 0
+        return [l.strip() for l in capsys.readouterr().out.splitlines()
+                if l.strip().startswith("queue ci attests:")]
+
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup":
+                               [_run_check("build", "IN_PROGRESS")]}]})
+    assert handoff() == []
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup":
+                               [_run_check("build", "COMPLETED", "SUCCESS")]}]})
+    assert handoff() == [
+        "queue ci attests: stage 1 criterion 3 — after the merge, on main: "
+        'aide progress accept 1 --criterion 3 --evidence "<CI run>"']
+    # The call it names ticks the box, the declaration kept beside the run.
+    lines, _ = aide.accept_criteria(text + "\n- [ ] Passes in CI. *(evidence: "
+                                    "queue CI)*\n", "1", [1], "CI run 9")
+    assert "- [x] Passes in CI. *(evidence: queue CI)* *(CI run 9)*" in lines
+
+
 def test_checks_are_unknown_with_the_reason_where_the_forge_cannot_be_asked(
         tmp_path: Path, monkeypatch, capsys):
     repo = _init(tmp_path)
