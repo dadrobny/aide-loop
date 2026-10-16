@@ -274,10 +274,10 @@ remove only what is provably finished. The rules, which
   is an ancestor of `origin/main`.
 - **Never touched:** `main`; a branch with an open PR on it or stacked on it;
   a branch checked out in a worktree that stays, including one a detached
-  worktree is rebasing or bisecting; everything, when the PR list cannot be
-  read — an unreadable list is not an empty one; every branch, when a
-  worktree's admin dir under `.git/worktrees/` cannot be identified, since the
-  branch it holds is then unknown.
+  worktree is rebasing or bisecting; everything, when the PR list or the
+  admin dirs under `.git/worktrees/` cannot be read for certain — an
+  unreadable list is not an empty one, and an unreadable admin dir hides which
+  branch its worktree holds.
 - **A merged worktree stays** while anything says it may be in use: this
   session runs in it, it is locked, a process has its cwd there (Linux;
   processes it may not read are noted, not counted), its `HEAD` moved or its
@@ -305,17 +305,17 @@ printed beside it. On a go-ahead:
 
 ```bash
 python3 .claude/skills/triage-issues/cleanup.py --delete-remote <branch>=<sha> ...
-python3 .claude/skills/triage-issues/cleanup.py --prune <path> ...   # the plan's --prune line, verbatim
+python3 .claude/skills/triage-issues/cleanup.py --prune worktrees/<id> ...   # the plan's --prune line, verbatim
 ```
 
 `--delete-remote` re-runs the PR list and the merged test on the remote tip,
 then deletes with a lease against the approved SHA. A branch that moved is
 refused — report its new tip (`<branch>=<sha>`) and ask again; never delete it
-another way. `--prune` prunes only while the prunable set — worktree paths, and
-`worktrees/<id>` for an admin entry with no `gitdir` file — is exactly the one
-approved, and otherwise prunes nothing.
-Exit 1 means something was refused or the PR list could not be read; `--json`
-gives the plan as data.
+another way. Git decides what is prunable: the plan proposes the
+`worktrees/<id>` entries its dry run would drop, and `--prune` prunes only while
+that set is exactly the one approved, and otherwise prunes nothing. Exit 1
+means something was refused, or the PR list or admin dirs could not be read;
+`--json` gives the plan as data.
 
 ## Report
 

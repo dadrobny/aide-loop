@@ -225,67 +225,62 @@ def worktrees(cwd: Path) -> List[dict]:
     return out
 
 
-class Unreadable(Exception):
-    """An admin-dir file exists but cannot be read."""
+class Blind(Exception):
+    """The admin dirs cannot be read for certain, so which branch a worktree
+    holds is unknown: nothing is deleted or proposed."""
 
 
-def read_opt(path: Path) -> Optional[str]:
+def read_strict(path: Path, missing_ok: bool = False) -> Optional[str]:
+    """A small git file as text; anything but clean UTF-8 is Blind."""
     try:
-        return path.read_text(encoding="utf-8").strip()
+        return path.read_bytes().decode("utf-8").strip()
     except FileNotFoundError:
-        return None
-    except OSError as exc:
-        raise Unreadable(str(exc)) from None
+        if missing_ok:
+            return None
+        raise Blind(f"{path} is missing") from None
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Blind(f"{path} cannot be read ({exc})") from None
 
 
-def admin_dirs(top: Path) -> Tuple[Path, Dict[Path, Optional[str]]]:
-    """The common git dir, and each `worktrees/<id>` admin dir with the
-    worktree directory its `gitdir` file names (None: no `gitdir` file; "":
-    unreadable). Read from the common dir, so a worktree whose directory is
-    gone still has one."""
+def annotate(wts: List[dict], top: Path) -> None:
+    """Give each worktree its admin dir (`admin`) and the branch it holds
+    (`held`): its branch line, or for a detached one the branch it is rebasing
+    or bisecting. The admin dirs are read from the common dir, so a worktree
+    whose directory is gone still has one. Raises Blind on any doubt."""
+    for wt in wts:
+        wt["admin"], wt["held"] = None, wt["branch"]
     res = git(["rev-parse", "--path-format=absolute", "--git-common-dir"], top)
     if res.returncode != 0 or not res.stdout.strip():
-        raise Refusal(f"git rev-parse --git-common-dir failed: {first_line(res)}")
+        raise Blind(f"git rev-parse --git-common-dir failed: {first_line(res)}")
     common = Path(res.stdout.strip())
-    out: Dict[Path, Optional[str]] = {}
     root = common / "worktrees"
-    for d in sorted(root.iterdir()) if root.is_dir() else []:
-        if not d.is_dir():
-            continue
-        try:
-            g = read_opt(d / "gitdir")
-        except Unreadable:
-            g = ""
-        if g and not os.path.isabs(g):           # worktree.useRelativePaths
-            g = os.path.normpath(os.path.join(str(d), g))
-        out[d] = os.path.dirname(g) if g else g
-    return common, out
-
-
-def annotate(wts: List[dict], top: Path) -> Tuple[List[dict], List[str]]:
-    """Give each worktree its admin dir (`admin`; None when it cannot be told
-    apart) and the branch it holds (`held`): its branch line, or for a
-    detached one the branch it is rebasing or bisecting. Returns the
-    worktrees whose admin dir is unknown — the branch they hold is unknown —
-    and the gitdir-less admin entries `git worktree prune` would drop."""
-    common, admins = admin_dirs(top)
-    unknown = []
+    by_dir: Dict[str, Path] = {}         # canon(worktree dir) -> admin dir
+    try:
+        admins = sorted(d for d in root.iterdir() if d.is_dir()) if root.exists() else []
+    except OSError as exc:
+        raise Blind(f"cannot list {root} ({exc})") from None
+    for d in admins:
+        g = read_strict(d / "gitdir")
+        if not g:
+            raise Blind(f"{d / 'gitdir'} is empty")
+        key = canon(Path(d, g).parent)   # a relative gitdir is relative to d
+        if key in by_dir:
+            raise Blind(f"{by_dir[key]} and {d} name the same worktree")
+        by_dir[key] = d
     for n, wt in enumerate(wts):
-        wt["admin"], wt["held"] = None, wt["branch"]
         if wt.get("bare"):
             continue
-        hits = [common] if n == 0 else [d for d, wdir in admins.items()
-                                        if wdir and same_path(wdir, wt["path"])]
-        if len(hits) == 1:
-            try:
-                wt["held"] = wt["branch"] or op_branch(hits[0], top)
-                wt["admin"] = hits[0]
-            except Unreadable:
-                pass
-        if wt["admin"] is None:
-            unknown.append(wt)
-    gitdirless = [f"worktrees/{d.name}" for d, wdir in admins.items() if wdir is None]
-    return unknown, gitdirless
+        admin = common if n == 0 else by_dir.get(canon(wt["path"]))
+        if admin is None:
+            raise Blind(f"no admin dir under {root} names {wt['path']}")
+        dotgit = Path(wt["path"], ".git")
+        if n and dotgit.exists():        # its back-pointer must agree
+            text = read_strict(dotgit)
+            if not text.startswith("gitdir: ") or canon(
+                    Path(wt["path"], text[len("gitdir: "):])) != canon(admin):
+                raise Blind(f"{dotgit} does not point at {admin}")
+        wt["admin"] = admin
+        wt["held"] = wt["branch"] or op_branch(admin, top)
 
 
 def op_branch(admin: Path, top: Path) -> Optional[str]:
@@ -293,10 +288,10 @@ def op_branch(admin: Path, top: Path) -> Optional[str]:
     rebase names it `refs/heads/<x>` (or `detached HEAD`); BISECT_START holds a
     branch name or a SHA, so only an existing branch counts."""
     for name in REBASE_HEAD_NAMES:
-        text = read_opt(admin / name)
+        text = read_strict(admin / name, missing_ok=True)
         if text and text.startswith("refs/heads/"):
             return text[len("refs/heads/"):]
-    text = read_opt(admin / "BISECT_START")
+    text = read_strict(admin / "BISECT_START", missing_ok=True)
     if text:
         text = text[len("refs/heads/"):] if text.startswith("refs/heads/") else text
         if git(["show-ref", "--verify", "--quiet", f"refs/heads/{text}"],
@@ -316,11 +311,18 @@ def refs(prefix: str, cwd: Path) -> Dict[str, str]:
     return out
 
 
-def same_path(a: str, b: str) -> bool:
+def canon(path) -> str:
+    """The one comparison form for paths: symlinks followed as git follows
+    them, case folded where the filesystem folds it."""
     try:
-        return Path(a).resolve() == Path(b).resolve()
+        resolved = str(Path(path).resolve())
     except OSError:
-        return False
+        resolved = os.path.abspath(path)
+    return os.path.normcase(resolved)
+
+
+def same_path(a: str, b: str) -> bool:
+    return canon(a) == canon(b)
 
 
 def process_cwds() -> Optional[Tuple[List[str], int]]:
@@ -376,7 +378,7 @@ def decide(top: Path, gh_exe, gh_why) -> dict:
     the cwd's worktree, this session's own. `refused` is set when nothing may
     be deleted at all."""
     plan = {"remove_worktrees": [], "delete_branches": [], "propose_remote": [],
-            "propose_prune": [], "prune_dry_run": [], "left_alone": [],
+            "propose_prune": [], "prune_reasons": {}, "left_alone": [],
             "notes": [], "refused": None}
 
     def leave(kind, name, reason, path=None, branch=None):
@@ -393,6 +395,11 @@ def decide(top: Path, gh_exe, gh_why) -> dict:
         plan["notes"].append(f"no {REMOTE} remote; nothing fetched or proposed there")
 
     prs = PRs.load(gh_exe, gh_why, top)
+    wts = worktrees(top)
+    try:
+        annotate(wts, top)
+    except Blind as exc:      # the branch some worktree holds is unknown
+        prs.why = prs.why or f"admin dirs unreadable: {exc}"
     if prs.why:
         plan["refused"] = prs.why
         plan["notes"].append(f"{prs.why} — nothing is deleted anywhere")
@@ -411,13 +418,6 @@ def decide(top: Path, gh_exe, gh_why) -> dict:
                                  "privileged or non-dumpable)")
     now = time.time()
 
-    wts = worktrees(top)
-    unknown, gitdirless = annotate(wts, top)
-    # A worktree whose admin dir cannot be read may hold any branch.
-    blind = (f"worktree {unknown[0]['path']} cannot be read, so the branch it "
-             "holds is unknown") if unknown else None
-    if blind:
-        plan["notes"].append(f"{blind} — no branch is deleted or proposed")
     kept_branches: Dict[str, str] = {}      # branch -> worktree path that keeps it
     for n, wt in enumerate(wts):
         path, branch, held = wt["path"], wt["branch"], wt["held"]
@@ -434,7 +434,8 @@ def decide(top: Path, gh_exe, gh_why) -> dict:
         elif "HEAD" not in wt:
             reason = "no HEAD listed"
         elif wt.get("prunable"):
-            reason = "prunable — see the prune proposal"
+            reason = "prunable — see the prune proposal" + (
+                f" (worktrees/{wt['admin'].name})" if wt["admin"] else "")
         elif branch == MAIN:
             reason = f"on {MAIN}"
         elif branch:
@@ -469,7 +470,7 @@ def decide(top: Path, gh_exe, gh_why) -> dict:
             leave("branch", branch, f"checked out in {kept_branches[branch]}",
                   branch=branch)
             continue
-        reason = prs.excluded(branch) or blind
+        reason = prs.excluded(branch)
         ok, why = (False, reason) if reason else merged(branch, sha, prs, top)
         if ok:
             plan["delete_branches"].append({"branch": branch, "sha": sha, "why": why})
@@ -480,7 +481,7 @@ def decide(top: Path, gh_exe, gh_why) -> dict:
         for branch, sha in sorted(refs(f"refs/remotes/{REMOTE}/", top).items()):
             if branch in (MAIN, "HEAD"):
                 continue
-            reason = prs.excluded(branch) or blind
+            reason = prs.excluded(branch)
             if not reason and branch in kept_branches:   # its session may push again
                 reason = f"checked out in {kept_branches[branch]}"
             ok, why = (False, reason) if reason else merged(branch, sha, prs, top)
@@ -490,52 +491,55 @@ def decide(top: Path, gh_exe, gh_why) -> dict:
                 leave("origin", f"{REMOTE}/{branch}",
                       why if reason else f"remote tip unmerged: {why}", branch=branch)
 
-    plan["propose_prune"] = prunable(wts, gitdirless)
-    plan["prune_dry_run"] = prune_dry_run(top)
+    ids, why = prune_ids(top)
+    if why:
+        plan["notes"].append(f"no prune proposed: {why}")
+    else:
+        plan["propose_prune"], plan["prune_reasons"] = sorted(ids), ids
     return plan
 
 
-def prunable(wts: List[dict], gitdirless: List[str]) -> List[str]:
-    """What `git worktree prune` drops: worktrees listed `prunable`, by path,
-    and admin entries with no `gitdir` file (never listed), as `worktrees/<id>`."""
-    return [w["path"] for w in wts if w.get("prunable")] + gitdirless
+#: One `git worktree prune --dry-run --verbose` line, under LC_ALL=C.
+PRUNE_LINE = re.compile(r"Removing (worktrees/[^:]+): (.+)")
 
 
-def prune_dry_run(top: Path) -> List[str]:
-    """For display only; LC_ALL=C so it reads the same on every machine."""
-    dry = git(["worktree", "prune", "--dry-run", "--verbose"], top, env={"LC_ALL": "C"})
-    return [l for l in (dry.stderr + dry.stdout).splitlines() if l.strip()]
-
-
-def same_entry(a: str, b: str) -> bool:
-    """A prune entry: an absolute worktree path, or a `worktrees/<id>` admin id."""
-    if os.path.isabs(a) and os.path.isabs(b):
-        return same_path(a, b)
-    return a == b
+def prune_ids(top: Path) -> Tuple[Dict[str, str], Optional[str]]:
+    """What `git worktree prune` would drop, by `worktrees/<id>`, with git's
+    reason — git, not this script, decides what is prunable. A line that does
+    not parse is a reason to propose nothing."""
+    dry = git(["worktree", "prune", "--dry-run", "--verbose"], top,
+              env={"LC_ALL": "C", "LANGUAGE": "C"})
+    if dry.returncode != 0:
+        return {}, f"git worktree prune --dry-run failed ({first_line(dry)})"
+    ids = {}
+    for line in (dry.stderr + dry.stdout).splitlines():
+        m = PRUNE_LINE.fullmatch(line.strip())
+        if line.strip() and not m:
+            return {}, f"unparsed dry-run line: {line.strip()}"
+        if m:
+            ids[m[1]] = m[2]
+    return ids, None
 
 
 def prune(approved: List[str], top: Path) -> List[dict]:
-    """`git worktree prune`, only while the prunable set is the approved one."""
-    _, admins = admin_dirs(top)
-    now = prunable(worktrees(top), [f"worktrees/{d.name}"
-                                    for d, wdir in admins.items() if wdir is None])
-    if not (all(any(same_entry(a, c) for c in now) for a in approved)
-            and all(any(same_entry(a, c) for a in approved) for c in now)):
-        return [{"action": "git worktree prune", "target": " ".join(approved), "ok": False,
-                 "detail": "the prunable set is now " + (" ".join(now) or "empty")
-                 + "; approve that set instead. Nothing was pruned"}]
+    """`git worktree prune`, only while git would drop exactly the approved ids."""
+    ids, why = prune_ids(top)
+    target = " ".join(approved)
+    if why or set(ids) != set(approved):
+        return [{"action": "git worktree prune", "target": target, "ok": False,
+                 "detail": (why or "git would now drop "
+                            + (" ".join(sorted(ids)) or "nothing")
+                            + "; approve that set instead") + ". Nothing was pruned"}]
     res = git(["worktree", "prune", "--verbose"], top)
     ok = res.returncode == 0
-    return [{"action": "git worktree prune", "target": " ".join(approved), "ok": ok,
+    return [{"action": "git worktree prune", "target": target, "ok": ok,
              "detail": "" if ok else first_line(res)}]
 
 
 def worktree_busy(wt: dict, top: Path, now: float, cwds: List[str]) -> Optional[str]:
     """Why a merged worktree may still be in use, in SKILL.md's order:
     processes, timestamps, operations in progress, then status."""
-    path, admin = wt["path"], wt["admin"]
-    if admin is None:
-        return "activity unreadable (its admin dir cannot be identified)"
+    path, admin = wt["path"], wt["admin"]     # set: a blind run never gets here
     try:
         real = os.path.realpath(path)
     except OSError:
@@ -613,7 +617,11 @@ def delete_remote(pairs: List[Tuple[str, str]], top: Path, gh_exe, gh_why) -> Li
     f = git(["fetch", "--prune", REMOTE], top)
     prs = PRs.load(gh_exe, gh_why, top)
     wts = worktrees(top)
-    unknown, _ = annotate(wts, top)
+    try:
+        annotate(wts, top)
+        blind = None
+    except Blind as exc:
+        blind = f"admin dirs unreadable: {exc}"
     checked_out = {w["held"]: w["path"] for w in wts if w["held"]}
     results = []
     for branch, sha in pairs:
@@ -632,9 +640,8 @@ def delete_remote(pairs: List[Tuple[str, str]], top: Path, gh_exe, gh_why) -> Li
         elif tip != sha:
             reason = (f"it moved since the plan; {REMOTE} is now at "
                       f"{branch}={tip}; approve the new tip")
-        elif unknown:
-            reason = (f"worktree {unknown[0]['path']} cannot be read, so the "
-                      "branch it holds is unknown")
+        elif blind:
+            reason = blind
         elif branch in checked_out:
             reason = f"checked out in {checked_out[branch]}"
         else:
@@ -670,7 +677,7 @@ def print_plan(plan: dict) -> None:
     prune_line = ["--prune " + " ".join(shlex.quote(p) for p in plan["propose_prune"])
                   ] if plan["propose_prune"] else []
     section("Propose: git worktree prune (on approval, pass this --prune line):",
-            prune_line + [f"  {l}" for l in plan["prune_dry_run"]])
+            prune_line + [f"  {i}: {r}" for i, r in plan["prune_reasons"].items()])
     section("Left alone:",
             [f"{l['kind']} {l['name']}: {l['reason']}" for l in plan["left_alone"]])
     if plan["notes"]:
@@ -699,8 +706,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                       help="re-decide, then remove the worktrees and delete the local branches")
     mode.add_argument("--delete-remote", nargs="+", type=parse_pair, metavar="BRANCH=SHA",
                       help="the approved origin deletes, each leased against its SHA")
-    mode.add_argument("--prune", nargs="+", metavar="PATH",
-                      help="the approved git worktree prune: exactly the plan's prunable paths")
+    mode.add_argument("--prune", nargs="+", metavar="worktrees/ID",
+                      help="the approved git worktree prune: exactly the plan's ids")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--gh", help="the gh binary (default: local.toml, else PATH)")
     args = ap.parse_args(argv)

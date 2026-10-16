@@ -192,8 +192,9 @@ def test_the_plan_takes_only_what_is_provably_finished(scenario, monkeypatch, ca
                        "wt-cache": tips["wt-cache"]}
     proposed = {r["branch"]: r["sha"] for r in plan["propose_remote"]}
     assert proposed == deleted
-    assert [Path(p).name for p in plan["propose_prune"]] == ["wt-gone"]
-    assert any("wt-gone" in l for l in plan["prune_dry_run"])
+    assert plan["propose_prune"] == ["worktrees/wt-gone"]
+    assert "gitdir file points to non-existent location" in \
+        plan["prune_reasons"]["worktrees/wt-gone"]
 
     branch = left(plan, "branch")
     assert "not on the head of merged PR #2" in branch["reused"]
@@ -353,8 +354,8 @@ def test_prune_runs_only_on_the_approved_set(small, tmp_path, monkeypatch, capsy
     shutil.rmtree(gone)
     _, plan = run(repo, gh, monkeypatch, capsys)
     approved = plan["propose_prune"]
-    assert [Path(p).name for p in approved] == ["gone"]
-    code, out = run(repo, gh, monkeypatch, capsys, "--prune", *approved, str(tmp_path / "x"))
+    assert approved == ["worktrees/gone"]
+    code, out = run(repo, gh, monkeypatch, capsys, "--prune", *approved, "worktrees/x")
     assert code == 1 and "Nothing was pruned" in out["results"][0]["detail"]
     assert "gone" in git(repo, "worktree", "list")
     code, out = run(repo, gh, monkeypatch, capsys, "--prune", *approved)
@@ -486,7 +487,7 @@ def test_a_rebase_in_a_vanished_worktree_still_holds_its_branch(
     assert "rb" not in {r["branch"] for r in plan["propose_remote"]}
     assert left(plan, "branch")["rb"].startswith("checked out in ")
     assert left(plan, "origin")["rb"].startswith("checked out in ")
-    assert [Path(p).name for p in plan["propose_prune"]] == ["rb"]
+    assert plan["propose_prune"] == ["worktrees/rb"]
     code, out = run(repo, gh, monkeypatch, capsys, "--delete-remote", f"rb={tip}")
     assert code == 1 and out["results"][0]["detail"].startswith("checked out in ")
     assert git(repo, "ls-remote", "origin", "refs/heads/rb")
@@ -510,19 +511,67 @@ def test_a_detached_head_rebase_holds_no_branch(small, tmp_path, monkeypatch, ca
     assert {b["branch"] for b in plan["delete_branches"]} == {"done"}
 
 
-def test_a_gitdir_less_admin_entry_is_proposed_and_pruned_by_id(
-        small, monkeypatch, capsys):
+def test_git_decides_what_is_prunable(small, monkeypatch, capsys):
+    """Entries the porcelain never lists: an empty gitdir, a stray file, a
+    duplicate, a gitdir-less one — and a locked one git keeps."""
     repo, gh, sha = small
-    stray = repo / ".git" / "worktrees" / "stray"
-    stray.mkdir(parents=True)
-    (stray / "HEAD").write_text(f"{sha}\n", encoding="utf-8")
-    _, plan = run(repo, gh, monkeypatch, capsys)
-    assert plan["propose_prune"] == ["worktrees/stray"]
-    code, out = run(repo, gh, monkeypatch, capsys, "--prune", "worktrees/other")
-    assert code == 1 and stray.exists()
-    code, out = run(repo, gh, monkeypatch, capsys, "--prune", "worktrees/stray")
+    git(repo, "worktree", "add", "-q", str(repo.parent / "a"), "-b", "a")
+    admin = repo / ".git" / "worktrees"
+    for name in ("empty", "nogit", "dup", "kept"):
+        (admin / name).mkdir()
+        (admin / name / "HEAD").write_text(f"{sha}\n", encoding="utf-8")
+    (admin / "empty" / "gitdir").write_text("", encoding="utf-8")
+    (admin / "dup" / "gitdir").write_bytes((admin / "a" / "gitdir").read_bytes())
+    (admin / "kept" / "locked").write_text("on a disk\n", encoding="utf-8")
+    (admin / "strayfile").write_text("", encoding="utf-8")
+    code, plan = run(repo, gh, monkeypatch, capsys, "--apply")
+    pruned = ["worktrees/dup", "worktrees/empty", "worktrees/nogit", "worktrees/strayfile"]
+    assert plan["plan"]["propose_prune"] == pruned
+    # meanwhile the admin dirs cannot be read for certain: nothing else happens
+    assert code == 1 and plan["results"] == [] and "admin dirs" in plan["plan"]["refused"]
+    code, out = run(repo, gh, monkeypatch, capsys, "--prune", *pruned[:-1])
+    assert code == 1 and (admin / "nogit").exists()
+    code, out = run(repo, gh, monkeypatch, capsys, "--prune", *pruned)
     assert code == 0, out
-    assert not stray.exists()
+    assert sorted(p.name for p in admin.iterdir()) == ["a", "kept"]
+
+
+@pytest.mark.parametrize("how", ["back-pointer", "not-utf8"])
+def test_an_admin_dir_in_doubt_blinds_the_run(small, tmp_path, how, monkeypatch, capsys):
+    repo, gh, sha = small
+    a, b = tmp_path / "a", tmp_path / "b"
+    git(repo, "worktree", "add", "-q", str(a), "done")
+    git(repo, "worktree", "add", "-q", "--detach", str(b), "main")
+    if how == "back-pointer":
+        (a / ".git").write_text("gitdir: " + git(b, "rev-parse", "--absolute-git-dir")
+                                + "\n", encoding="utf-8")
+    else:
+        (repo / ".git" / "worktrees" / "b" / "gitdir").write_bytes(b"\xff\xfe/x/.git\n")
+    for wt in (a, b):
+        make_old(wt)
+    code, out = run(repo, gh, monkeypatch, capsys, "--apply")
+    assert code == 1 and out["results"] == []
+    assert out["plan"]["refused"].startswith("admin dirs unreadable: ")
+    assert not out["plan"]["delete_branches"] and not out["plan"]["propose_remote"]
+    code, out = run(repo, gh, monkeypatch, capsys, "--delete-remote", f"done={sha}")
+    assert code == 1 and out["results"][0]["detail"].startswith("admin dirs unreadable")
+
+
+def _git_version() -> tuple:
+    out = subprocess.run(["git", "--version"], stdout=subprocess.PIPE,
+                         encoding="utf-8").stdout
+    return tuple(int(x) for x in out.split()[2].split(".")[:2] if x.isdigit())
+
+
+@pytest.mark.skipif(_git_version() < (2, 48), reason="git worktree add --relative-paths needs git 2.48")
+def test_a_relative_paths_worktree_is_read(small, tmp_path, monkeypatch, capsys):
+    repo, gh, sha = small
+    wt = tmp_path / "rel"
+    git(repo, "worktree", "add", "-q", "--relative-paths", str(wt), "done")
+    make_old(wt)
+    code, plan = run(repo, gh, monkeypatch, capsys)
+    assert code == 0 and plan["refused"] is None
+    assert [Path(w["path"]).name for w in plan["remove_worktrees"]] == ["rel"]
 
 
 def test_a_push_origin_refuses_at_the_approved_tip_is_its_own_error(small):
@@ -538,12 +587,9 @@ def test_a_push_origin_refuses_at_the_approved_tip_is_its_own_error(small):
     assert git(repo, "ls-remote", "origin", "refs/heads/done").startswith(sha)
 
 
-def test_a_worktree_with_no_admin_dir_found_is_unknown(small, tmp_path):
-    """No `worktrees/<id>/gitdir` names it: the branch it holds is unknown."""
+def test_a_worktree_no_admin_dir_names_is_blind(small, tmp_path):
     repo, gh, sha = small
-    wts = cleanup.worktrees(repo)
     ghost = {"path": str(tmp_path / "nowhere"), "HEAD": sha, "detached": True,
              "branch": None}
-    unknown, gitdirless = cleanup.annotate([*wts, ghost], repo)
-    assert unknown == [ghost] and ghost["admin"] is None and gitdirless == []
-    assert wts[0]["admin"] is not None
+    with pytest.raises(cleanup.Blind, match="no admin dir"):
+        cleanup.annotate([*cleanup.worktrees(repo), ghost], repo)
