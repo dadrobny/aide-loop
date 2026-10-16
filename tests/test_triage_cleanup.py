@@ -175,8 +175,10 @@ def scenario(tmp_path: Path):
     return repo, gh, wts, tips
 
 
-def reasons(plan) -> dict:
-    return {f"{l['kind']} {l['name']}": l["reason"] for l in plan["left_alone"]}
+def left(plan, kind) -> dict:
+    """The left-alone reasons of one kind, by worktree directory name or branch."""
+    return {(Path(l["path"]).name if kind == "worktree" else l["branch"]): l["reason"]
+            for l in plan["left_alone"] if l["kind"] == kind}
 
 
 def test_the_plan_takes_only_what_is_provably_finished(scenario, monkeypatch, capsys):
@@ -190,10 +192,10 @@ def test_the_plan_takes_only_what_is_provably_finished(scenario, monkeypatch, ca
                        "wt-cache": tips["wt-cache"]}
     proposed = {r["branch"]: r["sha"] for r in plan["propose_remote"]}
     assert proposed == deleted
-    assert any("wt-gone" in l for l in plan["propose_prune"])
+    assert [Path(p).name for p in plan["propose_prune"]] == ["wt-gone"]
+    assert any("wt-gone" in l for l in plan["prune_dry_run"])
 
-    why = reasons(plan)
-    branch = {k[len("branch "):]: v for k, v in why.items() if k.startswith("branch ")}
+    branch = left(plan, "branch")
     assert "not on the head of merged PR #2" in branch["reused"]
     assert "from a fork" in branch["fork"]
     assert "merged into stack-parent" in branch["otherbase"]
@@ -202,10 +204,10 @@ def test_the_plan_takes_only_what_is_provably_finished(scenario, monkeypatch, ca
     assert "not on the head of merged PR #8" in branch["ghost"]
     for name in ("wt-dirty", "wt-busy", "wt-locked", "wt-gone", "wt-bisect"):
         assert branch[name].startswith("checked out in "), name
-    assert "origin origin/reused" in why and "origin origin/wt-dirty" in why
+    origin = left(plan, "origin")
+    assert "reused" in origin and origin["wt-dirty"].startswith("checked out in ")
 
-    wt = {Path(k.split(" ")[1]).name: v for k, v in why.items()
-          if k.startswith("worktree ")}
+    wt = left(plan, "worktree")
     assert wt["wt-dirty"].startswith("not clean: R  g.txt")
     assert "f.txt" not in wt["wt-dirty"]       # the rename source is not an entry
     assert wt["wt-untracked"] == "not clean: ?? junk.txt"
@@ -222,7 +224,9 @@ def test_apply_does_exactly_the_plan_and_no_more(scenario, monkeypatch, capsys):
     _, plan = run(repo, gh, monkeypatch, capsys)
     code, out = run(repo, gh, monkeypatch, capsys, "--apply")
     assert code == 0
-    assert out["plan"] == plan
+    # the process count in the notes is a live reading; the decisions are not
+    assert {k: v for k, v in out["plan"].items() if k != "notes"} == \
+        {k: v for k, v in plan.items() if k != "notes"}
     assert all(r["ok"] for r in out["results"])
     done = {r["target"] for r in out["results"]}
     assert done == ({w["path"] for w in plan["remove_worktrees"]}
@@ -262,7 +266,7 @@ def test_an_unreadable_pr_list_deletes_nothing(small, how, monkeypatch, capsys):
     assert out["results"] == []
     assert not out["plan"]["delete_branches"] and not out["plan"]["propose_remote"]
     assert git(repo, "rev-parse", "done") == sha
-    assert any("nothing is deleted" in n for n in out["plan"]["notes"])
+    assert out["plan"]["refused"].startswith("PR list")
 
 
 def test_delete_remote_deletes_the_approved_tip(small, monkeypatch, capsys):
@@ -288,7 +292,7 @@ def test_the_lease_itself_refuses_a_stale_sha(small):
     newer = commit_on(repo, sha, "pushed since")
     git(repo, "push", "-q", "origin", f"{newer}:refs/heads/done")
     ok, detail = cleanup.push_delete("done", sha, repo)
-    assert not ok and "refused" in detail
+    assert not ok and "refused" in detail and f"done={newer}" in detail
     assert git(repo, "ls-remote", "origin", "refs/heads/done").startswith(newer)
 
 
@@ -332,11 +336,121 @@ def test_a_worktree_in_use_is_left_alone(small, tmp_path, monkeypatch, capsys):
             proc.kill()
             proc.wait()
     assert code == 0
-    why = {Path(k.split(" ")[1]).name: v for k, v in reasons(plan).items()
-           if k.startswith("worktree ")}
+    why = left(plan, "worktree")
     assert why["own"] == "this session's own worktree"
     if proc:
         assert why["held"] == "a process has its cwd there"
         assert plan["remove_worktrees"] == []
     else:
         assert "process check unavailable on this platform" in plan["notes"]
+
+
+def test_prune_runs_only_on_the_approved_set(small, tmp_path, monkeypatch, capsys):
+    repo, gh, sha = small
+    gone = tmp_path / "gone"
+    git(repo, "worktree", "add", "-q", str(gone), "done")
+    import shutil
+    shutil.rmtree(gone)
+    _, plan = run(repo, gh, monkeypatch, capsys)
+    approved = plan["propose_prune"]
+    assert [Path(p).name for p in approved] == ["gone"]
+    code, out = run(repo, gh, monkeypatch, capsys, "--prune", *approved, str(tmp_path / "x"))
+    assert code == 1 and "Nothing was pruned" in out["results"][0]["detail"]
+    assert "gone" in git(repo, "worktree", "list")
+    code, out = run(repo, gh, monkeypatch, capsys, "--prune", *approved)
+    assert code == 0, out
+    assert "gone" not in git(repo, "worktree", "list")
+
+
+def test_a_detached_rebase_or_bisect_keeps_its_branch(small, tmp_path, monkeypatch, capsys):
+    """Mid-rebase or mid-bisect, `worktree list` shows no branch line."""
+    repo, gh, sha = small
+    rb, bb = tmp_path / "rb", tmp_path / "bb"
+    git(repo, "worktree", "add", "-q", "-b", "rb", str(rb), "main")
+    (rb / "f.txt").write_text("rb\n", encoding="utf-8")
+    git(rb, "commit", "-q", "-am", "rb")
+    git(repo, "worktree", "add", "-q", "-b", "bb", str(bb), "main")
+    rb_tip, bb_tip = git(rb, "rev-parse", "HEAD"), git(bb, "rev-parse", "HEAD")
+    (repo / "f.txt").write_text("main moved\n", encoding="utf-8")
+    git(repo, "commit", "-q", "-am", "conflicting")
+    git(repo, "push", "-q", "origin", "main", "rb", "bb")
+    stopped = subprocess.run(["git", "rebase", "main"], cwd=str(rb),
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    assert stopped.returncode != 0                 # stopped on the conflict
+    git(bb, "bisect", "start")
+    git(bb, "checkout", "-q", "--detach")
+    for wt in (rb, bb):
+        make_old(wt)
+    answer(gh, [pr(1, "done", sha), pr(2, "rb", rb_tip), pr(3, "bb", bb_tip)])
+    _, plan = run(repo, gh, monkeypatch, capsys)
+    assert {b["branch"] for b in plan["delete_branches"]} == {"done"}
+    assert {r["branch"] for r in plan["propose_remote"]} == {"done"}
+    branch, origin = left(plan, "branch"), left(plan, "origin")
+    for name in ("rb", "bb"):
+        assert branch[name].startswith("checked out in "), name
+        assert origin[name].startswith("checked out in "), name
+    assert left(plan, "worktree")["rb"] == "detached mid-rebase or mid-bisect on rb"
+    code, out = run(repo, gh, monkeypatch, capsys, "--delete-remote", f"rb={rb_tip}")
+    assert code == 1 and out["results"][0]["detail"].startswith("checked out in ")
+
+
+def test_apply_keeps_a_branch_whose_worktree_would_not_go(small, tmp_path):
+    repo, gh, sha = small
+    wt = tmp_path / "wt"
+    git(repo, "worktree", "add", "-q", str(wt), "done")
+    make_old(wt)
+    plan = cleanup.decide(repo, str(gh), None)
+    assert [Path(w["path"]).name for w in plan["remove_worktrees"]] == ["wt"]
+    git(repo, "worktree", "lock", str(wt))        # now `remove` refuses
+    results = cleanup.apply_local(plan, repo)
+    assert [r["ok"] for r in results] == [False, False]
+    assert results[1]["detail"] == "its worktree is still there"
+    assert git(repo, "rev-parse", "done") == sha
+
+
+def test_apply_refuses_a_branch_that_moved_since_the_plan(small):
+    repo, gh, sha = small
+    plan = cleanup.decide(repo, str(gh), None)
+    assert [b["branch"] for b in plan["delete_branches"]] == ["done"]
+    newer = commit_on(repo, sha, "committed meanwhile")
+    git(repo, "update-ref", "refs/heads/done", newer)
+    [result] = cleanup.apply_local(plan, repo)
+    assert not result["ok"] and "moved to" in result["detail"]
+    assert git(repo, "rev-parse", "done") == newer
+
+
+def _script_copy(tmp_path: Path, reorder_source: str):
+    """cleanup.py beside a reorder_project.py, loaded from there."""
+    d = tmp_path / "skill"
+    d.mkdir()
+    (d / "cleanup.py").write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+    (d / "reorder_project.py").write_text(reorder_source, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("triage_cleanup_copy", d / "cleanup.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return d, mod
+
+
+REORDER = (SCRIPT.parent / "reorder_project.py").read_text(encoding="utf-8")
+
+
+def test_gh_comes_from_the_local_toml_beside_the_script(tmp_path):
+    pytest.importorskip("tomllib")
+    gh = gh_stub(tmp_path)
+    d, mod = _script_copy(tmp_path, REORDER)
+    (d / "local.toml").write_text(f"gh = {json.dumps(str(gh))}\n", encoding="utf-8")
+    exe, why = mod.resolve_gh(None)
+    assert why is None and same(exe, gh)
+    (d / "local.toml").write_text(f"gh = {json.dumps(str(tmp_path / 'nope'))}\n",
+                                  encoding="utf-8")
+    exe, why = mod.resolve_gh(None)
+    assert exe is None and why.startswith("no gh at ")
+    (d / "local.toml").write_text("gh = 5\n", encoding="utf-8")
+    with pytest.raises(mod.Refusal, match="non-empty string"):
+        mod.resolve_gh(None)
+
+
+def test_no_tomllib_is_a_one_line_refusal(tmp_path):
+    _, mod = _script_copy(tmp_path, "import tomllib_absent_on_this_python\n")
+    with pytest.raises(mod.Refusal, match="pass --gh PATH"):
+        mod.resolve_gh(None)

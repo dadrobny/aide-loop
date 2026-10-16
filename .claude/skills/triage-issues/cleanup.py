@@ -5,15 +5,17 @@ into main, and remove only what is provably finished.
     python3 .claude/skills/triage-issues/cleanup.py            # plan, nothing changes
     python3 .claude/skills/triage-issues/cleanup.py --apply    # the local half
     python3 .claude/skills/triage-issues/cleanup.py --delete-remote B=SHA ...
-    python3 .claude/skills/triage-issues/cleanup.py --prune
+    python3 .claude/skills/triage-issues/cleanup.py --prune PATH ...
 
 The policy is SKILL.md's step 6; this file is its mechanism. Every mode decides
 from scratch — `--apply` never trusts an earlier printout — and every outcome
-printed comes from git's own return code.
+printed comes from git's own return code. A plan run changes nothing but
+`git fetch --prune origin`.
 
-Run it from inside the checkout (any of its worktrees). The worktree the cwd
-sits in is this session's and is never removed. `gh` comes from the skill's
-`local.toml` (reorder_project.find_gh), or `--gh PATH`.
+Run it from the main checkout: the skill's gitignored `local.toml`, which names
+`gh` (read through reorder_project.find_gh; `--gh PATH` overrides it), lives
+there, and a worktree's copy of this script may be a different version. The
+worktree the cwd sits in is this session's and is never removed.
 
 Exit codes: 0 done, 1 something was refused or failed (including a PR list
 that could not be read), 2 usage.
@@ -22,9 +24,11 @@ that could not be read), 2 usage.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -35,6 +39,8 @@ from typing import Dict, List, Optional, Tuple
 REPO = "dadrobny/aide-loop"
 MAIN = "main"
 REMOTE = "origin"
+#: Where a worktree mid-rebase or mid-bisect, shown `detached`, names its branch.
+OP_BRANCH_FILES = ("rebase-merge/head-name", "rebase-apply/head-name", "BISECT_START")
 #: A worktree whose HEAD moved or whose index was written this recently may
 #: belong to a session that paused after merging.
 IDLE_SECONDS = 24 * 3600
@@ -48,6 +54,8 @@ IN_PROGRESS = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG",
 #: Ignored entries that are regenerable, so `worktree remove` may delete them.
 CACHE_DIRS = ("__pycache__", ".pytest_cache")
 MAX_PATHS = 20
+#: Every gitdir path a worktree is read through, fetched in one rev-parse.
+GIT_PATHS = ("logs/HEAD", "index", *IN_PROGRESS, *OP_BRANCH_FILES)
 SHA = re.compile(r"[0-9a-f]{40}([0-9a-f]{24})?")
 
 
@@ -80,13 +88,8 @@ def resolve_gh(override: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
     if override:
         exe, source = override, "--gh"
     else:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
         try:
-            from reorder_project import find_gh  # needs tomllib (3.11+)
-        except ImportError as exc:
-            raise Refusal(f"cannot read local.toml ({exc}); pass --gh PATH") from None
-        try:
-            exe, source = find_gh()
+            exe, source = load_find_gh()()
         except SystemExit as exc:     # find_gh's own one-line refusals
             raise Refusal(str(exc.code)) from None
     found = shutil.which(exe)
@@ -94,6 +97,19 @@ def resolve_gh(override: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
         return None, (f"gh is not on PATH" if source == "PATH"
                       else f"no gh at {exe} (from {source})")
     return found, None
+
+
+def load_find_gh():
+    """reorder_project.find_gh, loaded from the file beside this one (by path,
+    so the local.toml it reads is the one next to this script)."""
+    path = Path(__file__).resolve().with_name("reorder_project.py")
+    spec = importlib.util.spec_from_file_location("triage_reorder_project", path)
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)     # imports tomllib: Python 3.11+
+    except (ImportError, OSError) as exc:
+        raise Refusal(f"cannot read local.toml ({exc}); pass --gh PATH") from None
+    return mod.find_gh
 
 
 def gh(exe: Optional[str], why: Optional[str], args: List[str],
@@ -205,7 +221,23 @@ def worktrees(cwd: Path) -> List[dict]:
     for wt in out:
         ref = wt.get("branch", "")
         wt["branch"] = ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else None
+        wt["paths"] = None if wt.get("bare") else git_paths(wt["path"], cwd)
+        wt["held"] = wt["branch"] or op_branch(wt["paths"])
     return out
+
+
+def op_branch(paths: Optional[Dict[str, str]]) -> Optional[str]:
+    """The branch a detached worktree is rebasing or bisecting, if any."""
+    for name in OP_BRANCH_FILES:
+        try:
+            text = Path(paths[name]).read_text(encoding="utf-8").strip() if paths else ""
+        except OSError:
+            continue
+        if text.startswith("refs/heads/"):
+            text = text[len("refs/heads/"):]
+        if text and not SHA.fullmatch(text):     # BISECT_START may hold a SHA
+            return text
+    return None
 
 
 def refs(prefix: str, cwd: Path) -> Dict[str, str]:
@@ -226,23 +258,33 @@ def same_path(a: str, b: str) -> bool:
         return False
 
 
-def process_cwds() -> Optional[List[str]]:
-    """Every readable /proc/*/cwd, or None where there is no /proc."""
+def process_cwds() -> Optional[Tuple[List[str], int]]:
+    """Every readable /proc/*/cwd and how many were unreadable, or None where
+    there is no /proc. A process that ended meanwhile is neither."""
     if not sys.platform.startswith("linux") or not os.path.isdir("/proc/self"):
         return None
-    cwds = []
+    cwds, unreadable = [], 0
     for pid in os.listdir("/proc"):
         if pid.isdigit() and int(pid) != os.getpid():
             try:
                 cwds.append(os.readlink(f"/proc/{pid}/cwd"))
-            except OSError:
+            except (FileNotFoundError, ProcessLookupError):
                 pass
-    return cwds
+            except OSError:
+                unreadable += 1
+    return cwds, unreadable
 
 
-def git_path(wt: str, name: str, cwd: Path) -> Optional[str]:
-    res = git(["-C", wt, "rev-parse", "--path-format=absolute", "--git-path", name], cwd)
-    return res.stdout.strip() if res.returncode == 0 and res.stdout.strip() else None
+def git_paths(wt: str, cwd: Path) -> Optional[Dict[str, str]]:
+    """GIT_PATHS resolved for *wt* in one spawn, or None if any is unreadable."""
+    args = ["-C", wt, "rev-parse", "--path-format=absolute"]
+    for name in GIT_PATHS:
+        args += ["--git-path", name]
+    res = git(args, cwd)
+    lines = res.stdout.splitlines()
+    if res.returncode != 0 or len(lines) != len(GIT_PATHS) or not all(lines):
+        return None
+    return dict(zip(GIT_PATHS, lines))
 
 
 def is_cache(path: str) -> bool:
@@ -277,12 +319,16 @@ def status_offenders(wt: str, cwd: Path) -> Optional[List[str]]:
 # deciding
 # --------------------------------------------------------------------------- #
 def decide(top: Path, gh_exe, gh_why) -> dict:
-    """The whole plan; changes nothing but `git fetch --prune origin`."""
+    """The whole plan; changes nothing but `git fetch --prune origin`. *top* is
+    the cwd's worktree, this session's own. `refused` is set when nothing may
+    be deleted at all."""
     plan = {"remove_worktrees": [], "delete_branches": [], "propose_remote": [],
-            "propose_prune": [], "left_alone": [], "notes": []}
+            "propose_prune": [], "prune_dry_run": [], "left_alone": [],
+            "notes": [], "refused": None}
 
-    def leave(kind, name, reason):
-        plan["left_alone"].append({"kind": kind, "name": name, "reason": reason})
+    def leave(kind, name, reason, path=None, branch=None):
+        plan["left_alone"].append({"kind": kind, "name": name, "reason": reason,
+                                   "path": path, "branch": branch})
 
     has_origin = git(["remote", "get-url", REMOTE], top).returncode == 0
     if has_origin:
@@ -295,27 +341,33 @@ def decide(top: Path, gh_exe, gh_why) -> dict:
 
     prs = PRs.load(gh_exe, gh_why, top)
     if prs.why:
+        plan["refused"] = prs.why
         plan["notes"].append(f"{prs.why} — nothing is deleted anywhere")
     origin_main = git(["rev-parse", "--verify", "--quiet",
                        f"refs/remotes/{REMOTE}/{MAIN}"], top).stdout.strip() or None
 
-    here = git(["rev-parse", "--show-toplevel"], Path.cwd()).stdout.strip()
-    cwds = process_cwds()
-    if cwds is None:
+    procs = process_cwds()
+    if procs is None:
+        cwds = []
         plan["notes"].append("process check unavailable on this platform")
+    else:
+        cwds, unreadable = procs
+        if unreadable:
+            plan["notes"].append(f"process check partial: {unreadable} processes "
+                                 "unreadable (other users' or privileged)")
     now = time.time()
 
     wts = worktrees(top)
     kept_branches: Dict[str, str] = {}      # branch -> worktree path that keeps it
     for n, wt in enumerate(wts):
-        path, branch = wt["path"], wt["branch"]
+        path, branch, held = wt["path"], wt["branch"], wt["held"]
         label = f"{path} [{branch or 'detached'}]"
         reason, why = None, f"detached HEAD on {REMOTE}/{MAIN}"
         if wt.get("bare"):
             continue
         if n == 0:
             reason = "the main checkout"
-        elif here and same_path(path, here):
+        elif same_path(path, str(top)):
             reason = "this session's own worktree"
         elif wt.get("locked"):
             reason = "locked" + (f": {wt['locked']}" if wt["locked"] is not True else "")
@@ -330,6 +382,8 @@ def decide(top: Path, gh_exe, gh_why) -> dict:
             if not reason:
                 ok, why = merged(branch, wt["HEAD"], prs, top)
                 reason = None if ok else why
+        elif held:
+            reason = f"detached mid-rebase or mid-bisect on {held}"
         else:
             if prs.why:
                 reason = prs.why
@@ -338,12 +392,12 @@ def decide(top: Path, gh_exe, gh_why) -> dict:
             elif not is_ancestor(wt["HEAD"], origin_main, top):
                 reason = f"detached HEAD is not an ancestor of {REMOTE}/{MAIN}"
         if not reason:
-            reason = worktree_busy(path, top, now, cwds)
+            reason = worktree_busy(wt, top, now, cwds)
         if reason:
             if n != 0:
-                leave("worktree", label, reason)
-            if branch:
-                kept_branches[branch] = path
+                leave("worktree", label, reason, path=path, branch=held)
+            if held:
+                kept_branches[held] = path
             continue
         plan["remove_worktrees"].append({"path": path, "branch": branch,
                                          "head": wt["HEAD"], "why": why})
@@ -352,14 +406,15 @@ def decide(top: Path, gh_exe, gh_why) -> dict:
         if branch == MAIN:
             continue
         if branch in kept_branches:
-            leave("branch", branch, f"checked out in {kept_branches[branch]}")
+            leave("branch", branch, f"checked out in {kept_branches[branch]}",
+                  branch=branch)
             continue
         reason = prs.excluded(branch)
         ok, why = (False, reason) if reason else merged(branch, sha, prs, top)
         if ok:
             plan["delete_branches"].append({"branch": branch, "sha": sha, "why": why})
         else:
-            leave("branch", branch, why)
+            leave("branch", branch, why, branch=branch)
 
     if has_origin:
         for branch, sha in sorted(refs(f"refs/remotes/{REMOTE}/", top).items()):
@@ -373,39 +428,62 @@ def decide(top: Path, gh_exe, gh_why) -> dict:
                 plan["propose_remote"].append({"branch": branch, "sha": sha, "why": why})
             else:
                 leave("origin", f"{REMOTE}/{branch}",
-                      why if reason else f"remote tip unmerged: {why}")
+                      why if reason else f"remote tip unmerged: {why}", branch=branch)
 
-    dry = git(["worktree", "prune", "--dry-run", "--verbose"], top)
-    plan["propose_prune"] = [l for l in (dry.stderr + dry.stdout).splitlines() if l.strip()]
+    plan["propose_prune"] = [w["path"] for w in wts if w.get("prunable")]
+    plan["prune_dry_run"] = prune_dry_run(top)
     return plan
 
 
-def worktree_busy(path: str, top: Path, now: float,
-                  cwds: Optional[List[str]]) -> Optional[str]:
+def prune_dry_run(top: Path) -> List[str]:
+    dry = git(["worktree", "prune", "--dry-run", "--verbose"], top)
+    return [l for l in (dry.stderr + dry.stdout).splitlines() if l.strip()]
+
+
+def norm(path: str) -> str:
+    return os.path.normcase(os.path.abspath(path))
+
+
+def prune(approved: List[str], top: Path) -> List[dict]:
+    """`git worktree prune`, only while the prunable set is the approved one."""
+    now = sorted(w["path"] for w in worktrees(top) if w.get("prunable"))
+    dry = [l for l in prune_dry_run(top) if l.startswith("Removing ")]
+    if {norm(p) for p in approved} != {norm(p) for p in now}:
+        return [{"action": "git worktree prune", "target": " ".join(approved), "ok": False,
+                 "detail": "the prunable set is now " + (" ".join(now) or "empty")
+                 + "; approve that set instead. Nothing was pruned"}]
+    if len(dry) != len(now):
+        return [{"action": "git worktree prune", "target": " ".join(approved), "ok": False,
+                 "detail": f"the dry run would drop {len(dry)} entries, not {len(now)}. "
+                 "Nothing was pruned"}]
+    res = git(["worktree", "prune", "--verbose"], top)
+    ok = res.returncode == 0
+    return [{"action": "git worktree prune", "target": " ".join(approved), "ok": ok,
+             "detail": "" if ok else first_line(res)}]
+
+
+def worktree_busy(wt: dict, top: Path, now: float, cwds: List[str]) -> Optional[str]:
     """Why a merged worktree may still be in use, in SKILL.md's order:
     processes, timestamps, operations in progress, then status."""
+    path, paths = wt["path"], wt["paths"]
+    if paths is None:
+        return "activity unreadable (git rev-parse --git-path failed)"
     try:
         real = os.path.realpath(path)
     except OSError:
         return "path unreadable"
-    for c in cwds or []:
+    for c in cwds:
         if c == real or c.startswith(real.rstrip(os.sep) + os.sep):
             return "a process has its cwd there"
     for name in ("logs/HEAD", "index"):
-        p = git_path(path, name, top)
         try:
-            age = now - os.path.getmtime(p) if p else None
+            age = now - os.path.getmtime(paths[name])
         except OSError:
-            age = None
-        if age is None:
             return f"activity unreadable ({name})"
         if age < IDLE_SECONDS:
             return f"active in the last 24 hours ({name}, {int(age // 3600)}h ago)"
     for name in IN_PROGRESS:
-        p = git_path(path, name, top)
-        if p is None:
-            return f"activity unreadable ({name})"
-        if os.path.exists(p):
+        if os.path.lexists(paths[name]):
             return f"operation in progress ({name})"
     bad = status_offenders(path, top)
     if bad is None:
@@ -421,18 +499,18 @@ def worktree_busy(path: str, top: Path, now: float,
 # --------------------------------------------------------------------------- #
 def apply_local(plan: dict, top: Path) -> List[dict]:
     results = []
-    failed_paths = set()
+    still_there = set()       # branches whose worktree would not go
     for wt in plan["remove_worktrees"]:
         res = git(["worktree", "remove", wt["path"]], top)        # never --force
         ok = res.returncode == 0
         if not ok and wt["branch"]:
-            failed_paths.add(wt["branch"])
+            still_there.add(wt["branch"])
         results.append({"action": "remove worktree", "target": wt["path"], "ok": ok,
                         "detail": "" if ok else first_line(res)})
     for b in plan["delete_branches"]:
         name, sha = b["branch"], b["sha"]
         now = git(["rev-parse", "--verify", "--quiet", f"refs/heads/{name}"], top).stdout.strip()
-        if name in failed_paths:
+        if name in still_there:
             ok, detail = False, "its worktree is still there"
         elif now != sha:
             ok, detail = False, f"it moved to {now[:12] or 'nothing'} since the plan"
@@ -455,14 +533,16 @@ def push_delete(branch: str, sha: str, top: Path) -> Tuple[bool, str]:
     if there.returncode == 0 and not there.stdout.strip():
         git(["update-ref", "-d", f"refs/remotes/{REMOTE}/{branch}"], top)
         return True, "already gone on origin"
-    return False, (f"refused ({first_line(pushed)}) — {REMOTE} may hold a "
-                   f"commit pushed since")
+    tip = there.stdout.split()[0] if there.returncode == 0 else None
+    return False, (f"refused ({first_line(pushed)}) — {REMOTE} is now at "
+                   + (f"{branch}={tip}; approve the new tip" if tip
+                      else "an unknown tip (ls-remote failed)"))
 
 
 def delete_remote(pairs: List[Tuple[str, str]], top: Path, gh_exe, gh_why) -> List[dict]:
     f = git(["fetch", "--prune", REMOTE], top)
     prs = PRs.load(gh_exe, gh_why, top)
-    checked_out = {w["branch"]: w["path"] for w in worktrees(top) if w["branch"]}
+    checked_out = {w["held"]: w["path"] for w in worktrees(top) if w["held"]}
     results = []
     for branch, sha in pairs:
         target = f"{REMOTE}/{branch} {sha}"
@@ -511,7 +591,10 @@ def print_plan(plan: dict) -> None:
             [f"{b['branch']} {b['sha']} — {b['why']}" for b in plan["delete_branches"]])
     section("Propose: delete on origin (--delete-remote BRANCH=SHA):",
             [f"{r['branch']}={r['sha']} — {r['why']}" for r in plan["propose_remote"]])
-    section("Propose: git worktree prune (--prune):", plan["propose_prune"])
+    prune_line = ["--prune " + " ".join(shlex.quote(p) for p in plan["propose_prune"])
+                  ] if plan["propose_prune"] else []
+    section("Propose: git worktree prune (on approval, pass this --prune line):",
+            prune_line + [f"  {l}" for l in plan["prune_dry_run"]])
     section("Left alone:",
             [f"{l['kind']} {l['name']}: {l['reason']}" for l in plan["left_alone"]])
     if plan["notes"]:
@@ -540,7 +623,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                       help="re-decide, then remove the worktrees and delete the local branches")
     mode.add_argument("--delete-remote", nargs="+", type=parse_pair, metavar="BRANCH=SHA",
                       help="the approved origin deletes, each leased against its SHA")
-    mode.add_argument("--prune", action="store_true", help="the approved git worktree prune")
+    mode.add_argument("--prune", nargs="+", metavar="PATH",
+                      help="the approved git worktree prune: exactly the plan's prunable paths")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--gh", help="the gh binary (default: local.toml, else PATH)")
     args = ap.parse_args(argv)
@@ -551,14 +635,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         top = Path(res.stdout.strip())
         plan, failed = None, False
         if args.prune:
-            p = git(["worktree", "prune", "--verbose"], top)
-            lines = [l for l in (p.stderr + p.stdout).splitlines() if l.strip()]
-            ok = p.returncode == 0
-            results = [{"action": "git worktree prune", "target": l, "ok": ok,
-                        "detail": ""} for l in lines] or (
-                [] if ok else [{"action": "git worktree prune", "target": "",
-                                "ok": False, "detail": first_line(p)}])
-            failed = not ok
+            results = prune(args.prune, top)
         else:
             gh_exe, gh_why = resolve_gh(args.gh)
             if args.delete_remote:
@@ -566,7 +643,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             else:
                 plan = decide(top, gh_exe, gh_why)
                 # A PR list that cannot be read decided nothing: say so by exit code.
-                failed = any("nothing is deleted" in n for n in plan["notes"])
+                failed = plan["refused"] is not None
                 results = apply_local(plan, top) if args.apply else []
     except Refusal as exc:
         print(f"cleanup: {exc}", file=sys.stderr)
@@ -584,6 +661,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print()
         print_results(results)
     return 1 if failed else 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -273,23 +273,26 @@ remove only what is provably finished. The rules, which
   a stacked parent does not count. A detached worktree counts when its `HEAD`
   is an ancestor of `origin/main`.
 - **Never touched:** `main`; a branch with an open PR on it or stacked on it;
-  a branch checked out in a worktree that stays; everything, when the PR list
-  cannot be read — an unreadable list is not an empty one.
+  a branch checked out in a worktree that stays, including one a detached
+  worktree is rebasing or bisecting; everything, when the PR list cannot be
+  read — an unreadable list is not an empty one.
 - **A merged worktree stays** while anything says it may be in use: this
-  session runs in it, it is locked, a process has its cwd there (Linux), its
-  `HEAD` moved or its index was written in the last 24 hours, an operation is
-  in progress (merge, cherry-pick, revert, bisect, rebase, sequencer), or it
-  holds any change, untracked file or ignored file other than a Python cache —
-  `git worktree remove` deletes those. Unreadable means stays.
+  session runs in it, it is locked, a process has its cwd there (Linux;
+  processes it may not read are noted, not counted), its `HEAD` moved or its
+  index was written in the last 24 hours, an operation is in progress (merge,
+  cherry-pick, revert, bisect, rebase, sequencer), or it holds any change,
+  untracked file or ignored file other than a Python cache — `git worktree
+  remove` deletes those. Unreadable means stays.
 - **Local removals are applied; anything on `origin` is proposed.** A deleted
   local branch is restored by `git branch <name> <sha>`; a deleted `origin`
   branch is someone's lost push. `git worktree prune` is proposed too: a
   missing directory may sit on an unmounted disk.
 
-Run it from the main checkout, which holds `local.toml` and is never removed:
+Run it from the main checkout: it holds `local.toml`, it is never removed, and
+a worktree's copy of the script may be a different version.
 
 ```bash
-python3 .claude/skills/triage-issues/cleanup.py           # the plan; changes nothing but a fetch
+python3 .claude/skills/triage-issues/cleanup.py           # the plan; changes nothing but `git fetch --prune`
 python3 .claude/skills/triage-issues/cleanup.py --apply   # re-decides, then the local half
 ```
 
@@ -300,12 +303,14 @@ printed beside it. On a go-ahead:
 
 ```bash
 python3 .claude/skills/triage-issues/cleanup.py --delete-remote <branch>=<sha> ...
-python3 .claude/skills/triage-issues/cleanup.py --prune
+python3 .claude/skills/triage-issues/cleanup.py --prune <path> ...   # the plan's --prune line, verbatim
 ```
 
 `--delete-remote` re-runs the PR list and the merged test on the remote tip,
 then deletes with a lease against the approved SHA. A branch that moved is
-refused — report its new tip and ask again; never delete it another way.
+refused — report its new tip (`<branch>=<sha>`) and ask again; never delete it
+another way. `--prune` prunes only while the prunable set is exactly the one
+approved, and otherwise prunes nothing.
 Exit 1 means something was refused or the PR list could not be read; `--json`
 gives the plan as data.
 
