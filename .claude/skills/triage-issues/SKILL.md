@@ -275,32 +275,69 @@ A branch counts as **merged** when either holds:
 
 - its tip is an ancestor of `origin/main` (`git merge-base --is-ancestor
   <branch> origin/main`). Merge commits land that way.
-- its PR is merged (`$GH pr list --repo dadrobny/aide-loop --state merged
-  --head <branch> --json number,headRefOid`) **and** the branch tip equals that
-  PR's `headRefOid`. That covers a squash or rebase merge. A tip that moved past
-  `headRefOid` holds commits the PR never carried, so it is not merged.
+- its PR is merged **into `main`** (`$GH pr list --repo dadrobny/aide-loop
+  --state merged --base main --head <branch> --json number,headRefOid`) **and**
+  the branch tip equals that PR's `headRefOid`. That covers a squash or rebase
+  merge. A tip that moved past `headRefOid` holds commits the PR never carried,
+  so it is not merged. A PR merged into a stacked parent or any other base does
+  not count: its commits reach `main` only when that base does.
 
-Never touch `main`, a branch with an open PR, or a branch not merged by that
-test, however old it is. Stale but unmerged work goes in the report and is
-left alone.
+A branch with an **open PR** is never touched, whatever the test above says —
+check it before any removal or deletion, against every base:
+
+```bash
+$GH pr list --repo dadrobny/aide-loop --state open --head <branch> --json number
+```
+
+Anything but `[]` leaves the branch, its worktree and its `origin` copy alone.
+Never touch `main` or a branch not merged by that test either, however old it
+is. Stale but unmerged work goes in the report and is left alone.
 
 **Worktrees (apply directly).** Remove a worktree other than the main checkout
 when its branch is merged, or its detached `HEAD` is an ancestor of
-`origin/main`, *and* `git -C <path> status --porcelain` prints nothing. Use
-`git worktree remove <path>` and **never `--force`**; a refusal means there
+`origin/main`, and all three hold:
+
+- **Clean.** `git -C <path> status --porcelain` prints nothing.
+- **No ignored files worth keeping.** `git worktree remove` deletes ignored
+  files too, so `git -C <path> status --porcelain --ignored` may list only
+  regenerable caches: `__pycache__/`, `.pytest_cache/`, `*.pyc`. Any other
+  `!!` entry — a `local.toml`, a `.venv/`, a scratch file — leaves the
+  worktree; report it with those file names.
+- **Idle for 24 hours.** Another session may have paused in a clean, merged
+  worktree. Compare both timestamps with `date +%s`:
+
+  ```bash
+  git -C <path> log -g -1 --format=%ct HEAD      # last HEAD move (epoch s)
+  python3 -c 'import os,sys;print(int(os.path.getmtime(sys.argv[1])))' \
+      "$(git -C <path> rev-parse --path-format=absolute --git-path index)"
+  ```
+
+  Either within 86400 s of now leaves the worktree. So does either command
+  failing or printing nothing: activity that cannot be read is not absence of
+  activity.
+
+Use `git worktree remove <path>` and **never `--force`**; a refusal means there
 is something to look at, so report it. Skip the worktree this session runs
 in. Then run `git worktree prune` for entries whose directory is already gone.
 
-**Local branches (apply directly).** For a merged branch that no remaining
-worktree has checked out, run `git branch -d <branch>`. Only when `-d` refuses a
-branch that the PR test proved merged, use `git branch -D`. Record each
-deleted branch's name and tip SHA in the report, since `git branch <name>
-<sha>` restores it.
+**Local branches (apply directly).** For a merged branch with no open PR that
+no remaining worktree has checked out, run `git branch -d <branch>`. Only when
+`-d` refuses a branch that the PR test proved merged, use `git branch -D`.
+Record each deleted branch's name and tip SHA in the report, since `git branch
+<name> <sha>` restores it.
 
-**Branches on origin (propose).** A merged branch still on `origin` is
-outward-facing, so list it under *Awaiting your call*. On a go-ahead, run `git
-push origin --delete <branch>`. GitHub can restore it from the PR page, but
-do not count on that.
+**Branches on origin (propose).** A merged branch with no open PR still on
+`origin` is outward-facing, so list it under *Awaiting your call* with its
+remote tip, `git rev-parse origin/<branch>`. On a go-ahead, delete it with a
+lease against that SHA, so a branch someone pushed to since is not lost:
+
+```bash
+git push --force-with-lease=refs/heads/<branch>:<sha> origin --delete <branch>
+```
+
+A `rejected … (stale info)` refusal means the branch moved: report it with
+its new tip and do not retry without the lease. GitHub can restore a deleted
+branch from the PR page, but do not count on that.
 
 ## Report
 
@@ -313,9 +350,12 @@ Close the pass with a single report:
 - **Applied**: items added, Themes/labels set, board reordered (or already
   ordered), and step 6's removals: each worktree path and each deleted branch
   with its tip SHA. Also list what step 6 left alone and why: dirty, unmerged,
-  or a refused `remove`.
+  PR merged into another base, open PR, ignored files other than caches (name
+  them), activity in the last 24 hours or activity unreadable, a refused
+  `remove`, or a refused lease (with the branch's new tip).
 - **Awaiting your call**: Status/close/defer/un-defer proposals and merged
-  branches on `origin` to delete, batched — or "nothing" when there are none.
+  branches on `origin` to delete, each with its remote tip SHA, batched — or
+  "nothing" when there are none.
 - **Next PR**: the step 5 proposal.
 
 ## Filing an issue yourself
