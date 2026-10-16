@@ -44,8 +44,9 @@ already-fixed, and adding or removing `deferred`. Those change what gets
 scheduled — `deferred` also rewrites the title — rather than how an issue is
 filed.
 
-Step 6's local cleanup is applied directly too, under that step's guards;
-deleting a branch on `origin` and `git worktree prune` are proposed.
+Step 6's local cleanup (removing worktrees, deleting local branches) is
+applied directly too, under that step's rules; deleting a branch on `origin`
+and `git worktree prune` are proposed.
 
 Batch every proposal into **one** approval request at the end of the relevant
 step — not one question per issue.
@@ -262,108 +263,51 @@ The proposal stops there; do not cut the branch.
 
 Every PR leaves a branch behind, and often a `../aide-loop-<N>` worktree.
 Other sessions work in this checkout and its worktrees at the same time, so
-remove only what is provably finished. A merged branch with uncommitted work in
-its worktree is not finished.
+remove only what is provably finished. The rules, which
+[`cleanup.py`](cleanup.py) applies and `tests/test_triage_cleanup.py` pins:
+
+- **Merged** means a `MERGED` PR from this repository (not a fork) into
+  `main`, whose head the tip equals or is an ancestor of. Every branch here
+  lands through a PR, so no such PR means not merged — a branch reusing an old
+  name, freshly cut from `main`, is not on the old PR's head. A PR merged into
+  a stacked parent does not count. A detached worktree counts when its `HEAD`
+  is an ancestor of `origin/main`.
+- **Never touched:** `main`; a branch with an open PR on it or stacked on it;
+  a branch checked out in a worktree that stays; everything, when the PR list
+  cannot be read — an unreadable list is not an empty one.
+- **A merged worktree stays** while anything says it may be in use: this
+  session runs in it, it is locked, a process has its cwd there (Linux), its
+  `HEAD` moved or its index was written in the last 24 hours, an operation is
+  in progress (merge, cherry-pick, revert, bisect, rebase, sequencer), or it
+  holds any change, untracked file or ignored file other than a Python cache —
+  `git worktree remove` deletes those. Unreadable means stays.
+- **Local removals are applied; anything on `origin` is proposed.** A deleted
+  local branch is restored by `git branch <name> <sha>`; a deleted `origin`
+  branch is someone's lost push. `git worktree prune` is proposed too: a
+  missing directory may sit on an unmounted disk.
+
+Run it from the main checkout, which holds `local.toml` and is never removed:
 
 ```bash
-git fetch --prune origin          # drops remote-tracking refs for deleted branches
-git worktree list --porcelain     # every worktree, its HEAD and its branch
-git branch -vv                    # local branches and their upstreams
-git branch -r                     # what is left on origin
+python3 .claude/skills/triage-issues/cleanup.py           # the plan; changes nothing but a fetch
+python3 .claude/skills/triage-issues/cleanup.py --apply   # re-decides, then the local half
 ```
 
-For each branch other than `main` — local, on `origin`, or both — ask GitHub
-twice:
+`--apply` decides again from scratch and prints each outcome from git's own
+exit code — `could NOT …` is a refusal, report it. Put the plan's two
+*Propose* lists under *Awaiting your call*, each `origin` branch with the SHA
+printed beside it. On a go-ahead:
 
 ```bash
-$GH pr list --repo dadrobny/aide-loop --state all --head <branch> \
-    --json number,state,baseRefName,headRefOid,isCrossRepository  # its own PRs
-$GH pr list --repo dadrobny/aide-loop --state open --base <branch> \
-    --json number                                # PRs stacked on it
+python3 .claude/skills/triage-issues/cleanup.py --delete-remote <branch>=<sha> ...
+python3 .claude/skills/triage-issues/cleanup.py --prune
 ```
 
-**Excluded** — never touched, whatever else holds: `main`, a branch with an
-`OPEN` PR in the first list, and a branch the second list is not `[]` for. So
-is a branch either query fails for — a non-zero exit or no JSON: like activity
-that cannot be read, a PR list that cannot be read is not an empty one.
-
-A tip is **merged** only when the first list has a `MERGED` PR with
-`baseRefName` `main` and `isCrossRepository` `false` (`--head` ignores the
-owner, so a fork's PR from a same-named branch would match), **and** the tip
-equals or is an ancestor of that PR's `headRefOid` (`git merge-base
---is-ancestor <tip> <headRefOid>`; a missing object fails, and fails closed).
-Every branch here lands through a PR, so no PR merged into `main` means not
-merged. The test is against the PR's head, never `origin/main`: a branch reusing
-an old name, freshly cut from today's `main`, is an ancestor of `origin/main` but
-not of the old PR's head. A PR merged into a stacked parent or any other base
-does not count. A tip past `headRefOid` holds commits the PR never carried, so
-it is not merged. Stale but unmerged work goes in the report and is left alone.
-
-**Worktrees (apply directly).** A worktree other than the main checkout and the
-one this session runs in is a candidate when its branch is merged and not
-excluded, or its detached `HEAD` is an ancestor of `origin/main`. Check in this
-order — the timestamps first, since a plain `git status` can rewrite the index
-— and stop at the first that fails:
-
-1. **Idle for 24 hours.** Another session may have paused in a clean, merged
-   worktree. Read when `HEAD` last moved and when the index was last written:
-
-   ```bash
-   for f in logs/HEAD index; do
-     python3 -c 'import os,sys;print(int(os.path.getmtime(sys.argv[1])))' \
-         "$(git -C <path> rev-parse --path-format=absolute --git-path "$f")"
-   done; date +%s
-   ```
-
-   Either within 86400 s of now leaves the worktree. So does either failing or
-   printing nothing: activity that cannot be read is not absence of activity.
-2. **No operation in progress.** None of `MERGE_HEAD`, `CHERRY_PICK_HEAD`,
-   `REVERT_HEAD`, `BISECT_LOG`, `rebase-merge`, `rebase-apply`, `sequencer`
-   (a multi-commit cherry-pick or revert outlives its `*_HEAD`) exists at
-   `git -C <path> rev-parse --path-format=absolute --git-path <name>`.
-3. **Clean, ignored files included.** `git worktree remove` deletes untracked
-   and ignored files, and config such as `status.showUntrackedFiles=no` can
-   hide them, so pass every flag, and drop the regenerable caches — `!!`
-   entries under a `__pycache__/` or `.pytest_cache/` directory or ending
-   `.pyc` — since an ignored `.venv/` alone lists thousands of lines:
-
-   ```bash
-   git -C <path> --no-optional-locks status --porcelain --ignored --untracked-files=all \
-       | grep -Ev '^!! (.*/)?(__pycache__|\.pytest_cache)/|^!! .*\.pyc$' | head -20
-   ```
-
-   It must print nothing. Any line — a change, a `??`, a `!! local.toml` or
-   `.venv/` file — leaves the worktree; report the lines.
-
-Then `git worktree remove <path>`, **never `--force`**; a refusal means there
-is something to look at, so report it. Finally run `git worktree prune
---dry-run --verbose` and only report what it would drop: an entry whose
-directory is missing may sit on an unmounted disk, so `git worktree prune`
-itself goes under *Awaiting your call*.
-
-**Local branches (apply directly).** For a branch whose local tip is merged,
-that is not excluded, and that no remaining worktree has checked out, run `git
-branch -D <branch>`. Not `-d`: it judges against the current `HEAD` or the
-upstream, not the PR, so in a shared checkout it refuses branches the merged
-test already proved. Record each deleted branch's name and tip SHA in the
-report, since `git branch <name> <sha>` restores it.
-
-**Branches on origin (propose).** Run the merged test again on `origin/<branch>`
-itself — the remote tip, not the local one — including for a branch that exists
-only on `origin`. An unmerged remote tip is left alone and reported. A merged,
-non-excluded one is outward-facing, so list it under *Awaiting your call* with
-its remote tip, `git rev-parse origin/<branch>`. On a go-ahead, first re-run
-both PR queries; a new PR on or stacked on the branch, or a failed query,
-leaves it and goes in the report. Then delete it with a lease against that SHA,
-so a branch someone pushed to since is not lost:
-
-```bash
-git push --force-with-lease=refs/heads/<branch>:<sha> origin --delete <branch>
-```
-
-A `rejected … (stale info)` refusal means the branch moved: report it with
-its new tip and do not retry without the lease. GitHub can restore a deleted
-branch from the PR page, but do not count on that.
+`--delete-remote` re-runs the PR list and the merged test on the remote tip,
+then deletes with a lease against the approved SHA. A branch that moved is
+refused — report its new tip and ask again; never delete it another way.
+Exit 1 means something was refused or the PR list could not be read; `--json`
+gives the plan as data.
 
 ## Report
 
@@ -375,17 +319,11 @@ Close the pass with a single report:
   silence keeps them.
 - **Applied**: items added, Themes/labels set, board reordered (or already
   ordered), and step 6's removals: each worktree path and each deleted branch
-  with its tip SHA. Also list what step 6 left alone and why: no PR merged into
-  `main` (or one merged into another base, or from a fork), a PR query that
-  failed, tip not on the merged PR's head, remote tip unmerged, an open PR on
-  it or stacked on it (also when the pre-delete re-run finds one), activity in
-  the last 24 hours or activity unreadable, an operation in progress (name it),
-  dirty or ignored files other than caches (name them), a refused `remove`, or
-  a refused lease (with the branch's new tip).
-- **Awaiting your call**: Status/close/defer/un-defer proposals, merged
-  branches on `origin` to delete, each with its remote tip SHA, and the
-  entries `git worktree prune --dry-run --verbose` would drop, batched — or
-  "nothing" when there are none.
+  with its tip SHA, from `--apply`'s output. Also list the plan's *Left alone*
+  lines as they read — each names its reason — and any `could NOT` outcome.
+- **Awaiting your call**: Status/close/defer/un-defer proposals, and step 6's
+  *Propose* lists — each `origin` branch as `<branch>=<sha>`, and the entries
+  `git worktree prune` would drop — batched, or "nothing" when there are none.
 - **Next PR**: the step 5 proposal.
 
 ## Filing an issue yourself
