@@ -2,10 +2,10 @@
 """Step 6 of the triage pass: find the worktrees and branches already merged
 into main, and remove only what is provably finished.
 
-    python3 .claude/skills/triage-issues/cleanup.py            # plan, nothing changes
+    python3 .claude/skills/triage-issues/cleanup.py            # plan; changes nothing but a fetch
     python3 .claude/skills/triage-issues/cleanup.py --apply    # the local half
     python3 .claude/skills/triage-issues/cleanup.py --delete-remote B=SHA ...
-    python3 .claude/skills/triage-issues/cleanup.py --prune PATH ...
+    python3 .claude/skills/triage-issues/cleanup.py --prune worktrees/<id> ...
 
 The policy is SKILL.md's step 6; this file is its mechanism. Every mode decides
 from scratch — `--apply` never trusts an earlier printout — and every outcome

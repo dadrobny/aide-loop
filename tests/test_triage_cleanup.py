@@ -543,6 +543,9 @@ def test_an_admin_dir_in_doubt_blinds_the_run(small, tmp_path, how, monkeypatch,
     git(repo, "worktree", "add", "-q", str(a), "done")
     git(repo, "worktree", "add", "-q", "--detach", str(b), "main")
     if how == "back-pointer":
+        # Git for Windows marks a worktree's .git file hidden, and Windows
+        # refuses to open a hidden file for "w"; replace it instead.
+        (a / ".git").unlink()
         (a / ".git").write_text("gitdir: " + git(b, "rev-parse", "--absolute-git-dir")
                                 + "\n", encoding="utf-8")
     else:
