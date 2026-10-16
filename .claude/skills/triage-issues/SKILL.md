@@ -1,13 +1,14 @@
 ---
 name: triage-issues
-description: Triage newly-raised aide-loop issues — version-check them against the changelog and HEAD, file them into the GitHub Project with Theme and labels, order the board, sweep the deferred pile for anything a release has un-blocked, and propose the next PR's worth of work.
+description: Triage newly-raised aide-loop issues — version-check them against the changelog and HEAD, file them into the GitHub Project with Theme and labels, order the board, sweep the deferred pile for anything a release has un-blocked, propose the next PR's worth of work, and clean up worktrees and branches already merged into main.
 ---
 
 # Triage the inbox
 
 Consumers raise issues against the framework faster than the framework lands
 them. This is the recurring pass that turns that inbox into an ordered board and
-one concrete proposal.
+one concrete proposal, and clears away the worktrees and branches already
+merged.
 
 **This skill is repo-local machinery, not framework content.** It lives in
 `.claude/skills/`, which `install.py` never copies — so unlike anything under
@@ -42,6 +43,10 @@ choice was genuinely uncertain; do not pad a confident pick with one.
 already-fixed, and adding or removing `deferred`. Those change what gets
 scheduled — `deferred` also rewrites the title — rather than how an issue is
 filed.
+
+Step 6's local cleanup (removing worktrees, deleting local branches) is
+applied directly too, under that step's rules; deleting a branch on `origin`
+and `git worktree prune` are proposed.
 
 Batch every proposal into **one** approval request at the end of the relevant
 step — not one question per issue.
@@ -252,7 +257,65 @@ The proposal is **written, not started**. It states:
    directions) if a delivered file or a `conventions/` section moves;
 5. what is deliberately **not** in the batch, and why.
 
-Stop there. Do not cut the branch.
+The proposal stops there; do not cut the branch.
+
+## Step 6 — Clean up merged worktrees and branches
+
+Every PR leaves a branch behind, and often a `../aide-loop-<N>` worktree.
+Other sessions work in this checkout and its worktrees at the same time, so
+remove only what is provably finished. The rules, which
+[`cleanup.py`](cleanup.py) applies and `tests/test_triage_cleanup.py` pins:
+
+- **Merged** means a `MERGED` PR from this repository (not a fork) into
+  `main`, whose head the tip equals or is an ancestor of. Every branch here
+  lands through a PR, so no such PR means not merged — a branch reusing an old
+  name, freshly cut from `main`, is not on the old PR's head. A PR merged into
+  a stacked parent does not count. A detached worktree counts when its `HEAD`
+  is an ancestor of `origin/main`.
+- **Never touched:** `main`; a branch with an open PR on it or stacked on it;
+  a branch checked out in a worktree that stays, including one a detached
+  worktree is rebasing or bisecting; everything, when the PR list or the
+  admin dirs under `.git/worktrees/` cannot be read for certain — an
+  unreadable list is not an empty one, and an unreadable admin dir hides which
+  branch its worktree holds.
+- **A merged worktree stays** while anything says it may be in use: this
+  session runs in it, it is locked, a process has its cwd there (Linux;
+  processes it may not read are noted, not counted), its `HEAD` moved or its
+  index was written in the last 24 hours, an operation is in progress (merge,
+  cherry-pick, revert, bisect, rebase, sequencer), or it holds any change,
+  untracked file or ignored file other than a Python cache — `git worktree
+  remove` deletes those. Unreadable means stays.
+- **Local removals are applied; anything on `origin` is proposed.** A deleted
+  local branch is restored by `git branch <name> <sha>`; a deleted `origin`
+  branch is someone's lost push. `git worktree prune` is proposed too: a
+  missing directory may sit on an unmounted disk.
+
+Run it from the main checkout: it holds `local.toml`, it is never removed, and
+a worktree's copy of the script may be a different version.
+
+```bash
+python3 .claude/skills/triage-issues/cleanup.py           # the plan; changes nothing but `git fetch --prune`
+python3 .claude/skills/triage-issues/cleanup.py --apply   # re-decides, then the local half
+```
+
+`--apply` decides again from scratch and prints each outcome from git's own
+exit code — `could NOT …` is a refusal, report it. Put the plan's two
+*Propose* lists under *Awaiting your call*, each `origin` branch with the SHA
+printed beside it. On a go-ahead:
+
+```bash
+python3 .claude/skills/triage-issues/cleanup.py --delete-remote <branch>=<sha> ...
+python3 .claude/skills/triage-issues/cleanup.py --prune worktrees/<id> ...   # the plan's --prune line, verbatim
+```
+
+`--delete-remote` re-runs the PR list and the merged test on the remote tip,
+then deletes with a lease against the approved SHA. A branch that moved is
+refused — report its new tip (`<branch>=<sha>`) and ask again; never delete it
+another way. Git decides what is prunable: the plan proposes the
+`worktrees/<id>` entries its dry run would drop, and `--prune` prunes only while
+that set is exactly the one approved, and otherwise prunes nothing. Exit 1
+means something was refused, or the PR list or admin dirs could not be read;
+`--json` gives the plan as data.
 
 ## Report
 
@@ -263,9 +326,12 @@ Close the pass with a single report:
   Close the list with one line asking the user to say if any should change;
   silence keeps them.
 - **Applied**: items added, Themes/labels set, board reordered (or already
-  ordered).
-- **Awaiting your call**: Status/close/defer/un-defer proposals, batched — or
-  "nothing" when there are none.
+  ordered), and step 6's removals: each worktree path and each deleted branch
+  with its tip SHA, from `--apply`'s output. Also list the plan's *Left alone*
+  lines as they read — each names its reason — and any `could NOT` outcome.
+- **Awaiting your call**: Status/close/defer/un-defer proposals, and step 6's
+  *Propose* lists — each `origin` branch as `<branch>=<sha>`, and the entries
+  `git worktree prune` would drop — batched, or "nothing" when there are none.
 - **Next PR**: the step 5 proposal.
 
 ## Filing an issue yourself
