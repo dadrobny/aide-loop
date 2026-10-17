@@ -61,7 +61,10 @@ read it before editing. In practice:
    observable checks *of the built thing*; a measured outcome the work cannot
    guarantee (an error-rate target, a benchmark result) is written as a
    `Target:` bullet instead, which progress.md tracks in its Outcome targets
-   table (gating the objective, not the stage).
+   table (gating the objective, not the stage). A check that only the green
+   CI run on the queue PR can prove stays a plain bullet here; its
+   progress.md box carries the declaration (`.aide/conventions.md` §1 →
+   `queue-NNN.md`).
 3. **Objective → stage coverage table is mandatory** — every vision G-code maps
    to at least one stage (progress mirrors this table); what a complete table
    holds is `.aide/conventions.md` §1 → roadmap.md.

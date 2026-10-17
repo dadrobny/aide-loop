@@ -35,6 +35,9 @@ carries a `Target:` bullet (a measured outcome the work cannot guarantee — an
 error rate, a benchmark), mirror it as a row of the optional
 `## Outcome targets` table, **not** as an acceptance checkbox — targets gate
 objectives, never stages (`.aide/conventions.md` §1 → `progress.md`).
+A criterion that only the green CI run on the queue PR can prove gets
+`*(evidence: queue CI)*` on its acceptance box here, never on the roadmap
+bullet; what that changes is `.aide/conventions.md` §1 → `queue-NNN.md`.
 
 A roadmap's maintenance stage, if it has one (`.aide/conventions.md` §1 →
 roadmap.md), gets its section and Stage summary row like any stage — its

@@ -130,7 +130,9 @@ _Flat bullets only — one per deliverable, each with its item reference. See
 _One checkbox per acceptance criterion of the matching roadmap stage, ticked
 only via `python .aide/scripts/aide.py progress accept` — never by the rollup.
 The verbs that correct a box, and why a stage may be ✅ over an unticked one,
-are `progress -h` and conventions.md §1 → progress.md._
+are `progress -h` and conventions.md §1 → progress.md. A box that only the
+queue PR's green CI run can prove ends in `*(evidence: queue CI)*`
+(conventions.md §1 → queue-NNN.md)._
 
 - [ ] {{acceptance check}}
 

@@ -172,9 +172,11 @@ as the reason.
    Verification rows the stage introduced to `✅ Verified` where the
    environment allows (`aide env --profile <name>`), else record in the row's
    Notes cell why it stays `❓ Unverified`. With no such warning, the queue
-   ends with its last deliverable. **The planner reads that warning and never
-   works the need out itself.** A warning that a queue-end item has nothing
-   to do means it should not be in the plan. With no spec written yet, every
+   ends with its last deliverable. A box carrying `*(evidence: queue CI)*` is
+   not this item's to attest (§1 → `queue-NNN.md`). **The planner reads
+   that warning and never works the need out itself.** A warning that a
+   queue-end item has nothing to do means it should not be in the plan.
+   With no spec written yet, every
    unticked criterion counts as unannotated, so the item a closing queue is
    told it needs may later be reported idle once the specs exist; that is the
    check working, and dropping it then is the human's call at the plan gate.

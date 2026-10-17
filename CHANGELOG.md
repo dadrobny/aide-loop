@@ -136,6 +136,22 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.53.1] — 2026-10-17
+
+### Fixed
+
+- **The roles that author a stage's criteria now hear of `*(evidence: queue
+  CI)*` (issue #496).** 2.53.0 told the validator and the queue planner
+  through `aide-progress-file`, and nobody who writes a criterion, so a box
+  such as "passes locally and in CI" was written without the declaration
+  and a queue-end item was planned for a box it cannot attest. A one-line
+  pointer to §1 → `queue-NNN.md` now sits in `aide-create-roadmap`
+  (requirement 2: the roadmap bullet stays plain), `aide-create-progress`
+  (the box carries it), `aide-create-queue` requirement 5 (such a box is not
+  the queue-end item's), and the italic guidance of the roadmap and progress
+  templates. No template version moves: a document built from the old
+  template has nothing to follow.
+
 ## [2.53.0] — 2026-10-16
 
 ### Added
