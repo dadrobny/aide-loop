@@ -2327,7 +2327,8 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         # PR; one line each in `cmd_status` (issue #492).
         ("Where checks= is success on a PR marked ready, a `queue ci attests:` line below it names "
          "each acceptance box still open and annotated `(evidence: queue CI)` "
-         "in a stage the queues the branch carries close, read from the "
+         "in a stage the queues the branch carries close and whose "
+         "deliverables are all settled, read from the "
          "branch's own progress.md, with the `aide progress accept` call that "
          "ticks it on the main branch once the PR has merged",
          "test_aide_queue_pr::test_a_green_queue_pr_hands_off_its_queue_ci_criteria"),

@@ -294,18 +294,20 @@ def test_a_green_queue_pr_hands_off_its_queue_ci_criteria(
     """Issue #492: on success, each still-open *(evidence: queue CI)* box of a
     stage the queue closes is named with the accept call for after the merge;
     an unannotated box, a ticked one, a box of a stage no queue on the branch
-    closes, a pending PR and a draft are not."""
+    closes, a stage with an item still open, a pending PR and a draft are
+    not."""
     repo = _init(tmp_path)
     _start(repo, 1)
     _plan(repo, 1, "### Item 001: Alpha\n\n### Item 002: Beta\n")
     text = PROGRESS.format(icon="✅", trail="").replace("- 📋 Beta.", "- ✅ Beta.")
-    (repo / "docs" / "aide" / "progress.md").write_text(
-        text + "\n**Acceptance.**\n- [ ] Unannotated.\n"
-        "- [x] Done. *(evidence: queue CI)* *(run 1)*\n"
-        "- [ ] Passes in CI. *(evidence: queue CI)*\n"
-        "\n## Stage 2 — Two — 📋\n\n**Deliverables.**\n- 📋 Gamma. *(Item 003)*\n"
-        "\n**Acceptance.**\n- [ ] Not this queue's. *(evidence: queue CI)*\n",
-        encoding="utf-8")
+    full = (text + "\n**Acceptance.**\n- [ ] Unannotated.\n"
+            "- [x] Done. *(evidence: queue CI)* *(run 1)*\n"
+            "- [ ] Passes in CI. *(evidence: queue CI)*\n"
+            "\n## Stage 2 — Two — 📋\n\n**Deliverables.**\n- 📋 Gamma. *(Item 003)*\n"
+            "\n**Acceptance.**\n- [ ] Not this queue's. *(evidence: queue CI)*\n")
+    progress = repo / "docs" / "aide" / "progress.md"
+    # An early ready: ready and green while Beta is still to land.
+    progress.write_text(full.replace("- ✅ Beta.", "- 📋 Beta."), encoding="utf-8")
     _commit(repo, "progress")
 
     def handoff() -> List[str]:
@@ -314,17 +316,20 @@ def test_a_green_queue_pr_hands_off_its_queue_ci_criteria(
         return [l.strip() for l in capsys.readouterr().out.splitlines()
                 if l.strip().startswith("queue ci attests:")]
 
+    green = [_run_check("build", "COMPLETED", "SUCCESS")]
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN",
+                               "statusCheckRollup": green}]})
+    assert handoff() == []              # an item still open: not the last run
+    progress.write_text(full, encoding="utf-8")
+    _commit(repo, "Beta lands")
     _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup":
                                [_run_check("build", "IN_PROGRESS")]}]})
     assert handoff() == []
-    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup":
-                               [_run_check("build", "COMPLETED", "SUCCESS")]}]})
     _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "isDraft": True,
-                               "statusCheckRollup":
-                               [_run_check("build", "COMPLETED", "SUCCESS")]}]})
+                               "statusCheckRollup": green}]})
     assert handoff() == []              # a draft's green run is not the last
-    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup":
-                               [_run_check("build", "COMPLETED", "SUCCESS")]}]})
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN",
+                               "statusCheckRollup": green}]})
     # Stage 2's box is not listed: no queue on the branch closes stage 2.
     assert handoff() == [
         "queue ci attests: stage 1 criterion 3 — after the merge, on main: "

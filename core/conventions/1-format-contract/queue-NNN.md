@@ -60,7 +60,7 @@ one, `aide check` and `aide queue tidy` keep its declared status honest, and
   The person merging the queue PR attests it, on `main_branch` after the
   merge, citing the green run: once the PR is marked ready and its checks
   are green, `aide status` names each such box still open in a stage the
-  queue closes, with the `aide progress accept` call, and the queue-end step
+  queue closes whose deliverables are all settled, with the `aide progress accept` call, and the queue-end step
   relays that list in its stop report. *(aide check, status, queue-end step)*
 
 #### Rationale

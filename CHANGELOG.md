@@ -149,10 +149,11 @@ instead — that is the bump policy above, and it is enforced by
   emphasis optional; a wrapped box is read whole), declares the box the
   queue CI's: `aide check --queue` no longer counts it as a criterion
   needing a queue-end item. Where a queue PR marked ready has `checks=`
-  success (a draft's green run, after an early ready, is not the last), `aide
-  status` prints a `queue ci attests:` line under its stack line for each
-  such box still open in a stage the branch's queues close, with the `aide
-  progress accept <stage> --criterion <M> --evidence "<CI run>"` call; the
+  success, `aide status` prints a `queue ci attests:` line under its stack
+  line for each such box still open in a stage the branch's queues close
+  and whose deliverables are all settled there (a run made while an item is
+  still open, under an early ready or a CI fix round, is not the last),
+  with the `aide progress accept <stage> --criterion <M> --evidence "<CI run>"` call; the
   person merging runs it on `main_branch` after the merge, so no tick is
   pushed to the green branch and no second CI run is needed. `await_run.py`
   carries the line into the wait's tail, and the queue-end step

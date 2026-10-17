@@ -21394,9 +21394,12 @@ def _queue_branch_ci(repo_root: Path, config: Dict[str, Dict[str, object]],
 def queue_ci_handoff(repo_root: Path, config: Dict[str, Dict[str, object]],
                      ref: str, base: str, branch: str) -> List[Tuple[str, int]]:
     """``(stage, criterion)`` per box still open and annotated *(evidence:
-    queue CI)* in a stage *branch*'s own queues close, read at *ref* (issue
-    #492): the queue PR's green run is its evidence, attested on the main
-    branch after the merge. Anything unreadable answers none."""
+    queue CI)* in a stage *branch*'s own queues close and whose deliverables
+    are all settled, read at *ref* (issue #492): the queue PR's green run is
+    its evidence, attested on the main branch after the merge. An item still
+    open there — held at a gate under an early ready, reopened by a fix
+    round — means the run is not the queue's last. Anything unreadable
+    answers none."""
     items = _branch_queue_items(repo_root, config, ref, base, branch)
     shown = git(["show", f"{ref}:./{_progress_rel(config)}"], repo_root,
                 check=False)
@@ -21407,6 +21410,11 @@ def queue_ci_handoff(repo_root: Path, config: Dict[str, Dict[str, object]],
     # One "queue" for all the branch's own: every one of them lands with it.
     for stage in closed_stages(lines, dict.fromkeys(items, 0), 0):
         start, end, _ = stage_section(lines, stage)
+        section = [ln for ln in lines[start:end] if not _CHECKBOX_RE.match(ln)]
+        if any(ICON_TO_STATUS[_BULLET_RE.match(section[first]).group("icon")]
+               in _OPEN_STATUSES
+               for first, _ in _deliverable_bullet_spans(section)):
+            continue
         for m, box in enumerate(acceptance_boxes(lines, start, end), start=1):
             if (_CHECKBOX_RE.match(lines[box]).group("mark") == " "
                     and queue_ci_box(lines, box, end)):
@@ -21584,7 +21592,8 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
         return ("unknown", (), why_not) if prs.get(b) == "unknown" else ("-", (), None)
 
     # Asked of a green ready PR only (issue #492): its run is the evidence,
-    # and a draft's green run (an early ready, a fix round) is not the last.
+    # and a draft's (a CI fix round) is not the last. An early ready is
+    # ready, so `queue_ci_handoff` itself skips a stage with an open item.
     branches = [StackBranch(b, bases.get(b) or "?", prs.get(b, "-"),
                             lowers[b], orphaned(b), *checks(b),
                             rounds.get(b, 0),
@@ -23837,7 +23846,8 @@ def register_git_subcommands(sub) -> None:
             "marked ready, a "
             "`queue ci attests:` line below it names each acceptance box "
             "still open and annotated `(evidence: queue CI)` in a stage the "
-            "queues the branch carries close, read from the branch's own "
+            "queues the branch carries close and whose deliverables are all "
+            "settled, read from the branch's own "
             "progress.md, with the `aide progress accept` call that ticks it "
             "on the main branch once the PR has merged. "
             "lower= is moved when the queue branch "
