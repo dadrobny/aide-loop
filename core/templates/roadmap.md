@@ -96,7 +96,9 @@ _One bullet per observable check **of the built thing** — these become the
 progress.md acceptance boxes for this stage. A measured outcome the stage
 cannot guarantee (conventions.md §1 → progress.md says what counts) is not an
 acceptance bullet: prefix it `Target:` and mirror it into progress.md's
-"Outcome targets" table._
+"Outcome targets" table. A check only the queue PR's green CI run can prove
+stays a plain bullet; its progress.md box carries the declaration
+(conventions.md §1 → queue-NNN.md)._
 
 - {{observable check that the stage is done}}
 - Target: {{measured result the stage aims for}}  <!-- optional -->
