@@ -2621,7 +2621,9 @@ def reword_roadmap_bullet(text: str, stage: str, n: int, new_text: str,
             f"re-run — nothing was written")
     i = bullets[n - 1]
     m = re.match(r"^(?P<pre>\s*[-*]\s+)(?P<body>.*)$", lines[i])
-    lines[i] = m.group("pre") + new_text.strip()
+    # The queue-CI declaration belongs on the progress.md box alone (§1 →
+    # queue-NNN.md, issue #496).
+    lines[i] = m.group("pre") + " ".join(_QUEUE_CI_ANY_RE.sub("", new_text).split())
     # A wrapped bullet is its first line plus every indented non-bullet line
     # under it, the shape `acceptance_box_last` reads on the progress side —
     # replace them all, or the old wording's tail stays under the new text
@@ -12831,7 +12833,8 @@ def _cmd_progress_reword(args: argparse.Namespace) -> int:
     rels = [_progress_rel(config)]
     print(f"stage {args.number}: criterion {args.criterion} reworded")
     print(f"  was: {old}")
-    print(f"  now: {args.text.strip()}")
+    ulines, _, ubox = _resolve_box(updated, str(args.number), args.criterion)
+    print(f"  now: {_CHECKBOX_RE.match(ulines[ubox]).group('post')[1:].strip()}")
     if road_updated is not None:
         roadmap_path.write_text(road_updated, encoding="utf-8")
         rels.append(str(config["project"].get("docs_dir", "docs/aide")) + "/roadmap.md")

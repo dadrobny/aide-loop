@@ -151,6 +151,11 @@ instead — that is the bump policy above, and it is enforced by
   the queue-end item's), and the italic guidance of the roadmap and progress
   templates. No template version moves: a document built from the old
   template has nothing to follow.
+- **`aide progress reword` keeps the declaration off `roadmap.md`, and
+  reports what it wrote (issue #496).** A `--text` carrying `*(evidence:
+  queue CI)*` mirrored it into the roadmap bullet as well; the mirror now
+  drops it. Its `now:` line printed `--text`, missing a declaration the box
+  kept; it now prints the box as written.
 
 ## [2.53.0] — 2026-10-16
 

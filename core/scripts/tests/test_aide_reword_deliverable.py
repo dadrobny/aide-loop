@@ -273,3 +273,19 @@ def test_item_belongs_to_reword_alone_and_every_other_action_needs_its_number(
 
 def test_the_criterion_form_still_needs_a_stage(tmp_path: Path):
     assert _reword(_repo(tmp_path), "--criterion", "1", "--text", "x") == 2
+
+
+def test_a_criterion_reword_reports_the_box_as_written(tmp_path: Path, capsys):
+    """Issue #496: `now:` echoed --text, missing the queue-CI declaration the
+    box keeps; roadmap.md never gets the declaration."""
+    repo = _repo(tmp_path)
+    ddir = repo / "docs" / "aide"
+    progress = ddir / "progress.md"
+    progress.write_text(SPLIT.replace(
+        "- [ ] Both datasets load.",
+        "- [ ] Both datasets load. *(evidence: queue CI)*"), encoding="utf-8")
+    assert _reword(repo, "3", "--criterion", "1", "--text",
+                   "Both datasets load in CI.") == 0
+    assert ("now: Both datasets load in CI. *(evidence: queue CI)*"
+            in capsys.readouterr().out)
+    assert "queue CI" not in (ddir / "roadmap.md").read_text(encoding="utf-8")
