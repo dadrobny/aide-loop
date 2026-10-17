@@ -2659,6 +2659,41 @@ def test_status_reads_a_failing_check_on_the_queue_pr(
     assert read["stack"][0][1]["checks"] == "failure"
 
 
+def test_a_queue_ci_criterion_is_handed_off_and_accepted_after_the_merge(
+        aide, consumer: Path, tmp_path: Path, monkeypatch, capsys):
+    """Issue #492: a box annotated *(evidence: queue CI)* asks no queue-end
+    item of `check --queue`; on a green queue PR `status` names the accept
+    call, which then ticks the box on main once the queue has merged."""
+    _to_pr_mode_with_origin(consumer, tmp_path)
+    assert _start(aide, consumer, 1) == 0
+    progress = consumer / "docs" / "aide" / "progress.md"
+    progress.write_text(progress.read_text(encoding="utf-8").replace(
+        "- [ ] Both items land.",
+        "- [ ] Both items land in CI. *(evidence: queue CI)*").replace(
+        "- 📋 The", "- ✅ The"), encoding="utf-8")
+    _commit(consumer, "queue built")
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check", "--queue", "1"]) == 0
+    assert "queue-end" not in capsys.readouterr().out
+
+    _forge(aide, monkeypatch, {Q1: [{"number": 3, "state": "OPEN",
+                                     "statusCheckRollup": [
+                                         {"name": "build", "status": "COMPLETED",
+                                          "conclusion": "SUCCESS"}]}]})
+    assert aide.main(["--repo", str(consumer), "status", "--no-fetch"]) == 0
+    handoff = [l.strip() for l in capsys.readouterr().out.splitlines()
+               if l.strip().startswith("queue ci attests:")]
+    assert len(handoff) == 1
+    call = handoff[0].partition(": aide ")[2].replace('"<CI run>"', "run-7")
+    assert call == "progress accept 1 --criterion 1 --evidence run-7"
+
+    _git(["switch", "main"], consumer)
+    _git(["merge", "--no-ff", "-m", "merge queue 001", Q1], consumer)
+    assert aide.main(["--repo", str(consumer), *call.split()]) == 0
+    assert ("- [x] Both items land in CI. *(evidence: queue CI)* *(run-7)*"
+            in progress.read_text(encoding="utf-8"))
+
+
 def _gh_at_a_configured_path(repo: Path, tmp_path: Path, monkeypatch,
                              answer: dict) -> Path:
     """A `gh` the engine can find only through `[tools] gh` (issue #353).

@@ -2271,6 +2271,10 @@ _RETRACTED_PREFIX = "retracted: "
 #: stopped at the first `)` and then matched nothing at all, so the guard
 #: opened on exactly the annotations most worth keeping (#143).
 _ACCEPT_EVIDENCE_RE = re.compile(r"\*\(.*\)\*\s*$")
+#: The *(evidence: queue CI)* declaration (§1 → queue-NNN.md) wherever it
+#: sits in a box, with whatever emphasis.
+_QUEUE_CI_ANY_RE = re.compile(r"[*_]*\(evidence:\s*queue\s+CI\)[*_]*",
+                              re.IGNORECASE)
 
 
 #: A continuation line of a wrapped box: indented, non-blank, and not a bullet
@@ -2451,7 +2455,10 @@ def reword_criterion(text: str, stage: str, n: int, new_text: str) -> Tuple[str,
             f"Stage {stage} criterion {n} is ticked; its wording is what an "
             f"attestation was made against. Retract it first (`aide progress "
             f"retract`) if the criterion itself was wrong")
-    annotation = _ACCEPT_EVIDENCE_RE.search(body)
+    # *(evidence: queue CI)* declares who attests, records nothing (issue
+    # #492): it is no annotation here, and the rewording keeps it.
+    declared = _QUEUE_CI_ANY_RE.search(body)
+    annotation = _ACCEPT_EVIDENCE_RE.search(_QUEUE_CI_ANY_RE.sub("", body))
     if annotation:
         raise ValueError(
             f"Stage {stage} criterion {n} carries an annotation "
@@ -2462,6 +2469,8 @@ def reword_criterion(text: str, stage: str, n: int, new_text: str) -> Tuple[str,
             f"Stage {stage} criterion {n} carries a correction trail, so "
             f"something has already been recorded against this wording")
     old = body.strip()
+    if declared and not _QUEUE_CI_RE.search(new_text):
+        new_text = new_text.strip() + " *(evidence: queue CI)*"
     lines[box] = m.group("pre") + m.group("mark") + "] " + new_text.strip()
     del lines[box + 1:last + 1]
     return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""), old)
@@ -9977,6 +9986,20 @@ _ENV_DEPS_HEADING_RE = re.compile(
     r"^##\s+Environment\s*/\s*Hardware Dependencies\b", re.MULTILINE | re.IGNORECASE)
 
 
+#: A stage criterion's *(evidence: queue CI)* annotation (§1 → queue-NNN.md,
+#: issue #492): the queue PR's own CI run attests it, after the queue-end
+#: item has merged. These words, any letter case or spacing, emphasis
+#: optional.
+_QUEUE_CI_RE = re.compile(r"\(evidence:\s*queue\s+CI\)", re.IGNORECASE)
+
+
+def queue_ci_box(lines: List[str], box: int, end: int) -> bool:
+    """Whether the acceptance box at *box* — all of its wrapped lines —
+    carries *(evidence: queue CI)*."""
+    last = acceptance_box_last(lines, box, end)
+    return bool(_QUEUE_CI_RE.search(" ".join(lines[box:last + 1])))
+
+
 def spec_closed_criteria(text: str) -> Set[Tuple[int, int]]:
     """``(stage, criterion)`` pairs the spec's Acceptance Criteria annotate as
     closed — the only mapping from an AC to a stage criterion (§1 → items.md);
@@ -10250,6 +10273,13 @@ def queue_closed_stages(lines: List[str], qdir: Path, number: int) -> List[str]:
             continue
         for n in queue_item_numbers(path.read_text(encoding=_ENCODING)):
             listed[n] = min(q, listed.get(n, q))
+    return closed_stages(lines, listed, number)
+
+
+def closed_stages(lines: List[str], listed: Dict[int, int],
+                  number: int) -> List[str]:
+    """`queue_closed_stages` over *listed* — item number -> the first queue
+    listing it — rather than a queue folder."""
     out: List[str] = []
     for start, end, num in stage_sections(lines):
         stage = str(int(num))
@@ -10354,9 +10384,11 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
         s = int(stage)
         start, end, _ = stage_section(lines, stage)
         boxes = acceptance_boxes(lines, start, end)
+        # A box left to the queue PR's CI (issue #492) is no item's to close.
         unannotated = [i for i, at in enumerate(boxes, start=1)
                        if _CHECKBOX_RE.match(lines[at]).group("mark") == " "
-                       and (s, i) not in annotated]
+                       and (s, i) not in annotated
+                       and not queue_ci_box(lines, at, end)]
         reasons: List[str] = []
         if unannotated:
             waiting = [n for n in order
@@ -10388,10 +10420,14 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
         envs = sorted(n for n in env_items & stage_items
                       if n not in referenced)[stage_only:]
         if envs:
+            # The heading is the declaration (issue #493): an item that only
+            # reuses a row omits it, so both remedies are named.
             reasons.append("item(s) " + ", ".join(f"{n:03d}" for n in envs)
-                           + " declaring an environment-gated capability "
-                             "(## Environment / Hardware Dependencies) with no "
-                             "capability row")
+                           + " with an Environment / Hardware Dependencies "
+                             "section that no capability row's Introduced by "
+                             "cell references — an item only reusing a row "
+                             "deletes the section; one introducing a "
+                             "capability is owed a row naming it")
         reasons_by_stage[s] = reasons
         if reasons and s not in met:
             findings.append(SpecFinding(
@@ -10418,7 +10454,8 @@ def queue_end_findings(repo_root: Path, config: Dict[str, Dict[str, object]],
                 why = f"queue {number:03d} does not close stage {s}"
             elif not reasons_by_stage[s]:
                 why = (f"stage {s} has nothing left for it: every unticked "
-                       f"acceptance criterion is annotated by an item's AC, no "
+                       f"acceptance criterion is annotated by an item's AC "
+                       f"or left to the queue CI, no "
                        f"capability row it introduced is ❓ Unverified, and "
                        f"every item declaring an environment-gated capability "
                        f"has a row")
@@ -21363,6 +21400,37 @@ def _queue_branch_ci(repo_root: Path, config: Dict[str, Dict[str, object]],
     return fixing, ci_fix_rounds(lines, items)[0]
 
 
+def queue_ci_handoff(repo_root: Path, config: Dict[str, Dict[str, object]],
+                     ref: str, base: str, branch: str) -> List[Tuple[str, int]]:
+    """``(stage, criterion)`` per box still open and annotated *(evidence:
+    queue CI)* in a stage *branch*'s own queues close and whose deliverables
+    are all settled, read at *ref* (issue #492): the queue PR's green run is
+    its evidence, attested on the main branch after the merge. An item still
+    open there — held at a gate under an early ready, reopened by a fix
+    round — means the run is not the queue's last. Anything unreadable
+    answers none."""
+    items = _branch_queue_items(repo_root, config, ref, base, branch)
+    shown = git(["show", f"{ref}:./{_progress_rel(config)}"], repo_root,
+                check=False)
+    if not items or shown.returncode != 0:
+        return []
+    lines = shown.stdout.splitlines()
+    out: List[Tuple[str, int]] = []
+    # One "queue" for all the branch's own: every one of them lands with it.
+    for stage in closed_stages(lines, dict.fromkeys(items, 0), 0):
+        start, end, _ = stage_section(lines, stage)
+        section = [ln for ln in lines[start:end] if not _CHECKBOX_RE.match(ln)]
+        if any(ICON_TO_STATUS[_BULLET_RE.match(section[first]).group("icon")]
+               in _OPEN_STATUSES
+               for first, _ in _deliverable_bullet_spans(section)):
+            continue
+        for m, box in enumerate(acceptance_boxes(lines, start, end), start=1):
+            if (_CHECKBOX_RE.match(lines[box]).group("mark") == " "
+                    and queue_ci_box(lines, box, end)):
+                out.append((stage, m))
+    return out
+
+
 class StackBranch(NamedTuple):
     """One unmerged queue branch as `status` reports it (issue #303).
 
@@ -21379,7 +21447,8 @@ class StackBranch(NamedTuple):
     printed on a line of its own below the stack line, as is each of
     ``running``, a check still running beside a failed one. ``ci_rounds`` is the
     CI fix rounds its queues have begun, read for a draft or a failing PR
-    only, and printed below them when above 0 (issue #332).
+    only, and printed below them when above 0 (issue #332). ``queue_ci`` is
+    `queue_ci_handoff`'s, read for a green PR only, one line each.
     """
     name: str
     base: str
@@ -21391,6 +21460,7 @@ class StackBranch(NamedTuple):
     checks_why: Optional[str] = None
     ci_rounds: int = 0
     running: Tuple[str, ...] = ()
+    queue_ci: Tuple[Tuple[str, int], ...] = ()
 
 
 class StackFacts(NamedTuple):
@@ -21530,10 +21600,18 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
             return f.checks, tuple(f.failing), f.checks_why
         return ("unknown", (), why_not) if prs.get(b) == "unknown" else ("-", (), None)
 
+    # Asked of a green ready PR only (issue #492): its run is the evidence,
+    # and a draft's (a CI fix round) is not the last. An early ready is
+    # ready, so `queue_ci_handoff` itself skips a stage with an open item.
     branches = [StackBranch(b, bases.get(b) or "?", prs.get(b, "-"),
                             lowers[b], orphaned(b), *checks(b),
                             rounds.get(b, 0),
-                            tuple(facts[b].running) if b in facts else ())
+                            tuple(facts[b].running) if b in facts else (),
+                            tuple(queue_ci_handoff(
+                                repo_root, config, newest(b), str(bases[b]), b))
+                            if bases.get(b) and b in facts
+                            and facts[b].checks == "success"
+                            and facts[b].state != "draft" else ())
                 for b in order]
     cap, cap_problem = max_open_queues(config)
 
@@ -21820,6 +21898,11 @@ def cmd_status(args: argparse.Namespace) -> int:
             print(f"    checks unknown: {sb.checks_why}")
         if sb.ci_rounds:
             print(f"    ci fix rounds: {sb.ci_rounds}")
+        for stage, m in sb.queue_ci:
+            print(f"    queue ci attests: stage {stage} criterion {m} — after "
+                  f"the merge, on {config['git'].get('main_branch', 'main')}: "
+                  f"aide progress accept "
+                  f"{stage} --criterion {m} --evidence \"<CI run>\"")
     print(f"  runnable: {facts.runnable[0]} — {facts.runnable[1]}")
     print(f"  awaiting review: {facts.awaiting_review[0]} — "
           f"{facts.awaiting_review[1]}")
@@ -22268,7 +22351,10 @@ def build_parser() -> argparse.ArgumentParser:
             "Dependencies section and which no capability row covers \u2014 "
             "a row whose Introduced by cell references the item covers it, "
             "whatever stage the cell names, and each row naming the stage and "
-            "no item covers one more, lowest item number first. A queue-end "
+            "no item covers one more, lowest item number first. An "
+            "unticked box whose criterion carries `(evidence: queue CI)` is "
+            "the queue PR's CI to attest, not an item's, and is no need. "
+            "A queue-end "
             "item is one titled "
             "`Validate stage N`, and neither its own spec nor an excluded "
             "item's annotates anything here. The check warns when a stage "
@@ -22544,7 +22630,9 @@ def build_parser() -> argparse.ArgumentParser:
             "reword:  change a criterion's text in progress.md and roadmap.md, "
             "or in neither; where roadmap.md has no acceptance block for the "
             "stage, in progress.md alone; refuses over a ticked, annotated or "
-            "corrected box. `reword --item NNN --text TEXT` takes no stage and "
+            "corrected box; a box's `(evidence: queue CI)` declaration "
+            "records nothing, so it is no refusal and stays on the reworded "
+            "box. `reword --item NNN --text TEXT` takes no stage and "
             "instead rewrites the prose of the one deliverable bullet whose "
             "trailing marker names the item, whatever its status, keeping its "
             "icon and marker\n"
@@ -23765,7 +23853,15 @@ def register_git_subcommands(sub) -> None:
             "fix rounds the queues the branch carries have begun: the highest "
             "`[CI round N]` `aide progress reopen` stamped on a CI reopening "
             "of one of their items, read from the branch's own progress.md; "
-            "no line where none has begun. lower= is moved when the queue branch "
+            "no line where none has begun. Where checks= is success on a PR "
+            "marked ready, a "
+            "`queue ci attests:` line below it names each acceptance box "
+            "still open and annotated `(evidence: queue CI)` in a stage the "
+            "queues the branch carries close and whose deliverables are all "
+            "settled, read from the branch's own "
+            "progress.md, with the `aide progress accept` call that ticks it "
+            "on the main branch once the PR has merged. "
+            "lower= is moved when the queue branch "
             "below has commits this one lacks, so `aide queue restack` is due, "
             "and current when it has none; landed or gone when the recorded "
             "lower is no longer unmerged and is still a branch, or is not; - on a base "

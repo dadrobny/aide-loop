@@ -394,6 +394,14 @@ def test_ci_failure_carries_the_fix_rounds_begun_into_the_tail(capsys):
     assert "failing check: build" in out and "ci fix rounds: 2" in out
 
 
+def test_success_carries_the_queue_ci_hand_off_into_the_tail(capsys):
+    """#492: the stop report relays each criterion the green run attests."""
+    line = ('queue ci attests: stage 2 criterion 1 — after the merge, on main: '
+            'aide progress accept 2 --criterion 1 --evidence "<CI run>"')
+    code, _ = _poll([_stack("success", "#7/open", line)])
+    assert code == ar.CI_SUCCESS and line in capsys.readouterr().out
+
+
 def test_a_red_answer_waits_until_no_leg_is_still_running(capsys):
     """#332: a failure beside a running leg is not the answer — the leg may
     fail too, and its log cannot be read yet."""

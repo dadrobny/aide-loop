@@ -99,6 +99,8 @@ paths:
      - A box is ticked only by a human — or by an agent acting on a check it
        actually performed
      - A stage may be ✅ with an unticked box; say why in an annotation beside it
+     - A box whose evidence is the queue PR's own CI run says so with
+       `*(evidence: queue CI)*`, written when the criterion is
      - An Acceptance box is therefore an observable check **of the built thing**
      - A **measured outcome** the work aims for but cannot guarantee by
        construction (an error-rate target, a benchmark result) must NOT be an
@@ -214,6 +216,10 @@ when every stage it names is withdrawn, and is otherwise derived from the
 stages still in scope.
 
 **A stage may be ✅ with an unticked box; say why in an annotation beside it.**
+**A box whose evidence is the queue PR's own CI run says so with `*(evidence:
+queue CI)*`, written when the criterion is**: no item's validator ticks it,
+the queue-end item's included — the person merging the queue PR does, on the
+main branch once it has merged (§1 → `queue-NNN.md`).
 
 **What a box may claim.** Stage status tracks exactly one thing — the planned
 work shipped. **An Acceptance box is therefore an observable check of the built

@@ -198,7 +198,7 @@ This is the queue-end step `.aide/README.md` → *The queue-end step* defines
 
    | Code | `checks=` | Do |
    |---|---|---|
-   | 0 | `success` | Report CI green, and stop for the merge — under `/aide-run-roadmap`, go back to its **Queue end** for the stack decision. |
+   | 0 | `success` | Report CI green, relay each `queue ci attests:` line from the tail verbatim — the `aide progress accept` call the person merging runs on the main branch once merged — and stop for the merge; under `/aide-run-roadmap`, go back to its **Queue end** for the stack decision. |
    | 10 | `failure` | Every leg has finished (the poll waits out each `pending check:`). Report each `failing check:` line from the tail, then run the **CI fix round** below — unless this was an early ready (step 6). |
    | 11 | `none` | Report that no CI ran on the PR: no workflow, or a trigger that ignores it (`.aide/README.md` names the trigger to use). |
    | 12 | `unknown` | Report the `checks unknown:` reason and stop. |

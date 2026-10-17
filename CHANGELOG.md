@@ -136,6 +136,47 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.53.0] — 2026-10-16
+
+### Added
+
+- **A stage criterion the queue PR's own CI attests: `*(evidence: queue
+  CI)*` (issue #492).** The queue-end step starts once the queue-end item
+  has merged, and `aide queue ready` starts the PR's first CI run, so a
+  criterion such as "passes locally and in CI" had nothing to cite while
+  the item ran, and nothing went back to the box afterwards. The annotation,
+  written on the box in `progress.md` (those words, any letter case,
+  emphasis optional; a wrapped box is read whole), declares the box the
+  queue CI's: `aide check --queue` no longer counts it as a criterion
+  needing a queue-end item. Where a queue PR marked ready has `checks=`
+  success, `aide status` prints a `queue ci attests:` line under its stack
+  line for each such box still open in a stage the branch's queues close
+  and whose deliverables are all settled there (a run made while an item is
+  still open, under an early ready or a CI fix round, is not the last),
+  with the `aide progress accept <stage> --criterion <M> --evidence "<CI run>"` call; the
+  person merging runs it on `main_branch` after the merge, so no tick is
+  pushed to the green branch and no second CI run is needed. `await_run.py`
+  carries the line into the wait's tail, and the queue-end step
+  (`.aide/README.md`, `/aide-run-queue`, `/aide-run-roadmap`) relays it in
+  the stop report. `aide progress reword` takes such a box — the
+  declaration records nothing — and keeps the declaration on it. §1 →
+  `queue-NNN.md` and → `progress.md`, the
+  `aide-progress-file` skill, `aide check -h` and `aide status -h` state it.
+
+### Fixed
+
+- **An item reusing an existing capability row omits its Environment /
+  Hardware Dependencies section, and the finding says so (issue #493).** §1
+  → environment-gated capabilities now says the section is the declaration
+  that an item introduces a capability, so an item only reusing one already
+  in the table omits it and may say so in its Assumptions. The
+  `queue-end-needed` reason no longer claims there is "no capability row":
+  it names the items whose section no row's Introduced by cell references,
+  and both remedies — delete the section from an item only reusing a row,
+  or a row naming an item that introduces one. The item template's guidance
+  for the section and the `aide-item-specs` skill point at the rule; the
+  item template's version is unmoved, since only guidance changed.
+
 ## [2.52.2] — 2026-10-14
 
 ### Fixed

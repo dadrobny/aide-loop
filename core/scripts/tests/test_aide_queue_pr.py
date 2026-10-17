@@ -289,6 +289,57 @@ def test_status_reads_pending_and_success(tmp_path: Path, monkeypatch, capsys):
     assert _status_stack(repo, capsys)[0]["checks"] == "success"
 
 
+def test_a_green_queue_pr_hands_off_its_queue_ci_criteria(
+        tmp_path: Path, monkeypatch, capsys):
+    """Issue #492: on success, each still-open *(evidence: queue CI)* box of a
+    stage the queue closes is named with the accept call for after the merge;
+    an unannotated box, a ticked one, a box of a stage no queue on the branch
+    closes, a stage with an item still open, a pending PR and a draft are
+    not."""
+    repo = _init(tmp_path)
+    _start(repo, 1)
+    _plan(repo, 1, "### Item 001: Alpha\n\n### Item 002: Beta\n")
+    text = PROGRESS.format(icon="✅", trail="").replace("- 📋 Beta.", "- ✅ Beta.")
+    full = (text + "\n**Acceptance.**\n- [ ] Unannotated.\n"
+            "- [x] Done. *(evidence: queue CI)* *(run 1)*\n"
+            "- [ ] Passes in CI. *(evidence: queue CI)*\n"
+            "\n## Stage 2 — Two — 📋\n\n**Deliverables.**\n- 📋 Gamma. *(Item 003)*\n"
+            "\n**Acceptance.**\n- [ ] Not this queue's. *(evidence: queue CI)*\n")
+    progress = repo / "docs" / "aide" / "progress.md"
+    # An early ready: ready and green while Beta is still to land.
+    progress.write_text(full.replace("- ✅ Beta.", "- 📋 Beta."), encoding="utf-8")
+    _commit(repo, "progress")
+
+    def handoff() -> List[str]:
+        capsys.readouterr()
+        assert aide.main(["--repo", str(repo), "status", "--no-fetch"]) == 0
+        return [l.strip() for l in capsys.readouterr().out.splitlines()
+                if l.strip().startswith("queue ci attests:")]
+
+    green = [_run_check("build", "COMPLETED", "SUCCESS")]
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN",
+                               "statusCheckRollup": green}]})
+    assert handoff() == []              # an item still open: not the last run
+    progress.write_text(full, encoding="utf-8")
+    _commit(repo, "Beta lands")
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup":
+                               [_run_check("build", "IN_PROGRESS")]}]})
+    assert handoff() == []
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "isDraft": True,
+                               "statusCheckRollup": green}]})
+    assert handoff() == []              # a draft's green run is not the last
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN",
+                               "statusCheckRollup": green}]})
+    # Stage 2's box is not listed: no queue on the branch closes stage 2.
+    assert handoff() == [
+        "queue ci attests: stage 1 criterion 3 — after the merge, on main: "
+        'aide progress accept 1 --criterion 3 --evidence "<CI run>"']
+    # The call it names ticks the box, the declaration kept beside the run.
+    lines, _ = aide.accept_criteria(text + "\n- [ ] Passes in CI. *(evidence: "
+                                    "queue CI)*\n", "1", [1], "CI run 9")
+    assert "- [x] Passes in CI. *(evidence: queue CI)* *(CI run 9)*" in lines
+
+
 def test_checks_are_unknown_with_the_reason_where_the_forge_cannot_be_asked(
         tmp_path: Path, monkeypatch, capsys):
     repo = _init(tmp_path)

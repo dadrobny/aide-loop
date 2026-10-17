@@ -146,6 +146,8 @@ paths:
      - The queue-end item's Implementation Steps must add/update the row(s)
        for any capability its stage introduced
      - Both mechanisms are opt-in
+     - an item that only reuses a capability already in the table omits it,
+       and may say so in its Assumptions
      - the queue that closes it ends with a `Validate stage N` item that
        replays the stage's use cases end-to-end and updates the capability
        table
@@ -367,8 +369,10 @@ never silently pass as if exercised) when the dependency is absent. That
 graceful-fallback bar is enough for a stage to reach ✅ under the rollup rule,
 so two additive mechanisms record whether the gated path was ever run for
 real — the item template's optional **Environment / Hardware Dependencies**
-section, naming the package or tool, its declaration and the required fallback;
-and `progress.md`'s optional verification table, one row per capability,
+section, naming the package or tool, its declaration and the required fallback
+— it declares that the item introduces a capability, so **an item that only
+reuses a capability already in the table omits it, and may say so in its
+Assumptions**; and `progress.md`'s optional verification table, one row per capability,
 starting `❓ Unverified` and flipped to `✅ Verified (date)` only when
 something that actually has the dependency has run the gated path, **never
 inferred from the stage's own ✅ status**. **The queue-end item's

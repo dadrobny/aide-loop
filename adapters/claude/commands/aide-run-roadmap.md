@@ -285,7 +285,10 @@ declared (`[git] ci = "none"`), and with no forge at all (`local` mode,
 `[git] forge = "none"`, or no remote named origin) where `aide queue ready`
 refused for that. Anything else,
 and an early ready above all (a gate still holds items of this queue), is a
-**stop**: report the answer and the batches awaiting review.
+**stop**: report the answer and the batches awaiting review. A green
+answer's `queue ci attests:` lines go into whichever report this run ends
+with, beside their batch: each is the `aide progress accept` call the person
+merging that PR runs once it has merged.
 
 Then ask the engine whether another queue may start on top of this one:
 `python .aide/scripts/aide.py queue start <NNN+1> --base <prefix>queue-NNN
