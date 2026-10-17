@@ -2271,6 +2271,9 @@ _RETRACTED_PREFIX = "retracted: "
 #: stopped at the first `)` and then matched nothing at all, so the guard
 #: opened on exactly the annotations most worth keeping (#143).
 _ACCEPT_EVIDENCE_RE = re.compile(r"\*\(.*\)\*\s*$")
+#: The *(evidence: queue CI)* declaration (§1 → queue-NNN.md) closing a box.
+_QUEUE_CI_TAIL_RE = re.compile(r"\*?\(evidence:\s*queue\s+CI\)\*?\s*$",
+                               re.IGNORECASE)
 
 
 #: A continuation line of a wrapped box: indented, non-blank, and not a bullet
@@ -2451,7 +2454,11 @@ def reword_criterion(text: str, stage: str, n: int, new_text: str) -> Tuple[str,
             f"Stage {stage} criterion {n} is ticked; its wording is what an "
             f"attestation was made against. Retract it first (`aide progress "
             f"retract`) if the criterion itself was wrong")
-    annotation = _ACCEPT_EVIDENCE_RE.search(body)
+    # *(evidence: queue CI)* declares who attests, records nothing (issue
+    # #492): it is no annotation here, and the rewording keeps it.
+    declared = _QUEUE_CI_TAIL_RE.search(body)
+    annotation = _ACCEPT_EVIDENCE_RE.search(
+        body[:declared.start()] if declared else body)
     if annotation:
         raise ValueError(
             f"Stage {stage} criterion {n} carries an annotation "
@@ -2462,6 +2469,8 @@ def reword_criterion(text: str, stage: str, n: int, new_text: str) -> Tuple[str,
             f"Stage {stage} criterion {n} carries a correction trail, so "
             f"something has already been recorded against this wording")
     old = body.strip()
+    if declared and not _QUEUE_CI_RE.search(new_text):
+        new_text = new_text.strip() + " *(evidence: queue CI)*"
     lines[box] = m.group("pre") + m.group("mark") + "] " + new_text.strip()
     del lines[box + 1:last + 1]
     return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""), old)
@@ -22621,7 +22630,9 @@ def build_parser() -> argparse.ArgumentParser:
             "reword:  change a criterion's text in progress.md and roadmap.md, "
             "or in neither; where roadmap.md has no acceptance block for the "
             "stage, in progress.md alone; refuses over a ticked, annotated or "
-            "corrected box. `reword --item NNN --text TEXT` takes no stage and "
+            "corrected box; a box's `(evidence: queue CI)` declaration "
+            "records nothing, so it is no refusal and stays on the reworded "
+            "box. `reword --item NNN --text TEXT` takes no stage and "
             "instead rewrites the prose of the one deliverable bullet whose "
             "trailing marker names the item, whatever its status, keeping its "
             "icon and marker\n"

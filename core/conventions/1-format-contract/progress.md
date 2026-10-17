@@ -189,7 +189,9 @@ Three verbs, and **none of them edits the original line**, their flags in
 - **`reword` is the one amendment that edits rather than appends**, and it is
   safe for exactly one reason: nothing has been claimed yet. It **refuses over
   a box that is ticked, annotated, or already carries a correction trail** —
-  the precondition is mechanical, so no role has to remember it.
+  the precondition is mechanical, so no role has to remember it. A box's
+  `*(evidence: queue CI)*` declaration says who attests and records nothing,
+  so it is no refusal, and the reworded box keeps it.
 
 **`reword` writes both documents or neither wherever `roadmap.md` mirrors the
 stage.** `roadmap.md` mirrors a stage's criteria, so a rewording that lands in

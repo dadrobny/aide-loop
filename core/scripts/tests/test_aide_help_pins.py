@@ -1102,6 +1102,10 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          ("test_aide_acceptance_amend::test_reword_refuses_a_ticked_criterion",
           "test_aide_acceptance_amend::test_reword_refuses_an_annotated_criterion_even_once_unticked",
           "test_aide_acceptance_amend::test_reword_refuses_a_criterion_carrying_a_correction_trail")),
+        # `_QUEUE_CI_TAIL_RE` in `reword_criterion` (issue #492).
+        ("a box's `(evidence: queue CI)` declaration records nothing, so it is "
+         "no refusal and stays on the reworded box",
+         "test_aide_acceptance_amend::test_reword_keeps_a_queue_ci_declaration"),
         # The bullet form (issue #320): `reword_deliverable` finds the bullet
         # by `_bullet_marker_item_numbers`, and has no status check at all.
         ("rewrites the prose of the one deliverable bullet whose trailing "

@@ -158,7 +158,9 @@ instead — that is the bump policy above, and it is enforced by
   pushed to the green branch and no second CI run is needed. `await_run.py`
   carries the line into the wait's tail, and the queue-end step
   (`.aide/README.md`, `/aide-run-queue`, `/aide-run-roadmap`) relays it in
-  the stop report. §1 → `queue-NNN.md` and → `progress.md`, the
+  the stop report. `aide progress reword` takes such a box — the
+  declaration records nothing — and keeps the declaration on it. §1 →
+  `queue-NNN.md` and → `progress.md`, the
   `aide-progress-file` skill, `aide check -h` and `aide status -h` state it.
 
 ### Fixed

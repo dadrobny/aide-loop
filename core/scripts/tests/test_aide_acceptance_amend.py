@@ -165,6 +165,26 @@ def test_reword_refuses_an_annotated_criterion_even_once_unticked():
         aide.reword_criterion(out, "1", 1, "something else")
 
 
+def test_reword_keeps_a_queue_ci_declaration():
+    """Issue #492: the declaration says who attests and records nothing, so
+    it neither refuses the rewording nor is lost by it; an attestation after
+    it still refuses."""
+    seeded = PROGRESS.replace(
+        "- [ ] The CLI reports a non-zero exit on failure.",
+        "- [ ] The CLI reports a non-zero exit on failure. *(evidence: queue CI)*")
+    out, old = aide.reword_criterion(seeded, "1", 2, "Exits non-zero in CI.")
+    assert old.endswith("*(evidence: queue CI)*")
+    assert "- [ ] Exits non-zero in CI. *(evidence: queue CI)*" in out.splitlines()
+    out, _ = aide.reword_criterion(seeded, "1", 2,
+                                   "Exits non-zero. *(Evidence: queue CI)*")
+    assert "- [ ] Exits non-zero. *(Evidence: queue CI)*" in out.splitlines()
+    with pytest.raises(ValueError, match="carries an annotation"):
+        aide.reword_criterion(
+            seeded.replace("*(evidence: queue CI)*",
+                           "*(evidence: queue CI)* *(retracted: misread)*"),
+            "1", 2, "something else")
+
+
 def test_reword_refuses_a_criterion_carrying_a_correction_trail():
     seeded = PROGRESS.replace(
         "- [ ] The CLI reports a non-zero exit on failure.",
