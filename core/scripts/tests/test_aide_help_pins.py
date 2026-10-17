@@ -2323,9 +2323,9 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "reopen` stamped on a CI reopening of one of their items, read from "
          "the branch's own progress.md; no line where none has begun",
          "test_aide_queue_pr::test_a_draft_or_failing_pr_names_the_ci_fix_rounds_begun"),
-        # `queue_ci_handoff`, asked only where checks= is success; one line
-        # each in `cmd_status` (issue #492).
-        ("Where checks= is success, a `queue ci attests:` line below it names "
+        # `queue_ci_handoff`, asked only where checks= is success on a ready
+        # PR; one line each in `cmd_status` (issue #492).
+        ("Where checks= is success on a PR marked ready, a `queue ci attests:` line below it names "
          "each acceptance box still open and annotated `(evidence: queue CI)` "
          "in a stage the queues the branch carries close, read from the "
          "branch's own progress.md, with the `aide progress accept` call that "

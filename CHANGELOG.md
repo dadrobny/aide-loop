@@ -148,7 +148,8 @@ instead — that is the bump policy above, and it is enforced by
   written on the box in `progress.md` (those words, any letter case,
   emphasis optional; a wrapped box is read whole), declares the box the
   queue CI's: `aide check --queue` no longer counts it as a criterion
-  needing a queue-end item. Where a queue PR's `checks=` is success, `aide
+  needing a queue-end item. Where a queue PR marked ready has `checks=`
+  success (a draft's green run, after an early ready, is not the last), `aide
   status` prints a `queue ci attests:` line under its stack line for each
   such box still open in a stage the branch's queues close, with the `aide
   progress accept <stage> --criterion <M> --evidence "<CI run>"` call; the

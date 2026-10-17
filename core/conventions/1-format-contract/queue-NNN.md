@@ -58,10 +58,10 @@ one, `aide check` and `aide queue tidy` keep its declared status honest, and
   words, any letter case, emphasis optional. No item attests it: the
   queue-end item leaves the box open, and the box is no reason to plan one.
   The person merging the queue PR attests it, on `main_branch` after the
-  merge, citing the green run: once the PR's checks are green, `aide status`
-  names each such box still open in a stage the queue closes, with the
-  `aide progress accept` call, and the queue-end step relays that list in
-  its stop report. *(aide check, status, queue-end step)*
+  merge, citing the green run: once the PR is marked ready and its checks
+  are green, `aide status` names each such box still open in a stage the
+  queue closes, with the `aide progress accept` call, and the queue-end step
+  relays that list in its stop report. *(aide check, status, queue-end step)*
 
 #### Rationale
 

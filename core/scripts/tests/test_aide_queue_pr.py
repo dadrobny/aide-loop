@@ -293,7 +293,8 @@ def test_a_green_queue_pr_hands_off_its_queue_ci_criteria(
         tmp_path: Path, monkeypatch, capsys):
     """Issue #492: on success, each still-open *(evidence: queue CI)* box of a
     stage the queue closes is named with the accept call for after the merge;
-    an unannotated box, a ticked one and a pending PR are not."""
+    an unannotated box, a ticked one, a box of a stage no queue on the branch
+    closes, a pending PR and a draft are not."""
     repo = _init(tmp_path)
     _start(repo, 1)
     _plan(repo, 1, "### Item 001: Alpha\n\n### Item 002: Beta\n")
@@ -301,7 +302,10 @@ def test_a_green_queue_pr_hands_off_its_queue_ci_criteria(
     (repo / "docs" / "aide" / "progress.md").write_text(
         text + "\n**Acceptance.**\n- [ ] Unannotated.\n"
         "- [x] Done. *(evidence: queue CI)* *(run 1)*\n"
-        "- [ ] Passes in CI. *(evidence: queue CI)*\n", encoding="utf-8")
+        "- [ ] Passes in CI. *(evidence: queue CI)*\n"
+        "\n## Stage 2 — Two — 📋\n\n**Deliverables.**\n- 📋 Gamma. *(Item 003)*\n"
+        "\n**Acceptance.**\n- [ ] Not this queue's. *(evidence: queue CI)*\n",
+        encoding="utf-8")
     _commit(repo, "progress")
 
     def handoff() -> List[str]:
@@ -315,6 +319,13 @@ def test_a_green_queue_pr_hands_off_its_queue_ci_criteria(
     assert handoff() == []
     _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup":
                                [_run_check("build", "COMPLETED", "SUCCESS")]}]})
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "isDraft": True,
+                               "statusCheckRollup":
+                               [_run_check("build", "COMPLETED", "SUCCESS")]}]})
+    assert handoff() == []              # a draft's green run is not the last
+    _forge(monkeypatch, {Q1: [{"number": 7, "state": "OPEN", "statusCheckRollup":
+                               [_run_check("build", "COMPLETED", "SUCCESS")]}]})
+    # Stage 2's box is not listed: no queue on the branch closes stage 2.
     assert handoff() == [
         "queue ci attests: stage 1 criterion 3 — after the merge, on main: "
         'aide progress accept 1 --criterion 3 --evidence "<CI run>"']

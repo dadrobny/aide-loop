@@ -21583,7 +21583,8 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
             return f.checks, tuple(f.failing), f.checks_why
         return ("unknown", (), why_not) if prs.get(b) == "unknown" else ("-", (), None)
 
-    # Asked of a green PR only (issue #492): its run is the evidence.
+    # Asked of a green ready PR only (issue #492): its run is the evidence,
+    # and a draft's green run (an early ready, a fix round) is not the last.
     branches = [StackBranch(b, bases.get(b) or "?", prs.get(b, "-"),
                             lowers[b], orphaned(b), *checks(b),
                             rounds.get(b, 0),
@@ -21591,7 +21592,8 @@ def queue_stack_facts(repo_root: Path, config: Dict[str, Dict[str, object]],
                             tuple(queue_ci_handoff(
                                 repo_root, config, newest(b), str(bases[b]), b))
                             if bases.get(b) and b in facts
-                            and facts[b].checks == "success" else ())
+                            and facts[b].checks == "success"
+                            and facts[b].state != "draft" else ())
                 for b in order]
     cap, cap_problem = max_open_queues(config)
 
@@ -23831,7 +23833,8 @@ def register_git_subcommands(sub) -> None:
             "fix rounds the queues the branch carries have begun: the highest "
             "`[CI round N]` `aide progress reopen` stamped on a CI reopening "
             "of one of their items, read from the branch's own progress.md; "
-            "no line where none has begun. Where checks= is success, a "
+            "no line where none has begun. Where checks= is success on a PR "
+            "marked ready, a "
             "`queue ci attests:` line below it names each acceptance box "
             "still open and annotated `(evidence: queue CI)` in a stage the "
             "queues the branch carries close, read from the branch's own "
