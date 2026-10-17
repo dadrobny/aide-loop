@@ -178,11 +178,17 @@ def test_reword_keeps_a_queue_ci_declaration():
     out, _ = aide.reword_criterion(seeded, "1", 2,
                                    "Exits non-zero. *(Evidence: queue CI)*")
     assert "- [ ] Exits non-zero. *(Evidence: queue CI)*" in out.splitlines()
-    with pytest.raises(ValueError, match="carries an annotation"):
-        aide.reword_criterion(
-            seeded.replace("*(evidence: queue CI)*",
-                           "*(evidence: queue CI)* *(retracted: misread)*"),
-            "1", 2, "something else")
+    # Wherever it sits, whatever its emphasis: kept, never silently dropped.
+    for form in ("*(evidence: queue CI)*.", "_(evidence: queue CI)_",
+                 "*(evidence: queue CI)* in the end", "\n  *(evidence: queue CI)*"):
+        out, _ = aide.reword_criterion(
+            seeded.replace("*(evidence: queue CI)*", form), "1", 2, "New.")
+        assert "- [ ] New. *(evidence: queue CI)*" in out.splitlines()
+    for tail in ("*(evidence: queue CI)* *(retracted: misread)*",
+                 "*(validator: ok)* *(evidence: queue CI)*"):
+        with pytest.raises(ValueError, match="carries an annotation"):
+            aide.reword_criterion(
+                seeded.replace("*(evidence: queue CI)*", tail), "1", 2, "x")
 
 
 def test_reword_refuses_a_criterion_carrying_a_correction_trail():

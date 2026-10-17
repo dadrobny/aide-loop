@@ -2271,9 +2271,10 @@ _RETRACTED_PREFIX = "retracted: "
 #: stopped at the first `)` and then matched nothing at all, so the guard
 #: opened on exactly the annotations most worth keeping (#143).
 _ACCEPT_EVIDENCE_RE = re.compile(r"\*\(.*\)\*\s*$")
-#: The *(evidence: queue CI)* declaration (§1 → queue-NNN.md) closing a box.
-_QUEUE_CI_TAIL_RE = re.compile(r"\*?\(evidence:\s*queue\s+CI\)\*?\s*$",
-                               re.IGNORECASE)
+#: The *(evidence: queue CI)* declaration (§1 → queue-NNN.md) wherever it
+#: sits in a box, with whatever emphasis.
+_QUEUE_CI_ANY_RE = re.compile(r"[*_]*\(evidence:\s*queue\s+CI\)[*_]*",
+                              re.IGNORECASE)
 
 
 #: A continuation line of a wrapped box: indented, non-blank, and not a bullet
@@ -2456,9 +2457,8 @@ def reword_criterion(text: str, stage: str, n: int, new_text: str) -> Tuple[str,
             f"retract`) if the criterion itself was wrong")
     # *(evidence: queue CI)* declares who attests, records nothing (issue
     # #492): it is no annotation here, and the rewording keeps it.
-    declared = _QUEUE_CI_TAIL_RE.search(body)
-    annotation = _ACCEPT_EVIDENCE_RE.search(
-        body[:declared.start()] if declared else body)
+    declared = _QUEUE_CI_ANY_RE.search(body)
+    annotation = _ACCEPT_EVIDENCE_RE.search(_QUEUE_CI_ANY_RE.sub("", body))
     if annotation:
         raise ValueError(
             f"Stage {stage} criterion {n} carries an annotation "
