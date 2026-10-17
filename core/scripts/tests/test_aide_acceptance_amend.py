@@ -252,6 +252,9 @@ def test_reword_leaves_the_queue_ci_declaration_off_the_roadmap():
         ROADMAP, "1", 2, "Exits non-zero *(evidence: queue CI)* in CI.", 2)
     assert err is None
     assert "- Exits non-zero in CI." in out.splitlines()
+    # Text without it is written as given, inner spacing and all.
+    out, _ = aide.reword_roadmap_bullet(ROADMAP, "1", 2, "Runs `a  b`.", 2)
+    assert "- Runs `a  b`." in out.splitlines()
 
 
 def test_reword_consumes_every_line_of_a_wrapped_roadmap_bullet():

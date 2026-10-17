@@ -2622,8 +2622,11 @@ def reword_roadmap_bullet(text: str, stage: str, n: int, new_text: str,
     i = bullets[n - 1]
     m = re.match(r"^(?P<pre>\s*[-*]\s+)(?P<body>.*)$", lines[i])
     # The queue-CI declaration belongs on the progress.md box alone (§1 →
-    # queue-NNN.md, issue #496).
-    lines[i] = m.group("pre") + " ".join(_QUEUE_CI_ANY_RE.sub("", new_text).split())
+    # queue-NNN.md, issue #496); only the gap it leaves is closed up.
+    cleaned = _QUEUE_CI_ANY_RE.sub("", new_text)
+    if cleaned != new_text:
+        new_text = re.sub(r"[ \t]{2,}", " ", cleaned)
+    lines[i] = m.group("pre") + new_text.strip()
     # A wrapped bullet is its first line plus every indented non-bullet line
     # under it, the shape `acceptance_box_last` reads on the progress side —
     # replace them all, or the old wording's tail stays under the new text
