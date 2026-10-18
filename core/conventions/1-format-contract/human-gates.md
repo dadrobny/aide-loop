@@ -86,6 +86,7 @@ raised wherever it is noticed, recorded in one place.
 that a decision is needed adds the row and says so. No agent runs `aide gate
 approve`/`decline` on its own judgement, only at a person's explicit word for
 that gate, and a runtime that can ask the person to confirm the command does so.
+An unattended role has no such word, so it never runs either verb.
 
 **Three things stop the loop for a person, and only one is a row.**
 
@@ -240,8 +241,7 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   that layer it ran with no confirmation at all. What the rule protects is
   that the decision is the person's, not who types the command. A refusal
   blocks the person's own instruction; a confirmation prompt at the moment of
-  running is how their word is checked against the gate it names. An
-  unattended role, which no person's word reaches, still never runs the verb.
+  running is how their word is checked against the gate it names.
 - **Why the queue-end merge is never a gate row.** A row blocks items, and a
   built-out queue has none left to block. What its review bounds is rework:
   a queue built on one a person has not accepted is wasted if that one is

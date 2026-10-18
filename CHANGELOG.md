@@ -147,7 +147,8 @@ instead — that is the bump policy above, and it is enforced by
   and otherwise it ran with no confirmation. The rule now reads: no agent
   runs either verb on its own judgement, only at a person's explicit word
   for that gate, and a runtime that can ask the person to confirm the
-  command does so. `AGENT-CONTEXT.md`, the `aide-human-gates` skill and the
+  command does so; an unattended role has no such word, so it never runs
+  either verb. `AGENT-CONTEXT.md`, the `aide-human-gates` skill and the
   interactive commands and skills (`/aide-run-item`, `/aide-run-queue`,
   `/aide-run-roadmap`, `/aide-spec-queue`, `/aide-feedback-loop`) say "on
   your own judgement" where they said "never"; the unattended roles
@@ -165,8 +166,10 @@ instead — that is the bump policy above, and it is enforced by
   `.aide/scripts/aide.py gate approve|decline` — and an ask wins over the
   broad allow rules. The command-hygiene hook answers `ask` for the shapes a
   prefix rule cannot name: another interpreter (`py`, an absolute path),
-  `--repo` or other options before the verb, a pipe or `sh -c`. A hygiene
-  violation is still bounced first. A consumer sees a permission prompt on
+  `--repo` or other options before the verb, a Windows backslash path, a
+  pipe, a `$(…)`, `sh -c`, a wrapper such as `time` or `timeout`. It is not a
+  shell parser, so a command inside a double-quoted `"$(…)"` is missed there
+  and left to the `ask` entries. A hygiene violation is still bounced first. A consumer sees a permission prompt on
   each gate resolution, raised in the main session even when a sub-agent
   ran it; in a mode that denies whatever would prompt, the command is
   denied. A consumer whose `settings.json` is kept without an overlay gets

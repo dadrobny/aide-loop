@@ -66,6 +66,7 @@ paths:
      - A stage not yet written, or with nothing queued, is not spent
      - Resolving is a CLI operation, never a hand edit
      - only at a person's explicit word for that gate
+     - An unattended role has no such word, so it never runs either verb
      - Cite a gate by its ID, never by its position
      - The Gate cell is the gate's identity
      - The plan gate is raised by `aide queue gate`
@@ -170,3 +171,4 @@ Adding any other row is a hand edit because it has no verb. Everything after it 
 **resolving is a CLI operation, never a hand edit** (`aide gate approve`
 and `decline`, which write the decision's evidence to the trail), and no agent
 runs it on its own judgement, only at a person's explicit word for that gate.
+An unattended role has no such word, so it never runs either verb.

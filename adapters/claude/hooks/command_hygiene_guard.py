@@ -635,6 +635,19 @@ _AIDE_VALUE_OPTS = ("--repo", "--evidence", "--reason", "--text")
 #: list, approve, decline, reword). Listing or rewording one is not a decision.
 _RESOLVING = frozenset({"approve", "decline"})
 
+#: What runs the next word as a command: a reserved word that opens a body
+#: (``then``, ``do``, ``{``, ``!`` …) or a wrapper that execs its argument.
+#: ``timeout`` takes its duration first, and a wrapper's own options are
+#: skipped (`_WRAPPER_VALUE_OPTS` names the ones that take a value).
+_COMMAND_PREFIXES = frozenset({"then", "do", "else", "elif", "if", "while",
+                               "until", "{", "!", "time", "nohup", "nice",
+                               "timeout", "xargs", "stdbuf", "builtin"})
+
+#: Wrapper options whose value is the next argument (``nice -n 5``,
+#: ``xargs -I {}``, ``env -u NAME``, ``timeout -s KILL``).
+_WRAPPER_VALUE_OPTS = frozenset({"-n", "-I", "-u", "-s", "-k", "-P", "-L",
+                                 "-d", "-a", "-E"})
+
 #: A segment separator for `gate_resolutions`: shell operators and the
 #: substitution openers, tokenised by `shlex` as punctuation or singletons.
 _SEPARATORS = frozenset({"|", "||", "&", "&&", ";", ";;", "(", ")", "$", "`",
@@ -671,12 +684,18 @@ def _resolves_a_gate(argv, depth=0):
     ``gate decline``, by any interpreter, or a shell's ``-c`` string that
     does."""
     i = 0
-    while i < len(argv) and re.match(r"[A-Za-z_][A-Za-z0-9_]*=", argv[i]):
-        i += 1  # VAR=value prefixes
-    if i < len(argv) and argv[i] in ("env", "exec", "command"):
-        i += 1
-        while i < len(argv) and re.match(r"[A-Za-z_][A-Za-z0-9_]*=", argv[i]):
+    while i < len(argv):
+        word = argv[i]
+        if re.match(r"[A-Za-z_][A-Za-z0-9_]*=", word):
+            i += 1  # VAR=value prefixes
+        elif word in _COMMAND_PREFIXES or word in ("env", "exec", "command"):
             i += 1
+            while i < len(argv) and argv[i].startswith("-") and argv[i] != "-":
+                i += 2 if argv[i] in _WRAPPER_VALUE_OPTS else 1
+            if word == "timeout" and i < len(argv):
+                i += 1  # the duration
+        else:
+            break
     if i >= len(argv):
         return False
     head = _basename(argv[i])
@@ -707,8 +726,13 @@ def _segments(text):
     ``ValueError`` on an unbalanced quote, which the caller treats as no
     opinion."""
     text = text.replace("\\\n", " ").replace("\n", " ; ").replace("`", " ; ")
+    # A backslash before anything but a quote is a path separator here
+    # (``.venv\Scripts\python.exe``), which posix mode would eat; doubled,
+    # it survives as one.
+    text = re.sub(r"\\(?![\"'])", r"\\\\", text)
     lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
+    lexer.commenters = ""  # `#` in a URL or an issue anchor is not a comment
     segments, current = [], []
     for token in lexer:
         if token in _SEPARATORS or set(token) <= set("();<>|&"):
@@ -730,7 +754,14 @@ def gate_resolutions(cmd):
     verb. Heredoc bodies are data and are blanked first; a quoted string is
     one argument, so ``echo "aide.py gate approve"`` names no command. An
     unparseable command (an unbalanced quote) is False: fail-open, and the
-    settings ``ask`` entries still see its plain shapes."""
+    settings ``ask`` entries still see its plain shapes.
+
+    Not a shell parser: a command inside a double-quoted ``"$(…)"`` is one
+    argument here and is missed, as is any wrapper outside
+    `_COMMAND_PREFIXES`. The settings ``ask`` entries, which the runtime
+    matches on every subcommand it splits out, are the floor under it."""
+    if "aide.py" not in cmd.lower():
+        return False  # the cheap case: almost every Bash call
     data = _blank_spans(cmd, [(s, e) for s, e, _ in _heredoc_body_spans(cmd)])
     try:
         segments = _segments(data)
@@ -741,9 +772,9 @@ def gate_resolutions(cmd):
 
 #: Why the person is asked — ASCII only, so no console codepage can mangle it.
 GATE_ASK_REASON = (
-    "This resolves a human gate. Only a person resolves one (conventions "
-    "section 1, human gates): approve only if you told the agent to, for "
-    "this gate."
+    "This command resolves a human gate, and only a person resolves one "
+    "(conventions section 1, human gates). Allow it only if you told the "
+    "agent to approve or decline this gate."
 )
 
 

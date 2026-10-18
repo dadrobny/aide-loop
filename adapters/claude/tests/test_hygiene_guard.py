@@ -627,6 +627,17 @@ def _hook(cmd, monkeypatch, capsys):
     "python -X utf8 .aide/scripts/aide.py gate approve 2",
     "python .aide/scripts/aide.py gate list | python .aide/scripts/aide.py gate approve 2",
     "sh -c 'python .aide/scripts/aide.py gate approve 2'",
+    r".venv\Scripts\python.exe .aide\scripts\aide.py gate approve 2",
+    "gh issue view 494#issuecomment-1 | python .aide/scripts/aide.py gate approve 2",
+    "time python .aide/scripts/aide.py gate approve 2",
+    "timeout 30 python .aide/scripts/aide.py gate decline 2",
+    "nohup python .aide/scripts/aide.py gate approve 2",
+    "env -i python .aide/scripts/aide.py gate approve 2",
+    "xargs -I {} python .aide/scripts/aide.py gate approve {}",
+    "if true\nthen python .aide/scripts/aide.py gate approve 2\nfi",
+    "{ python .aide/scripts/aide.py gate approve 2\n}",
+    "x=$(python .aide/scripts/aide.py gate approve 2)",
+    "echo `python .aide/scripts/aide.py gate approve 2`",
 ])
 def test_a_gate_resolution_is_asked_about(cmd, monkeypatch, capsys):
     import json
@@ -650,6 +661,10 @@ def test_a_gate_resolution_is_asked_about(cmd, monkeypatch, capsys):
     "grep -n 'gate approve' docs/aide/progress.md",
     "git commit -F - <<'EOF'\nsubject\n\npython .aide/scripts/aide.py gate approve 2\nEOF",
     "python -c 'print(1)' .aide/scripts/aide.py gate approve 2",
+    "echo time python .aide/scripts/aide.py gate approve 2",
+    # An unbalanced quote is no opinion (fail-open): the settings entries
+    # still see the plain shape.
+    "python .aide/scripts/aide.py gate approve \"unbalanced",
 ])
 def test_nothing_else_is_asked_about(cmd, monkeypatch, capsys):
     assert not guard.gate_resolutions(cmd)
