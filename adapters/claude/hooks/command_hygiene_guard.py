@@ -726,10 +726,10 @@ def _segments(text):
     ``ValueError`` on an unbalanced quote, which the caller treats as no
     opinion."""
     text = text.replace("\\\n", " ").replace("\n", " ; ").replace("`", " ; ")
-    # A backslash before anything but a quote is a path separator here
-    # (``.venv\Scripts\python.exe``), which posix mode would eat; doubled,
-    # it survives as one.
-    text = re.sub(r"\\(?![\"'])", r"\\\\", text)
+    # A backslash is a path separator here (``.venv\Scripts\python.exe``),
+    # which posix mode would eat; doubled, it survives as one. Not before a
+    # quote or a space, where it escapes as the shell reads it.
+    text = re.sub(r"\\(?![\"' ])", r"\\\\", text)
     lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     lexer.commenters = ""  # `#` in a URL or an issue anchor is not a comment

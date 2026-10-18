@@ -169,8 +169,8 @@ instead — that is the bump policy above, and it is enforced by
   `--repo` or other options before the verb, a Windows backslash path, a
   pipe, a `$(…)`, `sh -c`, a wrapper such as `time` or `timeout`. It is not a
   shell parser, so a command inside a double-quoted `"$(…)"` is missed there
-  and left to the `ask` entries. A hygiene violation is still bounced first. A consumer sees a permission prompt on
-  each gate resolution, raised in the main session even when a sub-agent
+  and left to the `ask` entries. A hygiene violation is still bounced first.
+  A consumer sees a permission prompt on each gate resolution, raised in the main session even when a sub-agent
   ran it; in a mode that denies whatever would prompt, the command is
   denied. A consumer whose `settings.json` is kept without an overlay gets
   the hook's prompt on `--update` and the `ask` entries in the

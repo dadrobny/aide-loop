@@ -638,6 +638,7 @@ def _hook(cmd, monkeypatch, capsys):
     "{ python .aide/scripts/aide.py gate approve 2\n}",
     "x=$(python .aide/scripts/aide.py gate approve 2)",
     "echo `python .aide/scripts/aide.py gate approve 2`",
+    "python /my\\ repo/.aide/scripts/aide.py gate approve 2",
 ])
 def test_a_gate_resolution_is_asked_about(cmd, monkeypatch, capsys):
     import json
