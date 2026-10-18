@@ -119,7 +119,7 @@ lowest-numbered one with open items).
      and no second PR is opened. Tell the user to read them with the plan and
      then, where the queue has a plan gate, approve it on that branch
      (`python .aide/scripts/aide.py gate approve <gate-ID>`, then `git push`) —
-     never approve it yourself. Execution then runs on the queue branch
+     never approve it on your own judgement. Execution then runs on the queue branch
      (`/aide-run-roadmap`, or `/aide-run-queue NNN` with the branch checked
      out), claiming per-item branches as usual.
    - **On a specs-queue branch**, stop and tell the user to open a PR for

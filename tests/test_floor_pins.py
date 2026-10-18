@@ -156,7 +156,8 @@ FLOOR_PINS = {
     # Only a person resolves a human gate
     "conventions/1-format-contract/human-gates.md": [
         "Any role may raise a gate; only a person may resolve one",
-        "No agent may run `aide gate approve`/`decline`",
+        "No agent runs `aide gate approve`/`decline` on its own judgement",
+        "only at a person's explicit word for that gate",
         "Resolving is a CLI operation, never a hand edit",
     ],
     # Another repository's instructions bind before you edit it

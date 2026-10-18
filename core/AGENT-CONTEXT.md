@@ -96,8 +96,9 @@ command shape nothing pre-approved.
 ## Only a person resolves a human gate — §1 → Human gates
 
 Any role may raise a gate; only a person may resolve one — the worst case of
-raising one is work pausing. No agent may run `aide gate approve`/`decline`;
-resolving is a CLI operation, never a hand edit. A gate exists precisely
+raising one is work pausing. No agent runs `aide gate approve`/`decline` on its
+own judgement, only at a person's explicit word for that gate. Resolving is a
+CLI operation, never a hand edit. A gate exists precisely
 because the decision is not derivable from the work.
 
 ## Another repository's instructions bind before you edit it — §8

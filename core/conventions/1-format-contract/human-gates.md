@@ -83,8 +83,9 @@ raised wherever it is noticed, recorded in one place.
   only as prose in a roadmap or a spec blocks nothing.
 
 **Any role may raise a gate; only a person may resolve one.** An agent noticing
-that a decision is needed adds the row and says so. No agent may run `aide gate
-approve`/`decline`.
+that a decision is needed adds the row and says so. No agent runs `aide gate
+approve`/`decline` on its own judgement, only at a person's explicit word for
+that gate, and a runtime that can ask the person to confirm the command does so.
 
 **Three things stop the loop for a person, and only one is a row.**
 
@@ -232,6 +233,15 @@ file, a roadmap stage, another `progress.md` row — write its ID. A position
   read holds everything, because the only unsafe guess at what it blocks is
   "nothing" — and until #202 that was the guess, with a warning that stopped
   nothing.
+- **Why at a person's word, confirmed, rather than never.** Until #494 the
+  rule read "no agent may run" the verbs, and a person who told an agent to
+  approve a gate had no way to have it done as asked: one runtime's safety
+  layer refused the command as an agent approving its own work, and outside
+  that layer it ran with no confirmation at all. What the rule protects is
+  that the decision is the person's, not who types the command. A refusal
+  blocks the person's own instruction; a confirmation prompt at the moment of
+  running is how their word is checked against the gate it names. An
+  unattended role, which no person's word reaches, still never runs the verb.
 - **Why the queue-end merge is never a gate row.** A row blocks items, and a
   built-out queue has none left to block. What its review bounds is rework:
   a queue built on one a person has not accepted is wasted if that one is

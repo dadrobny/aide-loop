@@ -136,6 +136,43 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.54.0] — 2026-10-18
+
+### Changed
+
+- **A person's explicit word can resolve a human gate, confirmed in a
+  prompt (issue #494).** §1 → human gates read "no agent may run `aide gate
+  approve`/`decline`", so a person who told the agent to approve a gate
+  could not have it done: one runtime's safety layer refused the command,
+  and otherwise it ran with no confirmation. The rule now reads: no agent
+  runs either verb on its own judgement, only at a person's explicit word
+  for that gate, and a runtime that can ask the person to confirm the
+  command does so. `AGENT-CONTEXT.md`, the `aide-human-gates` skill and the
+  interactive commands and skills (`/aide-run-item`, `/aide-run-queue`,
+  `/aide-run-roadmap`, `/aide-spec-queue`, `/aide-feedback-loop`) say "on
+  your own judgement" where they said "never"; the unattended roles
+  (`queue-planner`, `spec-author`) still never run the verbs, since no
+  person's word reaches them. `ADAPTER-SPEC.md` §5 makes the prompt a
+  contract point for a runtime with a permission model. The floor carries
+  the agent's half of the rule, not the runtime's, so the always-on floor
+  moves from 9,694 to 9,760 content bytes.
+
+### Added
+
+- **The Claude adapter asks before `aide gate approve` or `decline` runs.**
+  `settings.json` gains eight `ask` entries — `python`, `python3`,
+  `.venv/bin/python` and `.venv/Scripts/python` running
+  `.aide/scripts/aide.py gate approve|decline` — and an ask wins over the
+  broad allow rules. The command-hygiene hook answers `ask` for the shapes a
+  prefix rule cannot name: another interpreter (`py`, an absolute path),
+  `--repo` or other options before the verb, a pipe or `sh -c`. A hygiene
+  violation is still bounced first. A consumer sees a permission prompt on
+  each gate resolution, raised in the main session even when a sub-agent
+  ran it; in a mode that denies whatever would prompt, the command is
+  denied. A consumer whose `settings.json` is kept without an overlay gets
+  the hook's prompt on `--update` and the `ask` entries in the
+  `.aide-merge` diff to adopt by hand.
+
 ## [2.53.1] — 2026-10-17
 
 ### Fixed

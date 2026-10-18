@@ -9,7 +9,9 @@ declared ``[framework] local_path``, sourced from the personal, gitignored
 ``.aide/local.toml``, never the shared ``aide.toml``); and that the
 three non-``-C`` forms are recognised at all (they previously were not,
 letting an agent achieve the identical effect ``-C`` was blocked for, via a
-different flag).
+different flag). And, since issue #494, the ``ask`` decision the hook
+returns for ``aide.py gate approve``/``decline`` in every interpreter shape,
+beside the ``settings.json`` ``ask`` entries for the plain ones.
 """
 from __future__ import annotations
 
@@ -592,3 +594,92 @@ def test_opener_directly_after_connector_chars_is_still_an_opener():
         titles = _titles(cmd)
         assert ("one command per Bash call" in titles) is chained, prefix
         assert "stderr" not in titles, prefix
+
+
+# --------------------------------------------------------------------------- #
+# gate approve/decline — a confirmation prompt, not a silent allow (issue #494)
+# --------------------------------------------------------------------------- #
+_SETTINGS = Path(__file__).resolve().parents[1] / "settings.json"
+_SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+
+
+def _hook(cmd, monkeypatch, capsys):
+    """Run the hook's ``main()`` in process on a Bash payload: (exit, stdout)."""
+    import io
+    import json
+    payload = {"tool_name": "Bash", "tool_input": {"command": cmd}}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    code = guard.main()
+    return code, capsys.readouterr().out
+
+
+@pytest.mark.parametrize("cmd", [
+    "python .aide/scripts/aide.py gate approve gate-3fa1",
+    "python .aide/scripts/aide.py gate decline gate-3fa1 --reason \"not yet; re-plan\"",
+    "python3 .aide/scripts/aide.py gate approve 2",
+    ".venv/bin/python .aide/scripts/aide.py gate approve 2",
+    ".venv/Scripts/python.exe .aide/scripts/aide.py gate decline 2",
+    "py -3 .aide/scripts/aide.py gate approve 2",
+    "python \"C:/my repo/.aide/scripts/aide.py\" gate approve 2",
+    "python .aide/scripts/aide.py --repo ../other gate approve 2",
+    "python .aide/scripts/aide.py --repo=../other gate --no-commit approve 2",
+    "python .aide/scripts/aide.py gate --evidence 'checked it' approve gate-1",
+    "python -X utf8 .aide/scripts/aide.py gate approve 2",
+    "python .aide/scripts/aide.py gate list | python .aide/scripts/aide.py gate approve 2",
+    "sh -c 'python .aide/scripts/aide.py gate approve 2'",
+])
+def test_a_gate_resolution_is_asked_about(cmd, monkeypatch, capsys):
+    import json
+    assert guard.gate_resolutions(cmd)
+    code, out = _hook(cmd, monkeypatch, capsys)
+    assert code == 0
+    decision = json.loads(out)["hookSpecificOutput"]
+    assert decision["hookEventName"] == "PreToolUse"
+    assert decision["permissionDecision"] == "ask"
+    assert decision["permissionDecisionReason"].isascii()
+
+
+@pytest.mark.parametrize("cmd", [
+    "python .aide/scripts/aide.py gate list",
+    "python .aide/scripts/aide.py gate reword gate-1 --text 'approve the plan?'",
+    "python .aide/scripts/aide.py gate --text approve list",
+    "python .aide/scripts/aide.py queue gate",
+    "python .aide/scripts/aide.py check",
+    "echo \"python .aide/scripts/aide.py gate approve 2\"",
+    "echo python .aide/scripts/aide.py gate approve 2",
+    "grep -n 'gate approve' docs/aide/progress.md",
+    "git commit -F - <<'EOF'\nsubject\n\npython .aide/scripts/aide.py gate approve 2\nEOF",
+    "python -c 'print(1)' .aide/scripts/aide.py gate approve 2",
+])
+def test_nothing_else_is_asked_about(cmd, monkeypatch, capsys):
+    assert not guard.gate_resolutions(cmd)
+    assert _hook(cmd, monkeypatch, capsys) == (0, "")
+
+
+def test_a_violation_wins_over_the_ask(monkeypatch, capsys):
+    """Reshape first: the chained call is bounced on stderr, and the
+    reshaped one is what the person is asked about."""
+    cmd = "git pull && python .aide/scripts/aide.py gate approve 2"
+    assert guard.gate_resolutions(cmd)
+    code, out = _hook(cmd, monkeypatch, capsys)
+    assert code == 2
+    assert out == ""
+
+
+@pytest.mark.parametrize("interpreter", [
+    "python", "python3", ".venv/bin/python", ".venv/Scripts/python"])
+@pytest.mark.parametrize("action", ["approve", "decline"])
+def test_settings_ask_every_allowed_interpreter_shape(interpreter, action):
+    """The settings half: each interpreter shape the allow-list names for the
+    engine is asked about for both resolving actions, and asking wins over
+    allowing in the runtime's rule order — so the prompt holds even where a
+    hook's answer is not honoured. `gate list` stays pre-approved."""
+    import json
+    sys.path.insert(0, str(_SCRIPTS))
+    import review_permissions as rp
+    perms = json.loads(_SETTINGS.read_text(encoding="utf-8"))["permissions"]
+    cmd = f"{interpreter} .aide/scripts/aide.py gate {action} gate-3fa1"
+    assert rp.is_covered("Bash", cmd, perms["allow"])
+    assert rp.is_covered("Bash", cmd, perms["ask"])
+    listing = f"{interpreter} .aide/scripts/aide.py gate list"
+    assert not rp.is_covered("Bash", listing, perms["ask"])

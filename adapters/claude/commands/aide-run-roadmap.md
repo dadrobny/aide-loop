@@ -250,7 +250,7 @@ end**, below the cap. Call the base `<base>` below — `main`, or
   with nothing to push). With no forge there is no PR: the review is of the
   queue branch.
   Re-invoke `/aide-run-roadmap` afterwards. **Never approve the gate
-  yourself** (§1 → human gates): the decision it holds is the whole point of
+  on your own judgement** (§1 → human gates): the decision it holds is the whole point of
   the stop.
 - **If it raised none** (`plan_review = "none"`, or `"stage"` and the queue
   opens no stage), the plan is reviewed in the PR with the code: go straight

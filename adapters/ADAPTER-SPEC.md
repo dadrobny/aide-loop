@@ -216,6 +216,18 @@ only the *enforcement mechanism* and the "permission allow-list" framing are
 adapter-local. A runtime with no permission
 model simply omits this section and relies on the hygiene rules being followed.
 
+A runtime with a permission model also routes **`aide gate approve` and `aide
+gate decline` through a confirmation prompt**, whatever its allow-list
+pre-approves (issue #494). §1 → human gates lets an agent run either only at a
+person's explicit word for that gate; the prompt is where that word is
+confirmed at the moment the command runs, and a policy that refused the verbs
+outright would block the person's own instruction. A mode that refuses
+whatever would prompt refuses these too, which is the safe side of the rule.
+The Claude adapter does it twice: `ask` entries in `settings.json` for the
+plain interpreter shapes, and an `ask` decision from the command-hygiene hook
+for the shapes a prefix rule cannot name (another interpreter, a venv or
+absolute path, `--repo` before the verb).
+
 An adapter whose config is **JSON** survives framework updates deterministically via
 `install.py`'s overlay mechanism: the project keeps a `*.overlay.json` and the
 installed file is regenerated as a deep-merge of the framework base and that overlay
@@ -742,7 +754,8 @@ moment at which the ladder above is a question rather than an excavation.
       never inherited from the role, and the spawning tool withheld from roles
       with no work to delegate.
 - [ ] Every mechanical action routed through `python .aide/scripts/aide.py …`.
-- [ ] *(if the runtime has one)* a permission policy enforcing `conventions.md` §3.
+- [ ] *(if the runtime has one)* a permission policy enforcing `conventions.md` §3,
+      and routing `aide gate approve`/`decline` through a confirmation prompt.
 - [ ] *(if the runtime loads an instruction file by default)* a `default-context.json`
       declaring that file and the runtime's import syntax.
 - [ ] *(if the runtime has any always-loaded instruction channel)* §3 delivered,
