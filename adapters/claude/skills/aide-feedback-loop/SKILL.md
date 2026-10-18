@@ -125,7 +125,8 @@ is.
   evidence through `aide progress accept --evidence` (§1 → `progress.md`);
   agreeing to the recommendation is not one.
   A human gate may be raised here, but only a person resolves one (§1 →
-  human gates) — leave `aide gate approve`/`decline` to them.
+  human gates) — run `aide gate approve`/`decline` only at their explicit
+  word for that gate.
 - **A decline or Backlog move the triage pass proposed is the user's to
   decide** (§1 → `insights-triage.md`), and so is every entry it brought
   back after three or more queues — whether to queue it, decline it, or

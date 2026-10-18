@@ -301,10 +301,11 @@ reached the batch's sessions, and rotates that log.
 
 - **`aide claim` reports an unresolved human gate.** Stop and surface it verbatim —
   do not prompt an unattended run for a decision nobody is there to make, and
-  never run `aide gate approve` yourself. A gate exists because the decision is
-  not derivable from the work; resolving it destroys the thing it protects. A
-  gate naming items — directly or via a stage reach — skips only those, so the queue
-  may keep going; an `all` gate stops everything. A queue's own plan gate, raised by
+  never run `aide gate approve` on your own judgement. A gate exists because
+  the decision is not derivable from the work; resolving it destroys the thing
+  it protects. A gate naming items — directly or via a stage reach — skips
+  only those, so the queue may keep going; an `all` gate stops everything. A
+  queue's own plan gate, raised by
   `aide queue gate` when `/aide-run-roadmap` planned it, holds every item in the
   queue — or every item of the stage it opens — so the whole queue waits on it:
   the human reviews the queue's draft PR and approves it. When the report's

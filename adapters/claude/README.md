@@ -193,7 +193,10 @@ allow-list" framing** are adapter-local and documented here.
 - **`hooks/command_hygiene_guard.py`** — a `PreToolUse` hook on `Bash` that *enforces*
   the `conventions.md` hygiene contract: a reshapeable command that would otherwise
   miss the allow-list and stall the run is bounced back to be re-issued in an
-  allow-listed shape, rather than hanging on a prompt.
+  allow-listed shape, rather than hanging on a prompt. It also answers `ask` for
+  `aide gate approve`/`decline` in any interpreter shape, beside the matching
+  `ask` entries in `settings.json`, so a person confirms each gate resolution
+  in a prompt (issue #494; `ADAPTER-SPEC.md` §5).
 - **`hooks/spawn_model_guard.py`** — a `PreToolUse` hook on `Agent` (and `Task`,
   its earlier name) that refuses
   a spawn made from inside a sub-agent when the call passes no `model` and the

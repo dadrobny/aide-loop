@@ -14,13 +14,32 @@ Contract (mirrors the companion logging hook):
 - On a **high-confidence** mechanical violation it writes a corrective message
   to **stderr** and exits **2** — a non-zero PreToolUse exit blocks the tool
   call and surfaces stderr to the agent, which then reshapes and retries.
+- Otherwise, when the command resolves a human gate — runs ``aide.py``'s
+  ``gate approve`` or ``gate decline`` (`gate_resolutions`) — it writes a
+  ``hookSpecificOutput`` with ``permissionDecision: "ask"`` to **stdout** and
+  exits **0**, so the runtime asks the person to confirm the command even
+  where an allow rule (``Bash(python:*)``, ``Bash(python
+  .aide/scripts/aide.py:*)``) would pass it silently (issue #494). §1 → human
+  gates: no agent runs either verb on its own judgement, only at a person's
+  explicit word for that gate, and a runtime that can ask the person to
+  confirm the command does so. A violation wins over the ask — the command is
+  bounced for reshaping first, and the reshaped one is asked about.
 - Otherwise it writes nothing and exits **0** (no opinion — defer to the
   allow-list / normal permission flow).
 
+The ask lives here rather than in a hook of its own because this hook already
+reads every Bash call and blanks heredoc bodies; a second registration would
+cost a second interpreter start on every Bash call for one more regex. The
+``ask`` entries in ``settings.json`` are the other half: they prompt on the
+plain shapes even where a hook's answer is not honoured, and this hook
+catches the shapes a prefix rule cannot name (another interpreter, a venv or
+absolute path, ``--repo`` before the verb).
+
 Design rules:
 - **Fail-open.** Any parse error, unexpected payload shape, or internal
-  exception exits 0 (allow). A guard bug must never wedge the loop; the worst
-  case is falling back to the ordinary permission prompt.
+  exception exits 0 (allow), with nothing on stdout — so no ask either, and
+  the settings ``ask`` entries are what remains. A guard bug must never wedge
+  the loop; the worst case is falling back to the ordinary permission prompt.
 - **Narrow and conservative.** Only the unambiguous, high-frequency offenders
   are flagged, and string literals and heredoc bodies are blanked first so
   operators *inside* a commit message — quoted, or piped via
@@ -33,6 +52,7 @@ Design rules:
 import json
 import os
 import re
+import shlex
 import sys
 
 
@@ -593,6 +613,171 @@ def violations(cmd):
     return found
 
 
+#: An interpreter that runs ``aide.py`` as its script: ``python``,
+#: ``python3``, ``python3.12``, ``pythonw``, the Windows launcher ``py`` — by
+#: basename, so a venv or absolute path is the same interpreter, and with a
+#: Windows ``.exe`` dropped.
+_INTERPRETER_RE = re.compile(r"(?:python(?:\d+(?:\.\d+)*)?w?|py)(?:\.exe)?",
+                             re.IGNORECASE)
+
+#: Interpreter options whose value is the next argument (``-X utf8``).
+_INTERPRETER_VALUE_OPTS = frozenset({"-X", "-W", "-Q"})
+
+#: What runs a command string of its own: ``sh -c '…'`` is read inside.
+_SHELLS = frozenset({"sh", "bash", "zsh", "dash"})
+
+#: The ``aide`` options that take a value, global (``--repo``) and on the
+#: ``gate`` subparser (``--evidence``/``--reason``, ``--text``). argparse takes
+#: any unambiguous prefix, so a token is matched as a prefix of these.
+_AIDE_VALUE_OPTS = ("--repo", "--evidence", "--reason", "--text")
+
+#: The ``gate`` actions that resolve a gate (`build_parser` in ``aide.py``:
+#: list, approve, decline, reword). Listing or rewording one is not a decision.
+_RESOLVING = frozenset({"approve", "decline"})
+
+#: What runs the next word as a command: a reserved word that opens a body
+#: (``then``, ``do``, ``{``, ``!`` …) or a wrapper that execs its argument.
+#: ``timeout`` takes its duration first, and a wrapper's own options are
+#: skipped (`_WRAPPER_VALUE_OPTS` names the ones that take a value).
+_COMMAND_PREFIXES = frozenset({"then", "do", "else", "elif", "if", "while",
+                               "until", "{", "!", "time", "nohup", "nice",
+                               "timeout", "xargs", "stdbuf", "builtin"})
+
+#: Wrapper options whose value is the next argument (``nice -n 5``,
+#: ``xargs -I {}``, ``env -u NAME``, ``timeout -s KILL``).
+_WRAPPER_VALUE_OPTS = frozenset({"-n", "-I", "-u", "-s", "-k", "-P", "-L",
+                                 "-d", "-a", "-E"})
+
+#: A segment separator for `gate_resolutions`: shell operators and the
+#: substitution openers, tokenised by `shlex` as punctuation or singletons.
+_SEPARATORS = frozenset({"|", "||", "&", "&&", ";", ";;", "(", ")", "$", "`",
+                         "<", ">", ">>", "<<", "<<<"})
+
+
+def _basename(token):
+    return re.split(r"[\\/]", token)[-1]
+
+
+def _aide_positionals(args):
+    """The positional arguments of an ``aide.py`` argv tail, options and their
+    values skipped — ``--repo x gate --no-commit approve 3`` gives
+    ``["gate", "approve", "3"]``."""
+    out = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":
+            out.extend(args[i + 1:])
+            break
+        if arg.startswith("-") and len(arg) > 1:
+            takes_value = "=" not in arg and len(arg) > 2 and any(
+                opt.startswith(arg) for opt in _AIDE_VALUE_OPTS)
+            i += 2 if takes_value else 1
+            continue
+        out.append(arg)
+        i += 1
+    return out
+
+
+def _resolves_a_gate(argv, depth=0):
+    """True when the simple command *argv* runs ``aide.py gate approve`` or
+    ``gate decline``, by any interpreter, or a shell's ``-c`` string that
+    does."""
+    i = 0
+    while i < len(argv):
+        word = argv[i]
+        if re.match(r"[A-Za-z_][A-Za-z0-9_]*=", word):
+            i += 1  # VAR=value prefixes
+        elif word in _COMMAND_PREFIXES or word in ("env", "exec", "command"):
+            i += 1
+            while i < len(argv) and argv[i].startswith("-") and argv[i] != "-":
+                i += 2 if argv[i] in _WRAPPER_VALUE_OPTS else 1
+            if word == "timeout" and i < len(argv):
+                i += 1  # the duration
+        else:
+            break
+    if i >= len(argv):
+        return False
+    head = _basename(argv[i])
+    if head in _SHELLS and depth < 2:
+        for j in range(i + 1, len(argv) - 1):
+            flag = argv[j]
+            if flag.startswith("-") and not flag.startswith("--") and "c" in flag:
+                return any(_resolves_a_gate(seg, depth + 1)
+                           for seg in _segments(argv[j + 1]))
+        return False
+    if _INTERPRETER_RE.fullmatch(head):
+        i += 1
+        while i < len(argv) and argv[i].startswith("-") and argv[i] != "-":
+            if argv[i] in ("-m", "-c"):
+                return False  # a module or a string, not a script path
+            i += 2 if argv[i] in _INTERPRETER_VALUE_OPTS else 1
+    if i >= len(argv) or not argv[i].lower().endswith("aide.py"):
+        return False
+    positionals = _aide_positionals(argv[i + 1:])
+    return (len(positionals) >= 2 and positionals[0] == "gate"
+            and positionals[1] in _RESOLVING)
+
+
+def _segments(text):
+    """*text* as a list of simple commands, each a token list. A newline ends
+    a command as ``;`` does, and a backtick opens or closes one; a
+    backslash-newline continues it. Raises
+    ``ValueError`` on an unbalanced quote, which the caller treats as no
+    opinion."""
+    text = text.replace("\\\n", " ").replace("\n", " ; ").replace("`", " ; ")
+    # A backslash is a path separator here (``.venv\Scripts\python.exe``),
+    # which posix mode would eat; doubled, it survives as one. Not before a
+    # quote or a space, where it escapes as the shell reads it.
+    text = re.sub(r"\\(?![\"' ])", r"\\\\", text)
+    lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    lexer.commenters = ""  # `#` in a URL or an issue anchor is not a comment
+    segments, current = [], []
+    for token in lexer:
+        if token in _SEPARATORS or set(token) <= set("();<>|&"):
+            if current:
+                segments.append(current)
+            current = []
+        else:
+            current.append(token)
+    if current:
+        segments.append(current)
+    return segments
+
+
+def gate_resolutions(cmd):
+    """True when *cmd* resolves a human gate: any simple command in it runs
+    ``aide.py`` with the verb ``gate`` and the action ``approve`` or
+    ``decline`` — whatever the interpreter (``python``, ``python3``, ``py``, a
+    venv or absolute path), and with ``--repo`` or other options before the
+    verb. Heredoc bodies are data and are blanked first; a quoted string is
+    one argument, so ``echo "aide.py gate approve"`` names no command. An
+    unparseable command (an unbalanced quote) is False: fail-open, and the
+    settings ``ask`` entries still see its plain shapes.
+
+    Not a shell parser: a command inside a double-quoted ``"$(…)"`` is one
+    argument here and is missed, as is any wrapper outside
+    `_COMMAND_PREFIXES`. The settings ``ask`` entries, which the runtime
+    matches on every subcommand it splits out, are the floor under it."""
+    if "aide.py" not in cmd.lower():
+        return False  # the cheap case: almost every Bash call
+    data = _blank_spans(cmd, [(s, e) for s, e, _ in _heredoc_body_spans(cmd)])
+    try:
+        segments = _segments(data)
+    except ValueError:
+        return False
+    return any(_resolves_a_gate(seg) for seg in segments)
+
+
+#: Why the person is asked — ASCII only, so no console codepage can mangle it.
+GATE_ASK_REASON = (
+    "This command resolves a human gate, and only a person resolves one "
+    "(conventions section 1, human gates). Allow it only if you told the "
+    "agent to approve or decline this gate."
+)
+
+
 def main():
     raw = sys.stdin.read()
     if not raw.strip():
@@ -610,6 +795,12 @@ def main():
 
     issues = violations(cmd)
     if not issues:
+        if gate_resolutions(cmd):
+            json.dump({"hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": GATE_ASK_REASON,
+            }}, sys.stdout)
         return 0
 
     lines = [
