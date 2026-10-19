@@ -17,6 +17,8 @@ Subcommands::
     python .aide/scripts/aide.py progress set NNN resumed --reason TEXT  # ⏸️ back to 📋 (--stage N --deliverable K for an unmarked bullet)
     python .aide/scripts/aide.py progress set NNN dropped --reason TEXT  # ❌ on an item the stage does not need
     python .aide/scripts/aide.py progress set NNN restored --reason TEXT  # ❌ back to 📋 (--stage N --deliverable K for an unmarked bullet)
+    python .aide/scripts/aide.py progress set --stage N withdrawn --reason TEXT  # ❌ on a whole stage, with its why (restored: back)
+    python .aide/scripts/aide.py progress reword --stage N --deliverable K --text TEXT  # an unclaimed 📋 deliverable, roadmap.md too
     python .aide/scripts/aide.py progress rollup [--stage N]  # a stage's cells to what its bullets roll up to
     python .aide/scripts/aide.py progress compact  # long gate/capability/target cells to their trails
     python .aide/scripts/aide.py progress archive [--stage N]  # settled stages to progress/ and roadmap/stage-N.md
@@ -3152,22 +3154,7 @@ def rollup_progress(text: str, stage: Optional[int] = None
                if (stage is None or int(n) == stage) and n not in withdrawn}
     before = list(lines)
     _recompute_rollups(lines, downgrade_stages=targets, only=targets)
-    messages: List[str] = []
-    for old, new in zip(before, lines):
-        if old == new:
-            continue
-        header = _STAGE_HEADER_RE.match(old)
-        if header:
-            was, now = _header_status(old), _header_status(new)
-            where = f"stage {int(header.group(1))}: header"
-        else:
-            cells = _split_row(old)
-            was, now = _icon_status(cells[-1]), _icon_status(_split_row(new)[-1])
-            code = re.match(r"G\d+", cells[0])
-            where = (f"objective {code.group(0)}" if len(cells) == 3 and code
-                     else f"stage {int(cells[0])}: summary row")
-        shown = STATUS_TO_ICON[was] if was else "no icon"
-        messages.append(f"{where} {shown} → {STATUS_TO_ICON[now]} {now}")
+    messages = _cell_moves(before, lines)
     return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""),
             messages)
 
@@ -3471,9 +3458,12 @@ def drop_item(text: str, num: int, reason: str, date: str,
         raise ValueError(
             f"dropping item {num:03d} would leave every deliverable of stage "
             f"{shown} ❌, and a stage whose every deliverable is dropped has "
-            f"nothing left to deliver — withdraw the stage whole instead, by "
-            f"marking its row in the Stage summary table ❌, which takes its "
-            f"header with it, and any Objective row only this stage delivers")
+            f"nothing left to deliver — withdraw the stage whole instead, with "
+            f"`aide progress set --stage "
+            f"{int(emptied[0]) if len(emptied) == 1 else 'N'} withdrawn "
+            f"--reason …`, "
+            f"which writes ❌ on its row in the Stage summary table, its "
+            f"header and any Objective row only this stage delivers")
     _recompute_rollups(lines, stages)
     return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""),
             f"item {num:03d}: dropped — {reason}")
@@ -3578,8 +3568,8 @@ def _unmarked_deliverable_at(lines: List[str], stage: int, position: int,
     """``(first, last, where, status)`` of stage *stage*'s *position*-th
     deliverable bullet, refusing one the positional forms cannot address.
 
-    The lookup `defer_deliverable`, `drop_deliverable`, `resume_deliverable`
-    and `restore_deliverable` share: an unknown
+    The lookup `defer_deliverable`, `drop_deliverable`, `resume_deliverable`,
+    `restore_deliverable` and `reword_unmarked_deliverable` share: an unknown
     stage, a position outside the stage's bullets (naming how many it has) and
     a bullet that carries an item marker are refused, each with a ValueError
     whose message *verb* words — an itemised bullet's status is its item's, so
@@ -3600,8 +3590,10 @@ def _unmarked_deliverable_at(lines: List[str], stage: int, position: int,
         # Every positional status has its item form since issue #381, so the
         # refusal names it rather than only saying what the bullet is not.
         named = ", ".join(f"item {n:03d}" for n in marked)
-        forms = " / ".join(f"`aide progress set {n:03d} {verb} --reason …`"
-                           for n in marked)
+        forms = " / ".join(
+            f"`aide progress reword --item {n:03d} --text …`" if verb == "reworded"
+            else f"`aide progress set {n:03d} {verb} --reason …`"
+            for n in marked)
         raise ValueError(
             f"{where} is itemised — its trailing marker names {named}, so "
             f"{_POSITIONAL_VERB[verb]} it by item with {forms}")
@@ -3611,7 +3603,8 @@ def _unmarked_deliverable_at(lines: List[str], stage: int, position: int,
 
 #: The imperative each positional status's refusal words its item form with.
 _POSITIONAL_VERB = {"deferred": "defer", "dropped": "drop",
-                    "resumed": "resume", "restored": "restore"}
+                    "resumed": "resume", "restored": "restore",
+                    "reworded": "reword"}
 
 
 def _write_unmarked_deliverable(text: str, lines: List[str], start: int,
@@ -3709,9 +3702,10 @@ def drop_deliverable(text: str, stage: int, position: int, reason: str,
         raise ValueError(
             f"{where} is the last deliverable of stage {stage} not ❌, and a "
             f"stage whose every deliverable is dropped has nothing left to "
-            f"deliver — withdraw the stage whole instead, by marking its row "
-            f"in the Stage summary table ❌, which takes its header with it, and "
-            f"any Objective row only this stage delivers")
+            f"deliver — withdraw the stage whole instead, with `aide progress "
+            f"set --stage {stage} withdrawn --reason …`, which writes ❌ on its "
+            f"row in the Stage summary table, its header and any Objective row "
+            f"only this stage delivers")
     return (_write_unmarked_deliverable(text, lines, start, last, "excluded",
                                         date, _DROPPED_PREFIX + reason),
             f"{where}: dropped — {reason}")
@@ -3776,6 +3770,340 @@ def restore_deliverable(text: str, stage: int, position: int, reason: str,
             f"{where}: restored — {reason}")
 
 
+#: The trail prefix a whole stage's withdrawal writes under the stage header
+#: (issue #485): why the stage is no longer wanted. Its restoration writes
+#: `_RESTORED_PREFIX`, as a dropped bullet's does.
+_WITHDRAWN_PREFIX = "withdrawn: "
+
+
+def _summary_row_index(lines: List[str], stage: int) -> Optional[int]:
+    """The line of stage *stage*'s Stage summary row a reader can use, or
+    None — the cell `withdrawn_stages` reads a withdrawal from."""
+    for i, line in enumerate(lines):
+        cells = _split_row(line) if line.strip().startswith("|") else []
+        if (cells and _reads(_STAGE_SUMMARY, cells)
+                and _same_stage(cells[0], str(stage))):
+            return i
+    return None
+
+
+def stage_header_trail(lines: List[str], start: int) -> List[int]:
+    """Line indices of the dated trail under the stage header at *start*:
+    the trail lines directly below the heading, file order (issue #485)."""
+    out: List[int] = []
+    for i in range(start + 1, len(lines)):
+        if not _ACCEPT_TRAIL_RE.match(lines[i]):
+            break
+        out.append(i)
+    return out
+
+
+def _write_stage_header_icon(lines: List[str], start: int, status: str) -> None:
+    """Write *status* as the stage header's trailing icon, whatever it read."""
+    line = lines[start]
+    if _header_status(line) is None:
+        lines[start] = line.rstrip() + f" — {STATUS_TO_ICON[status]}"
+    else:
+        lines[start] = _TRAILING_ICON_RE.sub(STATUS_TO_ICON[status], line)
+
+
+def _cell_moves(before: List[str], after: List[str]) -> List[str]:
+    """One message per stage header, summary row or Objective row that
+    differs between *before* and *after*, two line lists of one length, in
+    file order — what `rollup` prints, and the stage verbs with it."""
+    messages: List[str] = []
+    for old, new in zip(before, after):
+        if old == new:
+            continue
+        header = _STAGE_HEADER_RE.match(old)
+        if header:
+            was, now = _header_status(old), _header_status(new)
+            where = f"stage {int(header.group(1))}: header"
+        else:
+            cells = _split_row(old)
+            was, now = _icon_status(cells[-1]), _icon_status(_split_row(new)[-1])
+            code = re.match(r"G\d+", cells[0])
+            where = (f"objective {code.group(0)}" if len(cells) == 3 and code
+                     else f"stage {int(cells[0])}: summary row")
+        shown = STATUS_TO_ICON[was] if was else "no icon"
+        messages.append(f"{where} {shown} → {STATUS_TO_ICON[now]} {now}")
+    return messages
+
+
+def _stage_cells_for(lines: List[str], stage: int, verb: str
+                     ) -> Tuple[int, int, int]:
+    """``(section start, section end, summary row)`` of stage *stage*,
+    refusing a stage the whole-stage verbs cannot address: no section, or no
+    summary row a reader can use."""
+    section = stage_section(lines, str(stage))
+    if section is None:
+        raise ValueError(f"no '## Stage {stage}' section in progress.md")
+    row = _summary_row_index(lines, stage)
+    if row is None:
+        raise ValueError(
+            f"stage {stage} has no Stage summary row a reader can use, and "
+            f"the summary row is the cell that {verb} it — add the row, then "
+            f"re-run")
+    return section[0], section[1], row
+
+
+def withdraw_stage(text: str, stage: int, reason: str, date: str
+                   ) -> Tuple[str, List[str]]:
+    """Withdraw stage *stage* whole; ``(updated text, messages)`` (issue #485).
+
+    A stage is withdrawn by a ❌ on its summary row (`withdrawn_stages`),
+    which no rollup writes or overwrites, and that ❌ used to be typed by
+    hand with nowhere to keep why. The verb writes ❌ on the summary row and
+    the stage header, a dated ``withdrawn: <reason>`` trail line under the
+    header, and rolls the Objective rows naming the stage up with it
+    withdrawn — `_apply_objective_rollup`'s existing rule, so a row only it
+    delivers reads ❌ and a row it shares follows the stages left.
+
+    Refuses a stage with no section or no usable summary row, and one with a
+    ✅ bullet: shipped work is not withdrawn — what the stage turns out not
+    to need is dropped, and it closes ✅. A stage already ❌ is no change.
+    """
+    lines = text.splitlines()
+    start, end, row = _stage_cells_for(lines, stage, "withdraws")
+    if _icon_status(_split_row(lines[row])[3]) == "excluded":
+        return text, [f"stage {stage}: no change (already withdrawn)"]
+    shipped = [k for k, st in enumerate(stage_deliverable_statuses(lines, start, end),
+                                        start=1) if st == "complete"]
+    if shipped:
+        which = ", ".join(str(k) for k in shipped)
+        raise ValueError(
+            f"stage {stage} has shipped work — deliverable "
+            f"{'bullet' if len(shipped) == 1 else 'bullets'} {which} "
+            f"{'is' if len(shipped) == 1 else 'are'} ✅ — and shipped work is "
+            f"not withdrawn: drop what the stage does not need (`aide "
+            f"progress set NNN dropped` or `set --stage {stage} --deliverable "
+            f"K dropped`) and it closes ✅")
+    before = list(lines)
+    lines[row] = _sub_status_cell(lines[row], "excluded")
+    _write_stage_header_icon(lines, start, "excluded")
+    num = stage_section(lines, str(stage))[2]
+    _recompute_rollups(lines, downgrade_stages={num}, only={num})
+    messages = [f"stage {stage}: withdrawn — {reason}"] + _cell_moves(before, lines)
+    _insert_trail_line(lines, start, start, stage_header_trail(lines, start),
+                       date, _WITHDRAWN_PREFIX + reason)
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else ""), messages
+
+
+def restore_stage(text: str, stage: int, reason: str, date: str
+                  ) -> Tuple[str, List[str], List[int]]:
+    """Restore withdrawn stage *stage*; ``(updated text, messages, revived)``
+    (issue #485).
+
+    The way back from `withdraw_stage`: the summary row and the header leave
+    ❌ for what the stage's bullets roll up to (📋 where it has none), a
+    dated ``restored: <reason>`` trail line goes under the header beside the
+    withdrawal's, and every Objective row naming the stage rolls up again —
+    a row that read ❌ only because every stage it names was withdrawn
+    included, which no rollup would otherwise release (`_held_by_hand`).
+    A row ❌ while a stage it names was still in scope was decided by hand,
+    and stays.
+
+    *revived* are the 📋 items the withdrawal had released and the
+    restoration brings back (`withdrawn_stage_items`): work a dependent may
+    already have been built without, which the caller names (issue #402
+    stays deferred; this only says so). Refuses a stage with no section or
+    no usable summary row, and one whose summary row is not ❌.
+    """
+    lines = text.splitlines()
+    start, end, row = _stage_cells_for(lines, stage, "restores")
+    current = _icon_status(_split_row(lines[row])[3])
+    if current != "excluded":
+        raise ValueError(
+            f"stage {stage}'s summary row is {STATUS_TO_ICON[current]} "
+            f"{current}, not ❌ — only a withdrawn stage is restored")
+    released = set(withdrawn_stage_items(lines))
+    num = stage_section(lines, str(stage))[2]
+    # The Objective rows the withdrawal alone made ❌: every stage they name
+    # withdrawn, this one among them.
+    stage_status = stage_rollups(lines)
+    withdrawn = withdrawn_stages(lines)
+    freed: List[int] = []
+    for i, line in enumerate(lines):
+        cells = _split_row(line) if line.strip().startswith("|") else []
+        if not (cells and _reads(_OBJECTIVE_COVERAGE, cells)):
+            continue
+        nums = _objective_row_stages(cells[1])
+        if (_icon_status(cells[2]) == "excluded"
+                and any(_same_stage(n, num) for n in nums)
+                and objective_rollup(nums, stage_status, withdrawn) == "excluded"):
+            freed.append(i)
+    before = list(lines)
+    derived = rollup_status(stage_deliverable_statuses(lines, start, end)) or "planned"
+    lines[row] = _sub_status_cell(lines[row], derived)
+    _write_stage_header_icon(lines, start, derived)
+    for i in freed:
+        # 📋 releases the row from its ❌ hold; the rollup below writes what
+        # it derives to, up or down, since the stage is one it moved.
+        lines[i] = _sub_status_cell(lines[i], "planned")
+    _recompute_rollups(lines, downgrade_stages={num}, only={num})
+    messages = [f"stage {stage}: restored — {reason}"] + _cell_moves(before, lines)
+    _insert_trail_line(lines, start, start, stage_header_trail(lines, start),
+                       date, _RESTORED_PREFIX + reason)
+    status_now = _parse_item_status(lines)[2]
+    revived = sorted(n for n in released - set(withdrawn_stage_items(lines))
+                     if status_now.get(n, "planned") == "planned")
+    return ("\n".join(lines) + ("\n" if text.endswith("\n") else ""),
+            messages, revived)
+
+
+def roadmap_deliverable_bullets(lines: List[str], stage: str
+                                ) -> Optional[List[Tuple[int, int]]]:
+    """``(first, last)`` of each top-level bullet of *stage*'s Deliverables
+    block in roadmap.md, in order — ``None`` when the stage has no section
+    or no Deliverables block (issue #485).
+
+    A bullet runs over its wrapped lines: every following line that is not
+    blank, not a list item, not a bold block opener, a heading or a
+    thematic break. A nested bullet is not a deliverable and ends the span,
+    so `reword --stage N --deliverable K` leaves it in place. Fenced code
+    and HTML comments are not read (`markdown_prose_lines`), as the shape
+    lint reads the same block.
+    """
+    section = stage_section(lines, stage)
+    if section is None:
+        return None
+    start, end, _ = section
+    prose = markdown_prose_lines(lines)
+    head = next((i for i in range(start + 1, end)
+                 if prose[i] is not None and _ROADMAP_DELIVERABLES_RE.match(prose[i])),
+                None)
+    if head is None:
+        return None
+    out: List[Tuple[int, int]] = []
+    open_span = False
+    for i in range(head + 1, end):
+        text = prose[i]
+        if text is None:
+            open_span = False
+            continue
+        if _ROADMAP_BLOCK_END_RE.match(text) or _THEMATIC_BREAK_RE.match(text):
+            break
+        if _TOP_BULLET_RE.match(text):
+            out.append((i, i))
+            open_span = True
+        elif (not text.strip() or re.match(r"^\s*[-*+]\s", text)
+              or _GUIDANCE_RE.match(text)):
+            open_span = False
+        elif open_span:
+            out[-1] = (out[-1][0], i)
+    return out
+
+
+def _deliverable_prose_refusal(prose: str, keeps: str) -> Optional[str]:
+    """Why *prose* cannot be a deliverable bullet's text, or None — the
+    refusals both `reword` bullet forms share. *keeps* ends the trailing
+    reference's message: what the bullet keeps, or why it takes none."""
+    if not prose:
+        return ("the new text is empty — a deliverable bullet says what "
+                "it delivers")
+    if "\n" in prose or "\r" in prose:
+        return ("the new text may not contain a line break — it is written "
+                "onto the bullet's one line, and a break would end the bullet "
+                "early")
+    icon = _ICON_RE.match(prose)
+    if icon:
+        return (f"the new text starts with a status icon ({icon.group(0)}), "
+                f"which would put a second status on the bullet — pass the "
+                f"prose alone; the bullet keeps its own icon")
+    ref = _BULLET_MARKER_RE.search(prose)
+    if ref:
+        return (f"the new text ends with an item reference "
+                f"({ref.group(0).strip()}), which would make it the bullet's "
+                f"trailing marker — pass the prose alone; {keeps}")
+    return None
+
+
+def reword_unmarked_deliverable(text: str, roadmap: Optional[str], stage: int,
+                                position: int, new_text: str
+                                ) -> Tuple[str, Optional[str], str, str]:
+    """Reword stage *stage*'s *position*-th deliverable, one no item has
+    claimed, in progress.md and roadmap.md together; ``(progress text,
+    roadmap text or None, old prose, note)`` (issue #485).
+
+    A deliverable no item marker names and that is 📋 records nothing yet,
+    as an unattested criterion does, so it is reworded in place in both
+    documents rather than frozen: the roadmap holds the live plan. The
+    bullets are matched by position, the Kth progress.md bullet of the stage
+    to the Kth top-level bullet of the roadmap stage's Deliverables block,
+    as the criterion form matches boxes. *roadmap* None, or a roadmap stage
+    with no Deliverables block, has no mirror: progress.md alone is
+    rewritten and *note* says so; the returned roadmap text is then None.
+
+    Refuses a stage that is ✅ or ❌ (settled), a position outside the
+    stage's bullets, a bullet carrying an item marker (its prose is
+    reworded by item), a bullet that is not 📋, text a bullet cannot hold,
+    and counts that cannot be lined up — writing neither document. A
+    rewording to what both already read is returned unchanged.
+    """
+    prose = new_text.strip()
+    refusal = _deliverable_prose_refusal(
+        prose, "a deliverable is itemised by the queue planner, not by its "
+               "rewording")
+    if refusal:
+        raise ValueError(refusal)
+    lines = text.splitlines()
+    status = roadmap_stage_statuses(lines).get(stage, "planned")
+    if status in ("complete", "excluded"):
+        raise ValueError(
+            f"stage {stage} is {STATUS_TO_ICON[status]} {status}, settled, so "
+            f"its deliverables are a record — only a stage not yet ✅ or ❌ "
+            f"has a deliverable to reword")
+    start, last, where, current = _unmarked_deliverable_at(
+        lines, stage, position, "reworded")
+    if current != "planned":
+        raise ValueError(
+            f"{where} is {STATUS_TO_ICON[current]} {current}; only a 📋 "
+            f"deliverable is reworded, since nothing has been built or "
+            f"decided against it yet")
+    old = _bullet_prose(lines, start, last)
+    head = lines[start][:_BULLET_RE.match(lines[start]).end()]
+    candidate = lines[:start] + [f"{head} {prose}"] + lines[last + 1:]
+    spans = stage_deliverable_spans(candidate, str(stage)) or []
+    if (len(spans) < position or spans[position - 1] != (start, start)
+            or _bullet_marker_item_numbers(candidate[start])
+            or _bullet_prose(candidate, start, start) != prose):
+        raise ValueError(
+            f"the new text would change where {where} ends or what it "
+            f"attributes — pass the prose alone")
+    road_out: Optional[str] = None
+    note = "roadmap.md: mirrored"
+    if roadmap is None:
+        note = "roadmap.md: none — nothing to mirror"
+    else:
+        rlines = roadmap.splitlines()
+        bullets = roadmap_deliverable_bullets(rlines, str(stage))
+        if bullets is None:
+            note = ("roadmap.md: no Deliverables block for this stage — "
+                    "nothing to mirror")
+        else:
+            count = len(stage_deliverable_spans(lines, str(stage)) or [])
+            if len(bullets) != count:
+                raise ValueError(
+                    f"roadmap.md stage {stage} lists {len(bullets)} "
+                    f"deliverable bullet{'' if len(bullets) == 1 else 's'} but "
+                    f"progress.md has {count}, so deliverable {position} "
+                    f"cannot be matched across the two")
+            first, end = bullets[position - 1]
+            m = re.match(r"^(?P<pre>\s*[-*+]\s+)", rlines[first])
+            if m is None:
+                raise ValueError(
+                    f"roadmap.md:{first + 1} does not open as a bullet, so "
+                    f"deliverable {position} cannot be rewritten there")
+            rewritten = rlines[:first] + [m.group("pre") + prose] + rlines[end + 1:]
+            if rewritten == rlines:
+                note = "roadmap.md: already reads so"
+            else:
+                road_out = ("\n".join(rewritten)
+                            + ("\n" if roadmap.endswith("\n") else ""))
+    out = "\n".join(candidate) + ("\n" if text.endswith("\n") else "")
+    return out, road_out, old, note
+
+
 def reword_deliverable(text: str, num: int, new_text: str
                        ) -> Tuple[str, str, int]:
     """Rewrite the prose of item *num*'s deliverable bullet; ``(text, old, line)``.
@@ -3802,28 +4130,10 @@ def reword_deliverable(text: str, num: int, new_text: str
     a rewording to the prose it already has returns *text* unchanged.
     """
     prose = new_text.strip()
-    if not prose:
-        raise ValueError(
-            "the new text is empty — a deliverable bullet says what its item "
-            "delivers")
-    if "\n" in prose or "\r" in prose:
-        raise ValueError(
-            "the new text may not contain a line break — it is written onto "
-            "the bullet's one line, and a break would end the bullet before "
-            "its marker")
-    icon = _ICON_RE.match(prose)
-    if icon:
-        raise ValueError(
-            f"the new text starts with a status icon ({icon.group(0)}), which "
-            f"would put a second status on the bullet — pass the prose alone; "
-            f"the bullet keeps its own icon")
-    ref = _BULLET_MARKER_RE.search(prose)
-    if ref:
-        raise ValueError(
-            f"the new text ends with an item reference "
-            f"({ref.group(0).strip()}), which would join the bullet's trailing "
-            f"marker and attribute its items to the bullet — pass the prose "
-            f"alone; the bullet keeps its own *(Item {num:03d})* marker")
+    refusal = _deliverable_prose_refusal(
+        prose, f"the bullet keeps its own *(Item {num:03d})* marker")
+    if refusal:
+        raise ValueError(refusal)
     lines = text.splitlines()
     owned = [(s, l) for s, l in _deliverable_bullet_spans(lines)
              if num in _bullet_marker_item_numbers(lines[l])]
@@ -10962,12 +11272,13 @@ def _report_bullet_splits(number: int, lines: List[str],
 def _archived_target_refusal(args: argparse.Namespace) -> Optional[str]:
     """`archived_stage_refusal` for what this `aide progress` call writes:
     the item of `set NNN`, `reopen NNN` and `reword --item NNN`, else the
-    stage of `set --stage N` and the four acceptance verbs (issue #475).
+    stage of `set --stage N`, `reword --stage N` and the four acceptance
+    verbs (issue #475).
     None when the call is malformed — its own usage error says so — or when
     progress.md is not there to read."""
     if args.action == "reword" and args.item is not None:
         item, stage = args.item, None
-    elif args.action == "set" and args.stage is not None:
+    elif args.action in ("set", "reword") and args.stage is not None:
         item, stage = None, args.stage
     elif args.action in ("set", "reopen"):
         item, stage = args.number, None
@@ -11022,6 +11333,13 @@ def cmd_progress(args: argparse.Namespace) -> int:
         print(f"aide progress {args.action}: --item belongs to `reword` alone "
               f"(reword --item NNN --text TEXT)", file=sys.stderr)
         return 2
+    if args.action == "reword" and (args.stage is not None
+                                    or args.deliverable is not None):
+        return _cmd_progress_reword_by_place(args)
+    if (args.action == "set" and args.stage is not None
+            and args.deliverable is None
+            and _stage_set_word(args) in _STAGE_SET):
+        return _cmd_progress_set_stage(args)
     if args.stage is not None or args.deliverable is not None:
         return _cmd_progress_defer_deliverable(args)
     if args.number is None and args.action != "reword":
@@ -11052,8 +11370,11 @@ def cmd_progress(args: argparse.Namespace) -> int:
     if args.status in _ITEM_SET:
         return _cmd_progress_defer(args)
     if args.status not in _SET_STATUS_MAP:
+        whole = (" — `withdrawn` is a whole stage's, `aide progress set "
+                 "--stage N withdrawn --reason …`; an item the stage does not "
+                 "need is `dropped`" if args.status == "withdrawn" else "")
         print("status must be 'in-progress', 'in-review', 'done', "
-              "'deferred', 'resumed', 'dropped' or 'restored'",
+              f"'deferred', 'resumed', 'dropped' or 'restored'{whole}",
               file=sys.stderr)
         return 2
     status_map = _SET_STATUS_MAP
@@ -12702,8 +13023,9 @@ def _cmd_progress_defer_deliverable(args: argparse.Namespace) -> int:
         return 2
     if args.stage is None or args.deliverable is None:
         print(f"{usage}\n{tag}: --stage and --deliverable go together — the "
-              f"stage names the section, the deliverable its Kth bullet",
-              file=sys.stderr)
+              f"stage names the section, the deliverable its Kth bullet; a "
+              f"whole stage takes `set --stage N withdrawn|restored --reason "
+              f"…` alone", file=sys.stderr)
         return 2
     status = args.status
     if isinstance(args.number, str) and status is None:
@@ -12717,10 +13039,13 @@ def _cmd_progress_defer_deliverable(args: argparse.Namespace) -> int:
         return 2
     if status not in _POSITIONAL_SET:
         shown = f"'{status}'" if status else "no status"
+        whole = (f"; a whole stage is withdrawn with `aide progress set "
+                 f"--stage {args.stage} withdrawn --reason …`"
+                 if status == "withdrawn" else "")
         print(f"{usage}\n{tag}: only `deferred`, `dropped`, `resumed` or "
               f"`restored` is set by position, not {shown} — a deliverable "
               f"with no item marker moves forward once it is itemised, after "
-              f"which `aide progress set NNN <status>` moves it",
+              f"which `aide progress set NNN <status>` moves it{whole}",
               file=sys.stderr)
         return 2
     if args.criterion is not None or args.all_criteria:
@@ -12766,6 +13091,181 @@ def _cmd_progress_defer_deliverable(args: argparse.Namespace) -> int:
     return 0
 
 
+#: The statuses `set --stage N` writes on a whole stage (issue #485), each
+#: with the noun its commit and messages use.
+_STAGE_SET = {"withdrawn": "the withdrawal", "restored": "the restoration"}
+
+
+def _stage_set_word(args: argparse.Namespace) -> Optional[str]:
+    """The status word of `set --stage N <word>`: the first positional, since
+    the form takes no item number, else the second."""
+    if isinstance(args.number, str):
+        return args.number
+    return args.status
+
+
+def _restored_dependents(repo_root: Path, config, item_status: Dict[int, str],
+                         revived: List[int]) -> List[str]:
+    """One warning per item 🚧, 🔍 or ✅ whose spec's Dependencies name an
+    item *revived* by a stage's restoration — work built while the
+    dependency had left the way (issue #402, deferred: this names them and
+    decides nothing)."""
+    if not revived:
+        return []
+    out: List[str] = []
+    for n in sorted(item_status):
+        st = item_status[n]
+        if st not in ("in-progress", "in-review", "complete"):
+            continue
+        named = sorted(set(_item_dependencies(repo_root, config, n)) & set(revived))
+        if named:
+            shown = ", ".join(f"{d:03d}" for d in named)
+            out.append(
+                f"warning: item {n:03d} is {STATUS_TO_ICON[st]} {st} and its "
+                f"Dependencies name item{'' if len(named) == 1 else 's'} "
+                f"{shown}, back to 📋 with this stage — it was built while "
+                f"{'that item' if len(named) == 1 else 'they'} had left the "
+                f"way; whether it still waits on "
+                f"{'it' if len(named) == 1 else 'them'} is the owner's call")
+    return out
+
+
+def _cmd_progress_set_stage(args: argparse.Namespace) -> int:
+    """``aide progress set --stage N <withdrawn|restored> --reason TEXT``.
+
+    A whole stage withdrawn, with its reason, and taken back (issue #485).
+    Otherwise `_cmd_progress_defer_deliverable` exactly: the reason is
+    required and on one line, and the edit is committed or put back. No
+    insight is captured: withdrawing a stage is a decision about scope.
+    """
+    status = _stage_set_word(args)
+    usage = (f"usage: aide progress set --stage N {status} --reason TEXT "
+             f"[--date YYYY-MM-DD]")
+    tag = f"aide progress set --stage N {status}"
+    if isinstance(args.number, int) or (isinstance(args.number, str)
+                                        and args.status is not None):
+        print(f"{usage}\n{tag}: takes no item number and one status — the "
+              f"stage is named by --stage", file=sys.stderr)
+        return 2
+    if args.criterion is not None or args.all_criteria:
+        print(f"{usage}\n{tag}: a stage is {status} whole — it takes no "
+              f"--criterion or --all", file=sys.stderr)
+        return 2
+    if not (args.reason or "").strip():
+        print(f"{tag}: --reason is required — the reason is what the record "
+              f"keeps", file=sys.stderr)
+        return 2
+    reason = args.reason.strip()
+    if "\n" in reason or "\r" in reason:
+        print(f"{tag}: the reason may not contain a line break — it is "
+              f"written into one trail line", file=sys.stderr)
+        return 2
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    progress_path = docs_dir(repo_root, config) / "progress.md"
+    if not progress_path.is_file():
+        print(f"error: {progress_path} not found", file=sys.stderr)
+        return 1
+    import datetime as _dt
+    date = args.date or _dt.date.today().isoformat()
+    text = progress_path.read_text(encoding=_ENCODING)
+    revived: List[int] = []
+    try:
+        if status == "withdrawn":
+            updated, messages = withdraw_stage(text, args.stage, reason, date)
+        else:
+            updated, messages, revived = restore_stage(
+                text, args.stage, reason, date)
+    except ValueError as exc:
+        print(f"error: {exc}; progress.md NOT changed", file=sys.stderr)
+        return 1
+    for message in messages:
+        print(message)
+    if updated == text:
+        return 0
+    before = _snapshot([progress_path])
+    progress_path.write_text(updated, encoding="utf-8")
+    for warning in _restored_dependents(
+            repo_root, config, _parse_item_status(
+                read_progress_lines(progress_path))[2], revived):
+        print(warning, file=sys.stderr)
+    if _commits_here(args.no_commit, repo_root, before):
+        return _commit_or_restore(
+            repo_root, config, "aide progress set", _STAGE_SET[status],
+            f"progress(aide): stage {args.stage} -> {status}",
+            [_progress_rel(config)], before)
+    return 0
+
+
+def _cmd_progress_reword_by_place(args: argparse.Namespace) -> int:
+    """``aide progress reword --stage N --deliverable K --text TEXT`` — a
+    deliverable no item has claimed, in both documents (issue #485).
+
+    The roadmap's deliverables carry no item marker, so they are matched by
+    position, as criteria are; where the two cannot be lined up nothing is
+    written. Where roadmap.md has no Deliverables block for the stage, or
+    there is no roadmap.md, progress.md alone is written and the message
+    says so, as the criterion form does.
+    """
+    usage = "usage: aide progress reword --stage N --deliverable K --text TEXT"
+    tag = "aide progress reword --stage/--deliverable"
+    if args.stage is None or args.deliverable is None:
+        print(f"{usage}\n{tag}: --stage and --deliverable go together — the "
+              f"stage names the section, the deliverable its Kth bullet",
+              file=sys.stderr)
+        return 2
+    if (args.number is not None or args.status is not None
+            or args.criterion is not None or args.item is not None
+            or args.all_criteria):
+        print(f"{usage}\n{tag}: takes no STAGE positional, --criterion, "
+              f"--item or --all — the bullet is named by --stage and "
+              f"--deliverable alone", file=sys.stderr)
+        return 2
+    if not (args.text or "").strip():
+        print(f"{usage}\n{tag}: --text is required", file=sys.stderr)
+        return 2
+    repo_root = find_repo_root(args.repo)
+    config = load_config(repo_root)
+    ddir = docs_dir(repo_root, config)
+    progress_path = ddir / "progress.md"
+    roadmap_path = ddir / "roadmap.md"
+    if not progress_path.is_file():
+        print(f"error: {progress_path} not found", file=sys.stderr)
+        return 1
+    text = progress_path.read_text(encoding=_ENCODING)
+    roadmap = (roadmap_path.read_text(encoding=_ENCODING)
+               if roadmap_path.is_file() else None)
+    try:
+        updated, road_updated, old, note = reword_unmarked_deliverable(
+            text, roadmap, args.stage, args.deliverable, args.text)
+    except ValueError as exc:
+        print(f"error: {exc}; progress.md and roadmap.md NOT changed",
+              file=sys.stderr)
+        return 1
+    where = f"stage {args.stage}: deliverable {args.deliverable}"
+    if updated == text and road_updated is None:
+        print(f"{where}: no change (it already reads so)")
+        return 0
+    before = _snapshot([progress_path] + ([roadmap_path] if road_updated
+                                          is not None else []))
+    progress_path.write_text(updated, encoding="utf-8")
+    rels = [_progress_rel(config)]
+    if road_updated is not None:
+        roadmap_path.write_text(road_updated, encoding="utf-8")
+        rels.append(str(config["project"].get("docs_dir", "docs/aide"))
+                    + "/roadmap.md")
+    print(f"{where} reworded")
+    print(f"  was: {old}")
+    print(f"  now: {args.text.strip()}")
+    print(f"  {note}")
+    if _commits_here(args.no_commit, repo_root, before):
+        return _commit_or_restore(
+            repo_root, config, "aide progress reword", "the rewording",
+            f"progress(aide): stage {args.stage} reword deliverable "
+            f"{args.deliverable}", rels, before)
+    return 0
+
+
 def _progress_number(value: str):
     """`aide progress`'s NUMBER: an int, or the word as typed when it is not
     one — so `set --stage N --deliverable K deferred` can carry its status in
@@ -12798,7 +13298,8 @@ def _cmd_progress_reword(args: argparse.Namespace) -> int:
         return _cmd_progress_reword_deliverable(args)
     if args.criterion is None or args.number is None:
         print("usage: aide progress reword STAGE --criterion N --text TEXT | "
-              "reword --item NNN --text TEXT", file=sys.stderr)
+              "reword --item NNN --text TEXT | reword --stage N "
+              "--deliverable K --text TEXT", file=sys.stderr)
         return 2
     if not (args.text or "").strip():
         print("aide progress reword: --text is required", file=sys.stderr)
@@ -22626,7 +23127,11 @@ def build_parser() -> argparse.ArgumentParser:
             "and `set NNN restored --reason TEXT` takes a \u274c item back "
             "to \U0001f4cb with a dated `restored: <reason>` line, as `set "
             "--stage N --deliverable K restored --reason TEXT` does for such "
-            "a bullet\n"
+            "a bullet. `set --stage N withdrawn --reason TEXT`, with no "
+            "--deliverable, withdraws stage N whole, with a dated `withdrawn: "
+            "<reason>` line under its header, and `set --stage N restored "
+            "--reason TEXT` takes a withdrawn stage back, with a dated "
+            "`restored: <reason>` line\n"
             "accept:  tick one acceptance criterion (--criterion N) or every "
             "one in the stage (--all), with --evidence\n"
             "amend:   append a dated correction under a ticked box; the tick "
@@ -22641,7 +23146,9 @@ def build_parser() -> argparse.ArgumentParser:
             "box. `reword --item NNN --text TEXT` takes no stage and "
             "instead rewrites the prose of the one deliverable bullet whose "
             "trailing marker names the item, whatever its status, keeping its "
-            "icon and marker\n"
+            "icon and marker. `reword --stage N --deliverable K --text TEXT` "
+            "rewrites the Kth deliverable bullet of stage N, one no item "
+            "marker names, in progress.md and roadmap.md, or in neither\n"
             "reopen:  send a \u2705 item back to \U0001f4cb \u2014 its "
             "deliverable bullet flips, a dated `reopened: <reason>` line goes "
             "under it, its stage rolls back down, and a `gap` insight is "
@@ -22683,7 +23190,7 @@ def build_parser() -> argparse.ArgumentParser:
             "\u274c. A header, summary row or Objective "
             "row marked \u23f8\ufe0f by hand stays as it reads until a verb "
             "moves a bullet of its stage, or rollup rolls that stage up. Apart from deferring, dropping, "
-            "resuming and restoring, set never downgrades a status; an item "
+            "resuming, restoring and withdrawing, set never downgrades a status; an item "
             "whose bullets are all \u23f8\ufe0f or \U0001f4cb leaves "
             "\u23f8\ufe0f by resuming alone, back to \U0001f4cb, one whose "
             "bullets are all \u274c or \U0001f4cb leaves \u274c by "
@@ -22818,6 +23325,42 @@ def build_parser() -> argparse.ArgumentParser:
             "dropping a deliverable is a decision about scope, not a "
             "finding.\n"
             "\n"
+            "set --stage N withdrawn writes \u274c on stage N's summary row "
+            "and header, a dated `withdrawn: <reason>` trail line directly "
+            "under the header, and rolls every Objective row naming the "
+            "stage up with the stage left out, so a row only it delivers "
+            "reads \u274c. It refuses, writing nothing, without a stated "
+            "reason, a stage with no section or no usable summary row, and a "
+            "stage with a \u2705 bullet \u2014 shipped work is not "
+            "withdrawn; drop what the stage does not need, and it closes "
+            "\u2705. A stage already \u274c is no change. No insight is "
+            "captured: withdrawing a stage is a decision about scope, not a "
+            "finding.\n"
+            "\n"
+            "set --stage N restored writes on the summary row and header "
+            "what the stage's bullets roll up to, \U0001f4cb where it has "
+            "none, a dated `restored: <reason>` trail line under the header's "
+            "last, and rolls every Objective row naming the stage up again, "
+            "a \u274c one every stage of which was withdrawn included. It "
+            "refuses, writing nothing, without a stated reason, or when the "
+            "stage's summary row is not \u274c. It warns, and writes anyway, "
+            "for each \U0001f6a7, \U0001f50d or \u2705 item whose spec's "
+            "Dependencies name a \U0001f4cb item the restoration brings "
+            "back.\n"
+            "\n"
+            "reword --stage N --deliverable K counts the stage's bullets as "
+            "set --stage N --deliverable K does, and matches the Kth to the "
+            "Kth top-level bullet of the roadmap stage's Deliverables block; "
+            "each loses its wrapped lines, and a bullet nested under the "
+            "roadmap one stays. It refuses, writing neither file, a stage "
+            "progress.md shows \u2705 or \u274c, a bullet that carries an "
+            "item marker or is not \U0001f4cb, text that is empty, holds a "
+            "line break, starts with a status icon or ends with an item "
+            "reference, and a roadmap stage whose Deliverables block lists a "
+            "different number of bullets. Where roadmap.md has no "
+            "Deliverables block for the stage, or there is no roadmap.md, it "
+            "writes progress.md alone and says so.\n"
+            "\n"
             "rollup is for a bullet added by hand, the one write no other "
             "verb rolls up: until then the stage's cells read as before, and "
             "a \u2705 over the new \U0001f4cb bullet is an `aide check` "
@@ -22917,11 +23460,13 @@ def build_parser() -> argparse.ArgumentParser:
                              "rollup, compact, archive or unarchive)")
     p_prog.add_argument("status", nargs="?", default=None,
                         help="set: in-progress | in-review | done | deferred "
-                             "| dropped | resumed | restored (in-review = "
-                             "pushed, awaiting a human's merge; the last four "
-                             "need --reason and take --stage and "
-                             "--deliverable in place of NNN for a bullet no "
-                             "item marker names)")
+                             "| dropped | resumed | restored | withdrawn "
+                             "(in-review = pushed, awaiting a human's merge; "
+                             "deferred, dropped, resumed and restored need "
+                             "--reason and take --stage and --deliverable in "
+                             "place of NNN for a bullet no item marker names; "
+                             "withdrawn and restored with --stage alone act "
+                             "on the whole stage)")
     #: A criterion or a deliverable bullet, never both in one call: the two
     #: `reword` forms address different lines by different keys (issue #320).
     p_target = p_prog.add_mutually_exclusive_group()
@@ -22932,17 +23477,19 @@ def build_parser() -> argparse.ArgumentParser:
                                "prose --text replaces, in place of STAGE and "
                                "--criterion")
     p_prog.add_argument("--stage", type=int, default=None, metavar="N",
-                        help="set deferred|dropped|resumed|restored: the "
+                        help="set deferred|dropped|resumed|restored, "
+                             "reword: the "
                              "stage whose "
                              "deliverable bullet --deliverable names, in "
-                             "place of NNN; rollup: the one stage to roll "
+                             "place of NNN; set withdrawn|restored without "
+                             "--deliverable: the stage itself; rollup: the one stage to roll "
                              "up (default: every stage); archive: the one "
                              "stage to archive (default: every eligible "
                              "stage); unarchive: the stage to move back "
                              "(required)")
     p_prog.add_argument("--deliverable", type=int, default=None, metavar="K",
-                        help="set deferred|dropped|resumed|restored: the "
-                             "1-based position "
+                        help="set deferred|dropped|resumed|restored, "
+                             "reword: the 1-based position "
                              "of a deliverable bullet with no item marker "
                              "among the stage's deliverable bullets")
     p_prog.add_argument("--all", action="store_true", dest="all_criteria",
@@ -22958,14 +23505,17 @@ def build_parser() -> argparse.ArgumentParser:
                              "set dropped: why the stage does not need the "
                              "deliverable or item; set resumed: why the "
                              "deferred work is wanted now; set restored: why "
-                             "the dropped work is wanted after all (required "
-                             "for all six)")
+                             "the dropped work or withdrawn stage is wanted "
+                             "after all; set --stage N withdrawn: why the "
+                             "stage is no longer wanted (required for all "
+                             "seven)")
     p_prog.add_argument("--text", default=None,
                         help="reword: the criterion's new wording, or with "
-                             "--item the bullet's new prose (required)")
+                             "--item or --stage and --deliverable the "
+                             "bullet's new prose (required)")
     p_prog.add_argument("--date", default=None,
                         help="amend/retract/reopen/set "
-                             "deferred|dropped|resumed|restored: "
+                             "deferred|dropped|resumed|restored|withdrawn: "
                              "ISO date for the trail line (default: today)")
     p_prog.add_argument("--no-commit", action="store_true", help="edit only, do not git commit")
     p_prog.set_defaults(func=cmd_progress, progress_parser=p_prog)

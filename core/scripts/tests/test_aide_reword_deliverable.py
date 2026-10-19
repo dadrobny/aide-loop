@@ -289,3 +289,176 @@ def test_a_criterion_reword_reports_the_box_as_written(tmp_path: Path, capsys):
     assert ("now: Both datasets load in CI. *(evidence: queue CI)*"
             in capsys.readouterr().out)
     assert "queue CI" not in (ddir / "roadmap.md").read_text(encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- #
+# a deliverable no item has claimed, by its place — both documents (#485)
+# --------------------------------------------------------------------------- #
+PLACE = """\
+# Demo — Progress
+
+## Stage summary
+
+| Stage | Title | Objectives | Status |
+|-------|-------|-----------|--------|
+| 3 | Adapters | G1 | 🚧 |
+
+## Stage 3 — Adapters — 🚧
+
+**Deliverables.**
+- ✅ Adapters for two datasets. *(Item 041)*
+- 📋 A loader for the third
+  dataset.
+- ⏸️ A cache.
+  - **2026-10-01** → deferred: later
+
+**Acceptance.**
+- [ ] Both datasets load.
+"""
+
+PLACE_ROADMAP = """\
+# R
+
+## Stage 3 — Adapters
+
+**Goal.** Every dataset loads.
+
+**Deliverables.**
+
+- Adapters for two datasets.
+- A loader for the third
+  dataset, as first planned.
+  - read through the shared reader
+- A cache.
+
+**Dependencies.** None.
+
+**Validation / acceptance.**
+
+- Both datasets load.
+"""
+
+
+def _by_place(k: int = 2, text: str = "A loader for any further dataset.",
+              progress: str = PLACE, roadmap=PLACE_ROADMAP, stage: int = 3):
+    return aide.reword_unmarked_deliverable(progress, roadmap, stage, k, text)
+
+
+def test_an_unclaimed_deliverable_is_reworded_in_both_documents():
+    out, road, old, note = _by_place()
+    assert old == "A loader for the third dataset."
+    lines = out.splitlines()
+    i = lines.index("- 📋 A loader for any further dataset.")
+    assert lines[i + 1] == "- ⏸️ A cache."
+    rlines = road.splitlines()
+    i = rlines.index("- A loader for any further dataset.")
+    # The wrapped lines go; the nested bullet under it is no part of it.
+    assert rlines[i + 1] == "  - read through the shared reader"
+    assert rlines[i - 1] == "- Adapters for two datasets."
+    assert note == "roadmap.md: mirrored"
+    # Goal, Dependencies and the criteria are untouched.
+    for kept in ("**Goal.** Every dataset loads.", "**Dependencies.** None.",
+                 "- Both datasets load."):
+        assert kept in rlines
+
+
+def test_an_itemised_bullet_is_refused_naming_the_item_form():
+    with pytest.raises(ValueError,
+                       match=r"`aide progress reword --item 041 --text …`"):
+        _by_place(k=1)
+
+
+def test_a_bullet_that_is_not_planned_is_refused():
+    with pytest.raises(ValueError, match=r"is ⏸️ deferred; only a 📋"):
+        _by_place(k=3)
+
+
+def test_a_position_outside_the_stage_is_refused():
+    with pytest.raises(ValueError, match="has 3 deliverable bullets"):
+        _by_place(k=4)
+
+
+@pytest.mark.parametrize("cell", ["✅", "❌"])
+def test_a_settled_stage_is_refused(cell):
+    settled = PLACE.replace("| 3 | Adapters | G1 | 🚧 |", f"| 3 | Adapters | G1 | {cell} |")
+    with pytest.raises(ValueError, match="settled"):
+        _by_place(progress=settled)
+
+
+def test_counts_that_cannot_be_lined_up_are_refused():
+    short = PLACE_ROADMAP.replace("- A cache.\n", "")
+    with pytest.raises(ValueError, match=r"lists 2 deliverable bullets but "
+                                         r"progress.md has 3"):
+        _by_place(roadmap=short)
+
+
+def test_no_roadmap_or_no_deliverables_block_writes_progress_alone():
+    out, road, _, note = _by_place(roadmap=None)
+    assert road is None and "nothing to mirror" in note
+    assert "- 📋 A loader for any further dataset." in out.splitlines()
+    bare = PLACE_ROADMAP.replace("**Deliverables.**", "**Notes.**")
+    _, road, _, note = _by_place(roadmap=bare)
+    assert road is None and "no Deliverables block" in note
+
+
+@pytest.mark.parametrize("new_text, why", [
+    ("", "empty"),
+    ("one\ntwo", "line break"),
+    ("📋 A loader.", "status icon"),
+    ("A loader. *(Item 043)*", "item reference"),
+])
+def test_text_a_bullet_cannot_hold_is_refused_by_place(new_text, why):
+    with pytest.raises(ValueError, match=why):
+        _by_place(text=new_text)
+
+
+def _place_repo(tmp_path: Path, roadmap: str = PLACE_ROADMAP) -> Path:
+    repo = _repo(tmp_path)
+    ddir = repo / "docs" / "aide"
+    (ddir / "progress.md").write_text(PLACE, encoding="utf-8")
+    (ddir / "roadmap.md").write_text(roadmap, encoding="utf-8")
+    return repo
+
+
+def test_the_place_form_writes_both_documents_through_the_cli(
+        tmp_path: Path, capsys):
+    repo = _place_repo(tmp_path)
+    ddir = repo / "docs" / "aide"
+    assert _reword(repo, "--stage", "3", "--deliverable", "2", "--text",
+                   "A loader for any further dataset.") == 0
+    out, road, _, _ = _by_place()
+    assert (ddir / "progress.md").read_text(encoding="utf-8") == out
+    assert (ddir / "roadmap.md").read_text(encoding="utf-8") == road
+    printed = capsys.readouterr().out
+    assert "stage 3: deliverable 2 reworded" in printed
+    assert "roadmap.md: mirrored" in printed
+    # Again: both documents already read so.
+    assert _reword(repo, "--stage", "3", "--deliverable", "2", "--text",
+                   "A loader for any further dataset.") == 0
+    assert "no change" in capsys.readouterr().out
+
+
+def test_a_place_form_refusal_writes_neither_document(tmp_path: Path, capsys):
+    repo = _place_repo(tmp_path, PLACE_ROADMAP.replace("- A cache.\n", ""))
+    ddir = repo / "docs" / "aide"
+    before = [(ddir / n).read_bytes() for n in ("progress.md", "roadmap.md")]
+    assert _reword(repo, "--stage", "3", "--deliverable", "2", "--text", "x") == 1
+    assert "NOT changed" in capsys.readouterr().err
+    assert [(ddir / n).read_bytes() for n in ("progress.md", "roadmap.md")] == before
+
+
+@pytest.mark.parametrize("argv", [
+    ("--stage", "3", "--text", "x"),                                # no K
+    ("--deliverable", "2", "--text", "x"),                          # no N
+    ("3", "--stage", "3", "--deliverable", "2", "--text", "x"),     # a STAGE
+    ("--stage", "3", "--deliverable", "2", "--criterion", "1", "--text", "x"),
+    ("--stage", "3", "--deliverable", "2", "--item", "41", "--text", "x"),
+    ("--stage", "3", "--deliverable", "2", "--all", "--text", "x"),
+    ("--stage", "3", "--deliverable", "2"),                         # no text
+])
+def test_the_place_form_refuses_a_malformed_call_with_usage(tmp_path: Path, argv):
+    repo = _place_repo(tmp_path)
+    ddir = repo / "docs" / "aide"
+    before = [(ddir / n).read_bytes() for n in ("progress.md", "roadmap.md")]
+    assert _reword(repo, *argv) == 2
+    assert [(ddir / n).read_bytes() for n in ("progress.md", "roadmap.md")] == before
