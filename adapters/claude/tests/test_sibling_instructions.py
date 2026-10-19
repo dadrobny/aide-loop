@@ -92,15 +92,20 @@ def _isolate_markers(tmp_path, monkeypatch):
     markers = tmp_path / "markers"
     markers.mkdir()
     monkeypatch.setattr(hook.tempfile, "gettempdir", lambda: str(markers))
+    # A developer's own `CLAUDE_PROJECT_DIR` would have the guard read that
+    # project's `.aide/local.toml` instead of the consumer a test built.
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
 
 
 def _subprocess_env(tmp_path, **extra):
     """The fixture above patches this process only; a spawned hook reads the
     real temp dir, keeps its marker there across runs, and stays silent for a
     repo whose `tmp_path` an earlier run already used. `tempfile.gettempdir`
-    consults all three variables, and Windows reads `TEMP`/`TMP`."""
+    consults all three variables, and Windows reads `TEMP`/`TMP`.
+    `CLAUDE_PROJECT_DIR` reaches the child only when a test passes it."""
     markers = str(tmp_path / "markers")
-    return {**os.environ, "TMPDIR": markers, "TEMP": markers, "TMP": markers, **extra}
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
+    return {**env, "TMPDIR": markers, "TEMP": markers, "TMP": markers, **extra}
 
 
 # --------------------------------------------------------------------------- #
