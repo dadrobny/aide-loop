@@ -1774,8 +1774,15 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
           "test_aide_defer::test_withdrawing_refuses_a_stage_with_no_section_or_no_summary_row",
           "test_aide_defer::test_withdrawing_a_stage_with_shipped_work_is_refused",
           "test_aide_defer::test_a_refused_stage_form_exits_1_and_writes_nothing")),
-        ("A stage already \u274c is no change",
-         "test_aide_defer::test_withdrawing_a_withdrawn_stage_is_no_change"),
+        # `withdraw_stage`'s `already` / `_stage_trail_withdrawn` arms
+        # (PR #499 review): a hand-❌ stage is recorded, not skipped.
+        ("A stage whose summary row is \u274c by hand is recorded instead: "
+         "the trail line and any cell not yet \u274c are written, and a "
+         "\u2705 bullet does not refuse it; one already carrying a "
+         "`withdrawn:` line as its latest is no change",
+         ("test_aide_defer::test_a_stage_withdrawn_by_hand_is_recorded_by_the_verb",
+          "test_aide_defer::test_a_hand_withdrawn_stage_with_shipped_work_is_recorded",
+          "test_aide_defer::test_withdrawing_a_withdrawn_stage_is_no_change")),
         # `restore_stage`: `rollup_status` or 📋, the freed Objective rows,
         # and `_restored_dependents` over `_item_dependencies`.
         ("set --stage N restored writes on the summary row and header what "
@@ -1785,9 +1792,11 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "every stage of which was withdrawn included",
          ("test_aide_defer::test_restoring_a_withdrawn_stage_rolls_its_cells_back_up",
           "test_aide_defer::test_restoring_a_stage_with_no_bullets_reads_planned")),
-        ("It refuses, writing nothing, without a stated reason, or when the "
-         "stage's summary row is not \u274c",
+        ("It refuses, writing nothing, without a stated reason, when the "
+         "stage's summary row is not \u274c, or when every bullet of the "
+         "stage is \u274c, since it has nothing left to deliver",
          ("test_aide_defer::test_restoring_a_stage_that_is_not_withdrawn_is_refused",
+          "test_aide_defer::test_restoring_a_stage_whose_every_bullet_is_dropped_is_refused",
           "test_aide_defer::test_the_stage_forms_refuse_a_malformed_call_with_exit_2",
           "test_aide_defer::test_a_refused_stage_form_exits_1_and_writes_nothing")),
         ("It warns, and writes anyway, for each \U0001f6a7, \U0001f50d or "

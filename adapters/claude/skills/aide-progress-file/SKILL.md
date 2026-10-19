@@ -95,9 +95,9 @@ paths:
      - Drop an item with `aide progress set NNN dropped --reason …`
      - a shipped item is reopened first
      - A drop that would leave every deliverable bullet of the stage ❌ is
-       refused: a stage with nothing left to deliver is withdrawn whole, by
-       a ❌ on its summary row and on any Objective row only it delivers
-     - a stage already withdrawn that way refuses no drop
+       refused: a stage with nothing left to deliver is withdrawn whole, with
+       `aide progress set --stage N withdrawn --reason …`
+     - a stage already withdrawn refuses no drop
      - Dropped work is restored with its own verb, back to 📋, with its reason
      - Restore an item with `aide progress set NNN restored --reason …`, and
        a bullet no item marker names with `aide progress set --stage N
@@ -218,8 +218,8 @@ does not need it at all. Defer what the stage needs later, drop what it does
 not need. Drop an item with `aide progress set NNN dropped --reason …` — a
 shipped item is reopened first. A drop that would leave every deliverable
 bullet of the stage ❌ is refused: a stage with nothing left to deliver is
-withdrawn whole, by a ❌ on its summary row and on any Objective row only it
-delivers; a stage already withdrawn that way refuses no drop. **A deferred or
+withdrawn whole, with `aide progress set --stage N withdrawn --reason …`; a
+stage already withdrawn refuses no drop. **A deferred or
 dropped deliverable stays in `roadmap.md` as written.**
 
 **Dropped work is restored with its own verb, back to 📋, with its reason.**

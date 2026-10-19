@@ -162,7 +162,12 @@ instead — that is the bump policy above, and it is enforced by
   `withdrawn: <reason>` trail line directly under the header, and rolls the
   Objective rows naming the stage up with it left out, so a row only it
   delivers reads ❌. It refuses a stage with a ✅ bullet — drop what it does
-  not need and it closes ✅ — and one with no usable summary row. `restored`
+  not need and it closes ✅ — and one with no usable summary row. A stage
+  already ❌ by hand, with no `withdrawn:` line on its trail, is recorded
+  rather than skipped: the reason, any cell not yet ❌ and the Objective
+  rollup are written, and its ✅ bullets do not refuse it. `restored`
+  refuses a stage whose every bullet is ❌, which would have nothing left to
+  deliver; otherwise it
   writes the cells back to what the bullets roll up to, frees the Objective
   rows the withdrawal made ❌, adds its own trail line, and warns, writing
   anyway, for each 🚧, 🔍 or ✅ item whose spec's Dependencies name a 📋 item
@@ -180,7 +185,10 @@ instead — that is the bump policy above, and it is enforced by
   `roadmap.md` as written, its status the record; §1 → status icons names the
   stage verbs. The `aide-progress-file` skill delivers the new rules, pinned.
 - The drop refusals that leave a stage all ❌ now name `aide progress set
-  --stage N withdrawn --reason …` instead of a hand edit of the summary row.
+  --stage N withdrawn --reason …` instead of a hand edit of the summary row,
+  as do §1 → `progress.md`, `aide progress -h` and the `aide-progress-file`
+  skill where they said a stage is withdrawn "by a ❌ on its summary row";
+  `aide-create-roadmap` names the deliverable form of `reword`.
 
 ## [2.54.0] — 2026-10-18
 

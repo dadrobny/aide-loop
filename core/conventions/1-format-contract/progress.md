@@ -147,9 +147,9 @@ an item with `aide progress set NNN dropped --reason …` — one abandoned at
 the validation-round cap, or one its owner decides against — once it is not
 ✅; a shipped item is reopened first. A drop that would leave every
 deliverable bullet of the stage ❌ is refused: a stage
-with nothing left to deliver is withdrawn whole, by a ❌ on its summary row
-and on any Objective row only it delivers; a stage already withdrawn that way
-refuses no drop. **A deferred or dropped deliverable stays in `roadmap.md` as
+with nothing left to deliver is withdrawn whole, with `aide progress set
+--stage N withdrawn --reason …` (below); a stage already withdrawn refuses no
+drop. **A deferred or dropped deliverable stays in `roadmap.md` as
 written**: the bullet says what was planned, and its status here says what
 became of it.
 
@@ -167,10 +167,13 @@ one with `aide progress set --stage N withdrawn --reason …`, never by typing
 keeps the why on a dated trail line under the header, and rolls up the
 Objective rows naming it, so a row only it delivers reads ❌. A stage with a
 ✅ bullet is not withdrawn: its shipped work stays shipped, so drop what it
-does not need, and it closes ✅. **A withdrawn stage is restored with `aide
-progress set --stage N restored --reason …`**: its cells go back to what its
-bullets roll up to, under a trail line beside the withdrawal's, and so do the
-Objective rows the withdrawal made ❌. A 🚧, 🔍 or ✅ item whose Dependencies
+does not need, and it closes ✅. A stage whose summary row was set ❌ by hand
+is withdrawn already, and the verb records it: it writes the reason, and any
+cell still not ❌, and its shipped work does not refuse it. **A withdrawn
+stage is restored with `aide progress set --stage N restored --reason …`**:
+its cells go back to what its bullets roll up to, under a trail line beside
+the withdrawal's, and so do the Objective rows the withdrawal made ❌. A stage
+whose every bullet is ❌ is not restored: it has nothing left to deliver. A 🚧, 🔍 or ✅ item whose Dependencies
 name a 📋 item the restoration brings back was built while that item had
 left the way; the verb names each one and writes anyway, since what such an
 item waits on now is its owner's call. Withdrawing and restoring are the

@@ -3847,6 +3847,19 @@ def _stage_cells_for(lines: List[str], stage: int, verb: str
     return section[0], section[1], row
 
 
+def _stage_trail_withdrawn(lines: List[str], start: int) -> bool:
+    """Whether the stage header at *start* carries a ``withdrawn:`` trail line
+    no later ``restored:`` one follows — a withdrawal already recorded."""
+    latest = None
+    for i in stage_header_trail(lines, start):
+        text = _ACCEPT_TRAIL_RE.match(lines[i]).group("text")
+        if text.startswith(_WITHDRAWN_PREFIX):
+            latest = "withdrawn"
+        elif text.startswith(_RESTORED_PREFIX):
+            latest = "restored"
+    return latest == "withdrawn"
+
+
 def withdraw_stage(text: str, stage: int, reason: str, date: str
                    ) -> Tuple[str, List[str]]:
     """Withdraw stage *stage* whole; ``(updated text, messages)`` (issue #485).
@@ -3861,15 +3874,25 @@ def withdraw_stage(text: str, stage: int, reason: str, date: str
 
     Refuses a stage with no section or no usable summary row, and one with a
     ✅ bullet: shipped work is not withdrawn — what the stage turns out not
-    to need is dropped, and it closes ✅. A stage already ❌ is no change.
+    to need is dropped, and it closes ✅.
+
+    A stage whose summary row is already ❌ — withdrawn by hand, the case
+    the issue was raised over — is recorded rather than skipped: the trail
+    line, a header still not ❌ and the Objective rollup are written, and its
+    shipped work does not refuse it, since the withdrawal was already made.
+    It is no change only once its latest ``withdrawn:``/``restored:`` trail
+    line is a ``withdrawn:`` one and both cells read ❌.
     """
     lines = text.splitlines()
     start, end, row = _stage_cells_for(lines, stage, "withdraws")
-    if _icon_status(_split_row(lines[row])[3]) == "excluded":
+    already = _icon_status(_split_row(lines[row])[3]) == "excluded"
+    recorded = _stage_trail_withdrawn(lines, start)
+    if (already and recorded
+            and _header_status(lines[start]) == "excluded"):
         return text, [f"stage {stage}: no change (already withdrawn)"]
     shipped = [k for k, st in enumerate(stage_deliverable_statuses(lines, start, end),
                                         start=1) if st == "complete"]
-    if shipped:
+    if shipped and not already:
         which = ", ".join(str(k) for k in shipped)
         raise ValueError(
             f"stage {stage} has shipped work — deliverable "
@@ -3883,9 +3906,13 @@ def withdraw_stage(text: str, stage: int, reason: str, date: str
     _write_stage_header_icon(lines, start, "excluded")
     num = stage_section(lines, str(stage))[2]
     _recompute_rollups(lines, downgrade_stages={num}, only={num})
-    messages = [f"stage {stage}: withdrawn — {reason}"] + _cell_moves(before, lines)
-    _insert_trail_line(lines, start, start, stage_header_trail(lines, start),
-                       date, _WITHDRAWN_PREFIX + reason)
+    messages = [f"stage {stage}: withdrawn — {reason}"
+                if not recorded else
+                f"stage {stage}: withdrawn already, its reason on the trail"
+                ] + _cell_moves(before, lines)
+    if not recorded:
+        _insert_trail_line(lines, start, start, stage_header_trail(lines, start),
+                           date, _WITHDRAWN_PREFIX + reason)
     return "\n".join(lines) + ("\n" if text.endswith("\n") else ""), messages
 
 
@@ -3916,10 +3943,20 @@ def restore_stage(text: str, stage: int, reason: str, date: str
         raise ValueError(
             f"stage {stage}'s summary row is {STATUS_TO_ICON[current]} "
             f"{current}, not ❌ — only a withdrawn stage is restored")
+    statuses = stage_deliverable_statuses(lines, start, end)
+    if statuses and all(st == "excluded" for st in statuses):
+        raise ValueError(
+            f"every deliverable bullet of stage {stage} is ❌, so once restored it "
+            f"would have nothing left to deliver and read 📋 — restore the "
+            f"bullets it needs first (`aide progress set NNN restored` or "
+            f"`set --stage {stage} --deliverable K restored`)")
     released = set(withdrawn_stage_items(lines))
     num = stage_section(lines, str(stage))[2]
     # The Objective rows the withdrawal alone made ❌: every stage they name
-    # withdrawn, this one among them.
+    # withdrawn, this one among them. Decided (PR #499 review): a row set ❌
+    # by hand earlier that names only withdrawn stages reads exactly like
+    # one the withdrawal wrote, and is freed with it; telling the two apart
+    # would need a record the file does not keep.
     stage_status = stage_rollups(lines)
     withdrawn = withdrawn_stages(lines)
     freed: List[int] = []
@@ -3958,8 +3995,8 @@ def roadmap_deliverable_bullets(lines: List[str], stage: str
     or no Deliverables block (issue #485).
 
     A bullet runs over its wrapped lines: every following line that is not
-    blank, not a list item, not a bold block opener, a heading or a
-    thematic break. A nested bullet is not a deliverable and ends the span,
+    blank, not a list item, not a blockquote, not a bold block opener, a
+    heading or a thematic break. A nested bullet is not a deliverable and ends the span,
     so `reword --stage N --deliverable K` leaves it in place. Fenced code
     and HTML comments are not read (`markdown_prose_lines`), as the shape
     lint reads the same block.
@@ -3987,7 +4024,7 @@ def roadmap_deliverable_bullets(lines: List[str], stage: str
             out.append((i, i))
             open_span = True
         elif (not text.strip() or re.match(r"^\s*[-*+]\s", text)
-              or _GUIDANCE_RE.match(text)):
+              or _GUIDANCE_RE.match(text) or _BLOCKQUOTE_RE.match(text)):
             open_span = False
         elif open_span:
             out[-1] = (out[-1][0], i)
@@ -23317,8 +23354,8 @@ def build_parser() -> argparse.ArgumentParser:
             "bullet already \u274c is no change. It also refuses, writing "
             "nothing, a drop that would leave every deliverable bullet of the "
             "stage \u274c, which the rollup reads as \U0001f4cb: a stage "
-            "with nothing left to deliver is withdrawn whole, by a \u274c "
-            "on its summary row and on any Objective row only it delivers. "
+            "with nothing left to deliver is withdrawn whole, with set "
+            "--stage N withdrawn. "
             "A stage whose summary row is already \u274c is withdrawn, so "
             "neither drop form refuses there. "
             "No insight is captured: "
@@ -23333,7 +23370,11 @@ def build_parser() -> argparse.ArgumentParser:
             "reason, a stage with no section or no usable summary row, and a "
             "stage with a \u2705 bullet \u2014 shipped work is not "
             "withdrawn; drop what the stage does not need, and it closes "
-            "\u2705. A stage already \u274c is no change. No insight is "
+            "\u2705. A stage whose summary row is \u274c by hand is "
+            "recorded instead: the trail line and any cell not yet \u274c "
+            "are written, and a \u2705 bullet does not refuse it; one "
+            "already carrying a `withdrawn:` line as its latest is no "
+            "change. No insight is "
             "captured: withdrawing a stage is a decision about scope, not a "
             "finding.\n"
             "\n"
@@ -23342,8 +23383,9 @@ def build_parser() -> argparse.ArgumentParser:
             "none, a dated `restored: <reason>` trail line under the header's "
             "last, and rolls every Objective row naming the stage up again, "
             "a \u274c one every stage of which was withdrawn included. It "
-            "refuses, writing nothing, without a stated reason, or when the "
-            "stage's summary row is not \u274c. It warns, and writes anyway, "
+            "refuses, writing nothing, without a stated reason, when the "
+            "stage's summary row is not \u274c, or when every bullet of the "
+            "stage is \u274c, since it has nothing left to deliver. It warns, and writes anyway, "
             "for each \U0001f6a7, \U0001f50d or \u2705 item whose spec's "
             "Dependencies name a \U0001f4cb item the restoration brings "
             "back.\n"

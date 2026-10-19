@@ -462,3 +462,15 @@ def test_the_place_form_refuses_a_malformed_call_with_usage(tmp_path: Path, argv
     before = [(ddir / n).read_bytes() for n in ("progress.md", "roadmap.md")]
     assert _reword(repo, *argv) == 2
     assert [(ddir / n).read_bytes() for n in ("progress.md", "roadmap.md")] == before
+
+
+def test_a_blockquote_under_a_roadmap_bullet_is_not_part_of_it():
+    """PR #499 review: an unseparated `>` line under a deliverable was read
+    as its wrapped text, and the rewording deleted it."""
+    quoted = PLACE_ROADMAP.replace(
+        "  dataset, as first planned.\n",
+        "  dataset, as first planned.\n> Retargeted in place 2026-09-15.\n")
+    _, road, _, _ = _by_place(roadmap=quoted)
+    rlines = road.splitlines()
+    i = rlines.index("- A loader for any further dataset.")
+    assert rlines[i + 1] == "> Retargeted in place 2026-09-15."

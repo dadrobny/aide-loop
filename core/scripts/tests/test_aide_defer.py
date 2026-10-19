@@ -1890,19 +1890,28 @@ def test_restoring_a_stage_that_is_not_withdrawn_is_refused():
         aide.restore_stage(STAGE3, 3, "x", "2026-10-20")
 
 
+def _spec(ddir: Path, num: int, deps: str) -> None:
+    (ddir / "items").mkdir(exist_ok=True)
+    (ddir / "items" / f"{num:03d}-x.md").write_text(
+        f"# Item {num:03d} — X\n\n## Dependencies\n\n{deps}\n",
+        encoding="utf-8")
+
+
 def test_withdraw_and_restore_write_through_the_cli(tmp_path: Path, capsys):
-    repo = _repo(tmp_path, STAGE3)
+    # Items 030 ✅, 031 🚧 and 032 — set 🔍 below — were built while 041 had
+    # left the way with stage 3; 027 ✅ waits on 040, which was 🚧 all
+    # along and was never released, so it is not named.
+    text = STAGE3.replace("- 📋 Charts. *(Item 032)*", "- 🔍 Charts. *(Item 032)*")
+    repo = _repo(tmp_path, text)
     ddir = repo / "docs" / "aide"
     path = ddir / "progress.md"
-    (ddir / "items").mkdir()
-    # Item 030 shipped while 041 had left the way with stage 3.
-    (ddir / "items" / "030-summary.md").write_text(
-        "# Item 030 — Summary\n\n## Dependencies\n\n- Item 041\n",
-        encoding="utf-8")
+    for num in (30, 31, 32):
+        _spec(ddir, num, "- Item 041")
+    _spec(ddir, 27, "- Item 040")
     base = ["--repo", str(repo), "progress", "set", "--stage", "3"]
     assert aide.main([*base, "withdrawn", "--reason", "superseded",
                       "--date", "2026-10-19", "--no-commit"]) == 0
-    assert path.read_text(encoding="utf-8") == _withdraw()[0]
+    assert path.read_text(encoding="utf-8") == _withdraw(text)[0]
     assert "stage 3: withdrawn — superseded" in capsys.readouterr().out
     insights = (ddir / "insights.md").read_text(encoding="utf-8")
     assert insights == "# Insight Inbox\n"
@@ -1914,6 +1923,11 @@ def test_withdraw_and_restore_write_through_the_cli(tmp_path: Path, capsys):
     err = capsys.readouterr().err
     assert ("item 030 is ✅ complete and its Dependencies name item 041"
             in err)
+    assert ("item 031 is 🚧 in-progress and its Dependencies name item 041"
+            in err)
+    assert ("item 032 is 🔍 in-review and its Dependencies name item 041"
+            in err)
+    assert "item 027" not in err
     assert (ddir / "insights.md").read_text(encoding="utf-8") == insights
 
 
@@ -1959,3 +1973,54 @@ def test_a_refused_stage_form_exits_1_and_writes_nothing(tmp_path: Path, capsys)
     assert aide.main([*base, "3", "restored", "--reason", "x",
                       "--no-commit"]) == 1
     assert path.read_bytes() == before
+
+
+def test_a_stage_withdrawn_by_hand_is_recorded_by_the_verb():
+    """PR #499 review: the issue's own case — a ❌ typed by hand with no
+    trail. The summary row alone ❌ leaves the header 🚧 and G3 🚧; the
+    verb writes the reason, the header and the rollup. The same with the
+    header already ❌ too: the reason is still written."""
+    hand = STAGE3.replace("| 3 | Exports | G2, G3 | 🚧 |",
+                          "| 3 | Exports | G2, G3 | ❌ |")
+    out, messages = _withdraw(hand)
+    lines = out.splitlines()
+    i = lines.index("## Stage 3 — Exports — ❌")
+    assert lines[i + 1] == "  - **2026-10-19** → withdrawn: superseded"
+    assert "| G3 Exports | Stage 3 | ❌ |" in lines
+    assert messages[0] == "stage 3: withdrawn — superseded"
+    assert aide.derived_cell_findings(lines) == ([], [], set())
+    both = hand.replace("## Stage 3 — Exports — 🚧", "## Stage 3 — Exports — ❌")
+    out2, _ = _withdraw(both)
+    assert "  - **2026-10-19** → withdrawn: superseded" in out2.splitlines()
+    # Recorded once: the second run is no change.
+    assert _withdraw(out2, reason="again")[0] == out2
+
+
+def test_a_hand_withdrawn_stage_with_shipped_work_is_recorded():
+    """The withdrawal was already made, so a ✅ bullet does not refuse
+    recording its reason; on a stage still in scope it does."""
+    hand = PROGRESS.replace("| 2 | Reports | G2 | 🚧 |", "| 2 | Reports | G2 | ❌ |")
+    out, _ = _withdraw(hand, stage=2)
+    lines = out.splitlines()
+    i = lines.index("## Stage 2 — Reports — ❌")
+    assert lines[i + 1] == "  - **2026-10-19** → withdrawn: superseded"
+    with pytest.raises(ValueError, match="shipped work"):
+        _withdraw(PROGRESS, stage=2)
+
+
+def test_a_restored_then_withdrawn_stage_records_the_second_withdrawal():
+    once, _ = _withdraw()
+    back = aide.restore_stage(once, 3, "wanted", "2026-10-20")[0]
+    again, messages = _withdraw(back, reason="dropped again", date="2026-10-21")
+    assert "  - **2026-10-21** → withdrawn: dropped again" in again.splitlines()
+
+
+def test_restoring_a_stage_whose_every_bullet_is_dropped_is_refused():
+    """PR #499 review: withdraw, drop every bullet, restore — the stage
+    would read 📋 with nothing left to deliver, and check said nothing."""
+    withdrawn, _ = _withdraw()
+    dropped = (withdrawn.replace("- 🚧 CSV. *(Item 040)*", "- ❌ CSV. *(Item 040)*")
+               .replace("- 📋 PDF. *(Item 041)*", "- ❌ PDF. *(Item 041)*")
+               .replace("- 📋 A plugin hook.", "- ❌ A plugin hook."))
+    with pytest.raises(ValueError, match="nothing left to deliver"):
+        aide.restore_stage(dropped, 3, "x", "2026-10-20")
