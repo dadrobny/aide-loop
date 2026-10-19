@@ -1702,7 +1702,8 @@ def test_an_objective_whose_every_stage_is_withdrawn_reads_excluded(
     found = {"errors": errors, "warnings": warnings}[where]
     assert _about(found, "objective G2:") == [
         f"objective G2: {icon} {status} but every stage it names (stage 2) "
-        f"is withdrawn — ❌ in the Stage summary table — so set it to ❌"], found
+        f"is withdrawn — ❌ in the Stage summary table — so set it to ❌; "
+        f"'aide progress set --stage 2 withdrawn --reason …' rolls it up"], found
 
 
 def test_the_writer_follows_a_withdrawn_stage_and_check_stays_silent():

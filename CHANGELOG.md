@@ -191,7 +191,10 @@ instead — that is the bump policy above, and it is enforced by
   --stage N withdrawn --reason …` instead of a hand edit of the summary row,
   as do §1 → `progress.md`, `aide progress -h` and the `aide-progress-file`
   skill where they said a stage is withdrawn "by a ❌ on its summary row";
-  `aide-create-roadmap` names the deliverable form of `reword`.
+  `aide-create-roadmap` names the deliverable form of `reword`. So do the
+  `aide check` remedies for a stage under way on a withdrawn dependency and
+  for an Objective row every stage of which is withdrawn, the queue-planner's
+  hand-back over such a dependency, and `aide-create-queue`.
 
 ## [2.54.0] — 2026-10-18
 

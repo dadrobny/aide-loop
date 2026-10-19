@@ -122,7 +122,8 @@ Follow the `aide-create-queue` skill in full. In brief:
    re-planned, not queued.** Do not queue it: rewording its Dependencies, or
    withdrawing it too, changes `roadmap.md`, which you never edit. If that
    leaves nothing to queue, stop and hand back, naming the dependent stage
-   and the withdrawn one.
+   and the withdrawn one, so the owner rewords it or withdraws it with
+   `aide progress set --stage N withdrawn --reason …`.
 5. **Wire every item into `progress.md`.** For each `### Item NNN` you just wrote,
    ensure the number appears as an `*(Item NNN)*` reference on the matching
    **deliverable bullet** under that item's roadmap **stage section** in

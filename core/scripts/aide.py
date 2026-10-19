@@ -8090,8 +8090,10 @@ def forward_dependency_warnings(ddir: Path) -> List[str]:
                         f"withdrawn (❌ summary row in progress.md) — a "
                         f"dependency on a withdrawn stage is never met, so "
                         f"stage {int(num)} is re-planned: its Dependencies "
-                        f"reworded while it is 📋, or it is withdrawn too, or "
-                        f"what it still needs enters as a new stage — "
+                        f"reworded while it is 📋, or it is withdrawn too "
+                        f"('aide progress set --stage {int(num)} withdrawn "
+                        f"--reason …'), or what it still needs enters as a "
+                        f"new stage — "
                         f"§1 → roadmap.md")
                 elif str(dep) in deferred:
                     out.append(
@@ -9328,7 +9330,8 @@ def derived_cell_findings(lines: List[str]
             (errors if current == "complete" else warnings).append(
                 f"objective {g}: {STATUS_TO_ICON[current]} {current} but "
                 f"every stage it names (stage {shown}) is withdrawn — ❌ in "
-                f"the Stage summary table — so set it to ❌")
+                f"the Stage summary table — so set it to ❌; 'aide progress "
+                f"set --stage {nums[0]} withdrawn --reason …' rolls it up")
             continue
         held = derived == "complete" and g in blocked
         if held:
