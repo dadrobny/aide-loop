@@ -94,6 +94,15 @@ def _isolate_markers(tmp_path, monkeypatch):
     monkeypatch.setattr(hook.tempfile, "gettempdir", lambda: str(markers))
 
 
+def _subprocess_env(tmp_path, **extra):
+    """The fixture above patches this process only; a spawned hook reads the
+    real temp dir, keeps its marker there across runs, and stays silent for a
+    repo whose `tmp_path` an earlier run already used. `tempfile.gettempdir`
+    consults all three variables, and Windows reads `TEMP`/`TMP`."""
+    markers = str(tmp_path / "markers")
+    return {**os.environ, "TMPDIR": markers, "TEMP": markers, "TMP": markers, **extra}
+
+
 # --------------------------------------------------------------------------- #
 # the wire contract — what the runtime actually receives
 # --------------------------------------------------------------------------- #
@@ -395,7 +404,7 @@ def test_malformed_input_exits_zero_and_writes_nothing(tmp_path, payload):
     proc = subprocess.run(
         [sys.executable, str(_MODULE_PATH)],
         input=payload, capture_output=True, encoding="utf-8",
-        cwd=str(repo),
+        cwd=str(repo), env=_subprocess_env(tmp_path),
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == ""
@@ -430,7 +439,7 @@ def test_a_hook_in_a_worktree_reads_the_project_roots_declaration(tmp_path):
     proc = subprocess.run(
         [sys.executable, str(_MODULE_PATH)],
         input=payload, capture_output=True, encoding="utf-8",
-        cwd=str(worktree), env={**os.environ, "CLAUDE_PROJECT_DIR": str(repo)},
+        cwd=str(worktree), env=_subprocess_env(tmp_path, CLAUDE_PROJECT_DIR=str(repo)),
     )
     assert proc.returncode == 0, proc.stderr
     assert str((repo / ".." / "sibling" / "CLAUDE.md").resolve()) in json.loads(
@@ -446,7 +455,7 @@ def test_the_happy_path_also_exits_zero_as_a_subprocess(tmp_path):
     proc = subprocess.run(
         [sys.executable, str(_MODULE_PATH)],
         input=payload, capture_output=True, encoding="utf-8",
-        cwd=str(repo),
+        cwd=str(repo), env=_subprocess_env(tmp_path),
     )
     assert proc.returncode == 0, proc.stderr
     assert str((repo / ".." / "sibling" / "CLAUDE.md").resolve()) in json.loads(
