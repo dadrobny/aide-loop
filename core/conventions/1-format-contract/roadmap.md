@@ -9,8 +9,9 @@ loop's included, with no need for that entry point. Both are held to the
 started-stage freeze below, and both land through the merge policy's reviewed
 PR (`.aide/README.md`). Three verbs also write it, mechanically and only as
 their own rules fix: `aide progress reword` mirrors a reworded acceptance
-criterion into it, and `aide progress archive` and `unarchive` move a settled
-stage's section to its archive and back (below). None of them is a third
+criterion, or a reworded deliverable no item has claimed, into it, and `aide
+progress archive` and `unarchive` move a settled stage's section to its
+archive and back (below). None of them is a third
 author: each writes what an owner has already decided. `queue-planner` and
 `spec-author` read it, and `aide check` and `aide progress reword` parse it.
 `.aide/templates/roadmap.md` draws its shape; this section names that shape
@@ -61,10 +62,14 @@ only a 📋 Planned stage may be edited freely. Deleting text added to a started
 stage after it was written is not an edit the freeze forbids: it restores the
 stage as written (below).
 
-**One change reaches a started stage, and only through its verb.** An
+**Two changes reach a started stage, each only through its verb.** An
 acceptance criterion nothing has yet been claimed against is reworded with
-`aide progress reword`, never by hand: the verb keeps this file and
-`progress.md` in step, and §1 → `progress.md` states when it refuses.
+`aide progress reword`, and a 📋 deliverable no item has claimed with `aide
+progress reword --stage N --deliverable K`, never by hand: each verb keeps
+this file and `progress.md` in step, and §1 → `progress.md` states when it
+refuses. The Goal and the Dependencies are never reworded, and a deferred or
+dropped deliverable stays here as written, its status in `progress.md` the
+record.
 
 **New or changed scope enters as a new stage, appended after the last.** Work a
 started stage turns out to need arrives the same way, or through the queue as
@@ -79,9 +84,11 @@ stage is planned goes to its home.** Each kind of after-the-fact text has one:
 | What the text is | Where it goes |
 |---|---|
 | A rewording of an acceptance criterion nothing has been claimed against | `aide progress reword` (above) |
+| A rewording of a deliverable no item has claimed | `aide progress reword --stage N --deliverable K` (above) |
 | A restatement of a claimed or ticked box | the box's correction trail in `progress.md` (§1 → `progress.md`) |
 | Changed or retargeted scope | a new stage, appended after the last (above) |
 | Why a stage's work is deferred, or why it is dropped | the `--reason` of the `aide progress set … deferred` or `… dropped` that records it, on the bullet's trail (§1 → `progress.md`) |
+| Why a whole stage is withdrawn | the `--reason` of `aide progress set --stage N withdrawn`, on the stage header's trail in `progress.md` (§1 → `progress.md`) |
 | A defect, a root cause, something learned | an inbox entry, `aide insights add` (§1 → `insights.md`) |
 | Design rationale for an item | the item's spec (§1 → `items.md`) |
 | A decision the owner must make | a human gate and its trail (§1 → human gates) |
@@ -258,6 +265,12 @@ by either of its two writers, and the started-stage freeze does not reach it.
 - **Why `reword` is the exception.** A criterion no attestation has been made
   against records nothing yet, so rewording it rewrites no history; the verb
   exists so that the edit lands in both mirrors at once or in neither.
+  Issue #485 found a deliverable no item has claimed in the same position:
+  nothing was built against it, yet only `progress.md` could change, so the
+  roadmap the planner reads kept the first plan and owners annotated around
+  the freeze. The Goal and the Dependencies stay frozen because queues and
+  dependents were planned against them whatever their bullets' state, and a
+  changed Goal is a new stage.
 - **Why a stage section is the plan and nothing else.** In one consumer's
   roadmap, stages 0–11 ran about 1 KB each, a one-paragraph Goal of 80–223
   characters among them; stages 26–33 averaged 9.4 KB, and stage 30 ran

@@ -126,8 +126,9 @@ as the reason.
      queued in its turn.
    The cap is a **context budget, not a target**. Prioritise by roadmap order and
    unblocked dependencies; whether an earlier stage's icon meets a blocking
-   dependency on it — a ⏸️ one included, or one withdrawn by a ❌ summary
-   row — is §1 → `roadmap.md`'s to say.
+   dependency on it — a ⏸️ one included, or one withdrawn (a ❌ summary
+   row, written by `aide progress set --stage N withdrawn`) — is
+   §1 → `roadmap.md`'s to say.
 
    **"Run alongside" in a roadmap means independence, not concurrency.** One
    queue is live at a time, by design — the queue boundary is the human

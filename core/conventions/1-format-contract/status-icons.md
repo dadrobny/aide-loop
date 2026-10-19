@@ -39,7 +39,9 @@ nothing is left to wait for. `aide progress set NNN dropped --reason …` writes
 it, and `aide progress set NNN restored --reason …` alone takes it back, to
 📋 — `set` and `aide merge` refuse to move it forward while its bullets are
 all ❌ or 📋 (§1 → `progress.md`). A stage whose summary row is ❌ is
-withdrawn whole, and speaks for no objective.
+withdrawn whole, and speaks for no objective: `aide progress set --stage N
+withdrawn --reason …` writes it, and `aide progress set --stage N restored
+--reason …` takes it back.
 
 **Structural positions only.** The parsers read icons *only* at structural
 positions: a table row's **Status (last) cell**, a stage header's **trailing**

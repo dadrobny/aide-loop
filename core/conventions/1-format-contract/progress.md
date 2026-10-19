@@ -83,6 +83,18 @@ rewrites that one bullet's prose and keeps its icon and marker, over a ✅ bulle
 as readily as a 📋 one. A deliverable bullet carries no attestation, so the
 immutability rule below binds an acceptance box, never a bullet's sentence.
 
+**A deliverable no item has claimed is reworded in both documents.** In a
+stage not yet ✅ or ❌, a 📋 bullet no item marker names records nothing yet,
+so `aide progress reword --stage N --deliverable K --text …` rewrites it here
+and the matching bullet of the stage's Deliverables block in `roadmap.md`
+together, never by hand. The two are matched by position, K counting each
+document's bullets from 1, as criteria are; where the counts disagree the verb
+writes neither, and where `roadmap.md` has no Deliverables block for the stage
+it writes this file alone and says so. An itemised bullet is reworded by its
+item, and a bullet that is not 📋 is not reworded: work has been built or
+decided against it. Rewording adds nothing: a started stage still takes no
+new bullet.
+
 **Stage status is rolled up from the bullets, never hand-written.** A stage's
 icon, its summary-table row, its section header and the Objective rows it
 delivers are all derived from the Deliverables bullets under it, by one
@@ -135,9 +147,11 @@ an item with `aide progress set NNN dropped --reason …` — one abandoned at
 the validation-round cap, or one its owner decides against — once it is not
 ✅; a shipped item is reopened first. A drop that would leave every
 deliverable bullet of the stage ❌ is refused: a stage
-with nothing left to deliver is withdrawn whole, by a ❌ on its summary row
-and on any Objective row only it delivers; a stage already withdrawn that way
-refuses no drop. The deliverable stays in `roadmap.md` as written.
+with nothing left to deliver is withdrawn whole, with `aide progress set
+--stage N withdrawn --reason …` (below); a stage already withdrawn refuses no
+drop. **A deferred or dropped deliverable stays in `roadmap.md` as
+written**: the bullet says what was planned, and its status here says what
+became of it.
 
 **Dropped work is restored with its own verb, back to 📋, with its reason.**
 Restore an item with `aide progress set NNN restored --reason …`, and a
@@ -146,6 +160,25 @@ restored --reason …`: each ❌ bullet flips to 📋 under a dated trail line
 beside the drop's, and the stage follows. A forward `aide progress set`, and
 `aide merge`, refuse an item whose bullets are all ❌ or 📋. Restoring is the
 owner's decision, and the reason says why the work is wanted after all.
+
+**A stage is withdrawn whole with its own verb, with its reason.** Withdraw
+one with `aide progress set --stage N withdrawn --reason …`, never by typing
+❌ over its cells: the verb writes ❌ on the stage's summary row and header,
+keeps the why on a dated trail line under the header, and rolls up the
+Objective rows naming it, so a row only it delivers reads ❌. A stage with a
+✅ bullet is not withdrawn: its shipped work stays shipped, so drop what it
+does not need, and it closes ✅. A stage whose summary row was set ❌ by hand
+is withdrawn already, and the verb records it: it writes the reason, and any
+cell still not ❌, and its shipped work does not refuse it. **A withdrawn
+stage is restored with `aide progress set --stage N restored --reason …`**:
+its cells go back to what its bullets roll up to, under a trail line beside
+the withdrawal's, and so do the Objective rows the withdrawal made ❌. A
+stage whose every bullet is ❌ is not restored: it has nothing left to
+deliver. A 🚧, 🔍 or ✅ item whose Dependencies name a 📋 item the
+restoration brings back was built while that item had left the way; the
+verb names each one and writes anyway, since what such an item waits on now
+is its owner's call. Withdrawing and restoring are the
+owner's decisions, and neither captures an insight.
 
 **A withdrawn stage speaks for no objective.** An Objective row is derived
 from the stages it names whose summary row is not ❌, and reads ❌ only when
@@ -410,6 +443,21 @@ in both places. `aide progress unarchive --stage N` moves the stage's
   comparisons already did; an objective every stage of which is withdrawn
   has nothing left to deliver it, which is ❌, the icon the drop rule above
   already asked for by hand.
+- **Why a stage is withdrawn by a verb, and a deliverable reworded by one
+  (#485).** The ❌ that withdraws a stage was typed by hand with nowhere to
+  keep why, so a consumer kept the reason as a blockquote in `roadmap.md` —
+  the annotation #483 routes out, with no route for this one. The verb gives
+  it the trail every other decision about status has. A ✅ bullet refuses it
+  because shipped work is never undone by a scope decision; dropping the rest
+  reaches the same end and closes the stage honestly. The restore names the
+  dependents built in between and decides nothing for them: whether reviving
+  the work re-blocks them is issue #402, deferred until a consumer meets it.
+  The rewording is the other half of the issue, and §1 → `roadmap.md`'s
+  Rationale says why the freeze lets it. Matching by position is the
+  criterion form's rule, for the same reason — roadmap deliverables carry no
+  marker to match by. A deferred or dropped bullet is not rewritten in
+  `roadmap.md`: the status is the record, and the plan as written is what the
+  status is about.
 - **Why every derived cell is compared, with none of the writer's restraint.**
   Issue #285: the sentence that a typed-over derived cell is drift `aide check`
   reports held for ✅ and ⏸️ only. A 🚧 over bullets all 📋, a 🔍 the rollup

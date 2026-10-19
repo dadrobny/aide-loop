@@ -53,6 +53,18 @@ paths:
      - what each item delivers with `aide progress reword --item NNN`, never
        by hand
      - A deliverable bullet carries no attestation
+     - A deliverable no item has claimed is reworded in both documents
+     - An itemised bullet is reworded by its item
+     - Rewording adds nothing: a started stage still takes no new bullet
+     - A deferred or dropped deliverable stays in `roadmap.md` as written
+     - A stage is withdrawn whole with its own verb, with its reason
+     - `aide progress set --stage N withdrawn --reason …`, never by typing ❌
+       over its cells
+     - A stage with a ✅ bullet is not withdrawn
+     - A withdrawn stage is restored with `aide progress set --stage N
+       restored --reason …`
+     - Withdrawing and restoring are the owner's decisions, and neither
+       captures an insight
      - enter through the queue, never by retro-editing a closed stage's
        deliverable list
      - ticked only by `aide progress accept` — never derived
@@ -83,9 +95,9 @@ paths:
      - Drop an item with `aide progress set NNN dropped --reason …`
      - a shipped item is reopened first
      - A drop that would leave every deliverable bullet of the stage ❌ is
-       refused: a stage with nothing left to deliver is withdrawn whole, by
-       a ❌ on its summary row and on any Objective row only it delivers
-     - a stage already withdrawn that way refuses no drop
+       refused: a stage with nothing left to deliver is withdrawn whole, with
+       `aide progress set --stage N withdrawn --reason …`
+     - a stage already withdrawn refuses no drop
      - Dropped work is restored with its own verb, back to 📋, with its reason
      - Restore an item with `aide progress set NNN restored --reason …`, and
        a bullet no item marker names with `aide progress set --stage N
@@ -165,7 +177,12 @@ first time its items diverge. **A split copy's prose is reworded with its
 verb, whatever its icon**: each copy carries the shared sentence until someone
 says what each item delivers with `aide progress reword --item NNN`, never by
 hand — over a ✅ bullet as readily as a 📋 one, since a deliverable bullet
-carries no attestation. Follow-on deliverables enter through the queue, never
+carries no attestation. **A deliverable no item has claimed is reworded in
+both documents**: in a stage not yet ✅ or ❌, a 📋 bullet no item marker
+names is rewritten here and in `roadmap.md` together with `aide progress
+reword --stage N --deliverable K --text …`, never by hand, and an itemised
+bullet is reworded by its item. Rewording adds nothing: a started stage still
+takes no new bullet. Follow-on deliverables enter through the queue, never
 by retro-editing a closed stage's deliverable list; a maintenance queue adding
 its items under the maintenance stage (§1 → `roadmap.md`) is that route, not
 a retro-edit.
@@ -201,8 +218,9 @@ does not need it at all. Defer what the stage needs later, drop what it does
 not need. Drop an item with `aide progress set NNN dropped --reason …` — a
 shipped item is reopened first. A drop that would leave every deliverable
 bullet of the stage ❌ is refused: a stage with nothing left to deliver is
-withdrawn whole, by a ❌ on its summary row and on any Objective row only it
-delivers; a stage already withdrawn that way refuses no drop.
+withdrawn whole, with `aide progress set --stage N withdrawn --reason …`; a
+stage already withdrawn refuses no drop. **A deferred or
+dropped deliverable stays in `roadmap.md` as written.**
 
 **Dropped work is restored with its own verb, back to 📋, with its reason.**
 Restore an item with `aide progress set NNN restored --reason …`, and a bullet
@@ -210,6 +228,13 @@ no item marker names with `aide progress set --stage N --deliverable K
 restored --reason …`. A forward `aide progress set`, and `aide merge`, refuse
 an item whose bullets are all ❌ or 📋. Restoring is the owner's decision, and
 the reason says why the work is wanted after all.
+
+**A stage is withdrawn whole with its own verb, with its reason**: `aide
+progress set --stage N withdrawn --reason …`, never by typing ❌ over its
+cells, and **a withdrawn stage is restored with `aide progress set --stage N
+restored --reason …`**. A stage with a ✅ bullet is not withdrawn — drop what
+it does not need, and it closes ✅. Withdrawing and restoring are the owner's
+decisions, and neither captures an insight.
 
 **A withdrawn stage speaks for no objective**: an Objective row reads ❌ only
 when every stage it names is withdrawn, and is otherwise derived from the

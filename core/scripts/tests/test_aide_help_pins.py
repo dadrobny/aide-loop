@@ -47,6 +47,9 @@ that moved everything.
   *"each attestation was made separately and is corrected or withdrawn
   separately"*, *"a deferral is a decision about order, not a finding"* and
   *"dropping a deliverable is a decision about scope, not a finding"*,
+  *"withdrawing a stage is a decision about scope, not a finding"* and
+  *"shipped work is not withdrawn; drop what the stage does not need, and it
+  closes ✅"*,
   *"only deferred work is resumed"*, *"only dropped work is restored"* and
   *"Resume such a bullet before it is itemised"* (`progress`), *"a merge
   records work that landed"* and *"since started work is live until its
@@ -1409,13 +1412,14 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
          "never rolls up",
          "test_aide_core::test_unmet_target_blocks_objective_rollup_not_stage"),
         # `RANK` guards the write: a lower-ranked status is not applied.
-        ("Apart from deferring, dropping, resuming and restoring, set never "
-         "downgrades a status",
+        ("Apart from deferring, dropping, resuming, restoring and "
+         "withdrawing, set never downgrades a status",
          ("test_aide_core::test_set_item_never_downgrades",
           "test_aide_defer::test_deferring_the_only_in_progress_item_rolls_the_stage_back_to_planned",
           "test_aide_defer::test_dropping_the_only_in_progress_bullet_rolls_the_stage_back_down",
           "test_aide_defer::test_resuming_the_only_open_item_rolls_a_deferred_stage_back_to_planned",
-          "test_aide_defer::test_restoring_a_dropped_item_reopens_the_stage_it_let_close")),
+          "test_aide_defer::test_restoring_a_dropped_item_reopens_the_stage_it_let_close",
+          "test_aide_defer::test_withdrawing_moves_a_shared_objective_to_the_stages_left")),
         # `held_from_forward`'s ❌ arm in `cmd_progress` (issue #381): an item
         # whose bullets are all ❌ or 📋 is refused, a mixed one is let
         # through; `restore_item` writes 📋.
@@ -1745,6 +1749,91 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("A stage whose summary row is already \u274c is withdrawn, so "
          "neither drop form refuses there",
          "test_aide_defer::test_a_withdrawn_stage_lets_its_last_bullet_drop_by_either_form"),
+
+        # `withdraw_stage` / `_cmd_progress_set_stage` (issue #485): the
+        # summary row and header written ❌, `_WITHDRAWN_PREFIX` through
+        # `_insert_trail_line` under the header, `_recompute_rollups` over
+        # the stage's Objective rows.
+        ("`set --stage N withdrawn --reason TEXT`, with no --deliverable, "
+         "withdraws stage N whole, with a dated `withdrawn: <reason>` line "
+         "under its header, and `set --stage N restored --reason TEXT` takes "
+         "a withdrawn stage back, with a dated `restored: <reason>` line",
+         ("test_aide_defer::test_withdrawing_a_stage_writes_its_cells_and_its_reason",
+          "test_aide_defer::test_restoring_a_withdrawn_stage_rolls_its_cells_back_up",
+          "test_aide_defer::test_withdraw_and_restore_write_through_the_cli")),
+        ("set --stage N withdrawn writes \u274c on stage N's summary row and "
+         "header, a dated `withdrawn: <reason>` trail line directly under the "
+         "header, and rolls every Objective row naming the stage up with the "
+         "stage left out, so a row only it delivers reads \u274c",
+         ("test_aide_defer::test_withdrawing_a_stage_writes_its_cells_and_its_reason",
+          "test_aide_defer::test_withdrawing_moves_a_shared_objective_to_the_stages_left")),
+        ("It refuses, writing nothing, without a stated reason, a stage with "
+         "no section or no usable summary row, and a stage with a \u2705 "
+         "bullet",
+         ("test_aide_defer::test_the_stage_forms_refuse_a_malformed_call_with_exit_2",
+          "test_aide_defer::test_withdrawing_refuses_a_stage_with_no_section_or_no_summary_row",
+          "test_aide_defer::test_withdrawing_a_stage_with_shipped_work_is_refused",
+          "test_aide_defer::test_a_refused_stage_form_exits_1_and_writes_nothing")),
+        # `withdraw_stage`'s `already` / `_stage_trail_withdrawn` arms
+        # (PR #499 review): a hand-❌ stage is recorded, not skipped.
+        ("A stage whose summary row is \u274c by hand is recorded instead: "
+         "the trail line and any cell not yet \u274c are written, and a "
+         "\u2705 bullet does not refuse it; one already carrying a "
+         "`withdrawn:` line as its latest is no change where no cell moves, "
+         "and otherwise takes the reason on a new line",
+         ("test_aide_defer::test_a_stage_withdrawn_by_hand_is_recorded_by_the_verb",
+          "test_aide_defer::test_a_hand_withdrawn_stage_with_shipped_work_is_recorded",
+          "test_aide_defer::test_withdrawing_a_withdrawn_stage_is_no_change",
+          "test_aide_defer::test_a_recorded_withdrawal_with_a_header_out_of_step_takes_the_new_reason",
+          "test_aide_defer::test_a_recorded_withdrawal_still_rolls_its_objective_rows_up")),
+        # `restore_stage`: `rollup_status` or 📋, the freed Objective rows,
+        # and `_restored_dependents` over `_item_dependencies`.
+        ("set --stage N restored writes on the summary row and header what "
+         "the stage's bullets roll up to, \U0001f4cb where it has none, a "
+         "dated `restored: <reason>` trail line under the header's last, and "
+         "rolls every Objective row naming the stage up again, a \u274c one "
+         "every stage of which was withdrawn included",
+         ("test_aide_defer::test_restoring_a_withdrawn_stage_rolls_its_cells_back_up",
+          "test_aide_defer::test_restoring_a_stage_with_no_bullets_reads_planned")),
+        ("It refuses, writing nothing, without a stated reason, when the "
+         "stage's summary row is not \u274c, or when every bullet of the "
+         "stage is \u274c, since it has nothing left to deliver",
+         ("test_aide_defer::test_restoring_a_stage_that_is_not_withdrawn_is_refused",
+          "test_aide_defer::test_restoring_a_stage_whose_every_bullet_is_dropped_is_refused",
+          "test_aide_defer::test_the_stage_forms_refuse_a_malformed_call_with_exit_2",
+          "test_aide_defer::test_a_refused_stage_form_exits_1_and_writes_nothing")),
+        ("It warns, and writes anyway, for each \U0001f6a7, \U0001f50d or "
+         "\u2705 item whose spec's Dependencies name a \U0001f4cb item the "
+         "restoration brings back",
+         "test_aide_defer::test_withdraw_and_restore_write_through_the_cli"),
+
+        # `reword_unmarked_deliverable` / `_cmd_progress_reword_by_place`
+        # (issue #485): `stage_deliverable_spans` against
+        # `roadmap_deliverable_bullets`.
+        ("`reword --stage N --deliverable K --text TEXT` rewrites the Kth "
+         "deliverable bullet of stage N, one no item marker names, in "
+         "progress.md and roadmap.md, or in neither",
+         ("test_aide_reword_deliverable::test_an_unclaimed_deliverable_is_reworded_in_both_documents",
+          "test_aide_reword_deliverable::test_the_place_form_writes_both_documents_through_the_cli",
+          "test_aide_reword_deliverable::test_a_place_form_refusal_writes_neither_document")),
+        ("matches the Kth to the Kth top-level bullet of the roadmap stage's "
+         "Deliverables block; each loses its wrapped lines, and a bullet "
+         "nested under the roadmap one stays",
+         "test_aide_reword_deliverable::test_an_unclaimed_deliverable_is_reworded_in_both_documents"),
+        ("It refuses, writing neither file, a stage progress.md shows "
+         "\u2705 or \u274c, a bullet that carries an item marker or is not "
+         "\U0001f4cb, text that is empty, holds a line break, starts with a "
+         "status icon or ends with an item reference, and a roadmap stage "
+         "whose Deliverables block lists a different number of bullets",
+         ("test_aide_reword_deliverable::test_a_settled_stage_is_refused",
+          "test_aide_reword_deliverable::test_an_itemised_bullet_is_refused_naming_the_item_form",
+          "test_aide_reword_deliverable::test_a_bullet_that_is_not_planned_is_refused",
+          "test_aide_reword_deliverable::test_text_a_bullet_cannot_hold_is_refused_by_place",
+          "test_aide_reword_deliverable::test_counts_that_cannot_be_lined_up_are_refused",
+          "test_aide_reword_deliverable::test_a_place_form_refusal_writes_neither_document")),
+        ("Where roadmap.md has no Deliverables block for the stage, or there "
+         "is no roadmap.md, it writes progress.md alone and says so",
+         "test_aide_reword_deliverable::test_no_roadmap_or_no_deliverables_block_writes_progress_alone"),
     ],
 
     # ------------------------------------------------------------- insights --

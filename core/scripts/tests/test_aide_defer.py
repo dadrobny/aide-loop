@@ -1237,13 +1237,13 @@ def test_drop_by_position_refuses_what_it_cannot_drop_with_exit_1(
 def test_a_drop_that_would_leave_every_bullet_dropped_is_refused():
     """The review's case: a hand-⏸️ stage of two unmarked 📋 bullets, both
     dropped, would roll up 📋 under a stale "Deferred" header with nothing
-    left to deliver. The second drop is refused, writing nothing; withdrawing
-    a stage whole is its ❌ summary row's job."""
+    left to deliver. The second drop is refused, writing nothing, and names
+    the verb that withdraws a stage whole (issue #485)."""
     once = _drop_at(UNMARKED, 3, 1)
     assert "- ❌ Plugin/registration API for new heuristics." in once
     with pytest.raises(ValueError, match=(
             "stage 3 deliverable 2 is the last deliverable of stage 3 not ❌.*"
-            "marking its row in the Stage summary table ❌")):
+            "`aide progress set --stage 3 withdrawn --reason …`")):
         aide.drop_deliverable(once, 3, 2, "x", "2026-10-02")
     # A stage of one unmarked bullet: that bullet is the last as well.
     sole = UNMARKED.replace(
@@ -1459,7 +1459,7 @@ def test_drop_item_refuses_leaving_a_stage_all_dropped():
         "- 📋 Charts. *(Item 032)*\n", "")
     with pytest.raises(ValueError, match=(
             r"dropping item 031 would leave every deliverable of stage 2 ❌.*"
-            r"marking its row in the Stage summary table ❌")):
+            r"`aide progress set --stage 2 withdrawn --reason …`")):
         aide.drop_item(only, 31, "x", "2026-10-02")
 
 
@@ -1702,7 +1702,8 @@ def test_an_objective_whose_every_stage_is_withdrawn_reads_excluded(
     found = {"errors": errors, "warnings": warnings}[where]
     assert _about(found, "objective G2:") == [
         f"objective G2: {icon} {status} but every stage it names (stage 2) "
-        f"is withdrawn — ❌ in the Stage summary table — so set it to ❌"], found
+        f"is withdrawn — ❌ in the Stage summary table — so set it to ❌; "
+        f"'aide progress set --stage 2 withdrawn --reason …' rolls it up"], found
 
 
 def test_the_writer_follows_a_withdrawn_stage_and_check_stays_silent():
@@ -1781,3 +1782,273 @@ def test_a_withdrawn_stage_lets_its_last_bullet_drop_by_either_form():
     assert aide.derived_cell_findings(out.splitlines()) == ([], [], set())
     with pytest.raises(ValueError, match="is the last deliverable of stage 3"):
         aide.drop_deliverable(_drop_at(UNMARKED, 3, 1), 3, 2, "x", "2026-10-02")
+
+
+# --------------------------------------------------------------------------- #
+# a whole stage withdrawn and restored by its verb (issue #485)
+# --------------------------------------------------------------------------- #
+#: Stage 3 shares G2 with stage 2 and alone delivers G3; it holds no ✅
+#: bullet, so it can be withdrawn. G4 names stages 1 and 3 and was set ❌ by
+#: hand while stage 1 was in scope — an objective withdrawn from scope.
+STAGE3 = (PROGRESS
+          .replace("| 2 | Reports | G2 | 🚧 |\n",
+                   "| 2 | Reports | G2 | 🚧 |\n| 3 | Exports | G2, G3 | 🚧 |\n")
+          .replace("| G2 Reports | Stage 2 | 🚧 |\n",
+                   "| G2 Reports | Stages 2, 3 | 🚧 |\n"
+                   "| G3 Exports | Stage 3 | 🚧 |\n"
+                   "| G4 Archive | Stages 1, 3 | ❌ |\n")
+          + "\n## Stage 3 — Exports — 🚧\n\n**Deliverables.**\n"
+            "- 🚧 CSV. *(Item 040)*\n- 📋 PDF. *(Item 041)*\n"
+            "- 📋 A plugin hook.\n\n**Acceptance.**\n- [ ] Exports open.\n")
+
+
+def _withdraw(text: str = STAGE3, stage: int = 3, reason: str = "superseded",
+              date: str = "2026-10-19"):
+    return aide.withdraw_stage(text, stage, reason, date)
+
+
+def test_withdrawing_a_stage_writes_its_cells_and_its_reason():
+    out, messages = _withdraw()
+    lines = out.splitlines()
+    assert "| 3 | Exports | G2, G3 | ❌ |" in lines
+    i = lines.index("## Stage 3 — Exports — ❌")
+    assert lines[i + 1] == "  - **2026-10-19** → withdrawn: superseded"
+    assert lines[i + 2] == ""
+    # G3 only stage 3 delivers reads ❌; G2 follows stage 2 alone; the
+    # bullets are left as they were.
+    assert "| G3 Exports | Stage 3 | ❌ |" in lines
+    assert "| G2 Reports | Stages 2, 3 | 🚧 |" in lines
+    assert "- 🚧 CSV. *(Item 040)*" in lines and "- 📋 A plugin hook." in lines
+    assert aide.withdrawn_stages(lines) == {"3"}
+    assert messages[0] == "stage 3: withdrawn — superseded"
+    assert "objective G3 🚧 → ❌ excluded" in messages
+    assert aide.derived_cell_findings(lines) == ([], [], set())
+
+
+def test_withdrawing_moves_a_shared_objective_to_the_stages_left():
+    """Stage 2 📋 beside stage 3 🚧 holds G2 at 🚧; with stage 3 withdrawn
+    G2 is what stage 2 alone says, a move down the verb is allowed."""
+    text = (STAGE3.replace("- ✅ Summary. *(Item 030)*", "- 📋 Summary. *(Item 030)*")
+            .replace("- 🚧 Export, a", "- 📋 Export, a")
+            .replace("## Stage 2 — Reports — 🚧", "## Stage 2 — Reports — 📋")
+            .replace("| 2 | Reports | G2 | 🚧 |", "| 2 | Reports | G2 | 📋 |"))
+    out, _ = _withdraw(text)
+    assert "| G2 Reports | Stages 2, 3 | 📋 |" in out.splitlines()
+    assert aide.derived_cell_findings(out.splitlines()) == ([], [], set())
+
+
+def test_withdrawing_a_stage_with_shipped_work_is_refused():
+    with pytest.raises(ValueError, match=r"bullet 1 is ✅.*dropped"):
+        _withdraw(stage=2)
+
+
+def test_withdrawing_a_withdrawn_stage_is_no_change():
+    once, _ = _withdraw()
+    again, messages = _withdraw(once, reason="again")
+    assert again == once
+    assert messages == ["stage 3: no change (already withdrawn)"]
+
+
+def test_withdrawing_refuses_a_stage_with_no_section_or_no_summary_row():
+    with pytest.raises(ValueError, match="no '## Stage 9' section"):
+        _withdraw(stage=9)
+    with pytest.raises(ValueError, match="no Stage summary row"):
+        _withdraw(STAGE3.replace("| 3 | Exports | G2, G3 | 🚧 |\n", ""))
+
+
+def test_restoring_a_withdrawn_stage_rolls_its_cells_back_up():
+    withdrawn, _ = _withdraw()
+    out, messages, revived = aide.restore_stage(withdrawn, 3, "wanted again",
+                                                "2026-10-20")
+    lines = out.splitlines()
+    i = lines.index("## Stage 3 — Exports — 🚧")
+    assert lines[i + 1:i + 3] == ["  - **2026-10-19** → withdrawn: superseded",
+                                  "  - **2026-10-20** → restored: wanted again"]
+    assert "| 3 | Exports | G2, G3 | 🚧 |" in lines
+    assert "| G3 Exports | Stage 3 | 🚧 |" in lines
+    # The objective withdrawn from scope by hand while stage 1 was in scope
+    # was not the withdrawal's to write, and stays.
+    assert "| G4 Archive | Stages 1, 3 | ❌ |" in lines
+    assert messages[0] == "stage 3: restored — wanted again"
+    assert aide.withdrawn_stages(lines) == set()
+    # 041 is 📋 and comes back; 040 is 🚧, live work all along.
+    assert revived == [41]
+    assert aide.derived_cell_findings(lines) == ([], [], set())
+
+
+def test_restoring_a_stage_with_no_bullets_reads_planned():
+    text = STAGE3.replace("- 🚧 CSV. *(Item 040)*\n- 📋 PDF. *(Item 041)*\n"
+                          "- 📋 A plugin hook.\n", "")
+    withdrawn, _ = _withdraw(text)
+    out, _, revived = aide.restore_stage(withdrawn, 3, "back", "2026-10-20")
+    assert "## Stage 3 — Exports — 📋" in out.splitlines()
+    assert "| 3 | Exports | G2, G3 | 📋 |" in out.splitlines()
+    assert revived == []
+
+
+def test_restoring_a_stage_that_is_not_withdrawn_is_refused():
+    with pytest.raises(ValueError, match=r"summary row is 🚧 in-progress, not ❌"):
+        aide.restore_stage(STAGE3, 3, "x", "2026-10-20")
+
+
+def _spec(ddir: Path, num: int, deps: str) -> None:
+    (ddir / "items").mkdir(exist_ok=True)
+    (ddir / "items" / f"{num:03d}-x.md").write_text(
+        f"# Item {num:03d} — X\n\n## Dependencies\n\n{deps}\n",
+        encoding="utf-8")
+
+
+def test_withdraw_and_restore_write_through_the_cli(tmp_path: Path, capsys):
+    # Items 030 ✅, 031 🚧 and 032 — set 🔍 below — were built while 041 had
+    # left the way with stage 3; 027 ✅ waits on 040, which was 🚧 all
+    # along and was never released, so it is not named.
+    text = STAGE3.replace("- 📋 Charts. *(Item 032)*", "- 🔍 Charts. *(Item 032)*")
+    repo = _repo(tmp_path, text)
+    ddir = repo / "docs" / "aide"
+    path = ddir / "progress.md"
+    for num in (30, 31, 32):
+        _spec(ddir, num, "- Item 041")
+    _spec(ddir, 27, "- Item 040")
+    base = ["--repo", str(repo), "progress", "set", "--stage", "3"]
+    assert aide.main([*base, "withdrawn", "--reason", "superseded",
+                      "--date", "2026-10-19", "--no-commit"]) == 0
+    assert path.read_text(encoding="utf-8") == _withdraw(text)[0]
+    assert "stage 3: withdrawn — superseded" in capsys.readouterr().out
+    insights = (ddir / "insights.md").read_text(encoding="utf-8")
+    assert insights == "# Insight Inbox\n"
+    withdrawn = path.read_text(encoding="utf-8")
+    assert aide.main([*base, "restored", "--reason", "wanted again",
+                      "--date", "2026-10-20", "--no-commit"]) == 0
+    assert path.read_text(encoding="utf-8") == aide.restore_stage(
+        withdrawn, 3, "wanted again", "2026-10-20")[0]
+    err = capsys.readouterr().err
+    assert ("item 030 is ✅ complete and its Dependencies name item 041"
+            in err)
+    assert ("item 031 is 🚧 in-progress and its Dependencies name item 041"
+            in err)
+    assert ("item 032 is 🔍 in-review and its Dependencies name item 041"
+            in err)
+    assert "item 027" not in err
+    assert (ddir / "insights.md").read_text(encoding="utf-8") == insights
+
+
+@pytest.mark.parametrize("argv", [
+    ("--stage", "3", "withdrawn"),                                  # no reason
+    ("--stage", "3", "withdrawn", "--reason", "  "),                # empty
+    ("--stage", "3", "restored", "--reason", "a\nb"),               # line break
+    ("40", "withdrawn", "--stage", "3", "--reason", "x"),           # a number
+    ("--stage", "3", "withdrawn", "--criterion", "1", "--reason", "x"),
+    ("--stage", "3", "--deliverable", "2", "withdrawn", "--reason", "x"),
+    ("41", "withdrawn", "--reason", "x"),                           # by item
+])
+def test_the_stage_forms_refuse_a_malformed_call_with_exit_2(tmp_path: Path, argv):
+    repo = _repo(tmp_path, STAGE3)
+    path = repo / "docs" / "aide" / "progress.md"
+    before = path.read_bytes()
+    assert aide.main(["--repo", str(repo), "progress", "set", *argv,
+                      "--no-commit"]) == 2
+    assert path.read_bytes() == before
+
+
+def test_withdrawn_is_named_as_the_whole_stage_form_where_it_is_misplaced(
+        tmp_path: Path, capsys):
+    repo = _repo(tmp_path, STAGE3)
+    base = ["--repo", str(repo), "progress", "set"]
+    assert aide.main([*base, "41", "withdrawn", "--reason", "x",
+                      "--no-commit"]) == 2
+    assert "`aide progress set --stage N withdrawn" in capsys.readouterr().err
+    assert aide.main([*base, "--stage", "3", "--deliverable", "3", "withdrawn",
+                      "--reason", "x", "--no-commit"]) == 2
+    assert ("`aide progress set --stage 3 withdrawn"
+            in capsys.readouterr().err)
+
+
+def test_a_refused_stage_form_exits_1_and_writes_nothing(tmp_path: Path, capsys):
+    repo = _repo(tmp_path, STAGE3)
+    path = repo / "docs" / "aide" / "progress.md"
+    before = path.read_bytes()
+    base = ["--repo", str(repo), "progress", "set", "--stage"]
+    assert aide.main([*base, "2", "withdrawn", "--reason", "x",
+                      "--no-commit"]) == 1
+    assert "NOT changed" in capsys.readouterr().err
+    assert aide.main([*base, "3", "restored", "--reason", "x",
+                      "--no-commit"]) == 1
+    assert path.read_bytes() == before
+
+
+def test_a_stage_withdrawn_by_hand_is_recorded_by_the_verb():
+    """PR #499 review: the issue's own case — a ❌ typed by hand with no
+    trail. The summary row alone ❌ leaves the header 🚧 and G3 🚧; the
+    verb writes the reason, the header and the rollup. The same with the
+    header already ❌ too: the reason is still written."""
+    hand = STAGE3.replace("| 3 | Exports | G2, G3 | 🚧 |",
+                          "| 3 | Exports | G2, G3 | ❌ |")
+    out, messages = _withdraw(hand)
+    lines = out.splitlines()
+    i = lines.index("## Stage 3 — Exports — ❌")
+    assert lines[i + 1] == "  - **2026-10-19** → withdrawn: superseded"
+    assert "| G3 Exports | Stage 3 | ❌ |" in lines
+    assert messages[0] == "stage 3: withdrawn — superseded"
+    assert aide.derived_cell_findings(lines) == ([], [], set())
+    both = hand.replace("## Stage 3 — Exports — 🚧", "## Stage 3 — Exports — ❌")
+    out2, _ = _withdraw(both)
+    assert "  - **2026-10-19** → withdrawn: superseded" in out2.splitlines()
+    # Recorded once: the second run is no change.
+    assert _withdraw(out2, reason="again")[0] == out2
+
+
+def test_a_hand_withdrawn_stage_with_shipped_work_is_recorded():
+    """The withdrawal was already made, so a ✅ bullet does not refuse
+    recording its reason; on a stage still in scope it does."""
+    hand = PROGRESS.replace("| 2 | Reports | G2 | 🚧 |", "| 2 | Reports | G2 | ❌ |")
+    out, _ = _withdraw(hand, stage=2)
+    lines = out.splitlines()
+    i = lines.index("## Stage 2 — Reports — ❌")
+    assert lines[i + 1] == "  - **2026-10-19** → withdrawn: superseded"
+    with pytest.raises(ValueError, match="shipped work"):
+        _withdraw(PROGRESS, stage=2)
+
+
+def test_a_restored_then_withdrawn_stage_records_the_second_withdrawal():
+    once, _ = _withdraw()
+    back = aide.restore_stage(once, 3, "wanted", "2026-10-20")[0]
+    again, messages = _withdraw(back, reason="dropped again", date="2026-10-21")
+    assert "  - **2026-10-21** → withdrawn: dropped again" in again.splitlines()
+
+
+def test_restoring_a_stage_whose_every_bullet_is_dropped_is_refused():
+    """PR #499 review: withdraw, drop every bullet, restore — the stage
+    would read 📋 with nothing left to deliver, and check said nothing."""
+    withdrawn, _ = _withdraw()
+    dropped = (withdrawn.replace("- 🚧 CSV. *(Item 040)*", "- ❌ CSV. *(Item 040)*")
+               .replace("- 📋 PDF. *(Item 041)*", "- ❌ PDF. *(Item 041)*")
+               .replace("- 📋 A plugin hook.", "- ❌ A plugin hook."))
+    with pytest.raises(ValueError, match="nothing left to deliver"):
+        aide.restore_stage(dropped, 3, "x", "2026-10-20")
+
+
+def test_a_recorded_withdrawal_with_a_header_out_of_step_takes_the_new_reason():
+    """PR #499 review round 2: summary ❌ and a `withdrawn:` line, header
+    typed back to 🚧 — the repair writes the header and keeps the reason it
+    was given on a new trail line."""
+    once, _ = _withdraw()
+    drifted = once.replace("## Stage 3 — Exports — ❌", "## Stage 3 — Exports — 🚧")
+    out, messages = _withdraw(drifted, reason="still superseded", date="2026-10-22")
+    lines = out.splitlines()
+    i = lines.index("## Stage 3 — Exports — ❌")
+    assert lines[i + 1:i + 3] == ["  - **2026-10-19** → withdrawn: superseded",
+                                  "  - **2026-10-22** → withdrawn: still superseded"]
+    assert messages[0] == "stage 3: withdrawn — still superseded"
+
+
+def test_a_recorded_withdrawal_still_rolls_its_objective_rows_up():
+    """Both cells ❌ and the withdrawal recorded, but G3 typed back to 🚧:
+    the rollup still runs and writes it ❌, with the reason; once nothing
+    moves, the same call is no change."""
+    once, _ = _withdraw()
+    drifted = once.replace("| G3 Exports | Stage 3 | ❌ |", "| G3 Exports | Stage 3 | 🚧 |")
+    out, messages = _withdraw(drifted, reason="again", date="2026-10-22")
+    assert "| G3 Exports | Stage 3 | ❌ |" in out.splitlines()
+    assert "objective G3 🚧 → ❌ excluded" in messages
+    assert "  - **2026-10-22** → withdrawn: again" in out.splitlines()
+    assert _withdraw(out, reason="again")[0] == out

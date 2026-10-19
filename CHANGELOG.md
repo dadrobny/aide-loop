@@ -136,6 +136,66 @@ instead — that is the bump policy above, and it is enforced by
   repair). Installer-only: nothing a consumer's `--update` copies changed, so
   `core/VERSION` is unmoved.
 
+## [2.55.0] — 2026-10-19
+
+### Added
+
+- **`aide progress reword --stage N --deliverable K --text …` rewords a
+  deliverable no item has claimed, in `progress.md` and `roadmap.md`
+  together (issue #485).** A started stage froze its deliverables in
+  `roadmap.md` even where nothing had been built against them, while `reword
+  --item` could change `progress.md` alone, so the roadmap the queue planner
+  reads kept the first plan and owners annotated around the freeze — the
+  blockquotes #483 now routes out. In a stage not yet ✅ or ❌, a 📋 bullet
+  no item marker names is rewritten in both documents, matched by position
+  to the Kth top-level bullet of the roadmap stage's Deliverables block as
+  the criterion form matches boxes; only an indented line under a roadmap
+  bullet is its wrapped text, so a flush note or a blockquote under it stays.
+  It refuses, writing neither file, a
+  settled stage, an itemised or non-📋 bullet, text a bullet cannot hold,
+  and counts that cannot be lined up; with no Deliverables block for the
+  stage, or no `roadmap.md`, it writes `progress.md` alone and says so. The
+  Goal and the Dependencies stay frozen, and a started stage still takes no
+  new bullet.
+- **`aide progress set --stage N withdrawn --reason …` withdraws a stage
+  whole, and `set --stage N restored --reason …` takes it back (issue
+  #485).** The ❌ that withdraws a stage was typed by hand, with nowhere to
+  keep why. The verb writes ❌ on the summary row and header, a dated
+  `withdrawn: <reason>` trail line directly under the header, and rolls the
+  Objective rows naming the stage up with it left out, so a row only it
+  delivers reads ❌. It refuses a stage with a ✅ bullet — drop what it does
+  not need and it closes ✅ — and one with no usable summary row. A stage
+  already ❌ by hand is recorded rather than skipped: the reason, any cell
+  not yet ❌ and the Objective rollup are written, and its ✅ bullets do not
+  refuse it. A stage whose withdrawal is already on its trail is no change
+  only where no cell moves; a repair takes the new reason on a new line. `restored`
+  refuses a stage whose every bullet is ❌, which would have nothing left to
+  deliver; otherwise it
+  writes the cells back to what the bullets roll up to, frees the Objective
+  rows the withdrawal made ❌, adds its own trail line, and warns, writing
+  anyway, for each 🚧, 🔍 or ✅ item whose spec's Dependencies name a 📋 item
+  the restoration brings back; whether such an item is re-blocked stays
+  issue #402, deferred. `withdrawn` is the word §1 uses, for a whole stage
+  only: an item or bullet the stage does not need is still `dropped`, and the
+  status behind both is ❌ `excluded`.
+
+### Changed
+
+- **§1 → `roadmap.md`: two changes reach a started stage, each through its
+  verb, and the routes table gains two rows** — a rewording of an unclaimed
+  deliverable, and why a whole stage is withdrawn. §1 → `progress.md` states
+  both verbs and that a deferred or dropped deliverable stays in
+  `roadmap.md` as written, its status the record; §1 → status icons names the
+  stage verbs. The `aide-progress-file` skill delivers the new rules, pinned.
+- The drop refusals that leave a stage all ❌ now name `aide progress set
+  --stage N withdrawn --reason …` instead of a hand edit of the summary row,
+  as do §1 → `progress.md`, `aide progress -h` and the `aide-progress-file`
+  skill where they said a stage is withdrawn "by a ❌ on its summary row";
+  `aide-create-roadmap` names the deliverable form of `reword`. So do the
+  `aide check` remedies for a stage under way on a withdrawn dependency and
+  for an Objective row every stage of which is withdrawn, the queue-planner's
+  hand-back over such a dependency, and `aide-create-queue`.
+
 ## [2.54.0] — 2026-10-18
 
 ### Changed

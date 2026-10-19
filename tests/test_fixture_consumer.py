@@ -3281,6 +3281,108 @@ def test_an_item_is_dropped_and_restored_by_its_verbs_and_a_withdrawn_stage_spea
     assert "objective G1" not in capsys.readouterr().out
 
 
+def test_an_unclaimed_deliverable_is_reworded_and_a_stage_withdrawn_and_restored_by_its_verbs(
+        aide, consumer: Path, capsys):
+    """Issue #485 through the installed engine. In a started stage, an
+    unmarked 📋 deliverable is reworded in progress.md and roadmap.md in one
+    commit; an itemised one is refused, writing neither. A second stage is
+    withdrawn whole by its verb — ❌ cells, the objective only it delivers
+    ❌, the reason on a trail line under its header — and restored the same
+    way, `check` passing over every step. A stage with shipped work is not
+    withdrawn, and a failed commit puts the withdrawal back."""
+    ddir = consumer / "docs" / "aide"
+    ppath, rpath = ddir / "progress.md", ddir / "roadmap.md"
+    ppath.write_text(ppath.read_text(encoding="utf-8")
+                     .replace("- 📋 The farewell. *(Item 002)*\n",
+                              "- 📋 The farewell. *(Item 002)*\n"
+                              "- 📋 An optional greeting card.\n")
+                     .replace("| 1 | Foundations | G1 | 📋 |\n",
+                              "| 1 | Foundations | G1 | 📋 |\n"
+                              "| 2 | Extras | G2 | 📋 |\n")
+                     .replace("| G1 Foundations | Stage 1 | 📋 |\n",
+                              "| G1 Foundations | Stage 1 | 📋 |\n"
+                              "| G2 Extras | Stage 2 | 📋 |\n")
+                     + "\n## Stage 2 — Extras — 📋\n\n**Deliverables.**\n"
+                       "- 📋 A greeting in French.\n", encoding="utf-8")
+    rpath.write_text(
+        "# Fixture — Roadmap\n\n## Stage 1 — Foundations\n\n"
+        "**Goal.** Greet and part.\n\n**Deliverables.**\n\n"
+        "- The greeter.\n- The farewell.\n- An optional greeting card.\n\n"
+        "**Dependencies.** None.\n\n**Validation / acceptance.**\n\n"
+        "- Both items land.\n\n## Stage 2 — Extras\n\n"
+        "**Goal.** Greet in French.\n\n**Deliverables.**\n\n"
+        "- A greeting in French.\n\n**Dependencies.** None.\n",
+        encoding="utf-8")
+    _commit(consumer, "docs: a roadmap, an optional card, an extras stage")
+    prog = ["--repo", str(consumer), "progress"]
+    assert aide.main([*prog, "set", "1", "in-progress"]) == 0
+
+    # Reworded in both documents, in one commit.
+    head = _sha(consumer, "HEAD")
+    assert aide.main([*prog, "reword", "--stage", "1", "--deliverable", "3",
+                      "--text", "A greeting card, printable."]) == 0
+    assert _clean(consumer) and _sha(consumer, "HEAD~1") == head
+    assert sorted(_files_in_head(consumer)) == [
+        "docs/aide/progress.md", "docs/aide/roadmap.md"]
+    assert "- 📋 A greeting card, printable." in _progress_text(consumer).splitlines()
+    assert "- A greeting card, printable." in rpath.read_text(
+        encoding="utf-8").splitlines()
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    assert "stage 1" not in capsys.readouterr().out
+
+    # An itemised bullet is refused, writing neither document.
+    before = (ppath.read_bytes(), rpath.read_bytes())
+    head = _sha(consumer, "HEAD")
+    assert aide.main([*prog, "reword", "--stage", "1", "--deliverable", "1",
+                      "--text", "x"]) == 1
+    assert "`aide progress reword --item 001" in capsys.readouterr().err
+    assert (ppath.read_bytes(), rpath.read_bytes()) == before
+    assert _sha(consumer, "HEAD") == head
+
+    # A failed commit puts the withdrawal back.
+    argv = ["progress", "set", "--stage", "2", "withdrawn", "--reason",
+            "French is out of scope", "--date", "2026-10-19"]
+    before, head = ppath.read_bytes(), _sha(consumer, "HEAD")
+    assert _under_a_held_index_lock(aide, consumer, argv) == 1
+    assert ppath.read_bytes() == before and _sha(consumer, "HEAD") == head
+    assert _clean(consumer)
+
+    assert aide.main(["--repo", str(consumer), *argv]) == 0
+    assert _clean(consumer) and _sha(consumer, "HEAD~1") == head
+    lines = _progress_text(consumer).splitlines()
+    i = lines.index("## Stage 2 — Extras — ❌")
+    assert lines[i + 1] == "  - **2026-10-19** → withdrawn: French is out of scope"
+    assert "| 2 | Extras | G2 | ❌ |" in lines
+    assert "| G2 Extras | Stage 2 | ❌ |" in lines
+    assert "- 📋 A greeting in French." in lines
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "stage 2" not in out and "objective G2" not in out
+
+    head = _sha(consumer, "HEAD")
+    assert aide.main([*prog, "set", "--stage", "2", "restored", "--reason",
+                      "a French customer", "--date", "2026-10-20"]) == 0
+    assert _clean(consumer) and _sha(consumer, "HEAD~1") == head
+    lines = _progress_text(consumer).splitlines()
+    i = lines.index("## Stage 2 — Extras — 📋")
+    assert lines[i + 2] == "  - **2026-10-20** → restored: a French customer"
+    assert "| 2 | Extras | G2 | 📋 |" in lines
+    assert "| G2 Extras | Stage 2 | 📋 |" in lines
+    capsys.readouterr()
+    assert aide.main(["--repo", str(consumer), "check"]) == 0
+    out = capsys.readouterr().out
+    assert "stage 2" not in out and "objective G2" not in out
+
+    # Shipped work is not withdrawn: refused, nothing written.
+    assert aide.main([*prog, "set", "1", "done"]) == 0
+    before, head = ppath.read_bytes(), _sha(consumer, "HEAD")
+    assert aide.main([*prog, "set", "--stage", "1", "withdrawn", "--reason",
+                      "x"]) == 1
+    assert ppath.read_bytes() == before and _sha(consumer, "HEAD") == head
+
+
 def test_an_exhausted_queue_is_no_longer_open_to_claim_from(aide, consumer: Path, capsys):
     """Every item ✅ makes the queue closed, not empty — so `claim` exits 1 and
     says there is no open queue. That non-zero exit is what stops
