@@ -172,11 +172,12 @@ is withdrawn already, and the verb records it: it writes the reason, and any
 cell still not ❌, and its shipped work does not refuse it. **A withdrawn
 stage is restored with `aide progress set --stage N restored --reason …`**:
 its cells go back to what its bullets roll up to, under a trail line beside
-the withdrawal's, and so do the Objective rows the withdrawal made ❌. A stage
-whose every bullet is ❌ is not restored: it has nothing left to deliver. A 🚧, 🔍 or ✅ item whose Dependencies
-name a 📋 item the restoration brings back was built while that item had
-left the way; the verb names each one and writes anyway, since what such an
-item waits on now is its owner's call. Withdrawing and restoring are the
+the withdrawal's, and so do the Objective rows the withdrawal made ❌. A
+stage whose every bullet is ❌ is not restored: it has nothing left to
+deliver. A 🚧, 🔍 or ✅ item whose Dependencies name a 📋 item the
+restoration brings back was built while that item had left the way; the
+verb names each one and writes anyway, since what such an item waits on now
+is its owner's call. Withdrawing and restoring are the
 owner's decisions, and neither captures an insight.
 
 **A withdrawn stage speaks for no objective.** An Objective row is derived

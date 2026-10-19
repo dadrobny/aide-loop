@@ -3877,19 +3877,18 @@ def withdraw_stage(text: str, stage: int, reason: str, date: str
     to need is dropped, and it closes ✅.
 
     A stage whose summary row is already ❌ — withdrawn by hand, the case
-    the issue was raised over — is recorded rather than skipped: the trail
-    line, a header still not ❌ and the Objective rollup are written, and its
-    shipped work does not refuse it, since the withdrawal was already made.
-    It is no change only once its latest ``withdrawn:``/``restored:`` trail
-    line is a ``withdrawn:`` one and both cells read ❌.
+    the issue was raised over — is recorded rather than skipped: a header
+    still not ❌ and the Objective rollup are written, and its shipped work
+    does not refuse it, since the withdrawal was already made. The reason
+    goes on a new ``withdrawn:`` trail line unless the latest
+    ``withdrawn:``/``restored:`` line is a ``withdrawn:`` one and no cell
+    moved: that alone is no change (PR #499 review), so a repair never
+    loses the reason it was given.
     """
     lines = text.splitlines()
     start, end, row = _stage_cells_for(lines, stage, "withdraws")
     already = _icon_status(_split_row(lines[row])[3]) == "excluded"
     recorded = _stage_trail_withdrawn(lines, start)
-    if (already and recorded
-            and _header_status(lines[start]) == "excluded"):
-        return text, [f"stage {stage}: no change (already withdrawn)"]
     shipped = [k for k, st in enumerate(stage_deliverable_statuses(lines, start, end),
                                         start=1) if st == "complete"]
     if shipped and not already:
@@ -3906,13 +3905,12 @@ def withdraw_stage(text: str, stage: int, reason: str, date: str
     _write_stage_header_icon(lines, start, "excluded")
     num = stage_section(lines, str(stage))[2]
     _recompute_rollups(lines, downgrade_stages={num}, only={num})
-    messages = [f"stage {stage}: withdrawn — {reason}"
-                if not recorded else
-                f"stage {stage}: withdrawn already, its reason on the trail"
-                ] + _cell_moves(before, lines)
-    if not recorded:
-        _insert_trail_line(lines, start, start, stage_header_trail(lines, start),
-                           date, _WITHDRAWN_PREFIX + reason)
+    moves = _cell_moves(before, lines)
+    if recorded and not moves:
+        return text, [f"stage {stage}: no change (already withdrawn)"]
+    messages = [f"stage {stage}: withdrawn — {reason}"] + moves
+    _insert_trail_line(lines, start, start, stage_header_trail(lines, start),
+                       date, _WITHDRAWN_PREFIX + reason)
     return "\n".join(lines) + ("\n" if text.endswith("\n") else ""), messages
 
 
@@ -3994,10 +3992,12 @@ def roadmap_deliverable_bullets(lines: List[str], stage: str
     block in roadmap.md, in order — ``None`` when the stage has no section
     or no Deliverables block (issue #485).
 
-    A bullet runs over its wrapped lines: every following line that is not
-    blank, not a list item, not a blockquote, not a bold block opener, a
-    heading or a thematic break. A nested bullet is not a deliverable and ends the span,
-    so `reword --stage N --deliverable K` leaves it in place. Fenced code
+    A bullet runs over its wrapped lines: every following indented line
+    that is not a list item, a blockquote or guidance, as
+    `_BOX_CONTINUATION_RE` reads a wrapped criterion. An unindented line
+    ends it, so a note written flush under a bullet is never its text. A
+    nested bullet is not a deliverable and ends the span, so `reword --stage
+    N --deliverable K` leaves it in place. Fenced code
     and HTML comments are not read (`markdown_prose_lines`), as the shape
     lint reads the same block.
     """
@@ -4023,11 +4023,12 @@ def roadmap_deliverable_bullets(lines: List[str], stage: str
         if _TOP_BULLET_RE.match(text):
             out.append((i, i))
             open_span = True
-        elif (not text.strip() or re.match(r"^\s*[-*+]\s", text)
-              or _GUIDANCE_RE.match(text) or _BLOCKQUOTE_RE.match(text)):
-            open_span = False
-        elif open_span:
+        elif (open_span and _BOX_CONTINUATION_RE.match(text)
+              and not _GUIDANCE_RE.match(text)
+              and not _BLOCKQUOTE_RE.match(text)):
             out[-1] = (out[-1][0], i)
+        else:
+            open_span = False
     return out
 
 
@@ -23374,7 +23375,8 @@ def build_parser() -> argparse.ArgumentParser:
             "recorded instead: the trail line and any cell not yet \u274c "
             "are written, and a \u2705 bullet does not refuse it; one "
             "already carrying a `withdrawn:` line as its latest is no "
-            "change. No insight is "
+            "change where no cell moves, and otherwise takes the reason on "
+            "a new line. No insight is "
             "captured: withdrawing a stage is a decision about scope, not a "
             "finding.\n"
             "\n"
@@ -23385,8 +23387,8 @@ def build_parser() -> argparse.ArgumentParser:
             "a \u274c one every stage of which was withdrawn included. It "
             "refuses, writing nothing, without a stated reason, when the "
             "stage's summary row is not \u274c, or when every bullet of the "
-            "stage is \u274c, since it has nothing left to deliver. It warns, and writes anyway, "
-            "for each \U0001f6a7, \U0001f50d or \u2705 item whose spec's "
+            "stage is \u274c, since it has nothing left to deliver. It "
+            "warns, and writes anyway, for each \U0001f6a7, \U0001f50d or \u2705 item whose spec's "
             "Dependencies name a \U0001f4cb item the restoration brings "
             "back.\n"
             "\n"
@@ -23520,11 +23522,10 @@ def build_parser() -> argparse.ArgumentParser:
                                "--criterion")
     p_prog.add_argument("--stage", type=int, default=None, metavar="N",
                         help="set deferred|dropped|resumed|restored, "
-                             "reword: the "
-                             "stage whose "
-                             "deliverable bullet --deliverable names, in "
-                             "place of NNN; set withdrawn|restored without "
-                             "--deliverable: the stage itself; rollup: the one stage to roll "
+                             "reword: the stage whose deliverable bullet "
+                             "--deliverable names, in place of NNN; set "
+                             "withdrawn|restored without --deliverable: the "
+                             "stage itself; rollup: the one stage to roll "
                              "up (default: every stage); archive: the one "
                              "stage to archive (default: every eligible "
                              "stage); unarchive: the stage to move back "

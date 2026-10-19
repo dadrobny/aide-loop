@@ -2024,3 +2024,30 @@ def test_restoring_a_stage_whose_every_bullet_is_dropped_is_refused():
                .replace("- 📋 A plugin hook.", "- ❌ A plugin hook."))
     with pytest.raises(ValueError, match="nothing left to deliver"):
         aide.restore_stage(dropped, 3, "x", "2026-10-20")
+
+
+def test_a_recorded_withdrawal_with_a_header_out_of_step_takes_the_new_reason():
+    """PR #499 review round 2: summary ❌ and a `withdrawn:` line, header
+    typed back to 🚧 — the repair writes the header and keeps the reason it
+    was given on a new trail line."""
+    once, _ = _withdraw()
+    drifted = once.replace("## Stage 3 — Exports — ❌", "## Stage 3 — Exports — 🚧")
+    out, messages = _withdraw(drifted, reason="still superseded", date="2026-10-22")
+    lines = out.splitlines()
+    i = lines.index("## Stage 3 — Exports — ❌")
+    assert lines[i + 1:i + 3] == ["  - **2026-10-19** → withdrawn: superseded",
+                                  "  - **2026-10-22** → withdrawn: still superseded"]
+    assert messages[0] == "stage 3: withdrawn — still superseded"
+
+
+def test_a_recorded_withdrawal_still_rolls_its_objective_rows_up():
+    """Both cells ❌ and the withdrawal recorded, but G3 typed back to 🚧:
+    the rollup still runs and writes it ❌, with the reason; once nothing
+    moves, the same call is no change."""
+    once, _ = _withdraw()
+    drifted = once.replace("| G3 Exports | Stage 3 | ❌ |", "| G3 Exports | Stage 3 | 🚧 |")
+    out, messages = _withdraw(drifted, reason="again", date="2026-10-22")
+    assert "| G3 Exports | Stage 3 | ❌ |" in out.splitlines()
+    assert "objective G3 🚧 → ❌ excluded" in messages
+    assert "  - **2026-10-22** → withdrawn: again" in out.splitlines()
+    assert _withdraw(out, reason="again")[0] == out

@@ -474,3 +474,15 @@ def test_a_blockquote_under_a_roadmap_bullet_is_not_part_of_it():
     rlines = road.splitlines()
     i = rlines.index("- A loader for any further dataset.")
     assert rlines[i + 1] == "> Retargeted in place 2026-09-15."
+
+
+def test_an_unindented_line_under_a_roadmap_bullet_is_not_part_of_it():
+    """PR #499 review round 2: a flush `Note:` line under a deliverable was
+    read as its wrapped text and deleted; only an indented line wraps."""
+    noted = PLACE_ROADMAP.replace(
+        "  dataset, as first planned.\n",
+        "  dataset, as first planned.\nNote: the third dataset is optional.\n")
+    _, road, _, _ = _by_place(roadmap=noted)
+    rlines = road.splitlines()
+    i = rlines.index("- A loader for any further dataset.")
+    assert rlines[i + 1] == "Note: the third dataset is optional."

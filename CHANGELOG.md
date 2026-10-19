@@ -149,7 +149,9 @@ instead — that is the bump policy above, and it is enforced by
   blockquotes #483 now routes out. In a stage not yet ✅ or ❌, a 📋 bullet
   no item marker names is rewritten in both documents, matched by position
   to the Kth top-level bullet of the roadmap stage's Deliverables block as
-  the criterion form matches boxes. It refuses, writing neither file, a
+  the criterion form matches boxes; only an indented line under a roadmap
+  bullet is its wrapped text, so a flush note or a blockquote under it stays.
+  It refuses, writing neither file, a
   settled stage, an itemised or non-📋 bullet, text a bullet cannot hold,
   and counts that cannot be lined up; with no Deliverables block for the
   stage, or no `roadmap.md`, it writes `progress.md` alone and says so. The
@@ -163,9 +165,10 @@ instead — that is the bump policy above, and it is enforced by
   Objective rows naming the stage up with it left out, so a row only it
   delivers reads ❌. It refuses a stage with a ✅ bullet — drop what it does
   not need and it closes ✅ — and one with no usable summary row. A stage
-  already ❌ by hand, with no `withdrawn:` line on its trail, is recorded
-  rather than skipped: the reason, any cell not yet ❌ and the Objective
-  rollup are written, and its ✅ bullets do not refuse it. `restored`
+  already ❌ by hand is recorded rather than skipped: the reason, any cell
+  not yet ❌ and the Objective rollup are written, and its ✅ bullets do not
+  refuse it. A stage whose withdrawal is already on its trail is no change
+  only where no cell moves; a repair takes the new reason on a new line. `restored`
   refuses a stage whose every bullet is ❌, which would have nothing left to
   deliver; otherwise it
   writes the cells back to what the bullets roll up to, frees the Objective

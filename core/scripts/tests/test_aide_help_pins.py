@@ -1779,10 +1779,13 @@ HELP_PINS: Dict[str, List[Tuple[str, str]]] = {
         ("A stage whose summary row is \u274c by hand is recorded instead: "
          "the trail line and any cell not yet \u274c are written, and a "
          "\u2705 bullet does not refuse it; one already carrying a "
-         "`withdrawn:` line as its latest is no change",
+         "`withdrawn:` line as its latest is no change where no cell moves, "
+         "and otherwise takes the reason on a new line",
          ("test_aide_defer::test_a_stage_withdrawn_by_hand_is_recorded_by_the_verb",
           "test_aide_defer::test_a_hand_withdrawn_stage_with_shipped_work_is_recorded",
-          "test_aide_defer::test_withdrawing_a_withdrawn_stage_is_no_change")),
+          "test_aide_defer::test_withdrawing_a_withdrawn_stage_is_no_change",
+          "test_aide_defer::test_a_recorded_withdrawal_with_a_header_out_of_step_takes_the_new_reason",
+          "test_aide_defer::test_a_recorded_withdrawal_still_rolls_its_objective_rows_up")),
         # `restore_stage`: `rollup_status` or 📋, the freed Objective rows,
         # and `_restored_dependents` over `_item_dependencies`.
         ("set --stage N restored writes on the summary row and header what "
